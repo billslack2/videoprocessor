@@ -1376,14 +1376,19 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch);
 
 
-    // Optional presentation-only reacquisition. Retained logical geometry is
-    // deliberately not an input: neither its presence nor its aspect is proof.
+    // Optional presentation-only reacquisition. Native geometry constrains an
+    // already admitted replacement; it never supplies candidate geometry/proof.
     struct SubtitleAssistedReacquisitionInput
     {
         bool featureEnabled = false;
         ActivePictureFrameIdentity identity, measurementIdentity;
         uint64_t sourceGeneration = 0, policyGeneration = 0, continuityGeneration = 0;
         CropPresentationAdmissionState priorAdmission;
+        ActivePictureBounds nativeGeometry, retentionBounds;
+        ActivePictureFrameIdentity retentionIdentity;
+        ActivePictureClassification currentClassification = ActivePictureClassification::UNAVAILABLE;
+        bool latestObservationSupportsCrop = false;
+        bool retentionEvaluated = false, retentionPixelSafe = false, currentVisibleConflict = false;
         bool measurementAvailable = false, nearBlackEvaluated = false, globalNearBlack = false;
         bool nearBlackEpisodeActive = false, nativePresentationFullRaster = false;
         bool automaticCropEnabled = false, fixedCrop = false, nls = false;
@@ -1391,8 +1396,16 @@ namespace AlphaSourceCrop
         bool sceneTransition = false, recoveryActive = false, presentationFailOpen = false;
         bool conflictingPresentationOwnership = false;
     };
-    // Prediction is a read-only call to the ordinary admission policy; its
-    // typed missing-acquisition denial is the only bypass this path supports.
+    struct SubtitleAssistedReacquisitionEligibility
+    {
+        bool allowed = false, retainedCrop = false;
+        const char* reason = "not-evaluated";
+    };
+    // A prediction only schedules source measurement. Display consumes actual
+    // admission: either missing acquisition or exact pixel-safe native retention.
+    SubtitleAssistedReacquisitionEligibility EvaluateSubtitleAssistedReacquisitionEligibility(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& admission);
     bool CanCollectSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
         const CropPresentationAdmissionDecision& predictedAdmission);

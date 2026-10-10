@@ -75,6 +75,8 @@ struct SubtitleBoxObservation
     // Independent detector ROI only; never native bar or crop authority.
     bool assistedSourceCandidate = false;
     bool assistedReacquisitionCandidate = false; // Subtype; must never inherit cold-start permission.
+    bool assistedReacquisitionAttempted = false; // Diagnostics only; never authority or cache identity.
+    const char* assistedReacquisitionReason = "not-requested";
     ActivePictureBounds assistedBounds;
     int nearBarDistance=0;
     int optimizationMode=0;

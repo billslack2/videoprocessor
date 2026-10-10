@@ -3868,35 +3868,65 @@ namespace AlphaSourceCrop
 	}
 
 
+    SubtitleAssistedReacquisitionEligibility EvaluateSubtitleAssistedReacquisitionEligibility(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& admission)
+    {
+        SubtitleAssistedReacquisitionEligibility result;
+        auto reject=[&](const char* reason){result.reason=reason;return result;};
+        const auto& raster=admission.presentation.sourceBounds;
+        const auto admittedInContext=[&](const CropPresentationAdmissionState& state) {
+            return state.available && state.sourceGeneration==input.identity.transportGeneration &&
+                state.presentationEpoch==input.identity.viewportGeneration;
+        };
+        if(!input.featureEnabled)return reject("option-disabled");
+        if(!input.automaticCropEnabled || input.fixedCrop || input.nls)return reject("configured-owner-conflict");
+        if(!input.identity.transportGeneration || !input.identity.acceptedSequence ||
+            input.sourceGeneration!=input.identity.transportGeneration || !input.measurementAvailable ||
+            !SameActivePictureFrameIdentity(input.identity,input.measurementIdentity) ||
+            admission.sourceGeneration!=input.identity.transportGeneration ||
+            admission.sourceSequence!=input.identity.acceptedSequence || admission.presentationEpoch!=input.identity.viewportGeneration)
+            return reject("current-context-required");
+        if(!input.nearBlackEvaluated || input.globalNearBlack || input.nearBlackEpisodeActive)
+            return reject("darkness-or-episode-owner");
+        if(input.fullRasterAuthorityAvailable || input.sourceDiscontinuity || input.sceneTransition ||
+            input.recoveryActive || input.presentationFailOpen || input.conflictingPresentationOwnership)
+            return reject("presentation-owner-conflict");
+        if(input.currentVisibleConflict || admission.currentVisibleConflict)return reject("current-visible-conflict");
+        if(!ValidBounds(raster,raster.rasterWidth,raster.rasterHeight))return reject("invalid-native-presentation");
+        const bool prior=admittedInContext(input.priorAdmission),current=admittedInContext(admission.state);
+        if(!prior && !current) {
+            if(!input.nativePresentationFullRaster || !admission.blocked || admission.blockReason!=
+                CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY || admission.presentation.applyCrop ||
+                raster.left!=0 || raster.top!=0 || raster.right!=raster.rasterWidth || raster.bottom!=raster.rasterHeight)
+                return reject("missing-acquisition-denial-required");
+            result.allowed=true;result.reason="unadmitted-current-source-collection";return result;
+        }
+        if(!prior || !current)return reject("retained-admission-context-mismatch");
+        if(input.latestObservationSupportsCrop ||
+            (input.currentClassification!=ActivePictureClassification::PROVISIONAL &&
+             input.currentClassification!=ActivePictureClassification::UNAVAILABLE))
+            return reject("affirmative-native-observation");
+        const auto& native=input.nativeGeometry;
+        if(admission.blocked || admission.blockReason!=CropPresentationAdmissionBlockReason::NONE ||
+            !admission.presentation.applyCrop || admission.presentation.owner!=DecisionOwner::PIXEL_SAFE_RETENTION ||
+            admission.presentation.outwardExpanded || admission.presentation.verticallyTranslated ||
+            !ValidBounds(native,raster.rasterWidth,raster.rasterHeight) || native.left!=0 || native.right!=native.rasterWidth ||
+            native.top<=0 || native.bottom>=native.rasterHeight ||
+            native.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            !SameTrustedCropContract(native,input.priorAdmission.trustedCrop) ||
+            !SameTrustedCropContract(native,admission.state.trustedCrop) || !SameBounds(native,raster))
+            return reject("exact-pixel-safe-native-retention-required");
+        if(!input.retentionEvaluated || !input.retentionPixelSafe ||
+            !SameActivePictureFrameIdentity(input.retentionIdentity,input.identity) || !SameBounds(input.retentionBounds,native))
+            return reject("current-native-retention-proof-required");
+        result.allowed=true;result.retainedCrop=true;result.reason="retained-native-current-source-collection";return result;
+    }
     bool CanCollectSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
         const CropPresentationAdmissionDecision& admission)
     {
-        const auto& raster = admission.presentation.sourceBounds;
-        const auto admittedInContext = [&](const CropPresentationAdmissionState& state)
-        {
-            return state.available && state.sourceGeneration == input.identity.transportGeneration &&
-                state.presentationEpoch == input.identity.viewportGeneration;
-        };
-        return input.featureEnabled && input.automaticCropEnabled && !input.fixedCrop && !input.nls &&
-            input.identity.transportGeneration != 0 && input.identity.acceptedSequence != 0 &&
-            input.sourceGeneration == input.identity.transportGeneration &&
-            input.measurementAvailable && input.nearBlackEvaluated && !input.globalNearBlack &&
-            SameActivePictureFrameIdentity(input.identity, input.measurementIdentity) &&
-            !input.nearBlackEpisodeActive && input.nativePresentationFullRaster &&
-            !input.fullRasterAuthorityAvailable && !input.sourceDiscontinuity &&
-            !input.sceneTransition && !input.recoveryActive && !input.presentationFailOpen &&
-            !input.conflictingPresentationOwnership &&
-            !admittedInContext(input.priorAdmission) && !admittedInContext(admission.state) &&
-            admission.sourceGeneration == input.identity.transportGeneration &&
-            admission.sourceSequence == input.identity.acceptedSequence &&
-            admission.presentationEpoch == input.identity.viewportGeneration &&
-            !admission.currentVisibleConflict && admission.blocked && admission.blockReason ==
-                CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY &&
-            !admission.presentation.applyCrop &&
-            ValidBounds(raster, raster.rasterWidth, raster.rasterHeight) &&
-            raster.left == 0 && raster.top == 0 &&
-            raster.right == raster.rasterWidth && raster.bottom == raster.rasterHeight;
+        return EvaluateSubtitleAssistedReacquisitionEligibility(input,admission).allowed;
     }
     bool CanPresentSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
@@ -3905,7 +3935,12 @@ namespace AlphaSourceCrop
     {
         const auto& b = proof.candidate;
         const auto& raster = admission.presentation.sourceBounds;
-        return CanCollectSubtitleAssistedReacquisitionEvidence(input, admission) && compositionSucceeded &&
+        const auto eligibility=EvaluateSubtitleAssistedReacquisitionEligibility(input,admission);
+        // Replacement only contracts the retained native rectangle. No old
+        // rectangle can nominate an expansion or supply a temporal proof vote.
+        const bool containedReplacement=!eligibility.retainedCrop ||
+            (ContainedBounds(raster,b) && (b.top>raster.top || b.bottom<raster.bottom));
+        return eligibility.allowed && containedReplacement && compositionSucceeded &&
             proof.confirmed && !proof.inhibited &&
             proof.matchingFrames >= SubtitleAssistedAcquisitionGate::RequiredFrames &&
             SameActivePictureFrameIdentity(proof.identity, input.identity) &&

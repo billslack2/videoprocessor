@@ -3,11 +3,23 @@
 #include <vprenderer/SubtitleAssistedSourceEvidence.h>
 #include <vprenderer/SubtitleAssistedReacquisition.h>
 #include <condition_variable>
+#include <cstring>
 #include <deque>
 #include <functional>
 #include <mutex>
 #include <thread>
 
+// Queued subtitle scans retain the capture-format fingerprint used by their
+// native producer. Renderer analysis planes use transportGeneration instead;
+// those descriptors must never silently satisfy this worker-only contract.
+inline uint64_t SubtitleWorkerSourceGeneration(const ActivePictureFrameIdentity& identity) {
+    return identity.sourceFormatGeneration;
+}
+inline bool SubtitleWorkerSourceMatches(const AnalysisLumaSource& source,const SubtitleBoxObservation& key) {
+    return source.IsValid() && source.generation!=0 &&
+        source.generation==SubtitleWorkerSourceGeneration(key.identity) &&
+        source.width==key.width && source.height==key.height;
+}
 // Every source frame gets independent geometry and raw ink. Rechecking only
 // old glyph rectangles cannot discover a new word/companion outside them, and
 // copied ink must never count as fresh lookahead confirmation. Safe same-frame
@@ -17,15 +29,21 @@ public:
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/) {
         const auto started=std::chrono::steady_clock::now();
+        bool reacquisitionAttempted=false;const char* reacquisitionReason="not-requested";
+        if(key.sharedPicture.allowAssistedReacquisition)
+            reacquisitionReason=key.discontinuity?"source-discontinuity":
+                !SubtitleWorkerSourceMatches(source,key)?"worker-source-context-mismatch":"reacquisition-permission-unavailable";
         // Successful opt-in work replaces the ordinary scan, rather than paying
         // for a third detector pass against the historical physical plane.
-        if(!key.discontinuity && source.generation==key.identity.transportGeneration &&
-            source.width==key.width && source.height==key.height &&
+        if(!key.discontinuity && SubtitleWorkerSourceMatches(source,key) &&
             key.sharedPicture.AllowsAssistedReacquisitionFor(key.identity,source.width,source.height)) {
+            reacquisitionAttempted=true;
             const auto fresh=MeasureSubtitleAssistedReacquisition(source,key.identity.acceptedSequence,
                 key.identity.viewportGeneration,key.nearBarDistance,key.optimizationMode);
+            reacquisitionReason=fresh.reason;
             if(fresh.available) {
                 auto result=key;
+                result.assistedReacquisitionAttempted=true;result.assistedReacquisitionReason=reacquisitionReason;
                 result.assistedSourceCandidate=result.assistedReacquisitionCandidate=true;
                 result.assistedBounds=fresh.nomination.candidate;
                 result.pictureTop=result.assistedBounds.top;result.pictureBottom=result.assistedBounds.bottom;
@@ -42,6 +60,7 @@ public:
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+        result.assistedReacquisitionAttempted=reacquisitionAttempted;result.assistedReacquisitionReason=reacquisitionReason;
         // Cold-start detector nomination is a distinct provenance. It keeps
         // Classic's shared authority/key unchanged and cannot seed native bar
         // tracking. Rendering separately proves the full current source bands
@@ -75,6 +94,8 @@ class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
+        uint64_t reacquisitionRequested=0,reacquisitionAttempted=0,reacquisitionAccepted=0,reacquisitionSourceMismatch=0;
+        const char* reacquisitionLastReason="not-requested";
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
         size_t pending=0,ready=0;bool active=false;
     };
@@ -134,6 +155,13 @@ private:
             {std::lock_guard<std::mutex> lock(m_mutex);
                 const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
+                if(job.key.sharedPicture.allowAssistedReacquisition) {
+                    ++m_diagnostics.reacquisitionRequested;
+                    m_diagnostics.reacquisitionAttempted+=result.assistedReacquisitionAttempted;
+                    m_diagnostics.reacquisitionAccepted+=result.assistedReacquisitionCandidate;
+                    m_diagnostics.reacquisitionSourceMismatch+=std::strcmp(result.assistedReacquisitionReason,"worker-source-context-mismatch")==0;
+                    m_diagnostics.reacquisitionLastReason=result.assistedReacquisitionReason;
+                }
                 if(!result.analyzed)++m_diagnostics.failed;
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}

@@ -7785,7 +7785,7 @@ struct LibplaceboVideoRenderer::Impl
         AnalysisLumaSource source={reinterpret_cast<const uint8_t*>(frame.GetData()),
             static_cast<size_t>(state.BytesPerFrame()),key.width,key.height,
             static_cast<size_t>(state.BytesPerRow()),0,format,state.videoFrameEncoding,state.colorspace,
-            identity.sourceFormatGeneration};
+            SubtitleWorkerSourceGeneration(identity)};
         if(!source.IsValid())return key;
         // VideoFrame copies do not acquire ownership automatically.
         auto owner=std::shared_ptr<VideoFrame>(new VideoFrame(frame),[](VideoFrame* p){p->SourceBufferRelease();delete p;});
@@ -11269,6 +11269,21 @@ struct LibplaceboVideoRenderer::Impl
             input.sourceGeneration=analysisSource.generation;
             input.policyGeneration=current.policyGeneration;input.continuityGeneration=current.continuityGeneration;
             input.priorAdmission=cropPresentationAdmission;
+            if(nlsGeometryAvailable && nlsGeometrySourceGeneration==identity.transportGeneration)
+                input.nativeGeometry=nlsGeometry;
+            input.latestObservationSupportsCrop=latestActivePictureObservationSupportsCrop;
+            input.currentClassification=latestActivePictureEvidenceClassification;
+            input.retentionEvaluated=latestActivePicturePresentationRetentionEvaluated &&
+                latestActivePicturePresentationRetentionSourceGeneration==identity.transportGeneration &&
+                latestActivePicturePresentationRetentionSourceSequence==identity.acceptedSequence;
+            if(input.retentionEvaluated) {
+                input.retentionIdentity=identity;
+                input.retentionBounds=latestActivePicturePresentationRetentionBounds;
+                input.retentionPixelSafe=latestCropRetentionEvidence.analysisValid && latestCropRetentionEvidence.presentationValid &&
+                    latestCropRetentionEvidence.excludedBandsPixelSafe;
+                input.currentClassification=latestCropRetentionEvidence.activePicture.classification;
+                input.currentVisibleConflict=latestCropRetentionEvidence.outwardVisibleBoundsAvailable;
+            }
             input.measurementAvailable=current.measurementAvailable;
             input.nearBlackEvaluated=current.nearBlackEvaluated;input.globalNearBlack=current.globalNearBlack;
             input.nearBlackEpisodeActive=nearBlackPresentationEpisode.mode!=AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
@@ -11314,8 +11329,9 @@ struct LibplaceboVideoRenderer::Impl
         const auto reacquisitionAdmissionPrediction=subtitleReacquisitionAdmissionPredictionFor(subtitleSharedPicture.identity);
         reacquisitionCollectionInput.nativePresentationFullRaster=reacquisitionAdmissionPrediction.blocked &&
             !reacquisitionAdmissionPrediction.presentation.applyCrop;
-        const bool reacquisitionTransitionCollection=AlphaSourceCrop::CanCollectSubtitleAssistedReacquisitionEvidence(
+        const auto reacquisitionCollectionEligibility=AlphaSourceCrop::EvaluateSubtitleAssistedReacquisitionEligibility(
             reacquisitionCollectionInput,reacquisitionAdmissionPrediction);
+        const bool reacquisitionTransitionCollection=reacquisitionCollectionEligibility.allowed;
         const bool reacquisitionColdCollection=subtitleSharedPicture.allowAssistedNomination &&
             !cropPresentationAdmission.available && !reacquisitionCollectionInput.fullRasterAuthorityAvailable &&
             reacquisitionCollectionInput.measurementAvailable && reacquisitionCollectionInput.nearBlackEvaluated &&
@@ -12216,12 +12232,13 @@ struct LibplaceboVideoRenderer::Impl
             const double seconds=(subtitlePerfNow-subtitlePerfTick)/1000.0;
             const auto worker=subtitleMeasurementWorker.TakeDiagnostics();
             const auto jobs=worker.fullScans+worker.refreshes+worker.failed;
-            DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d ready=%zu dropped_jobs=%llu failed_jobs=%llu request_misses=%llu",
+            DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d ready=%zu dropped_jobs=%llu failed_jobs=%llu request_misses=%llu reacquisition_requested=%llu reacquisition_attempted=%llu reacquisition_accepted=%llu reacquisition_source_mismatch=%llu reacquisition_last_reason=%s",
                 SubtitleDetectionOptimizationName(activeSettings.subtitleDetectionOptimization),seconds,subtitlePerf.frames,subtitlePerf.frames?subtitlePerf.consumeMs/subtitlePerf.frames:0,subtitlePerf.consumePeak,
                 subtitlePerf.pending,subtitlePerf.recovered,worker.fullScans,worker.fullScans/seconds,
                 worker.fullScans?worker.fullMs/worker.fullScans:0,worker.fullPeakMs,worker.refreshes,worker.refreshes/seconds,
                 worker.refreshes?worker.refreshMs/worker.refreshes:0,worker.refreshPeakMs,worker.fullMs+worker.refreshMs,
-                jobs?worker.queueWaitMs/jobs:0,worker.queueWaitPeakMs,worker.pending,worker.active?1:0,worker.ready,worker.dropped,worker.failed,worker.requestMisses);
+                jobs?worker.queueWaitMs/jobs:0,worker.queueWaitPeakMs,worker.pending,worker.active?1:0,worker.ready,worker.dropped,worker.failed,worker.requestMisses,
+                worker.reacquisitionRequested,worker.reacquisitionAttempted,worker.reacquisitionAccepted,worker.reacquisitionSourceMismatch,worker.reacquisitionLastReason);
             for(int mode=0;mode<2;++mode) {
                 DebugLog::Log("SUBTITLE PERFORMANCE GPU: window_s=%.3f mode=%s composition_frames=%llu cpu_submit_avg_ms=%.3f gpu_samples=%llu gpu_avg_ms=%.3f gpu_peak_ms=%.3f timing=async_stage sampled=alternating_frames included_in_gpu_frame_total=1",
                     seconds,mode?"generated_gray":"black",subtitlePerf.compose[mode],subtitlePerf.compose[mode]?subtitlePerf.composeCpu[mode]/subtitlePerf.compose[mode]:0,
@@ -12240,7 +12257,7 @@ struct LibplaceboVideoRenderer::Impl
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitlePreviewMode,
              &subtitleEvidenceObservation, subtitleEvidenceObservationAvailable, subtitleEvidenceIdentity,
-             &assistedSourceProof, &assistedAcquisition, assistedProofMs, &subtitleStartupInputFor, &subtitleReacquisitionInputFor,
+             &assistedSourceProof, &assistedAcquisition, assistedProofMs, &subtitleStartupInputFor, &subtitleReacquisitionInputFor, reacquisitionCollectionEligibility, reacquisitionColdCollection,
              assistedIndependentRawClear, &assistedRevalidationBounds,
              subtitleCutPasteBackground, subtitleEvidencePolicy=localBoundaryPolicyGeneration,
              subtitleEvidenceContinuity=localBoundaryContinuityGeneration,
@@ -13463,9 +13480,14 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleEvidenceObservation.assistedReacquisitionCandidate;
             auto reacquisitionFinalInput=subtitleReacquisitionInputFor(subtitleEvidenceIdentity);
             reacquisitionFinalInput.priorAdmission=priorSubtitleAdmission;
-            reacquisitionFinalInput.nativePresentationFullRaster=!cropDecision.applyCrop &&
-                cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
-                cropDecision.sourceBounds.right==width && cropDecision.sourceBounds.bottom==height;
+            reacquisitionFinalInput.nativeGeometry=cropInput.geometry;
+            reacquisitionFinalInput.latestObservationSupportsCrop=cropInput.latestObservationSupportsCrop;
+            reacquisitionFinalInput.currentVisibleConflict=reacquisitionFinalInput.currentVisibleConflict ||
+                (cropInput.currentVisibleBoundsAvailable && cropInput.currentVisibleSourceGeneration==frameGeneration &&
+                 cropInput.currentVisibleSourceSequence==sourceSequence);
+            reacquisitionFinalInput.nativePresentationFullRaster=!admissionDecision.presentation.applyCrop &&
+                admissionDecision.presentation.sourceBounds.left==0 && admissionDecision.presentation.sourceBounds.top==0 &&
+                admissionDecision.presentation.sourceBounds.right==width && admissionDecision.presentation.sourceBounds.bottom==height;
             reacquisitionFinalInput.presentationFailOpen=cropInput.presentationFailOpen || verticalFailOpen || outwardExpansionInvalid;
             reacquisitionFinalInput.conflictingPresentationOwnership=reacquisitionFinalInput.conflictingPresentationOwnership ||
                 useSceneVerificationGeometry || protectedCaptionFit || cropInput.movingPictureTransition ||
@@ -13473,6 +13495,9 @@ struct LibplaceboVideoRenderer::Impl
             const bool reacquisitionTransitionPresentation=assistedReacquisition &&
                 AlphaSourceCrop::CanPresentSubtitleAssistedReacquisitionEvidence(reacquisitionFinalInput,
                     admissionDecision,assistedAcquisition,subtitleCompositionSucceeded);
+            const auto reacquisitionFinalEligibility=AlphaSourceCrop::EvaluateSubtitleAssistedReacquisitionEligibility(
+                reacquisitionFinalInput,admissionDecision);
+            const bool reacquisitionRetainedPresentation=reacquisitionTransitionPresentation && reacquisitionFinalEligibility.retainedCrop;
             // The pre-existing unclassified cold path also accepts the stronger
             // opt-in source proof. It may not override any admission denial.
             const bool reacquisitionColdPresentation=assistedReacquisition && activeSettings.subtitleArReacquisition &&
@@ -13481,8 +13506,8 @@ struct LibplaceboVideoRenderer::Impl
                 (nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE || assistedStartupPresentation);
             const bool assistedDisplayEligible=assistedSourceProof.verified && automaticSourceCrop && configuredScreenActive &&
                 !fixedCropAspectConfigured && !nlsRequested && !sourceDiscontinuity && !protectedCaptionFit &&
-                !cropDecision.applyCrop && cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
-                cropDecision.sourceBounds.right==width && cropDecision.sourceBounds.bottom==height &&
+                ((!cropDecision.applyCrop && cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
+                  cropDecision.sourceBounds.right==width && cropDecision.sourceBounds.bottom==height) || reacquisitionRetainedPresentation) &&
                 !cropInput.movingPictureTransition && !cropInput.pictureTransitionHandoff.active &&
                 !sceneHold.cropActive && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary && !useSceneVerificationGeometry &&
                 (!admissionDecision.blocked || reacquisitionTransitionPresentation) &&
@@ -13524,12 +13549,15 @@ struct LibplaceboVideoRenderer::Impl
                 !assistedComposition.allow?assistedComposition.reason:assistedDisplay.reason;
             if(!cadenceRepeat && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 (subtitleAssistedLogReason!=assistedReason || assistedTick-subtitleAssistedLogTick>=2000)) {
-                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d startup_overlay=%d reacquisition_enabled=%d reacquisition_candidate=%d reacquisition_transition=%d reacquisition_collect=%d admission_blocked=%d admission_block=%d visible_conflict=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s native_reason=\"%s\"",
+                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d startup_overlay=%d reacquisition_enabled=%d reacquisition_candidate=%d reacquisition_transition=%d reacquisition_retained=%d reacquisition_collect=%d collection_policy=%s final_policy=%s admission_blocked=%d admission_block=%d visible_conflict=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s native_reason=\"%s\"",
                     frameGeneration,sourceSequence,viewportRequestSerial,subtitleEvidenceObservation.assistedSourceCandidate?1:0,
                     assistedSourceProof.verified?1:0,assistedAcquisition.matchingFrames,assistedAcquisition.inhibited?1:0,
                     assistedDisplayEligible?1:0,assistedDisplayApplied?1:0,assistedDisplay.composed?1:0,assistedStartupPresentation?1:0,
-                    activeSettings.subtitleArReacquisition?1:0,assistedReacquisition?1:0,reacquisitionTransitionPresentation?1:0,
-                    subtitleSharedPicture.allowAssistedReacquisition?1:0,admissionDecision.blocked?1:0,
+                    activeSettings.subtitleArReacquisition?1:0,assistedReacquisition?1:0,reacquisitionTransitionPresentation?1:0,reacquisitionRetainedPresentation?1:0,
+                    subtitleSharedPicture.allowAssistedReacquisition?1:0,
+                    reacquisitionColdCollection?"cold-current-source-collection":reacquisitionCollectionEligibility.reason,
+                    reacquisitionColdPresentation?"cold-current-source-presentation":reacquisitionFinalEligibility.reason,
+                    admissionDecision.blocked?1:0,
                     static_cast<int>(admissionDecision.blockReason),admissionDecision.currentVisibleConflict?1:0,
                     assistedSourceProof.candidate.left,assistedSourceProof.candidate.top,assistedSourceProof.candidate.right,assistedSourceProof.candidate.bottom,
                     assistedDisplay.bounds.left,assistedDisplay.bounds.top,assistedDisplay.bounds.right,assistedDisplay.bounds.bottom,

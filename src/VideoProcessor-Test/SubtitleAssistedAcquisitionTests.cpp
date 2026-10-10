@@ -460,5 +460,72 @@ public:
             Assert::AreEqual(n==10,CanPresentSubtitleAssistedReacquisitionEvidence(fresh.input,fresh.Admission(),proof,true));
         }
     }
+
+    TEST_METHOD(AdmittedAmbiguousRetentionAllowsOnlyFreshContainedComposedReplacement) {
+        SubtitleAssistedAcquisitionGate gate;
+        for(uint64_t n=1;n<=4;++n) {
+            Fixture f(n);
+            f.input.priorAdmission.available=true;f.input.priorAdmission.sourceGeneration=1;f.input.priorAdmission.presentationEpoch=3;
+            f.input.priorAdmission.trustedCrop=f.input.nativeGeometry=f.input.retentionBounds=f.native.geometry;
+            f.input.retentionIdentity=f.input.identity;f.input.retentionEvaluated=f.input.retentionPixelSafe=true;
+            f.input.currentClassification=ActivePictureClassification::PROVISIONAL;f.input.nativePresentationFullRaster=false;
+            const auto admission=f.Admission();const auto proof=gate.Evaluate(f.Frame());
+            const auto eligibility=EvaluateSubtitleAssistedReacquisitionEligibility(f.input,admission);
+            Assert::IsTrue(eligibility.allowed);Assert::IsTrue(eligibility.retainedCrop);
+            Assert::IsFalse(admission.blocked);Assert::IsTrue(admission.presentation.applyCrop);
+            Assert::AreEqual(n==4,CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,true));
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,false));
+            Assert::AreEqual(12,admission.state.trustedCrop.top);Assert::AreEqual(348,admission.state.trustedCrop.bottom);
+            Assert::AreEqual(12,f.input.priorAdmission.trustedCrop.top);
+            Assert::AreEqual(12,admission.presentation.sourceBounds.top);
+            Assert::IsTrue(admission.presentation.owner==DecisionOwner::PIXEL_SAFE_RETENTION);
+        }
+    }
+    TEST_METHOD(AdmittedReplacementCannotOverrideAffirmativeNativeOrForeignRetention) {
+        for(int defect=0;defect<20;++defect) {
+            Fixture f;f.input.priorAdmission.available=true;f.input.priorAdmission.sourceGeneration=1;f.input.priorAdmission.presentationEpoch=3;
+            f.input.priorAdmission.trustedCrop=f.input.nativeGeometry=f.input.retentionBounds=f.native.geometry;
+            f.input.retentionIdentity=f.input.identity;f.input.retentionEvaluated=f.input.retentionPixelSafe=true;
+            f.input.currentClassification=ActivePictureClassification::PROVISIONAL;f.input.nativePresentationFullRaster=false;
+            auto admission=f.Admission();
+            if(defect==0)f.input.latestObservationSupportsCrop=true;
+            if(defect==1)f.input.currentClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            if(defect==2)f.input.currentClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            if(defect==3)f.input.retentionEvaluated=false;
+            if(defect==4)f.input.retentionPixelSafe=false;
+            if(defect==5)f.input.retentionIdentity.acceptedSequence++;
+            if(defect==6)f.input.retentionIdentity.sourceFormatGeneration++;
+            if(defect==7)f.input.retentionBounds.top++;
+            if(defect==8)f.input.nativeGeometry.top++;
+            if(defect==9)f.input.priorAdmission.presentationEpoch++;
+            if(defect==10)admission.state.sourceGeneration++;
+            if(defect==11)admission.presentation.owner=DecisionOwner::TRUSTED_CROP;
+            if(defect==12)admission.presentation.owner=DecisionOwner::AMBIGUITY_HOLD;
+            if(defect==13)admission.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            if(defect==14)admission.presentation.sourceBounds.top++;
+            if(defect==15)admission.presentation.outwardExpanded=true;
+            if(defect==16)admission.presentation.verticallyTranslated=true;
+            if(defect==17)f.input.nativeGeometry.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+            if(defect==18)f.input.currentVisibleConflict=true;
+            if(defect==19)f.input.retentionIdentity.viewportGeneration++;
+            Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,f.Proof(),true));
+        }
+    }
+    TEST_METHOD(AdmittedReplacementRejectsUnchangedAndExpandedCandidate) {
+        Fixture f;f.input.priorAdmission.available=true;f.input.priorAdmission.sourceGeneration=1;f.input.priorAdmission.presentationEpoch=3;
+        f.input.priorAdmission.trustedCrop=f.input.nativeGeometry=f.input.retentionBounds=f.native.geometry;
+        f.input.retentionIdentity=f.input.identity;f.input.retentionEvaluated=f.input.retentionPixelSafe=true;
+        f.input.currentClassification=ActivePictureClassification::PROVISIONAL;f.input.nativePresentationFullRaster=false;
+        const auto admission=f.Admission();
+        for(int defect=0;defect<4;++defect) {
+            auto proof=f.Proof();
+            if(defect==0)proof.candidate.top=12,proof.candidate.bottom=348;
+            if(defect==1)proof.candidate.top=10;
+            if(defect==2)proof.candidate.bottom=350;
+            if(defect==3)proof.candidate.left=2;
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,true));
+        }
+    }
 };
 }

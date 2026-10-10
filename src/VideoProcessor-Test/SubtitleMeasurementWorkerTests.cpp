@@ -44,6 +44,26 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         auto preview=Ready(sequence);preview.available=false;preview.text={};
         preview.current.analyzed=false;preview.current.text={};return preview;
     }
+    static std::shared_ptr<std::vector<uint8_t>> WorkerContractPixels() {
+        auto pixels=std::make_shared<std::vector<uint8_t>>(640*360*2,128);
+        const auto fill=[&](int l,int t,int r,int b,int yCode) {
+            for(int y=t;y<b;++y)for(int x=l;x<r;++x)(*pixels)[size_t(y)*1280+x*2+1]=uint8_t(yCode);
+        };
+        fill(0,0,640,360,16);fill(0,45,640,315,50);
+        for(int n=0;n<18;++n){const int x=195+n*13;fill(x,326,x+8,340,128);fill(x+2,328,x+6,338,16);}
+        return pixels;
+    }
+    static SubtitleBoxObservation WorkerContractKey() {
+        SubtitleBoxObservation key;key.identity={2,100,500,12345,3332769639299398632ull,3,4};
+        key.width=640;key.height=360;key.policyGeneration=11;key.continuityGeneration=21;
+        key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+        key.sharedPicture.bounds={0,10,640,350,640,360};key.sharedPicture.allowAssistedReacquisition=true;
+        return key;
+    }
+    static AnalysisLumaSource WorkerContractSource(const std::vector<uint8_t>& pixels,const SubtitleBoxObservation& key) {
+        return {pixels.data(),pixels.size(),640,360,1280,0,AnalysisLumaFormat::NativeYuv422,
+            VideoFrameEncoding::UYVY,ColorSpace::REC_709,SubtitleWorkerSourceGeneration(key.identity)};
+    }
 public:
     TEST_METHOD(AcceptedCompleteExtractionSeedsCurrentPixelPendingFallback) {
         auto pixels=Pixels();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
@@ -177,6 +197,55 @@ public:
             Assert::IsFalse(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
             Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(ready.current).valid);
         }
+    }
+    TEST_METHOD(WorkerFormatFingerprintReachesSearchWhileTransportTagCannotMasqueradeAsWorkerSource) {
+        const auto pixels=WorkerContractPixels();const auto key=WorkerContractKey();
+        const auto source=WorkerContractSource(*pixels,key);Assert::IsTrue(source.generation!=key.identity.transportGeneration);
+        SubtitleMeasurementSampler sampler;const auto observed=sampler.Measure(source,key,{},24.0);
+        Assert::IsTrue(observed.assistedReacquisitionAttempted);
+        Assert::AreEqual("reacquisition-current-ink-unavailable",observed.assistedReacquisitionReason);
+        Assert::IsFalse(observed.assistedReacquisitionCandidate,L"a source-contract match must not waive morphology proof");
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(key,observed));
+        for(int scenario=0;scenario<6;++scenario) {
+            auto invalid=source;auto changed=key;
+            if(scenario==0)invalid.generation=key.identity.transportGeneration;
+            if(scenario==1)++invalid.generation;
+            if(scenario==2)invalid.generation=0;
+            if(scenario==3)++changed.width;
+            if(scenario==4)changed.discontinuity=true;
+            if(scenario==5)++changed.sharedPicture.identity.viewportGeneration;
+            SubtitleMeasurementSampler fresh;const auto rejected=fresh.Measure(invalid,changed,{},24.0);
+            Assert::IsFalse(rejected.assistedReacquisitionAttempted);Assert::IsFalse(rejected.assistedReacquisitionCandidate);
+            Assert::AreEqual(scenario<4?"worker-source-context-mismatch":scenario==4?"source-discontinuity":"reacquisition-permission-unavailable",rejected.assistedReacquisitionReason);
+        }
+        auto disabled=key;disabled.sharedPicture.allowAssistedReacquisition=false;
+        const auto off=sampler.Measure(source,disabled,{},24.0);
+        Assert::IsFalse(off.assistedReacquisitionAttempted);Assert::AreEqual("not-requested",off.assistedReacquisitionReason);
+    }
+    TEST_METHOD(AsynchronousWorkerPreservesDistinctFormatAndTransportIdentityAndSearchDiagnostics) {
+        const auto pixels=WorkerContractPixels();const auto key=WorkerContractKey();const auto source=WorkerContractSource(*pixels,key);
+        SubtitleMeasurementWorker worker;
+        worker.Submit(key,[pixels,source,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& prior) {
+            return sampler.Measure(source,key,prior,24.0);
+        });
+        auto wrong=key;++wrong.identity.sourceFormatGeneration;wrong.sharedPicture.identity=wrong.identity;
+        SubtitleBoxObservation observed;bool ready=false;
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(std::chrono::steady_clock::now()<deadline) {
+            Assert::IsFalse(worker.TryTake(wrong,observed));
+            if(worker.TryTake(key,observed)){ready=true;break;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(ready);worker.Stop();
+        Assert::IsTrue(SameActivePictureFrameIdentity(key.identity,observed.identity));
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(key,observed));
+        Assert::IsTrue(observed.assistedReacquisitionAttempted);Assert::IsFalse(observed.assistedReacquisitionCandidate);
+        Assert::AreEqual("reacquisition-current-ink-unavailable",observed.assistedReacquisitionReason);
+        const auto diagnostic=worker.TakeDiagnostics();
+        Assert::AreEqual(uint64_t(1),diagnostic.reacquisitionRequested);Assert::AreEqual(uint64_t(1),diagnostic.reacquisitionAttempted);
+        Assert::AreEqual(uint64_t(0),diagnostic.reacquisitionAccepted);Assert::AreEqual(uint64_t(0),diagnostic.reacquisitionSourceMismatch);
+        Assert::AreEqual("reacquisition-current-ink-unavailable",diagnostic.reacquisitionLastReason);
+        Assert::AreEqual(uint64_t(0),worker.TakeDiagnostics().reacquisitionRequested);
     }
 };
 }
