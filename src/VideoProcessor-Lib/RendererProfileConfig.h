@@ -12,6 +12,7 @@
 #include "DisplayRuleExpression.h"
 #include "AspectRatio.h"
 #include "HdrTargetLuminance.h"
+#include "ToneMappingTuning.h"
 
 #include <algorithm>
 #include <cctype>
@@ -592,7 +593,13 @@ namespace RendererProfileConfig
         }
 
 		if (group == "input")
-		{
+        {
+            const int tuning = ToneMappingTuning::Find(key);
+            if (tuning >= 0) {
+                ToneMappingTuning::Override parsed;
+                expected = "Auto or a number within the tone-mapping range";
+                return ToneMappingTuning::Parse(tuning, value, parsed);
+            }
 			if (key == "tone_mapping") return IsChoice(value, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 			if (key == "gamut_mapping") return IsChoice(value, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 			if (key == "peak_detection") return IsChoice(value, { "auto", "off", "default", "high_quality", "on" });
@@ -1444,6 +1451,20 @@ namespace RendererProfileConfig
 				 !ValidateExpressionVariables(base.whenExpression,
 					expressionVariables, "[" + prefix + baselineName + "] when=", error)))
 				return false;
+            const auto validateToneProfile = [&](const Profile& candidate, const std::string& owner) {
+                if (group.name != "display" && group.name != "input") return true;
+                std::string key, detail;
+                const bool valid = ToneMappingTuning::Validate([&](const char* name) {
+                    const auto found = candidate.settings.find(name);
+                    if (found != candidate.settings.end()) return found->second;
+                    std::string raw;
+                    rendererConfig.TryGetDisplayString(name, raw);
+                    return raw;
+                }, detail, key);
+                if (!valid) error = "[" + owner + "] " + detail;
+                return valid;
+            };
+            if (!validateToneProfile(base, namedBaseline ? prefix + baselineName : section)) return false;
 			model.profiles.emplace(group.name + "." + baselineName, base);
 
 			for (const std::string& variant : variants)
@@ -1527,6 +1548,7 @@ namespace RendererProfileConfig
 					 !ValidateExpressionVariables(profile.whenExpression,
 						expressionVariables, "[" + variantSection + "] when=", error)))
 					return false;
+                if (!validateToneProfile(profile, variantSection)) return false;
 				group.profiles.push_back(variant);
 				model.profiles.emplace(group.name + "." + variant,
 					std::move(profile));
@@ -1895,6 +1917,8 @@ namespace RendererProfileConfig
 				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
+			for (const auto& spec : ToneMappingTuning::Specs())
+                displayRules.push_back({spec.key, [spec](const std::string& text) { ToneMappingTuning::Override value; return ToneMappingTuning::Parse(ToneMappingTuning::Find(spec.key), text, value); }, "Auto or a valid tone-mapping number"});
 			for (const std::string& key : baseKeys)
 				displayRules.push_back({
 					key,

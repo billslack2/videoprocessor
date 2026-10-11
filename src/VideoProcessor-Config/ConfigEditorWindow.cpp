@@ -9,6 +9,7 @@
 #include "ColorOutputProfileMigration.h"
 #include "ProfileListController.h"
 #include "InlineColorPicker.h"
+#include "ToneMappingControl.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationLiveApply.h>
@@ -3444,6 +3445,13 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
             if (result.isEmpty()) result = value(QStringLiteral("vprenderer"), key).trimmed();
             return result;
         };
+        std::string toneError, toneKey;
+        if (!ToneMappingTuning::Validate([&](const char* key) {
+            return inheritedLuminance(QString::fromUtf8(key)).toStdString();
+        }, toneError, toneKey)) {
+            errors.push_back(QStringLiteral("[%1] %2").arg(section, QString::fromStdString(toneError)));
+            fields.push_back(controlName(section, QString::fromStdString(toneKey)));
+        }
         const QString white = value(section, QStringLiteral("sdr_target_nits")).trimmed();
         std::string expected;
         if (!white.isEmpty() && !RendererProfileConfig::ValidateProfileSetting(
@@ -4833,6 +4841,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto state = std::make_shared<State>();
     auto fields = std::make_shared<std::vector<Field>>();
     std::function<void()> updateOutputCompatibility = [] {};
+    std::function<void()> updateToneControls = [] {};
 
     auto* splitter = new ResponsiveSplitter;
 
@@ -5899,7 +5908,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			[this](int) { refreshRendererAutoStatus(); });
 
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
-            QStringLiteral("Tone mapping"), QStringLiteral(
+            QStringLiteral("Tone Mapping: General"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target nits"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
@@ -5928,6 +5937,85 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 2)"), QStringLiteral("contrast_recovery"));
         contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 2"));
         addRendererAutoStatus(QStringLiteral("contrast_recovery"), contrastRecovery);
+
+        auto wrapToneControl = [&](const ToneMappingTuning::Spec& spec, QLineEdit* edit) {
+            auto row = form->takeRow(edit);
+            if (row.labelItem) { delete row.labelItem->widget(); delete row.labelItem; }
+            delete row.fieldItem;
+            auto* control = new ToneMappingControl(spec, edit);
+            form->addRow(control);
+            return control;
+        };
+        // General retains its existing Auto status; the new controls show their
+        // resolved defaults numerically without creating configuration entries.
+        std::array<ToneMappingControl*, ToneMappingTuning::Count> toneControls{};
+        const char* ids[] = { "toneSpline", "toneOther", "tonePeak" };
+        const char* headings[] = { "Tone Mapping: Spline Curve", "Tone Mapping: Other Curves", "Tone Mapping: Peak Detection" };
+        const char* descriptions[] = {
+            "Knee controls also apply to ST2094-40. Inactive settings are retained.",
+            "Controls apply only to their named tone-mapping curve.",
+            "Controls apply while peak detection is enabled. Defaults follow the selected peak-detection mode." };
+        const int starts[] = { 0, ToneMappingTuning::KneeOffset, ToneMappingTuning::Percentile };
+        const int ends[] = { ToneMappingTuning::KneeOffset, ToneMappingTuning::Percentile, ToneMappingTuning::Count };
+        for (int section = 0; section < 3; ++section) {
+            form = addCollapsibleSection(QString::fromUtf8(ids[section]), QString::fromUtf8(headings[section]),
+                QString::fromUtf8(descriptions[section]), false);
+            for (int i = starts[section]; i < ends[section]; ++i) {
+                const auto& spec = ToneMappingTuning::Specs()[i];
+                auto* edit = addText(QString::fromUtf8(spec.label), QString::fromUtf8(spec.key));
+                toneControls[i] = wrapToneControl(spec, edit);
+            }
+            auto* restore = new QPushButton(QStringLiteral("Restore defaults"));
+            restore->setObjectName(QStringLiteral("config.vprenderer.%1.restore_defaults").arg(QString::fromUtf8(ids[section])));
+            restore->setToolTip(QStringLiteral("Restore this section's built-in defaults for the selected profile."));
+            auto* restoreRow = new QHBoxLayout;
+            restoreRow->addStretch();
+            restoreRow->addWidget(restore);
+            form->addRow(restoreRow);
+            connect(restore, &QPushButton::clicked, this, [toneControls, start=starts[section], end=ends[section]] {
+                for (int i = start; i < end; ++i) toneControls[i]->restoreDefault();
+            });
+        }
+        updateToneControls = [toneControls, toneMapping, peakDetection, renderingQuality, state] {
+            if (state->loading) return;
+            QString curve = effectiveChoiceValue(toneMapping);
+            if (curve.isEmpty() || curve == "auto") curve = "spline";
+            QString peak = effectiveChoiceValue(peakDetection);
+            const QString quality = effectiveChoiceValue(renderingQuality);
+            if (peak.isEmpty() || peak == "auto") peak = quality == "fast" ? "off" : quality == "balanced" ? "on" : "high_quality";
+            for (int i = 0; i < ToneMappingTuning::Count; ++i) {
+                const bool enabled = i < ToneMappingTuning::SlopeTuning ? (curve == "spline" || curve == "st2094-40") :
+                    i < ToneMappingTuning::KneeOffset ? curve == "spline" :
+                    i == ToneMappingTuning::KneeOffset ? curve == "bt2390" :
+                    i == ToneMappingTuning::ReinhardContrast ? curve == "reinhard" : peak != "off";
+                toneControls[i]->setEnabled(enabled);
+                toneControls[i]->refresh();
+            }
+            toneControls[ToneMappingTuning::Percentile]->setDefault(peak == "high_quality" ? 99.995 : 100.);
+            const double low = toneControls[ToneMappingTuning::KneeMinimum]->value();
+            const double high = toneControls[ToneMappingTuning::KneeMaximum]->value();
+            if (low > 0 && low < .5 && high > .5 && high < 1) {
+                toneControls[ToneMappingTuning::KneeDefault]->setBounds(low, high);
+                toneControls[ToneMappingTuning::KneeDefault]->setDefault(std::clamp(.4, low, high));
+            }
+            const double sceneLow = toneControls[ToneMappingTuning::SceneThresholdLow]->value();
+            const double sceneHigh = toneControls[ToneMappingTuning::SceneThresholdHigh]->value();
+            // Keep drags within the valid window. Zero remains an explicit Off
+            // detent; typed values retain the full API range and validation.
+            toneControls[ToneMappingTuning::SceneThresholdLow]->setSliderBounds(0.,
+                sceneHigh > 0 && sceneHigh <= 100 ? sceneHigh - std::min(.01, sceneHigh / 2.) : 100.);
+            toneControls[ToneMappingTuning::SceneThresholdHigh]->setSliderBounds(
+                sceneLow > 0 && sceneLow < 100 ? sceneLow + std::min(.01, (100. - sceneLow) / 2.) : 0.,
+                sceneLow == 100 ? 0. : 100., sceneLow > 0);
+            std::string error, key;
+            if (!ToneMappingTuning::Validate([&](const char* name) {
+                return toneControls[ToneMappingTuning::Find(name)]->configuredValue().toStdString();
+            }, error, key)) toneControls[ToneMappingTuning::Find(key)]->setError(QString::fromStdString(error));
+        };
+        for (auto* control : toneControls)
+            connect(control->editor(), &QLineEdit::textChanged, this, [updateToneControls] { updateToneControls(); });
+        for (auto* combo : { toneMapping, peakDetection, renderingQuality })
+            connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [updateToneControls] { updateToneControls(); });
 
         form = addCollapsibleSection(QStringLiteral("processing"), QStringLiteral("Processing"),
             QString(), false);
@@ -6371,7 +6459,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
-        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility](QListWidgetItem* current)
+        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility, updateToneControls](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -6642,7 +6730,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         displayed = QString::number(stored * field.displayScale,
                             'g', 12);
                 }
-                qobject_cast<QLineEdit*>(field.widget)->setText(displayed);
+                if (auto* tone = ToneMappingControl::For(field.widget)) tone->loadValue(displayed);
+                else qobject_cast<QLineEdit*>(field.widget)->setText(displayed);
             }
             else if (field.kind == Field::Integer)
                 qobject_cast<QSpinBox*>(field.widget)->setValue(configured.toInt());
@@ -6796,6 +6885,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 }
             }
         state->loading = false;
+        updateToneControls();
 		if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
 		{
 			auto* alignment = profileFields->findChild<QComboBox*>(

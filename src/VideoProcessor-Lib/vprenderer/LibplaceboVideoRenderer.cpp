@@ -784,6 +784,7 @@ namespace
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
 		PeakDetection peakDetection = PeakDetection::Auto;
+		ToneMappingTuning::Overrides toneTuning{};
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
@@ -910,7 +911,8 @@ namespace
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
-			<< settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
+			<< ToneMappingTuning::Fingerprint(settings.toneTuning)
+            << settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
 			<< settings.upscaler << '|' << settings.downscaler << '|'
 			<< settings.debandStrength << '|'
 			<< static_cast<int>(settings.deband) << '|'
@@ -1825,13 +1827,16 @@ namespace
             readChoice("hdr_tone_map_target_gamma", settings.hdrToneMapTargetGamma,
                 { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
         }
+        ToneMappingTuning::Read([&](const char* key, std::string& value) {
+            return config.TryGetString(rule.section, key, value);
+        }, settings.toneTuning);
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
 			if (ConfigFile::NormalizeName(raw) != "auto")
 			{
 				double value = 0.0;
-				if (ParseDouble(raw, value) && value >= 0.0 && value <= 1.0)
+				if (ParseDouble(raw, value) && value >= 0.0 && value <= 2.0)
 				{
 					settings.hasContrastRecovery = true;
 					settings.contrastRecovery = static_cast<float>(value);
@@ -2492,6 +2497,9 @@ namespace
 			}
 		}
 
+        ToneMappingTuning::Read([&](const char* key, std::string& value) {
+            return TryGetDisplayString(config, key, value);
+        }, settings.toneTuning);
 		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
@@ -5127,6 +5135,7 @@ struct LibplaceboVideoRenderer::Impl
 		parameterSettings.toneMapping = settings.toneMapping;
 		parameterSettings.gamutMapping = settings.gamutMapping;
 		parameterSettings.peakDetection = settings.peakDetection;
+		parameterSettings.toneTuning = settings.toneTuning;
 		parameterSettings.hasContrastRecovery = settings.hasContrastRecovery;
 		parameterSettings.contrastRecovery = settings.contrastRecovery;
 		parameterSettings.upscaler = settings.upscaler;
@@ -7529,6 +7538,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.toneMapping = next.toneMapping;
 		currentTransport.gamutMapping = next.gamutMapping;
 		currentTransport.peakDetection = next.peakDetection;
+		currentTransport.toneTuning = next.toneTuning;
 		currentTransport.hasContrastRecovery = next.hasContrastRecovery;
 		currentTransport.contrastRecovery = next.contrastRecovery;
 		currentTransport.upscaler = next.upscaler;
@@ -7585,6 +7595,7 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.toneMapping != next.toneMapping, "tone_mapping");
 		changed(current.gamutMapping != next.gamutMapping, "gamut_mapping");
 		changed(current.peakDetection != next.peakDetection, "peak_detection");
+		changed(current.toneTuning != next.toneTuning, "tone_mapping_tuning");
 		changed(current.hasContrastRecovery != next.hasContrastRecovery ||
 			current.contrastRecovery != next.contrastRecovery, "contrast_recovery");
 		changed(current.upscaler != next.upscaler, "upscaler");
