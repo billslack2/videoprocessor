@@ -127,10 +127,11 @@ repeated-frame reuse, and cue continuity now include the selected hint, and a
 live hint change clears prior cue history. Existing bright-core, backing,
 centering, and bar-anchor gates remain in place.
 
-`git diff --check` passes. The x64 Release solution build was attempted but
-exited with code 1 because `MagewellSdkRoot` / `VP_MAGEWELL_SDK_ROOT` is not
-configured for the official MWCapture SDK `SDKv3` directory. The Config tests
-project compiled, but no test executable was run. No source commit, merge, or
-deployment has been made. Representative detector fixtures, configuration
-persistence tests, the focused suites, and a successful full x64 Release build
-remain open acceptance work.
+`git diff --check` passes. The full x64 Release solution build completed
+successfully with `MagewellSdkRoot` set to the workstation SDK at
+`E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`. The Config tests
+project and main test DLL were compiled as solution outputs, but no test suite
+was run. The source `AGENTS.md` now records the SDK path and build command. No
+source commit, merge, or deployment has been made. Representative detector
+fixtures, configuration persistence tests, and the focused suites remain open
+acceptance work.
