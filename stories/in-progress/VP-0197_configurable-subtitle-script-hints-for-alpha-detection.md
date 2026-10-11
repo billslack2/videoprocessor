@@ -116,7 +116,18 @@ the highest root is VP-0196. Assigned VP-0197.
 
 ## Implementation progress
 
-2026-10-11: Verified `v1.4.00-beta` at
-`8186661b675b4c44b0f15882a4d90d4a3cbae03a`, created a clean worktree from that
-tip, and traced the Subtitles profile to the asynchronous Alpha detector.
-Implementation and focused regression coverage are in progress.
+2026-10-11: Implemented the profile choice, validation, runtime settings, and
+public configuration reference in the clean source worktree at
+`E:\codex\videoprocessor\subtitle-script-preference-20261011` on
+`codex/subtitle-script-preference-20261011`, based on `v1.4.00-beta` commit
+`8186661b675b4c44b0f15882a4d90d4a3cbae03a`. General retains the existing
+thresholds; Latin, Arabic, and CJK apply bounded spacing, connected-word,
+detached-mark, and compact-line adjustments. Worker keys, bar references,
+repeated-frame reuse, and cue continuity now include the selected hint, and a
+live hint change clears prior cue history. Existing bright-core, backing,
+centering, and bar-anchor gates remain in place.
+
+`git diff --check` passes. Tests and an x64 Release build have not been run, and
+no source commit, merge, or deployment has been made. Representative detector
+fixtures, configuration persistence tests, the focused suites, and the x64
+Release build remain open acceptance work.
