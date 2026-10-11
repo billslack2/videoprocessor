@@ -17,6 +17,9 @@ public static class UpdateControlTests
  }
  public static int Main(string[] args)
  {
+  Assert(AppLifecycle.RestartArguments(new RunningApp{config=false,arguments="--fullscreen"})=="--fullscreen","VP restart preserves its launch arguments");
+  Assert(AppLifecycle.RestartArguments(new RunningApp{config=true,restoreInTray=true,arguments="--updates"}).EndsWith(" --restore-tray"),"hidden Config overrides an earlier Updates launch");
+  Assert(AppLifecycle.RestartArguments(new RunningApp{config=true,restoreInTray=false,arguments="--background"}).EndsWith(" --restore-visible"),"visible Config overrides an earlier background launch");
   string exe=Path.GetFullPath(args[0]);
   foreach(string flavor in new[]{"full","config"})
   {

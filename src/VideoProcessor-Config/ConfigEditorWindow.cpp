@@ -9135,8 +9135,9 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
     static const UINT updateExitMessage = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
     if (message && updateExitMessage && message->message == updateExitMessage)
     {
-        // Updating exits Config, including its tray process, without saving edits.
-        *result = 1;
+        // New helpers request visibility in the acknowledgment; old helpers still receive 1.
+        // Capture the actual window state immediately before shutdown.
+        *result = message->wParam == 1 && !isVisible() ? 3 : 1;
         if (!updateExitPending_)
         {
             updateExitPending_ = true;

@@ -198,3 +198,7 @@ run using published signed assets. No live apps are stopped by these unit tests.
 Cache downloads and logs are retained under
 `%LOCALAPPDATA%\VideoProcessor\Updates` for diagnosis; automatic cache pruning is
 not yet implemented.
+
+On successful updates, VP restarts if it was running immediately before setup.
+Config returns to its actual pre-update visibility: an open window reopens, while
+a hidden tray instance restarts in the tray, even if originally launched with --updates.

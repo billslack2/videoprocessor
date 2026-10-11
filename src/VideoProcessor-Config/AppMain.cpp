@@ -379,6 +379,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             screenshotPath = arguments[++index];
         else if (arguments[index] == QStringLiteral("--updates"))
             showUpdates = true;
+        else if (arguments[index] == QStringLiteral("--restore-tray"))
+        {
+            startInTray = true;
+            showUpdates = false;
+        }
+        else if (arguments[index] == QStringLiteral("--restore-visible"))
+            startInTray = false;
         else if (arguments[index] == QStringLiteral("--background"))
             startInTray = true;
         else if (arguments[index] == QStringLiteral("--page") && index + 1 < arguments.size())

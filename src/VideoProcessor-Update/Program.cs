@@ -97,7 +97,7 @@ namespace VideoProcessor.Update
     }
     public sealed class RunningApp
     {
-        public Process process; public string file, arguments; public bool config;
+        public Process process; public string file, arguments; public bool config, restoreInTray;
     }
     public static class AppLifecycle
     {
@@ -147,8 +147,8 @@ namespace VideoProcessor.Update
                     uint pid; GetWindowThreadProcessId(window, out pid);
                     if (pid != app.process.Id) return true;
                     UIntPtr result;
-                    IntPtr sent = SendMessageTimeout(window, message, UIntPtr.Zero, IntPtr.Zero, 2, 300000, out result);
-                    if (sent != IntPtr.Zero && result.ToUInt64() == 1) { accepted = true; return false; }
+                    IntPtr sent = SendMessageTimeout(window, message, app.config ? new UIntPtr(1) : UIntPtr.Zero, IntPtr.Zero, 2, 300000, out result);
+                    if (sent != IntPtr.Zero && (result.ToUInt64() == 1 || (app.config && result.ToUInt64() == 3))) { app.restoreInTray = app.config && result.ToUInt64() == 3; accepted = true; return false; }
                     if (sent != IntPtr.Zero && result.ToUInt64() == 2) return false; // User cancelled.
                     return true;
                 }, IntPtr.Zero);
@@ -156,10 +156,14 @@ namespace VideoProcessor.Update
                     throw new IOException("Applications did not exit: choose Exit in Config, close VP, then try again. No files were replaced.");
             }
         }
+        public static string RestartArguments(RunningApp app)
+        {
+            return app.arguments + (app.config ? (app.restoreInTray ? " --restore-tray" : " --restore-visible") : "");
+        }
         public static void Relaunch(List<RunningApp> apps, string root)
         {
             foreach (var app in apps.OrderBy(a => a.config))
-                Process.Start(new ProcessStartInfo(app.file, app.arguments) { UseShellExecute = false, WorkingDirectory = root });
+                Process.Start(new ProcessStartInfo(app.file, RestartArguments(app)) { UseShellExecute = false, WorkingDirectory = root });
         }
     }
     public sealed class UpdateWindow : Form

@@ -2234,6 +2234,8 @@ void testUpdateShutdownDiscardsEditsWithoutPrompt()
         require(!prompted, "Updater shutdown prompted about unsaved edits");
         require(window.isHidden(), "Updater shutdown revealed hidden Config");
         require(readBytes(path) == original, "Updater shutdown saved unsaved edits");
+        require(SendMessageW(handle, message, 1, 0) == 3,
+            "Hidden Config did not report tray-only restart state");
         // Destroy the fixture before its queued application quit.
     }
 }
