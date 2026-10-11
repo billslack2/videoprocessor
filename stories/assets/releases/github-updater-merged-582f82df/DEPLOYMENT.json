@@ -1,0 +1,17 @@
+{
+  "commit": "582f82dfa486e55c211aba8f745300c458c79aff",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\merged-updater-20261010-214504",
+  "changedFiles": [
+    "config/VideoProcessorConfig.exe",
+    "config/VideoProcessorConfigDiscovery.dll",
+    "docs/CONFIGURATION.html",
+    "VideoProcessor.exe",
+    "VideoProcessorUpdate.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll"
+  ],
+  "configurationEdits": "None",
+  "manifestEdits": "Updated managed file hashes and updater/build identity; preserved seed inventory and other metadata",
+  "buildLog": "E:\\codex\\videoprocessor\\github-updater-20261010\\artifacts\\merged-updater-release.log"
+}
