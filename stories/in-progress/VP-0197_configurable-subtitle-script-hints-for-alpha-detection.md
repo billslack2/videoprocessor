@@ -199,3 +199,14 @@ The previous Config files are backed up under
 No configuration file was changed; the active CJK config hash remains
 `F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`. Config
 was not launched for visual verification.
+
+2026-10-11 CJK letterbox reproduction: the user paused on a second scene with CJK selected; the subtitle reads “我现在已经彻底地醒悟了”. The live detector trace found 34 components but produced no cue, with `analysis_reason=backing-card-rejected` at analysis step 4. The preceding aggregate bar-stroke change reached anchor nomination, but the opaque-card test rejected this line. Added a narrow CJK letterbox backing proof: require a centered line to cross exactly one verified physical picture edge, at least six aggregate edge-ink samples, at least nine non-glyph samples inside the actual letterbox bar, at least 80% dark samples, and dark coverage in at least two of three width tiles. The opaque-card proof remains the primary path. Backing rejections now report whether the interior, sample count, darkness, or distribution failed.
+
+The complete `VideoProcessor.sln` x64 Release build succeeded using the workstation Magewell SDK. The user had previously requested a test deployment; the updated build is now installed at `C:\Videoprocessor\vp`. Verified hashes:
+
+- `VideoProcessor.exe`: `2E2F226B7B56490973C33C6A0BA1CF481851E27C5A1411A672655C07D98B2BA7`
+- `vprenderer\VideoProcessorVPRenderer.dll`: `E2598FD7C5F82062BE0487D7E897980086BFB0AE99D505640BFEDCB9767A4143`
+- `config\VideoProcessorConfigDiscovery.dll`: `D8AE0DD87D30EE0FCC744E4CCAE5A17462F1DC10EDAB6D548EB821E78B341873`
+- `config\VideoProcessorConfig.exe` already matched the same build and remains `820A2F4DD66298824397B141369EDAC6CA067183285F055361F8DA44CC8BD5EE`.
+
+The replaced binaries are backed up under `C:\Videoprocessor\vp\deployment-backups\subtitle-script-cjk-letterbox-20261011-104239`. Neither active config nor profile state was edited; `subtitle_script_hint: cjk` remains selected in Reconstruction. Their verified SHA-256 hashes are respectively `CADDB0EA12678EF88EFD66EF39F046451A9FEC66E0DA367CCC85C91B57188E71` and `853C7F67FD7460070E5655FF53C6E07ED7C6FA97A61E997EE84F7074325BA01C`. The player and Config were not running at deployment time. No tests or app launch were performed; manual scene validation and focused detector/config suites remain open.
