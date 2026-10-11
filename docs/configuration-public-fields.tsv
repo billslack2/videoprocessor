@@ -90,6 +90,7 @@ vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	Color / Output (
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	Color / Output (legacy spelling)	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
 general.profile_change_display_seconds	general-profile-change-display	General display	no
+general.scale_osd	general-scale-osd	General display	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
 lldv.max_cll	lldv-max-cll	LLDV metadata	no
