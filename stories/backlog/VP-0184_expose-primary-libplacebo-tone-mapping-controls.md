@@ -5,7 +5,7 @@
 Backlog
 
 Created 2026-09-12 at the user's request from batch 1 (audit ranks 1-7).
-Implementation has not started.
+Partial scope shipped in PR #142; remaining scope stays in Backlog (see deployment evidence below).
 
 ## User story
 
@@ -101,3 +101,14 @@ gamut expansion, and changes to existing defaults or deployed configuration.
 - 3rdparty/libplacebo/include/libplacebo/tone_mapping.h
 - 3rdparty/libplacebo/include/libplacebo/shaders/colorspace.h
 - https://libplacebo.org/options/
+
+## Partial implementation and deployment — 2026-10-10
+
+- PR #142: https://github.com/billslack2/videoprocessor/pull/142
+- Rebased onto current beta tip `582f82dfa486e55c211aba8f745300c458c79aff`, then merged into `v1.4.00-beta` as `8186661b675b4c44b0f15882a4d90d4a3cbae03a`.
+- Adds native tone-mapping General, Spline Curve, Other Curves, and Peak Detection sections with synchronized sliders/numeric entry, item reset tooltips and section defaults. Slider dragging previews locally and commits once on release; related threshold bounds and whole-frame smoothing increments are handled.
+- The peak keys implemented are `smoothing_period` and `percentile`, rather than the provisional prefixed names in the audit above. `contrast_smoothness` remains outstanding; this story is not complete and its remaining scope stays queued.
+- Clean merged-commit x64 Release solution and updater builds succeeded. Final checks: 220 native tests and six focused Config UI tests passed. Slider benchmark: 200 moves under 1 ms, zero commits while dragging, one on release. Updater policy suite passed 29 checks before merge. HWND shutdown test requires the Windows Qt platform; offscreen is not a valid environment for that test.
+- Deployed matching host, renderer, Config/discovery, updater, runtime receipts and configuration reference to `C:\Videoprocessor\vp`; SHA-256 verified, including all managed installation files. Six user configuration/state files unchanged. Installation manifest identity and replaced-file hashes updated after backup.
+- Backup and deployment receipt: `C:\Videoprocessor\vp\deployment-backups\tone-mapping-merged-20261010-222838\deployment-receipt.json`.
+- Started VP from the deployment; process responds and loads the deployed renderer DLL. Interactive picture-quality acceptance remains with the operator.
