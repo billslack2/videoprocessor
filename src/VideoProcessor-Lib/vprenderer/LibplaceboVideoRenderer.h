@@ -193,6 +193,8 @@ private:
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
 	void ApplyPendingShaderSelectionLocked();
+	bool FormatOutputModeInfoLocked(CString& details) const;
+	void RefreshOsdCacheLocked();
 	IRendererCallback& m_callback;
 	const uint32_t m_callbackGeneration;
 	HWND m_videoHwnd = nullptr;
