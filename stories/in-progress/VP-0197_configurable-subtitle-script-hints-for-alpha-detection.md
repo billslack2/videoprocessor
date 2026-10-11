@@ -176,3 +176,11 @@ remains set and its SHA-256 is
 `F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`.
 No test suite or application launch was performed. Manual scene validation,
 representative detector/config fixtures, and focused suite runs remain open.
+
+2026-10-11: At the user's request, restored the same x64 Release runtime pair
+after the deployed files were overwritten. The overwritten pair was backed up
+to `C:\Videoprocessor\vp\deployment-backups\subtitle-script-cjk-restore-20261011-102022`.
+The restored host and renderer hashes match the original Release build hashes
+recorded above. The active CJK configuration remained unchanged (SHA-256
+`F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`). No app
+was launched and no tests were run.
