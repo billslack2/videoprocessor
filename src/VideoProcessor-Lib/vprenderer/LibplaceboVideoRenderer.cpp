@@ -562,7 +562,7 @@ namespace
 	const T& LibplaceboExportedData(const char* exportName)
 	{
 #if defined(VP_LIBPLACEBO_BETA)
-        HMODULE module = GetModuleHandleW(L"libplacebo-376.dll");
+        HMODULE module = GetModuleHandleW(L"libplacebo-377.dll");
 #else
         HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
 #endif
@@ -797,6 +797,7 @@ namespace
 		PeakDetection peakDetection = PeakDetection::Auto;
 		ToneMappingTuning::Overrides toneTuning{};
 		bool dynamicTarget = true;
+		bool customToneMapping = false;
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
@@ -923,6 +924,7 @@ namespace
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
+			<< settings.customToneMapping << '|'
 			<< settings.dynamicTarget << '|'
             << ToneMappingTuning::Fingerprint(settings.toneTuning)
             << settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
@@ -1848,6 +1850,7 @@ namespace
             return config.TryGetString(rule.section, key, value);
         }, settings.toneTuning);
         config.TryGetBool(rule.section, "dynamic_target", settings.dynamicTarget);
+        config.TryGetBool(rule.section, "custom_tone_mapping", settings.customToneMapping);
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -2520,6 +2523,8 @@ namespace
         }, settings.toneTuning);
         if (TryGetDisplayString(config, "dynamic_target", rawValue))
             RendererProfileConfig::ParseBoolean(rawValue, settings.dynamicTarget);
+        if (TryGetDisplayString(config, "custom_tone_mapping", rawValue))
+            RendererProfileConfig::ParseBoolean(rawValue, settings.customToneMapping);
 		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
@@ -5157,6 +5162,7 @@ struct LibplaceboVideoRenderer::Impl
 		parameterSettings.peakDetection = settings.peakDetection;
 		parameterSettings.toneTuning = settings.toneTuning;
         parameterSettings.dynamicTarget = settings.dynamicTarget;
+        parameterSettings.customToneMapping = settings.customToneMapping;
 		parameterSettings.hasContrastRecovery = settings.hasContrastRecovery;
 		parameterSettings.contrastRecovery = settings.contrastRecovery;
 		parameterSettings.upscaler = settings.upscaler;
@@ -7561,6 +7567,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.peakDetection = next.peakDetection;
 		currentTransport.toneTuning = next.toneTuning;
         currentTransport.dynamicTarget = next.dynamicTarget;
+        currentTransport.customToneMapping = next.customToneMapping;
 		currentTransport.hasContrastRecovery = next.hasContrastRecovery;
 		currentTransport.contrastRecovery = next.contrastRecovery;
 		currentTransport.upscaler = next.upscaler;
@@ -7619,6 +7626,7 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.peakDetection != next.peakDetection, "peak_detection");
 		changed(current.toneTuning != next.toneTuning, "tone_mapping_tuning");
         changed(current.dynamicTarget != next.dynamicTarget, "dynamic_target");
+        changed(current.customToneMapping != next.customToneMapping, "custom_tone_mapping");
 		changed(current.hasContrastRecovery != next.hasContrastRecovery ||
 			current.contrastRecovery != next.contrastRecovery, "contrast_recovery");
 		changed(current.upscaler != next.upscaler, "upscaler");

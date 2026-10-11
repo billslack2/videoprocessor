@@ -5955,6 +5955,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("Tone Mapping: Highlight Response (Beta)"),
             QStringLiteral("Available with VP Renderer (Beta). Saved values are retained with other renderers."), false);
         QWidget* betaFields = form->parentWidget();
+        auto* customToneMapping = addBoolean(QStringLiteral("Custom highlight color mapping"), QStringLiteral("custom_tone_mapping"));
+        customToneMapping->setToolTip(QStringLiteral("Off: original master tone/gamut mapping. On: experimental VP smooth highlight color compression during HDR tone mapping. Tone curve, physical target nits and dynamic target remain independent. Default: Off. Apply to compare."));
         auto* dynamicTarget = addBoolean(QStringLiteral("Dynamic target nits"), QStringLiteral("dynamic_target"));
         dynamicTarget->setToolTip(QStringLiteral("Automatically trades some scene brightness for highlight headroom. Target nits remains the physical display peak. Default: On. Requires scene-average metadata; peak detection supplies it when available."));
         for (int i = ToneMappingTuning::FilmStrength; i < ToneMappingTuning::Count; ++i) {
@@ -5964,7 +5966,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* restoreBeta = new QPushButton(QStringLiteral("Restore defaults"));
         restoreBeta->setObjectName(QStringLiteral("config.vprenderer.toneHighlightBeta.restore_defaults"));
         form->addRow(restoreBeta);
-        connect(restoreBeta, &QPushButton::clicked, betaFields, [toneControls, dynamicTarget] {
+        connect(restoreBeta, &QPushButton::clicked, betaFields, [toneControls, dynamicTarget, customToneMapping] {
+            customToneMapping->setChecked(false);
             dynamicTarget->setChecked(true);
             toneControls[ToneMappingTuning::FilmStrength]->restoreDefault();
             toneControls[ToneMappingTuning::MasteringClip]->restoreDefault();
@@ -5996,11 +5999,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 for (int i = start; i < end; ++i) toneControls[i]->restoreDefault();
             });
         }
-        updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields] {
+        updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields, customToneMapping, gamutMapping] {
             if (state->loading) return;
             const bool beta = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
                 QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
             betaFields->setEnabled(beta);
+            gamutMapping->setEnabled(!beta || !customToneMapping->isChecked());
             QString curve = effectiveChoiceValue(toneMapping);
             if (curve.isEmpty() || curve == "auto") curve = "spline";
             QString peak = effectiveChoiceValue(peakDetection);
@@ -6039,6 +6043,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (rendererChoice_)
             connect(rendererChoice_, qOverload<int>(&QComboBox::currentIndexChanged), betaFields,
                 [updateToneControls] { updateToneControls(); });
+        connect(customToneMapping, &QCheckBox::toggled, this, [updateToneControls] { updateToneControls(); });
         for (auto* control : toneControls)
             connect(control->editor(), &QLineEdit::textChanged, this, [updateToneControls] { updateToneControls(); });
         for (auto* combo : { toneMapping, peakDetection, renderingQuality })
@@ -6610,6 +6615,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer"))
             {
                 if (key == QStringLiteral("dynamic_target")) return QStringLiteral("true");
+                if (key == QStringLiteral("custom_tone_mapping")) return QStringLiteral("false");
                 if (key == QStringLiteral("quality")) return QStringLiteral("high");
                 if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");

@@ -28,7 +28,7 @@ namespace OptionalRendererLayout
 		};
 		static const std::array<const wchar_t*, 9> betaDependencies = {
 			L"libdovi.dll", L"libgcc_s_seh-1.dll", L"liblcms2-2.dll",
-			L"libplacebo-376.dll", L"libshaderc_shared.dll",
+			L"libplacebo-377.dll", L"libshaderc_shared.dll",
 			L"libspirv-cross-c-shared.dll", L"libstdc++-6.dll",
 			L"libwinpthread-1.dll", L"vulkan-1.dll"
 		};

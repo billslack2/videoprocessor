@@ -1,4 +1,4 @@
-LIBRARY libplacebo-376.dll
+LIBRARY libplacebo-377.dll
 EXPORTS
 pl_alpha_overlay
 pl_bit_encoding_equal
@@ -249,7 +249,7 @@ pl_ipt_lms2ipt
 pl_ipt_lms2rgb
 pl_ipt_rgb2lms
 pl_log_color
-pl_log_create_376
+pl_log_create_377
 pl_log_default_params
 pl_log_destroy
 pl_log_level_update

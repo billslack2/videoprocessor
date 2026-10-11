@@ -10,9 +10,10 @@
   allocation/suspension patches absent from the previously published branch.
 - **VP Renderer (Beta)**: upstream master pinned to
   `1dd022687b9ac1dd996855b51433bf770ae76aab`, with VP analysis crop,
-  master scene-statistics crop support, timer controls and dynamic-target toggle.
+  master scene-statistics crop support, timer controls, dynamic-target toggle,
+  and opt-in VP smooth highlight color mapping.
   [codex/vp-master-beta](https://github.com/billslack2/libplacebo/tree/codex/vp-master-beta),
-  commit `7091553e68bed28e5a39a82af298ca681511fd5a`, API **376**.
+  commit `ed8e9a6c9d6603e3a272503b94f9946535301072`, API **377**.
 
 Both branches belong to `billslack2/libplacebo`. Upstream updates should be
 explicitly pinned and tested on the Beta branch. Do not automatically rebuild
@@ -26,9 +27,17 @@ UI under **VP Renderer > Rendering > Tone Mapping: Highlight Response (Beta)**.
 
 | Rendering profile key | Default | Range | Effect |
 |---|---|---|---|
+| `custom_tone_mapping` | `false` | Boolean | Off uses original master mapping; On enables experimental VP smooth highlight color compression during HDR compression. |
 | `dynamic_target` | `true` | Boolean | Adapt the virtual target to scene brightness, trading average brightness for highlight headroom. |
 | `film_strength` | `AUTO` = 0.3 | 0–2 | Blend toward the LMS film response; 0 preserves source chromaticity. Above 1 may clip highlights. |
 | `mastering_clip` | `AUTO` = 1 | 0–1 | Soften channel excursions above trustworthy mastering-peak metadata. 0 disables this step. |
+
+The **Custom highlight color mapping** checkbox defaults Off. Select Beta,
+change this checkbox, then Apply to compare using the same tone curve and
+physical target. The original Gamut mapping selector is disabled while this
+option is enabled; its saved choice is restored when the option is turned off.
+The custom path activates during HDR compression; SDR passthrough and inverse
+tone mapping retain the original mapping.
 
 These fields belong in `[vprenderer.<profile>]`. Missing keys inherit; `AUTO`
 explicitly resets the two numeric fields to library defaults. Dynamic target
@@ -46,6 +55,7 @@ applicable to master and retain their existing defaults.
 renderer: VP Renderer (Beta)
 
 [vprenderer.Default]
+custom_tone_mapping: false
 dynamic_target: true
 film_strength: AUTO
 mastering_clip: AUTO
@@ -55,7 +65,7 @@ mastering_clip: AUTO
 
 Stable uses `vprenderer/VideoProcessorVPRenderer.dll` with `libplacebo-360.dll`.
 Beta uses `vprenderer-beta/VideoProcessorVPRendererBeta.dll` with
-`libplacebo-376.dll`. Headers, import libraries, object directories, exported
+`libplacebo-377.dll`. Headers, import libraries, object directories, exported
 parameter reads and persistent shader caches are separate. Plugin API 25 also
 checks a renderer-flavor export, rejecting a plugin placed under the wrong name.
 All eight shared transitive runtime DLLs are currently byte-identical. This is
@@ -84,15 +94,18 @@ transfer-hint change does not justify removing this compatibility policy.
 
 - x64 Release solution: success, both renderer plugins and native Config.
 - Master fork: all 13 CPU/D3D11 tests pass. Includes real output on/off/on
-  dynamic-target comparison, cropped maxRGB statistics and timer controls.
-- VP focused native tests: 83 passed, covering renderer identity, stable
-  isolation, render parameters, output policy and private runtime paths.
+  dynamic-target comparison, cropped maxRGB statistics and timer controls. The
+  custom mapping A/B test also covers feature extraction/contrast recovery and
+  exact restoration of the original output with reused shader state.
+- VP focused native parameter/plugin tests: 29 passed after the custom-toggle
+  change, including stable isolation and Beta DLL naming. The preceding feature
+  baseline also passed its 83-test renderer/output-policy selection.
 - Native Qt tests: Beta field gating, inheritance, save/reload, defaults and
   validation; existing tone-control round trip passes.
 - Beta projection smoke test passes for all quality presets, overrides,
   independent peak detection and SDR/HDR luminance invariants.
 - Both plugins load simultaneously in both orders with the correct libplacebo
-  DLL and flavor. Master reports the clean `7091553e` source revision.
+  DLL and flavor. Master reports the clean `ed8e9a6c` source revision.
 - Release copy-plan validation includes both plugins and runtime records.
 - Installer support: 59 checks; installer identity: 12 checks; portable config
   contract: 8 checks passed.
@@ -141,26 +154,84 @@ that was skipped. Nonzero film response also deliberately changes chromaticity;
 this probe does not establish whether every perceived oversaturation issue
 has the same cause.
 
-**There is a clear path for a bounded experiment in our master fork:**
+### Implemented opt-in comparison
 
-1. Retain the existing chromaticity-preserving endpoint (film strength 0) and
-   the requested film-response endpoint in the actual destination linear RGB
-   space, after exposure and black adaptation.
-2. For pixels outside the destination volume, reduce the film contribution to
-   the largest blend whose three channels lie inside the physical output bounds.
-   A smooth shoulder near that bound can avoid an abrupt change of response.
-   Leave already-contained pixels alone. Handle numerical roundoff separately.
-3. Apply containment after every stage that can reintroduce an excursion,
-   including contrast recovery; test mastering P3 inside a BT.2020 container,
-   equal BT.2020, narrower gamuts, authored/detected metadata and LUT output.
-4. Require finite/legal output, monotonic highlight ramps, neutral preservation,
-   limited hue error, no unintended chroma increase and temporal stability.
-   Validate the user's actual problem scenes before selecting defaults.
+The earlier proposal to blend toward the film-strength-zero result was rejected
+by further ramp testing: it could increase chroma and create brightness reversals.
+The implemented option uses a smooth, hue-aware color-volume shoulder instead.
+It replaces the original gamut stage during HDR compression and runs after the
+existing tone/film/contrast-recovery response and final conversion to output RGB.
 
-This approach can retain useful film highlight whitening while avoiding a
-channel clamp as the main containment strategy. It is a proposed improvement,
-**not an implemented gamut fix**. Forcing the existing equal-gamut 3D LUT on
-alone is insufficient: LUT domain limits and numerical containment also matter.
+- Uses the physical output primaries, black and peak; the dynamic virtual target
+  does not change these bounds. Tone curve, film response and dynamic target
+  remain independently selectable.
+- Finds the first boundary from neutral at fixed CIE Y and IPT hue, then gradually
+  compresses chroma near that boundary. Luminance rolls off near the display peak.
+  Interior midtones are protected; independent channel clipping is not the
+  mapping operation.
+- Uses a 129 x 33 x 513 float RGBA table (about 33.3 MiB) and four filtered
+  samples per pixel. The table is reused in shader state while physical target
+  primaries/black/peak remain unchanged. It is not stored in the persistent disk
+  cache. Changing the physical target requires regeneration.
+- LUT nodes are bounded; interpolation between bounded RGB values remains
+  bounded. Explicit interpolation in Y avoids hardware interpolation precision
+  producing small brightness reversals. Unsupported float32 filtering or table
+  generation failure rejects the shader with a diagnostic.
+- Default Off follows the original fork/master code path. The release fork and
+  release renderer ignore the custom option.
+
+### Integrated GPU measurements
+
+`tools/libplacebo_ab_probe.c` renders original/custom/original with one reused
+shader state. It checks bit-exact restoration on every case and writes float
+output before encoding or integer clipping. It covers 320 cases / 2,990,080
+pixels: equal BT.2020, P3-D65 mastering inside BT.2020, and BT.2020 to BT.709;
+100/203/500-nit targets, four curves, film strength 0/0.3/1/2 and dynamic target
+Off/On, plus detected-metadata/mastering-clip cases. The synthetic source peak
+is 4,000 nits, with mean maxRGB 456.761 nits in the equal-BT.2020 case.
+
+Final DLL `ed8e9a6c` results:
+
+- All 320 cases restored the original output exactly after toggling Off.
+  Original output also matched the previous API 376 fork bit-for-bit.
+- All custom pixels were finite and within physical RGB bounds at a 0.001-nit
+  measurement tolerance. Alpha was unchanged.
+- The 32 default-film-strength equal-BT.2020 cases had no new measured brightness
+  reversals or IPT chroma increases on material overflow pixels. Maximum IPT hue
+  change on those chromatic overflow pixels was 0.916 degrees.
+- Across all film strengths, equal-BT.2020 had 22 small measured chroma increases
+  and a maximum hue change of 1.674 degrees. P3 and BT.709 cases showed larger
+  differences from the original gamut mapper (up to 25.84/32.95 degrees), and
+  7/3 newly measured brightness reversals. The original gamut stage and the VP
+  replacement have different color behavior in these cases; this comparison
+  does **not** establish universal hue preservation or superiority.
+
+See [libplacebo-beta-ab-comparison.csv](libplacebo-beta-ab-comparison.csv) for
+per-case metrics. Hue/chroma metrics use pixels whose original RGB exceeds the
+physical box by more than max(0.02 nit, 0.02% of target); hue excludes chroma below
+0.001. A brightness reversal is a ramp step below -max(0.001 nit, 0.001% of target)
+that was not already present in original output. Chroma increase threshold is
+0.00001 IPT. These are measurement thresholds, not perceptual guarantees.
+
+This remains an experimental viewing option. Real problem scenes, temporal
+stability and sustained 4K GPU performance need qualification. No containment
+claim applies to calibration/custom LUTs or other processing after this stage.
+The internal 16x16 fork regression includes contrast recovery; the 320-case
+numerical sweep does not include a feature map. This is not an ACES transform.
+
+Build the comparison probe against the matching Beta import library and run it
+from an empty output directory (the four output files are overwritten):
+
+```sh
+gcc /path/to/vp/tools/libplacebo_ab_probe.c \
+  -I /path/to/vp/3rdparty/libplacebo-beta/include \
+  -L /path/to/vp/3rdparty/libplacebo-beta/lib -l:libplacebo-377.lib -lm -o ab-probe.exe
+PATH=/path/to/vp/3rdparty/libplacebo-beta/bin:$PATH ./ab-probe.exe
+python /path/to/vp/tools/analyze_libplacebo_ab.py .
+```
+
+The analysis requires NumPy. Keep the final line identifying the library version
+from stderr alongside the measurements.
 
 To reproduce the probe from an MSYS2 mingw64 shell, use the matching fork build:
 

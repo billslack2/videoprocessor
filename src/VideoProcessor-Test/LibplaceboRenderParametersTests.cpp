@@ -171,6 +171,7 @@ namespace VideoProcessorTest
             Projection baseline, changed;
             BuildOrFail(settings, false, baseline);
             settings.dynamicTarget = false;
+            settings.customToneMapping = true;
             settings.toneTuning[ToneMappingTuning::FilmStrength] = 2.;
             settings.toneTuning[ToneMappingTuning::MasteringClip] = 0.;
             BuildOrFail(settings, false, changed);

@@ -10,15 +10,18 @@ int main() {
         for (const char* quality : {"fast", "balanced", "high"}) {
             settings.quality = quality;
             check(Build(settings, false, p, error), error.c_str());
+            check(!p.colorMapParams.vp_gamut_compression, "Original master must remain default");
             check(p.colorMapParams.dynamic_target, "Default dynamic target must be on");
             check(std::fabs(p.colorMapParams.film_strength - .3f) < 1e-6f, "Film default");
             check(p.colorMapParams.mastering_clip == 1.f, "Mastering clip default");
         }
         settings.dynamicTarget = false;
+        settings.customToneMapping = true;
         settings.toneTuning[ToneMappingTuning::FilmStrength] = .75;
         settings.toneTuning[ToneMappingTuning::MasteringClip] = .25;
         settings.toneTuning[ToneMappingTuning::BlackCutoff] = 3.;
         check(Build(settings, false, p, error), error.c_str());
+        check(p.colorMapParams.vp_gamut_compression, "Custom mapping must reach Beta API");
         check(!p.colorMapParams.dynamic_target, "Toggle must reach master API");
         check(p.colorMapParams.film_strength == .75f && p.colorMapParams.mastering_clip == .25f, "Beta overrides");
         check(p.peakDetectParams.black_cutoff == 3.f, "Peak override must remain independent");

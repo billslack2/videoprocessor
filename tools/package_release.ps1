@@ -119,7 +119,7 @@ foreach ($name in $privateDlls) {
     }
 }
 foreach ($name in $privateDlls) {
-    $betaName = $name.Replace('libplacebo-360.dll', 'libplacebo-376.dll')
+    $betaName = $name.Replace('libplacebo-360.dll', 'libplacebo-377.dll')
     if ($expected.Contains($betaName) -or -not $expected.Contains("vprenderer-beta\$betaName")) {
         throw "Beta renderer private dependency is missing or incorrectly staged: $betaName"
     }

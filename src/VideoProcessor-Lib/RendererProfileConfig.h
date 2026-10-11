@@ -603,7 +603,7 @@ namespace RendererProfileConfig
 			if (key == "tone_mapping") return IsChoice(value, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 			if (key == "gamut_mapping") return IsChoice(value, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 			if (key == "peak_detection") return IsChoice(value, { "auto", "off", "default", "high_quality", "on" });
-			if (key == "dynamic_target") return IsBoolean(value);
+			if (key == "dynamic_target" || key == "custom_tone_mapping") return IsBoolean(value);
 			if (key == "contrast_recovery") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 2.0);
 			if (key == "sdr_input_transfer") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off", "passthrough" });
@@ -1894,7 +1894,7 @@ namespace RendererProfileConfig
                 "subtitle_detection_optimization", "subtitle_near_bar_px", "subtitle_hold_ms", "subtitle_box_padding_sides", "subtitle_box_padding_top", "subtitle_box_padding_bottom", "subtitle_move_inset",
 				"switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
-				"dynamic_target", "contrast_recovery", "upscaler", "downscaler", "deband",
+				"dynamic_target", "custom_tone_mapping", "contrast_recovery", "upscaler", "downscaler", "deband",
 				"deband_strength", "sigmoid", "dithering", "display_bit_depth", "output_presentation",
 				"output_range", "output_gamma", "output_path_profile",
 				"target_primaries", "sdr_target_primaries", "report_bt2020_to_display",

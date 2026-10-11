@@ -18,7 +18,7 @@ namespace
 	const T* ReadLibplaceboData(const char* exportName, std::string& error)
 	{
 #if defined(VP_LIBPLACEBO_BETA)
-        HMODULE module = GetModuleHandleW(L"libplacebo-376.dll");
+        HMODULE module = GetModuleHandleW(L"libplacebo-377.dll");
 #else
         HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
 #endif
@@ -369,6 +369,7 @@ namespace LibplaceboRenderParameters
 
 #if defined(VP_LIBPLACEBO_BETA)
         projection.colorMapParams.dynamic_target = settings.dynamicTarget;
+        projection.colorMapParams.vp_gamut_compression = settings.customToneMapping;
         if (settings.toneTuning[ToneMappingTuning::FilmStrength])
             projection.colorMapParams.film_strength = static_cast<float>(*settings.toneTuning[ToneMappingTuning::FilmStrength]);
         if (settings.toneTuning[ToneMappingTuning::MasteringClip])
