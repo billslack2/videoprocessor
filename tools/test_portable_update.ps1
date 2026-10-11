@@ -52,4 +52,3 @@ foreach($flavor in @('full','config')) {
  Write-Host "PASS $flavor portable setup: in-place binary update, preserved settings, exact inventory, no registration/shortcuts/uninstaller"
 }
 Write-Host "Fixtures and logs: $qa"
-

@@ -317,4 +317,3 @@ namespace VideoProcessor.Update
         }
     }
 }
-
