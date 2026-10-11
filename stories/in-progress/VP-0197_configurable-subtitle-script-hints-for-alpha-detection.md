@@ -161,7 +161,18 @@ nomination before bar-gap measurement. Follow-up source change aggregates
 sampled top/bottom bar ink across multi-component CJK text-core lines, while
 retaining the centered-line and opaque-card checks, and distinguishes missing
 centered text, missing bar-stroke support, and backing rejection in diagnostics.
-The updated x64 Release solution build completed successfully. The running
-player and Config app still hold the deployed files, so this build has not yet
-been installed. No test suite was run; deployment and manual scene validation
-remain open.
+The updated x64 Release solution build completed successfully. After the user
+requested deployment, the player closed normally and the background Config
+process was ended. The same-build runtime pair was deployed to
+`C:\Videoprocessor\vp` and verified against the Release artifacts:
+
+- `VideoProcessor.exe`: `72C60525F68EADBF6E749462F9719A07052CC83DBD7BA2614D053AA3E40624D7`
+- `vprenderer\VideoProcessorVPRenderer.dll`: `982B94410200C2F9EFAC0BE97609FE0C4B87D3D312DEA6ED74E16905358388A8`
+
+The previous pair is backed up under
+`C:\Videoprocessor\vp\deployment-backups\subtitle-script-cjk-followup-20261011-093725`.
+The active `VideoProcessor.cfg` was not edited; `subtitle_script_hint: cjk`
+remains set and its SHA-256 is
+`F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`.
+No test suite or application launch was performed. Manual scene validation,
+representative detector/config fixtures, and focused suite runs remain open.
