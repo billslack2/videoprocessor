@@ -1,0 +1,132 @@
+{
+  "sourceCommit": "582f82dfa486e55c211aba8f745300c458c79aff",
+  "version": "1.4.0-rc3",
+  "channel": "beta",
+  "updateSequence": 20261011123607,
+  "testsPassed": 2371,
+  "configChecks": [
+    "integrated updates respect local package",
+    "update shutdown discards edits without prompt"
+  ],
+  "qualification": {
+    "schema": 1,
+    "inputs": {
+      "checkout": "E:\\codex\\videoprocessor\\github-updater-20261010",
+      "sourceCommit": "582f82dfa486e55c211aba8f745300c458c79aff",
+      "betaCommit": "582f82dfa486e55c211aba8f745300c458c79aff",
+      "installerToolingCommit": "",
+      "coreVersion": "1.4.0-rc3",
+      "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+      "qtRoot": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64",
+      "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+      "isccPath": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+      "portableZip": true,
+      "reuseVerifiedBuild": false,
+      "workflowSha256": "BD44792277513CF1C860EEB32935069337D0C5BDD680869693B7430AC56F7878",
+      "outputDirectory": "E:\\codex\\releases\\rc3-qualification-582f82df"
+    },
+    "sourceFingerprint": "9da69eddcc03a65705223f62a93f308dfad40892afe0e08cc5f43160c58c91ef",
+    "testsPassed": 2371,
+    "legacyRuntimeCheckExit": 1,
+    "tools": [
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+        "version": "18.7.8.30822",
+        "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+        "version": "18.0.11814.123",
+        "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+      },
+      {
+        "path": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+        "version": "0.0.0.0",
+        "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+        "version": "14.51.36247.0",
+        "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+      },
+      {
+        "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64\\bin\\Qt6Core.dll",
+        "version": "6.8.3.0",
+        "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe",
+        "sha256": "2644862BE3DAFF6EA6BF2257387F89BA3FF097699385E806E137B2C8CF1830C4",
+        "length": 28925943
+      },
+      {
+        "name": "VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip",
+        "sha256": "696C96C96C2F56DE409BBDB37BE7D2846492235401E6A525171099AE9F483F88",
+        "length": 40811558
+      }
+    ],
+    "signed": false,
+    "qualification": "Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.",
+    "reproducibility": "Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted."
+  },
+  "finalArtifacts": [
+    {
+      "sha256": "F71CD084088532B4AB356967EA185CA7BAD92014227BE6C5D100AD7654229078",
+      "size": 40811564,
+      "name": "VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip"
+    },
+    {
+      "sha256": "518DD7696847E62508DB4D8E72967F6A703CD38F6F55E41A9657270151C2A1AA",
+      "size": 122,
+      "name": "VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256"
+    },
+    {
+      "sha256": "12436678FC30B4D44159712E6CD6F564F63D3370BA8EE56CCBF1EDF99D2698C9",
+      "size": 24075004,
+      "name": "VideoProcessorConfig-1.4.0-rc3-582f82dfa486-x64-Portable.zip"
+    },
+    {
+      "sha256": "C984FB6A98EC0745AE3A8794B63726D090CBC459AC4865423CF7DF0AA08405B0",
+      "size": 128,
+      "name": "VideoProcessorConfig-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256"
+    },
+    {
+      "sha256": "DABABCFABF03382F3ADFFDC71408D68BA8BC60A4EEB58D761B03D69C6A29D4EE",
+      "size": 17941058,
+      "name": "VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe"
+    },
+    {
+      "sha256": "A4B2D307DC6609CC58433495E99FEEF80615FC2FAD94515605234BDDDE438F86",
+      "size": 8744,
+      "name": "VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json"
+    },
+    {
+      "sha256": "9FA58D114306F878029688BD1732A95082392A9593510FD0A4BDC75B208EA6E1",
+      "size": 120,
+      "name": "VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.sha256"
+    },
+    {
+      "sha256": "83E3643F2A02C321FB5E8E44146053A27522C45279D22721B9659C65E86820CA",
+      "size": 28925591,
+      "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe"
+    },
+    {
+      "sha256": "F48CBAA3436B29B34FC09F45794D251B0E264B632BD58D43E6AC9A37834C7D60",
+      "size": 18372,
+      "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json"
+    },
+    {
+      "sha256": "C35BF32A7DA67E1EC8E13ED4353EFF0D2AFB5519976E9C1B5D62ED82994759A8",
+      "size": 114,
+      "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.sha256"
+    },
+    {
+      "sha256": "197B5106435240C1A7207FDD6083C59296CE5DA32D53D36B08F169C5C83863B2",
+      "size": 4953,
+      "name": "vp-update.json"
+    }
+  ],
+  "notes": "Final packages use the same qualified native binary hashes, with signed update sequence/channel metadata. No clean Windows VM run."
+}
