@@ -1,0 +1,109 @@
+{
+  "sourceCommit": "8186661b675b4c44b0f15882a4d90d4a3cbae03a",
+  "release": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc3",
+  "replaces": "582f82dfa486e55c211aba8f745300c458c79aff",
+  "sequence": 20261011141457,
+  "coreVersion": "1.4.0-rc3",
+  "qualification": {
+    "schema": 1,
+    "inputs": {
+      "checkout": "E:\\codex\\videoprocessor\\updater-compat-20261011",
+      "sourceCommit": "8186661b675b4c44b0f15882a4d90d4a3cbae03a",
+      "betaCommit": "8186661b675b4c44b0f15882a4d90d4a3cbae03a",
+      "installerToolingCommit": "",
+      "coreVersion": "1.4.0-rc3",
+      "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+      "qtRoot": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64",
+      "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+      "isccPath": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+      "portableZip": true,
+      "reuseVerifiedBuild": false,
+      "workflowSha256": "BD44792277513CF1C860EEB32935069337D0C5BDD680869693B7430AC56F7878",
+      "outputDirectory": "E:\\codex\\releases\\rc3-qualification-8186661b"
+    },
+    "sourceFingerprint": "ad979888d1eac1776e2e84b7462d7a9f6fe90925cd8aa88c7145544b42a60761",
+    "testsPassed": 2373,
+    "legacyRuntimeCheckExit": 1,
+    "tools": [
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+        "version": "18.7.8.30822",
+        "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+        "version": "18.0.11814.123",
+        "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+      },
+      {
+        "path": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+        "version": "0.0.0.0",
+        "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+        "version": "14.51.36247.0",
+        "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+      },
+      {
+        "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64\\bin\\Qt6Core.dll",
+        "version": "6.8.3.0",
+        "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "VideoProcessorSetup-1.4.0-rc3-8186661b675b.exe",
+        "sha256": "4DC2A054F92C3E18727BBC7F7D93147D09541EA9D26AAB7947B94A2D2912ABCC",
+        "length": 28950041
+      },
+      {
+        "name": "VideoProcessor-1.4.0-rc3-8186661b675b-x64-Portable.zip",
+        "sha256": "06BC82A820EE0A4EE8734DA0F0EE5266296D09F115433FDD5CAFD6C2AF87E6E9",
+        "length": 40845293
+      }
+    ],
+    "signed": false,
+    "qualification": "Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.",
+    "reproducibility": "Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted."
+  },
+  "additionalChecks": [
+    "Tone mapping controls round trip passed",
+    "Integrated updates respect local package passed",
+    "Native Windows update shutdown passed; offscreen backend cannot deliver HWND messages",
+    "29 updater policy checks passed",
+    "19 updater control checks passed",
+    "Full and Config-only isolated portable update lifecycle passed",
+    "8 portable config contract checks passed",
+    "Signed metadata verified by updater",
+    "Five GitHub asset SHA256 digests verified"
+  ],
+  "limitations": "No clean Windows VM qualification; no local deployment performed",
+  "artifacts": [
+    {
+      "sha256": "885CFE29BC491C77F17C8E0098B234308E75244DDFDC3F01081B2414AF97DC3F",
+      "name": "VideoProcessor-1.4.0-rc3-8186661b675b-x64-Portable.zip",
+      "bytes": 40845305
+    },
+    {
+      "sha256": "8B9FC458958DF821802F1ECA14491466F2B20D6633CC3BDD787209D3F9F9FD68",
+      "name": "VideoProcessorConfig-1.4.0-rc3-8186661b675b-x64-Portable.zip",
+      "bytes": 24094361
+    },
+    {
+      "sha256": "989B3E39A5E345DE46E51D9D21629F3A0646E432C05B6A43CC7280B84CC75131",
+      "name": "VideoProcessorConfigSetup-1.4.0-rc3-8186661b675b.exe",
+      "bytes": 17954550
+    },
+    {
+      "sha256": "A49DD0EAEDEF47FBB2E11B7D54810B9B0F547D58755A1611E2B282F513021B08",
+      "name": "VideoProcessorSetup-1.4.0-rc3-8186661b675b.exe",
+      "bytes": 28949181
+    },
+    {
+      "sha256": "14ED2D5DD963AD42107EA6E5E1FC38FEF455769AEC0598188E998AEA87039E52",
+      "name": "vp-update.json",
+      "bytes": 5537
+    }
+  ]
+}
