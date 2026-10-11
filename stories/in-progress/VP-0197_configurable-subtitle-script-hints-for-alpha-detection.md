@@ -89,6 +89,8 @@ keeping its existing safeguards against picture detail.
    Release solution build succeeds. Local deployment is a separate request and
    does not replace these acceptance requirements.
 
+6. Manually reproduce the user-supplied paused scene, with the CJK profile active and subtitle “她才是人民的物理学家” crossing the lower picture boundary. The detector produces a nonzero observed cue and a stable box on repeated frames while preserving the backing and picture-detail safeguards.
+
 ## Out of scope
 
 - Selecting Windows OCR languages, DirectML changes, character recognition, or
@@ -149,3 +151,17 @@ The active `VideoProcessor.cfg` was not edited (SHA-256
 suite or application launch was performed. Representative detector fixtures,
 configuration persistence tests, and the focused suites remain open acceptance
 work.
+
+2026-10-11 manual scene feedback: the user selected Chinese / Japanese / Korean
+and paused on a scene whose subtitle reads “她才是人民的物理学家”; they
+reported no improvement over the prior result. The deployed runtime log for
+that frame reports 22 sampled components, no cue, no measured bar gap, and
+`no-backed-anchor` at analysis step 4. This narrows the failure to anchor
+nomination before bar-gap measurement. Follow-up source change aggregates
+sampled top/bottom bar ink across multi-component CJK text-core lines, while
+retaining the centered-line and opaque-card checks, and distinguishes missing
+centered text, missing bar-stroke support, and backing rejection in diagnostics.
+The updated x64 Release solution build completed successfully. The running
+player and Config app still hold the deployed files, so this build has not yet
+been installed. No test suite was run; deployment and manual scene validation
+remain open.
