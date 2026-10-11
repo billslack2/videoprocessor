@@ -1,10 +1,12 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'packaging\installer\install-support.ps1')
 # Filesystem fixtures do not launch application binaries. Actual process refusal
 # is exercised by test_installer_e2e.ps1 against the real Config executable.
 function Assert-VpClosed {}
+# Fixture roots have no real installation registration.
+function Get-VpRegisteredPath([string]$guid) { return $null }
 $testRoot = Join-Path $root ('artifacts\installer-support-tests-' + [guid]::NewGuid().ToString('N'))
 $script:InstallRoot = Join-Path $testRoot 'custom install'
 $null = New-Item -ItemType Directory -Path $InstallRoot -Force
@@ -153,4 +155,40 @@ $script:Action='Commit';Invoke-VpInstallAction | Out-Null
 $script:Action='Finalize';Invoke-VpInstallAction | Out-Null
 Assert ((Read-VpInstallManifest (Join-Path $InstallRoot 'INSTALL-MANIFEST.json')).build -eq 'B') 'corrupt manifest repaired'
 foreach($name in $sentinels.Keys){Assert ((Hash $name) -eq $sentinels[$name]) "manifest repair preserves $name"}
+# Identity gates also apply to silent setup, before any payload writes.
+$fullId = 'VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59'
+$configId = 'VideoProcessorConfig-BA15DBE8-210F-42AA-AE86-B4628395E77F'
+$script:Action='Check'
+$script:ApplicationId=$configId
+Throws {Invoke-VpInstallAction} 'payload identity' 'installer rejects a payload from another product'
+$script:ApplicationId=$fullId
+function Get-VpRegisteredPath([string]$guid) { return (Join-Path $testRoot 'registered elsewhere') }
+Throws {Invoke-VpInstallAction} 'registered at' 'silent update cannot move registered installation'
+function Get-VpRegisteredPath([string]$guid) { return $InstallRoot }
+Invoke-VpInstallAction | Out-Null
+Assert $true 'registered installation can update in place'
+$configPayload=Get-Content $PayloadManifest -Raw | ConvertFrom-Json
+$configPayload.applicationId=$configId
+$configPath=Join-Path $testRoot 'config-payload.json'
+$configPayload | ConvertTo-Json -Depth 8 | Set-Content $configPath -Encoding UTF8
+$script:ApplicationId=$configId; $script:PayloadManifest=$configPath
+Throws {Invoke-VpInstallAction} 'different installation flavor' 'Config setup cannot overwrite full installation ownership'
+Remove-Item -LiteralPath (Join-Path $InstallRoot 'INSTALL-MANIFEST.json')
+Throws {Invoke-VpInstallAction} 'cannot replace a full' 'Config setup refuses an unregistered portable VP folder'
+$script:InstallRoot=Join-Path $testRoot 'standalone config'
+$null=New-Item -ItemType Directory -Path $InstallRoot -Force
+Invoke-VpInstallAction | Out-Null
+Assert $true 'Config-only identity accepts its separate folder'
+# Portable copies can update beside a separate registered copy.
+$configPayload | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $InstallRoot 'INSTALL-MANIFEST.json') -Encoding UTF8
+$script:PortableUpdate=$true
+Throws {Invoke-VpInstallAction} 'registered installation' 'portable mode cannot bypass registration at the same root'
+function Get-VpRegisteredPath([string]$guid) { return (Join-Path $testRoot 'other installed copy') }
+Invoke-VpInstallAction | Out-Null
+Assert $true 'portable update permits a registered copy elsewhere'
+Put 'unins000.exe' 'fixture'
+Throws {Invoke-VpInstallAction} 'uninstall records' 'portable mode refuses orphaned installer records'
+Remove-Item -LiteralPath (Join-Path $InstallRoot 'unins000.exe')
+Remove-Item -LiteralPath (Join-Path $InstallRoot 'INSTALL-MANIFEST.json')
+Throws {Invoke-VpInstallAction} 'manifest|does not exist|Cannot find' 'portable mode requires existing ownership manifest'
 Write-Host "$checks preservation/recovery checks passed. Fixtures: $testRoot"

@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
 #include "ProfileListController.h"
 #include "InlineColorPicker.h"
@@ -12,6 +13,8 @@
 #include <ConfigurationIdentity.h>
 #include <ConfigurationLiveApply.h>
 #include <ActiveProfileStatus.h>
+#include <UpdateLauncher.h>
+#include <QMenuBar>
 
 #include <ConfigEditorCore.h>
 #include <ConfigurationRpcClient.h>
@@ -1038,7 +1041,15 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
             &ConfigEditorWindow::refreshShaderCacheStatus);
         shaderCacheStatusTimer_->start();
     }
-    if (!testMode_) setupTray();
+    if (!testMode_)
+    {
+        setupTray();
+        auto* updateTimer = new QTimer(this);
+        updateTimer->setInterval(6 * 60 * 60 * 1000);
+        connect(updateTimer, &QTimer::timeout, this, [] { UpdateLauncher::Launch(true); });
+        updateTimer->start();
+        QTimer::singleShot(30000, this, [] { UpdateLauncher::Launch(true); });
+    }
 	const std::wstring revealEventName =
 		ConfigurationLiveApply::ConfigurationEditorRevealEventName(
 			GetCurrentProcessId());
@@ -1666,6 +1677,7 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 void ConfigEditorWindow::selectPage(int index)
 {
     if (!pages_ || index < 0 || index >= pages_->count()) return;
+    if (noTarget_ && index != 20) index = 21;
     if (index == 13) index = 16; // Preserve old Output page links.
     pages_->setCurrentIndex(index);
     if (!navigation_) return;
@@ -3933,6 +3945,7 @@ bool ConfigEditorWindow::saveChanges()
 QWidget* ConfigEditorWindow::createShell()
 {
     pages_ = nullptr;
+    updatePanel_ = nullptr;
     navigation_ = nullptr;
     status_ = nullptr;
     effectSummary_ = nullptr;
@@ -4074,6 +4087,10 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Choose subtitle processing and inward placement. The first profile is the default."),
         QStringLiteral("vprenderer.subtitles")));
 
+    updatePanel_ = new UpdatePanel(QString::fromStdWString(UpdateLauncher::InstallationRoot()), nullptr, !testMode_);
+    pages_->addWidget(createPage(QStringLiteral("Updates"),
+        QStringLiteral("Manage updates on this computer. Remote VideoProcessors update separately."), updatePanel_));
+
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
     const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
@@ -4094,6 +4111,7 @@ QWidget* ConfigEditorWindow::createShell()
     navLayout->addSpacing(8);
     QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
     QPushButton* directShowNavigation = addLeaf(QStringLiteral("DirectShow"), 3);
+    addLeaf(QStringLiteral("Updates"), 20)->setObjectName(QStringLiteral("config.openUpdates"));
     navLayout->addStretch();
 
     auto* pageHost = new QWidget;
@@ -4186,8 +4204,7 @@ QWidget* ConfigEditorWindow::createShell()
     configurationHost_ = center;
 	if (noTarget_)
 	{
-		center->setParent(root);
-		center->hide();
+
 		auto* emptyState = new QWidget;
 		auto* emptyLayout = new QVBoxLayout(emptyState);
 		emptyLayout->setContentsMargins(24, 24, 24, 24);
@@ -4227,9 +4244,12 @@ QWidget* ConfigEditorWindow::createShell()
 		targetSearchProgress_ = progress;
 		emptyLayout->addWidget(progress, 0, Qt::AlignHCenter);
 		emptyLayout->addStretch();
-		rootLayout->addWidget(emptyState, 1);
+        pages_->addWidget(emptyState);
+        pages_->setCurrentWidget(emptyState);
+        for (auto* button : navigation_->findChildren<QPushButton*>())
+            button->setEnabled(button->property("pageIndex").toInt() == 20);
 	}
-	else rootLayout->addWidget(center, 1);
+    rootLayout->addWidget(center, 1);
 
     auto* footer = new QWidget;
     footer->setObjectName(QStringLiteral("footer"));
@@ -8911,6 +8931,12 @@ QWidget* ConfigEditorWindow::createShortcutsSetupPage()
         content);
 }
 
+void ConfigEditorWindow::showUpdates()
+{
+    reveal();
+    selectPage(20);
+}
+
 void ConfigEditorWindow::setupTray()
 {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
@@ -8931,6 +8957,8 @@ void ConfigEditorWindow::setupTray()
 			[this] { populateTrayTargets(); });
 	}
     menu->addSeparator();
+    connect(menu->addAction(QStringLiteral("Check for updates on this computer…")),
+        &QAction::triggered, this, [this] { showUpdates(); });
     QAction* exit = menu->addAction(QStringLiteral("Exit"));
     tray_->setContextMenu(menu);
     connect(open, &QAction::triggered, this, [this] { reveal(); });
@@ -9104,6 +9132,20 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
 {
     Q_UNUSED(eventType);
     MSG* message = static_cast<MSG*>(nativeMessage);
+    static const UINT updateExitMessage = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
+    if (message && updateExitMessage && message->message == updateExitMessage)
+    {
+        // New helpers request visibility in the acknowledgment; old helpers still receive 1.
+        // Capture the actual window state immediately before shutdown.
+        *result = message->wParam == 1 && !isVisible() ? 3 : 1;
+        if (!updateExitPending_)
+        {
+            updateExitPending_ = true;
+            QTimer::singleShot(0, this, [this] { exitApplication(); });
+        }
+        return true;
+    }
+
     static const UINT activationMessage = RegisterWindowMessageW(
         L"VideoProcessor.ConfigEditor.Activate.v1");
     static const UINT presentationTargetMessage = RegisterWindowMessageW(

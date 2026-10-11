@@ -250,6 +250,7 @@ public:
 	afx_msg LRESULT OnMessageRendererQueueContractChanged(
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnUpdateExit(WPARAM wParam, LPARAM lParam);
 	bool AdvanceSubtitlePreviewMode();
 	bool MatchesSubtitleShortcut(unsigned key, bool control, bool shift, bool alt) const;
 	afx_msg void OnCommandSubtitleToggle();

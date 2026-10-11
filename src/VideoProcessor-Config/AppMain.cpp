@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <UpdateLauncher.h>
 
 #include "ConfigEditorWindow.h"
 #include "Resource.h"
@@ -309,6 +310,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     int argc = __argc;
     QApplication app(argc, __argv);
+    if (UpdateLauncher::InstallationPending())
+    {
+        MessageBoxW(nullptr, L"An update is being installed. Please wait for setup to finish.", L"VideoProcessor updates", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
     QApplication::setApplicationName(QStringLiteral("VideoProcessor Configuration"));
     QApplication::setOrganizationName(QStringLiteral("VideoProcessor"));
     QApplication::setQuitOnLastWindowClosed(false);
@@ -333,6 +339,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     quintptr owner = 0;
     DWORD ownerProcessId = 0;
     bool startInTray = false;
+    bool showUpdates = false;
     QStringList arguments;
     int nativeArgumentCount = 0;
     LPWSTR* nativeArguments = CommandLineToArgvW(GetCommandLineW(), &nativeArgumentCount);
@@ -370,6 +377,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
         else if (arguments[index] == QStringLiteral("--screenshot") && index + 1 < arguments.size())
             screenshotPath = arguments[++index];
+        else if (arguments[index] == QStringLiteral("--updates"))
+            showUpdates = true;
+        else if (arguments[index] == QStringLiteral("--restore-tray"))
+        {
+            startInTray = true;
+            showUpdates = false;
+        }
+        else if (arguments[index] == QStringLiteral("--restore-visible"))
+            startInTray = false;
         else if (arguments[index] == QStringLiteral("--background"))
             startInTray = true;
         else if (arguments[index] == QStringLiteral("--page") && index + 1 < arguments.size())
@@ -412,8 +428,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 		L"Local\\VideoProcessorConfigEditor.Activate.v1");
     HANDLE activationEvent = screenshotPath.isEmpty() ?
         CreateEventW(nullptr, FALSE, FALSE, activationEventName.c_str()) : nullptr;
-    const bool existingInstance = activationEvent &&
-        GetLastError() == ERROR_ALREADY_EXISTS;
+    const bool activationExists = activationEvent && GetLastError() == ERROR_ALREADY_EXISTS;
+    const std::wstring updatesEventName = installationScopedEventName(L"Local\\VideoProcessorConfigEditor.Updates.v1");
+    HANDLE updatesEvent = CreateEventW(nullptr, FALSE, FALSE, updatesEventName.c_str());
+    const bool existingInstance = activationExists;
     if (existingInstance)
     {
         // VP starts a hidden Config process opportunistically.  If one is
@@ -425,6 +443,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 				activateExistingWindow(owner, ownerProcessId);
             if (!acknowledged) SetEvent(activationEvent);
         }
+        if (showUpdates && updatesEvent) SetEvent(updatesEvent);
+        if (updatesEvent) CloseHandle(updatesEvent);
         CloseHandle(activationEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
@@ -460,6 +480,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         QObject::connect(activationNotifier.get(), &QWinEventNotifier::activated,
             &window, [&window] { window.reveal(); });
     }
+    std::unique_ptr<QWinEventNotifier> updatesNotifier;
+    if (updatesEvent)
+    {
+        updatesNotifier = std::make_unique<QWinEventNotifier>(updatesEvent, &window);
+        QObject::connect(updatesNotifier.get(), &QWinEventNotifier::activated, &window, [&window] { window.showUpdates(); });
+    }
+    if (showUpdates) QTimer::singleShot(0, &window, [&window] { window.showUpdates(); });
     // The startup cache remains stable across ordinary reveal/hide cycles.
     // Refresh monitor names only when Qt reports a real topology change.
     QObject::connect(&app, &QGuiApplication::screenAdded, &window,
@@ -480,6 +507,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             QCoreApplication::quit();
         });
     const int result = app.exec();
+    updatesNotifier.reset();
+    if (updatesEvent) CloseHandle(updatesEvent);
     activationNotifier.reset();
     if (activationEvent) CloseHandle(activationEvent);
     if (SUCCEEDED(comResult)) CoUninitialize();

@@ -2,10 +2,14 @@
 param(
     [ValidateSet('Check','Prepare','Verify','Commit','Restore','Finalize')][string]$Action,
     [string]$InstallRoot, [string]$PayloadManifest, [string]$ResultPath,
-    [string]$BackupDirectory
+    [string]$BackupDirectory, [switch]$PortableUpdate,
+    [string]$ApplicationId = 'VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Setup may inherit a PowerShell 7 module path while invoking Windows PowerShell.
+# Load the utility module belonging to this executable, including Get-FileHash.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force
 
 function Get-VpSafePath([string]$Root, [string]$Relative) {
     if (-not $Relative -or $Relative -match '(^|[\\/])\.\.?([\\/]|$)|[:*?"<>|]' -or
@@ -31,7 +35,7 @@ function Test-VpOperatorFile([string]$Relative) {
 function Read-VpInstallManifest([string]$File) {
     $manifest = Get-Content -LiteralPath $File -Raw | ConvertFrom-Json
     if ($manifest.schemaVersion -ne 1 -or -not $manifest.files -or
-        $manifest.applicationId -ne 'VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59') {
+        $manifest.applicationId -notin @('VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59','VideoProcessorConfig-BA15DBE8-210F-42AA-AE86-B4628395E77F')) {
         throw "Unsupported installation manifest: $File"
     }
     $seen = @{}
@@ -57,10 +61,50 @@ function Read-VpInstallManifest([string]$File) {
     return $manifest
 }
 function Assert-VpClosed {
-    $running = @(Get-Process -Name @('VideoProcessor','VideoProcessor-GUI','VideoProcessorConfig') -ErrorAction SilentlyContinue)
+    $running = @(Get-Process -Name @('VideoProcessor','VideoProcessor-GUI','VideoProcessorConfig') -ErrorAction SilentlyContinue | Where-Object {
+        $processPath = $_.Path
+        if (-not $processPath) { throw "Cannot inspect running $($_.ProcessName). Close it and retry setup." }
+        $processPath.StartsWith($InstallRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+    })
     if ($running.Count) {
         throw ('Save your work and close VideoProcessor and Config, including its tray icon, then retry. Running: ' +
             (($running | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '))
+    }
+}
+function Get-VpRegisteredPath([string]$guid) {
+    $hive = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        $key = $hive.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\{' + $guid + '}_is1')
+        if ($key) {
+            try { $registered = [string]$key.GetValue('Inno Setup: App Path') } finally { $key.Dispose() }
+            return $registered
+        }
+    } finally { $hive.Dispose() }
+}
+function Assert-VpInstallIdentity($Manifest) {
+    if ($Manifest.applicationId -ne $ApplicationId) { throw 'Setup payload identity does not match this installer.' }
+    $configOnly = $ApplicationId -eq 'VideoProcessorConfig-BA15DBE8-210F-42AA-AE86-B4628395E77F'
+    $guid = if ($configOnly) { 'BA15DBE8-210F-42AA-AE86-B4628395E77F' } else { '42D852F1-70E9-43ED-8739-D61752106D59' }
+    $registered = Get-VpRegisteredPath $guid
+    if (-not $PortableUpdate -and $registered -and [IO.Path]::GetFullPath($registered).TrimEnd('\') -ine $InstallRoot) {
+        throw "This installer is registered at $registered. Updates must use that folder."
+    }
+    if ($PortableUpdate) {
+        if ($registered -and [IO.Path]::GetFullPath($registered).TrimEnd('\') -ieq $InstallRoot) { throw 'Portable update cannot modify a registered installation.' }
+        if (@(Get-ChildItem -LiteralPath $InstallRoot -Filter 'unins*.exe' -File -ErrorAction SilentlyContinue).Count) { throw 'Portable update cannot modify an installation with uninstall records.' }
+        $portableManifest = Read-VpInstallManifest (Join-Path $InstallRoot 'INSTALL-MANIFEST.json')
+        if ($portableManifest.applicationId -ne $ApplicationId) { throw 'Portable update identity does not match the existing folder.' }
+    }
+    $existing = Join-Path $InstallRoot 'INSTALL-MANIFEST.json'
+    if (Test-Path -LiteralPath $existing) {
+        $previous = $null
+        try { $previous = Get-Content -LiteralPath $existing -Raw | ConvertFrom-Json } catch { }
+        if ($previous -and $previous.PSObject.Properties['applicationId'] -and $previous.applicationId -ne $ApplicationId) {
+            throw 'A different installation flavor owns this folder. Choose a separate folder.'
+        }
+    }
+    if ($configOnly -and (Test-Path -LiteralPath (Join-Path $InstallRoot 'VideoProcessor.exe'))) {
+        throw 'Config-only setup cannot replace a full VP installation. Use the full setup.'
     }
 }
 function Assert-VpWritable([string]$Directory) {
@@ -279,6 +323,7 @@ function Invoke-VpInstallAction {
     }
     $manifest = Read-VpInstallManifest $PayloadManifest
     if ($Action -in @('Check','Prepare')) {
+        Assert-VpInstallIdentity $manifest
         $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
         if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw 'Run this per-user installer normally, not as administrator, so permissions match ordinary VP operation.'
