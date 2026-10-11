@@ -30,4 +30,5 @@ Older installations without the updater need one manual upgrade to RC3. For a fr
 This is a release candidate, published as a GitHub pre-release. Source: `582f82dfa486e55c211aba8f745300c458c79aff` (PR #141). Update metadata is signed; the Windows executables do not have a publicly trusted publisher signature.
 
 ## Validation
-All 2,371 core tests passed, plus release packaging checks and focused Config updater/shutdown checks. This release was not requalified on a clean Windows VM. SHA-256 sidecars and a build/validation receipt are included.
+All 2,371 core tests passed, plus release packaging checks and focused Config updater/shutdown checks. This release was not requalified on a clean Windows VM. Build and validation records are retained internally.
+

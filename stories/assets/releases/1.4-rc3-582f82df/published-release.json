@@ -1,20 +1,6 @@
 {
   "assets": [
     {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713606",
-      "contentType": "application/json",
-      "createdAt": "2026-10-11T12:37:28Z",
-      "digest": "sha256:bc8c7103def87fcedf478c2845da398b27661e16175c5068b31da0f33f3636b1",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0G",
-      "label": "",
-      "name": "release-receipt.json",
-      "size": 5823,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:28Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/release-receipt.json"
-    },
-    {
       "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713602",
       "contentType": "application/zip",
       "createdAt": "2026-10-11T12:37:28Z",
@@ -27,20 +13,6 @@
       "state": "uploaded",
       "updatedAt": "2026-10-11T12:37:31Z",
       "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip"
-    },
-    {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713605",
-      "contentType": "application/octet-stream",
-      "createdAt": "2026-10-11T12:37:28Z",
-      "digest": "sha256:518dd7696847e62508db4d8e72967f6a703cd38f6f55e41a9657270151c2a1aa",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0F",
-      "label": "",
-      "name": "VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256",
-      "size": 122,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:28Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessor-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256"
     },
     {
       "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713607",
@@ -57,20 +29,6 @@
       "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorConfig-1.4.0-rc3-582f82dfa486-x64-Portable.zip"
     },
     {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713603",
-      "contentType": "application/octet-stream",
-      "createdAt": "2026-10-11T12:37:28Z",
-      "digest": "sha256:c984fb6a98ec0745ae3a8794b63726d090cbc459ac4865423cf7df0aa08405b0",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0D",
-      "label": "",
-      "name": "VideoProcessorConfig-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256",
-      "size": 128,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:28Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorConfig-1.4.0-rc3-582f82dfa486-x64-Portable.zip.sha256"
-    },
-    {
       "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713623",
       "contentType": "application/x-msdownload",
       "createdAt": "2026-10-11T12:37:28Z",
@@ -83,34 +41,6 @@
       "state": "uploaded",
       "updatedAt": "2026-10-11T12:37:29Z",
       "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe"
-    },
-    {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713621",
-      "contentType": "application/json",
-      "createdAt": "2026-10-11T12:37:28Z",
-      "digest": "sha256:a4b2d307dc6609cc58433495e99feef80615fc2fad94515605234bddde438f86",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0V",
-      "label": "",
-      "name": "VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json",
-      "size": 8744,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:28Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json"
-    },
-    {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713625",
-      "contentType": "application/octet-stream",
-      "createdAt": "2026-10-11T12:37:28Z",
-      "digest": "sha256:9fa58d114306f878029688bd1732a95082392a9593510fd0a4bdc75b208ea6e1",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0Z",
-      "label": "",
-      "name": "VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.sha256",
-      "size": 120,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:28Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorConfigSetup-1.4.0-rc3-582f82dfa486.exe.sha256"
     },
     {
       "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713636",
@@ -127,45 +57,17 @@
       "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe"
     },
     {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713642",
+      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630766307",
       "contentType": "application/json",
-      "createdAt": "2026-10-11T12:37:29Z",
-      "digest": "sha256:f48cbaa3436b29b34fc09f45794d251b0e264b632bd58d43e6ac9a37834c7d60",
+      "createdAt": "2026-10-11T13:01:47Z",
+      "digest": "sha256:6dc6778c458eb6535b0ce7313dbaa22a575ab2b03be48ad94fe5944a02d9fbf3",
       "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-0q",
-      "label": "",
-      "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json",
-      "size": 18372,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:29Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.manifest.json"
-    },
-    {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713652",
-      "contentType": "application/octet-stream",
-      "createdAt": "2026-10-11T12:37:29Z",
-      "digest": "sha256:c35bf32a7da67e1ec8e13ed4353eff0d2afb5519976e9c1b5d62ed82994759a8",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-00",
-      "label": "",
-      "name": "VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.sha256",
-      "size": 114,
-      "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:29Z",
-      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/VideoProcessorSetup-1.4.0-rc3-582f82dfa486.exe.sha256"
-    },
-    {
-      "apiUrl": "https://api.github.com/repos/billslack2/videoprocessor/releases/assets/630713666",
-      "contentType": "application/json",
-      "createdAt": "2026-10-11T12:37:30Z",
-      "digest": "sha256:197b5106435240c1a7207fdd6083c59296ce5da32d53d36b08f169c5c83863b2",
-      "downloadCount": 0,
-      "id": "RA_kwDOOQxWRs4ll-1C",
+      "id": "RA_kwDOOQxWRs4lmLrj",
       "label": "",
       "name": "vp-update.json",
-      "size": 4953,
+      "size": 4949,
       "state": "uploaded",
-      "updatedAt": "2026-10-11T12:37:30Z",
+      "updatedAt": "2026-10-11T13:01:47Z",
       "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc3/vp-update.json"
     }
   ],
