@@ -4,10 +4,10 @@
 
 In Progress (2026-10-11). Implementation is starting from the current GitHub
 integration/default branch `v1.4.00-beta` at
-`8186661b675b4c44b0f15882a4d90d4a3cbae03a`. Clean worktree:
+`8186661b675b4c44b0f15882a4d90d4a3cbae03a`. Feature worktree created clean:
 `E:\codex\videoprocessor\subtitle-script-preference-20261011`, branch
-`codex/subtitle-script-preference-20261011`. No beta merge or deployment was
-requested.
+`codex/subtitle-script-preference-20261011`. No beta merge was requested. A local test deployment was
+requested separately after the Release build.
 
 ## Problem
 
@@ -86,7 +86,8 @@ keeping its existing safeguards against picture detail.
 4. Live profile changes invalidate or distinguish old worker results and do
    not combine cue history measured under different script hints.
 5. The focused configuration and subtitle detector suites pass, and an x64
-   Release solution build succeeds. No deployment is part of this story.
+   Release solution build succeeds. Local deployment is a separate request and
+   does not replace these acceptance requirements.
 
 ## Out of scope
 
@@ -131,7 +132,20 @@ centering, and bar-anchor gates remain in place.
 successfully with `MagewellSdkRoot` set to the workstation SDK at
 `E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`. The Config tests
 project and main test DLL were compiled as solution outputs, but no test suite
-was run. The source `AGENTS.md` now records the SDK path and build command. No
-source commit, merge, or deployment has been made. Representative detector
-fixtures, configuration persistence tests, and the focused suites remain open
-acceptance work.
+was run. The source `AGENTS.md` now records the SDK path and build command.
+No source commit or beta merge has been made. On 2026-10-11, the user separately requested
+a local test deployment to `C:\Videoprocessor\vp`. The successful x64 Release
+build from this worktree was deployed with matching runtime metadata:
+
+- `VideoProcessor.exe`: `A65274AF8F1F0663F317A6015DE0117722E0817287A63BD2823675B118FA84A1`
+- `vprenderer\VideoProcessorVPRenderer.dll`: `A72AB3E9D47A1F5C0BD05C4C065A918FF5E49505CE74612D312F840B47AE28D9`
+- `config\VideoProcessorConfig.exe`: `820A2F4DD66298824397B141369EDAC6CA067183285F055361F8DA44CC8BD5EE`
+- `config\VideoProcessorConfigDiscovery.dll`: `2FFC33BE6A0839968DBD9988897E343958EAE8B21E7F2583EE05AA5C237BCC31`
+
+The previous binaries and metadata were backed up under
+`C:\Videoprocessor\vp\deployment-backups\subtitle-script-preference-20261011-084304`.
+The active `VideoProcessor.cfg` was not edited (SHA-256
+`76C8AA1CA245679EC44A024A1288E441F81D26AC4B81A21D5EE94DC78094A7A3`). No test
+suite or application launch was performed. Representative detector fixtures,
+configuration persistence tests, and the focused suites remain open acceptance
+work.
