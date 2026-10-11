@@ -184,3 +184,18 @@ The restored host and renderer hashes match the original Release build hashes
 recorded above. The active CJK configuration remained unchanged (SHA-256
 `F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`). No app
 was launched and no tests were run.
+
+2026-10-11 Config UI correction: after the runtime restore, the user reported
+that Config still lacked the new script-hint option. The installed Config EXE
+and discovery module hashes differed from the successful Release outputs, while
+the active `VideoProcessor.cfg` still had `subtitle_script_hint: cjk`. Restored
+both Config files from the same x64 Release build and verified them:
+
+- `config\VideoProcessorConfig.exe`: `820A2F4DD66298824397B141369EDAC6CA067183285F055361F8DA44CC8BD5EE`
+- `config\VideoProcessorConfigDiscovery.dll`: `BD111136D52BB4F54E3EDE5124569E3B81480D6BE31D9A5863A76509C2DAF95C`
+
+The previous Config files are backed up under
+`C:\Videoprocessor\vp\deployment-backups\subtitle-script-cjk-config-restore-20261011-102338`.
+No configuration file was changed; the active CJK config hash remains
+`F4E1002AAE5346160FA4D3DBB032CD8460A1797D8E811B035FA85A2D2A3B8877`. Config
+was not launched for visual verification.
