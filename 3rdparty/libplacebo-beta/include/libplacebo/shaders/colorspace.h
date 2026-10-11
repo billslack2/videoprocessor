@@ -337,11 +337,14 @@ struct pl_color_map_params {
     // disabling this does not disable peak detection or the film response.
     bool dynamic_target;
 
-    // VP experimental HDR color-volume compression. False preserves the
-    // original master tone/gamut path. True replaces its gamut stage after
-    // tone/film mapping with a smooth hue-aware physical-volume shoulder.
+    // VP experimental residual gamut overflow correction. False preserves
+    // the original master tone/gamut path. True follows the selected original
+    // gamut mapper with a continuous shoulder in physical target RGB.
+    // Positive overflow uses a common RGB gain. Negative channels receive a
+    // neutral lift capped at the positive input luminance; this may change
+    // brightness or saturation. Applies during tone mapping, excluding inverse.
     // Tone curve, dynamic target and mastering soft clip remain independent.
-    // Defaults to false. The first use may generate a cached 3D table.
+    // Defaults to false. No additional lookup table or environment switch.
     bool vp_gamut_compression;
 
     // Tone mapping LUT size. Defaults to 256.

@@ -11,9 +11,9 @@
 - **VP Renderer (Beta)**: upstream master pinned to
   `1dd022687b9ac1dd996855b51433bf770ae76aab`, with VP analysis crop,
   master scene-statistics crop support, timer controls, dynamic-target toggle,
-  and opt-in VP smooth highlight color mapping.
+  and opt-in experimental gamut overflow correction.
   [codex/vp-master-beta](https://github.com/billslack2/libplacebo/tree/codex/vp-master-beta),
-  commit `ed8e9a6c9d6603e3a272503b94f9946535301072`, API **377**.
+  commit `8bccd6578c9e845f77205cec9e85fdb97bf36ed7`, API **377**.
 
 Both branches belong to `billslack2/libplacebo`. Upstream updates should be
 explicitly pinned and tested on the Beta branch. Do not automatically rebuild
@@ -27,17 +27,22 @@ UI under **VP Renderer > Rendering > Tone Mapping: Highlight Response (Beta)**.
 
 | Rendering profile key | Default | Range | Effect |
 |---|---|---|---|
-| `custom_tone_mapping` | `false` | Boolean | Off uses original master mapping; On enables experimental VP smooth highlight color compression during HDR compression. |
+| `custom_tone_mapping` | `false` | Boolean | Gamut overflow correction (Experimental). Smoothly compress colors near or beyond target-gamut/brightness limits after the selected upstream gamut mapping during HDR compression; may reduce brightness or saturation. Off retains original mapping. |
 | `dynamic_target` | `true` | Boolean | Adapt the virtual target to scene brightness, trading average brightness for highlight headroom. |
 | `film_strength` | `AUTO` = 0.3 | 0–2 | Blend toward the LMS film response; 0 preserves source chromaticity. Above 1 may clip highlights. |
 | `mastering_clip` | `AUTO` = 1 | 0–1 | Soften channel excursions above trustworthy mastering-peak metadata. 0 disables this step. |
 
-The **Custom highlight color mapping** checkbox defaults Off. Select Beta,
-change this checkbox, then Apply to compare using the same tone curve and
-physical target. The original Gamut mapping selector is disabled while this
-option is enabled; its saved choice is restored when the option is turned off.
-The custom path activates during HDR compression; SDR passthrough and inverse
-tone mapping retain the original mapping.
+The **Gamut overflow correction (Experimental)** checkbox defaults Off.
+Select Beta, change this checkbox, then Apply to compare using the same tone
+curve and physical target. **Gamut mapping remains enabled and active**: the
+correction follows its output. Correction may reduce brightness or saturation;
+it is an optional appearance trade, not a replacement tone curve or a guarantee
+of better color in every scene. SDR passthrough and inverse tone mapping retain
+the original mapping. Restore defaults turns correction Off.
+
+The persisted key remains `custom_tone_mapping` for compatibility with existing
+profiles; a saved `true` enables the new correction. The internal boolean API
+also remains compatible. Older fixed-Y/IPT highlight mapping is superseded.
 
 These fields belong in `[vprenderer.<profile>]`. Missing keys inherit; `AUTO`
 explicitly resets the two numeric fields to library defaults. Dynamic target
@@ -90,7 +95,10 @@ the shared DLL's version stale. Confirm `pl_version()` before bundling.
 The existing SDR swapchain hint workaround is retained. The master-specific
 transfer-hint change does not justify removing this compatibility policy.
 
-## Validation (2026-10-11)
+## Previous Beta integration validation (2026-10-11)
+
+These checks describe the earlier `ed8e9a6c` integration. Current correction
+validation is recorded below; the old custom-path sweep is historical evidence.
 
 - x64 Release solution: success, both renderer plugins and native Config.
 - Master fork: all 13 CPU/D3D11 tests pass. Includes real output on/off/on
@@ -154,33 +162,80 @@ that was skipped. Nonzero film response also deliberately changes chromaticity;
 this probe does not establish whether every perceived oversaturation issue
 has the same cause.
 
-### Implemented opt-in comparison
+### Current opt-in correction
 
-The earlier proposal to blend toward the film-strength-zero result was rejected
-by further ramp testing: it could increase chroma and create brightness reversals.
-The implemented option uses a smooth, hue-aware color-volume shoulder instead.
-It replaces the original gamut stage during HDR compression and runs after the
-existing tone/film/contrast-recovery response and final conversion to output RGB.
+The current option is a scalar correction in physical target-linear RGB after
+complete original tone/film/gamut processing. It uses the actual target primaries,
+black and peak, including P3 physical primaries inside a BT.2020 signal container.
+Dynamic target nits does not change those physical bounds. No gamut LUT is
+created by this correction.
 
-- Uses the physical output primaries, black and peak; the dynamic virtual target
-  does not change these bounds. Tone curve, film response and dynamic target
-  remain independently selectable.
-- Finds the first boundary from neutral at fixed CIE Y and IPT hue, then gradually
-  compresses chroma near that boundary. Luminance rolls off near the display peak.
-  Interior midtones are protected; independent channel clipping is not the
-  mapping operation.
-- Uses a 129 x 33 x 513 float RGBA table (about 33.3 MiB) and four filtered
-  samples per pixel. The table is reused in shader state while physical target
-  primaries/black/peak remain unchanged. It is not stored in the persistent disk
-  cache. Changing the physical target requires regeneration.
-- LUT nodes are bounded; interpolation between bounded RGB values remains
-  bounded. Explicit interpolation in Y avoids hardware interpolation precision
-  producing small brightness reversals. Unsupported float32 filtering or table
-  generation failure rejects the shader with a diagnostic.
-- Default Off follows the original fork/master code path. The release fork and
-  release renderer ignore the custom option.
+Positive-only overflow receives a smooth common RGB gain, reducing brightness
+without adding blue to yellow. Negative channels receive a common lift to
+nonnegative RGB followed by gain; that can change saturation and hue. A luminance
+cap prevents the repair from increasing signed input Y, and maps relative
+nonpositive Y continuously to target black. The saturation-conditioned shoulder
+reserves up to 2% of the normalized range, intentionally moving some legal
+chromatic colors near the boundary inward. Legal neutral interiors and the
+conservative color interior retain original signal values without a matrix
+roundtrip. Below-black and over-peak neutral endpoints can change.
 
-### Integrated GPU measurements
+The common lift/gain/cap construction is continuous across channel ties and
+black/white limits; it does not use the first-exit Oklab roots whose disappearance
+caused a finite jump in an earlier experiment. Fixed-chromaticity exposure rays
+are monotone, but that is not a proof for arbitrary changing chromaticity through
+tone/film processing. This residual placement cannot recover upstream detail
+already lost. It remains Off by default and release ignores the option.
+
+### Current correction GPU evidence (2026-10-11)
+
+The isolated x64 Release prototype was checked on 105 matched synthetic cases:
+88 core/target controls, 10 sparse scenes with 20/50-nit average Y, and seven
+paired film-zero controls. Targets were 50/100/500 nits, physical BT.709,
+BT.2020 and P3, with actual source 10-bit PQ code neighbors. Nine focused cases
+also captured actual PQ shader output.
+
+- All 105 originals matched prior originals bit-exact, and toggling original /
+  correction / original restored output bit-exact.
+- All captures were finite. No physical RGB bounds failure occurred at
+  `max(0.0002 nit, 0.000002 * target peak)`; tiny matrix/float excursions remain
+  within that numerical tolerance. No nominal exposure Y reversal exceeded
+  0.02 nit in these cases. These are measured thresholds, not perceptual limits.
+- The maximum linear GPU discrepancy from the approved float64 model was
+  0.0001591 nit. All 460,388 conservative legal-interior pixels remained
+  bit-exact. This subset excludes the shoulder and black/white endpoint repairs.
+- Actual PQ shader output agreed with encoding the matching linear capture to
+  within 0.00826 of one full-range 10-bit code. Rounded code counts are
+  diagnostics; a physical 10-bit swapchain or dithering was not measured.
+- The legal blue code-neighbor witness retained its original output code
+  difference. The strong yellow neighbor sensitivity was reduced relative to
+  the rejected Oklab experiment; positive overflow adds no blue. Quantized
+  detail gains and losses are mixed across the study, not uniformly improved.
+
+One low-APL blue trade is material: at a 50-nit BT.2020 target, original signed
+linear RGB `[-0.915, 2.508, 36.949]` nits became approximately
+`[0, 2.737, 30.275]` nits. Actual PQ10 changed `[0,207,421]` to `[0,212,403]`.
+Keeping signed Y does not keep hue or appearance. This trade is a reason to
+compare with correction Off rather than recommend it as the default. Encoding
+original PQ already clips its negative red; mapping decoded original PQ is
+therefore an invalid reference for this comparison.
+
+These results justify a default-off experimental viewing option, not universal
+superiority or default promotion. Real-scene preference, temporal behavior,
+sustained GPU performance and physical output still need qualification. No
+containment claim applies to calibration/custom LUTs or processing after this
+stage. This is not an ACES transform.
+
+### Superseded fixed-Y/IPT implementation
+
+The earlier custom implementation replaced the upstream gamut stage with a
+fixed-Y/IPT projection and a 129 x 33 x 513 float RGBA table. Later yellow and
+narrower-gamut controls exposed whitening and ordering tradeoffs. It is not the
+current option. The following 320-case measurements and probe instructions
+are preserved as historical evidence for that implementation; they must not be
+quoted as validation of the current scalar correction.
+
+### Historical fixed-Y/IPT GPU measurements
 
 `tools/libplacebo_ab_probe.c` renders original/custom/original with one reused
 shader state. It checks bit-exact restoration on every case and writes float

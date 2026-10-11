@@ -16,12 +16,17 @@ int main() {
             check(p.colorMapParams.mastering_clip == 1.f, "Mastering clip default");
         }
         settings.dynamicTarget = false;
+        settings.gamutMapping = "relative";
+        check(Build(settings, false, p, error), error.c_str());
+        const auto* originalGamut = p.colorMapParams.gamut_mapping;
+        check(originalGamut && p.gamutMappingExport == "pl_gamut_map_relative", "Selected upstream gamut must reach Beta API");
         settings.customToneMapping = true;
         settings.toneTuning[ToneMappingTuning::FilmStrength] = .75;
         settings.toneTuning[ToneMappingTuning::MasteringClip] = .25;
         settings.toneTuning[ToneMappingTuning::BlackCutoff] = 3.;
         check(Build(settings, false, p, error), error.c_str());
-        check(p.colorMapParams.vp_gamut_compression, "Custom mapping must reach Beta API");
+        check(p.colorMapParams.vp_gamut_compression, "Gamut overflow correction must reach compatible Beta API");
+        check(p.colorMapParams.gamut_mapping == originalGamut, "Residual correction must preserve selected upstream gamut");
         check(!p.colorMapParams.dynamic_target, "Toggle must reach master API");
         check(p.colorMapParams.film_strength == .75f && p.colorMapParams.mastering_clip == .25f, "Beta overrides");
         check(p.peakDetectParams.black_cutoff == 3.f, "Peak override must remain independent");
@@ -35,7 +40,7 @@ int main() {
         ApplyTargetLuminance(false, 150.f, .01f, target);
         check(target.hdr.max_luma == 150.f, "Physical target nits invariant");
         check(MakeSwapchainColorHint(target).transfer == target.transfer, "SDR transfer hint invariant");
-        std::cout << "PASS Beta defaults, overrides, peak independence and luminance projection\n";
+        std::cout << "PASS Beta defaults, residual correction/gamut independence, overrides, peak independence and luminance projection\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << "\n"; return 1; }
 }

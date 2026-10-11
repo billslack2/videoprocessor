@@ -5955,8 +5955,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("Tone Mapping: Highlight Response (Beta)"),
             QStringLiteral("Available with VP Renderer (Beta). Saved values are retained with other renderers."), false);
         QWidget* betaFields = form->parentWidget();
-        auto* customToneMapping = addBoolean(QStringLiteral("Custom highlight color mapping"), QStringLiteral("custom_tone_mapping"));
-        customToneMapping->setToolTip(QStringLiteral("Off: original master tone/gamut mapping. On: experimental VP smooth highlight color compression during HDR tone mapping. Tone curve, physical target nits and dynamic target remain independent. Default: Off. Apply to compare."));
+        auto* customToneMapping = addBoolean(QStringLiteral("Gamut overflow correction (Experimental)"), QStringLiteral("custom_tone_mapping"));
+        customToneMapping->setToolTip(QStringLiteral("Off: original tone/gamut mapping. On: smoothly compresses colors near or beyond the target gamut or brightness limits after the selected gamut mapping during HDR tone mapping. May reduce brightness or saturation. Default: Off. Apply to compare."));
         auto* dynamicTarget = addBoolean(QStringLiteral("Dynamic target nits"), QStringLiteral("dynamic_target"));
         dynamicTarget->setToolTip(QStringLiteral("Automatically trades some scene brightness for highlight headroom. Target nits remains the physical display peak. Default: On. Requires scene-average metadata; peak detection supplies it when available."));
         for (int i = ToneMappingTuning::FilmStrength; i < ToneMappingTuning::Count; ++i) {
@@ -5999,12 +5999,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 for (int i = start; i < end; ++i) toneControls[i]->restoreDefault();
             });
         }
-        updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields, customToneMapping, gamutMapping] {
+        updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields] {
             if (state->loading) return;
             const bool beta = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
                 QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
             betaFields->setEnabled(beta);
-            gamutMapping->setEnabled(!beta || !customToneMapping->isChecked());
             QString curve = effectiveChoiceValue(toneMapping);
             if (curve.isEmpty() || curve == "auto") curve = "spline";
             QString peak = effectiveChoiceValue(peakDetection);
