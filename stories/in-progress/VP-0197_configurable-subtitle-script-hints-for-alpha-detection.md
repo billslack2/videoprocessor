@@ -48,22 +48,21 @@ keeping its existing safeguards against picture detail.
 
 ## Required behavior
 
-1. Add a `subtitle_script_hint` choice to the Subtitles profile with the UI
-   labels `General / Mixed`, `Latin`, `Arabic`, and `Chinese / Japanese / Korean`.
-   Store stable values `general`, `latin`, `arabic`, and `cjk`. An omitted value
-   resolves to `general`; invalid values fail normal profile validation.
+1. Offer `Latin`, `Arabic`, `Chinese / Japanese / Korean`, and `Thai` in the
+   Subtitles profile. Store `latin`, `arabic`, `cjk`, and `thai`. Omitted settings
+   default to Latin. Accept legacy `general` as a Latin compatibility alias,
+   display it as Latin, and reject unsupported values. Do not offer General.
 2. Pass the effective selection through profile resolution, live renderer
    settings, queued worker identity, and detector configuration. A queued result
    measured with an old hint must not be accepted after the profile changes.
-3. `General / Mixed` must preserve the current detector behavior exactly for
-   existing fixtures and omitted settings. Script-specific modes may tune
-   bounded component, mark, and line grouping to reflect their spacing and
-   attachment patterns; they do not perform OCR or identify characters.
-4. Arabic grouping must retain connected words and permit finite detached dots
-   or diacritics to join a supported line. CJK grouping must allow dense,
-   compact characters with little word spacing. Latin grouping must retain
-   ordinary word gaps and punctuation. A hint can improve grouping only where
-   the selected mode changes a relevant detector decision.
+3. Latin retains its existing 3x letter-height row gap and 10x connected-component
+   width limit. Script modes tune bounded component, mark, and line grouping;
+   they do not perform OCR or identify characters.
+4. Arabic retains joined words and detached dots or diacritics. CJK retains
+   compact characters, including short captions. Thai uses main letter rows,
+   upper/lower stacked marks, and tall vowel forms. Attach marks to the nearest
+   original row without stealing marks from neighboring rows. Share proven
+   backing and sparse-edge recovery where appropriate.
 5. Keep the existing bright glyph-core, opaque/black backing, centered-line,
    bar-anchor, component-budget, and measured-panel checks in force for every
    mode. Do not broaden thresholds globally or let picture texture such as the
@@ -73,13 +72,12 @@ keeping its existing safeguards against picture detail.
 
 ## Acceptance criteria
 
-1. Config tests cover the default and all four choices, reject unsupported
-   values, and prove save/reopen persistence in a Subtitles profile.
-2. Detector fixtures cover Latin words and punctuation, an Arabic-like joined
-   word with detached marks, and dense CJK-like compact glyphs. They demonstrate
-   each script mode's intended grouping behavior and show unchanged General /
-   Mixed results for the existing corpus. Fixtures are representative geometry
-   cases; they do not claim broad language accuracy.
+1. Configuration qualification covers the Latin default, all four visible
+   choices, legacy `general` compatibility, unsupported values, and save/reopen.
+2. Detector qualification covers Latin words and punctuation, Arabic joined
+   words with detached marks, short/dense CJK captions, and Thai stacked marks
+   and tall forms across two rows. Representative geometry and supplied captures
+   do not establish broad language accuracy.
 3. Picture-detail and dark-jacket negative fixtures remain rejected in every
    mode, including when bright fragments occur near a caption line. Existing
    bar, backing, and brightness safeguards remain covered.
@@ -265,3 +263,47 @@ Final x64 Release solution build succeeded and the complete runtime pair was dep
 - `vprenderer\VideoProcessorVPRenderer.dll`: `902E4864E60110933A53CF4ABF7A39A279758EE2082436F26BF1A9C98E38ACF3`
 
 Final live confirmation at 14:53:51 and 14:53:56: frames 240 and 360 retained cue 5 with 71 and 191 observations, two rows, and overall bounds 1170,1594-2674,1922. Lower extraction 1173,1780-2666,1912 and upper extraction 1248,1601-2590,1748 include the native visible ink bounds. Source-card cleanup was accepted at 1110,1570-2734,1884. Startup had temporary invalid-source resets; no claim is made that all playback flashing is resolved. User visual review and broader Thai qualification remain open. Story remains in progress, with source changes uncommitted and no beta merge.
+
+
+## Four-mode redesign and parent review (2026-10-11)
+
+User approved removing General, retaining Latin's 3x row-gap / 10x connected-width
+limits, and adding dedicated Thai geometry. Implemented by a requested
+`gpt-6-luna` sub-agent at `xhigh` (Very High), then reviewed by the parent agent.
+The current remote beta was rediscovered/fetched and remained
+`v1.4.00-beta` at `8186661b675b4c44b0f15882a4d90d4a3cbae03a`; existing feature
+work and earlier fixes were preserved.
+
+- UI offers Latin, CJK, Arabic, and Thai. Omitted settings resolve to Latin.
+  Legacy `general` is accepted as Latin and displayed as Latin in both root and
+  named profile loaders without rewriting the saved file during loading.
+- Thai has a 3x same-row gap and 14x connected-width cap, tall forms through 2x
+  learned glyph height, and bounded upper/lower mark attachment using original
+  row bounds. Weighted vertical/horizontal distance selects ownership. Ties
+  remain unresolved through later cluster, bar-symbol, and card recovery.
+- Parent review corrected horizontal row-center bias, overly broad transfer of
+  single-component rows, downstream ownership reassignment, and the named
+  profile legacy-value display path. Tall-form transfer is restricted to a
+  nearby multi-component row. Arabic/CJK policies and shared sparse-edge
+  recovery remain in place.
+- Review used the exact delta against pre-edit snapshots, not only the full
+  accumulated worktree diff. No test suite or capture replay was run for this
+  redesign. Prior capture results do not qualify this new Thai branch. Broad
+  font/scene and interactive persistence qualification remains open.
+
+Release/deployment evidence:
+
+- Incremental link failed with LNK1103; full x64 Release solution rebuild then
+  completed with exit code 0 using the installed Magewell SDK. Test projects
+  were compiled as part of the solution; no tests were executed.
+- Deployed host, renderer, Config editor, and Config discovery DLL at 2026-10-11T19:31:04.4078140-04:00.
+- Backup: `C:\Videoprocessor\vp\deployment-backups\four-script-modes-20261011-193104`.
+- All four installed SHA-256 hashes matched their Release artifacts:
+  - `VideoProcessor.exe`: `A9D6DABCFC104260B0F96D0F368602F8B92833F5FE1F292A0EFAE8D59A6ABF50`
+  - `vprenderer\VideoProcessorVPRenderer.dll`: `F3FBB562DF154F76C838D86A710807EDCFFD961661FAF3BAE01BB48764A37271`
+  - `config\VideoProcessorConfig.exe`: `2EDDEECA9F6BAFBE88AA01F466E39E68C7091BCA630C7F4056F69B2F00FE640C`
+  - `config\VideoProcessorConfigDiscovery.dll`: `B15193C07B85CC81C46538D226FBC69B0DBA1A52191B53909C17F69CB0BFD52D`
+- Active configuration was not edited; its hash remained `49A1A7188F78E628772E97E0699083E499151C50A09245395E6EEFE891998306`. Existing Arabic selections were preserved.
+- VP restarted from its deployment directory. Select Thai in the active
+  Subtitles profile to exercise the new mode. Story remains In Progress
+  pending playback qualification; no beta merge or source commit performed.
