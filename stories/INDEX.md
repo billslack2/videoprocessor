@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0196`
-- Next root story number: `VP-0197`
-- Total indexed items: 215
+- Last assigned root story: `VP-0197`
+- Next root story number: `VP-0198`
+- Total indexed items: 216
 
 ## Story locations
 
@@ -254,6 +254,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0195 | Review | Diagnose available display modes and refresh transitions |
 | VP-0196 | Review | Correct anamorphic lens layout with NLS and diagnostic telemetry |
+| VP-0197 | In Progress | Configurable subtitle script hints for Alpha detection |
 
 ## Codex story workflow
 
