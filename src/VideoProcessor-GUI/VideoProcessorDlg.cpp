@@ -9490,7 +9490,7 @@ void CVideoProcessorDlg::RenderStart()
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
 				alphaQueueCapacity,
-				videoConversionOverride);
+				videoConversionOverride, selectedRenderer->libplaceboBeta);
 			BindRendererResetSink();
 
 			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
@@ -11433,6 +11433,8 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 #if defined(_WIN64)
 	if (RendererId::IsLibplaceboAvailable())
 		rendererIds.push_back(RendererId::Libplacebo());
+	if (RendererId::IsLibplaceboAvailable(true))
+		rendererIds.push_back(RendererId::Libplacebo(true));
 #endif
 
 	// Alpha is always first; remaining eligible renderers are shown in the

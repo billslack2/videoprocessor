@@ -15,7 +15,7 @@ namespace ToneMappingTuning
     enum Key { KneeAdaptation, KneeMinimum, KneeMaximum, KneeDefault,
         SlopeTuning, SlopeOffset, SplineContrast, KneeOffset, ReinhardContrast,
         Percentile, SmoothingPeriod, SceneThresholdLow, SceneThresholdHigh,
-        BlackCutoff, Count };
+        BlackCutoff, FilmStrength, MasteringClip, Count };
     struct Spec {
         const char* key;
         const char* label;
@@ -39,7 +39,9 @@ namespace ToneMappingTuning
             {"smoothing_period", "Smoothing period", 0, 1000, 20, "frames", "Higher reacts more slowly. 0 disables smoothing."},
             {"scene_threshold_low", "Scene threshold: low", 0, 100, 1, "% PQ", "Start reducing smoothing. Either threshold at 0 disables scene-change handling."},
             {"scene_threshold_high", "Scene threshold: high", 0, 100, 3, "% PQ", "Finish reducing smoothing. Must exceed low when both are nonzero."},
-            {"black_cutoff", "Black cutoff", 0, 100, 1, "% PQ", "Exclude very dark pixels from measurement. 0 disables the cutoff."}
+            {"black_cutoff", "Black cutoff", 0, 100, 1, "% PQ", "Exclude very dark pixels from measurement. 0 disables the cutoff."},
+            {"film_strength", "Film strength", 0, 2, .3, "", "Beta only. Highlight whitening: 0 preserves chromaticity; 1 uses the full film response. Above 1 can clip bright highlights."},
+            {"mastering_clip", "Mastering peak soft clip", 0, 1, 1, "", "Beta only. Softly contain channels above trustworthy mastering peak metadata. 0 disables this step."}
         }};
         return specs;
     }

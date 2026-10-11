@@ -17,7 +17,11 @@ namespace
 	template<typename T>
 	const T* ReadLibplaceboData(const char* exportName, std::string& error)
 	{
-		HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+#if defined(VP_LIBPLACEBO_BETA)
+        HMODULE module = GetModuleHandleW(L"libplacebo-376.dll");
+#else
+        HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+#endif
 		if (!module)
 		{
 			error = "libplacebo runtime was not preloaded";
@@ -363,6 +367,13 @@ namespace LibplaceboRenderParameters
 			return false;
 		}
 
+#if defined(VP_LIBPLACEBO_BETA)
+        projection.colorMapParams.dynamic_target = settings.dynamicTarget;
+        if (settings.toneTuning[ToneMappingTuning::FilmStrength])
+            projection.colorMapParams.film_strength = static_cast<float>(*settings.toneTuning[ToneMappingTuning::FilmStrength]);
+        if (settings.toneTuning[ToneMappingTuning::MasteringClip])
+            projection.colorMapParams.mastering_clip = static_cast<float>(*settings.toneTuning[ToneMappingTuning::MasteringClip]);
+#endif
         auto& constants = projection.colorMapParams.tone_constants;
         float* toneFields[] = { &constants.knee_adaptation, &constants.knee_minimum,
             &constants.knee_maximum, &constants.knee_default, &constants.slope_tuning,
@@ -376,7 +387,7 @@ namespace LibplaceboRenderParameters
             auto& peak = projection.peakDetectParams;
             float* peakFields[] = { &peak.percentile, &peak.smoothing_period,
                 &peak.scene_threshold_low, &peak.scene_threshold_high, &peak.black_cutoff };
-            for (int i = ToneMappingTuning::Percentile; i < ToneMappingTuning::Count; ++i)
+            for (int i = ToneMappingTuning::Percentile; i < ToneMappingTuning::FilmStrength; ++i)
                 if (settings.toneTuning[i]) *peakFields[i - ToneMappingTuning::Percentile] = static_cast<float>(*settings.toneTuning[i]);
         }
 

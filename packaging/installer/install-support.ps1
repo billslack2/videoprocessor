@@ -205,7 +205,7 @@ function Get-VpPlan($Manifest) {
         $relative
     })
     # Unknown private DLLs can shadow the selected build or the system runtime.
-    foreach ($relativeDirectory in @('', 'config', 'vprenderer')) {
+    foreach ($relativeDirectory in @('', 'config', 'vprenderer', 'vprenderer-beta')) {
         $directory = if ($relativeDirectory) { Get-VpSafePath $InstallRoot $relativeDirectory } else { $InstallRoot }
         if (-not (Test-Path -LiteralPath $directory)) { continue }
         $dlls = if ($relativeDirectory -eq 'config') {
@@ -340,7 +340,7 @@ function Invoke-VpInstallAction {
             }
         }
         $plan = Get-VpPlan $manifest
-        foreach ($directory in @($InstallRoot, (Get-VpSafePath $InstallRoot 'logs'), (Get-VpSafePath $InstallRoot 'vprenderer'))) {
+        foreach ($directory in @($InstallRoot, (Get-VpSafePath $InstallRoot 'logs'), (Get-VpSafePath $InstallRoot 'vprenderer'), (Get-VpSafePath $InstallRoot 'vprenderer-beta'))) {
             Assert-VpWritable $directory
         }
         foreach ($entry in $manifest.files) { Assert-VpWritable (Split-Path -Parent (Get-VpSafePath $InstallRoot $entry.path)) }

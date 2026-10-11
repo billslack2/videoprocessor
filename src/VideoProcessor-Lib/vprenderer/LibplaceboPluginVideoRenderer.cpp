@@ -41,7 +41,7 @@ namespace
 		return directory;
 	}
 
-	PluginExports LoadPlugin()
+	PluginExports LoadPlugin(bool beta)
 	{
 		PluginExports result;
 		const std::wstring executableDirectory = ExecutableDirectory();
@@ -49,13 +49,13 @@ namespace
 			return result;
 
 		const std::wstring pluginPath =
-			OptionalRendererLayout::PluginPath(executableDirectory);
+			OptionalRendererLayout::PluginPath(executableDirectory, beta);
 		DebugLog::Log(
 			"VP Renderer plugin probe: path=%ls",
 			pluginPath.c_str());
 		std::wstring missingPath;
 		if (OptionalRendererLayout::FindMissingRuntimeFile(
-			executableDirectory, missingPath))
+			executableDirectory, missingPath, beta))
 		{
 			DebugLog::Log(
 				"VP Renderer plugin unavailable: missing required file path=%ls",
@@ -89,7 +89,14 @@ namespace
 			return PluginExports{};
 		}
 
-		const uint32_t apiVersion = getApiVersion();
+		const auto isBeta = reinterpret_cast<bool (__cdecl*)()>(
+            GetProcAddress(result.module, VP_LIBPLACEBO_FLAVOR_EXPORT));
+        if (!isBeta || isBeta() != beta) {
+            DebugLog::Log("VP Renderer plugin flavor mismatch: path=%ls", pluginPath.c_str());
+            FreeLibrary(result.module);
+            return PluginExports{};
+        }
+        const uint32_t apiVersion = getApiVersion();
 		if (apiVersion != VP_LIBPLACEBO_PLUGIN_API_VERSION)
 		{
 			DebugLog::Log(
@@ -107,19 +114,23 @@ namespace
 		return result;
 	}
 
-	const PluginExports& GetPlugin()
+	const PluginExports& GetPlugin(bool beta)
 	{
 		// Keep a validated plugin loaded for the process lifetime. Renderer objects
 		// and callbacks may remain active until late in application shutdown.
-		static const PluginExports plugin = LoadPlugin();
+		if (beta) {
+			static const PluginExports plugin = LoadPlugin(true);
+			return plugin;
+		}
+		static const PluginExports plugin = LoadPlugin(false);
 		return plugin;
 	}
 }
 
 
-bool LibplaceboPluginVideoRenderer::IsAvailable()
+bool LibplaceboPluginVideoRenderer::IsAvailable(bool beta)
 {
-	return GetPlugin().module != nullptr;
+	return GetPlugin(beta).module != nullptr;
 }
 
 
@@ -130,9 +141,9 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
-	VideoConversionOverride videoConversionOverride)
+	VideoConversionOverride videoConversionOverride, bool beta)
 {
-	const PluginExports& plugin = GetPlugin();
+	const PluginExports& plugin = GetPlugin(beta);
 	if (!plugin.module)
 		throw std::runtime_error("optional libplacebo renderer plugin is unavailable");
 

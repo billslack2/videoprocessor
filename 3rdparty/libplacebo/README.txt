@@ -52,3 +52,8 @@ The render target is separate and retains configured luminance for HDR input.
 This avoids changing the bundled DLL or its VP-0147 analysis-crop ABI.
 Do not remove the containment on a DLL upgrade without transport regression
 coverage. See docs/VP-0173-validation.md for implementation and test evidence.
+
+Complete published VP release source: https://github.com/billslack2/libplacebo/tree/codex/vp-release-7.360.1
+Reconstructed commit: 192b4b4ea634ed65bb93abe9a3f4e6339d5280e3
+This includes the shipped crop/timer patches recovered from the source archive above.
+The stable DLL and headers are unchanged.

@@ -44,6 +44,14 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(BetaUsesSeparatePluginAndRuntimeNames)
+        {
+            using namespace OptionalRendererLayout;
+            Assert::IsTrue(PluginPath(L"C:\\VP", true) == L"C:\\VP\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll");
+            Assert::IsTrue(PluginPath(L"C:\\VP") == L"C:\\VP\\vprenderer\\VideoProcessorVPRenderer.dll");
+            Assert::AreEqual(L"libplacebo-376.dll", PrivateDependencies(true)[3]);
+            Assert::AreEqual(L"libplacebo-360.dll", PrivateDependencies()[3]);
+        }
 		TEST_METHOD(AspectOsdMapsEveryNamedFormat)
 		{
 			struct Expected { double value; const wchar_t* ratio; const wchar_t* name; };

@@ -495,10 +495,17 @@ namespace
 		}
 	}
 
+#if defined(VP_LIBPLACEBO_BETA)
+	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
+		"vprenderer-beta\\VideoProcessorShaderCache.bin";
+	constexpr const char* SHADER_CACHE_CLEAR_RELATIVE_PATH =
+		"vprenderer-beta\\VideoProcessorShaderCache.clear";
+#else
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
 		"vprenderer\\VideoProcessorShaderCache.bin";
 	constexpr const char* SHADER_CACHE_CLEAR_RELATIVE_PATH =
 		"vprenderer\\VideoProcessorShaderCache.clear";
+#endif
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;
@@ -554,7 +561,11 @@ namespace
 	template<typename T>
 	const T& LibplaceboExportedData(const char* exportName)
 	{
-		HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+#if defined(VP_LIBPLACEBO_BETA)
+        HMODULE module = GetModuleHandleW(L"libplacebo-376.dll");
+#else
+        HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+#endif
 		if (!module)
 			throw std::runtime_error("libplacebo runtime was not preloaded");
 
@@ -785,6 +796,7 @@ namespace
 		std::string gamutMapping = "auto";
 		PeakDetection peakDetection = PeakDetection::Auto;
 		ToneMappingTuning::Overrides toneTuning{};
+		bool dynamicTarget = true;
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
@@ -911,7 +923,8 @@ namespace
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
-			<< ToneMappingTuning::Fingerprint(settings.toneTuning)
+			<< settings.dynamicTarget << '|'
+            << ToneMappingTuning::Fingerprint(settings.toneTuning)
             << settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
 			<< settings.upscaler << '|' << settings.downscaler << '|'
 			<< settings.debandStrength << '|'
@@ -1023,12 +1036,16 @@ namespace
 	{
 		// This lookup is only used by the built-in renderer while it resolves
 		// its local copy of the unified configuration. The application owns the
-		// cross-renderer selection, but returning the stable built-in identity
+		// cross-renderer selection, but returning the active built-in identity
 		// here lets renderer-qualified rules safely evaluate false for madVR
 		// instead of rejecting the complete configuration.
 		if (variable == "renderer")
 		{
-			value = "VP Renderer";
+#if defined(VP_LIBPLACEBO_BETA)
+            value = "VP Renderer (Beta)";
+#else
+            value = "VP Renderer";
+#endif
 			return true;
 		}
 		return StateVariables::LookupVideoState(state, variable, value);
@@ -1830,6 +1847,7 @@ namespace
         ToneMappingTuning::Read([&](const char* key, std::string& value) {
             return config.TryGetString(rule.section, key, value);
         }, settings.toneTuning);
+        config.TryGetBool(rule.section, "dynamic_target", settings.dynamicTarget);
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -2500,6 +2518,8 @@ namespace
         ToneMappingTuning::Read([&](const char* key, std::string& value) {
             return TryGetDisplayString(config, key, value);
         }, settings.toneTuning);
+        if (TryGetDisplayString(config, "dynamic_target", rawValue))
+            RendererProfileConfig::ParseBoolean(rawValue, settings.dynamicTarget);
 		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
@@ -5136,6 +5156,7 @@ struct LibplaceboVideoRenderer::Impl
 		parameterSettings.gamutMapping = settings.gamutMapping;
 		parameterSettings.peakDetection = settings.peakDetection;
 		parameterSettings.toneTuning = settings.toneTuning;
+        parameterSettings.dynamicTarget = settings.dynamicTarget;
 		parameterSettings.hasContrastRecovery = settings.hasContrastRecovery;
 		parameterSettings.contrastRecovery = settings.contrastRecovery;
 		parameterSettings.upscaler = settings.upscaler;
@@ -7539,6 +7560,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.gamutMapping = next.gamutMapping;
 		currentTransport.peakDetection = next.peakDetection;
 		currentTransport.toneTuning = next.toneTuning;
+        currentTransport.dynamicTarget = next.dynamicTarget;
 		currentTransport.hasContrastRecovery = next.hasContrastRecovery;
 		currentTransport.contrastRecovery = next.contrastRecovery;
 		currentTransport.upscaler = next.upscaler;
@@ -7596,6 +7618,7 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.gamutMapping != next.gamutMapping, "gamut_mapping");
 		changed(current.peakDetection != next.peakDetection, "peak_detection");
 		changed(current.toneTuning != next.toneTuning, "tone_mapping_tuning");
+        changed(current.dynamicTarget != next.dynamicTarget, "dynamic_target");
 		changed(current.hasContrastRecovery != next.hasContrastRecovery ||
 			current.contrastRecovery != next.contrastRecovery, "contrast_recovery");
 		changed(current.upscaler != next.upscaler, "upscaler");
@@ -15335,7 +15358,11 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
 			m_manualDisplayRule.c_str());
 	m_callback.OnRendererDetailString(
-		TEXT("VP Renderer"), m_callbackGeneration);
+#if defined(VP_LIBPLACEBO_BETA)
+        TEXT("VP Renderer (Beta)"), m_callbackGeneration);
+#else
+        TEXT("VP Renderer"), m_callbackGeneration);
+#endif
 }
 
 

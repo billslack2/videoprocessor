@@ -616,6 +616,53 @@ void testToneMappingControls()
     }
 }
 
+void testBetaToneMappingControls()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create Beta fixture");
+    file.write("[general]\nrenderer: VP Renderer\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    window.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Beta)"}, {"VP Renderer", "VP Renderer (Beta)"});
+    auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
+    auto* dynamic = requireControl<QCheckBox>(window, "config.vprenderer.dynamic_target");
+    auto* film = requireControl<QLineEdit>(window, "config.vprenderer.film_strength");
+    auto* clip = requireControl<QLineEdit>(window, "config.vprenderer.mastering_clip");
+    require(dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta defaults incorrect");
+    require(!dynamic->isEnabled() && !film->isEnabled() && !clip->isEnabled(), "Stable must disable Beta controls");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    require(dynamic->isEnabled() && film->isEnabled() && clip->isEnabled(), "Beta controls did not enable");
+    dynamic->setChecked(false); film->setText("0.75"); clip->setText("0.5");
+    requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
+    require(!dynamic->isChecked() && film->text() == "0.75", "Beta settings did not inherit");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+    require(!film->isEnabled() && film->text() == "0.75", "Stable selection changed saved Beta values");
+    save(window);
+    const auto saved = readBytes(path);
+    require(saved.contains("dynamic_target: false") && saved.contains("film_strength: 0.75") && saved.contains("mastering_clip: 0.5"), "Beta fields were not saved");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    requireControl<QPushButton>(window, "config.vprenderer.toneHighlightBeta.restore_defaults")->click();
+    require(dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta restore failed");
+    film->setText("2.1");
+    require(!requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(), "Invalid Beta field accepted");
+    film->setText("0.3"); save(window);
+    ConfigEditorWindow reloaded(path, 0, true);
+    requireControl<QListWidget>(reloaded, "config.vprenderer.profiles")->setCurrentRow(1);
+    require(requireControl<QCheckBox>(reloaded, "config.vprenderer.dynamic_target")->isChecked(), "Dynamic target reset did not survive reload");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty()) {
+        window.selectPage(2); window.resize(1440, 1100); window.show();
+        requireControl<QToolButton>(window, "rendererSection.toneHighlightBeta")->setChecked(true);
+        QCoreApplication::processEvents();
+        require(window.grab().save(QDir(captures).filePath("beta-highlight.png")), "Cannot capture Beta controls");
+        renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+        QCoreApplication::processEvents();
+        require(window.grab().save(QDir(captures).filePath("stable-highlight.png")), "Cannot capture stable controls");
+    }
+}
+
 void testHdrTargetLuminanceValidationRetainsSavedValue()
 {
     QTemporaryDir directory;
@@ -6917,6 +6964,7 @@ int main(int argc, char** argv)
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
+    failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
     failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
     failures += run("subtitle text size reduction round trip and style visibility", testSubtitleTextSizeReductionRoundTripAndStyleVisibility);
