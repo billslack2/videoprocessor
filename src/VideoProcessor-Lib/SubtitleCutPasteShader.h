@@ -145,6 +145,11 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MINIMUM 0.0
 //!MAXIMUM 65536.0
 0.0
+//!PARAM cleanup_fill_mode
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+0.0
 //!PARAM generated_clean_left
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
@@ -400,10 +405,57 @@ float subtitleGlyphAlpha(vec3 rgb) {
     float nearNeutral=1.0-smoothstep(0.10,0.28,hi-lo);
     return smoothstep(0.15,0.50,lo)*nearNeutral;
 }
-// Continue nearby picture detail into the old subtitle card. The reflected
-// upper patch can invert strongly directional scenery, but preserves much more
-// texture than a full-width left/right color ramp. Feather its outer 24 pixels
-// to current-frame side samples so the old card edge does not show.
+// Replace only the old subtitle footprint inside the picture. Stretch samples
+// an upright strip outside all measured card and glyph bounds; mirror remains
+// the fallback. Preserve the black bar and feather the footprint's edges.
+float subtitleSafeDonorEdge(bool fromTop) {
+    float edge=fromTop ? generated_clean_bottom : generated_clean_top;
+    edge=fromTop ? max(edge,source_bottom) : min(edge,source_top);
+    edge=fromTop ? max(edge,content_bottom) : min(edge,content_top);
+    if(picture_capture_right>picture_capture_left &&
+       picture_capture_bottom>picture_capture_top)
+        edge=fromTop ? max(edge,picture_capture_bottom) : min(edge,picture_capture_top);
+    if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top)
+        edge=fromTop ? max(edge,glyph_0_bottom) : min(edge,glyph_0_top);
+    if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top)
+        edge=fromTop ? max(edge,glyph_1_bottom) : min(edge,glyph_1_top);
+    if(glyph_2_right>glyph_2_left && glyph_2_bottom>glyph_2_top)
+        edge=fromTop ? max(edge,glyph_2_bottom) : min(edge,glyph_2_top);
+    return clamp(edge+(fromTop ? 2.0 : -2.0),picture_top,picture_bottom);
+}
+bool subtitleStretchAvailable() {
+    bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
+    float height=picture_bottom-picture_top;
+    float safeEdge=subtitleSafeDonorEdge(fromTop);
+    float clean=fromTop ? picture_bottom-safeEdge : safeEdge-picture_top;
+    float edgeGap=fromTop ? generated_clean_top-picture_top : picture_bottom-generated_clean_bottom;
+    float donorGap=fromTop ? safeEdge-generated_clean_bottom : generated_clean_top-safeEdge;
+    float fillHeight=min(picture_bottom,generated_clean_bottom)-
+        max(picture_top,generated_clean_top);
+    return cleanup_fill_mode>0.5 && height>1.0 && fillHeight>2.0 &&
+        clean>=0.5*height && edgeGap<=0.1*height &&
+        donorGap<=max(64.0,2.0*fillHeight) &&
+        generated_clean_right>generated_clean_left &&
+        generated_clean_bottom>generated_clean_top;
+}
+vec3 subtitleStretchedPicture(vec2 p) {
+    bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
+    float fillTop=max(picture_top,generated_clean_top);
+    float fillBottom=min(picture_bottom,generated_clean_bottom);
+    float fillHeight=max(fillBottom-fillTop,1.0);
+    float safeEdge=subtitleSafeDonorEdge(fromTop);
+    float clean=fromTop ? picture_bottom-safeEdge : safeEdge-picture_top;
+    float donorHeight=min(clean,min(fillHeight,max(8.0,0.65*fillHeight)));
+    float fraction=clamp((p.y-fillTop)/fillHeight,0.0,1.0);
+    float edgeY=fromTop ? safeEdge+0.5 : safeEdge-0.5;
+    float startY=fromTop ? edgeY : edgeY-donorHeight;
+    float sampleY=clamp(startY+fraction*donorHeight,picture_top+0.5,picture_bottom-0.5);
+    float x=clamp(p.x,0.5,HOOKED_size.x-0.5);
+    vec3 stretched=subtitleLinear(HOOKED_tex(vec2(x,sampleY)*HOOKED_pt).rgb);
+    vec3 edge=subtitleLinear(HOOKED_tex(vec2(x,edgeY)*HOOKED_pt).rgb);
+    float fromEdge=fromTop ? fillBottom-p.y : p.y-fillTop;
+    return mix(edge,stretched,smoothstep(0.0,min(20.0,0.25*fillHeight),fromEdge));
+}
 bool subtitleInGeneratedCleanup(vec2 p) {
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
@@ -416,13 +468,14 @@ vec3 subtitleGeneratedRawFill(vec2 p) {
         : clamp(2.0*generated_clean_top-p.y-1.0,
             picture_top+0.5,max(picture_top+0.5,generated_clean_top-0.5));
     vec3 reflected=subtitleLinear(HOOKED_tex(vec2(clamp(p.x,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb);
+    vec3 filled=subtitleStretchAvailable() ? subtitleStretchedPicture(p) : reflected;
     float left=max(0.5,generated_clean_left-1.5);
     float right=min(HOOKED_size.x-0.5,generated_clean_right+1.5);
     vec3 a=subtitleLinear(HOOKED_tex(vec2(left,p.y)*HOOKED_pt).rgb);
     vec3 b=subtitleLinear(HOOKED_tex(vec2(right,p.y)*HOOKED_pt).rgb);
     vec3 side=mix(a,b,clamp((p.x-generated_clean_left)/max(generated_clean_right-generated_clean_left,1.0),0.0,1.0));
     float edge=min(p.x-generated_clean_left,generated_clean_right-p.x);
-    return mix(side,reflected,smoothstep(0.0,24.0,edge)*(fromTop ? step(generated_clean_bottom+1.0,picture_bottom) : step(picture_top+1.0,generated_clean_top)));
+    return mix(side,filled,smoothstep(0.0,24.0,edge)*(fromTop ? step(generated_clean_bottom+1.0,picture_bottom) : step(picture_top+1.0,generated_clean_top)));
 }
 // Reconstruct first, then filter the combined real/generated scene. Testing
 // the footprint as well as the center prevents bilinear samples just outside
@@ -722,7 +775,7 @@ vec3 subtitleGeneratedFill(vec2 p) {
 inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     const SubtitleCutPasteGeometry& geometry, int backgroundMode,
     pl_color_transfer transfer,
-    const SubtitleGeneratedGrayStyle& generated)
+    const SubtitleGeneratedGrayStyle& generated,bool stretchFill=false)
 {
     if (!hook || backgroundMode<0 || backgroundMode>5) return false;
     const char* names[]={"enabled","source_left","source_top","source_right","source_bottom",
@@ -730,7 +783,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         "glyph_scale","glyph_translate_x","glyph_translate_y","panel_flags",
         "transfer_mode","picture_top","picture_bottom","transfer_gamma",
         "content_left","content_top","content_right","content_bottom",
-        "generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
+        "cleanup_fill_mode","generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
         "text_color_r","text_color_g","text_color_b",
         "generated_color_r","generated_color_g","generated_color_b","generated_opacity",
         "generated_max_luminance","generated_blur_px","blur_active","blur_roi_left","blur_roi_top","blur_roi_w","blur_roi_h","blur_step",
@@ -751,7 +804,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
         float(geometry.pictureTop),float(geometry.pictureBottom),gamma,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
-        float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
+        stretchFill?1.0f:0.0f,float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),
         generated.textColor[0],generated.textColor[1],generated.textColor[2],
         generated.color[0],generated.color[1],generated.color[2],generated.opacity,
@@ -788,16 +841,24 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
 // Compose before the main renderer crops away letterbox pixels. Reuse a
 // full-resolution floating-point surface and retain the input transfer function;
 // output tone mapping, scaling, NLS and viewport placement occur only afterward.
-inline bool ComposeSubtitleBeforeCrop(pl_renderer renderer,pl_gpu gpu,
-    const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed)
+inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
+    const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
+    bool blitSource,bool blitDestination)
 {
-    if(!hook || source.num_planes<1 || !source.planes[0].texture)return false;
+    if(source.num_planes<1 || !source.planes[0].texture)return false;
     const auto texture=source.planes[0].texture;
     pl_tex_params storage{};
     storage.w=texture->params.w;storage.h=texture->params.h;
     storage.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
-        static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE));
+        static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|
+            ((blitSource||blitDestination)?PL_FMT_CAP_BLITTABLE:0)));
+    if(!storage.format && blitDestination) {
+        blitDestination=false;
+        storage.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
+            static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE));
+    }
     storage.sampleable=true;storage.renderable=true;
+    storage.blit_src=blitSource;storage.blit_dst=blitDestination;
     if(!storage.format || !pl_tex_recreate(gpu,surface,&storage))return false;
     auto input=source;input.crop={0,0,float(storage.w),float(storage.h)};
     input.rotation=PL_ROTATION_0;input.overlays=nullptr;input.num_overlays=0;
@@ -808,12 +869,30 @@ inline bool ComposeSubtitleBeforeCrop(pl_renderer renderer,pl_gpu gpu,
     target.repr.alpha=PL_ALPHA_NONE;target.color=source.color;
     auto params=pl_render_fast_params;
     params.dither_params=nullptr;params.peak_detect_params=nullptr;
-    params.hooks=&hook;params.num_hooks=1;
+    params.hooks=hook?&hook:nullptr;params.num_hooks=hook?1:0;
     if(!pl_render_image(renderer,&input,&target,&params))return false;
-    const auto errors=pl_renderer_get_errors(renderer);
-    for(int i=0;i<errors.num_disabled_hooks;++i)
-        if(errors.disabled_hooks[i]==hook->signature)return false;
+    if(hook) {
+        const auto errors=pl_renderer_get_errors(renderer);
+        for(int i=0;i<errors.num_disabled_hooks;++i)
+            if(errors.disabled_hooks[i]==hook->signature)return false;
+    }
     composed=target;composed.crop=source.crop;composed.rotation=source.rotation;
     composed.overlays=source.overlays;composed.num_overlays=source.num_overlays;
     return true;
+}
+
+inline bool ComposeSubtitleBeforeCrop(pl_renderer renderer,pl_gpu gpu,
+    const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
+    bool temporalBlit=false)
+{
+    return hook && RenderSubtitleFullRaster(renderer,gpu,source,hook,surface,
+        composed,false,temporalBlit);
+}
+
+inline bool CaptureSubtitleTemporalBackground(pl_renderer renderer,pl_gpu gpu,
+    const pl_frame& source,pl_tex* surface)
+{
+    pl_frame captured{};
+    return RenderSubtitleFullRaster(renderer,gpu,source,nullptr,surface,
+        captured,true,false);
 }

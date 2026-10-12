@@ -207,6 +207,8 @@ Get-ChildItem -LiteralPath $StageRoot -Recurse -File | ForEach-Object {
     [void]$actual.Add($relative)
     $licenseText = $relative.StartsWith(
         'vprenderer\third_party_licenses\',
+        [StringComparison]::OrdinalIgnoreCase) -or $relative.StartsWith(
+        'vprenderer-beta\third_party_licenses\',
         [StringComparison]::OrdinalIgnoreCase)
     if ((-not $licenseText -and
             $_.Extension -in @('.pdb', '.lib', '.exp', '.ilk', '.bak')) -or

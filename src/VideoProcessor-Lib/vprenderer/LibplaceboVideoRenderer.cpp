@@ -42,6 +42,7 @@
 #include <SubtitleCutPaste.h>
 #include <SubtitleMeasurementWorker.h>
 #include <SubtitleCutPasteShader.h>
+#include <SubtitleTemporalFill.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
@@ -835,6 +836,8 @@ namespace
         int subtitleTextReductionPercent = 0;
         bool subtitleRoundedCorners = true;
         bool subtitleFloatBackground = false;
+        bool subtitleTemporalFill = false;
+        bool subtitleStretchFill = false;
         SubtitlePreviewMode subtitleMode = SubtitlePreviewMode::None;
         std::map<std::string,std::string> subtitleProfileSettings;
         int subtitleHoldMs = 250;
@@ -975,6 +978,7 @@ namespace
             << static_cast<int>(settings.subtitleMode) << '|' << settings.subtitleMoveInset << '|'
             << settings.subtitleTextReductionPercent << '|'
             << settings.subtitleRoundedCorners << '|' << settings.subtitleFloatBackground << '|'
+            << settings.subtitleTemporalFill << '|' << settings.subtitleStretchFill << '|'
             << settings.subtitleDetectionOptimization << '|' << static_cast<int>(settings.subtitleScriptHint) << '|'
             << settings.subtitleNearBarDistance << '|' << settings.subtitleHoldMs << '|';
         }
@@ -2604,6 +2608,11 @@ namespace
                     settings.subtitleScriptHint=scriptHint=="arabic"?SubtitleScriptHint::Arabic:
                         scriptHint=="cjk"?SubtitleScriptHint::Cjk:
                         scriptHint=="thai"?SubtitleScriptHint::Thai:SubtitleScriptHint::Latin;
+                    const auto cleanupFill=ConfigFile::NormalizeName(get("cleanup_fill"));
+                    if(!cleanupFill.empty()) {
+                        settings.subtitleTemporalFill=cleanupFill=="temporal";
+                        settings.subtitleStretchFill=cleanupFill=="stretch";
+                    } else RendererProfileConfig::ParseBoolean(get("temporal_fill"),settings.subtitleTemporalFill);
                     settings.subtitleMode=type=="black"?SubtitlePreviewMode::BlackBackground:
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;
                     const bool classicStyle=type.empty() || type=="classic";
@@ -3734,6 +3743,11 @@ struct LibplaceboVideoRenderer::Impl
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleStabilityTelemetry subtitleStabilityTelemetry;
     pl_tex subtitleCompositionTexture=nullptr;
+    pl_tex subtitleTemporalTexture=nullptr;
+    uint64_t subtitleTemporalScene=0,subtitleTemporalGeneration=0,subtitleTemporalTick=0;
+    unsigned subtitleTemporalCleanFrames=0;
+    bool subtitleTemporalValid=false;
+    std::array<AnalysisLumaSample,32*18> subtitleTemporalSamples{};
     SubtitlePaddingGuard subtitlePaddingGuard;
     SubtitleLayoutAnchor subtitleLayoutAnchor;
     ActivePictureBounds scopeSubtitleAnalysisBounds;
@@ -4517,6 +4531,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				pl_tex_destroy(d3d11->gpu, &subtitleBoxTexture);
                 pl_tex_destroy(d3d11->gpu, &subtitleCompositionTexture);
+                pl_tex_destroy(d3d11->gpu, &subtitleTemporalTexture);
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
@@ -7689,6 +7704,8 @@ struct LibplaceboVideoRenderer::Impl
         changed(current.subtitleTextReductionPercent != next.subtitleTextReductionPercent, "text_reduction_percent");
         changed(current.subtitleRoundedCorners != next.subtitleRoundedCorners, "rounded_corners");
         changed(current.subtitleFloatBackground != next.subtitleFloatBackground, "background_edge");
+        changed(current.subtitleTemporalFill != next.subtitleTemporalFill, "cleanup_fill");
+        changed(current.subtitleStretchFill != next.subtitleStretchFill, "cleanup_fill");
         changed(current.subtitleMode != next.subtitleMode, "subtitle_type");
         changed(current.subtitleHoldMs != next.subtitleHoldMs, "subtitle_hold_ms");
         changed(current.subtitleNearBarDistance != next.subtitleNearBarDistance,"subtitle_near_bar_px");
@@ -11850,6 +11867,33 @@ struct LibplaceboVideoRenderer::Impl
             subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview, activeSettings.subtitleHoldMs,subtitleFrameMs);
+            if(activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5 &&
+                !cadenceRepeat && analysisSource.IsValid() && subtitlePreview->available &&
+                subtitlePreview->current.analyzed && !subtitlePreview->current.pendingRefresh &&
+                !subtitleBoxResult.detected && !subtitlePreview->current.text.detected &&
+                !videoFrame.IsSourceDiscontinuity()) {
+                bool futureClear=true;
+                for(unsigned i=0;i<subtitlePreview->followingCount;++i)
+                    futureClear &= !subtitlePreview->following[i].text.detected;
+                if(futureClear) {
+                    ++subtitleTemporalCleanFrames;
+                    const auto tick=GetTickCount64();
+                    if(subtitleTemporalCleanFrames>=8 &&
+                        (!subtitleTemporalTick || tick-subtitleTemporalTick>=250)) {
+                        SubtitleTemporalFill::Signature samples;
+                        if(SubtitleTemporalFill::Capture(analysisSource,samples) &&
+                            CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
+                                image,&subtitleTemporalTexture)) {
+                            subtitleTemporalSamples=samples;
+                            subtitleTemporalScene=sceneResult.eventId;
+                            subtitleTemporalGeneration=analysisSource.generation;
+                            subtitleTemporalTick=tick;
+                            subtitleTemporalValid=true;
+                        }
+                    }
+                } else subtitleTemporalCleanFrames=0;
+            } else if(subtitleBoxResult.detected || !activeSettings.subtitleTemporalFill)
+                subtitleTemporalCleanFrames=0;
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
@@ -11938,18 +11982,50 @@ struct LibplaceboVideoRenderer::Impl
                     }
                     if (subtitleCutPasteHook && BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
 						subtitleCutPasteBackground, image.color.transfer,
-                        activeSettings.subtitleGeneratedGray))
+                        activeSettings.subtitleGeneratedGray,activeSettings.subtitleStretchFill))
                     {
                         pl_frame composed{};
                         const int perfMode=subtitleCutPasteBackground==5?1:0;
                         const auto compositionStart=SteadyClock::now();
                         frameGpuTiming.BeginStage(perfMode?AlphaD3D11FrameGpuTimer::Stage::SubtitleGenerated:AlphaD3D11FrameGpuTimer::Stage::SubtitleBlack);
                         subtitleHookBound=ComposeSubtitleBeforeCrop(renderer,d3d11->gpu,
-                            image,subtitleCutPasteHook,&subtitleCompositionTexture,composed);
+                            image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
+                            activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5);
                         frameGpuTiming.EndStage();
                         ++subtitlePerf.compose[perfMode];
                         subtitlePerf.composeCpu[perfMode]+=std::chrono::duration<double,std::milli>(SteadyClock::now()-compositionStart).count();
-                        if(subtitleHookBound) { subtitleComposedImage=composed; relocatedSubtitle=move; subtitleCompositionSucceeded=true; }
+                        if(subtitleHookBound) {
+                            const auto tick=GetTickCount64();
+                            const auto& cleanup=move.generatedCleanup;
+                            const bool donorReady=activeSettings.subtitleTemporalFill &&
+                                subtitleCutPasteBackground==5 && subtitleTemporalValid &&
+                                subtitleTemporalTexture && subtitleCompositionTexture &&
+                                subtitleTemporalTexture->params.blit_src &&
+                                subtitleCompositionTexture->params.blit_dst &&
+                                subtitleTemporalTexture->params.w==width &&
+                                subtitleTemporalTexture->params.h==height &&
+                                subtitleTemporalGeneration==analysisSource.generation &&
+                                subtitleTemporalScene==sceneResult.eventId &&
+                                tick>=subtitleTemporalTick && tick-subtitleTemporalTick<=10000 &&
+                                !videoFrame.IsSourceDiscontinuity() &&
+                                SubtitleTemporalFill::Matches(analysisSource,
+                                    subtitleTemporalSamples,cleanup,
+                                    move.pictureTop,move.pictureBottom);
+                            if(donorReady) {
+                                pl_rect3d region{};
+                                region.x0=cleanup.left;region.y0=cleanup.top;
+                                region.x1=cleanup.right;region.y1=cleanup.bottom;
+                                pl_tex_blit_params blit{};
+                                blit.src=subtitleTemporalTexture;
+                                blit.dst=subtitleCompositionTexture;
+                                blit.src_rc=region;blit.dst_rc=region;
+                                blit.sample_mode=PL_TEX_SAMPLE_NEAREST;
+                                pl_tex_blit(d3d11->gpu,&blit);
+                            }
+                            subtitleComposedImage=composed;
+                            relocatedSubtitle=move;
+                            subtitleCompositionSucceeded=true;
+                        }
                         else DebugLog::Log("SUBTITLE COMPOSITION: failed; preserving normal viewport");
                     }
                 }
