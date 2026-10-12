@@ -65,3 +65,12 @@ VideoProcessorLibplaceboDestroyRenderer(IVideoRenderer* renderer)
 {
 	delete renderer;
 }
+
+extern "C" __declspec(dllexport) bool __cdecl VideoProcessorLibplaceboIsBeta()
+{
+#if defined(VP_LIBPLACEBO_BETA)
+    return true;
+#else
+    return false;
+#endif
+}

@@ -84,6 +84,7 @@ std::vector<std::wstring> ConfigurationDiscovery::RendererNames(bool hideLegacyR
 	// the deployed VP installation does, so discovery must not hide the choice
 	// merely because this helper process cannot load it from its own directory.
 	ids.push_back(RendererId::Libplacebo());
+	ids.push_back(RendererId::Libplacebo(true));
 #endif
 	std::vector<std::wstring> names;
 	for (const RendererId& renderer : RendererId::OrderForDisplay(ids))

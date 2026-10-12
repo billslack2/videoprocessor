@@ -10,7 +10,7 @@
 class LibplaceboPluginVideoRenderer final : public IVideoRenderer
 {
 public:
-	static bool IsAvailable();
+	static bool IsAvailable(bool beta = false);
 
 	LibplaceboPluginVideoRenderer(
 		IRendererCallback& callback,
@@ -19,7 +19,7 @@ public:
 		ITimingClock* timingClock,
 		bool useFrameQueue,
 		size_t frameQueueMaxSize,
-		VideoConversionOverride videoConversionOverride);
+		VideoConversionOverride videoConversionOverride, bool beta = false);
 	~LibplaceboPluginVideoRenderer() override;
 
 	size_t GetConvertedQueueSize() override;

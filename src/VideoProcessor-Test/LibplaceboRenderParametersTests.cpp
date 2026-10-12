@@ -165,12 +165,25 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
+        TEST_METHOD(StableIgnoresBetaOnlySettings)
+        {
+            Settings settings;
+            Projection baseline, changed;
+            BuildOrFail(settings, false, baseline);
+            settings.dynamicTarget = false;
+            settings.customToneMapping = true;
+            settings.toneTuning[ToneMappingTuning::FilmStrength] = 2.;
+            settings.toneTuning[ToneMappingTuning::MasteringClip] = 0.;
+            BuildOrFail(settings, false, changed);
+            AssertSameData(&baseline.colorMapParams, &changed.colorMapParams,
+                sizeof(baseline.colorMapParams), L"Stable must ignore Beta fields");
+        }
         TEST_METHOD(ToneTuningMapsEveryNativeParameterAndPreservesPresetDefaults)
         {
             Settings settings;
             settings.peakDetection = PeakDetection::HighQuality;
             const double values[] = { .7, .2, .9, .6, 2.5, .3, 1.2, 1.4, .65, 99.9, 45, 2, 5, 3 };
-            for (int i=0; i<ToneMappingTuning::Count; ++i) settings.toneTuning[i] = values[i];
+            for (int i=0; i<ToneMappingTuning::FilmStrength; ++i) settings.toneTuning[i] = values[i];
             Projection tuned;
             BuildOrFail(settings, false, tuned);
             const auto& c = tuned.colorMapParams.tone_constants;
@@ -178,7 +191,7 @@ namespace VideoProcessorTest
             const float actual[] = { c.knee_adaptation, c.knee_minimum, c.knee_maximum, c.knee_default,
                 c.slope_tuning, c.slope_offset, c.spline_contrast, c.knee_offset, c.reinhard_contrast,
                 p.percentile, p.smoothing_period, p.scene_threshold_low, p.scene_threshold_high, p.black_cutoff };
-            for (int i=0; i<ToneMappingTuning::Count; ++i)
+            for (int i=0; i<ToneMappingTuning::FilmStrength; ++i)
                 Assert::AreEqual(static_cast<float>(values[i]), actual[i], 0.00001f);
             settings.peakDetection = PeakDetection::Off;
             Projection disabled;

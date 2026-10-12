@@ -52,25 +52,26 @@ std::vector<RendererId> RendererId::OrderForDisplay(
 bool RendererId::MatchesConfiguredName(const CString& configuredName) const
 {
 	return name.CompareNoCase(configuredName) == 0 ||
-		(backend == RendererBackend::LIBPLACEBO &&
+		(backend == RendererBackend::LIBPLACEBO && !libplaceboBeta &&
 		 (configuredName.CompareNoCase(TEXT("libplacebo")) == 0 ||
 		  configuredName.CompareNoCase(TEXT("VideoProcessor Renderer (Alpha)")) == 0));
 }
 
 
-RendererId RendererId::Libplacebo()
+RendererId RendererId::Libplacebo(bool beta)
 {
 	RendererId id;
-	id.name = TEXT("VP Renderer");
+	id.name = beta ? TEXT("VP Renderer (Beta)") : TEXT("VP Renderer");
+	id.libplaceboBeta = beta;
 	id.backend = RendererBackend::LIBPLACEBO;
 	return id;
 }
 
 
-bool RendererId::IsLibplaceboAvailable()
+bool RendererId::IsLibplaceboAvailable(bool beta)
 {
 #if defined(_WIN64)
-	return LibplaceboPluginVideoRenderer::IsAvailable();
+	return LibplaceboPluginVideoRenderer::IsAvailable(beta);
 #else
 	return false;
 #endif

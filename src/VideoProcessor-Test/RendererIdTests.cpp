@@ -10,6 +10,20 @@ namespace VideoProcessorTest
 	TEST_CLASS(RendererIdTests)
 	{
 	public:
+        TEST_METHOD(BetaIsDistinctAndDoesNotCaptureStableAliases)
+        {
+            const auto stable = RendererId::Libplacebo();
+            const auto beta = RendererId::Libplacebo(true);
+            Assert::IsTrue(beta.libplaceboBeta);
+            Assert::IsTrue(beta.MatchesConfiguredName(TEXT("VP Renderer (Beta)")));
+            Assert::IsFalse(stable.MatchesConfiguredName(TEXT("VP Renderer (Beta)")));
+            Assert::IsFalse(beta.MatchesConfiguredName(TEXT("VP Renderer")));
+            Assert::IsFalse(beta.MatchesConfiguredName(TEXT("libplacebo")));
+            Assert::IsFalse(beta.MatchesConfiguredName(TEXT("VideoProcessor Renderer (Alpha)")));
+            const auto order = RendererId::OrderForDisplay({stable, beta});
+            Assert::AreEqual(TEXT("VP Renderer"), order[0].name.GetString());
+            Assert::AreEqual(TEXT("VP Renderer (Beta)"), order[1].name.GetString());
+        }
 		TEST_METHOD(DisplayOrderPutsAlphaFirstAndReversesEligibleExternalRenderers)
 		{
 			const std::vector<RendererId> ordered = RendererId::OrderForDisplay({

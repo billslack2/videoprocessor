@@ -616,6 +616,72 @@ void testToneMappingControls()
     }
 }
 
+void testBetaToneMappingControls()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create Beta fixture");
+    file.write("[general]\nrenderer: VP Renderer\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    window.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Beta)"}, {"VP Renderer", "VP Renderer (Beta)"});
+    auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
+    auto* dynamic = requireControl<QCheckBox>(window, "config.vprenderer.dynamic_target");
+    auto* custom = requireControl<QCheckBox>(window, "config.vprenderer.custom_tone_mapping");
+    require(!custom->isChecked() && !custom->isEnabled(), "Gamut overflow correction must default Off and be disabled in release");
+    require(custom->accessibleName() == "Gamut overflow correction (Experimental)", "Correction label must identify experimental status");
+    require(custom->toolTip().contains("near or beyond") && custom->toolTip().contains("after the selected gamut mapping") && custom->toolTip().contains("May reduce brightness or saturation") && custom->toolTip().contains("Off: original"), "Correction tooltip must explain placement, tradeoff and original path");
+    auto* gamut = requireControl<QComboBox>(window, "config.vprenderer.gamut_mapping");
+    auto* film = requireControl<QLineEdit>(window, "config.vprenderer.film_strength");
+    auto* clip = requireControl<QLineEdit>(window, "config.vprenderer.mastering_clip");
+    require(dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta defaults incorrect");
+    require(!dynamic->isEnabled() && !film->isEnabled() && !clip->isEnabled(), "Stable must disable Beta controls");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    require(custom->isEnabled() && dynamic->isEnabled() && film->isEnabled() && clip->isEnabled(), "Beta controls did not enable");
+    custom->setChecked(true);
+    require(gamut->isEnabled(), "Upstream gamut choice must remain available with residual correction");
+    gamut->setCurrentIndex(gamut->findData("relative"));
+    dynamic->setChecked(false); film->setText("0.75"); clip->setText("0.5");
+    requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
+    require(custom->isChecked() && !dynamic->isChecked() && film->text() == "0.75" && gamut->property("effectiveValue").toString() == "relative", "Beta settings and selected gamut did not inherit");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+    require(!custom->isEnabled() && custom->isChecked() && !film->isEnabled() && film->text() == "0.75", "Stable selection changed saved Beta values");
+    require(requireControl<QComboBox>(window, "config.vprenderer.gamut_mapping")->isEnabled(), "Stable shared gamut control must remain available");
+    save(window);
+    const auto saved = readBytes(path);
+    require(saved.contains("gamut_mapping: relative"), "Upstream gamut selection was not saved with correction enabled");
+    require(saved.contains("custom_tone_mapping: true") && saved.contains("dynamic_target: false") && saved.contains("film_strength: 0.75") && saved.contains("mastering_clip: 0.5"), "Beta fields were not saved");
+    ConfigEditorWindow enabledReload(path, 0, true);
+    enabledReload.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Beta)"}, {"VP Renderer", "VP Renderer (Beta)"});
+    requireControl<QListWidget>(enabledReload, "config.vprenderer.profiles")->setCurrentRow(1);
+    require(requireControl<QCheckBox>(enabledReload, "config.vprenderer.custom_tone_mapping")->isChecked(), "Existing persisted custom_tone_mapping key must reload correction On");
+    requireControl<QComboBox>(enabledReload, "config.general.renderer")->setCurrentIndex(
+        requireControl<QComboBox>(enabledReload, "config.general.renderer")->findData("VP Renderer (Beta)"));
+    require(requireControl<QComboBox>(enabledReload, "config.vprenderer.gamut_mapping")->isEnabled(), "Reloaded correction must preserve upstream gamut editing");
+    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    requireControl<QPushButton>(window, "config.vprenderer.toneHighlightBeta.restore_defaults")->click();
+    require(!custom->isChecked() && dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta restore failed");
+    require(gamut->isEnabled() && gamut->property("effectiveValue").toString() == "relative", "Correction reset must retain upstream gamut choice");
+    film->setText("2.1");
+    require(!requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(), "Invalid Beta field accepted");
+    film->setText("0.3"); save(window);
+    ConfigEditorWindow reloaded(path, 0, true);
+    requireControl<QListWidget>(reloaded, "config.vprenderer.profiles")->setCurrentRow(1);
+    require(requireControl<QCheckBox>(reloaded, "config.vprenderer.dynamic_target")->isChecked(), "Dynamic target reset did not survive reload");
+    require(!requireControl<QCheckBox>(reloaded, "config.vprenderer.custom_tone_mapping")->isChecked(), "Original mapping reset did not survive reload");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty()) {
+        window.selectPage(2); window.resize(1440, 1100); window.show();
+        requireControl<QToolButton>(window, "rendererSection.toneHighlightBeta")->setChecked(true);
+        QCoreApplication::processEvents();
+        require(window.grab().save(QDir(captures).filePath("beta-highlight.png")), "Cannot capture Beta controls");
+        renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+        QCoreApplication::processEvents();
+        require(window.grab().save(QDir(captures).filePath("stable-highlight.png")), "Cannot capture stable controls");
+    }
+}
+
 void testHdrTargetLuminanceValidationRetainsSavedValue()
 {
     QTemporaryDir directory;
@@ -6917,6 +6983,7 @@ int main(int argc, char** argv)
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
+    failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
     failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
     failures += run("subtitle text size reduction round trip and style visibility", testSubtitleTextSizeReductionRoundTripAndStyleVisibility);

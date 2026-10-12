@@ -27,12 +27,13 @@ struct RendererId
 	CString name;
 	RendererBackend backend = RendererBackend::DIRECTSHOW;
 	GUID guid = GUID_NULL;
+	bool libplaceboBeta = false;
 
 	bool operator< (const RendererId& other) const;
 	static std::vector<RendererId> OrderForDisplay(
 		const std::vector<RendererId>& rendererIds);
 	bool MatchesConfiguredName(const CString& configuredName) const;
 
-	static RendererId Libplacebo();
-	static bool IsLibplaceboAvailable();
+	static RendererId Libplacebo(bool beta = false);
+	static bool IsLibplaceboAvailable(bool beta = false);
 };

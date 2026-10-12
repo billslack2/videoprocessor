@@ -43,6 +43,8 @@ namespace LibplaceboRenderParameters
 		std::string gamutMapping = "auto";
 		PeakDetection peakDetection = PeakDetection::Auto;
 		ToneMappingTuning::Overrides toneTuning{};
+		bool dynamicTarget = true;
+        bool customToneMapping = false;
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
