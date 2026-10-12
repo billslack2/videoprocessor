@@ -611,7 +611,28 @@ public:
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
             m_padding==padding && m_gap==gap && SubtitleBoxLookahead::SameContext(m_reference,current);
         auto panel=text.sourcePanel;
-        m_backingReason="acquired";
+        // A fresh complete-card proof can correct cleanup without changing the
+        // glyphs. Use only this frame's proof, never a held/future-frame one.
+        const auto& proof=current.text.provenSourcePanel;
+        bool freshProof=!text.held && current.text.detected && proof.Valid();
+        for(int i=0;i<text.lineCount && freshProof;++i) {
+            const auto& row=text.lineBounds[i];
+            const int top=(std::max)(row.top,current.pictureTop);
+            const int bottom=(std::min)(row.bottom,current.pictureBottom);
+            if(top<bottom && (row.left<proof.left || row.right>proof.right ||
+                top<proof.top || bottom>proof.bottom))freshProof=false;
+        }
+        const auto& prior=sameDisplayCue?m_sourcePanel:panel;
+        if(freshProof && prior.Valid())
+            freshProof=(std::min)(prior.right,proof.right)>(std::max)(prior.left,proof.left) &&
+                (std::min)(prior.bottom,proof.bottom)>(std::max)(prior.top,proof.top);
+        // On an unchanged cue, a complete proof may add only its own area.
+        // Do not let unrelated growth in the local estimate ride along.
+        if(freshProof && sameDisplayCue && !text.revised)panel=m_sourcePanel;
+        if(freshProof)panel=panel.Valid()?SubtitleBoxRect{
+            (std::min)(panel.left,proof.left),(std::min)(panel.top,proof.top),
+            (std::max)(panel.right,proof.right),(std::max)(panel.bottom,proof.bottom)}:proof;
+        m_backingReason=freshProof?"complete-card-proof":"acquired";
         if(sameDisplayCue) {
             // An unchanged opaque caption owns the same original footprint.
             // Dark scenery can merge with its blank margins, so a fresh larger
@@ -619,8 +640,9 @@ public:
             // accepted removal footprint; current glyph masks/card interiors
             // remain independent and fresh below. A tracker-confirmed glyph
             // correction can enlarge coverage, but never shrink the old card.
-            m_backingReason=text.revised?"confirmed-glyph-expansion":"retained-cue-footprint";
-            if(text.revised && panel.Valid()) {
+            m_backingReason=freshProof?"complete-card-proof":
+                text.revised?"confirmed-glyph-expansion":"retained-cue-footprint";
+            if((text.revised || freshProof) && panel.Valid()) {
                 if(m_sourcePanel.Valid()) panel={
                     (std::min)(panel.left,m_sourcePanel.left),(std::min)(panel.top,m_sourcePanel.top),
                     (std::max)(panel.right,m_sourcePanel.right),(std::max)(panel.bottom,m_sourcePanel.bottom)};

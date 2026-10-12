@@ -969,6 +969,49 @@ namespace SubtitleBoxLookahead
         return SamePanelTopEdge(a.text.panelTopEdges[aLine],b.text.panelTopEdges[bLine],tolerance);
     }
 
+    // A finite card proved from each frame can confirm a distant third row
+    // even when the low-latency queue cannot supply four frames. Cleanup bounds
+    // alone are insufficient: require measured capture ownership and unchanged
+    // glyph pixels in both directions throughout the available anchor horizon.
+    inline bool ShortWindowCardLine(const SubtitleBoxObservation* frames,
+        size_t count, int line, int tolerance)
+    {
+        if(count<2 || count>=4)return false;
+        auto covered=[](const SubtitleBoxObservation& frame,int row) {
+            if(!frame.analyzed || frame.analysisRefresh || frame.pendingRefresh ||
+                frame.text.workLimit || !frame.text.capturePanelMeasured || !frame.ink ||
+                row<0 || row>=frame.text.lineCount)return false;
+            const auto& glyph=frame.text.lineBounds[row];
+            const auto& proof=frame.text.provenSourcePanel;
+            const auto& interior=frame.text.lineCapturePanels[row];
+            // This exception is for a row within the picture, where finite
+            // backing supplies evidence unavailable on an unbounded black bar.
+            if(!glyph.Valid() || glyph.top<frame.pictureTop || glyph.bottom>frame.pictureBottom ||
+                !proof.Valid() || !interior.Valid())return false;
+            return proof.left<=glyph.left && proof.right>=glyph.right &&
+                proof.top<=glyph.top && proof.bottom>=glyph.bottom &&
+                interior.left<=glyph.left && interior.right>=glyph.right &&
+                interior.top<=glyph.top && interior.bottom>=glyph.bottom;
+        };
+        if(!covered(frames[0],line))return false;
+        for(size_t frame=1;frame<count;++frame) {
+            bool matched=false;
+            if(!SameContext(frames[0],frames[frame]))return false;
+            for(int other=0;other<frames[frame].text.lineCount;++other)
+                if(covered(frames[frame],other) &&
+                    SameLine(frames[0].text.provenSourcePanel,frames[frame].text.provenSourcePanel,tolerance) &&
+                    SameCrowdedBacking(frames[0],line,frames[frame],other,tolerance) &&
+                    SameCrowdedLine(frames[0].text.lineBounds[line],frames[frame].text.lineBounds[other],tolerance) &&
+                    SimilarSignature(frames[0].text.lineSignatures[line],frames[frame].text.lineSignatures[other]) &&
+                    OwnedLinePixelCoverage(frames[0],line,frames[frame])>=0.975 &&
+                    OwnedLinePixelCoverage(frames[frame],other,frames[0])>=0.975) {
+                    matched=true;break;
+                }
+            if(!matched)return false;
+        }
+        return true;
+    }
+
     // A component/grouping budget failure is unknown, not a blank subtitle.
     // Only complete independent CURRENT samples may rescue an established cue;
     // the failed grouping itself supplies no acquisition or extension authority.
@@ -1124,7 +1167,8 @@ namespace SubtitleBoxLookahead
                 farthestCoverage>=0.90;
             const bool farthestPixels=frames[0].text.lineCount<3 ||
                 (line==crowdedAnchorLine?farthestCoverage>=minimumCoverage:
-                    (fullHorizon?farthestCoverage>=minimumCoverage:nearestInShortWindow));
+                    (fullHorizon?farthestCoverage>=minimumCoverage:
+                        (nearestInShortWindow || ShortWindowCardLine(frames,supportEnd,line,tolerance))));
             if(support>=required && farthestPixels) acceptedLines[acceptedCount++]=line;
             else result.currentLinesConfirmed=false;
         }

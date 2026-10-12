@@ -3727,6 +3727,19 @@ struct LibplaceboVideoRenderer::Impl
 	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
 	std::atomic<ULONGLONG> libplaceboRenderStartedTick{ 0 };
+    // All libplacebo render passes use the same UI-polled loading status.
+    // Keep the timer exception-safe so a failed pass cannot strand the notice.
+    struct PipelinePreparationScope {
+        std::atomic<ULONGLONG>& started;
+        explicit PipelinePreparationScope(std::atomic<ULONGLONG>& tick) : started(tick) {
+            started.store(GetTickCount64(),std::memory_order_release);
+        }
+        ~PipelinePreparationScope() { Complete(); }
+        void Complete() { started.store(0,std::memory_order_release); }
+        PipelinePreparationScope(const PipelinePreparationScope&)=delete;
+        PipelinePreparationScope& operator=(const PipelinePreparationScope&)=delete;
+    };
+
 	pl_tex textures[2] = { nullptr, nullptr };
 	double sourceUploadCpuLastMs = 0.0;
 	double sourceUploadCpuIntervalTotalMs = 0.0;
@@ -11882,8 +11895,11 @@ struct LibplaceboVideoRenderer::Impl
                         (!subtitleTemporalTick || tick-subtitleTemporalTick>=250)) {
                         SubtitleTemporalFill::Signature samples;
                         if(SubtitleTemporalFill::Capture(analysisSource,samples) &&
-                            CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
-                                image,&subtitleTemporalTexture)) {
+                            [&]() {
+                                PipelinePreparationScope preparing(libplaceboRenderStartedTick);
+                                return CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
+                                    image,&subtitleTemporalTexture);
+                            }()) {
                             subtitleTemporalSamples=samples;
                             subtitleTemporalScene=sceneResult.eventId;
                             subtitleTemporalGeneration=analysisSource.generation;
@@ -11973,6 +11989,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleMoveValid=move.valid;
                 if (move.valid)
                 {
+                    PipelinePreparationScope preparing(libplaceboRenderStartedTick);
                     if (!subtitleCutPasteHook && !subtitleCutPasteHookFailed)
                     {
                         subtitleCutPasteHook = CreateSubtitleCutPasteHook(d3d11->gpu);
@@ -12068,10 +12085,10 @@ struct LibplaceboVideoRenderer::Impl
             {
                 const auto& r=subtitleBoxResult.bounds;
                 const auto& bars=subtitlePreview->current.barEvidence;
-				DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d padding=%d,%d,%d bar_authority=%d bar_tracking=%d picture=%d-%d consume_ms=%.3f peak_consume_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d future_available=%d matching_frames=%u analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d current_scan_ms=%.3f window_new_scan_ms=%.3f window_new_scans=%u worker_async=1 bar_reason=%s bar_depth=%d/%d bar_support=%d/%d bar_black_fraction=%.4f/%.4f reference_proof=%d/%d reference_support=%d/%d reference_black_fraction=%.4f/%.4f reference_max_intrusion=%d/%d bar_samples=%zu",
+				DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d raw_lines=%d resolved_lines=%d box=%d,%d-%d,%d padding=%d,%d,%d bar_authority=%d bar_tracking=%d picture=%d-%d consume_ms=%.3f peak_consume_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d future_available=%d matching_frames=%u analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d current_scan_ms=%.3f window_new_scan_ms=%.3f window_new_scans=%u worker_async=1 bar_reason=%s bar_depth=%d/%d bar_support=%d/%d bar_black_fraction=%.4f/%.4f reference_proof=%d/%d reference_support=%d/%d reference_black_fraction=%.4f/%.4f reference_max_intrusion=%d/%d bar_samples=%zu",
                     sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.detected?1:0,
                     subtitleBoxResult.held?1:0,subtitleBoxResult.revised?1:0,subtitleBoxResult.observations,
-					subtitleBoxResult.lineCount,r.left,r.top,r.right,r.bottom,
+					subtitleBoxResult.lineCount,rawAnalysis.lineCount,subtitlePreview->text.lineCount,r.left,r.top,r.right,r.bottom,
                     safeSubtitlePadding.sides,safeSubtitlePadding.top,safeSubtitlePadding.bottom,
                     barAuthority?1:0,
                     subtitlePreview->current.barTrackingAuthority?1:0,
@@ -12101,11 +12118,13 @@ struct LibplaceboVideoRenderer::Impl
                         card.left,card.top,card.right,card.bottom,cleanup.left,cleanup.top,cleanup.right,cleanup.bottom,
                         display.left,display.top,display.right,display.bottom,geometry.pictureTop,geometry.pictureBottom);
                     const auto& measured=subtitleBoxResult.sourcePanel;
-                    DebugLog::Log("SUBTITLE BACKING: frame=%llu cue=%llu reason=%s held_measurements=%llu measured=%d,%d-%d,%d accepted=%d,%d-%d,%d",
+                    DebugLog::Log("SUBTITLE BACKING: frame=%llu cue=%llu reason=%s held_measurements=%llu measured=%d,%d-%d,%d accepted=%d,%d-%d,%d complete_card=%d proved=%d,%d-%d,%d",
                         sourceSequence,subtitleBoxResult.cue,subtitleCutPastePresentation.BackingDecisionReason(),
                         subtitleCutPastePresentation.HeldBackingMeasurements(),
                         measured.left,measured.top,measured.right,measured.bottom,
-                        cleanup.left,cleanup.top,cleanup.right,cleanup.bottom);
+                        cleanup.left,cleanup.top,cleanup.right,cleanup.bottom,rawAnalysis.provenSourcePanel.Valid()?1:0,
+                        rawAnalysis.provenSourcePanel.left,rawAnalysis.provenSourcePanel.top,
+                        rawAnalysis.provenSourcePanel.right,rawAnalysis.provenSourcePanel.bottom);
                     for(int line=0;line<subtitleBoxResult.lineCount && line<3;++line) {
                         const auto& capture=geometry.glyphLines[line];
                         DebugLog::Log("SUBTITLE CAPTURE LINE: frame=%llu cue=%llu line=%d capture=%d,%d-%d,%d",
@@ -14697,8 +14716,7 @@ struct LibplaceboVideoRenderer::Impl
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
-		libplaceboRenderStartedTick.store(GetTickCount64(),
-			std::memory_order_release);
+		PipelinePreparationScope preparing(libplaceboRenderStartedTick);
 		originalPrPassAccumulator.BeginFrame();
 		renderParams.info_callback = sampleOriginalPr ?
 			AlphaOriginalPrRenderLoadInfoCallback : nullptr;
@@ -14779,7 +14797,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (sampleOriginalPr)
 			originalPrLastPasses.store(originalPrPasses,
 				std::memory_order_relaxed);
-		libplaceboRenderStartedTick.store(0, std::memory_order_release);
+		preparing.Complete();
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);
 		const double renderMs = std::chrono::duration<double, std::milli>(

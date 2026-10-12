@@ -53,6 +53,9 @@ struct SubtitleBoxResult
     // Measured original opaque card footprint inside the active picture.
     // Independent of destination styling and display padding.
     SubtitleBoxRect sourcePanel;
+    // Complete finite-card proof from this frame, for cleanup only.
+    // Never grants glyph ownership or inherits destination padding.
+    SubtitleBoxRect provenSourcePanel;
     std::array<SubtitleBoxRect, 3> linePanels{};
     // True measured opaque interior, excluding the outside cleanup fringe.
     // Live detection always marks this measured, including an empty interior
@@ -140,7 +143,7 @@ private:
     std::vector<Line> m_components, m_lines;
     std::shared_ptr<SubtitleInkSnapshot> m_inkSnapshot;
     SubtitleBoxResult m_result;
-    SubtitleBoxRect m_currentBarAnchor, m_currentSourcePanel;
+    SubtitleBoxRect m_currentBarAnchor, m_currentSourcePanel, m_currentProvenSourcePanel;
     std::array<SubtitleBoxRect, 3> m_currentLinePanels{};
     SubtitleBoxRect m_currentCapturePanel;
     std::array<SubtitleBoxRect, 3> m_currentLineCapturePanels{};
