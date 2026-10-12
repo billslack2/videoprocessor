@@ -36,6 +36,8 @@ public:
 	EOTF eotf = EOTF::UNKNOWN;
 	ColorSpace colorspace = ColorSpace::UNKNOWN;
 	bool invertedVertical = false;
+	// TV-led Dolby Vision HDMI RGB tunnel in DeckLink R210.
+	bool dolbyVisionTunnel = false;
 
 	// Will be non-null if valid
 	HDRDataSharedPtr hdrData = nullptr;

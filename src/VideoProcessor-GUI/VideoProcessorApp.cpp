@@ -812,6 +812,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments(
 	// renderer implementation details in the UI.
 	AppendConfigBoolOption(arguments, config, { "scene_correction_basic" }, L"/scene_correction_basic");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
+		AppendConfigBoolOption(arguments, config, { "dolby_vision_tunnel" }, L"/dolby_vision_tunnel");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
 	}
@@ -1122,6 +1123,7 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/disable_detection_features") ||
 		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/newlldv") ||
+		IsCommandLineOption(argument, L"/dolby_vision_tunnel") ||
 		IsCommandLineOption(argument, L"/startminimized") ||
 		IsCommandLineOption(argument, L"/active_output_sweep") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_show_info");
@@ -2018,6 +2020,11 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/newlldv", booleanValue))
 			{
 				dlg.EnableNewLldvHeuristic(booleanValue);
+			}
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/dolby_vision_tunnel", booleanValue))
+			{
+				dlg.EnableDolbyVisionTunnel(booleanValue);
 			}
 
 			if (wcscmp(pArgs[i], L"/lldv_max_cll") == 0 && (i + 1) < iNumOfArgs)

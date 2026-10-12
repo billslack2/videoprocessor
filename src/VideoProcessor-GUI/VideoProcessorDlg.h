@@ -175,6 +175,7 @@ public:
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
 	void EnableNewLldvHeuristic(bool enabled = true);
+	void EnableDolbyVisionTunnel(bool enabled = true);
 	void EnableBoundedInvalidCaptureRecovery(bool enabled);
 	void SetLldvMaxCll(double value);
 	void SetLldvMaxFall(double value);
@@ -331,6 +332,7 @@ protected:
 	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
 	bool m_useNewLldvHeuristic = false;
+	bool m_enableDolbyVisionTunnel = false;
 	// Tester-facing LLDV diagnostics are emitted only when the decision or
 	// effective result changes, rather than for every state rebuild.
 	std::string m_lastLldvDecisionDiagnostic;

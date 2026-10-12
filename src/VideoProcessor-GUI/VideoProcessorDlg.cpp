@@ -5279,6 +5279,12 @@ void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
 	m_useNewLldvHeuristic = enabled;
 }
 
+void CVideoProcessorDlg::EnableDolbyVisionTunnel(bool enabled)
+{
+	m_enableDolbyVisionTunnel = enabled;
+	DebugLog::Log("Dolby Vision RGB tunnel: enabled=%d", enabled ? 1 : 0);
+}
+
 void CVideoProcessorDlg::SetLldvMaxCll(double value)
 {
 	m_lldvMaxCllOverride = value;
@@ -11829,6 +11835,48 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		default:
 			throw std::runtime_error("Unknown HdrLuminanceOptions");
 	}
+
+	// The opt-in path is limited to R210 carrying an RGB8 Dolby tunnel.
+	// DeckLink reports the tunnel's wrapper as SDR/Rec.709, so use the
+	// recovered picture's PQ/BT.2020 state for output negotiation.
+	const int rendererIndex = m_rendererCombo.GetCurSel();
+	const RendererId* rendererId = rendererIndex >= 0 ?
+		reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(rendererIndex)) : nullptr;
+	videoState->dolbyVisionTunnel = m_enableDolbyVisionTunnel &&
+		rendererId && rendererId->backend == RendererBackend::LIBPLACEBO &&
+		m_captureDeviceVideoState->valid &&
+		m_captureDeviceVideoState->videoFrameEncoding == VideoFrameEncoding::R210 &&
+		m_captureDeviceVideoState->eotf == EOTF::SDR;
+	if (videoState->dolbyVisionTunnel)
+	{
+		videoState->eotf = EOTF::PQ;
+		videoState->colorspace = ColorSpace::BT_2020;
+		if (!videoState->hdrData)
+			videoState->hdrData = std::make_shared<HDRData>();
+		auto& hdr = *videoState->hdrData;
+		if (hdr.displayPrimaryRedX <= 0 || hdr.displayPrimaryGreenX <= 0 ||
+			hdr.displayPrimaryBlueX <= 0 || hdr.whitePointX <= 0)
+		{
+			hdr.displayPrimaryRedX = ColorSpaceToCie1931RedX(ColorSpace::BT_2020);
+			hdr.displayPrimaryRedY = ColorSpaceToCie1931RedY(ColorSpace::BT_2020);
+			hdr.displayPrimaryGreenX = ColorSpaceToCie1931GreenX(ColorSpace::BT_2020);
+			hdr.displayPrimaryGreenY = ColorSpaceToCie1931GreenY(ColorSpace::BT_2020);
+			hdr.displayPrimaryBlueX = ColorSpaceToCie1931BlueX(ColorSpace::BT_2020);
+			hdr.displayPrimaryBlueY = ColorSpaceToCie1931BlueY(ColorSpace::BT_2020);
+			hdr.whitePointX = ColorSpaceToCie1931WpX(ColorSpace::BT_2020);
+			hdr.whitePointY = ColorSpaceToCie1931WpY(ColorSpace::BT_2020);
+		}
+		if (hdr.masteringDisplayMaxLuminance <= 0)
+			hdr.masteringDisplayMaxLuminance = 1000;
+		if (hdr.maxCll <= 0)
+			hdr.maxCll = 1000;
+		if (hdr.maxFall <= 0)
+			hdr.maxFall = 1000;
+		DebugLog::Log("Dolby Vision RGB tunnel: effective source R210/12-bit 4:2:2 PQ BT.2020");
+	}
+	else if (m_enableDolbyVisionTunnel)
+		DebugLog::Log("Dolby Vision RGB tunnel: waiting for R210 SDR capture state");
 
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;

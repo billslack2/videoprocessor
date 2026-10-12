@@ -19,6 +19,7 @@ VideoState::VideoState(const VideoState& other)
 	eotf = other.eotf;
 	colorspace = other.colorspace;
 	invertedVertical = other.invertedVertical;
+	dolbyVisionTunnel = other.dolbyVisionTunnel;
 
 	// Deepcopy
 	if (other.hdrData)

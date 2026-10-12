@@ -140,6 +140,7 @@ private:
 		{
 			std::vector<BYTE> pixels;
 			VideoFrameFormatterOutputContract contract;
+			DolbyVisionTunnelFrameMetadata dolby;
 			double conversionCpuMs = 0.0;
 			int64_t completedQpc = 0;
 		};
