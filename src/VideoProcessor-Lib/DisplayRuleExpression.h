@@ -165,7 +165,7 @@ namespace DisplayRuleExpression
 				"previous_profile.") == 0);
 	}
 
-	enum class Operation { Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual };
+	enum class Operation { Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual, Contains };
 
 	struct Node
 	{
@@ -261,6 +261,12 @@ namespace DisplayRuleExpression
 				return true;
 			}
 
+			if (operation == Operation::Contains)
+			{
+				value = actual.find(expected.front()) != std::string::npos;
+				return true;
+			}
+
 			const bool equality = std::find(expected.begin(), expected.end(), actual) != expected.end();
 			value = operation == Operation::Equal ? equality : !equality;
 			return true;
@@ -270,7 +276,7 @@ namespace DisplayRuleExpression
 	enum class TokenKind
 	{
 		End, Word, LParen, RParen, And, Or, Not, Equal, NotEqual,
-		Less, LessEqual, Greater, GreaterEqual, Alternative, Invalid
+		Less, LessEqual, Greater, GreaterEqual, Contains, Alternative, Invalid
 	};
 
 	struct Token
@@ -307,6 +313,7 @@ namespace DisplayRuleExpression
 				two('|', '|', TokenKind::Or, token) ||
 				two('=', '=', TokenKind::Equal, token) ||
 				two('!', '=', TokenKind::NotEqual, token) ||
+				two('~', '=', TokenKind::Contains, token) ||
 				two('<', '=', TokenKind::LessEqual, token) ||
 				two('>', '=', TokenKind::GreaterEqual, token)) return token;
 			switch (c)
@@ -339,7 +346,8 @@ namespace DisplayRuleExpression
 				const char next = m_expression[m_position];
 				if (std::isspace(static_cast<unsigned char>(next)) || next == '(' || next == ')' ||
 					next == '!' || next == '=' || next == '<' || next == '>' || next == '&' ||
-					next == '|') break;
+					next == '|' || (next == '~' && m_position + 1 < m_expression.size() &&
+					m_expression[m_position + 1] == '=')) break;
 				++m_position;
 			}
 			if (m_position == start)
@@ -466,6 +474,7 @@ namespace DisplayRuleExpression
 			const std::string operatorText = m_current.text;
 			switch (m_current.kind)
 			{
+			case TokenKind::Contains: operation = Operation::Contains; Next(); break;
 			case TokenKind::Equal: operation = Operation::Equal; Next(); break;
 			case TokenKind::NotEqual: operation = Operation::NotEqual; Next(); break;
 			case TokenKind::Less: operation = Operation::Less; Next(); break;
@@ -512,6 +521,13 @@ namespace DisplayRuleExpression
 			}
 			else return Fail("expected comparison value for '${" + variable + "}'", error);
 
+			if (operation == Operation::Contains)
+			{
+				if (type != ValueType::Text || variable == "key")
+					return Fail("'${" + variable + "}' does not support ~=; use a text variable other than ${key}", error);
+				if (expected.size() != 1 || !quoted.front() || expected.front().empty())
+					return Fail("~= requires exactly one non-empty quoted substring", error);
+			}
 			if (variable == "key")
 			{
 				if (operation != Operation::Equal || expected.size() != 1 || !quoted.front() ||
@@ -538,8 +554,10 @@ namespace DisplayRuleExpression
 						return Fail("'${" + variable + "}' ranges are supported only with = or !=", error);
 				}
 			}
-			else if (operation != Operation::Equal && operation != Operation::NotEqual)
-				return Fail("'${" + variable + "}' supports only = and !=", error);
+			else if (operation != Operation::Equal && operation != Operation::NotEqual &&
+				operation != Operation::Contains)
+				return Fail("'${" + variable + "}' supports only = and !=" +
+					std::string(type == ValueType::Text ? " and ~= for text" : ""), error);
 
 			auto comparison = std::make_shared<Node>();
 			comparison->kind = Node::Kind::Comparison;

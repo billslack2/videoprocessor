@@ -4929,7 +4929,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     rule->setMinimumHeight(72);
     rule->setMaximumHeight(96);
     auto* ruleField = fieldWithHelp(QStringLiteral("When should VP use this profile?"), rule,
-        QStringLiteral("Optional source-condition rule. Example: ${width} >= 1920 && ${eotf} == \"HDR\"."));
+        QStringLiteral("Optional source-condition rule. Example: ${renderer} ~= \"VP Renderer\" && ${source_rate} <= 30. ~= matches a literal substring (case-insensitive for renderer names). Use one non-empty quoted string with a text variable, not a number, Boolean, or ${key}. Parentheses group conditions; ! negates, then && binds before ||. Active profiles can still be selected manually when their rule is false."));
     detailLayout->addWidget(ruleField);
 
     auto* profileFields = new QWidget;

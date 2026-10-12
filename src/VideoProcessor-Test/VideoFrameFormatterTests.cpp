@@ -2423,6 +2423,87 @@ namespace Tests
 			Assert::IsFalse(compiled.Compile("$transfer==PQ|HLG", error, true));
 		}
 
+
+        TEST_METHOD(DisplayRuleSubstringRendererAndRate)
+        {
+            for (bool strict : {false, true})
+            {
+                DisplayRuleExpression::Expression expression;
+                std::string error;
+                Assert::IsTrue(expression.Compile(
+                    "${renderer} ~= \"VP Renderer\" && ${source_rate} <= 30", error, strict));
+                Assert::AreEqual(size_t(2), expression.Variables().size());
+                for (const auto& renderer : {"VP Renderer", "VP Renderer (Beta)", "vp renderer (beta)", "madVR", "Other"})
+                    for (const auto& rate : {"24", "30", "30.01", "60"})
+                    {
+                        int specificity = 0;
+                        const bool expected = std::string(renderer).find("Renderer") != std::string::npos ||
+                            std::string(renderer).find("renderer") != std::string::npos;
+                        Assert::AreEqual(expected && std::stod(rate) <= 30,
+                            expression.Matches([&](const std::string& name, std::string& value) {
+                                value = name == "renderer" ? renderer : rate; return true;
+                            }, specificity, error));
+                        Assert::AreEqual(2, specificity);
+                    }
+            }
+        }
+
+        TEST_METHOD(DisplayRuleSubstringGrammarAndNormalization)
+        {
+            const DisplayRuleExpression::ValueLookup values = [](const std::string& name, std::string& value) {
+                if (name == "renderer") value = "Prefix VP Renderer (Beta) suffix";
+                else if (name == "profile.queue") value = "Very Low-Latency";
+                else return false;
+                return true;
+            };
+            for (const auto& source : {
+                "${renderer}~=\"vp RENDERER\"", "${renderer} ~= '(Beta)'",
+                "${profile.queue} ~= \"low latency\"",
+                "!(${renderer} ~= \"madVR\") && ${renderer} ~= \"VP Renderer\"",
+                "${renderer} ~= \"VP Renderer\" || ${renderer} ~= \"absent\" && ${renderer} ~= \"missing\""})
+            {
+                std::string error; int specificity = 0;
+                Assert::IsTrue(DisplayRuleExpression::Matches(source, values, specificity, error));
+            }
+            for (const auto& source : {"${renderer} ~= \"*\"", "${renderer} ~= \"?\"",
+                "${renderer} ~= \"VP.*\"", "${renderer} ~= \"${renderer}\"",
+                "${renderer} ~= \"absent\" || ${renderer} ~= \"VP\" && ${renderer} ~= \"missing\""})
+            {
+                std::string error; int specificity = 0;
+                Assert::IsFalse(DisplayRuleExpression::Matches(source, values, specificity, error));
+                Assert::IsTrue(error.empty());
+            }
+            for (const auto& actual : {"", "contains", "a~b", "a~=b"})
+            {
+                std::string error; int specificity = 0;
+                auto lookup = [&](const std::string&, std::string& value) { value = actual; return true; };
+                Assert::AreEqual(std::string(actual).find("~=") != std::string::npos,
+                    DisplayRuleExpression::Matches("${renderer} ~= \"~=\"", lookup, specificity, error));
+                if (*actual)
+                    Assert::IsTrue(DisplayRuleExpression::Matches(std::string("${renderer} == \"") + actual + "\"", lookup, specificity, error));
+            }
+            std::string error; int specificity = 0;
+            Assert::IsFalse(DisplayRuleExpression::Matches("${renderer} ~= \"VP\"",
+                [](const std::string&, std::string&) { return false; }, specificity, error));
+        }
+
+        TEST_METHOD(DisplayRuleSubstringRejectsInvalidOperands)
+        {
+            for (bool strict : {false, true})
+                for (const auto& source : {"${renderer} ~= \"\"", "${renderer} ~= \"   \"",
+                    "${width} ~= \"1920\"", "${hdr_metadata} ~= \"true\"", "${key} ~= \"F2\"",
+                    "${unknown} ~= \"VP\"", "${renderer} ~=", "~= \"VP\"",
+                    "${renderer} ~= VP", "${renderer} ~= ${eotf}", "${renderer} ~= \"VP\"|\"madVR\"",
+                    "${renderer} ~= \"VP\" == \"VP\"", "${renderer} ~= \"VP",
+                    "${renderer} ~ \"VP\"", "${renderer} ~== \"VP\"", "${renderer} ~ = \"VP\""})
+                {
+                    DisplayRuleExpression::Expression expression;
+                    std::string error;
+                    Assert::IsFalse(expression.Compile(source, error, strict));
+                    Assert::IsFalse(error.empty());
+                }
+        }
+
 		TEST_METHOD(AspectRatioParserAcceptsAndNormalizesDocumentedForms)
 		{
 			struct Case

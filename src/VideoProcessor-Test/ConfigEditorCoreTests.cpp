@@ -47,6 +47,32 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+
+        TEST_METHOD(SubstringRuleConfigRoundTripAndValidation)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vps");
+            WriteBytes(path, "[vprenderer.Default]\nwhen: ${renderer} == \"VP Renderer\"\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            const std::string rule = "${renderer} ~= \"VP Renderer\" && ${source_rate} <= 30";
+            Assert::IsTrue(document.SetKnown("vprenderer.Default", "when", rule));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            ConfigEditorCore::SaveResult saved;
+            Assert::IsTrue(ConfigEditorCore::SaveSafely(document, saved, error), error.c_str());
+            ConfigEditorCore::ConfigDocument reloaded;
+            Assert::IsTrue(reloaded.Load(path, error), error.c_str());
+            Assert::AreEqual(rule, reloaded.Get("vprenderer.Default", "when"));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error), error.c_str());
+            for (const auto& invalid : {"${renderer} ~= \"\"", "${source_rate} ~= \"30\""})
+            {
+                Assert::IsTrue(reloaded.SetKnown("vprenderer.Default", "when", invalid));
+                Assert::IsFalse(ConfigEditorCore::ValidateCandidate(reloaded, error));
+                Assert::IsFalse(error.empty());
+            }
+            DeleteFileW(path.c_str());
+        }
+
 		TEST_METHOD(ConfigurationRpcDiscoveryReplyRequiresCompleteIdentity)
 		{
 			using namespace ConfigurationRpcProtocol;
