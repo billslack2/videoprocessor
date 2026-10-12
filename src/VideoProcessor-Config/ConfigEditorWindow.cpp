@@ -6218,6 +6218,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         number(QStringLiteral("Background opacity"),QStringLiteral("subtitle_generated_gray_opacity"),0,1,QStringLiteral("0–1"));
         number(QStringLiteral("Background blur"),QStringLiteral("subtitle_generated_gray_blur_px"),0,30,QStringLiteral("source pixels"));
         number(QStringLiteral("Brightness limit"),QStringLiteral("subtitle_generated_gray_max_luminance"),0.01,1,QStringLiteral("linear 0.01–1"));
+        auto* cleanupFill=addChoice(QStringLiteral("Old subtitle area fill"),QStringLiteral("cleanup_fill"),
+            {QStringLiteral("mirror"),QStringLiteral("stretch"),QStringLiteral("temporal")},false);
+        cleanupFill->setItemText(0,QStringLiteral("Mirror nearby picture"));
+        cleanupFill->setItemText(1,QStringLiteral("Stretch clean picture"));
+        cleanupFill->setItemText(2,QStringLiteral("Temporal clean frame"));
+        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Temporal uses a matching clean frame and also falls back to mirror."));
         form = addCollapsibleSection(QStringLiteral("hdr_analysis"),
             QStringLiteral("HDR analysis"), QStringLiteral("Protect HDR analysis from subtitles in every processing style."), false);
 		pictureOnlyHdrAnalysis = addBoolean(
@@ -6609,6 +6615,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if(key == QStringLiteral("subtitle_generated_gray_opacity")) return QStringLiteral("0.85");
                 if(key == QStringLiteral("subtitle_generated_gray_blur_px")) return QStringLiteral("3");
                 if(key == QStringLiteral("subtitle_generated_gray_max_luminance")) return QStringLiteral("0.16");
+                if(key == QStringLiteral("temporal_fill")) return QStringLiteral("false");
+                if(key == QStringLiteral("cleanup_fill"))
+                    return value(section,QStringLiteral("temporal_fill")).compare(QStringLiteral("true"),Qt::CaseInsensitive)==0
+                        ? QStringLiteral("temporal") : QStringLiteral("mirror");
             }
             if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
             {
