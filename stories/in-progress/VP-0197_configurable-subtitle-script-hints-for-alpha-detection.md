@@ -307,3 +307,28 @@ Release/deployment evidence:
 - VP restarted from its deployment directory. Select Thai in the active
   Subtitles profile to exercise the new mode. Story remains In Progress
   pending playback qualification; no beta merge or source commit performed.
+
+
+## Rebase and deployment (2026-10-11)
+
+User requested rebase onto the latest default branch and local deployment.
+GitHub default discovered as `v1.4.01-beta`, fetched tip
+`d06012680e1cb6f68b8a3e05eb52ef9c80d397e4`. Accumulated feature work was
+committed locally and rebased without conflicts. Feature branch remains
+`codex/subtitle-script-preference-20261011`, clean at
+`554571ee30505998f46a58b9ea988567329d087e`. No source push or merge performed.
+
+Full x64 Release solution rebuild succeeded (exit 0), using the recorded
+Magewell SDK. Deployed the host, stable and Beta renderer DLLs, Beta bundled
+dependencies, Config editor/discovery DLL, and license/readme files. Every
+installed artifact hash matched the Release output. No tests executed.
+
+Backup: `C:\Videoprocessor\vp\deployment-backups\rebased-subtitle-modes-20261011-203024`. Deployment: 2026-10-11T20:30:25.3040534-04:00.
+Configuration was not edited; hash remained `43096D5D1F3096726C2665FE5CCCB440105B51CA2333EE237A5517B8F6E1C784`.
+VP was restarted for user playback testing.
+
+- `config\VideoProcessorConfig.exe`: `F70723BE256E357036C75DF3E3B0BE456E1968E909D0907CAED754465D6E808C`
+- `config\VideoProcessorConfigDiscovery.dll`: `5806CB89438C311D9B90356EA578E2116828E32BFEA3219FB8820869DB5F5851`
+- `VideoProcessor.exe`: `FCDC5A06F4B65297DA86F48F176F78B45D98D30FB565C725BB3BD18C6117A4CC`
+- `vprenderer-beta\VideoProcessorVPRendererBeta.dll`: `2B68F5569432B6ABB03BD137B890535578FBDE11CC4490AF6C4BA446311865CE`
+- `vprenderer\VideoProcessorVPRenderer.dll`: `2FDC2E6F46A9CF56AC9247ACA7BB00F97B2A3A7BEBF1C066570D04ED80661BFB`
