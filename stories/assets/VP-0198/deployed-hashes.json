@@ -1,0 +1,46 @@
+[
+  {
+    "Path": "VideoProcessor.exe",
+    "SHA256": "86C4B91D23F86E7E4CEF8CA57AF82A90B2C3ECF6A5C8348407455668AB0DA4B1"
+  },
+  {
+    "Path": "VideoProcessor.exe.runtime.json",
+    "SHA256": "EC0769A3A76AB11A77773E82417AEF9BC94A7C4728FB348F41901124D820FC12"
+  },
+  {
+    "Path": "vprenderer\\VideoProcessorVPRenderer.dll",
+    "SHA256": "0FA9E07B646E3BA2D385BF58628EA238E92C654C67C1954EC63D70E9A39098B4"
+  },
+  {
+    "Path": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+    "SHA256": "3D5B7258E86C9DEDF930D0C62710B338F282FC10FE3C7F1F0C6DED3DB78FAA01"
+  },
+  {
+    "Path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "SHA256": "8A987F3CF3B28589B6A0908FAD81C6F34BA55994D0D4985354FEB2DC78B42685"
+  },
+  {
+    "Path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+    "SHA256": "87EE54F267A59567B3FE37A77C5CE4C5640060BC50B16A79F9CCC841D665AA1B"
+  },
+  {
+    "Path": "config\\VideoProcessorConfig.exe",
+    "SHA256": "891019ACA5D2EC166D27029A81815AEBD571786355911E15B2A7665514741527"
+  },
+  {
+    "Path": "config\\VideoProcessorConfig.exe.runtime.json",
+    "SHA256": "510B92177DA0BA19C9573AA128F80D03A3390BE3CD855365CCC96BD23FA5309E"
+  },
+  {
+    "Path": "config\\VideoProcessorConfigDiscovery.dll",
+    "SHA256": "D272065B41066F2B9825B58E340F5DBCDB93A4E7D3F49F8376C2889A98E92C7B"
+  },
+  {
+    "Path": "config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+    "SHA256": "CDA8CAFD571A445616E1996E7EF008D2AE19EB2300F9F95073F7A2A5103B44E6"
+  },
+  {
+    "Path": "docs\\CONFIGURATION.html",
+    "SHA256": "E81EAAADFB54143E82623C4A30C133C1E419E9E97DE30B3C64D4F46636C04D99"
+  }
+]

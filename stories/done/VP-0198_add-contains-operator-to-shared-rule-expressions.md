@@ -2,12 +2,13 @@
 
 ## Status
 
-In Progress
+Done
 
-Created 2026-10-11 at the user's request. Implementation authorized 2026-10-11. Next action: perform implementation readiness review against
-the then-current remote beta, trace shared parser consumers and Config
-validation/help, and establish failing parser and integration regressions.
-No implementation blocker is currently known.
+Created and completed 2026-10-11. Implemented, merged in PR #145, and deployed
+from the successful x64 Release build of merge commit
+`a1853906806a459e33439718690e0f1ce7741b59`. The user authorized merge and then
+deployment, explicitly requesting no additional tests before deployment.
+The scoped tests passed; unrelated full-suite failures are disclosed below.
 
 ## User story
 
@@ -160,3 +161,61 @@ Shared parser/AST and Config validation use the same expression implementation;
 existing native tests cover parser, Config document save/reload, and profile runtime.
 No new dependencies or resource-lifetime changes are required. Add failing tests,
 then extend comparison handling and help; run native regressions and x64 Release.
+
+## Completion and validation evidence — 2026-10-11
+
+- Implementation: `c21ce93a5e63cf5730dbe8607a0d60728181798e`;
+  final feature including operator-summary documentation:
+  `f1a369e8b107170ff068e69414aa4fb08ffb3a78`.
+- [PR #145](https://github.com/billslack2/videoprocessor/pull/145) merged into
+  the verified latest beta/default `v1.4.01-beta` at
+  `a1853906806a459e33439718690e0f1ce7741b59`. The merge tree was verified
+  identical to the reviewed feature tree. The merge helper enforced source/base
+  pins and GitHub check status.
+- Before implementation, three positive substring/Config regressions failed;
+  invalid-operand rejection passed. After implementation all five new tests
+  passed: renderer/rate matrix, grammar/normalization, invalid operands,
+  runtime refresh/manual selection, and Config edit/save/reload validation.
+- Focused offscreen Config UI regression `disabling shader rule preserves
+  shortcut` passed before the user's instruction to stop adding tests.
+- Full native suite completed with **2,375 passed, 7 failed, 0 skipped**.
+  This is not a claim of a fully passing suite. Six failures are in unchanged
+  subtitle detector tests/code: `JoinedArabicWordWiderThanEightGlyphHeightsIsNotClipped`,
+  `WideWordSpaceKeepsBothSubtitleWordsInOneLine`,
+  `LargeConnectedArabicWordSurvivesEveryUhdSamplingPhase`,
+  `CardBoundaryKeepsCorroboratedJoinedScriptStrokes`,
+  `TinyPictureSideDotsRemainOwnedWithTheirJoinedScriptRow`, and
+  `ShortArabicCompanionMayAlignToEitherEdgeOfBarAnchor`.
+  `LibplaceboPluginApiVersionCoversConfigurationSnapshots` expects 24 while
+  the base defines 25. The version mismatch was verified directly in the base;
+  subtitle files have no diff from the base. A baseline rerun was not performed.
+  These unrelated failures were disclosed before merge and left unchanged.
+- Build: full solution x64 Release succeeded. An earlier incremental test link
+  reported LNK1103 in `AlphaSourceCropPolicyTests.obj`; rebuilding that generated
+  object and the test linker cache resolved it. The merged commit then received
+  another successful x64 Release build for deployment identity; no additional
+  tests ran after the user's no-more-tests instruction.
+- Local evidence in `E:\codex\videoprocessor\vp-0198-substring`:
+  `TestResults/substring-before.trx`, `substring-after.trx`, `full-suite.trx`,
+  `build-final.log`, and `build-merged.log`.
+
+## Deployment evidence
+
+- Destination: `C:\Videoprocessor\vp`.
+- Backup: `C:\Videoprocessor\vp\deployment-backups\vp-0198-20261011-210233`.
+  Existing host, stable/Beta renderer DLLs, Config, Config discovery DLL, their
+  runtime receipts, and `docs/CONFIGURATION.html` were backed up and replaced.
+- All five binaries had valid x64 Release receipts; all 11 deployed files
+  matched their build/source SHA-256 hashes. Hash evidence is stored in
+  [deployed-hashes.json](../assets/VP-0198/deployed-hashes.json).
+- Six active root settings files retained their hashes. No configuration edits
+  were made. `VideoProcessor.cfg` SHA-256 remained
+  `082998E42D20050C9E1431F2F346307D19FCBAB0C569FB78F546C7EED13E5761`.
+- The hidden background Config process acknowledged graceful updater shutdown
+  and was restarted with its original config/discovery/background arguments.
+  VP itself was already closed and remains closed. No playback smoke test was
+  run, as requested.
+- The first deployment verification incorrectly included an intentionally
+  replaced `.runtime.json` build receipt among settings; it restored the backed-up
+  files. Excluding build receipts from the settings check, the final deployment
+  completed and verified successfully. Original backups were preserved.
