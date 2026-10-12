@@ -20,8 +20,13 @@ Eco Capture use different capture APIs and are excluded from discovery.
 Supported outputs are ARGB for RGB 8-bit, RGB10 repacked to VP's existing R10l
 for RGB 10-bit, and P210 repacked to VP's existing V210 for YCbCr. The default
 RGB10-to-R10l path preserves 4:4:4 channel data. Output choice is checked
-against the card's reported capabilities. RGB 12-bit uses a logged P210
-compatibility conversion to 10-bit YCbCr 4:2:2; unknown RGB depth is rejected.
+against the card's reported capabilities. RGB 12/16-bit, unknown RGB depth (including unavailable input-specific
+status), and RGB 8/10-bit without the matching native output use a logged,
+capability-checked P210 compatibility conversion to limited-range 10-bit YCbCr
+4:2:2. Precision above 10 bits and RGB chroma detail are reduced. Unknown
+input depth remains unknown in the input status; it is not guessed from output.
+Malformed depths, unknown input color, odd P210 widths, and cards without a
+compatible output are rejected with diagnostic details.
 The YCbCr path
 delivers 10-bit 4:2:2; it does not preserve 12-bit precision or 4:4:4 chroma
 when those are supplied by the source. A forced P010 conversion reduces
