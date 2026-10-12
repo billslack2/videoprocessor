@@ -332,3 +332,21 @@ VP was restarted for user playback testing.
 - `VideoProcessor.exe`: `FCDC5A06F4B65297DA86F48F176F78B45D98D30FB565C725BB3BD18C6117A4CC`
 - `vprenderer-beta\VideoProcessorVPRendererBeta.dll`: `2B68F5569432B6ABB03BD137B890535578FBDE11CC4490AF6C4BA446311865CE`
 - `vprenderer\VideoProcessorVPRenderer.dll`: `2FDC2E6F46A9CF56AC9247ACA7BB00F97B2A3A7BEBF1C066570D04ED80661BFB`
+
+
+## Beta integration (2026-10-11)
+
+At the user's explicit merge request, discovered default/latest beta agreement
+on `v1.4.01-beta` and verified the reviewed feature commit and unchanged base.
+Prepared and merged PR https://github.com/billslack2/videoprocessor/pull/144
+using the pinned vp-release merge workflow.
+
+- Feature: `554571ee30505998f46a58b9ea988567329d087e`.
+- Base before merge: `d06012680e1cb6f68b8a3e05eb52ef9c80d397e4`.
+- Merge commit: `7e37c8420e8e584e4c897a88da2c6c35baf9c649`.
+- GitHub reported MERGEABLE/CLEAN and an empty status-check rollup; no checks
+  were bypassed. The clean Release build and local deployment evidence above
+  apply to the feature commit. No new tests were executed for this merge.
+- Merge only: the installed feature build was not replaced and playback was
+  not restarted. Broader script/font qualification remains open; the story
+  stays In Progress rather than claiming every acceptance criterion complete.
