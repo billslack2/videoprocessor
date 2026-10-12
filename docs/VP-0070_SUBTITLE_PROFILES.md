@@ -205,3 +205,26 @@ it. The Subtitle appearance section reuses the compact color picker. Applies
 to both Move styles, including reduced text; Classic remains unchanged.
 Tinting is applied in linear light after extraction, relative to source SDR/HDR
 brightness. Detection, glyph coverage and background reconstruction are unchanged.
+
+
+## Glyph recovery inside measured subtitle boxes
+
+Latin, Arabic, CJK and Thai share a confidence-based recovery path. After a
+subtitle row has been detected, independently measured black-box boundaries
+can support nearby glyphs that exceed the ordinary component height or width.
+Inferred edges, search limits, mirrored margins, cleanup padding and the black
+letterbox alone do not establish this stronger evidence.
+
+Recovery still requires a complete current-frame component, matching text
+color, plausible stroke density, surrounding black, containment in the measured
+interior and an unambiguous relationship to an original subtitle row. Its search,
+component dimensions and sample budget remain bounded. Uncertain dark regions
+continue to use the conservative recovery rules.
+
+Arabic participates in this shared recovery. Existing connected-word handling
+is preserved; recovery does not split joined words or transfer sampled marks
+from another row. Row comparisons use the original extents, and ambiguous
+assignments are rejected. The same protections also apply to the other modes.
+Accepted strong-evidence glyph pixels contribute to capture bounds and sampled
+ownership/signatures, so downstream processing can track the recovered glyphs.
+No new configuration setting is required.
