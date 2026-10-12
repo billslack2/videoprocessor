@@ -177,6 +177,41 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+
+        TEST_METHOD(SubstringRuleRuntimeRefreshAndManualSelection)
+        {
+            CachedConfigTestFile file;
+            std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n"
+                "[queue.Default]\nqueue_size: 16\ntarget_frames: 2\n"
+                "[queue.VP_Low_Rate]\nqueue_size: 24\ntarget_frames: 3\n"
+                "when: ${renderer} ~= \"VP Renderer\" && ${source_rate} <= 30\n";
+            ConfigFile config;
+            Assert::IsTrue(config.Load(file.path));
+            std::string renderer = "VP Renderer", rate = "24", error;
+            const auto lookup = [&](const std::string& name, std::string& value) {
+                if (name == "renderer") value = renderer;
+                else if (name == "source_rate") value = rate;
+                else return false;
+                return true;
+            };
+            UnifiedProfileRuntime::Runtime runtime;
+            Assert::IsTrue(runtime.Initialize(config, lookup, error));
+            Assert::AreEqual(std::string("vp_low_rate"), runtime.GetSnapshot()->queue.profile);
+            UnifiedProfileRuntime::RefreshResult refreshed;
+            renderer = "VP Renderer (Beta)";
+            Assert::IsTrue(runtime.Refresh(lookup, refreshed, error));
+            Assert::AreEqual(std::string("vp_low_rate"), runtime.GetSnapshot()->queue.profile);
+            rate = "60";
+            Assert::IsTrue(runtime.Refresh(lookup, refreshed, error));
+            Assert::AreEqual(std::string("default"), runtime.GetSnapshot()->queue.profile);
+            renderer = "madVR"; rate = "24";
+            Assert::IsTrue(runtime.Refresh(lookup, refreshed, error));
+            Assert::AreEqual(std::string("default"), runtime.GetSnapshot()->queue.profile);
+            UnifiedProfileRuntime::SelectionResult selected;
+            Assert::IsTrue(runtime.SelectProfile("queue", "vp_low_rate", true, lookup, selected, error));
+            Assert::AreEqual(std::string("vp_low_rate"), selected.snapshot->queue.profile);
+        }
+
 		TEST_METHOD(ManualQueueSelectionUsesSavedSectionIdWithoutShortcut)
 		{
 			CachedConfigTestFile file;
