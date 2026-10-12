@@ -1,4 +1,4 @@
-# VP-0198: Add a contains operator to shared rule expressions
+# VP-0198: Add a symbolic substring operator (~=) to shared rule expressions
 
 ## Status
 
@@ -25,14 +25,12 @@ Replace:
 with:
 
 ```text
-${renderer} contains "VP Renderer" && ${source_rate} <= 30
+${renderer} ~= "VP Renderer" && ${source_rate} <= 30
 ```
 
-The user also asked whether `~=` would be the right spelling. Use `contains`
-as the proposed canonical spelling: it clearly communicates literal substring
-matching, whereas `~=` can suggest approximate equality or pattern matching.
-A symbolic alias is not required by this story; do not introduce regex,
-wildcards, fuzzy matching, or approximate numeric comparison.
+The user clarified that the operator must be symbolic. Use `~=` as the
+canonical spelling for literal substring matching. Do not add a `contains`
+keyword alias, regex, wildcards, fuzzy matching, or approximate numeric comparison.
 
 ## Context and reviewed behavior
 
@@ -57,12 +55,13 @@ manually. Preserve this distinction in runtime behavior and Config help.
 
 ## Proposed expression contract
 
-- Add an infix `contains` comparison between a known text variable and exactly
-  one non-empty quoted string. Recognize the lowercase keyword only in operator
-  position; preserve existing values or identifiers containing the word
-  `contains`. Reject `CONTAINS` with a clear operator diagnostic unless a later
-  explicit syntax decision adds case-insensitive keyword spelling.
-- Accept both existing quote styles, for example `${renderer} contains
+- Add an infix `~=` comparison between a known text variable and exactly
+  one non-empty quoted string. Recognize the two-character operator as one
+  token, with or without surrounding whitespace: `${renderer}~="VP Renderer"`
+  and `${renderer} ~= "VP Renderer"` are equivalent. Reject malformed operator
+  spellings such as `~`, `~==`, and `~ =` with a clear diagnostic. Preserve
+  literal `~=` inside quoted values and existing text values containing `~`.
+- Accept both existing quote styles, for example `${renderer} ~=
   'VP Renderer'`. Preserve existing quote parsing: spaces and punctuation inside
   quotes are data; do not silently introduce a new escaping convention. Test
   unterminated quotes and the existing handling of quote characters/backslashes.
@@ -81,12 +80,12 @@ manually. Preserve this distinction in runtime behavior and Config help.
   A quoted `${...}` on the right is literal text, not interpolation. Preserve
   existing context-specific variable restrictions; adding an operator must not
   make renderer variables available in previously unsupported action contexts.
-- Treat `contains` as one comparison atom, like `==`. Preserve grouping and
+- Treat `~=` as one comparison atom, like `==`. Preserve grouping and
   unary negation of comparison atoms, then `&&`, then `||`. For example,
-  `!(${renderer} contains "VP Renderer")` negates the substring comparison;
-  the motivating source-rate expression means `(renderer contains substring)
+  `!(${renderer} ~= "VP Renderer")` negates the substring comparison;
+  the motivating source-rate expression means `(renderer ~= substring)
   AND `(source_rate <= 30)`. Do not reinterpret existing expression precedence.
-- Give a successful non-key contains comparison the same specificity weight as
+- Give a successful non-key substring comparison the same specificity weight as
   one existing non-key comparison. Preserve selection priority/tie behavior,
   dependency discovery, and strict versus legacy grammar rules. Support the
   operator in both shared parser modes without loosening old syntax checks.
@@ -112,8 +111,9 @@ change source, deploy binaries, or edit the user's active configuration.
    mixed-case renderer/substring cases and a substring in the middle of text.
 2. Shared parser tests cover both quote styles, literal punctuation and spaces,
    repeated text, non-matches, missing/empty actual values, rejected empty
-   substring, every invalid operand category, unterminated quotes, keyword
-   boundaries, and literal `contains` values in existing equality rules.
+   substring, every invalid operand category, unterminated quotes, operator
+   token boundaries, optional whitespace, malformed symbolic operators, and
+   literal `~=` and `contains` values in existing equality rules.
    Cover profile-name normalization and preservation of key-chord restrictions.
 3. Composition tests prove `!`, parentheses, `&&`, and `||` precedence and
    evaluation behavior using mixed true/false comparisons. The rate boundary,
@@ -121,7 +121,7 @@ change source, deploy binaries, or edit the user's active configuration.
    alternatives, and strict-mode restrictions keep their existing behavior.
 4. Runtime selection and Config validation agree on valid and invalid examples.
    Exercise actual Config load/edit/save validation and reloading a temporary
-   configuration, not only isolated helper tests. Valid contains expressions
+   configuration, not only isolated helper tests. Valid `~=` expressions
    survive round-trip unchanged; invalid expressions produce actionable errors
    identifying the offending rule/operator/operand.
 5. Production-connected rule-selection tests prove the combined condition works
