@@ -46,13 +46,19 @@ public:
     TEST_METHOD(UnboundedBlackSceneDoesNotManufactureCardEdges) {
         Frame f;f.Fill({0,263,3840,1897},0);f.Text(1751,2089,1825,1873);
         SubtitleOpaqueCardRefinement r;Assert::IsFalse(Refine(f,r));
-        Assert::IsFalse(r.interior.Valid());Assert::IsTrue(r.sampledPixels<20000);
+        Assert::IsFalse(r.interior.Valid());
+        // The source-wide recovery pass adds bounded work for small seeds.
+        Assert::IsTrue(!r.workLimit && r.sampledPixels<30000);
     }
-    TEST_METHOD(SteppedBackingDoesNotAuthorizeItsRectangularUnion) {
+    TEST_METHOD(SteppedBackingProvesOnlyTheSeedContainingRectangle) {
         Frame f;f.Fill({1750,1715,2100,1800},0);f.Fill({1457,1800,2390,1897},0);
         f.Text(1780,2060,1737,1785);f.Text(1751,2089,1825,1873);
-        SubtitleOpaqueCardRefinement r;Assert::IsFalse(Refine(f,r));
-        Assert::IsFalse(r.interior.Valid());
+        SubtitleOpaqueCardRefinement r;Assert::IsTrue(Refine(f,r));
+        Assert::AreEqual(1457,r.interior.left);Assert::AreEqual(1800,r.interior.top);
+        Assert::AreEqual(2390,r.interior.right);Assert::AreEqual(1897,r.interior.bottom);
+        Assert::AreEqual(1,r.glyphRowCount);
+        Assert::IsTrue(r.glyphRows[0].left<=1755 && r.glyphRows[0].right>=2069);
+        Assert::IsTrue(r.glyphRows[0].top>=1800 && r.glyphRows[0].bottom<=1897);
     }
     TEST_METHOD(BrightPictureBoundaryStripCannotBecomeGlyphRow) {
         Frame f;f.Fill({1457,1715,2390,1894},0);
@@ -79,7 +85,7 @@ public:
         Assert::IsTrue(RefineSubtitleOpaqueCard(f.Source(),{1400,1730,2400,1766},36,
             263,1897,28,550,512,512,r));
         Assert::IsTrue(r.workLimit);
-        Assert::IsTrue(r.sampledPixels>131072 && r.sampledPixels<133000);
+        Assert::AreEqual(131072u,r.sampledPixels);
         Assert::AreEqual(200,r.interior.left);Assert::AreEqual(3400,r.interior.right);
         Assert::AreEqual(1690,r.interior.top);Assert::AreEqual(1850,r.interior.bottom);
         Assert::AreEqual(1,r.glyphRowCount);

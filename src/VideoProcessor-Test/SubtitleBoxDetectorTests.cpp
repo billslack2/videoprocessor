@@ -456,7 +456,7 @@ public:
             Fill(f,220,316,370,317,joinLuma);
             if(top)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
                 std::swap(f[y*W+x],f[(H-1-y)*W+x]);
-            SubtitleBoxDetector detector;const auto result=detector.Analyze(Source(f),45,315,1,1);
+            SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);const auto result=detector.Analyze(Source(f),45,315,1,1);
             Assert::IsTrue(result.detected);Assert::IsTrue(result.capturePanel.Valid());
             Assert::IsTrue(result.lineBounds[0].left<=220 && result.lineBounds[0].right>=370);
             if(top)Assert::AreEqual(42,result.capturePanel.top);
@@ -813,7 +813,7 @@ public:
     }
     TEST_METHOD(JoinedArabicWordWiderThanEightGlyphHeightsIsNotClipped) {
         auto f=Frame();PanelToBar(f,190,296,450);JoinedArabicWord(f,200,306,240,20);
-        SubtitleBoxDetector detector;const auto r=detector.Analyze(Source(f),45,315,1,1);
+        SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);const auto r=detector.Analyze(Source(f),45,315,1,1);
         Assert::IsTrue(r.detected,
             L"a centered connected word crossing the bar should use the joined-script width allowance");
         Assert::AreEqual(1,r.lineCount);
@@ -826,7 +826,7 @@ public:
             PanelToBar(f,180,270,470);
             JoinedArabicWord(f,200,306,240,20); // centered lower-bar anchor
             JoinedArabicWord(f,side<0?200:360,277,80,20); // same height, right/left aligned above it
-            SubtitleBoxDetector detector;const auto r=detector.Analyze(Source(f),45,315,1,1);
+            SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);const auto r=detector.Analyze(Source(f),45,315,1,1);
             Assert::IsTrue(r.detected);
             Assert::AreEqual(2,r.lineCount,
                 L"the shorter RTL companion should be related by its shared text edge, not its center");
@@ -869,7 +869,7 @@ public:
                 fill(x,top,x+2*scale,top+2*scale,510);
             auto source=Source(f);source.width=width;source.height=height;
             source.rowBytes=source.chromaRowBytes=width*2;
-            SubtitleBoxDetector detector;
+            SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);
             const auto r=detector.Analyze(source,45*scale,315*scale,1,1);
             const std::wstring context=L"phaseX="+std::to_wstring(phaseX)+
                 L" phaseY="+std::to_wstring(phaseY)+L" detected="+
@@ -2011,7 +2011,7 @@ public:
         JoinedArabicWord(f,200,306,240,20);JoinedArabicWord(f,200,277,240,20);
         // A detached two-pixel diacritic above the connected script body.
         Fill(f,231,275,232,277,510);
-        SubtitleBoxDetector detector;const auto result=detector.Analyze(Source(f),45,315,1,1);
+        SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);const auto result=detector.Analyze(Source(f),45,315,1,1);
         Assert::IsTrue(result.detected);Assert::AreEqual(2,result.lineCount);
         Assert::IsTrue((std::min)(result.lineBounds[0].top,result.lineBounds[1].top)<=275);
     }
@@ -2048,12 +2048,12 @@ public:
         Assert::IsTrue(result.detected);Assert::AreEqual(1,result.lineCount);
         Assert::IsTrue(result.bounds.left<=220 && result.bounds.right>=360);
     }
-    TEST_METHOD(WideWordSpaceKeepsBothSubtitleWordsInOneLine) {
-        // A renderer may leave nearly four glyph heights between words. The
+    TEST_METHOD(ArabicWideWordSpaceKeepsBothSubtitleWordsInOneLine) {
+        // Arabic mode permits nearly four glyph heights between words. The
         // line must retain both extents while the genuine bar strokes remain
         // the acquisition anchor.
         auto f=Frame();Text(f,180,320,5);Text(f,295,320,5);
-        SubtitleBoxDetector detector;
+        SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Arabic);
         const auto result=detector.Analyze(Source(f),45,315,1,1);
         Assert::IsTrue(result.detected);Assert::AreEqual(1,result.lineCount);
         Assert::IsTrue(result.anchor.Valid());
