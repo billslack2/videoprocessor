@@ -27,10 +27,33 @@
   checkout. Synchronize with `origin/main` before editing and commit/push each
   completed state change so the tracker remains authoritative.
 
+## Local x64 Release builds
+
+- The official MWCapture SDK headers are installed at
+  `E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`. For builds from
+  isolated worktrees, pass `/p:MagewellSdkRoot=E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`
+  to MSBuild; the worktree-relative `3rdparty\magewell\SDKv3` path is not
+  populated on this workstation. Confirm
+  `Include\LibMWCapture\MWCapture.h` exists there before treating a build
+  failure as a missing SDK. Keep the SDK outside source worktrees.
+- Standard compile command from a Visual Studio Developer PowerShell:
+  `MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3 /v:minimal`.
+
 ## Testing and diagnostics
 
-- For VideoProcessor testing and troubleshooting, inspect the debug log at
-  `C:\logs\vp.log`.
+- For VideoProcessor testing and troubleshooting, inspect the active runtime log at
+  `C:\Videoprocessor\vp\logs\vp.log` when launched from the deployment directory.
+  Confirm its modification time matches the running process; older sessions may
+  have used `C:\logs\vp.log`. Launch the deployed player with working directory
+  `C:\Videoprocessor\vp` so logs and relative configuration paths resolve there.
+
+- For an exact native subtitle reproduction, optionally set the child process
+  environment variable `VP_SUBTITLE_CAPTURE_PATH` to an absolute scratch-file
+  path before launching VP. The subtitle worker writes one native
+  frame (including unavailable picture/subtitle detection; zero picture bounds
+  in the sidecar must be supplied from independently observed source geometry) and a `.txt` sidecar (dimensions, strides, format, encoding, color space,
+  picture bounds, script hint). Clear the variable for ordinary launches; do
+  not commit captured video pixels. This does not change active configuration.
 
 ## Deployment
 

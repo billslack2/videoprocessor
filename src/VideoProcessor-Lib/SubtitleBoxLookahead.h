@@ -16,15 +16,18 @@ struct SubtitleBarTrackingReference
     ActivePictureFrameIdentity identity;
     int width = 0, height = 0, pictureTop = 0, pictureBottom = 0;
     uint64_t policyGeneration = 0, continuityGeneration = 0;
+    SubtitleScriptHint scriptHint = SubtitleScriptHint::Latin;
     bool valid = false;
 
     bool IsImmediatePredecessor(const ActivePictureFrameIdentity& next,
         int nextWidth, int nextHeight, uint64_t nextPolicyGeneration = 0,
-        uint64_t nextContinuityGeneration = 0) const
+        uint64_t nextContinuityGeneration = 0,
+        SubtitleScriptHint nextScriptHint = SubtitleScriptHint::Latin) const
     {
         return valid && width == nextWidth && height == nextHeight &&
             policyGeneration == nextPolicyGeneration &&
             continuityGeneration == nextContinuityGeneration &&
+            scriptHint == nextScriptHint &&
             identity.transportGeneration == next.transportGeneration &&
             identity.sourceFormatGeneration == next.sourceFormatGeneration &&
             identity.viewportGeneration == next.viewportGeneration &&
@@ -64,6 +67,7 @@ struct SubtitleBoxObservation
     SubtitlePictureAuthority sharedPicture;
     int nearBarDistance=0;
     int optimizationMode=0;
+    SubtitleScriptHint scriptHint=SubtitleScriptHint::Latin;
     ActivePictureFrameIdentity identity;
     SubtitleBoxResult text;
     int width = 0, height = 0, pictureTop = 0, pictureBottom = 0;
@@ -133,6 +137,7 @@ namespace SubtitleBoxLookahead
         result.pictureBottom = observation.barEvidence.captionBackedBottom?observation.height:observation.pictureBottom;
         result.policyGeneration = observation.policyGeneration;
         result.continuityGeneration = observation.continuityGeneration;
+        result.scriptHint = observation.scriptHint;
         result.valid = result.pictureTop > 0 || result.pictureBottom < result.height;
         return result;
     }
@@ -149,6 +154,7 @@ namespace SubtitleBoxLookahead
         result.identity = identity; result.analyzed = true;
         result.nearBarDistance=scanner.NearBarDistance();
         result.optimizationMode=scanner.OptimizationMode();
+        result.scriptHint=scanner.ScriptHint();
         result.width = source.width; result.height = source.height;
         result.policyGeneration = policyGeneration;
         result.continuityGeneration = continuityGeneration;
@@ -182,7 +188,7 @@ namespace SubtitleBoxLookahead
         result.barAuthority = bounds.available;
         result.pictureTop = bounds.top; result.pictureBottom = bounds.bottom;
         if (!discontinuity && priorBar.IsImmediatePredecessor(identity,source.width,source.height,
-            policyGeneration,continuityGeneration))
+            policyGeneration,continuityGeneration,scanner.ScriptHint()))
         {
             result.hasBarTrackingReference = true;
             result.barTrackingReferenceIdentity = priorBar.identity;
@@ -205,7 +211,7 @@ namespace SubtitleBoxLookahead
         // unmasked bar. This path never changes native active-picture bounds.
         bool provisionalMeasurement = false;
         if (!discontinuity && priorBar.IsImmediatePredecessor(identity,source.width,source.height,
-                policyGeneration,continuityGeneration) && priorBar.pictureBottom<source.height &&
+                policyGeneration,continuityGeneration,scanner.ScriptHint()) && priorBar.pictureBottom<source.height &&
             !result.barEvidence.bottomRevalidatedAtReference &&
             bounds.bottom==source.height &&
             !(bounds.bottom<source.height &&
@@ -298,12 +304,33 @@ namespace SubtitleBoxLookahead
         return result;
     }
 
+    // Queue retirement invalidates temporal proof, but not a complete scan of
+    // this exact frame under the same explicit picture authority. Callers must
+    // still check frame identity, policy, script and authority before reuse.
+    inline bool RebindIndependentMeasurement(SubtitleBoxObservation& observation,
+        uint64_t continuityGeneration)
+    {
+        if(observation.continuityGeneration==continuityGeneration)return true;
+        if(!observation.analyzed || observation.analysisRefresh || observation.pendingRefresh ||
+            !observation.sharedPicture.required || !observation.barAuthority ||
+            observation.barTrackingAuthority || observation.hasBarTrackingReference ||
+            observation.currentAnchorUsesTrackedEdge ||
+            !observation.sharedPicture.AvailableFor(observation.identity,observation.width,observation.height) ||
+            observation.pictureTop!=observation.sharedPicture.bounds.top ||
+            observation.pictureBottom!=observation.sharedPicture.bounds.bottom)return false;
+        observation.continuityGeneration=continuityGeneration;
+        observation.incomingBarTrackingReference={};
+        return true;
+    }
+
     inline bool CanReuseMeasurement(const SubtitleBoxObservation& observation,
         const ActivePictureFrameIdentity& identity, int width, int height,
         uint64_t policyGeneration, uint64_t continuityGeneration,
-        bool discontinuity, const SubtitleBarTrackingReference& currentReference)
+        bool discontinuity, const SubtitleBarTrackingReference& currentReference,
+        SubtitleScriptHint scriptHint = SubtitleScriptHint::Latin)
     {
-        if (!observation.analyzed || !SameActivePictureFrameIdentity(observation.identity,identity) ||
+        if (observation.scriptHint!=scriptHint || !observation.analyzed ||
+            !SameActivePictureFrameIdentity(observation.identity,identity) ||
             observation.width != width || observation.height != height ||
             observation.policyGeneration != policyGeneration ||
             observation.continuityGeneration != continuityGeneration ||
@@ -322,11 +349,12 @@ namespace SubtitleBoxLookahead
             measuredReference.pictureBottom != currentReference.pictureBottom ||
             measuredReference.policyGeneration != currentReference.policyGeneration ||
             measuredReference.continuityGeneration != currentReference.continuityGeneration ||
+            measuredReference.scriptHint != currentReference.scriptHint ||
             !SameActivePictureFrameIdentity(measuredReference.identity,currentReference.identity))) return false;
         if (!observation.barTrackingAuthority) return true;
         return observation.hasBarTrackingReference &&
             currentReference.IsImmediatePredecessor(identity,width,height,
-                policyGeneration,continuityGeneration) &&
+                policyGeneration,continuityGeneration,observation.scriptHint) &&
             SameActivePictureFrameIdentity(observation.barTrackingReferenceIdentity,
                 currentReference.identity) &&
             observation.barTrackingReferenceTop == currentReference.pictureTop &&
@@ -340,6 +368,7 @@ namespace SubtitleBoxLookahead
             x.sourceFormatGeneration == y.sourceFormatGeneration &&
             x.viewportGeneration == y.viewportGeneration && x.rendererGeneration == y.rendererGeneration &&
             a.width == b.width && a.height == b.height && a.nearBarDistance==b.nearBarDistance &&
+            a.scriptHint==b.scriptHint &&
             // A measured encoded edge can wobble by about half a percent as
             // scene pixels change. Current strong or fixed-plane current-pixel
             // proof is required on both frames; a lost/changed edge breaks it.
@@ -973,7 +1002,7 @@ namespace SubtitleBoxLookahead
                 a.transportGeneration!=b.transportGeneration || a.sourceFormatGeneration!=b.sourceFormatGeneration ||
                 a.viewportGeneration!=b.viewportGeneration || a.rendererGeneration!=b.rendererGeneration ||
                 previous.width!=next.width || previous.height!=next.height ||
-                previous.nearBarDistance!=next.nearBarDistance ||
+                previous.nearBarDistance!=next.nearBarDistance || previous.scriptHint!=next.scriptHint ||
                 previous.policyGeneration!=next.policyGeneration ||
                 previous.continuityGeneration!=next.continuityGeneration)break;
         }
@@ -1251,10 +1280,11 @@ public:
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
     SubtitleBarTrackingReference BarTrackingReferenceFor(
         const ActivePictureFrameIdentity& next, int width, int height,
-        uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0) const
+        uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
+        SubtitleScriptHint scriptHint = SubtitleScriptHint::Latin) const
     {
         return m_barTrackingReference.IsImmediatePredecessor(next,width,height,
-            policyGeneration,continuityGeneration)
+            policyGeneration,continuityGeneration,scriptHint)
             ? m_barTrackingReference : SubtitleBarTrackingReference{};
     }
     // Detection regions are proposals, not negative evidence outside them.
@@ -1313,14 +1343,16 @@ public:
     bool ReusePreviewForRepeatedSourceFrame(const ActivePictureFrameIdentity& identity,
         int width, int height, bool discontinuity,
         uint64_t policyGeneration, uint64_t continuityGeneration,
-        SubtitleBoxPreview& preview) const
+        SubtitleBoxPreview& preview,
+        SubtitleScriptHint scriptHint = SubtitleScriptHint::Latin) const
     {
         if (!m_hasPrevious || !m_previous.available ||
             !SameActivePictureFrameIdentity(m_previous.current.identity,identity) ||
             m_previous.current.width != width || m_previous.current.height != height ||
             m_previous.current.discontinuity != discontinuity ||
             m_previous.policyGeneration != policyGeneration ||
-            m_previous.continuityGeneration != continuityGeneration) return false;
+            m_previous.continuityGeneration != continuityGeneration ||
+            m_previous.current.scriptHint != scriptHint) return false;
         preview = m_previous;
         preview.newScanMs = 0.0;
         preview.newScanFrames = 0;
@@ -1330,9 +1362,14 @@ public:
         double sourceFrameMilliseconds = 1000.0/60.0)
     {
         if (!preview.available) { Reset(); m_decisionReason="preview-unavailable"; return {}; }
+        if (m_hasPrevious && m_previous.current.scriptHint!=preview.current.scriptHint) {
+            Reset();
+            m_decisionReason="script-hint-change";
+        }
         if (m_hasPrevious && SameActivePictureFrameIdentity(m_previous.current.identity,preview.current.identity) &&
             m_previous.policyGeneration == preview.policyGeneration &&
-            m_previous.continuityGeneration == preview.continuityGeneration) return m_result;
+            m_previous.continuityGeneration == preview.continuityGeneration &&
+            m_previous.current.scriptHint==preview.current.scriptHint) return m_result;
         auto continuityPreview=preview;
         if(m_refreshedReference.ink &&
             SameActivePictureFrameIdentity(m_refreshedReference.identity,preview.current.identity) &&
@@ -1340,10 +1377,16 @@ public:
             continuityPreview.current.ink=m_refreshedReference.ink;
         m_refreshedReference={};
         const auto& continuity=continuityPreview.current;
+        // Only the pending guard may bridge skipped presentations: it proves
+        // every accepted native pixel again and charges the skipped source time.
+        const bool followsPrevious=m_hasPrevious &&
+            (preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 ||
+             (preview.current.pendingRefresh &&
+              preview.current.identity.acceptedSequence>m_previous.current.identity.acceptedSequence));
         bool same = m_hasPrevious && !preview.current.discontinuity &&
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration &&
-            preview.current.identity.acceptedSequence == m_previous.current.identity.acceptedSequence + 1 &&
+            followsPrevious &&
             SubtitleBoxLookahead::SameCue(m_previous.current,preview.current) &&
             SubtitleBoxLookahead::SameCue(m_reference,preview.current) &&
             preview.text.lineCount >= m_result.lineCount && m_result.detected &&
@@ -1368,7 +1411,7 @@ public:
             }
         const bool continuationContextEligible=m_hasPrevious && m_result.detected &&
             !preview.current.discontinuity &&
-            preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 &&
+            followsPrevious &&
             m_previous.policyGeneration==preview.policyGeneration &&
             m_previous.continuityGeneration==preview.continuityGeneration &&
             SubtitleBoxLookahead::SameContext(m_inkReference,preview.current) &&
