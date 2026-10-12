@@ -351,7 +351,7 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MAXIMUM 2.0
 1.0
 )GLSL";
-    static const char common[]=R"GLSL(
+    static const char commonPrefix[]=R"GLSL(
 // SDR linear values use reference white=1; PQ uses 203 nits=1.
 // HLG uses scene-linear values with nominal reference white at signal 0.75.
 float subtitleDecode(float v) {
@@ -412,9 +412,7 @@ float subtitleSafeDonorEdge(bool fromTop) {
     float edge=fromTop ? generated_clean_bottom : generated_clean_top;
     edge=fromTop ? max(edge,source_bottom) : min(edge,source_top);
     edge=fromTop ? max(edge,content_bottom) : min(edge,content_top);
-    if(picture_capture_right>picture_capture_left &&
-       picture_capture_bottom>picture_capture_top)
-        edge=fromTop ? max(edge,picture_capture_bottom) : min(edge,picture_capture_top);
+
     if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top)
         edge=fromTop ? max(edge,glyph_0_bottom) : min(edge,glyph_0_top);
     if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top)
@@ -427,8 +425,7 @@ float subtitleSafeDonorLeft() {
     float edge=generated_clean_left;
     if(source_right>source_left && source_bottom>source_top) edge=min(edge,source_left);
     if(content_right>content_left && content_bottom>content_top) edge=min(edge,content_left);
-    if(picture_capture_right>picture_capture_left && picture_capture_bottom>picture_capture_top)
-        edge=min(edge,picture_capture_left);
+
     if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top) edge=min(edge,glyph_0_left);
     if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top) edge=min(edge,glyph_1_left);
     if(glyph_2_right>glyph_2_left && glyph_2_bottom>glyph_2_top) edge=min(edge,glyph_2_left);
@@ -438,13 +435,14 @@ float subtitleSafeDonorRight() {
     float edge=generated_clean_right;
     if(source_right>source_left && source_bottom>source_top) edge=max(edge,source_right);
     if(content_right>content_left && content_bottom>content_top) edge=max(edge,content_right);
-    if(picture_capture_right>picture_capture_left && picture_capture_bottom>picture_capture_top)
-        edge=max(edge,picture_capture_right);
+
     if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top) edge=max(edge,glyph_0_right);
     if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top) edge=max(edge,glyph_1_right);
     if(glyph_2_right>glyph_2_left && glyph_2_bottom>glyph_2_top) edge=max(edge,glyph_2_right);
     return edge;
 }
+)GLSL";
+    static const char commonMiddle[]=R"GLSL(
 bool subtitleStretchAvailable() {
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
     float height=picture_bottom-picture_top;
@@ -540,6 +538,8 @@ float subtitleGeneratedCleanupMask(vec2 p, vec3 actual, vec3 fill) {
     return subtitleInGeneratedCleanup(p) ? 1.0 : 0.0;
 }
 // Display-only extension; glyph coordinates and measured cleanup stay unchanged.
+)GLSL";
+    static const char commonSuffix[]=R"GLSL(
 float subtitlePanelSideExtension() {
     return (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5)) ? 6.0 : 0.0;
 }
@@ -635,6 +635,7 @@ vec4 subtitleReducedGlyph(vec2 center) {
     return vec4(premultiplied/max(coverage,0.000001),coverage/(footprint*footprint));
 }
 )GLSL";
+    const std::string common=std::string(commonPrefix)+commonMiddle+commonSuffix;
     static const char composition[]=R"GLSL(
 vec4 hook() {
     vec2 p=HOOKED_pos*HOOKED_size;

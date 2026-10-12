@@ -1849,7 +1849,77 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                         ? Union(m_currentLinePanels[i],cleanup):cleanup;
                 }
             }
-            bool containsCurrent=true;
+            // The rectangle proves backing, not the shape of every bright
+            // object inside it. Rebuild row envelopes from connected ink so a
+            // thin stripe or a component touching a finite card edge cannot
+            // become a glyph merely by widening the row projection.
+            std::vector<uint8_t> cardInk(area,0);
+            std::array<SubtitleBoxRect,3> provedRows{};
+            const auto& interior=refined.interior;
+            const int cardLeft=(std::max)(0,interior.left/step);
+            const int cardRight=(std::min)(w,(interior.right+step-1)/step);
+            const int cardTop=(std::max)(0,interior.top/step);
+            const int cardBottom=(std::min)(h,(interior.bottom+step-1)/step);
+            bool completeInk=true;
+            unsigned cardSamples=0;
+            for(int y=cardTop;y<cardBottom && completeInk;++y)
+                for(int x=cardLeft;x<cardRight;++x) {
+                    if(++cardSamples>131072) {completeInk=false;break;}
+                    const int sy=evidence.sourceRows[y];
+                    AnalysisLumaSample value;
+                    if(!source.Sample(x*step,sy,value)) {completeInk=false;break;}
+                    const size_t pixel=size_t(y)*w+x;
+                    m_luma[pixel]=value.luma;
+                    m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
+                    if(value.luma>=threshold && std::abs(int(value.chromaU)-inkU)<=80 &&
+                        std::abs(int(value.chromaV)-inkV)<=80)cardInk[pixel]=1;
+                }
+            if(completeInk)for(int y=cardTop;y<cardBottom;++y)for(int x=cardLeft;x<cardRight;++x) {
+                const int origin=y*w+x;if(cardInk[origin]!=1)continue;
+                SubtitleBoxRect component{x*step,evidence.sourceRows[y],x*step+step,evidence.sourceRows[y]+step};
+                bool boundary=false,hasCore=false;
+                m_flood.clear();m_flood.push_back(origin);cardInk[origin]=2;
+                for(size_t next=0;next<m_flood.size();++next) {
+                    const int pixel=m_flood[next],cy=pixel/w,cx=pixel%w;
+                    const int sx=cx*step,sy=evidence.sourceRows[cy];
+                    component=Union(component,{sx,sy,sx+step,sy+step});
+                    boundary |= sx<=interior.left || sx>=interior.right-step ||
+                        (interior.top>pictureTop && sy<=interior.top) ||
+                        (interior.bottom<pictureBottom && sy>=interior.bottom-step);
+                    const auto uv=m_chroma[pixel];
+                    hasCore |= m_luma[pixel]>=coreThreshold && coreColor(uv&1023,uv>>16);
+                    for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx) {
+                        const int nx=cx+dx,ny=cy+dy;
+                        if(nx<cardLeft || nx>=cardRight || ny<cardTop || ny>=cardBottom)continue;
+                        const int n=ny*w+nx;if(cardInk[n]!=1)continue;
+                        cardInk[n]=2;m_flood.push_back(n);
+                    }
+                }
+                int row=-1,bestOverlap=0,overlappingRows=0;
+                for(int i=0;i<refined.glyphRowCount;++i) {
+                    const auto& candidate=refined.glyphRows[i];
+                    const int overlap=(std::min)(component.bottom,candidate.bottom)-
+                        (std::max)(component.top,candidate.top);
+                    if(overlap>step && overlap*4>=(std::min)(Height(component),Height(candidate)))++overlappingRows;
+                    if(overlap>bestOverlap){row=i;bestOverlap=overlap;}
+                }
+                // A connector across two rows is not permission to combine
+                // their captures or assign the same glyphs to both rows.
+                if(boundary || !hasCore || row<0 || overlappingRows>1)continue;
+                const int rowHeight=Height(refined.glyphRows[row]);
+                // Joined words have vertical body strokes. A detached, long
+                // horizontal seam does not gain ownership from the black box.
+                if(Height(component)*3<rowHeight && Width(component)>rowHeight*2)continue;
+                provedRows[row]=provedRows[row].Valid()?Union(provedRows[row],component):component;
+                for(int pixel:m_flood)cardInk[pixel]=3;
+            }
+            // Keep the native row envelope for antialiased top/bottom fringes.
+            // Only admitted components may establish a row or its horizontal bounds.
+            for(int row=0;row<refined.glyphRowCount;++row)if(provedRows[row].Valid()) {
+                provedRows[row].top=(std::min)(provedRows[row].top,refined.glyphRows[row].top);
+                provedRows[row].bottom=(std::max)(provedRows[row].bottom,refined.glyphRows[row].bottom);
+            }
+            bool containsCurrent=completeInk;
             std::array<SubtitleBoxRect,3> recovered{};
             int recoveredCount=lineCount;
             for(int i=0;i<lineCount;++i) {
@@ -1862,7 +1932,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     containsCurrent=false;
             }
             for(int row=0;row<refined.glyphRowCount && containsCurrent;++row) {
-                const auto& added=refined.glyphRows[row];int match=-1;
+                const auto& added=provedRows[row];if(!added.Valid())continue;int match=-1;
                 for(int i=0;i<recoveredCount;++i) {
                     const auto& old=recovered[i];
                     const int overlap=(std::min)(old.bottom,added.bottom)-(std::max)(old.top,added.top);
@@ -1910,8 +1980,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     m_luma[pixel]=value.luma;
                     m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
                     if(value.luma<=trackingBlackLimit)evidence.blackBacking[pixel/64]|=uint64_t{1}<<(pixel%64);
-                    if(value.luma>=threshold && std::abs(int(value.chromaU)-inkU)<=80 &&
-                        std::abs(int(value.chromaV)-inkV)<=80) {
+                    if(cardInk[pixel]==3) {
                         evidence.rawInk[pixel/64]|=uint64_t{1}<<(pixel%64);
                         evidence.ownedInk[pixel/64]|=uint64_t{1}<<(pixel%64);
                     }
