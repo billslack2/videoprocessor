@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "inputs": {
+    "checkout": "E:\\codex\\videoprocessor\\rc4-subtitle-fixes",
+    "sourceCommit": "fa4e210db426b086e2ab4ae5d590a10112c4c09c",
+    "betaCommit": "089d32dfe07033a17fce84d0a0b306f2a0b0ae59",
+    "installerToolingCommit": "",
+    "coreVersion": "1.4.0-rc4",
+    "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+    "qtRoot": "C:/Users/bslac/AppData/Local/VideoProcessor/dependencies/Qt/6.8.3/msvc2022_64",
+    "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+    "isccPath": "E:/codex/tools/inno-6.7.3/app/ISCC.exe",
+    "releaseSequence": 20261012181510,
+    "portableZip": true,
+    "reuseVerifiedBuild": false,
+    "workflowSha256": "8AE39BE3C7DFD5EB27FFBE6302B40385E38D1679C071ADEEAA4E618D194C9497",
+    "outputDirectory": "E:\\codex\\releases\\VideoProcessor-1.4.0-rc4-fa4e210d"
+  },
+  "sourceFingerprint": "7447a785c302fe7029318516011fb060ea13e761d40a4176c8630dbe0fb4a507",
+  "testsPassed": 2382,
+  "legacyRuntimeCheckExit": 1,
+  "tools": [
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "version": "18.7.8.30822",
+      "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+    },
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+      "version": "18.0.11814.123",
+      "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+    },
+    {
+      "path": "E:/codex/tools/inno-6.7.3/app/ISCC.exe",
+      "version": "0.0.0.0",
+      "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+    },
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+      "version": "14.51.36247.0",
+      "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+    },
+    {
+      "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64\\bin\\Qt6Core.dll",
+      "version": "6.8.3.0",
+      "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.0-rc4-fa4e210db426.exe",
+      "sha256": "D61AA17A8175DE0CCFD00C90EAD8AFCC69142FC7272864AA07AC32C72A89A6CD",
+      "length": 34684614
+    },
+    {
+      "name": "VideoProcessor-1.4.0-rc4-fa4e210db426-x64-Portable.zip",
+      "sha256": "4AD49BA6AB5FD473C9F64B228C0938DF5CB2BC537FEF5FE69BE43772D7B2EB87",
+      "length": 50051620
+    }
+  ],
+  "signed": false,
+  "qualification": "Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.",
+  "reproducibility": "Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted."
+}

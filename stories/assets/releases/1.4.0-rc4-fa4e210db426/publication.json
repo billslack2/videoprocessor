@@ -1,0 +1,23 @@
+{
+  "publishedUtc": "2026-10-12T18:29:21.8276094Z",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/148",
+  "betaCommit": "089d32dfe07033a17fce84d0a0b306f2a0b0ae59",
+  "releaseCommit": "fa4e210db426b086e2ab4ae5d590a10112c4c09c",
+  "releaseBranch": "codex/rc4-subtitle-fixes",
+  "releaseUrl": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc4",
+  "sequence": 20261012181510,
+  "nativeTests": 2382,
+  "focusedSubtitleTests": 356,
+  "isolatedInstallerChecks": 225,
+  "updaterPolicyChecks": 29,
+  "updaterControlChecks": 19,
+  "portableTransactions": [
+    "full",
+    "config"
+  ],
+  "publicVerification": "Anonymous descriptor download: pinned RSA signature, sequence, exact installer URL/size/SHA256 verified. GitHub asset digests match both local packages. Original RC4 asset digests unchanged. Only EXE/ZIP packages and required vp-update.json published.",
+  "provenance": "Application sources match beta. Release-only changes retain established RC4 packaging fixes and update the renderer API test expectation to 25.",
+  "qualificationLimits": "Development Windows machine; isolated QA identity with matching managed payloads. Clean VM, cross-version rollback, interactive Config persistence, second-computer operation and physical playback not newly qualified. Windows binaries unsigned; update metadata signed.",
+  "diagnostics": "Initial isolated lifecycle run stopped on a renamed QA shortcut expectation. Disposable QA install removed; QA manifest corrected; rerun passed 225 checks. No product code change required.",
+  "lifecycleEvidence": "E:/codex/videoprocessor/rc4-subtitle-fixes/artifacts/full-installer-qa-8e17a49b45644f658be77c5807224ae7/lifecycle.log"
+}
