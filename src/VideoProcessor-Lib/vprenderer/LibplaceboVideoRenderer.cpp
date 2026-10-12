@@ -10741,6 +10741,20 @@ struct LibplaceboVideoRenderer::Impl
 				state.videoFrameEncoding, state.colorspace, frameGeneration
 			};
 		}
+		// The subtitle worker learns glyph pixels from the captured RGB frame.
+		// Keep its presentation-time matching in that same sample domain for a
+		// Dolby Vision tunnel; the converted planes carry IPTPQ-C2 components.
+		AnalysisLumaSource subtitlePixelSource = analysisSource;
+		if (state.dolbyVisionTunnel)
+		{
+			subtitlePixelSource = {
+				reinterpret_cast<const uint8_t*>(videoFrame.GetData()),
+				static_cast<size_t>(state.BytesPerFrame()), width, height,
+				static_cast<size_t>(state.BytesPerRow()), 0,
+				AnalysisLumaFormat::NativeRgb, state.videoFrameEncoding,
+				state.colorspace, frameGeneration
+			};
+		}
 		if (!analysisSource.IsValid())
 		{
 			renderParams.hooks = nullptr;
@@ -11956,15 +11970,15 @@ struct LibplaceboVideoRenderer::Impl
             ++subtitlePerf.frames;
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
-                if(subtitlePendingGuard.Resolve(currentSubtitlePreview,analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs))++subtitlePerf.recovered;
+                if(subtitlePendingGuard.Resolve(currentSubtitlePreview,subtitlePixelSource,subtitleFrameMs,activeSettings.subtitleHoldMs))++subtitlePerf.recovered;
                 else if(subtitlePerf.pending-subtitlePerf.recovered<=4)
                     DebugLog::Log("SUBTITLE PENDING: frame=%llu reason=%s",sourceSequence,subtitlePendingGuard.DecisionReason());
             }
-            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
+            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,subtitlePixelSource);
             subtitlePreview=&currentSubtitlePreview;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview, activeSettings.subtitleHoldMs,subtitleFrameMs);
             if(activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5 &&
-                !cadenceRepeat && analysisSource.IsValid() && subtitlePreview->available &&
+                !cadenceRepeat && subtitlePixelSource.IsValid() && subtitlePreview->available &&
                 subtitlePreview->current.analyzed && !subtitlePreview->current.pendingRefresh &&
                 !subtitleBoxResult.detected && !subtitlePreview->current.text.detected &&
                 !videoFrame.IsSourceDiscontinuity()) {
@@ -11977,7 +11991,7 @@ struct LibplaceboVideoRenderer::Impl
                     if(subtitleTemporalCleanFrames>=8 &&
                         (!subtitleTemporalTick || tick-subtitleTemporalTick>=250)) {
                         SubtitleTemporalFill::Signature samples;
-                        if(SubtitleTemporalFill::Capture(analysisSource,samples) &&
+                        if(SubtitleTemporalFill::Capture(subtitlePixelSource,samples) &&
                             [&]() {
                                 PipelinePreparationScope preparing(libplaceboRenderStartedTick);
                                 return CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
@@ -11985,7 +11999,7 @@ struct LibplaceboVideoRenderer::Impl
                             }()) {
                             subtitleTemporalSamples=samples;
                             subtitleTemporalScene=sceneResult.eventId;
-                            subtitleTemporalGeneration=analysisSource.generation;
+                            subtitleTemporalGeneration=subtitlePixelSource.generation;
                             subtitleTemporalTick=tick;
                             subtitleTemporalValid=true;
                         }
@@ -11998,7 +12012,7 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                    subtitlePixelSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -12104,11 +12118,11 @@ struct LibplaceboVideoRenderer::Impl
                                 subtitleCompositionTexture->params.blit_dst &&
                                 subtitleTemporalTexture->params.w==width &&
                                 subtitleTemporalTexture->params.h==height &&
-                                subtitleTemporalGeneration==analysisSource.generation &&
+                                subtitleTemporalGeneration==subtitlePixelSource.generation &&
                                 subtitleTemporalScene==sceneResult.eventId &&
                                 tick>=subtitleTemporalTick && tick-subtitleTemporalTick<=10000 &&
                                 !videoFrame.IsSourceDiscontinuity() &&
-                                SubtitleTemporalFill::Matches(analysisSource,
+                                SubtitleTemporalFill::Matches(subtitlePixelSource,
                                     subtitleTemporalSamples,cleanup,
                                     move.pictureTop,move.pictureBottom);
                             if(donorReady) {
