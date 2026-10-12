@@ -423,6 +423,28 @@ float subtitleSafeDonorEdge(bool fromTop) {
         edge=fromTop ? max(edge,glyph_2_bottom) : min(edge,glyph_2_top);
     return clamp(edge+(fromTop ? 2.0 : -2.0),picture_top,picture_bottom);
 }
+float subtitleSafeDonorLeft() {
+    float edge=generated_clean_left;
+    if(source_right>source_left && source_bottom>source_top) edge=min(edge,source_left);
+    if(content_right>content_left && content_bottom>content_top) edge=min(edge,content_left);
+    if(picture_capture_right>picture_capture_left && picture_capture_bottom>picture_capture_top)
+        edge=min(edge,picture_capture_left);
+    if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top) edge=min(edge,glyph_0_left);
+    if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top) edge=min(edge,glyph_1_left);
+    if(glyph_2_right>glyph_2_left && glyph_2_bottom>glyph_2_top) edge=min(edge,glyph_2_left);
+    return edge;
+}
+float subtitleSafeDonorRight() {
+    float edge=generated_clean_right;
+    if(source_right>source_left && source_bottom>source_top) edge=max(edge,source_right);
+    if(content_right>content_left && content_bottom>content_top) edge=max(edge,content_right);
+    if(picture_capture_right>picture_capture_left && picture_capture_bottom>picture_capture_top)
+        edge=max(edge,picture_capture_right);
+    if(glyph_0_right>glyph_0_left && glyph_0_bottom>glyph_0_top) edge=max(edge,glyph_0_right);
+    if(glyph_1_right>glyph_1_left && glyph_1_bottom>glyph_1_top) edge=max(edge,glyph_1_right);
+    if(glyph_2_right>glyph_2_left && glyph_2_bottom>glyph_2_top) edge=max(edge,glyph_2_right);
+    return edge;
+}
 bool subtitleStretchAvailable() {
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
     float height=picture_bottom-picture_top;
@@ -463,17 +485,29 @@ bool subtitleInGeneratedCleanup(vec2 p) {
 vec3 subtitleGeneratedRawFill(vec2 p) {
     if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    float sampleY=fromTop
-        ? clamp(2.0*generated_clean_bottom-p.y, min(picture_bottom-0.5,generated_clean_bottom+0.5),picture_bottom-0.5)
-        : clamp(2.0*generated_clean_top-p.y-1.0,
-            picture_top+0.5,max(picture_top+0.5,generated_clean_top-0.5));
-    vec3 reflected=subtitleLinear(HOOKED_tex(vec2(clamp(p.x,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb);
-    vec3 filled=subtitleStretchAvailable() ? subtitleStretchedPicture(p) : reflected;
-    float left=max(0.5,generated_clean_left-1.5);
-    float right=min(HOOKED_size.x-0.5,generated_clean_right+1.5);
-    vec3 a=subtitleLinear(HOOKED_tex(vec2(left,p.y)*HOOKED_pt).rgb);
-    vec3 b=subtitleLinear(HOOKED_tex(vec2(right,p.y)*HOOKED_pt).rgb);
+    float safeEdge=subtitleSafeDonorEdge(fromTop);
+    bool stretched=subtitleStretchAvailable();
+    bool mirrorAvailable=fromTop ? safeEdge<picture_bottom-1.0 : safeEdge>picture_top+1.0;
+    vec3 filled=vec3(0.0);
+    if(stretched) filled=subtitleStretchedPicture(p);
+    else if(mirrorAvailable) {
+        float sampleY=fromTop
+            ? clamp(2.0*safeEdge-p.y,safeEdge+0.5,picture_bottom-0.5)
+            : clamp(2.0*safeEdge-p.y-1.0,picture_top+0.5,safeEdge-0.5);
+        filled=subtitleLinear(HOOKED_tex(vec2(clamp(p.x,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb);
+    }
+    float donorLeft=subtitleSafeDonorLeft()-1.5;
+    float donorRight=subtitleSafeDonorRight()+1.5;
+    bool hasLeft=donorLeft>=0.5;
+    bool hasRight=donorRight<=HOOKED_size.x-0.5;
+    if(!hasLeft && !hasRight) return filled;
+    vec3 a=filled,b=filled;
+    if(hasLeft) a=subtitleLinear(HOOKED_tex(vec2(donorLeft,p.y)*HOOKED_pt).rgb);
+    if(hasRight) b=subtitleLinear(HOOKED_tex(vec2(donorRight,p.y)*HOOKED_pt).rgb);
+    if(!hasLeft) a=b;
+    if(!hasRight) b=a;
     vec3 side=mix(a,b,clamp((p.x-generated_clean_left)/max(generated_clean_right-generated_clean_left,1.0),0.0,1.0));
+    if(!stretched && !mirrorAvailable)return side;
     float edge=min(p.x-generated_clean_left,generated_clean_right-p.x);
     return mix(side,filled,smoothstep(0.0,24.0,edge)*(fromTop ? step(generated_clean_bottom+1.0,picture_bottom) : step(picture_top+1.0,generated_clean_top)));
 }

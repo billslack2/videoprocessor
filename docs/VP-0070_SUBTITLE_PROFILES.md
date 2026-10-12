@@ -205,3 +205,91 @@ it. The Subtitle appearance section reuses the compact color picker. Applies
 to both Move styles, including reduced text; Classic remains unchanged.
 Tinting is applied in linear light after extraction, relative to source SDR/HDR
 brightness. Detection, glyph coverage and background reconstruction are unchanged.
+
+
+## Glyph recovery inside measured subtitle boxes
+
+Latin, Arabic, CJK and Thai share a confidence-based recovery path. After a
+subtitle row has been detected, independently measured black-box boundaries
+can support nearby glyphs that exceed the ordinary component height or width.
+Inferred edges, search limits, mirrored margins, cleanup padding and the black
+letterbox alone do not establish this stronger evidence.
+
+Recovery still requires a complete current-frame component, matching text
+color, plausible stroke density, surrounding black, containment in the measured
+interior and an unambiguous relationship to an original subtitle row. Its search,
+component dimensions and sample budget remain bounded. Uncertain dark regions
+continue to use the conservative recovery rules.
+
+Arabic participates in this shared recovery. Existing connected-word handling
+is preserved; recovery does not split joined words or transfer sampled marks
+from another row. Row comparisons use the original extents, and ambiguous
+assignments are rejected. The same protections also apply to the other modes.
+Accepted strong-evidence glyph pixels contribute to capture bounds and sampled
+ownership/signatures, so downstream processing can track the recovered glyphs.
+No new configuration setting is required.
+
+
+## Removing the original subtitle background
+
+For a detected subtitle overlapping the picture, original-box measurement is
+independent of glyph grouping and of whether letters cross the letterbox edge.
+A local dark-row stop may be an ungrouped mark inside the box; it does not prove
+that the original box has ended. Every such caption now nominates one bounded
+finite-card refinement, including rows whose local margins appear complete.
+
+A complete card covering the accepted picture-side ink supplies cleanup bounds
+even if glyph regrouping is rejected. Glyph capture keeps its separate ownership
+checks, including Arabic connected-word and mark handling. The current frame's
+complete-card proof may enlarge a same-cue removal footprint without requiring
+a glyph revision. Weaker local measurements cannot use that proof to grow an
+unchanged cue's cleanup into adjacent scenery.
+
+Stretch, mirror and side donors stay outside the combined original cleanup,
+source, capture and glyph extents. Missing donors are not clamped back into the
+subtitle. Backing logs include `complete_card` and `proved` coordinates so the
+removal boundary can be distinguished from the detected glyph bounds.
+
+
+A bar-crossing tone mark can nominate a caption while understating the full
+line's width and height. If the narrow finite-card proof fails, a second attempt
+uses source-resolution discovery bounds and finite side witnesses across the
+source width. Both attempts share one 131072-sample budget. Only a proved opaque
+card permits recovery up to the existing source-relative glyph-height ceiling;
+search limits never establish a card edge. This applies symmetrically to top
+and bottom subtitles and retains script-specific glyph ownership rules.
+
+
+### Subtitle shader loading status (2026-10-12)
+
+Subtitle composition and temporal background capture use the existing
+libplacebo renderer and bounded shader cache. Both passes now participate in
+VP's existing UI-owned `Preparing video pipeline...` notice, with the same
+500 ms threshold as the main render. Previously the status timer began only
+after these passes, leaving their cold compilation invisible to the UI.
+The shared timer scope clears on success, failure, and C++ exception unwinding.
+
+This change preserves the VP-0140 shader lifecycle decision: no second graphics
+device, synthetic prewarm, variant scheduler, or forced dynamic-constant policy.
+Cold compilation still runs on the presentation worker and can pause video;
+the existing separate UI notice remains paintable during that work. This is
+status coverage, not a claim of asynchronous compilation or uninterrupted video.
+
+
+### Complete-card third rows with short lookahead (2026-10-12)
+
+The crowded-caption policy previously required a four-frame horizon for a
+non-anchor row beyond the nearest picture-side row. A two/three-frame queue
+therefore pruned a clear third line even when the detector recovered every row
+and proved the entire card for cleanup.
+
+The short-window exception requires at least two independent full observations
+within the existing continuously visible anchor horizon. Each observation must
+prove a complete card, with the candidate row entirely inside the picture,
+the proved box, and its measured capture interior. Every available observation
+must match the card, line bounds and signature, and preserve at least 97.5% of
+owned glyph pixels in both directions. Refresh-only observations, incomplete
+proofs, and work-limit results cannot use it. Existing longer-window rules and
+ordinary nearest-row handling remain unchanged. The same evidence requirements
+apply to all script hints, including Arabic; no glyph shape or joining rule is
+relaxed. BBOX telemetry now records raw and lookahead-resolved line counts.

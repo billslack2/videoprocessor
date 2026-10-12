@@ -106,7 +106,7 @@ void SubtitleBoxDetector::Reset()
 {
     m_sampledRows.clear();m_sharedSampleCount=0;
     m_inkSnapshot.reset();
-    m_result = {}; m_currentBarAnchor = {}; m_currentSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {}; m_signature = {}; m_currentAnchorSignature = {};
+    m_result = {}; m_currentBarAnchor = {}; m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {}; m_signature = {}; m_currentAnchorSignature = {};
     m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
     m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
@@ -124,7 +124,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     m_diagnosticNearBarGap=-1;m_diagnosticNearBarGapInferred=false;
     m_nearBarEligibilityMeasured=false;m_nearBarEligible=false;
     m_currentBarAnchor = {};
-    m_currentSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {};
+    m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {};
     m_inkSnapshot.reset();
     m_currentAnchorSignature = {};
     m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
@@ -1596,6 +1596,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         if(pictureBottom<source.height)record(pictureBottom-unpaddedBottom,bottomInferred);
     };
     std::array<SubtitleBoxRect,3> cardInteriors{};
+    // Strong recovery requires witnessed sides, not a dark search limit,
+    // mirrored inset, cleanup padding, or the physical bar by itself.
+    std::array<SubtitleBoxRect,3> boundedCards{};
     int incompleteCardSeed=-1;
     SubtitleBoxRect completedCard;
     // Measure the original card separately from glyph bounds. Start with each
@@ -1612,7 +1615,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             unsigned count=0,black=0;
             for(int x=r.left;x<r.right;++x) {
                 const auto label=m_labels[y*w+x];
-                if(label && componentOwners[label]==lineIndices[selected]+1) continue;
+                bool captionInk=false;
+                // Thai tone marks may be grouped as a separate accepted row.
+                // Their white pixels are still subtitle ink, not a bright
+                // scene edge that proves the black box has ended. Exclude all
+                // accepted caption rows while measuring this dark margin.
+                if(label)for(int row=0;row<lineCount;++row)
+                    captionInk |= componentOwners[label]==lineIndices[row]+1;
+                if(captionInk)continue;
                 ++count;black+=darkSample(x,y);
             }
             return count>=unsigned((std::max)(3,Width(r)/5)) && black*100>=count*85;
@@ -1738,8 +1748,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
             return false;
         };
+        // A vertical search limit is not a clean donor boundary. A tall
+        // blank card margin can outlive the glyph-height search even when
+        // both side edges are visible. Require the finite-card proof before
+        // treating that remaining black margin as ordinary picture.
         if(incompleteCardSeed<0 &&
-            (!measuredLeft || !measuredRight || touchesSearchBoundary || hasExcludedSideInk()))
+            (!measuredLeft || !measuredRight || topInferred || bottomInferred ||
+             touchesSearchBoundary || hasExcludedSideInk()))
             incompleteCardSeed=selected;
         // A rectangular caption uses comparable side insets. An occluded side
         // borrows only the measured opposite inset, never a full search radius.
@@ -1759,6 +1774,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         // authorize small otherwise-unrecognized marks in picture content.
         cardInteriors[selected]={left*step,evidence.sourceRows[cardTop],
             right*step,(std::min)(pictureBottom,cardBottom*step)};
+        if(measuredLeft && measuredRight && !topInferred && !bottomInferred &&
+            (unpaddedTop>pictureTop || unpaddedBottom<pictureBottom))
+            boundedCards[selected]={left*step,unpaddedTop,right*step,unpaddedBottom};
         cardInteriors[selected]=ProveCardBoundaryContinuation(source,cardInteriors[selected],
             pictureTop,pictureBottom,componentCardLimit,threshold,inkU,inkV,scale*step);
         m_currentLineCapturePanels[selected]=cardInteriors[selected];
@@ -1768,22 +1786,69 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         if(measured.Valid()) m_currentSourcePanel=m_currentSourcePanel.Valid()
             ? Union(m_currentSourcePanel,measured):measured;
     }
-    // If the old glyph-relative side search could not find a real boundary,
-    // measure the finite card from its opaque whitespace. A partial word must
-    // not set the maximum width or hide another row on that same proved card.
-    // Healthy already-measured cards keep their existing fast path.
+    // Always attempt one bounded full-card proof for the strongest accepted
+    // picture row. A local dark-row stop can be caused by rejected bright ink
+    // before it reaches the real card edge, even when no search limit was hit.
+    // Keep the existing local panels as fallback and only grow them with proof.
+    for(int i=0;i<lineCount;++i)
+        if(lineBoxes[i].top<bottom && lineBoxes[i].bottom>top &&
+            (incompleteCardSeed<0 ||
+             Width(lineBoxes[i])>Width(lineBoxes[incompleteCardSeed])))incompleteCardSeed=i;
     if(incompleteCardSeed>=0) {
-        // The bar anchor can be a short third line. Its nearby whitespace
-        // cannot establish the width of the full card when scenery joins a
-        // side. Use the strongest accepted width already proved in picture.
-        for(int i=0;i<lineCount;++i)
-            if(lineBoxes[i].top<bottom && lineBoxes[i].bottom>top &&
-                Width(lineBoxes[i])>Width(lineBoxes[incompleteCardSeed]))incompleteCardSeed=i;
         const auto seed=lineBoxes[incompleteCardSeed];
         const SubtitleBoxRect nativeSeed{seed.left*step,seed.top*step,seed.right*step,seed.bottom*step};
         SubtitleOpaqueCardRefinement refined;
         if(RefineSubtitleOpaqueCard(source,nativeSeed,(std::max)(Height(seed),glyphHeight)*step,pictureTop,pictureBottom,
             edgeDarkLimit,threshold,inkU,inkV,refined,coreThreshold)) {
+            const int fringe=step+2;
+            const auto& measured=refined.measuredBounds;
+            const SubtitleBoxRect cleanup{(std::max)(0,measured.left-fringe),
+                (std::max)(pictureTop,measured.top-fringe),
+                (std::min)(source.width,measured.right+fringe),
+                (std::min)(pictureBottom,measured.bottom+fringe)};
+            auto coversAcceptedPictureInk=[&]() {
+                if(!cleanup.Valid() || !refined.interior.Valid() || !measured.Valid())return false;
+                bool foundPictureInk=false;
+                for(int row=0;row<lineCount;++row) {
+                    const unsigned owner=unsigned(lineIndices[row])+1;
+                    for(const auto& component:m_components) {
+                        if(componentOwners[component.label]!=owner)continue;
+                        for(int y=(std::max)(0,component.box.top);
+                            y<(std::min)(h,component.box.bottom);++y) {
+                            const int sy=evidence.sourceRows[y];
+                            if(sy<pictureTop || sy>=pictureBottom)continue;
+                            for(int x=(std::max)(0,component.box.left);
+                                x<(std::min)(w,component.box.right);++x) {
+                                if(m_labels[size_t(y)*w+x]!=component.label)continue;
+                                const int sx=(std::min)(source.width-1,x*step);
+                                const int tolerance=step;
+                                if(sx<refined.interior.left-tolerance ||
+                                    sx>=refined.interior.right+tolerance ||
+                                    sy<refined.interior.top-tolerance ||
+                                    sy>=refined.interior.bottom+tolerance ||
+                                    sx<measured.left-tolerance || sx>=measured.right+tolerance ||
+                                    sy<measured.top-tolerance || sy>=measured.bottom+tolerance)
+                                    return false;
+                                foundPictureInk=true;
+                            }
+                        }
+                    }
+                }
+                return foundPictureInk;
+            };
+            if(coversAcceptedPictureInk()) {
+                // This is cleanup authority only. Glyph regrouping and capture
+                // still pass through the separate containsCurrent gate below.
+                m_currentProvenSourcePanel=cleanup;
+                m_currentSourcePanel=m_currentSourcePanel.Valid()
+                    ? Union(m_currentSourcePanel,cleanup):cleanup;
+                for(int i=0;i<lineCount;++i) {
+                    const auto& r=lineBoxes[i];
+                    if(r.top>=bottom || r.bottom<=top)continue;
+                    m_currentLinePanels[i]=m_currentLinePanels[i].Valid()
+                        ? Union(m_currentLinePanels[i],cleanup):cleanup;
+                }
+            }
             bool containsCurrent=true;
             std::array<SubtitleBoxRect,3> recovered{};
             int recoveredCount=lineCount;
@@ -1813,23 +1878,21 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 completedCard=refined.interior;
                 for(int i=lineCount;i<recoveredCount;++i)lineIndices[i]=MaxComponents+i;
                 lineCount=recoveredCount;
-                m_currentSourcePanel={};m_currentCapturePanel={};
-                m_currentLinePanels={};m_currentLineCapturePanels={};cardInteriors={};
-                const int fringe=step+2;
-                const auto& measured=refined.measuredBounds;
-                const SubtitleBoxRect cleanup{(std::max)(0,measured.left-fringe),
-                    (std::max)(pictureTop,measured.top-fringe),
-                    (std::min)(source.width,measured.right+fringe),
-                    (std::min)(pictureBottom,measured.bottom+fringe)};
+                m_currentCapturePanel={};
+                m_currentLineCapturePanels={};cardInteriors={};boundedCards={};
                 for(int i=0;i<lineCount;++i) {
                     const auto& r=recovered[i];
                     lineBoxes[i]={r.left/step,r.top/step,(r.right+step-1)/step,(r.bottom+step-1)/step};
                     box=Union(box,lineBoxes[i]);
                     if(r.top>=pictureBottom || r.bottom<=pictureTop)continue;
+                    boundedCards[i]=completedCard;
                     cardInteriors[i]=ProveCardBoundaryContinuation(source,completedCard,pictureTop,pictureBottom,
                         componentCardLimit,threshold,inkU,inkV,Height(lineBoxes[i])*step);
-                    m_currentLineCapturePanels[i]=cardInteriors[i];m_currentLinePanels[i]=cleanup;
-                    m_currentSourcePanel=cleanup;
+                    m_currentLineCapturePanels[i]=cardInteriors[i];
+                    m_currentLinePanels[i]=m_currentLinePanels[i].Valid()
+                        ? Union(m_currentLinePanels[i],cleanup):cleanup;
+                    m_currentSourcePanel=m_currentSourcePanel.Valid()
+                        ? Union(m_currentSourcePanel,cleanup):cleanup;
                     m_currentCapturePanel=m_currentCapturePanel.Valid()
                         ? Union(m_currentCapturePanel,cardInteriors[i]):cardInteriors[i];
                 }
@@ -1914,15 +1977,27 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // not own individual letters. Complete only the narrow native fringes of
     // accepted rows inside their measured opaque interior. This recovers a
     // question-mark loop or detached diacritic even if grouping rejected it.
-    // Identity signatures below deliberately retain the existing sampled ink.
+    // Ordinary fringe recovery retains sampled identity. Strong bounded-card
+    // recovery also restores sampled ownership for the newly proved component.
     std::array<SubtitleBoxRect,3> nativeCapture{};
+    // Only pixels independently accepted on a bounded card gain ownership.
+    // Keep row seeds immutable until every row has finished recovery.
+    std::vector<uint8_t> recoveredOwners(area,0);
+    std::array<bool,3> recoveredRows{};
     size_t nativeSamples=0;
     constexpr size_t NativeSampleLimit=65536;
+    // Finish ordinary recovery for every row first. Strong recovery consumes
+    // only the remaining shared budget and cannot change legacy hop/chain or
+    // attached-component behavior (particularly joined Arabic words).
+    for(int recoveryPhase=0;recoveryPhase<2;++recoveryPhase)
     for(int selected=0;selected<lineCount;++selected) {
+        const bool strongSearch=recoveryPhase==1;
+        const auto& boundedCard=boundedCards[selected];
+        if(strongSearch && !boundedCard.Valid())continue;
         const auto coarse=lineBoxes[selected];
         const SubtitleBoxRect seed{coarse.left*step,coarse.top*step,
             (std::min)(source.width,coarse.right*step),(std::min)(source.height,coarse.bottom*step)};
-        nativeCapture[selected]=seed;
+        if(!strongSearch)nativeCapture[selected]=seed;
         auto interior=cardInteriors[selected];
         // The physical bar is already verified backing. Complete adjacent
         // native glyph pixels there too; no visible rectangular card edge is
@@ -1933,12 +2008,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             else if(seed.top>=pictureBottom)interior={0,pictureBottom,source.width,source.height};
         }
         if(!interior.Valid() || nativeSamples>=NativeSampleLimit)continue;
-        constexpr int NativeHop=15,NativeReach=60;
+        const int seedHeight=Height(seed);
+        const int NativeHop=strongSearch?(std::max)(15,(std::min)(60,seedHeight/2)):15;
+        const int NativeReach=strongSearch?(std::max)(60,(std::min)(120,seedHeight)):60;
         const SubtitleBoxRect roi{(std::max)(interior.left+1,seed.left-NativeReach),
             (std::max)(0,seed.top-NativeReach),(std::min)(interior.right-1,seed.right+NativeReach),
             (std::min)(source.height,seed.bottom+NativeReach)};
         if(!roi.Valid())continue;
-        const int rw=Width(roi),rh=Height(roi),seedHeight=Height(seed);
+        const int rw=Width(roi),rh=Height(roi);
         const size_t cells=size_t(rw)*rh;
         m_nativeCardSamples.resize(cells);m_nativeCardState.assign(cells,0);
         auto inside=[&](int x,int y) {
@@ -2003,10 +2080,68 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     (std::max)(component.top,row.top*step);
                 if(overlap>0 && std::abs(center-(row.top+row.bottom)*step)<ownDistance)return;
             }
+            const int cw=Width(component),ch=Height(component);
+            const int horizontalGap=(std::max)({0,seed.left-component.right,component.left-seed.right});
+            const int verticalGap=(std::max)({0,seed.top-component.bottom,component.top-seed.bottom});
+            const int rowOverlap=(std::min)(seed.bottom,component.bottom)-(std::max)(seed.top,component.top);
+            // All scripts share box confidence. Arabic keeps its joined-word
+            // width, and detached marks must belong to the original row; a
+            // wider search must never turn nearby dots into a new word/row.
+            bool strongGlyph=strongSearch && !attached && boundedCard.Valid() &&
+                component.left>=boundedCard.left+2 && component.right<=boundedCard.right-2 &&
+                component.top>=boundedCard.top+2 && component.bottom<=boundedCard.bottom-2 &&
+                ch<=seedHeight*3 && cw<=seedHeight*JoinedWordMaxGlyphHeights &&
+                horizontalGap<=(std::min)(60,seedHeight/2) &&
+                ((ch>=seedHeight/2 && rowOverlap>=seedHeight/3) ||
+                 (ch<seedHeight/2 && verticalGap<=seedHeight/3 &&
+                  component.left<seed.right && component.right>seed.left)) &&
+                m_flood.size()>=size_t((std::max)(3,ch/2)) &&
+                m_flood.size()*100>=size_t(cw)*ch*2 &&
+                m_flood.size()*100<=size_t(cw)*ch*75;
+            if(strongGlyph) {
+                unsigned matchingColor=0;
+                for(int index:m_flood) {
+                    const auto& value=m_nativeCardSamples[index];
+                    matchingColor+=std::abs(int(value.chromaU)-inkU)<=32 &&
+                        std::abs(int(value.chromaV)-inkV)<=32;
+                    const int sx=roi.left+index%rw,sy=roi.top+index/rw;
+                    if(sx%step)continue;
+                    const auto row=std::lower_bound(evidence.sourceRows.begin(),evidence.sourceRows.end(),sy);
+                    if(row==evidence.sourceRows.end() || *row!=sy)continue;
+                    const size_t pixel=size_t(row-evidence.sourceRows.begin())*w+sx/step;
+                    const auto label=m_labels[pixel];
+                    if((recoveredOwners[pixel] && recoveredOwners[pixel]!=selected+1) ||
+                        (label && componentOwners[label] && componentOwners[label]!=lineIndices[selected]+1))
+                        strongGlyph=false;
+                }
+                strongGlyph=strongGlyph && matchingColor*100>=m_flood.size()*90;
+                for(int other=0;other<lineCount && strongGlyph;++other)if(other!=selected) {
+                    const auto& row=lineBoxes[other];
+                    const int overlap=(std::min)(component.bottom,row.bottom*step)-
+                        (std::max)(component.top,row.top*step);
+                    const int otherHorizontalGap=(std::max)({0,row.left*step-component.right,
+                        component.left-row.right*step});
+                    const int otherVerticalGap=(std::max)({0,row.top*step-component.bottom,
+                        component.top-row.bottom*step});
+                    // Compare EVERY original row, even when a tiny Arabic/Thai
+                    // mark lies wholly in the interline gap and has no sampled
+                    // grid pixels. Require a unique winner with a native-pixel
+                    // margin; a grid ownership ledger alone cannot resolve it.
+                    const int distance=verticalGap*2+horizontalGap;
+                    const int otherDistance=otherVerticalGap*2+otherHorizontalGap;
+                    if(otherDistance<=distance+(std::max)(2,step) ||
+                        (overlap>0 && overlap*3>=(std::min)(ch,Height(row)*step)))strongGlyph=false;
+                }
+            }
+            // The extra pass authorizes only detached, strongly proved ink.
+            // Its wider search must not enlarge the legacy attached path or
+            // fall back to ordinary punctuation rules on ambiguous evidence.
+            if(strongSearch && !strongGlyph)return;
             // Standalone marks need surrounding black and a bounded footprint.
-            // A long boundary/reflection stripe cannot masquerade as a glyph.
+            // Strong local evidence may override the usual 1.5x height / 2x
+            // width, but not color, stroke density, row ownership or backing.
             if(!attached) {
-                if(Width(component)>seedHeight*2 || Height(component)>seedHeight*3/2)return;
+                if(!strongGlyph && (cw>seedHeight*2 || ch>seedHeight*3/2))return;
                 unsigned count=0,black=0;
                 // One-pixel rings often contain the antialiased fringe of a
                 // curved parenthesis. Test black backing just beyond that
@@ -2022,6 +2157,21 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 if(!count || black*100<count*85)return;
             }
             nativeCapture[selected]=Union(nativeCapture[selected],component);
+            if(strongGlyph) {
+                recoveredRows[selected]=true;
+                // Earlier shape filtering may have cleared these grid pixels.
+                // Restore only actual native ink, never a rectangular fill.
+                for(int index:m_flood) {
+                    const int sx=roi.left+index%rw,sy=roi.top+index/rw;
+                    if(sx%step)continue;
+                    const auto row=std::lower_bound(evidence.sourceRows.begin(),evidence.sourceRows.end(),sy);
+                    if(row==evidence.sourceRows.end() || *row!=sy)continue;
+                    const size_t pixel=size_t(row-evidence.sourceRows.begin())*w+sx/step;
+                    recoveredOwners[pixel]=static_cast<uint8_t>(selected+1);
+                    evidence.rawInk[pixel/64]|=uint64_t{1}<<(pixel%64);
+                    evidence.ownedInk[pixel/64]|=uint64_t{1}<<(pixel%64);
+                }
+            }
         };
         for(int pass=0;pass<4 && nativeSamples<NativeSampleLimit;++pass) {
             const auto previous=nativeCapture[selected];
@@ -2042,6 +2192,15 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             if(now.left==previous.left && now.top==previous.top && now.right==previous.right && now.bottom==previous.bottom)break;
         }
     }
+    // Feed recovered glyphs through signatures, temporal proof and display
+    // bounds as well as native capture. Otherwise a later mask can clip a
+    // component that this pass has already accepted.
+    for(int i=0;i<lineCount;++i)if(recoveredRows[i]) {
+        const auto& r=nativeCapture[i];
+        lineBoxes[i]=Union(lineBoxes[i],{r.left/step,r.top/step,
+            (r.right+step-1)/step,(r.bottom+step-1)/step});
+        box=Union(box,lineBoxes[i]);
+    }
     const bool actuallyCrosses=box.top*step<pictureTop || box.bottom*step>pictureBottom;
     m_nearBarEligibilityMeasured=true;
     m_nearBarEligible=actuallyCrosses || (nearBarDistance>0 && m_diagnosticNearBarGap>=0 &&
@@ -2051,6 +2210,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // A small tolerant visual signature is used only for cue identity. All
     // line extents are still inspected on every frame, even after geometry locks.
     auto belongs=[&](int pixel,int selectedLine) {
+        if(recoveredOwners[pixel])return selectedLine<0 || recoveredOwners[pixel]==selectedLine+1;
         const int y=pixel/w,x=pixel%w,sy=evidence.sourceRows[y];
         if(completedCard.Valid() && x*step>=completedCard.left && x*step<completedCard.right &&
             sy>=completedCard.top && sy<completedCard.bottom && evidence.Get(x,y,true)) {
@@ -2208,6 +2368,7 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     }
     m_result.detected=true; m_result.held=false; m_result.revised=revised; m_result.workLimit=false;
     m_result.sourcePanel=m_currentSourcePanel;
+    m_result.provenSourcePanel=m_currentProvenSourcePanel;
     m_result.linePanels=m_currentLinePanels;
     m_result.capturePanel=m_currentCapturePanel;
     m_result.lineCapturePanels=m_currentLineCapturePanels;

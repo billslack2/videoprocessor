@@ -18,37 +18,46 @@ struct SubtitleOpaqueCardRefinement
     bool workLimit = false;
 };
 
-inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
+inline bool RefineSubtitleOpaqueCardAttempt(const AnalysisLumaSource& source,
     const SubtitleBoxRect& seed, int glyphHeight, int pictureTop,
     int pictureBottom, int darkLimit, int inkFloor, int inkU, int inkV,
-    SubtitleOpaqueCardRefinement& result, int coreInkFloor = -1)
+    SubtitleOpaqueCardRefinement& result, int coreInkFloor, int searchScale,
+    bool fullSourceWidth, int maximumRecoveredRowHeight,
+    unsigned& remainingSamples)
 {
     result = {};
-    if (!source.IsValid() || !seed.Valid() || glyphHeight < 4 ||
+    if (!source.IsValid() || !seed.Valid() || glyphHeight < 4 || searchScale < 4 ||
         pictureTop < 0 || pictureBottom > source.height || pictureTop >= pictureBottom)
         return false;
     const int first = (std::max)(pictureTop, seed.top);
     const int last = (std::min)(pictureBottom, seed.bottom);
     if (first >= last) return false;
-    const int stride = (std::max)(1, (std::min)(8, glyphHeight / 12));
+    const int analysisGridStride = (std::min)(8,
+        (std::max)((source.width + 959) / 960, (source.height + 539) / 540));
+    const int stride = fullSourceWidth
+        ? (std::max)(1, (std::min)(8, (std::max)(analysisGridStride, searchScale / 12)))
+        : (std::max)(1, (std::min)(8, glyphHeight / 12));
     const int center = (seed.left + seed.right) / 2;
-    const int maximumWidth = (std::min)(source.width - 2,
-        (std::max)((seed.right - seed.left) * 8, glyphHeight * 32));
+    const int maximumWidth = fullSourceWidth ? source.width - 2 :
+        (std::min)(source.width - 2,
+            (std::max)((seed.right - seed.left) * 8, glyphHeight * 32));
     // A partial seed need not be centered in its card. Search every possible
     // bounded card containing the seed, then enforce the measured width below.
     // One outside witness pixel distinguishes a real edge from the limit.
-    const int minX = (std::max)(0, seed.right - maximumWidth - 1);
-    const int maxX = (std::min)(source.width - 1, seed.left + maximumWidth);
-    const int maxDepth = (std::min)(source.height / 3, glyphHeight * 6);
+    const int minX = fullSourceWidth ? 0 : (std::max)(0, seed.right - maximumWidth - 1);
+    const int maxX = fullSourceWidth ? source.width - 1 :
+        (std::min)(source.width - 1, seed.left + maximumWidth);
+    const int maxDepth = (std::min)(source.height / 3, searchScale * 6);
     const int minY = (std::max)(pictureTop, first - maxDepth);
     const int maxY = (std::min)(pictureBottom, last + maxDepth);
-    constexpr unsigned sampleBudget = 131072;
     auto sample = [&](int x, int y, AnalysisLumaSample& p) {
         if (x < 0 || x >= source.width || y < pictureTop || y >= pictureBottom)
             return false;
-        if (++result.sampledPixels > sampleBudget) {
+        if (!remainingSamples) {
             result.workLimit = true; return false;
         }
+        --remainingSamples;
+        ++result.sampledPixels;
         return source.Sample(x, y, p);
     };
     auto dark = [&](int x, int y) {
@@ -92,7 +101,7 @@ inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
             }
         }
     };
-    nominate(stride, glyphHeight);
+    nominate(stride, searchScale);
     if (result.workLimit || candidates.size() < 2) return false;
     int selected = -1, bestWidth = 0;
     for (size_t i = 0; i < candidates.size(); ++i) {
@@ -220,7 +229,7 @@ inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
         }
         if (!result.glyphRowCount) return false;
         for (int i = 0; i < result.glyphRowCount; ++i)
-            if (result.glyphRows[i].bottom - result.glyphRows[i].top > glyphHeight * 2)
+            if (result.glyphRows[i].bottom - result.glyphRows[i].top > maximumRecoveredRowHeight)
                 return false;
         result.interior = { left, cardTop, right, cardBottom };
         result.measuredBounds = { outerLeft, cardTop, outerRight, cardBottom };
@@ -281,16 +290,16 @@ inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
             containsInk &= covered;
         }
         for (int i = 0; i < result.glyphRowCount; ++i)
-            containsInk &= result.glyphRows[i].bottom - result.glyphRows[i].top <= glyphHeight * 2;
+            containsInk &= result.glyphRows[i].bottom - result.glyphRows[i].top <= maximumRecoveredRowHeight;
         if (!found || (containsInk && result.interior.bottom - result.interior.top >
             best.interior.bottom - best.interior.top)) { best = result; found = true; }
     };
     for (const auto& trial : trials) consider(trial);
     if (trials.size() == 1 && !result.workLimit) {
         // On a three-line card a connected shadow may cover all whitespace
-        // beside the middle row. Look one further glyph height for a measured
+        // beside the middle row. Look one further search scale for a measured
         // inner side, preserving the original proof and its remaining budget.
-        nominate((glyphHeight / stride + 1) * stride, glyphHeight * 2);
+        nominate((searchScale / stride + 1) * stride, searchScale * 2);
         if (!result.workLimit) {
             appendInnerTrials();
             for (size_t i = 1; i < trials.size(); ++i) consider(trials[i]);
@@ -303,4 +312,35 @@ inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
     // Optional work cannot revoke a completed proof. An unfinished trial is
     // never copied into best; retain the shared-budget exhaustion diagnostic.
     return found;
+}
+
+inline bool RefineSubtitleOpaqueCard(const AnalysisLumaSource& source,
+    const SubtitleBoxRect& seed, int glyphHeight, int pictureTop,
+    int pictureBottom, int darkLimit, int inkFloor, int inkU, int inkV,
+    SubtitleOpaqueCardRefinement& result, int coreInkFloor = -1)
+{
+    constexpr unsigned sampleBudget = 131072;
+    unsigned remainingSamples = sampleBudget;
+    SubtitleOpaqueCardRefinement narrow;
+    if (RefineSubtitleOpaqueCardAttempt(source, seed, glyphHeight, pictureTop,
+        pictureBottom, darkLimit, inkFloor, inkU, inkV, narrow, coreInkFloor,
+        glyphHeight, false, glyphHeight * 2, remainingSamples)) {
+        result = narrow;
+        return true;
+    }
+
+    // Small edge marks can be valid nomination seeds while badly understating
+    // the subtitle card's width and the distance needed to find clean backing.
+    // Keep discovery tied to source geometry, with finite source-side witnesses;
+    // glyph-height limits remain in force for the fast attempt above.
+    const int discoveryScale = (std::max)(glyphHeight, source.height / 12);
+    const int recoveryRowLimit = (std::max)(glyphHeight * 2, source.height / 12);
+    SubtitleOpaqueCardRefinement broad;
+    const bool broadProof = RefineSubtitleOpaqueCardAttempt(source, seed, glyphHeight,
+        pictureTop, pictureBottom, darkLimit, inkFloor, inkU, inkV, broad,
+        coreInkFloor, discoveryScale, true, recoveryRowLimit, remainingSamples);
+    broad.sampledPixels += narrow.sampledPixels;
+    if (!broadProof) broad.workLimit = broad.workLimit || narrow.workLimit;
+    result = broad;
+    return broadProof;
 }
