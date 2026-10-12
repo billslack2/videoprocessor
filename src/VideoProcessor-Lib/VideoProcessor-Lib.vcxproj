@@ -523,6 +523,11 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.AVX2.cpp">
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <WholeProgramOptimization>false</WholeProgramOptimization>

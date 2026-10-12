@@ -685,6 +685,7 @@
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.Common.h" />
     <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp" />
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp" />
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.AVX2.cpp" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.Common.h" />
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.AVX2.cpp" />

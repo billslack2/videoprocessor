@@ -5,6 +5,7 @@
 #include <pch.h>
 #include <VideoFrame.h>
 #include <VideoState.h>
+#include <CpuFeatures.h>
 #include "CR210DolbyVisionTunnelFormatter.h"
 
 #include <array>
@@ -72,6 +73,32 @@ namespace
 			static_cast<uint8_t>(((packed >> 10) & 0x3FFU) >> shift),
 			static_cast<uint8_t>((packed & 0x3FFU) >> shift)
 		};
+	}
+
+	// Equivalent to the original RGB8 unpack and 12-bit I/C reconstruction.
+	// Keep each shift constant inside the hot loop for the scalar fallback.
+	template<unsigned Shift>
+	void ConvertRowsScalar(const uint8_t* source, uint16_t* output,
+		uint32_t width, uint32_t height, uint32_t stride,
+		uint32_t firstRow, uint32_t rowCount)
+	{
+		const size_t planePixels = static_cast<size_t>(width) * height;
+		for (uint32_t row = firstRow; row < firstRow + rowCount; ++row)
+		{
+			const uint8_t* input = source + static_cast<size_t>(row) * stride;
+			uint16_t* y = output + static_cast<size_t>(row) * width;
+			uint16_t* uv = output + planePixels + static_cast<size_t>(row) * width;
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				const uint32_t p = ReadBigEndian32(input + static_cast<size_t>(x) * 4);
+				y[x] = static_cast<uint16_t>(
+					((p >> (2 + Shift)) & 0xFF00U) |
+					((p << (4 - Shift)) & 0xF0U));
+				uv[x] = static_cast<uint16_t>(
+					((p >> (12 + Shift)) & 0xFF00U) |
+					((p >> Shift) & 0xF0U));
+			}
+		}
 	}
 
 	struct ParsedPacket
@@ -158,6 +185,27 @@ namespace
 	}
 }
 
+CR210DolbyVisionTunnelFormatter::CR210DolbyVisionTunnelFormatter()
+{
+	m_hasAVX2 = CpuFeatures::SupportsAvx2Kernels();
+	for (uint32_t i = 0; i < MAX_WORKERS; ++i)
+	{
+		m_conversionWork[i] = CreateThreadpoolWork(ConversionWorkCallback, this, nullptr);
+		if (!m_conversionWork[i])
+			break;
+		++m_workerCount;
+	}
+}
+
+CR210DolbyVisionTunnelFormatter::~CR210DolbyVisionTunnelFormatter()
+{
+	for (uint32_t i = 0; i < m_workerCount; ++i)
+	{
+		WaitForThreadpoolWorkCallbacks(m_conversionWork[i], TRUE);
+		CloseThreadpoolWork(m_conversionWork[i]);
+	}
+}
+
 void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 {
 	if (!state || !state->displayMode ||
@@ -184,6 +232,8 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 	m_metadata = {};
 	m_pendingMetadata = {};
 	m_hasPendingMetadata = false;
+	DebugLog::Log("Dolby Vision RGB tunnel unpack: %s, row workers=%u",
+		m_hasAVX2 ? "AVX2" : "scalar", m_workerCount);
 }
 
 bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
@@ -299,26 +349,61 @@ metadata_complete:
 		return true;
 	}
 
-	// P216-style semiplanar output: 12-bit intensity in the high bits of
-	// each 16-bit Y sample, alternating 12-bit chroma in Cb/Cr pairs.
-	const size_t pixels = static_cast<size_t>(m_width) * m_height;
-	auto* yPlane = reinterpret_cast<uint16_t*>(output);
-	auto* uvPlane = yPlane + pixels;
+	// P216-style semiplanar output, with exact 12-bit I/C codes.
 	const bool leftAligned = m_alignment == ByteAlignment::LEFT;
-	for (uint32_t row = 0; row < m_height; ++row)
+	auto* outputWords = reinterpret_cast<uint16_t*>(output);
+	if (m_workerCount > 0 &&
+		static_cast<uint64_t>(m_width) * m_height >= 1920ULL * 1080ULL)
 	{
-		const uint8_t* inputRow = source + static_cast<size_t>(row) * m_stride;
-		uint16_t* y = yPlane + static_cast<size_t>(row) * m_width;
-		uint16_t* uv = uvPlane + static_cast<size_t>(row) * m_width;
-		for (uint32_t x = 0; x < m_width; ++x)
+		m_workerSource = source;
+		m_workerOutput = outputWords;
+		m_workerLeftAligned = leftAligned;
+		const uint32_t rowsPerSegment = m_height / (m_workerCount + 1);
+		uint32_t firstRow = 0;
+		for (uint32_t i = 0; i < m_workerCount; ++i)
 		{
-			const Rgb8 rgb = DecodeRgb(ReadBigEndian32(inputRow + x * 4),
-				leftAligned);
-			y[x] = static_cast<uint16_t>(
-				((static_cast<unsigned>(rgb.g) << 4) | (rgb.b & 15U)) << 4);
-			uv[x] = static_cast<uint16_t>(
-				((static_cast<unsigned>(rgb.r) << 4) | (rgb.b >> 4)) << 4);
+			m_workerFirstRow[i] = firstRow;
+			m_workerRowCount[i] = rowsPerSegment;
+			firstRow += rowsPerSegment;
+			SubmitThreadpoolWork(m_conversionWork[i]);
 		}
+		ConvertRows(source, outputWords, firstRow, m_height - firstRow, leftAligned);
+		for (uint32_t i = 0; i < m_workerCount; ++i)
+			WaitForThreadpoolWorkCallbacks(m_conversionWork[i], FALSE);
 	}
+	else
+		ConvertRows(source, outputWords, 0, m_height, leftAligned);
 	return true;
+}
+
+void CR210DolbyVisionTunnelFormatter::ConvertRows(
+	const uint8_t* source, uint16_t* output, uint32_t firstRow,
+	uint32_t rowCount, bool leftAligned) const
+{
+	if (m_hasAVX2)
+	{
+		ConvertRowsAVX2(source, output, firstRow, rowCount, leftAligned);
+		return;
+	}
+	if (leftAligned)
+		ConvertRowsScalar<2>(source, output, m_width, m_height, m_stride,
+			firstRow, rowCount);
+	else
+		ConvertRowsScalar<0>(source, output, m_width, m_height, m_stride,
+			firstRow, rowCount);
+}
+
+void CALLBACK CR210DolbyVisionTunnelFormatter::ConversionWorkCallback(
+	PTP_CALLBACK_INSTANCE, PVOID context, PTP_WORK work)
+{
+	auto* formatter = static_cast<CR210DolbyVisionTunnelFormatter*>(context);
+	uint32_t index = 0;
+	while (index < formatter->m_workerCount &&
+		formatter->m_conversionWork[index] != work)
+		++index;
+	if (index == formatter->m_workerCount)
+		return;
+	formatter->ConvertRows(formatter->m_workerSource, formatter->m_workerOutput,
+		formatter->m_workerFirstRow[index], formatter->m_workerRowCount[index],
+		formatter->m_workerLeftAligned);
 }
