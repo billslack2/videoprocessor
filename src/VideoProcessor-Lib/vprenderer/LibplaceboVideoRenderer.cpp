@@ -11585,6 +11585,15 @@ struct LibplaceboVideoRenderer::Impl
 			auto found = doviMetadataCache.find(key);
 			if (found == doviMetadataCache.end())
 			{
+				// libplacebo compares dovi pointers by identity. Retain
+				// matrices until its renderer cache is flushed, then recycle
+				// the storage as a group so this map cannot grow forever.
+				if (doviMetadataCache.size() >= 512)
+				{
+					pl_renderer_flush_cache(renderer);
+					doviMetadataCache.clear();
+					DebugLog::Log("Dolby Vision RGB tunnel: matrix cache recycled after 512 entries");
+				}
 				auto metadata = std::make_unique<pl_dovi_metadata>();
 				*metadata = {};
 				for (int row = 0; row < 3; ++row)

@@ -232,6 +232,13 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 	m_metadata = {};
 	m_pendingMetadata = {};
 	m_hasPendingMetadata = false;
+	m_pendingAffectedId = 0;
+	m_pendingCurrentId = 0;
+	m_pendingAfterCounter = 0;
+	m_activeMetadataId = 0;
+	m_hasActiveMetadataId = false;
+	m_endOfStreamAfterCounter = 0;
+	m_hasEndOfStream = false;
 	DebugLog::Log("Dolby Vision RGB tunnel unpack: %s, row workers=%u",
 		m_hasAVX2 ? "AVX2" : "scalar", m_workerCount);
 }
@@ -242,11 +249,26 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 	if (!frame.GetData() || !output || m_outputSize <= 0)
 		return false;
 	const auto* source = static_cast<const uint8_t*>(frame.GetData());
-	// A packet can describe the immediate next picture. Apply that saved
-	// metadata only when processing the next captured frame.
-	if (m_hasPendingMetadata)
+	// EOS changes the immediate next picture to SDR even when its packet
+	// has no metadata body. A source counter gap can skip that picture, but
+	// every later captured picture is still beyond the HDR stream boundary.
+	if (m_hasEndOfStream &&
+		frame.GetCounter() > m_endOfStreamAfterCounter)
+	{
+		m_metadata = {};
+		m_hasActiveMetadataId = false;
+		m_hasPendingMetadata = false;
+		m_hasEndOfStream = false;
+	}
+	// A packet may announce new DM metadata for the immediate next picture.
+	// A contiguous source counter proves that this is that picture. If VP
+	// skipped it, wait for a CRC-valid packet naming the affected metadata ID.
+	if (m_hasPendingMetadata &&
+		frame.GetCounter() == m_pendingAfterCounter + 1U)
 	{
 		m_metadata = m_pendingMetadata;
+		m_activeMetadataId = m_pendingAffectedId;
+		m_hasActiveMetadataId = true;
 		m_hasPendingMetadata = false;
 	}
 	auto readWord = [this, source](size_t pixel)
@@ -287,19 +309,51 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 				m_alignment = candidate;
 				parsed.metadata.rgbBitAlignment =
 					candidate == ByteAlignment::LEFT ? 1 : 2;
-				if (parsed.noMetadata)
+				const bool currentPacketMetadata =
+					!parsed.noMetadata &&
+					parsed.affectedId == parsed.currentId;
+				if (m_hasPendingMetadata)
+				{
+					if (parsed.currentId == m_pendingAffectedId)
+					{
+						m_metadata = m_pendingMetadata;
+						m_activeMetadataId = m_pendingAffectedId;
+						m_hasActiveMetadataId = true;
+						m_hasPendingMetadata = false;
+					}
+					else if (parsed.currentId != m_pendingCurrentId)
+						m_hasPendingMetadata = false;
+				}
+				// no_md means this picture carries no new DM body. Retain the
+				// active matrix while its ID is unchanged. If a packet reports
+				// a different ID without its metadata, do not decode with a
+				// stale matrix from the previous scene.
+				if (m_hasActiveMetadataId &&
+					parsed.currentId != m_activeMetadataId &&
+					!currentPacketMetadata)
+				{
 					m_metadata = {};
-				else if (parsed.affectedId == parsed.currentId)
+					m_hasActiveMetadataId = false;
+				}
+				if (currentPacketMetadata)
+				{
 					m_metadata = parsed.metadata;
-				else
+					m_activeMetadataId = parsed.currentId;
+					m_hasActiveMetadataId = true;
+				}
+				else if (!parsed.noMetadata)
 				{
 					m_pendingMetadata = parsed.metadata;
+					m_pendingAffectedId = parsed.affectedId;
+					m_pendingCurrentId = parsed.currentId;
+					m_pendingAfterCounter = frame.GetCounter();
 					m_hasPendingMetadata = true;
 				}
 				if (parsed.endOfStream)
 				{
-					m_pendingMetadata = {};
-					m_hasPendingMetadata = true;
+					m_hasPendingMetadata = false;
+					m_endOfStreamAfterCounter = frame.GetCounter();
+					m_hasEndOfStream = true;
 				}
 				m_missingPacketFrames = 0;
 				m_missingPacketReported = parsed.noMetadata;

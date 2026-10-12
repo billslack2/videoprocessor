@@ -45,6 +45,13 @@ private:
 	DolbyVisionTunnelFrameMetadata m_metadata;
 	DolbyVisionTunnelFrameMetadata m_pendingMetadata;
 	bool m_hasPendingMetadata = false;
+	uint8_t m_pendingAffectedId = 0;
+	uint8_t m_pendingCurrentId = 0;
+	uint64_t m_pendingAfterCounter = 0;
+	uint8_t m_activeMetadataId = 0;
+	bool m_hasActiveMetadataId = false;
+	uint64_t m_endOfStreamAfterCounter = 0;
+	bool m_hasEndOfStream = false;
 	bool m_hasAVX2 = false;
 	PTP_WORK m_conversionWork[MAX_WORKERS] = {};
 	uint32_t m_workerCount = 0;
