@@ -2,10 +2,9 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Created 2026-10-11 at the user's request. Story creation only; implementation
-has not started. Next action: perform implementation readiness review against
+Created 2026-10-11 at the user's request. Implementation authorized 2026-10-11. Next action: perform implementation readiness review against
 the then-current remote beta, trace shared parser consumers and Config
 validation/help, and establish failing parser and integration regressions.
 No implementation blocker is currently known.
@@ -151,3 +150,13 @@ standard `## Status` match, and VP-0168 uses `In progress` capitalization in the
 index and record. Decision for this bounded creation task: preserve historical
 records, report these discrepancies, and defer any tracker-wide repair to a
 separate deliberate change. No unrelated story is renumbered or moved.
+
+## Implementation readiness — 2026-10-11
+
+User authorized implementation, testing, push, and merge into the latest default.
+Verified latest beta/default: v1.4.01-beta at 7e37c842.
+Worktree: E:\codex\videoprocessor\vp-0198-substring; branch: codex/vp-0198-substring.
+Shared parser/AST and Config validation use the same expression implementation;
+existing native tests cover parser, Config document save/reload, and profile runtime.
+No new dependencies or resource-lifetime changes are required. Add failing tests,
+then extend comparison handling and help; run native regressions and x64 Release.
