@@ -1,0 +1,61 @@
+PASS official signed x64 installer meets policy
+PASS outdated installer rejected
+PASS installer hash mismatch rejected
+PASS missing installer rejected
+PASS application cannot masquerade as runtime installer
+PASS package minimum includes Config rather than just the host
+PASS new compiler toolset cannot outgrow the included installer silently
+PASS binary/build-record mismatch rejected
+PASS missing compiler record rejected
+PASS newer third-party linker family is included
+PASS x86 payload rejected
+PASS missing system runtime reported
+PASS absent private DLL is allowed
+Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer is ready.
+You can open VideoProcessor.exe or config\VideoProcessorConfig.exe.
+PASS sufficient runtime skips installer
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+PASS check-only reports old runtime without installation
+Too old: private runtime DLL
+Too old: private runtime DLL
+Too old: private runtime DLL
+Runtime setup could not complete: Old Microsoft runtime DLLs were found in the VP folder. Extract this release into a clean folder, preserve your configuration, and run setup there.
+Official runtime help: https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+PASS old private runtime blocks setup without deleting DLLs
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Runtime setup completed. You can now open VP or its Config editor.
+PASS old runtime installs with elevation/no restart and rechecks files
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Installation succeeded. Restart Windows, then run SETUP-RUNTIME.cmd again before opening VP or Config.
+PASS reboot-required result is preserved
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Runtime setup could not complete: Microsoft runtime setup failed (exit 1603). See the Microsoft installer log in your TEMP folder.
+Official runtime help: https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+PASS installer failure blocks success
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Runtime setup could not complete: The operation was canceled by the user.
+Official runtime help: https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+PASS UAC cancellation reports failure without claiming readiness
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Runtime setup completed. You can now open VP or its Config editor.
+PASS concurrent newer install accepted only after successful recheck
+This release requires Microsoft Visual C++ x64 runtime 14.44.35211.0 or newer.
+Too old: system runtime DLL
+Installing the included Microsoft runtime. Approve the Windows administrator prompt.
+Too old: system runtime DLL
+Runtime setup could not complete: The required runtime is still unavailable. Restart Windows and retry; use the included installer Repair option if necessary.
+Official runtime help: https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+PASS nominal installer success cannot hide unsatisfied runtime
+PASS setup leaves user configuration byte-identical
+Passed 23 prerequisite regression checks. Fixtures: E:\codex\videoprocessor\release-1.4-rc4-latest\artifacts\runtime-tests-5451c63f9f2f446eaf0f7ec2eaef24fa

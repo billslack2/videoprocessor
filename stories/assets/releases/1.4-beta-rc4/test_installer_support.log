@@ -1,0 +1,60 @@
+PASS obsolete owned DLL retired
+PASS mixed host/renderer rejected
+PASS selected build committed
+PASS recovery restores matching application pair
+PASS recovery restores obsolete files
+PASS retry recovers interrupted transaction
+PASS operator data unchanged: shaders/custom.hlsl
+PASS operator data unchanged: VideoProcessor.state
+PASS operator data unchanged: luts/custom.cube
+PASS operator data unchanged: VideoProcessor.cfg
+PASS operator data unchanged: logs/operator.log
+PASS unknown DLL does not block repair preflight
+PASS unknown DLL not deleted
+PASS preflight leaves modified obsolete file intact
+PASS unsafe path rejected: ../escape.dll
+PASS unsafe path rejected: C:\escape.dll
+PASS unsafe path rejected: config/a:stream
+PASS unsafe path rejected: config/../escape.dll
+PASS manifest cannot claim active configuration
+PASS ZIP manifest establishes obsolete binary ownership
+PASS old package extra retired: prerequisites/setup-runtime.ps1
+PASS old package extra retired: setup/install-support.ps1
+PASS old package extra retired: setup/RECOVERY.md
+PASS old package extra retired: VideoProcessor.cfg.example
+PASS edited developer documentation preserved
+PASS user backup in prerequisite folder preserved
+PASS pending transaction cannot be pruned
+PASS rollback remains available until setup finishes
+PASS successful setup prunes current and historical verified backups
+PASS empty setup directory removed
+PASS nonempty prerequisite directory retained for user backup
+PASS unrecognized files inside recovery folder preserved
+PASS unknown backup retains its recovery journal
+PASS empty prerequisite directory removed
+PASS modified recovery backup not deleted
+PASS verified backup cleanup resumes when unknown data removed
+PASS cleanup preserves operator data: shaders/custom.hlsl
+PASS cleanup preserves operator data: VideoProcessor.state
+PASS cleanup preserves operator data: luts/custom.cube
+PASS cleanup preserves operator data: VideoProcessor.cfg
+PASS cleanup preserves operator data: logs/operator.log
+PASS conflicting unknown DLL moved out of loader paths during repair
+PASS unknown DLL preserved byte-for-byte in local recovery folder
+PASS corrupt manifest repaired
+PASS manifest repair preserves shaders/custom.hlsl
+PASS manifest repair preserves VideoProcessor.state
+PASS manifest repair preserves luts/custom.cube
+PASS manifest repair preserves VideoProcessor.cfg
+PASS manifest repair preserves logs/operator.log
+PASS installer rejects a payload from another product
+PASS silent update cannot move registered installation
+PASS registered installation can update in place
+PASS Config setup cannot overwrite full installation ownership
+PASS Config setup refuses an unregistered portable VP folder
+PASS Config-only identity accepts its separate folder
+PASS portable mode cannot bypass registration at the same root
+PASS portable update permits a registered copy elsewhere
+PASS portable mode refuses orphaned installer records
+PASS portable mode requires existing ownership manifest
+59 preservation/recovery checks passed. Fixtures: E:\codex\videoprocessor\release-1.4-rc4-latest\artifacts\installer-support-tests-7335130de42943c7b1caec59d8207a4a

@@ -1,0 +1,13 @@
+PASS clean build uses its exact commit
+PASS clean installer includes version and commit SHA
+PASS tracked edits produce a distinct source fingerprint
+PASS dirty installer names include commit SHA and source fingerprint
+PASS different dirty contents cannot reuse build identity
+PASS staged edits retain the same content fingerprint
+PASS committing returns to clean naming with a new commit
+PASS same-version clean commits have distinct installer filenames
+PASS untracked source files are included
+PASS untracked content changes affect the fingerprint
+PASS ignored build outputs do not dirty source identity
+PASS source deletion invalidates the build identity
+12 installer identity checks passed. Fixtures: E:\codex\videoprocessor\release-1.4-rc4-latest\artifacts\installer-identity-tests-0c8d51e955004da69306a17a0135cfec

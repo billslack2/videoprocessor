@@ -1,0 +1,30 @@
+[
+  {
+    "test": "TinyPictureSideDotsRemainOwnedWithTheirJoinedScriptRow",
+    "message": "Assert failed"
+  },
+  {
+    "test": "LargeConnectedArabicWordSurvivesEveryUhdSamplingPhase",
+    "message": "Assert failed. phaseX=0 phaseY=0 detected=0 lines=0"
+  },
+  {
+    "test": "CardBoundaryKeepsCorroboratedJoinedScriptStrokes",
+    "message": "Assert failed"
+  },
+  {
+    "test": "LibplaceboPluginApiVersionCoversConfigurationSnapshots",
+    "message": "Assert failed. Expected:<24> Actual:<25>"
+  },
+  {
+    "test": "JoinedArabicWordWiderThanEightGlyphHeightsIsNotClipped",
+    "message": "Assert failed. a centered connected word crossing the bar should use the joined-script width allowance"
+  },
+  {
+    "test": "ShortArabicCompanionMayAlignToEitherEdgeOfBarAnchor",
+    "message": "Assert failed"
+  },
+  {
+    "test": "WideWordSpaceKeepsBothSubtitleWordsInOneLine",
+    "message": "Assert failed. a broad but baseline-aligned word gap must not truncate the subtitle line"
+  }
+]
