@@ -3136,7 +3136,14 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         fallback = value(QStringLiteral("general"), key);
     const QString raw = value(section, key);
     const bool inherited = backendInputSetting && raw.isEmpty();
-    const QString configured = inherited ? fallback : value(section, key, fallback);
+    const QString configuredValue = inherited ? fallback : value(section, key, fallback);
+    const QString subtitleSectionPrefix = QStringLiteral("vprenderer.subtitles");
+    const bool subtitleScriptField = key.compare(QStringLiteral("subtitle_script_hint"), Qt::CaseInsensitive) == 0 &&
+        (section.compare(subtitleSectionPrefix, Qt::CaseInsensitive) == 0 ||
+            section.startsWith(subtitleSectionPrefix + QStringLiteral("."), Qt::CaseInsensitive));
+    const QString configured = subtitleScriptField &&
+        configuredValue.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("latin") : configuredValue;
     if (inherited)
     {
         const QString inheritedLabel = inheritedSharedInputLabel(key);
@@ -6141,6 +6148,21 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         type->setItemText(1, QStringLiteral("Classic"));
         type->setItemText(2, QStringLiteral("Move / Reconstruction (Beta)"));
         type->setItemText(3, QStringLiteral("Move / Solid Background (Beta)"));
+        auto* scriptHint = addChoice(QStringLiteral("Subtitle script hint"),
+            QStringLiteral("subtitle_script_hint"),
+            { QStringLiteral("latin"), QStringLiteral("cjk"),
+              QStringLiteral("arabic"), QStringLiteral("thai") });
+        scriptHint->setItemText(scriptHint->findData(QStringLiteral("latin")),
+            QStringLiteral("Latin"));
+        scriptHint->setItemText(scriptHint->findData(QStringLiteral("cjk")),
+            QStringLiteral("CJK (Chinese / Japanese / Korean)"));
+        scriptHint->setItemText(scriptHint->findData(QStringLiteral("arabic")),
+            QStringLiteral("Arabic"));
+        scriptHint->setItemText(scriptHint->findData(QStringLiteral("thai")),
+            QStringLiteral("Thai"));
+        scriptHint->setToolTip(QStringLiteral(
+            "Guides Alpha's pixel-based grouping of subtitle rows, marks, and spacing. "
+            "This does not recognize text or select Windows OCR languages."));
         auto* offset = addText(QStringLiteral("Inward offset / Classic padding"), QStringLiteral("offset_pixels"), QStringLiteral("source pixels"));
         offset->setValidator(new QIntValidator(0,500,offset));
         offset->setToolTip(QStringLiteral("Offsets the whole moved subtitle box: bottom subtitles move higher and top subtitles move lower. Text stays centered within the box; extension to the black bar does not count toward centering. In Classic, this is the original subtitle padding."));
@@ -6569,6 +6591,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     return legacySubtitleHdrValue(key);
                 }
                 if(key == QStringLiteral("type")) return QStringLiteral("classic");
+                if(key == QStringLiteral("subtitle_script_hint")) return QStringLiteral("latin");
                 if(key == QStringLiteral("offset_pixels")) return value(section,QStringLiteral("type"))==QStringLiteral("classic") || value(section,QStringLiteral("type")).isEmpty() ? QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS) : QStringLiteral("0");
                 if(key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
                 if(key == QStringLiteral("subtitle_engage_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS);
@@ -6720,6 +6743,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
 			if (!requiresExplicitValue && configured.isEmpty())
 				configured = fallback(field.key);
+            // Display the accepted legacy alias as Latin without rewriting the
+            // stored profile value; edits persist only after the user changes it.
+            if (sectionPrefix == QStringLiteral("vprenderer.subtitles") &&
+                field.key == QStringLiteral("subtitle_script_hint") &&
+                configured.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0)
+                configured = QStringLiteral("latin");
             if (defaultOnlyField && !defaultProfile && list->count() > 0)
                 configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
             field.widget->setEnabled((!defaultOnlyField || defaultProfile) &&

@@ -3,6 +3,8 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <fstream>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 
@@ -16,14 +18,34 @@ public:
         const SubtitleBarTrackingReference& prior,double /*fps*/) {
         const auto started=std::chrono::steady_clock::now();
         m_scanner.SetOptimizationMode(key.optimizationMode);
+        m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+        // Explicit per-process diagnostic opt-in: save one native
+        // input without changing capture, subtitle settings or presentation.
+        static const std::string capturePath=[] {
+            char* value=nullptr;size_t size=0;
+            _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_PATH");
+            const std::string path=value?value:"";std::free(value);return path;
+        }();
+        if(!m_capturedDiagnostic && !capturePath.empty() && source.IsValid() &&
+            !EvaluateActivePictureGlobalNearBlack(source).nearBlack) {
+            m_capturedDiagnostic=true;
+            std::ofstream pixels(capturePath,std::ios::binary);
+            pixels.write(reinterpret_cast<const char*>(source.data),source.dataBytes);
+            std::ofstream metadata(std::string(capturePath)+".txt");
+            metadata<<source.width<<' '<<source.height<<' '<<source.rowBytes<<' '<<source.chromaRowBytes<<' '
+                <<static_cast<int>(source.format)<<' '<<static_cast<int>(source.encoding)<<' '
+                <<static_cast<int>(source.colorspace)<<' '<<result.pictureTop<<' '<<result.pictureBottom<<' '
+                <<static_cast<int>(key.scriptHint)<<'\n';
+        }
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
 private:
     SubtitleBoxDetector m_scanner;
+    bool m_capturedDiagnostic=false;
 };
 
 // Bounded CPU-only work. Jobs own their source storage; rendering never waits
@@ -44,13 +66,15 @@ public:
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
         return SameActivePictureFrameIdentity(a.identity,b.identity) &&
-            a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
-            a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration &&
+            a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode && a.scriptHint==b.scriptHint &&
+            a.policyGeneration==b.policyGeneration &&
+            (a.continuityGeneration==b.continuityGeneration || (a.sharedPicture.required && b.sharedPicture.required)) &&
             a.discontinuity==b.discontinuity && a.sharedPicture.Matches(b.sharedPicture);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         std::lock_guard<std::mutex> lock(m_mutex);
         for(auto i=m_ready.begin();i!=m_ready.end();++i) if(SameKey(*i,key)) {
+            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(*i,key.continuityGeneration))continue;
             out=std::move(*i);m_ready.erase(i);return true;
         }
         ++m_diagnostics.requestMisses;return false;
@@ -119,6 +143,7 @@ private:
 class SubtitlePendingMeasurementGuard {
 public:
     void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={}; }
+    const char* DecisionReason() const { return m_reason; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
@@ -145,7 +170,7 @@ public:
             preview.current.discontinuity || !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
-            !covers(preview.current.text) || !covers(preview.text)) { Reset();return false; }
+            !covers(preview.current.text) || !covers(preview.text)) { return Reject("accepted-seed-incomplete"); }
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
         Resolve(seed,source,frameMs,holdMs);
         return !m_samples.empty();
@@ -163,49 +188,60 @@ public:
                     for(int y=(std::max)(0,r.top-step);y<(std::min)(source.height,r.bottom+step);y+=step)
                         for(int x=(std::max)(0,r.left-step);x<(std::min)(source.width,r.right+step);x+=step) {
                             AnalysisLumaSample value;
-                            if(m_samples.size()>=32768 || !source.Sample(x,y,value)) { Reset();return false; }
+                            if(m_samples.size()>=32768 || !source.Sample(x,y,value)) return Reject("seed-sample-unavailable");
                             m_samples.push_back({x,y,value});
                         }
                 }
-            } else Reset();
+                m_reason="accepted-seed";
+            } else Reject("seed-not-detected");
             return false;
         }
         const auto& old=m_reference.current;
         const auto& a=m_last;const auto& b=key.identity;
         frameMs=std::isfinite(frameMs)&&frameMs>0?frameMs:1000.0/60;
-        if(m_samples.empty() || key.discontinuity || !source.IsValid() ||
-            a.acceptedSequence+1!=b.acceptedSequence || a.transportGeneration!=b.transportGeneration ||
+        if(m_samples.empty())return Reject("no-accepted-seed");
+        // Presentation may skip captured frames under load. Current native
+        // pixels still prove the fixed accepted cue, but spend the full source
+        // time gap and never permit repeats, backwards frames or epoch changes.
+        if(b.acceptedSequence<=a.acceptedSequence)return Reject("non-forward-source");
+        const double elapsedMs=frameMs*double(b.acceptedSequence-a.acceptedSequence);
+        if(m_elapsed+elapsedMs>(std::max)(0,(std::min)(1000,holdMs)))return Reject("pending-budget-expired");
+        if(key.discontinuity || !source.IsValid() ||
+            source.width!=key.width || source.height!=key.height || a.transportGeneration!=b.transportGeneration ||
             a.sourceFormatGeneration!=b.sourceFormatGeneration || a.viewportGeneration!=b.viewportGeneration ||
             a.rendererGeneration!=b.rendererGeneration || key.width!=old.width || key.height!=old.height ||
-            key.nearBarDistance!=old.nearBarDistance || key.policyGeneration!=old.policyGeneration ||
-            key.continuityGeneration!=old.continuityGeneration ||
-            m_elapsed+frameMs>(std::max)(0,(std::min)(1000,holdMs))) { Reset();return false; }
+            key.nearBarDistance!=old.nearBarDistance || key.scriptHint!=old.scriptHint || key.policyGeneration!=old.policyGeneration ||
+            key.continuityGeneration!=old.continuityGeneration) return Reject("pending-context-changed");
         for(const auto& sample:m_samples) {
             AnalysisLumaSample now;
             if(!source.Sample(sample.x,sample.y,now) ||
                 std::abs(int(now.luma)-sample.value.luma)>8 ||
                 std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-sample.value.chromaV)>8) {Reset();return false;}
+                std::abs(int(now.chromaV)-sample.value.chromaV)>8) return Reject("current-pixels-changed");
         }
         SubtitleBarEvidence bars;
         if(key.sharedPicture.required) {
             if(!key.sharedPicture.Matches(old.sharedPicture) ||
-                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) {Reset();return false;}
+                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) return Reject("shared-picture-changed");
             bars=old.barEvidence;
         } else {
             bars=ExtractSubtitleBarEvidence(source);
-            if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) {Reset();return false;}
+            if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) return Reject("current-bars-changed");
         }
-        m_elapsed+=frameMs;m_last=b;
+        m_elapsed+=elapsedMs;m_last=b;
         preview=m_reference;preview.current.identity=b;preview.current.discontinuity=false;
+        preview.current.sharedPicture=key.sharedPicture;
         preview.current.barEvidence=bars;preview.current.barTrackingAuthority=false;
         preview.current.currentAnchorUsesTrackedEdge=false;preview.current.hasBarTrackingReference=false;
         preview.current.analysisMs=0;preview.current.pendingRefresh=true;
         preview.futureAvailable=false;preview.followingCount=0;preview.matchingFrames=1;
         preview.currentLinesConfirmed=false;preview.newScanMs=0;preview.newScanFrames=0;
+        m_reason="verified-current-pixels";
         return true;
     }
 private:
+    bool Reject(const char* reason) { Reset();m_reason=reason;return false; }
+    const char* m_reason="reset";
     struct Sample { int x,y;AnalysisLumaSample value; };
     SubtitleBoxPreview m_reference;
     ActivePictureFrameIdentity m_last;

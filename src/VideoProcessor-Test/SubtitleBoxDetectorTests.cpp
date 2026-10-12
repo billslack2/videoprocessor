@@ -67,6 +67,55 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         s.format=AnalysisLumaFormat::P010;s.generation=gen;return s;
     }
 public:
+    TEST_METHOD(CjkDisconnectedRadicalsKeepBothRowsAndRejectUnownedSceneInterior) {
+        // A dense detached radical inside a U-shaped component has no shared
+        // baseline and is too wide to be punctuation. The bar row establishes
+        // the scale; the picture row must retain all its accepted strokes.
+        for(int scale:{1,2,4}) for(int phase=0;phase<scale;++phase)
+            for(bool upper:{false,true}) for(bool sceneInterior:{false,true}) {
+                const int width=960*scale,height=540*scale;
+                std::vector<uint16_t> pixels(size_t(width)*height*3/2,uint16_t(512<<6));
+                auto fill=[&](int left,int top,int right,int bottom,int value) {
+                    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
+                        pixels[size_t(y)*width+x]=uint16_t(value<<6);
+                };
+                fill(0,0,width,height,64);
+                fill(0,65*scale,width,474*scale,200);
+                fill(280*scale,420*scale,680*scale,474*scale,64);
+                auto row=[&](int left,int top,int count,bool scene) {
+                    for(int i=0;i<count;++i) {
+                        const int x=(left+i*30)*scale+phase,y=top*scale+phase;
+                        fill(x,y,x+2*scale,y+24*scale,800);
+                        fill(x+24*scale,y,x+26*scale,y+24*scale,800);
+                        fill(x,y+22*scale,x+26*scale,y+24*scale,800);
+                        if(scene)fill(x+2*scale,y,x+24*scale,y+22*scale,300);
+                        fill(x+4*scale,y+4*scale,x+22*scale,y+11*scale,800);
+                    }
+                };
+                row(312,435,11,sceneInterior);row(300,485,12,false);
+                if(upper)for(int y=0;y<height/2;++y)for(int x=0;x<width;++x)
+                    std::swap(pixels[size_t(y)*width+x],pixels[size_t(height-1-y)*width+x]);
+                AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+                source.dataBytes=pixels.size()*2;source.width=width;source.height=height;
+                source.rowBytes=source.chromaRowBytes=width*2;source.format=AnalysisLumaFormat::P010;
+                SubtitleBoxDetector detector;detector.SetScriptHint(SubtitleScriptHint::Cjk);
+                for(int sequence=1;sequence<=3;++sequence) {
+                    const auto result=detector.Analyze(source,(upper?66:65)*scale,
+                        (upper?475:474)*scale,sequence,1);
+                    Assert::IsTrue(result.detected);
+                    Assert::AreEqual(sceneInterior?1:2,result.lineCount,
+                        L"CJK radical ownership must preserve both text rows without admitting scene-filled shapes");
+                    if(!sceneInterior) {
+                        const int expectedTop=upper?height-(509*scale+phase):435*scale+phase;
+                        const int expectedBottom=upper?height-(435*scale+phase):509*scale+phase;
+                        Assert::IsTrue(result.bounds.top<=expectedTop && result.bounds.bottom>=expectedBottom);
+                        Assert::IsTrue(result.sourcePanel.Valid(),L"the original picture-side card needs cleanup");
+                        Assert::IsTrue(result.capturePanelMeasured && result.capturePanel.Valid());
+                    }
+                }
+            }
+    }
+
     TEST_METHOD(JacketSceneEdgesCannotCalibrateTextWithoutSupportedRow) {
         for(const char* fixture:{"jacket-shadow-yuv422.bin","jacket-folds-yuv422.bin"}) {
             const int width=3840,height=2160,patchWidth=352,patchHeight=184;

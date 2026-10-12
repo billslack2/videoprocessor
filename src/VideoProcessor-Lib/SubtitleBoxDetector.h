@@ -83,12 +83,26 @@ struct SubtitleBoxResult
     int diagnosticNearBarGap = -1;
     bool diagnosticNearBarGapInferred = false;
 };
+enum class SubtitleScriptHint : int
+{
+    GeneralMixed = 0,
+    Latin = 1,
+    Arabic = 2,
+    Cjk = 3,
+    Thai = 4
+};
+
 class SubtitleBoxDetector
 {
 public:
     SubtitleBoxResult Analyze(const AnalysisLumaSource& source, int pictureTop,
         int pictureBottom, uint64_t sequence, uint64_t viewportGeneration);
     void Reset();
+    void SetScriptHint(SubtitleScriptHint hint) {
+        if(hint==SubtitleScriptHint::GeneralMixed)hint=SubtitleScriptHint::Latin;
+        if(m_scriptHint!=hint) {Reset();m_scriptHint=hint;}
+    }
+    SubtitleScriptHint ScriptHint() const {return m_scriptHint;}
     void SetNearBarDistance(int pixels) { if(m_nearBarDistance!=pixels) {Reset();m_nearBarDistance=pixels;} }
     void SetOptimizationMode(int mode) { if(m_optimizationMode!=mode){Reset();m_optimizationMode=mode;} }
     int OptimizationMode() const {return m_optimizationMode;}
@@ -110,6 +124,7 @@ private:
         SubtitleBoxRect& box, int& lines, std::array<uint64_t, 16>& signature, int nearBarDistance);
     // Immutable raw grid for this Analyze call only. Detector scratch remains separate.
     int m_optimizationMode=0;
+    SubtitleScriptHint m_scriptHint=SubtitleScriptHint::Latin;
     size_t m_sharedSampleCount=0;
     std::vector<uint8_t> m_sampledRows;
     std::vector<uint16_t> m_rawLuma;

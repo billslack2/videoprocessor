@@ -566,6 +566,7 @@ namespace RendererProfileConfig
 	{
         if (group == "subtitles") {
             if (key == "type") return IsChoice(value, { "off", "classic", "generated_gray", "black" });
+            if (key == "subtitle_script_hint") return IsChoice(value, { "general", "latin", "cjk", "arabic", "thai" });
             if (key == "hdr_peak_analysis_picture_only" || key == "hdr_peak_analysis_motion_compensation") return IsBoolean(value);
             if (key == "hdr_peak_analysis_height_percent") { int n=0; return ParseInteger(value,MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,n); }
             if (key == "hdr_peak_analysis_position") return IsChoice(value,{"top","center","bottom"});

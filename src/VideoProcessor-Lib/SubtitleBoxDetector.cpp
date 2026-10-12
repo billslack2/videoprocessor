@@ -371,15 +371,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     uint16_t nextComponentLabel=0;
     const int minimumHeight=std::max(3,h/240), maximumHeight=std::max(16,h/12);
     const int maximumBarGlyphHeight=std::max(maximumHeight,h/8);
-    // Word gaps can vary substantially between subtitle renderers and scripts.
-    // Use a wider, scale-relative baseline corridor when joining components;
-    // line width, baseline agreement, learned glyph height, and the independent
-    // bar-anchor requirement still constrain which groups can form a cue.
-    constexpr int SameLineGapGlyphHeights = 4;
-    // Arabic joining can produce a single connected word much wider than a
-    // Latin glyph. Bound that fast path to the detected stroke height and the
-    // existing centered/bar-anchor rules instead of clipping it at 8x.
-    constexpr int JoinedWordMaxGlyphHeights = 14;
+    // Script hints adjust grouping scales and mark ownership. Every candidate
+    // still passes the same backing, centering, and bar-anchor safeguards.
+    const bool thaiRows=m_scriptHint==SubtitleScriptHint::Thai;
+    const int SameLineGapGlyphHeights = m_scriptHint==SubtitleScriptHint::Arabic?5:
+        m_scriptHint==SubtitleScriptHint::Cjk?2:3;
+    const int JoinedWordMaxGlyphHeights = m_scriptHint==SubtitleScriptHint::Arabic?18:
+        m_scriptHint==SubtitleScriptHint::Latin?10:14;
     const int componentCardLimit=bar+(std::max)(24,(ink-bar)/12);
     auto hasAnyOpaqueSurround=[&](const Line& component) {
         const auto& r=component.box;
@@ -545,6 +543,50 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
         if(!boundedCore)c.hasTextCore=false;
     }
+    // Establish local card support before grouping or signatures. A small
+    // bright scene stroke beside a real card must not borrow the black area
+    // under the rest of a long subtitle row. Sample outside its envelope so
+    // glyph holes and dark outlines cannot masquerade as a backing panel.
+    auto locallyBacked=[&](const Line& c) {
+        const auto& r=c.box;
+        if(r.bottom<=top || r.top>=bottom) return true;
+        unsigned samples[4]{},black[4]{};
+        auto sample=[&](int side,int x,int y) {
+            if(x<0 || x>=w || y<top || y>=bottom) return;
+            AnalysisLumaSample pixel;
+            if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
+            ++samples[side];black[side]+=pixel.luma<=componentCardLimit;
+        };
+        for(int x=r.left;x<r.right;++x) {
+            sample(0,x,r.top-2);sample(1,x,r.bottom+1);
+        }
+        for(int y=(std::max)(top,r.top);y<(std::min)(bottom,r.bottom);++y) {
+            sample(2,r.left-2,y);sample(3,r.right+1,y);
+        }
+        unsigned total=0,dark=0;int supported=0;
+        for(int side=0;side<4;++side) {
+            total+=samples[side];dark+=black[side];
+            if(samples[side] && black[side]*100>=samples[side]*65) ++supported;
+        }
+        // Rounded card corners can expose one side. Neighboring glyphs may
+        // interrupt another; two distributed opaque sides establish support.
+        // Near-bar nomination increments topBarInk/bottomBarInk even when
+        // every stroke is in the picture. Only physical bar pixels justify
+        // the reduced one-strip proof used by genuinely crossing lettering.
+        const bool crossing=c.actualBarInk;
+        const bool horizontalCardStrip=(samples[0]>=2 && black[0]*100>=samples[0]*85) ||
+            (samples[1]>=2 && black[1]*100>=samples[1]*85);
+        // A crossing glyph can expose just one or two picture sample rows.
+        // Its vertical strips may hit adjacent glyphs and its other horizontal
+        // strip is in the bar. The available broad opaque strip is sufficient
+        // locally; the complete line must still pass distributed card proof.
+        // A narrow glyph beside another letter has long vertical strips but
+        // short horizontal strips. Do not let the occluded neighboring side
+        // outweigh an independently black horizontal strip and outer side.
+        return (crossing && horizontalCardStrip) ||
+            (supported>=2 && total>=3 &&
+                (dark*100>=total*60 || horizontalCardStrip));
+    };
     // Learn character scale from components that actually enter a bar. Tiny
     // picture highlights must not seed a line and chain into real lettering.
     // Keep them for a bounded punctuation pass after substantial glyphs group.
@@ -597,6 +639,62 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             std::abs(line.box.left+line.box.right-w)*5<=w*2 && line.ink>scaleInk) {
             barHeights=group.heights;scaleInk=line.ink;scaleAnchorBox=line.box;
             scaleAnchorTop=line.topBarInk!=0;scaleAnchorBottom=line.bottomBarInk!=0;
+        }
+    }
+    // A detached lower/upper mark may be the only physical bar ink. Let
+    // an independently black-backed row teach scale, but only when that mark
+    // is close to the original row and inside its horizontal span. Proximity
+    // nominations alone cannot establish this fallback.
+    bool sparseEdgeCardScale=false;
+    if(barHeights.empty()) {
+        std::vector<const Line*> bodies;
+        for(const auto& c:m_components)
+            if(c.hasTextCore && Height(c.box)>=(std::max)(minimumHeight,6) && c.ink>=12 &&
+                Width(c.box)<=Height(c.box)*JoinedWordMaxGlyphHeights && locallyBacked(c))
+                bodies.push_back(&c);
+        std::sort(bodies.begin(),bodies.end(),[](const Line* a,const Line* b){return a->box.left<b->box.left;});
+        std::vector<ScaleLine> rows;
+        for(const auto* body:bodies) {
+            size_t best=rows.size();int bestGap=w;
+            for(size_t i=0;i<rows.size();++i) {
+                const auto& a=rows[i].line.box;const auto& b=body->box;
+                const int height=(std::max)(Height(a),Height(b));
+                const int overlap=(std::min)(a.bottom,b.bottom)-(std::max)(a.top,b.top);
+                const int gap=(std::max)(0,b.left-a.right);
+                if(overlap>=(std::min)(Height(a),Height(b))/2 &&
+                    std::abs(a.bottom-b.bottom)<=height/3+1 &&
+                    Height(Union(a,b))<=height*3/2 && gap<=height*SameLineGapGlyphHeights && gap<bestGap)
+                    {best=i;bestGap=gap;}
+            }
+            if(best==rows.size()) rows.push_back({*body,{Height(body->box)}});
+            else {auto& row=rows[best];row.line.box=Union(row.line.box,body->box);
+                row.line.ink+=body->ink;++row.line.components;row.heights.push_back(Height(body->box));}
+        }
+        for(const auto& row:rows) {
+            const auto& line=row.line;const auto& r=line.box;const int height=Height(r);
+            if(line.components<3 || Width(r)<height*3 || Width(r)>=w*49/50 ||
+                std::abs(r.left+r.right-w)*5>w*2 || line.ink<=scaleInk)continue;
+            unsigned tested[3]{},dark[3]{};
+            for(int y:{r.top-2,r.bottom+1}) if(y>=top && y<bottom)
+                for(int x=r.left;x<r.right;++x) {
+                    const int tile=(std::min)(2,(x-r.left)*3/Width(r));
+                    ++tested[tile];dark[tile]+=m_luma[y*w+x]<=componentCardLimit;
+                }
+            int supported=0;
+            for(int i=0;i<3;++i)if(tested[i]>=3 && dark[i]*100>=tested[i]*85)++supported;
+            if(supported!=3)continue;
+            unsigned edge=0;
+            for(const auto& mark:m_components) {
+                if(!mark.actualBarInk || !mark.hasTextCore || mark.ink<3 ||
+                    Height(mark.box)>height || Width(mark.box)>height ||
+                    mark.box.left<r.left || mark.box.right>r.right || !locallyBacked(mark))continue;
+                const int gap=(std::max)({0,r.top-mark.box.bottom,mark.box.top-r.bottom});
+                if(gap>height/2+1)continue;
+                if(mark.topBarInk)edge|=1;if(mark.bottomBarInk)edge|=2;
+            }
+            if(edge!=1 && edge!=2)continue;
+            barHeights=row.heights;scaleInk=line.ink;scaleAnchorBox=r;
+            scaleAnchorTop=edge==1;scaleAnchorBottom=edge==2;sparseEdgeCardScale=true;
         }
     }
     int glyphHeight=0;
@@ -887,50 +985,6 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             else for(int pixel:m_flood) m_mask[pixel]=0;
         }
     }
-    // Establish local card support before grouping or signatures. A small
-    // bright scene stroke beside a real card must not borrow the black area
-    // under the rest of a long subtitle row. Sample outside its envelope so
-    // glyph holes and dark outlines cannot masquerade as a backing panel.
-    auto locallyBacked=[&](const Line& c) {
-        const auto& r=c.box;
-        if(r.bottom<=top || r.top>=bottom) return true;
-        unsigned samples[4]{},black[4]{};
-        auto sample=[&](int side,int x,int y) {
-            if(x<0 || x>=w || y<top || y>=bottom) return;
-            AnalysisLumaSample pixel;
-            if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
-            ++samples[side];black[side]+=pixel.luma<=componentCardLimit;
-        };
-        for(int x=r.left;x<r.right;++x) {
-            sample(0,x,r.top-2);sample(1,x,r.bottom+1);
-        }
-        for(int y=(std::max)(top,r.top);y<(std::min)(bottom,r.bottom);++y) {
-            sample(2,r.left-2,y);sample(3,r.right+1,y);
-        }
-        unsigned total=0,dark=0;int supported=0;
-        for(int side=0;side<4;++side) {
-            total+=samples[side];dark+=black[side];
-            if(samples[side] && black[side]*100>=samples[side]*65) ++supported;
-        }
-        // Rounded card corners can expose one side. Neighboring glyphs may
-        // interrupt another; two distributed opaque sides establish support.
-        // Near-bar nomination increments topBarInk/bottomBarInk even when
-        // every stroke is in the picture. Only physical bar pixels justify
-        // the reduced one-strip proof used by genuinely crossing lettering.
-        const bool crossing=c.actualBarInk;
-        const bool horizontalCardStrip=(samples[0]>=2 && black[0]*100>=samples[0]*85) ||
-            (samples[1]>=2 && black[1]*100>=samples[1]*85);
-        // A crossing glyph can expose just one or two picture sample rows.
-        // Its vertical strips may hit adjacent glyphs and its other horizontal
-        // strip is in the bar. The available broad opaque strip is sufficient
-        // locally; the complete line must still pass distributed card proof.
-        // A narrow glyph beside another letter has long vertical strips but
-        // short horizontal strips. Do not let the occluded neighboring side
-        // outweigh an independently black horizontal strip and outer side.
-        return (crossing && horizontalCardStrip) ||
-            (supported>=2 && total>=3 &&
-                (dark*100>=total*60 || horizontalCardStrip));
-    };
     for(auto component=m_components.begin();component!=m_components.end();) {
         if(locallyBacked(*component)) {++component;continue;}
         for(int y=component->box.top;y<component->box.bottom;++y)
@@ -945,12 +999,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     auto substantial=[&](const Line& c) {
         return c.hasTextCore && (!glyphHeight ? (c.ink>=3 && Height(c.box)>=minimumHeight) :
             (Height(c.box)>=(glyphHeight+1)/2 &&
-            Height(c.box)<=glyphHeight*3/2+1 &&
+            // Tall Thai vowel forms can rise above the usual body height.
+            Height(c.box)<=((sparseEdgeCardScale || thaiRows)?glyphHeight*2:glyphHeight*3/2)+1 &&
             Width(c.box)<=glyphHeight*JoinedWordMaxGlyphHeights));
     };
     std::sort(m_components.begin(),m_components.end(),[](const Line&a,const Line&b){
         return a.box.left<b.box.left; });
     std::array<uint16_t,MaxComponents+1> componentOwners{};
+    std::array<bool,MaxComponents+1> ambiguousThaiMarks{};
     for(const Line& c:m_components)
     {
         if(!substantial(c)) continue;
@@ -961,8 +1017,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             const int overlap=std::min(l.box.bottom,c.box.bottom)-std::max(l.box.top,c.box.top);
             const int gap=std::max(0,c.box.left-l.box.right);
             const int height=std::max(Height(l.box),Height(c.box));
+            // Joined Arabic bodies and disconnected CJK radicals can end at
+            // different heights within one row. Preserve overlap and union-height
+            // checks while allowing either script half a glyph of baseline drift.
+            const int baselineTolerance=std::max(1,(m_scriptHint==SubtitleScriptHint::Arabic || m_scriptHint==SubtitleScriptHint::Cjk)?
+                (height+1)/2:height/3);
             if(overlap>=std::max(1,std::min(Height(l.box),Height(c.box))/3) &&
-                (!glyphHeight || std::abs(l.box.bottom-c.box.bottom)<=std::max(1,height/3)) &&
+                (!glyphHeight || std::abs(l.box.bottom-c.box.bottom)<=baselineTolerance) &&
                 Height(Union(l.box,c.box))<=height*3/2+2 &&
                 gap<=(glyphHeight?glyphHeight*SameLineGapGlyphHeights:
                     height*SameLineGapGlyphHeights) && gap<bestGap)
@@ -985,8 +1046,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         const int height=std::max(Height(a.box),Height(b.box));
         const int overlap=std::min(a.box.bottom,b.box.bottom)-std::max(a.box.top,b.box.top);
         const int gap=std::max({0,a.box.left-b.box.right,b.box.left-a.box.right});
+        const int baselineTolerance=std::max(1,(m_scriptHint==SubtitleScriptHint::Arabic || m_scriptHint==SubtitleScriptHint::Cjk)?
+            (height+1)/2:height/3);
         if(overlap>=std::max(1,std::min(Height(a.box),Height(b.box))/2) &&
-            std::abs(a.box.bottom-b.box.bottom)<=std::max(1,height/3) &&
+            std::abs(a.box.bottom-b.box.bottom)<=baselineTolerance &&
             Height(Union(a.box,b.box))<=height*3/2+2 &&
             gap<=(glyphHeight?glyphHeight*SameLineGapGlyphHeights:
                 height*SameLineGapGlyphHeights)) {
@@ -1006,10 +1069,17 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     for(const auto& l:m_lines) coreExtents.push_back(l.box);
     if(glyphHeight) for(const auto& c:m_components) {
         const auto owner=componentOwners[c.label];
-        const int maximumDetachedWidth=glyphHeight*2;
+        const bool arabicMarks=m_scriptHint==SubtitleScriptHint::Arabic;
+        const int maximumDetachedWidth=glyphHeight*(arabicMarks?3:2);
+        const int maximumDetachedHeight=thaiRows?glyphHeight*2:
+            (arabicMarks?glyphHeight:glyphHeight*3/4);
+        const int verticalMarkAllowance=(sparseEdgeCardScale || thaiRows)?glyphHeight:
+            (arabicMarks?glyphHeight/2:glyphHeight/4);
+        const bool thaiTallForm=thaiRows && Height(c.box)>glyphHeight*3/2+1;
         const bool detachedHead=substantial(c) && owner && m_lines[owner-1].components==1 &&
-            Height(c.box)<=glyphHeight*3/4 && Width(c.box)<=maximumDetachedWidth;
-        const int narrowMarkWidth=glyphHeight/2+1;
+            Height(c.box)<=maximumDetachedHeight && Width(c.box)<=maximumDetachedWidth &&
+            (!thaiRows || thaiTallForm);
+        const int narrowMarkWidth=(sparseEdgeCardScale || thaiRows)?glyphHeight:glyphHeight/2+1;
         // A leading hyphen/em dash is a real subtitle glyph even when its
         // horizontal stroke is a detached, dense component. Accept it only at
         // a line's leading/trailing edge; sparse marks sampled unevenly retain
@@ -1027,6 +1097,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         if(!detachedHead && (substantial(c) || Height(c.box)>glyphHeight/2+1 ||
             (Width(c.box)>narrowMarkWidth && !horizontalDash))) continue;
         size_t best=m_lines.size();int bestGap=glyphHeight*2;
+        int bestAttachmentDistance=std::numeric_limits<int>::max();
+        bool ambiguousThaiNearest=false;
         for(size_t i=0;i<m_lines.size();++i) {
             const auto& l=m_lines[i];
             const auto& core=coreExtents[i];
@@ -1039,9 +1111,20 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 (c.box.right<=core.left || c.box.left>=core.right);
             if(horizontalDash && !terminalDash && !sparseWideMark) continue;
             const int maximumGap=terminalDash?glyphHeight*2:glyphHeight/2;
-            if(gap>maximumGap || gap>=bestGap || c.box.top<core.top-glyphHeight/4 ||
-                c.box.bottom>core.bottom+glyphHeight/4) continue;
-            if(detachedHead) {
+            const int scriptMaximumGap=arabicMarks?glyphHeight:
+                (thaiRows?glyphHeight/2:maximumGap);
+            if(gap>scriptMaximumGap ||
+                (!sparseEdgeCardScale && !thaiRows && gap>=bestGap) ||
+                c.box.top<core.top-verticalMarkAllowance ||
+                c.box.bottom>core.bottom+verticalMarkAllowance) continue;
+            // Thai's tall standalone forms may initially seed a one-component
+            // row. Reassign only to a multi-component base row with a nearby
+            // original baseline; a short one-component caption stays intact.
+            if(thaiRows && detachedHead) {
+                if(owner==i+1 || l.components<2 || gap>glyphHeight/2 ||
+                    std::abs(c.box.bottom-core.bottom)>glyphHeight) continue;
+            }
+            if(detachedHead && !arabicMarks && !thaiRows) {
                 if(std::abs(c.box.top-core.top)>glyphHeight/4+1 || c.box.bottom>=core.bottom) continue;
                 // A tiny terminal dot can disappear from the coarse mask while
                 // remaining in the actual pixels. Check only the narrow region
@@ -1059,9 +1142,29 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     }
                 if(!nativeDot) continue;
             }
+            // The wider mark corridor must not let the first row steal a
+            // neighboring row's descender. Compare original cores, never
+            // extents enlarged by marks that were already attached.
+            const int verticalGap=(std::max)({0,core.top-c.box.bottom,c.box.top-core.bottom});
+            // Compare against immutable pre-attachment row cores. Thai marks
+            // use a weighted vertical and horizontal gap; exact ties remain
+            // unassigned between rows.
+            const int attachmentDistance=verticalGap*2+gap;
+            if((sparseEdgeCardScale || thaiRows) && attachmentDistance>=bestAttachmentDistance) {
+                if(thaiRows && attachmentDistance==bestAttachmentDistance)ambiguousThaiNearest=true;
+                continue;
+            }
+            if(thaiRows)ambiguousThaiNearest=false;
+            bestAttachmentDistance=attachmentDistance;
             best=i;bestGap=gap;
         }
-        if(best<m_lines.size()) {
+        if(thaiRows && ambiguousThaiNearest)ambiguousThaiMarks[c.label]=true;
+        if(best<m_lines.size() && !(thaiRows && ambiguousThaiNearest)) {
+            if(thaiRows && owner && owner!=best+1 && m_lines[owner-1].components==1) {
+                auto& previous=m_lines[owner-1];
+                previous.ink-=c.ink;previous.topBarInk-=c.topBarInk;
+                previous.bottomBarInk-=c.bottomBarInk;previous.components=0;previous.box={};
+            }
             auto& l=m_lines[best];l.box=Union(l.box,c.box);l.ink+=c.ink;++l.components;
             l.topBarInk+=c.topBarInk;l.bottomBarInk+=c.bottomBarInk;
             componentOwners[c.label]=static_cast<uint16_t>(best+1);
@@ -1072,11 +1175,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // half a glyph from that row. Inspect the complete cluster before granting
     // any new ownership: an ongoing speck chain cannot extend a caption.
     if(glyphHeight) for(size_t lineIndex=0;lineIndex<m_lines.size();++lineIndex) {
+        if(m_lines[lineIndex].components<1)continue;
         const auto core=coreExtents[lineIndex];
         if(Width(core)<glyphHeight*3) continue;
-        const int maxMarkHeight=(std::max)(2,glyphHeight*2/3+1);
-        const int maxGap=(std::max)(2,glyphHeight*3/4+1);
-        const int maxMark=(std::max)(2,glyphHeight/3+1);
+        const bool arabicMarks=m_scriptHint==SubtitleScriptHint::Arabic;
+        const int maxMarkHeight=(std::max)(2,arabicMarks?glyphHeight:glyphHeight*2/3+1);
+        const int maxGap=(std::max)(2,arabicMarks?glyphHeight:glyphHeight*3/4+1);
+        const int maxMark=(std::max)(2,arabicMarks?glyphHeight/2+1:glyphHeight/3+1);
         for(bool leading:{false,true}) {
             std::vector<const Line*> cluster;
             int frontier=leading?core.left:core.right;
@@ -1087,7 +1192,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 const bool isolatedMarkOwner=owner && owner!=lineIndex+1 &&
                     m_lines[owner-1].components<=2 && Width(coreExtents[owner-1])<=maxMark*3 &&
                     Height(coreExtents[owner-1])<=maxMarkHeight;
-                if((owner && owner!=lineIndex+1 && !isolatedMarkOwner) || !c.hasTextCore ||
+                if((thaiRows && (ambiguousThaiMarks[c.label] ||
+                    (owner && owner!=lineIndex+1))) ||
+                    (owner && owner!=lineIndex+1 && !isolatedMarkOwner) || !c.hasTextCore ||
                     Width(c.box)>maxMark || Height(c.box)>maxMarkHeight ||
                     c.box.top<core.top-glyphHeight/4 || c.box.bottom>core.bottom+glyphHeight/4 ||
                     (leading?c.box.right>core.left:c.box.left<core.right)) continue;
@@ -1099,7 +1206,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 // constrain both; one mark's baseline must not veto the next.
                 cluster.push_back(&c);
                 frontier=leading?c.box.left:c.box.right;
-                if(cluster.size()>4 || (leading?core.left-frontier:frontier-core.right)>glyphHeight*3) {
+                if(cluster.size()>(arabicMarks?6u:4u) ||
+                    (leading?core.left-frontier:frontier-core.right)>glyphHeight*(arabicMarks?4:3)) {
                     bounded=false;break;
                 }
             }
@@ -1134,6 +1242,27 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // Even one sampled bar pixel can belong to a real descender. Require it to
     // belong to a substantial stroke in this line, rather than demanding many
     // bar pixels or borrowing isolated noise/punctuation from the envelope.
+    // Disconnected CJK radicals inside an established text row are part of
+    // that row even when they are too wide for punctuation or have no common
+    // baseline. They must already pass local backing and core-color checks.
+    // Containment in the original core prevents fragments from growing a row
+    // into scenery or borrowing ownership from another subtitle line.
+    if(m_scriptHint==SubtitleScriptHint::Cjk && glyphHeight>0)
+        for(const auto& c:m_components) {
+            if(componentOwners[c.label] || !c.hasTextCore || c.ink<3 ||
+                Width(c.box)>glyphHeight*3/2 || Height(c.box)>glyphHeight) continue;
+            for(size_t i=0;i<m_lines.size();++i) {
+                const auto& core=coreExtents[i];
+                if(m_lines[i].components<2 || Height(core)*2<glyphHeight ||
+                    c.box.left<core.left || c.box.right>core.right ||
+                    c.box.top<core.top || c.box.bottom>core.bottom) continue;
+                auto& line=m_lines[i];
+                line.ink+=c.ink;++line.components;
+                line.topBarInk+=c.topBarInk;line.bottomBarInk+=c.bottomBarInk;
+                componentOwners[c.label]=static_cast<uint16_t>(i+1);
+                break;
+            }
+        }
     std::vector<unsigned> barStrokeSupport(m_lines.size());
     for(const auto& c:m_components) {
         const auto owner=componentOwners[c.label];
@@ -1141,6 +1270,17 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             Height(c.box)*2<Height(m_lines[owner-1].box)) continue;
         if(c.topBarInk) barStrokeSupport[owner-1]|=1;
         if(c.bottomBarInk) barStrokeSupport[owner-1]|=2;
+    }
+    // At the analysis sampling scale, thin CJK strokes can be split into
+    // several small components. Their combined edge ink is stronger evidence
+    // than requiring one component to meet the Latin-sized stroke threshold.
+    // Keep this limited to multi-component text-core lines; centered geometry,
+    // plausible density, and the opaque-card check still gate the anchor.
+    if(m_scriptHint==SubtitleScriptHint::Cjk) for(size_t i=0;i<m_lines.size();++i) {
+        const auto& line=m_lines[i];
+        if(line.components<2) continue;
+        if(line.topBarInk>=3) barStrokeSupport[i]|=1;
+        if(line.bottomBarInk>=3) barStrokeSupport[i]|=2;
     }
     // A text line needs several strokes, a plausible baseline, and whitespace.
     auto plausible=[&](const Line& l,size_t index){
@@ -1155,9 +1295,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         // scripts. Only direct bar support grants this nomination; retain
         // size, whitespace/density and black-surround component checks.
         const bool compactBarGlyph=l.components==1 && barStrokeSupport[index] &&
-            lh>=(std::max)(minimumHeight*2,6) && lw*10>=lh*8 &&
+            lh>=(std::max)(minimumHeight*2,6) &&
+            lw*10>=lh*(m_scriptHint==SubtitleScriptHint::Cjk?7:8) &&
             l.ink>=(std::max)(12,lh*2);
-        const int minimumAspectTenths=barStrokeSupport[index]?8:13;
+        const int minimumAspectTenths=barStrokeSupport[index]
+            ?(m_scriptHint==SubtitleScriptHint::Cjk?7:8)
+            :(m_scriptHint==SubtitleScriptHint::Cjk?10:13);
         return (l.components>=2 || oneConnectedWord || compactBarGlyph) && lh>=minimumHeight &&
             lw*10>=lh*minimumAspectTenths &&
             lw<w*49/50 && l.ink>=12 && l.ink*100<lw*lh*82;
@@ -1183,6 +1326,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             markComponent.ink<6)
             continue;
         const unsigned owner=componentOwners[markComponent.label];
+        // Thai marks already assigned against original row cores keep that
+        // owner; the bar-symbol fallback must not move them to another line.
+        if(thaiRows && (owner || ambiguousThaiMarks[markComponent.label]))continue;
         if(owner && owner<=coreLines.size() && coreLines[owner-1].components>4)
             continue;
         // A tiny off-center row made only of this mark is not a text baseline.
@@ -1279,7 +1425,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
         // Component envelopes can surround real scenery (a window or lens
         // opening). The exterior strips below are necessary but insufficient:
-        // unowned pixels INSIDE a component must also be black backing. Keep
+        // pixels not owned by this text row INSIDE a component must also be
+        // black backing. Disconnected radicals can overlap another component
+        // envelope; their accepted strokes remain text, not background. Keep
         // one sampled pixel around actual strokes for antialiasing. This does
         // not use glyph holes as a substitute for the exterior card proof.
         unsigned interiorTested=0,interiorBlack=0;
@@ -1291,7 +1439,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     for(int dy=-1;dy<=1 && !stroke;++dy)
                         for(int dx=-1;dx<=1;++dx) {
                             const int xx=x+dx,yy=y+dy;
-                            if(xx>=0 && xx<w && yy>=0 && yy<h && m_labels[yy*w+xx]==c.label) {
+                            if(xx>=0 && xx<w && yy>=0 && yy<h && m_labels[yy*w+xx] &&
+                                componentOwners[m_labels[yy*w+xx]]==index+1) {
                                 stroke=true;break;
                             }
                         }
@@ -1300,34 +1449,100 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     interiorBlack+=m_luma[y*w+x]<=cardDarkLimit;
                 }
         }
-        if(interiorTested>=9 && interiorBlack*100<interiorTested*85) return false;
+        if(interiorTested>=9 && interiorBlack*100<interiorTested*85) {m_diagnosticReason="card-interior-not-dark";return false;}
         unsigned total=0,black=0;int supported=0;
         for(int tile=0;tile<3;++tile) {
             total+=tested[tile];black+=dark[tile];
             if(tested[tile]>=3 && dark[tile]*100>=tested[tile]*80) ++supported;
         }
-        return total>=9 && black*100>=total*80 && supported>=2;
+        if(total<9) {m_diagnosticReason="card-background-insufficient-samples";return false;}
+        if(black*100<total*80) {m_diagnosticReason="card-background-not-dark";return false;}
+        if(supported<2) {m_diagnosticReason="card-background-not-distributed";return false;}
+        return true;
     };
 
+    // CJK strokes can make the full picture-side card proof sparse even when
+    // a centered caption visibly crosses into a real black letterbox. In that
+    // case, accept the letterbox itself as backing only when the same line has
+    // substantial CJK edge ink and distributed dark background samples there.
+    auto onCjkLetterboxBacking=[&](const Line& candidate,size_t index) {
+        const auto& r=candidate.box;
+        const bool crossesTop=r.top*step<pictureTop && r.bottom*step>pictureTop;
+        const bool crossesBottom=r.top*step<pictureBottom && r.bottom*step>pictureBottom;
+        if(crossesTop==crossesBottom) {
+            m_diagnosticReason="cjk-bar-backing-no-single-edge";return false;
+        }
+        if((crossesTop && candidate.topBarInk<6) ||
+            (crossesBottom && candidate.bottomBarInk<6)) {
+            m_diagnosticReason="cjk-bar-backing-low-edge-ink";return false;
+        }
+        const int first=crossesTop?(std::max)(0,r.top):(std::max)(bottom,r.top);
+        const int last=crossesTop?(std::min)(top,r.bottom):(std::min)(h,r.bottom);
+        if(first>=last) {m_diagnosticReason="cjk-bar-backing-no-samples";return false;}
+        const int candidateWidth=Width(r);
+        std::vector<uint8_t> glyphEnvelope(static_cast<size_t>(candidateWidth)*(last-first),0);
+        for(const auto& c:m_components) {
+            if(componentOwners[c.label]!=index+1) continue;
+            for(int y=(std::max)(first,c.box.top-1);y<(std::min)(last,c.box.bottom+1);++y)
+                for(int x=(std::max)(r.left,c.box.left-1);x<(std::min)(r.right,c.box.right+1);++x)
+                    glyphEnvelope[static_cast<size_t>(y-first)*candidateWidth+x-r.left]=1;
+        }
+        unsigned tested[3]{},dark[3]{};
+        for(int y=first;y<last;++y) for(int x=r.left;x<r.right;++x) {
+            if(glyphEnvelope[static_cast<size_t>(y-first)*candidateWidth+x-r.left]) continue;
+            const int tile=(std::min)(2,(x-r.left)*3/(std::max)(1,Width(r)));
+            ++tested[tile];dark[tile]+=darkSample(x,y);
+        }
+        unsigned total=0,black=0;int supported=0;
+        for(int tile=0;tile<3;++tile) {
+            total+=tested[tile];black+=dark[tile];
+            if(tested[tile]>=3 && dark[tile]*100>=tested[tile]*80) ++supported;
+        }
+        if(total<9) {m_diagnosticReason="cjk-bar-backing-insufficient-samples";return false;}
+        if(black*100<total*80) {m_diagnosticReason="cjk-bar-background-not-dark";return false;}
+        if(supported<2) {m_diagnosticReason="cjk-bar-background-not-distributed";return false;}
+        return true;
+    };
+    // Small accepted marks can locate a well-supported card row even if no
+    // individual crossing component reaches half the row height. Require
+    // physical ink owned by this row and retain the complete opaque-card proof.
+    for(size_t i=0;i<m_lines.size();++i) {
+        const auto& line=m_lines[i];
+        if(barStrokeSupport[i] || line.components<3 || !plausible(line,i) ||
+            !centered(line) || !onOpaqueCard(line,i))continue;
+        unsigned edge=0;
+        for(const auto& c:m_components)if(componentOwners[c.label]==i+1 &&
+            c.actualBarInk && c.hasTextCore && c.ink>=3) {
+            if(c.topBarInk)edge|=1;if(c.bottomBarInk)edge|=2;
+        }
+        if(edge==1 || edge==2)barStrokeSupport[i]=edge;
+    }
     // Relate every companion to the original bar anchor, never to another
     // candidate. This prevents scenery from forming a chain above the cue.
     size_t anchor=m_lines.size(); int score=0;
+    size_t centeredCandidates=0;
+    bool backingRejected=false;
     for(size_t i=0;i<m_lines.size();++i)
     {
         const auto& l=m_lines[i];
         if(!plausible(l,i) || !centered(l)) continue;
+        ++centeredCandidates;
         // Eligibility belongs to this line's accepted components, never all
         // bright pixels in its envelope (which includes discarded picture/noise).
         const bool inTopBar = (barStrokeSupport[i]&1)!=0;
         const bool inBottomBar = (barStrokeSupport[i]&2)!=0;
         const bool trulyInBar=l.box.top*step<pictureTop || l.box.bottom*step>pictureBottom;
-        if(!trulyInBar && !onOpaqueCard(l,i)) continue;
+        if(!trulyInBar && !onOpaqueCard(l,i)) {backingRejected=true;continue;}
         if(inTopBar != inBottomBar && l.ink>score) { anchor=i; score=l.ink; }
     }
-    if(anchor==m_lines.size()) return false;
+    if(anchor==m_lines.size()) {
+        m_diagnosticReason=centeredCandidates==0?"no-centered-text-line":
+            backingRejected?"backing-card-rejected":"no-bar-stroke-support";
+        return false;
+    }
     const Line& a=m_lines[anchor];
 
-    if(!onOpaqueCard(a,anchor)) return false;
+    if(!onOpaqueCard(a,anchor) && !(m_scriptHint==SubtitleScriptHint::Cjk && onCjkLetterboxBacking(a,anchor))) return false;
     m_currentBarAnchor={a.box.left*step,a.box.top*step,
         std::min(source.width,a.box.right*step),std::min(source.height,a.box.bottom*step)};
     box=a.box; lineCount=1;
@@ -1662,7 +1877,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         for(int pass=0;pass<4;++pass) {
             const auto previous=line;bool changed=false;
             for(const auto& c:m_components) {
-                if(componentOwners[c.label] || !c.hasTextCore)continue;
+                if(componentOwners[c.label] || (thaiRows && ambiguousThaiMarks[c.label]) ||
+                    !c.hasTextCore)continue;
                 const auto& q=c.box;
                 const auto& interior=cardInteriors[selected];
                 const bool insideCard=interior.Valid() &&
