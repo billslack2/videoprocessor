@@ -1061,7 +1061,6 @@ protected:
 	void ReloadConfiguredAccelerators();
 	void StartGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
-	void RequestPresentationFocus(const char* reason, unsigned int generation);
 	void ToggleConfigurationEditor();
 	void StartConfigurationEditorInTray();
 	// Legacy activation-intent cleanup retained for source compatibility only;
