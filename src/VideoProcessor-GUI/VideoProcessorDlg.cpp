@@ -2730,57 +2730,6 @@ LRESULT CVideoProcessorDlg::OnConfigurationEditorPresentationTargetAcknowledgeme
 	return 1;
 }
 
-void CVideoProcessorDlg::RequestPresentationFocus(const char* reason,
-	unsigned int generation)
-{
-	HWND configurationEditor = VisibleAssociatedConfigurationEditor();
-	if (!configurationEditor)
-		configurationEditor = FindConfigurationEditorForCurrentInstallation();
-	const bool configurationVisible = configurationEditor &&
-		::IsWindow(configurationEditor) &&
-		::IsWindowVisible(configurationEditor);
-
-	const HWND fullscreenTarget = m_fullScreenVideoWindow &&
-		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
-		m_fullScreenVideoWindow->GetHWND() : nullptr;
-	const HWND windowedTarget =
-		::IsWindow(m_windowedVideoWindow.GetSafeHwnd()) ?
-		m_windowedVideoWindow.GetSafeHwnd() : nullptr;
-	HWND target = reinterpret_cast<HWND>(
-		ConfigurationLiveApply::SelectConfigurationEditorPresentationTarget(
-			m_rendererFullscreenCheck.GetCheck() != FALSE,
-			reinterpret_cast<uintptr_t>(fullscreenTarget),
-			::IsWindow(m_rendererTargetHwnd) ?
-				reinterpret_cast<uintptr_t>(m_rendererTargetHwnd) : 0,
-			reinterpret_cast<uintptr_t>(windowedTarget)));
-	if (target && ::IsWindow(target))
-		target = ::GetAncestor(target, GA_ROOT);
-	if (!target || !::IsWindow(target))
-		target = GetSafeHwnd();
-	DWORD targetProcessId = 0;
-	if (target) ::GetWindowThreadProcessId(target, &targetProcessId);
-	const bool validTarget = target && ::IsWindow(target) &&
-		targetProcessId == GetCurrentProcessId();
-	if (!ConfigurationLiveApply::ShouldRequestPresentationFocus(
-		m_shortcutsForegroundOnly, configurationVisible, validTarget))
-	{
-		DebugLog::Log(
-			"Presentation focus request skipped: reason=%s generation=%u foreground_only=%d config_visible=%d valid_target=%d target=%p",
-			reason, generation, m_shortcutsForegroundOnly ? 1 : 0,
-			configurationVisible ? 1 : 0, validTarget ? 1 : 0, target);
-		return;
-	}
-
-	if (::IsIconic(target)) ::ShowWindowAsync(target, SW_RESTORE);
-	::BringWindowToTop(target);
-	const BOOL requested = ::SetForegroundWindow(target);
-	const HWND foreground = ::GetForegroundWindow();
-	DebugLog::Log(
-		"Presentation focus request: reason=%s generation=%u target=%p requested=%d foreground=%p acquired=%d",
-		reason, generation, target, requested ? 1 : 0, foreground,
-		foreground == target ? 1 : 0);
-}
-
 bool CVideoProcessorDlg::RequestConfigurationEditorOneShotReassert(
 	HWND editor, HWND presentationTarget)
 {
@@ -10812,7 +10761,6 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			m_rendererResetTransitionActive = false;
 		}
 	}
-	RequestPresentationFocus("first-live-frame", generation);
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
 		"renderer=%S target=%p fullscreen_host=%p fullscreen_intent=%d "
