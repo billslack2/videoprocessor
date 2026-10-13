@@ -47,6 +47,34 @@ enum RendererState
 const TCHAR* ToString(const RendererState rendererState);
 
 
+// HDR luminance for the picture being tone mapped, for the stats OSD, in nits.
+// The static and scene values are what the frame handed to pl_render_image
+// carries, so they follow any LLDV substitution or Dolby Vision metadata
+// without knowing about either. The detected values are libplacebo's own peak
+// detection (pl_renderer_get_hdr_metadata). When the frame carries its own
+// scene peak/average, libplacebo tone maps from those; the stable renderer's
+// libplacebo then stops measuring, the beta renderer's keeps measuring.
+struct RendererHdrStatus
+{
+	// Crosses the plugin boundary through an optional export rather than the
+	// renderer interface, so it carries its own layout check.
+	uint32_t size = sizeof(RendererHdrStatus);
+	bool hdr = false;            // the frame's transfer is HDR
+	bool dolbyVision = false;    // the frame carries Dolby Vision metadata
+	double maxCll = 0.0;
+	double maxFall = 0.0;
+	double masteringMin = 0.0;
+	double masteringMax = 0.0;
+	bool sceneValid = false;     // the frame carries its own scene peak/average
+	double scenePeakNits = 0.0;
+	double sceneAvgNits = 0.0;
+	bool peakDetectionEnabled = false;
+	bool detectedValid = false;
+	double detectedPeakNits = 0.0;
+	double detectedAvgNits = 0.0;
+};
+
+
 /**
  * Renderer callback
  */

@@ -576,6 +576,18 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
+	line.Format(TEXT("DTM Profile:      %-s"), m_stats.dtmProfile.IsEmpty() ? TEXT("---") : m_stats.dtmProfile);
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	line.Format(TEXT("HDR10:            %-s"), m_stats.hdr10.IsEmpty() ? TEXT("---") : m_stats.hdr10);
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	line.Format(TEXT("Measured:         %-s"), m_stats.measuredHdr.IsEmpty() ? TEXT("---") : m_stats.measuredHdr);
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
 	// Pixel Format
 	line.Format(TEXT("Pixel Format:     %-s"), m_stats.pixelFormat.IsEmpty() ? TEXT("---") : m_stats.pixelFormat);
 	DrawText(hdc, line, PADDING, y);
@@ -959,6 +971,7 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
+	lineCount += 3; // DTM Profile, HDR10 and Measured are always shown.
 	if (stats.renderLoadKnown)
 		lineCount += 3;
 	if (!stats.outputSweep.IsEmpty())
