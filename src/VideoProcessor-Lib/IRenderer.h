@@ -9,6 +9,7 @@
 #pragma once
 
 #include <SubtitlePreviewMode.h>
+#include <DolbyVisionLuminanceStatus.h>
 
 
 #include <VideoFrame.h>
@@ -568,5 +569,11 @@ public:
 	virtual bool CycleSubtitlePreviewMode(SubtitlePreviewMode&) { return false; }
 	// CPU-only: restore normal subtitle handling even while a GPU reset is busy.
 	virtual void ResetSubtitlePreviewMode() {}
+
+	virtual bool GetDolbyVisionLuminanceStatus(DolbyVisionLuminanceStatus& status) const
+	{
+		status = {};
+		return false;
+	}
 
 };

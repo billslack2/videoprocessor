@@ -46,6 +46,7 @@
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
+#include <vprenderer/DolbyVisionLuminancePolicy.h>
 #include <WindowsDisplayDiagnostics.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
@@ -3838,6 +3839,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool formatterContractLogged = false;
 	ColorSpace lastRenderedFormatterColorspace = ColorSpace::UNKNOWN;
 	std::mutex ingressStatusMutex;
+	DolbyVisionLuminanceStatus sourceLuminance;
+	bool sourceLuminanceObserved = false;
+	uint64_t nextSourceLuminanceLogTick = 0;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
 	CComPtr<ID3D11DeviceContext> renderTimingContext;
@@ -10663,6 +10667,12 @@ struct LibplaceboVideoRenderer::Impl
 			convertedPayload && !convertedPayload->dolby.valid &&
 			convertedPayload->dolby.allowSdrFallback &&
 			convertedPayload->dolby.rgbBitAlignment != 0;
+		{
+			std::lock_guard<std::mutex> guard(ingressStatusMutex);
+			sourceLuminance = {};
+			sourceLuminance.tunnelActive = state.dolbyVisionTunnel && !tunnelRgbFallback;
+			sourceLuminanceObserved = true;
+		}
 		const bool nativeRgbUpload = tunnelRgbFallback ?
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout) :
 			(!state.dolbyVisionTunnel &&
@@ -11612,22 +11622,20 @@ struct LibplaceboVideoRenderer::Impl
 				DebugLog::Log("Dolby Vision RGB tunnel: new display-management matrix");
 			}
 			image.repr.dovi = found->second.get();
-			if (dm.sourceMaxPq > dm.sourceMinPq &&
-				dm.sourceMaxPq <= 4095)
+			const auto luminance = DolbyVisionLuminancePolicy::Apply(dm, image.color.hdr);
+			const uint64_t luminanceTick = GetTickCount64();
+			if (luminanceTick >= nextSourceLuminanceLogTick)
 			{
-				image.color.hdr.min_luma = pl_hdr_rescale(
-					PL_HDR_PQ, PL_HDR_NITS,
-					static_cast<float>(dm.sourceMinPq) / 4095.0f);
-				image.color.hdr.max_luma = pl_hdr_rescale(
-					PL_HDR_PQ, PL_HDR_NITS,
-					static_cast<float>(dm.sourceMaxPq) / 4095.0f);
+				nextSourceLuminanceLogTick = luminanceTick + 5000;
+				DebugLog::Log("Dolby Vision luminance: range=%s source_min_nits=%.4f source_max_nits=%.2f scene_present=%d scene_peak_nits=%.2f scene_average_nits=%.2f MaxCLL=unknown MaxFALL=unknown",
+					luminance.sourceRangeFromMetadata ? "DM" : "fallback",
+					luminance.sourceMin, luminance.sourceMax, luminance.sceneAvailable ? 1 : 0,
+					luminance.sceneMax, luminance.sceneAvg);
 			}
-			if (dm.sceneMaxPq > 0)
-				image.color.hdr.max_pq_y =
-					static_cast<float>(dm.sceneMaxPq) / 4095.0f;
-			if (dm.sceneAvgPq > 0)
-				image.color.hdr.avg_pq_y =
-					static_cast<float>(dm.sceneAvgPq) / 4095.0f;
+			{
+				std::lock_guard<std::mutex> guard(ingressStatusMutex);
+				sourceLuminance = luminance;
+			}
 		}
 		if (state.eotf == EOTF::SDR &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
@@ -15671,7 +15679,12 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		 videoState->eotf != m_videoState->eotf ||
 		 videoState->colorspace != m_videoState->colorspace);
 	if (materialSourceTransition && m_impl)
+	{
 		m_impl->subtitlePreviewState.ResetForSourceChange();
+		std::lock_guard<std::mutex> sourceGuard(m_impl->ingressStatusMutex);
+		m_impl->sourceLuminance = {};
+		m_impl->sourceLuminanceObserved = false;
+	}
 	if (materialSourceTransition && !m_manualDisplayRule.empty())
 	{
 		// F5/F6 select the display calibration intentionally. Keep that manual
@@ -19778,4 +19791,16 @@ void LibplaceboVideoRenderer::SetState(RendererState state)
 {
 	m_state.store(state, std::memory_order_release);
 	m_callback.OnRendererState(state, m_callbackGeneration);
+}
+
+
+bool LibplaceboVideoRenderer::GetDolbyVisionLuminanceStatus(
+	DolbyVisionLuminanceStatus& status) const
+{
+	status = {};
+	if (!m_impl)
+		return false;
+	std::lock_guard<std::mutex> guard(m_impl->ingressStatusMutex);
+	status = m_impl->sourceLuminance;
+	return m_impl->sourceLuminanceObserved;
 }

@@ -367,10 +367,10 @@ void ModernOperatorView::OnPaint()
 		m_status.hardware[1], m_status.hardwareWidthWarning);
 
 	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(438)),
-		TEXT(""), TEXT("HDR luminance"));
+		TEXT(""), m_status.luminanceTitle, m_status.luminanceState);
 	DrawRows(dc, 287, 366, 230, {
-		{ TEXT("MaxCLL"), m_status.maxCll }, { TEXT("MaxFALL"), m_status.maxFall },
-		{ TEXT("Mastering min"), m_status.masteringMin }, { TEXT("Mastering max"), m_status.masteringMax } });
+		{ m_status.luminanceLabels[0], m_status.maxCll }, { m_status.luminanceLabels[1], m_status.maxFall },
+		{ m_status.luminanceLabels[2], m_status.masteringMin }, { m_status.luminanceLabels[3], m_status.masteringMax } });
 
 	DrawCard(dc, CRect(Px(16), Px(428), Px(268), Px(575)),
 		TEXT(""), TEXT("Renderer"), m_status.rendererState);

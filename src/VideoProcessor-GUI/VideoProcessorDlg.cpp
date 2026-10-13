@@ -14213,6 +14213,32 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.maxFall = text(m_hdrLuminanceMaxFall);
 	status.masteringMin = text(m_hdrLuminanceMasterMin);
 	status.masteringMax = text(m_hdrLuminanceMasterMax);
+	if (m_builtVideoState && m_builtVideoState->valid && m_builtVideoState->dolbyVisionTunnel)
+	{
+		status.luminanceTitle = TEXT("DV luminance (nits)");
+		status.luminanceState = TEXT("Waiting");
+		status.luminanceLabels = { TEXT("Source min"), TEXT("Source max"),
+			TEXT("Scene peak"), TEXT("Scene average") };
+		status.maxCll = status.maxFall = status.masteringMin = status.masteringMax = TEXT("---");
+		DolbyVisionLuminanceStatus dv;
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer->GetDolbyVisionLuminanceStatus(dv))
+		{
+			if (!dv.tunnelActive)
+				status.luminanceState = TEXT("SDR");
+			else if (dv.available)
+			{
+				status.luminanceState = dv.sourceRangeFromMetadata ? TEXT("DM") : TEXT("Fallback");
+				status.maxCll = FormatHdrLuminance(dv.sourceMin);
+				status.maxFall = FormatHdrLuminance(dv.sourceMax);
+				if (dv.sceneAvailable)
+				{
+					status.masteringMin = FormatHdrLuminance(dv.sceneMax);
+					status.masteringMax = FormatHdrLuminance(dv.sceneAvg);
+				}
+			}
+		}
+	}
 	status.rendererName = selected(m_rendererCombo);
 	status.rendererState = compactState(text(m_rendererStateText));
 	const int selectedRendererIndex = m_rendererCombo.GetCurSel();

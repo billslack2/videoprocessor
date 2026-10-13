@@ -224,6 +224,8 @@
 	<ClInclude Include="LiveOutputTrace.h" />
 	<ClInclude Include="MadVRShaderTransactionPolicy.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="DolbyVisionLuminanceStatus.h" />
+    <ClInclude Include="vprenderer\DolbyVisionLuminancePolicy.h" />
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererPostStallResetAdvisor.h" />
     <ClInclude Include="RendererIngressState.h" />

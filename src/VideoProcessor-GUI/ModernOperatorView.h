@@ -36,6 +36,10 @@ struct ModernOperatorStatus
 		TEXT("---"), TEXT("---"), TEXT("---"), TEXT("---") };
 	bool hardwareSpeedWarning = false;
 	bool hardwareWidthWarning = false;
+	CString luminanceTitle = TEXT("HDR luminance");
+	CString luminanceState;
+	std::array<CString, 4> luminanceLabels = {
+		TEXT("MaxCLL"), TEXT("MaxFALL"), TEXT("Mastering min"), TEXT("Mastering max") };
 	CString maxCll = TEXT("---");
 	CString maxFall = TEXT("---");
 	CString masteringMin = TEXT("---");

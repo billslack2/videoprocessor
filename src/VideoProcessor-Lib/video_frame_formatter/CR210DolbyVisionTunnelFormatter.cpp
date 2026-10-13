@@ -177,6 +177,7 @@ namespace
 				const uint16_t sceneAvg = ReadUnsigned16(dm + extension + 9);
 				if (sceneMin > 4095 || sceneMax > 4095 || sceneAvg > 4095)
 					return false;
+				parsed.hasSceneMetadata = true;
 				parsed.sceneMaxPq = sceneMax;
 				parsed.sceneAvgPq = sceneAvg;
 			}

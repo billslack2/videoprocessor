@@ -591,3 +591,11 @@ bool LibplaceboPluginVideoRenderer::GetFrameRateAndPPM(
 {
 	return m_renderer->GetFrameRateAndPPM(measuredFps, ppmDeviation);
 }
+
+
+bool LibplaceboPluginVideoRenderer::GetDolbyVisionLuminanceStatus(
+	DolbyVisionLuminanceStatus& status) const
+{
+	status = {};
+	return m_renderer && m_renderer->GetDolbyVisionLuminanceStatus(status);
+}

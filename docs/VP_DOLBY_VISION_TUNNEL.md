@@ -82,3 +82,21 @@ The independent sender reference is
 and its `CB1/src/dvbridge_render.c` RGB8 packer at the same pinned revision.
 Its 12-bit intensity/chroma packing is the inverse of this unpacker. The
 reference's FEL composer operates upstream of that HDMI packing step.
+
+## Luminance status
+
+The Modern view shows a **DV luminance (nits)** card while the tunnel is active:
+source minimum/maximum from recovered DM, and scene peak/average from L1.
+The card marks a recovered source range as **DM**, or **Fallback** when a
+valid source range is absent and VP's effective static range is used. Missing
+scene metadata appears as `---`; a present black scene appears as zero.
+Before metadata is available or after metadata loss the values are hidden.
+SDR RGB passthrough is labelled **SDR**. HDR10 and LLDV retain their static
+HDR luminance card. The legacy HDR controls still represent effective static
+metadata, rather than this per-frame DV snapshot.
+
+For DV, libplacebo receives zero (unknown) MaxCLL/MaxFALL instead of the
+synthetic static values; recovered DM source range and L1 PQ fields are
+supplied separately. L1 peak/average are not relabelled as HDR10 MaxCLL/FALL.
+The output target brightness remains the configured projector/display target.
+The shared renderer API is bumped to 26 so older host/plugin pairs are rejected.
