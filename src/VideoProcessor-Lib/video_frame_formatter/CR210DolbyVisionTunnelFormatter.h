@@ -3,6 +3,7 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <Windows.h>
 #include <cstdint>
+#include <array>
 
 // DeckLink r210 carries the HDMI 8-bit RGB tunnel. Each pixel contains one
 // 12-bit I sample and one alternating 12-bit chroma sample.
@@ -23,7 +24,9 @@ public:
 	}
 	DolbyVisionTunnelFrameMetadata GetDolbyVisionTunnelMetadata() const override
 	{
-		return m_metadata;
+		auto metadata = m_metadata;
+		metadata.allowSdrFallback = !m_tunnelConfirmed;
+		return metadata;
 	}
 
 private:
@@ -42,6 +45,19 @@ private:
 	ByteAlignment m_alignment = ByteAlignment::UNKNOWN;
 	uint32_t m_missingPacketFrames = 0;
 	bool m_missingPacketReported = false;
+	bool m_tunnelConfirmed = false;
+	uint32_t m_diagnosticFrames = 0;
+	uint32_t m_crcFailedCopies = 0;
+	uint32_t m_recoveredPackets = 0;
+	uint32_t m_rejectedFrames = 0;
+	uint32_t m_noMetadataFrames = 0;
+	size_t m_lastPacketCount = 0;
+	size_t m_lastMetadataLength = 0;
+	uint32_t m_metadataIdTransitions = 0;
+	uint8_t m_lastCurrentId = 0;
+	uint8_t m_lastAffectedId = 0;
+	bool m_haveDiagnosticIds = false;
+	std::array<bool, 256> m_seenExtensionLevels{};
 	DolbyVisionTunnelFrameMetadata m_metadata;
 	DolbyVisionTunnelFrameMetadata m_pendingMetadata;
 	bool m_hasPendingMetadata = false;

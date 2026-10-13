@@ -19,8 +19,13 @@ original 12-bit intensity and alternating chroma samples in two 16-bit
 planes at full 4:2:2 resolution. It does not convert the tunnel to P010.
 The packet's opponent-color and LMS matrices are passed to libplacebo's
 Dolby Vision decoder; Level 1 scene peak/average PQ values are passed to
-its tone mapper when they fit in the first packet. Ordinary RGB8 with no
-Dolby packet uses an SDR RGB passthrough once the byte alignment is known.
+its tone mapper after complete metadata reassembly, including L1 blocks that
+cross packet boundaries. Each 128-byte packet is read at its raster position,
+with up to three CRC-checked copies. Declared lengths are bounded at 0x2F00
+bytes and by the available picture pixels; packet types, IDs and header flags
+must match. Incomplete structures never replace the active metadata.
+Ordinary RGB8 with no Dolby packet uses SDR RGB passthrough before DV lock
+once byte alignment is known, or after a CRC-validated EOS boundary.
 
 The HDMI signal is already composed by the playback device. This path
 does not decode or combine a Dolby Vision FEL itself. libplacebo does not
@@ -30,6 +35,16 @@ a CRC-valid packet has no_md set. Advance metadata is associated with
 the immediate next captured picture or with a later packet that names
 the affected metadata ID; EOS separately ends the HDR stream. The
 renderer bounds its metadata-matrix cache at 512 entries.
+
+After DV lock, 24 consecutive pictures without a complete usable metadata
+transaction suspend DV frame submission and discard cached active/pending
+metadata. The renderer can retain the last presented picture. CRC loss does
+not authorize SDR passthrough: a damaged/scaled tunnel is indistinguishable
+from a same-mode SDR switch without EOS. Fresh complete DM is required to
+resume; a valid no_md header alone cannot rebuild discarded matrices. An EOS
+boundary or capture video-state reset permits SDR again. Transient loss under
+24 pictures keeps the existing matrix unless a valid header changes its ID.
+A same-mode SDR switch that omits EOS may therefore require Restart capture.
 
 DeckLink reports the transport container as RGB 10-bit 4:4:4 (r210).
 The DV tunnel inside that container is 12-bit 4:2:2, which the VP OSD
@@ -45,14 +60,25 @@ movies use the supported RGB tunnel while keeping the 59.94 Hz menu in
 ordinary SDR. The current decoder only accepts the r210 RGB tunnel;
 do not interpret a 59.94 Hz v210 menu as Dolby Vision.
 
-The log reports "CRC-validated r210 RGB8 alignment" on first detection,
+The log reports complete DM length/packet count/IDs when the layout changes,
+newly encountered extension levels (L1 is applied; other levels are logged
+but not applied), loss/recovery events, and aggregate counters every 600
+pictures. CRC-failed-copy counts include attempts at an alternate RGB8
+alignment, so a nonzero count alone is not proof of HDMI corruption.
+The log also reports "CRC-validated r210 RGB8 alignment" on first detection,
 "new display-management matrix" when it changes, and "DV 12-bit 4:2:2"
 for the formatter contract. If the CRC never validates, the path cannot
 interpret that signal as Dolby Vision; check Vertex2 EDID/scaling, DeckLink
-packing, and whether the player actually sends TV-led DV. This code has
-been compiled in x64 Release, but needs confirmation on the user's
-DeckLink/Vertex2/Apple TV signal.
+packing, and whether the player actually sends TV-led DV. The previous single-packet decoder has produced a correct image on the
+user's DeckLink/Vertex2/Apple TV and Sony setup. Multi-packet reception and
+loss/recovery changes still need live source confirmation.
 
 References: [HDMI 1.4a RGB tunnel packing](https://felloff.net/doc/comp/spec/HDMISpecification14a.pdf),
 [ETSI GS CCM 001 display-management packet format](https://www.etsi.org/deliver/etsi_gs/CCM/001_099/001/01.01.01_60/gs_ccm001v010101p.pdf),
 [libplacebo Dolby color representation](https://github.com/haasn/libplacebo/blob/master/src/include/libplacebo/colorspace.h).
+
+The independent sender reference is
+[CroqueMr/libreelec-x86-DV transport contract](https://github.com/CroqueMr/libreelec-x86-DV/blob/d9ad989ee92846afc32957cbeab6d5e2a5cb49b4/CB1/docs/SOURCE-TRANSPORT.md)
+and its `CB1/src/dvbridge_render.c` RGB8 packer at the same pinned revision.
+Its 12-bit intensity/chroma packing is the inverse of this unpacker. The
+reference's FEL composer operates upstream of that HDMI packing step.

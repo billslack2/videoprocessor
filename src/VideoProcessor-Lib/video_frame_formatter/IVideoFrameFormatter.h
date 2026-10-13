@@ -50,6 +50,8 @@ struct DolbyVisionTunnelFrameMetadata
 {
     bool valid = false;
     bool fullRange = true;
+    // CRC loss after DV lock is not evidence that the source became SDR.
+    bool allowSdrFallback = false;
     uint8_t rgbBitAlignment = 0; // 1: high 8 bits of r210, 2: low 8 bits
     float nonlinear[3][3] = {};
     float nonlinearOffset[3] = {};

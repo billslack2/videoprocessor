@@ -10661,10 +10661,12 @@ struct LibplaceboVideoRenderer::Impl
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool tunnelRgbFallback = state.dolbyVisionTunnel &&
 			convertedPayload && !convertedPayload->dolby.valid &&
+			convertedPayload->dolby.allowSdrFallback &&
 			convertedPayload->dolby.rgbBitAlignment != 0;
 		const bool nativeRgbUpload = tunnelRgbFallback ?
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout) :
-			(videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			(!state.dolbyVisionTunnel &&
+				videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
 				AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 				GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout));
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;

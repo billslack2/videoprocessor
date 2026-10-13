@@ -18,6 +18,9 @@ namespace
 	constexpr size_t kPacketBits = 1024;
 	constexpr size_t kPacketBytes = 128;
 	constexpr size_t kRepeats = 3;
+	constexpr size_t kMaxMetadataBytes = 0x2F00;
+	constexpr uint32_t kPacketLossLimit = 24;
+	constexpr uint32_t kDiagnosticInterval = 600;
 
 	uint32_t ReadBigEndian32(const uint8_t* bytes)
 	{
@@ -110,29 +113,25 @@ namespace
 		bool endOfStream = false;
 	};
 
-	bool ParsePacket(const uint8_t* packet, ParsedPacket& result)
+	// Header validation is separate from metadata decoding: a CRC-valid header
+	// proves a DV transport even when a later packet/body is damaged.
+	bool ParseHeader(const uint8_t* packet, ParsedPacket& result)
 	{
-		if (PacketCrc(packet) != 0)
-			return false;
-		const uint8_t kind = packet[0] >> 6;
-		if (kind != 0 && kind != 1)
-			return false; // A complete or first DM packet contains the matrices.
 		if ((packet[0] & 0x3EU) != 0 || (packet[2] & 0xFEU) != 0)
-			return false; // Unsupported metadata type/version.
+			return false;
 		result.affectedId = packet[1] >> 4;
 		result.currentId = packet[1] & 15U;
 		result.endOfStream = (packet[2] & 1U) != 0;
 		result.noMetadata = (packet[0] & 1U) != 0;
-		if (result.noMetadata)
-			return true;
-		if (result.affectedId != result.currentId &&
-			result.affectedId != ((result.currentId + 1U) & 15U))
+		return result.affectedId == result.currentId ||
+			result.affectedId == ((result.currentId + 1U) & 15U);
+	}
+
+	bool ParseMetadata(const uint8_t* dm, size_t length, ParsedPacket& result,
+		std::array<bool, 256>& extensionLevels)
+	{
+		if (length < 71)
 			return false;
-		const uint16_t length = ReadUnsigned16(packet + 3);
-		if (length < 71 || (kind == 0 ? length > 119 : length <= 119))
-			return false;
-		// First 71 bytes of the DM structure fit in every first packet.
-		const uint8_t* dm = packet + 5;
 		if (dm[60] != 12 || (dm[61] != 0 && dm[61] != 2))
 			return false; // This unpacker accepts 12-bit opponent color only.
 		DolbyVisionTunnelFrameMetadata parsed;
@@ -156,27 +155,30 @@ namespace
 				static_cast<float>(ReadBigEndian32(dm + 20 + row * 4)) /
 				268435456.0f;
 		}
-		// Level 1 carries scene maximum and average PQ values. These
-		// are used by libplacebo's dynamic peak mapping when present in
-		// the first packet. Other extension levels remain untouched.
+		// Reassembly has already validated the complete declared body. Unknown
+		// extension levels are bounded/skipped; they are not display trims.
 		size_t extension = 71;
-		for (unsigned block = 0; block < dm[70] && extension + 5 <=
-			(static_cast<size_t>(length) < 119 ? length : 119); ++block)
+		for (unsigned block = 0; block < dm[70]; ++block)
 		{
+			if (length - extension < 5)
+				return false;
 			const uint32_t payloadLength = ReadBigEndian32(dm + extension);
 			const uint8_t level = dm[extension + 4];
+			if (payloadLength > length - extension - 5)
+				return false;
 			const size_t end = extension + 5 + payloadLength;
-			if (end > length || end > 119)
-				break;
-			if (level == 1 && payloadLength == 6)
+			extensionLevels[level] = true;
+			if (level == 1)
 			{
+				if (payloadLength != 6)
+					return false;
+				const uint16_t sceneMin = ReadUnsigned16(dm + extension + 5);
 				const uint16_t sceneMax = ReadUnsigned16(dm + extension + 7);
 				const uint16_t sceneAvg = ReadUnsigned16(dm + extension + 9);
-				if (sceneMax <= 4095 && sceneAvg <= 4095)
-				{
-					parsed.sceneMaxPq = sceneMax;
-					parsed.sceneAvgPq = sceneAvg;
-				}
+				if (sceneMin > 4095 || sceneMax > 4095 || sceneAvg > 4095)
+					return false;
+				parsed.sceneMaxPq = sceneMax;
+				parsed.sceneAvgPq = sceneAvg;
 			}
 			extension = end;
 		}
@@ -229,6 +231,18 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 	m_alignment = ByteAlignment::UNKNOWN;
 	m_missingPacketFrames = 0;
 	m_missingPacketReported = false;
+	m_tunnelConfirmed = false;
+	m_diagnosticFrames = 0;
+	m_crcFailedCopies = 0;
+	m_recoveredPackets = 0;
+	m_rejectedFrames = 0;
+	m_noMetadataFrames = 0;
+	m_lastPacketCount = 0;
+	m_lastMetadataLength = 0;
+	m_metadataIdTransitions = 0;
+	m_lastCurrentId = m_lastAffectedId = 0;
+	m_haveDiagnosticIds = false;
+	m_seenExtensionLevels.fill(false);
 	m_metadata = {};
 	m_pendingMetadata = {};
 	m_hasPendingMetadata = false;
@@ -259,6 +273,8 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 		m_hasActiveMetadataId = false;
 		m_hasPendingMetadata = false;
 		m_hasEndOfStream = false;
+		m_tunnelConfirmed = false;
+		DebugLog::Log("Dolby Vision RGB tunnel: EOS boundary; allowing SDR RGB passthrough");
 	}
 	// A packet may announce new DM metadata for the immediate next picture.
 	// A contiguous source counter proves that this is that picture. If VP
@@ -278,95 +294,214 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 		return ReadBigEndian32(source + y * m_stride + x * 4);
 	};
 
-	// DeckLink may preserve RGB8 in either end of each 10-bit channel.
-	// Accept an alignment only when the Dolby DM packet passes its CRC.
-	if (static_cast<uint64_t>(m_width) * m_height >= kPacketBits * kRepeats)
+	bool acceptedMetadata = false;
+	bool supportedHeader = false;
+	const char* failureReason = "missing/CRC-invalid first packet";
+	// Each packet occupies 3072 pixels: three independent CRC-protected
+	// copies. Never span pictures or include row padding in the raster.
+	const size_t availablePackets = static_cast<size_t>(m_width) * m_height /
+		(kPacketBits * kRepeats);
+	auto readPacket = [&](size_t index, ByteAlignment candidate,
+		std::array<uint8_t, kPacketBytes>& packet)
+	{
+		if (index >= availablePackets)
+			return false;
+		for (size_t copy = 0; copy < kRepeats; ++copy)
+		{
+			packet.fill(0);
+			for (size_t bit = 0; bit < kPacketBits; ++bit)
+			{
+				const Rgb8 rgb = DecodeRgb(readWord(
+					(index * kRepeats + copy) * kPacketBits + bit),
+					candidate == ByteAlignment::LEFT);
+				packet[bit / 8] |= static_cast<uint8_t>(Parity(
+					(static_cast<uint32_t>(rgb.r) << 16) |
+					(static_cast<uint32_t>(rgb.g) << 8) | rgb.b) << (7 - bit % 8));
+			}
+			if (PacketCrc(packet.data()) == 0)
+			{
+				if (copy != 0)
+					++m_recoveredPackets;
+				return true;
+			}
+			++m_crcFailedCopies;
+		}
+		return false;
+	};
+
+	// Prefer the current alignment so normal low8 capture does not probe a
+	// known-wrong layout on every picture. Only CRC can confirm the tunnel.
+	const ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
+		ByteAlignment::RIGHT : ByteAlignment::LEFT;
+	for (const ByteAlignment candidate : { firstCandidate,
+		firstCandidate == ByteAlignment::LEFT ? ByteAlignment::RIGHT : ByteAlignment::LEFT })
 	{
 		std::array<uint8_t, kPacketBytes> packet{};
-		for (const ByteAlignment candidate :
-			{ ByteAlignment::LEFT, ByteAlignment::RIGHT })
+		ParsedPacket parsed;
+		if (!readPacket(0, candidate, packet) ||
+			(packet[0] >> 6) > 1 || !ParseHeader(packet.data(), parsed))
+			continue;
+		supportedHeader = true;
+		if (m_haveDiagnosticIds && (parsed.currentId != m_lastCurrentId ||
+			parsed.affectedId != m_lastAffectedId))
+			++m_metadataIdTransitions;
+		m_lastCurrentId = parsed.currentId;
+		m_lastAffectedId = parsed.affectedId;
+		m_haveDiagnosticIds = true;
+		if (!m_tunnelConfirmed || m_alignment != candidate)
+			DebugLog::Log("Dolby Vision RGB tunnel: CRC-validated r210 RGB8 alignment=%s",
+				candidate == ByteAlignment::LEFT ? "high8" : "low8");
+		m_tunnelConfirmed = true;
+		m_alignment = candidate;
+		// Header information remains usable even if a later packet fails.
+		if (m_hasPendingMetadata)
 		{
-			for (size_t copy = 0; copy < kRepeats; ++copy)
+			if (parsed.currentId == m_pendingAffectedId)
 			{
-				packet.fill(0);
-				for (size_t bit = 0; bit < kPacketBits; ++bit)
+				m_metadata = m_pendingMetadata;
+				m_activeMetadataId = m_pendingAffectedId;
+				m_hasActiveMetadataId = true;
+				m_hasPendingMetadata = false;
+			}
+			else if (parsed.currentId != m_pendingCurrentId)
+				m_hasPendingMetadata = false;
+		}
+		if (m_hasActiveMetadataId && parsed.currentId != m_activeMetadataId)
+		{
+			m_metadata = {};
+			m_hasActiveMetadataId = false;
+		}
+		if (parsed.endOfStream)
+		{
+			m_hasPendingMetadata = false;
+			m_endOfStreamAfterCounter = frame.GetCounter();
+			m_hasEndOfStream = true;
+		}
+
+		size_t length = 0;
+		size_t packetCount = 1;
+		std::array<bool, 256> extensionLevels{};
+		if (!parsed.noMetadata)
+		{
+			length = ReadUnsigned16(packet.data() + 3);
+			if (length < 71 || length > kMaxMetadataBytes ||
+				((packet[0] >> 6) == 0 ? length > 119 : length <= 119))
+			{
+				failureReason = "invalid declared metadata length/type";
+				break;
+			}
+			packetCount += length > 119 ? (length - 119 + 120) / 121 : 0;
+			if (packetCount > availablePackets)
+			{
+				failureReason = "declared packets exceed picture raster";
+				break;
+			}
+			// Bounded stack storage avoids a per-picture heap allocation.
+			std::array<uint8_t, kMaxMetadataBytes> body;
+			size_t copied = (std::min)(length, size_t(119));
+			memcpy(body.data(), packet.data() + 5, copied);
+			const uint8_t headerFlags = packet[0] & 0x3FU;
+			const uint8_t headerIds = packet[1];
+			const uint8_t headerEos = packet[2];
+			bool complete = true;
+			for (size_t index = 1; index < packetCount; ++index)
+			{
+				const unsigned expectedKind = index + 1 == packetCount ? 3 : 2;
+				if (!readPacket(index, candidate, packet) ||
+					(packet[0] >> 6) != expectedKind ||
+					(packet[0] & 0x3FU) != headerFlags ||
+					packet[1] != headerIds || packet[2] != headerEos)
 				{
-					const Rgb8 rgb = DecodeRgb(
-						readWord(copy * kPacketBits + bit),
-						candidate == ByteAlignment::LEFT);
-					const uint8_t metadataBit = Parity(
-						(static_cast<uint32_t>(rgb.r) << 16) |
-						(static_cast<uint32_t>(rgb.g) << 8) | rgb.b);
-					packet[bit / 8] |= static_cast<uint8_t>(
-						metadataBit << (7 - bit % 8));
+					complete = false;
+					failureReason = "missing/invalid continuation packet";
+					break;
 				}
-				ParsedPacket parsed;
-				if (!ParsePacket(packet.data(), parsed))
-					continue;
-				if (m_alignment != candidate)
-					DebugLog::Log("Dolby Vision RGB tunnel: CRC-validated r210 RGB8 alignment=%s",
-						candidate == ByteAlignment::LEFT ? "high8" : "low8");
-				m_alignment = candidate;
-				parsed.metadata.rgbBitAlignment =
-					candidate == ByteAlignment::LEFT ? 1 : 2;
-				const bool currentPacketMetadata =
-					!parsed.noMetadata &&
-					parsed.affectedId == parsed.currentId;
-				if (m_hasPendingMetadata)
-				{
-					if (parsed.currentId == m_pendingAffectedId)
-					{
-						m_metadata = m_pendingMetadata;
-						m_activeMetadataId = m_pendingAffectedId;
-						m_hasActiveMetadataId = true;
-						m_hasPendingMetadata = false;
-					}
-					else if (parsed.currentId != m_pendingCurrentId)
-						m_hasPendingMetadata = false;
-				}
-				// no_md means this picture carries no new DM body. Retain the
-				// active matrix while its ID is unchanged. If a packet reports
-				// a different ID without its metadata, do not decode with a
-				// stale matrix from the previous scene.
-				if (m_hasActiveMetadataId &&
-					parsed.currentId != m_activeMetadataId &&
-					!currentPacketMetadata)
-				{
-					m_metadata = {};
-					m_hasActiveMetadataId = false;
-				}
-				if (currentPacketMetadata)
-				{
-					m_metadata = parsed.metadata;
-					m_activeMetadataId = parsed.currentId;
-					m_hasActiveMetadataId = true;
-				}
-				else if (!parsed.noMetadata)
-				{
-					m_pendingMetadata = parsed.metadata;
-					m_pendingAffectedId = parsed.affectedId;
-					m_pendingCurrentId = parsed.currentId;
-					m_pendingAfterCounter = frame.GetCounter();
-					m_hasPendingMetadata = true;
-				}
-				if (parsed.endOfStream)
-				{
-					m_hasPendingMetadata = false;
-					m_endOfStreamAfterCounter = frame.GetCounter();
-					m_hasEndOfStream = true;
-				}
-				m_missingPacketFrames = 0;
-				m_missingPacketReported = parsed.noMetadata;
-				goto metadata_complete;
+				const size_t chunk = (std::min)(length - copied, size_t(121));
+				memcpy(body.data() + copied, packet.data() + 3, chunk);
+				copied += chunk;
+			}
+			if (!complete || copied != length)
+				break;
+			if (!ParseMetadata(body.data(), length, parsed, extensionLevels))
+			{
+				failureReason = "unsupported/malformed metadata body";
+				break;
 			}
 		}
+
+		if (m_missingPacketReported && m_missingPacketFrames >= kPacketLossLimit)
+			DebugLog::Log("Dolby Vision RGB tunnel: metadata transport recovered after %u rejected/missing pictures; fresh_DM=%s",
+				m_missingPacketFrames, parsed.noMetadata ? "no" : "yes");
+		if (!parsed.noMetadata && (packetCount != m_lastPacketCount ||
+			length != m_lastMetadataLength))
+		{
+			DebugLog::Log("Dolby Vision RGB tunnel: complete DM bytes=%zu packets=%zu current_id=%u affected_id=%u",
+				length, packetCount, parsed.currentId, parsed.affectedId);
+			m_lastPacketCount = packetCount;
+			m_lastMetadataLength = length;
+		}
+		for (size_t level = 0; level < extensionLevels.size(); ++level)
+		{
+			if (extensionLevels[level] && !m_seenExtensionLevels[level])
+			{
+				DebugLog::Log("Dolby Vision RGB tunnel: extension L%zu %s",
+					level, level == 1 ? "scene PQ values applied" : "recognized in transport; not applied");
+				m_seenExtensionLevels[level] = true;
+			}
+		}
+		parsed.metadata.rgbBitAlignment = candidate == ByteAlignment::LEFT ? 1 : 2;
+		if (parsed.noMetadata)
+			++m_noMetadataFrames; // Healthy transport; active DM remains valid.
+		else if (parsed.affectedId == parsed.currentId)
+		{
+			m_metadata = parsed.metadata;
+			m_activeMetadataId = parsed.currentId;
+			m_hasActiveMetadataId = true;
+		}
+		else if (!parsed.endOfStream)
+		{
+			m_pendingMetadata = parsed.metadata;
+			m_pendingAffectedId = parsed.affectedId;
+			m_pendingCurrentId = parsed.currentId;
+			m_pendingAfterCounter = frame.GetCounter();
+			m_hasPendingMetadata = true;
+		}
+		acceptedMetadata = true;
+		break;
 	}
-metadata_complete:
-	if (!m_metadata.valid && !m_missingPacketReported &&
-		++m_missingPacketFrames >= 24)
+	if (acceptedMetadata)
 	{
-		DebugLog::Log("Dolby Vision RGB tunnel: no CRC-valid HDMI DM packet; using SDR RGB8 passthrough when alignment is known");
-		m_missingPacketReported = true;
+		m_missingPacketFrames = 0;
+		m_missingPacketReported = false;
+	}
+	else
+	{
+		++m_rejectedFrames;
+		if (m_missingPacketFrames != (std::numeric_limits<uint32_t>::max)())
+			++m_missingPacketFrames;
+		if (!m_missingPacketReported && m_missingPacketFrames >= kPacketLossLimit)
+		{
+			DebugLog::Log("Dolby Vision RGB tunnel: %u pictures without usable metadata (last_header=%s reason=%s); %s",
+				m_missingPacketFrames, supportedHeader ? "CRC-valid" : "missing/CRC-invalid", failureReason,
+				m_tunnelConfirmed ? "suspending DV until fresh DM; SDR fallback blocked" :
+				"no DV lock; allowing SDR RGB8 when alignment is known");
+			m_missingPacketReported = true;
+		}
+		if (m_tunnelConfirmed && m_missingPacketFrames >= kPacketLossLimit)
+		{
+			m_metadata = {};
+			m_hasActiveMetadataId = false;
+			m_hasPendingMetadata = false;
+		}
+	}
+	if (++m_diagnosticFrames >= kDiagnosticInterval)
+	{
+		DebugLog::Log("Dolby Vision RGB tunnel: last %u pictures: rejected=%u no_md=%u CRC_failed_copies=%u repeat_recoveries=%u id_transitions=%u current_id=%u affected_id=%u active_DM=%s",
+			m_diagnosticFrames, m_rejectedFrames, m_noMetadataFrames,
+			m_crcFailedCopies, m_recoveredPackets, m_metadataIdTransitions,
+			m_lastCurrentId, m_lastAffectedId, m_metadata.valid ? "yes" : "no");
+		m_diagnosticFrames = m_rejectedFrames = m_noMetadataFrames = 0;
+		m_crcFailedCopies = m_recoveredPackets = m_metadataIdTransitions = 0;
 	}
 	if (m_alignment == ByteAlignment::UNKNOWN)
 	{
@@ -397,8 +532,8 @@ metadata_complete:
 			m_alignment == ByteAlignment::RIGHT ? 2 : 0;
 	if (m_alignment == ByteAlignment::UNKNOWN || !m_metadata.valid)
 	{
-		// Keep the renderer blank until the tunnel is confirmed. Do not
-		// interpret arbitrary RGB as Dolby Vision opponent color.
+		// The renderer may use SDR only before DV lock or after explicit EOS.
+		// Invalid metadata after DV lock must not expose the packed RGB pixels.
 		memset(output, 0, static_cast<size_t>(m_outputSize));
 		return true;
 	}
