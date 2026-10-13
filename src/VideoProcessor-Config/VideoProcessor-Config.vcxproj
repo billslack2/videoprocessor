@@ -45,7 +45,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard><RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;VP_CONFIGFILE_STANDALONE;QT_WIDGETS_LIB;QT_GUI_LIB;QT_CORE_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtNetwork;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtNetwork;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;..\..\3rdparty\libplacebo-beta\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation>
@@ -62,7 +62,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><FunctionLevelLinking>true</FunctionLevelLinking>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;VP_CONFIGFILE_STANDALONE;QT_NO_DEBUG;QT_WIDGETS_LIB;QT_GUI_LIB;QT_CORE_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtNetwork;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtNetwork;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;..\..\3rdparty\libplacebo-beta\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation>
@@ -82,6 +82,8 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClCompile Include="AppMain.cpp" />
     <ClCompile Include="ConfigEditorWindow.cpp" />
     <ClCompile Include="VpTheme.cpp" />
+    <ClCompile Include="ToneCurveModel.cpp" />
+    <ClCompile Include="ToneCurveRuntime.cpp" />
     <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp">
       <ObjectFileName>$(IntDir)ConfigEditorCore.obj</ObjectFileName>
     </ClCompile>
@@ -101,6 +103,13 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ToneMappingControl.h" />
+    <ClInclude Include="ColourChart.h" />
+    <ClInclude Include="ToneChartPanel.h" />
+    <ClInclude Include="ToneCurveChart.h" />
+    <ClInclude Include="ToneCurveProvider.h" />
+    <ClInclude Include="ToneCurveRuntime.h" />
+    <ClInclude Include="ToneGuiRules.h" />
+    <ClInclude Include="ToneProfileFile.h" />
     <ClInclude Include="InlineColorPicker.h" />
     <ClInclude Include="UpdatePanel.h" />
     <ClInclude Include="ConfigEditorWindow.h" />
