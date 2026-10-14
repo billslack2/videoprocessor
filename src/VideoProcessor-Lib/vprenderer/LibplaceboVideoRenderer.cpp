@@ -12047,6 +12047,7 @@ struct LibplaceboVideoRenderer::Impl
 				if (doviMetadataCache.size() >= 512)
 				{
 					pl_renderer_flush_cache(renderer);
+                    temporalRenderer.Clear(); // Retained frames borrow the cached Dolby matrices.
 					doviMetadataCache.clear();
 					DebugLog::Log("Dolby Vision RGB tunnel: matrix cache recycled after 512 entries");
 				}
