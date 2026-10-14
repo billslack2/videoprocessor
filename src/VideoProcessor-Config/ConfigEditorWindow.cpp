@@ -4139,6 +4139,8 @@ QWidget* ConfigEditorWindow::createShell()
     sectionTabs->setAccessibleName(QStringLiteral("Settings section pages"));
     sectionTabs->setProperty("sectionTabs", true);
     sectionTabs->setExpanding(false);
+    sectionTabs->setUsesScrollButtons(true);
+    sectionTabs->setElideMode(Qt::ElideNone);
     sectionTabs->setDrawBase(false);
     sectionTabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     pageHostLayout->addWidget(sectionTabs, 0, Qt::AlignLeft);
