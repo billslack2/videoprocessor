@@ -17,14 +17,22 @@ bool ContainsBounds(
 		outer.right >= inner.right && outer.bottom >= inner.bottom;
 }
 
-bool SameDecisionContext(
-	const ActivePictureFrameIdentity& identity,
-	const ActivePictureFrameIdentity& current)
+bool SameTransportDecisionContext(
+    const ActivePictureFrameIdentity& identity,
+    const ActivePictureFrameIdentity& current)
 {
-	return identity.transportGeneration == current.transportGeneration &&
-		identity.sourceFormatGeneration == current.sourceFormatGeneration &&
-		identity.viewportGeneration == current.viewportGeneration &&
-		identity.rendererGeneration == current.rendererGeneration;
+    return identity.transportGeneration == current.transportGeneration &&
+        identity.sourceFormatGeneration == current.sourceFormatGeneration &&
+        identity.viewportGeneration == current.viewportGeneration &&
+        identity.rendererGeneration == current.rendererGeneration;
+}
+
+bool SameDecisionContext(
+    const ActivePictureFrameIdentity& identity,
+    const ActivePictureFrameIdentity& current)
+{
+    return SameTransportDecisionContext(identity, current) &&
+        identity.analysisDomainKey == current.analysisDomainKey;
 }
 
 bool SameTrustedBounds(
@@ -85,7 +93,8 @@ ValidateActivePictureScheduledDecision(
 		return ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
 	}
 	if (!SameActivePictureFrameIdentity(
-		decision.effectiveIdentity, currentIdentity))
+		decision.effectiveIdentity, currentIdentity) ||
+        decision.effectiveIdentity.analysisDomainKey != currentIdentity.analysisDomainKey)
 	{
 		return ActivePictureScheduledDecisionValidation::
 			EFFECTIVE_IDENTITY_MISMATCH;
@@ -229,6 +238,7 @@ void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 	m_continuityBoundaries.clear();
 	AdvanceContinuityGeneration();
 	m_transportGeneration = transportGeneration;
+    m_lastAnalysisDomainKey = 0;
 	m_lastAcceptedSequence = 0;
 	m_lastConsumedSequence = 0;
 	m_hasAcceptedSequence = false;
@@ -387,6 +397,15 @@ bool ActivePictureDecisionTimeline::TrackLookaheadEvidence(
 	{
 		return false;
 	}
+    if (m_lastAnalysisDomainKey != identity.analysisDomainKey)
+    {
+        // A new decoded/source interpretation cannot inherit transition votes
+        // or same-frame evidence from the old one. Accepted transport IDs stay.
+        m_transition.Reset();
+        m_observed.clear();
+        m_lookaheadEvidence.clear();
+        m_lastAnalysisDomainKey = identity.analysisDomainKey;
+    }
 	for (const LookaheadEvidence& existing : m_lookaheadEvidence)
 	{
 		if (existing.identity.acceptedSequence != identity.acceptedSequence)
@@ -563,7 +582,7 @@ ActivePictureDecisionTimeline::ValidateExactInwardProof(
 			return ActivePictureInwardProofValidation::MISSING_IDENTITY;
 		if (acceptedRecord.continuityGeneration != m_continuityGeneration)
 			return ActivePictureInwardProofValidation::CONTINUITY_MISMATCH;
-		if (!SameDecisionContext(accepted, confirmation))
+		if (!SameTransportDecisionContext(accepted, confirmation))
 			return ActivePictureInwardProofValidation::CONTEXT_MISMATCH;
 		if (expectedSequence == candidate.acceptedSequence &&
 			!SameActivePictureFrameIdentity(accepted, candidate))
@@ -577,7 +596,8 @@ ActivePictureDecisionTimeline::ValidateExactInwardProof(
 		}
 
 		LookaheadEvidence evidence;
-		if (!FindLookaheadEvidence(accepted, evidence))
+		if (!FindLookaheadEvidence(accepted, evidence) ||
+            evidence.identity.analysisDomainKey != confirmation.analysisDomainKey)
 			return ActivePictureInwardProofValidation::MISSING_EVIDENCE;
 		if (!evidence.observation.available ||
 			evidence.observation.classification !=

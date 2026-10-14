@@ -402,6 +402,7 @@
     <ClInclude Include="SparseBoundaryCropExperiment.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="AnalysisFrame.h" />
 	<ClInclude Include="AnalysisLumaSource.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>
@@ -491,6 +492,7 @@
     <ClCompile Include="SparseBoundaryCropExperiment.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="AnalysisFrame.cpp" />
 	<ClCompile Include="AnalysisLumaSource.cpp">
 	  <Filter>Source Files</Filter>
 	</ClCompile>

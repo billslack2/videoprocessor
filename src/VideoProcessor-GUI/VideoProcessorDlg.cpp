@@ -17299,20 +17299,16 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	// as a recovery condition in case a future queue-path regression violates
 	// that invariant. DirectShow keeps its liveness-based recovery below because
 	// its downstream queues are not directly observable.
-	const bool alphaQueueExceeded =
-		!m_activeRendererIsDirectShow &&
-		(rawQueueSize > queueMaxSize || convertedQueueSize > queueMaxSize);
-	const bool alphaQueueSustainedAtCapacity =
-		!m_activeRendererIsDirectShow && atCapacity &&
-		m_consecutiveFullSeconds >= sustainedSeconds;
-	if (autoReset && (alphaQueueExceeded || alphaQueueSustainedAtCapacity))
+	const bool alphaQueueOverflowRequiresRecovery =
+		AlphaQueueOverflowRequiresRecovery(
+			!m_activeRendererIsDirectShow,
+			rawQueueSize, convertedQueueSize, queueMaxSize);
+	if (autoReset && alphaQueueOverflowRequiresRecovery)
 	{
 		DEBUGLOG(
-			"Alpha queue recovery: raw=%zu/%zu converted=%zu/%zu consecutive=%zu threshold=%zu reason=%s; requesting live-queue reset",
+			"Alpha queue overflow recovery: raw=%zu/%zu converted=%zu/%zu; requesting live-queue reset",
 			rawQueueSize, queueMaxSize,
-			convertedQueueSize, queueMaxSize,
-			m_consecutiveFullSeconds, sustainedSeconds,
-			alphaQueueExceeded ? "exceeded-capacity" : "sustained-at-capacity");
+			convertedQueueSize, queueMaxSize);
 		RequestRendererReset(RendererResetReason::QueuePressure, false, 0);
 		return;
 	}

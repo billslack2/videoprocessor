@@ -75,6 +75,42 @@ namespace Tests
 			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
 		}
 
+		TEST_METHOD(AlphaQueueCapacityOscillationDoesNotRequestRecovery)
+		{
+			constexpr std::size_t capacity = 4;
+			constexpr std::size_t resetDelaySeconds = 5;
+			for (std::size_t elapsedSeconds = 0;
+				elapsedSeconds <= resetDelaySeconds;
+				++elapsedSeconds)
+			{
+				const std::size_t rawQueueSize =
+					elapsedSeconds % 2 == 0 ? capacity : capacity - 1;
+				Assert::IsFalse(AlphaQueueOverflowRequiresRecovery(
+					true, rawQueueSize, 0, capacity));
+			}
+		}
+
+		TEST_METHOD(AlphaQueueRecoveryRequiresActualOverflow)
+		{
+			constexpr std::size_t capacity = 4;
+			Assert::IsFalse(AlphaQueueOverflowRequiresRecovery(
+				true, capacity, 0, capacity));
+			Assert::IsFalse(AlphaQueueOverflowRequiresRecovery(
+				true, 0, capacity, capacity));
+			Assert::IsTrue(AlphaQueueOverflowRequiresRecovery(
+				true, capacity + 1, 0, capacity));
+			Assert::IsTrue(AlphaQueueOverflowRequiresRecovery(
+				true, 0, capacity + 1, capacity));
+		}
+
+		TEST_METHOD(NonAlphaQueueDoesNotUseAlphaOverflowRecovery)
+		{
+			Assert::IsFalse(AlphaQueueOverflowRequiresRecovery(
+				false, 8, 0, 4));
+			Assert::IsFalse(AlphaQueueOverflowRequiresRecovery(
+				false, 0, 8, 4));
+		}
+
 		TEST_METHOD(BlockedDeliveryCannotStarveGraphOwnerControl)
 		{
 			std::timed_mutex gate;

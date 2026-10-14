@@ -30,6 +30,11 @@ namespace AlphaSourceCrop
 
 	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
 
+	enum class OutwardPictureProofRoute : uint8_t
+	{
+		NONE, BROAD_OCCUPANCY, NATIVE_DISTRIBUTED_SUPPORT
+	};
+
 	struct OutwardPictureConfirmationState
 	{
 		ActivePictureBounds candidate;
@@ -41,6 +46,7 @@ namespace AlphaSourceCrop
 		uint32_t confirmations = 0;
 		// Preserve subtitle ownership across this proof, even if dense FIT later replaces it.
 		bool verticalPresentationSeen = false;
+		OutwardPictureProofRoute proofRoute = OutwardPictureProofRoute::NONE;
 		uint64_t sourceGeneration = 0;
 		uint64_t lastObservedSourceSequence = 0;
 	};
@@ -50,15 +56,16 @@ namespace AlphaSourceCrop
 		OutwardPictureConfirmationState state;
 		bool outwardTransition = false;
 		bool broadOpposingPicture = false;
+		bool nativeDistributedPicture = false;
 		bool authoritative = false;
         // Explanation only; never consumed by crop policy.
         const char* diagnosticReason = "not-evaluated";
 	};
 
-	// Expanding a trusted crop changes the logical aspect only after the same
-	// frame shows broad picture-like occupancy in each materially exposed strip.
-	// Localized UI/text still expands presentation immediately, but cannot build
-	// aspect authority by appearing on different edges at different times.
+	// Expanding a trusted crop changes logical aspect after same-frame broad
+	// picture occupancy, or strict current native vertical-bar authority plus
+	// distributed source-relative support in both newly exposed vertical strips.
+	// Localized UI/text cannot build aspect authority across different frames.
 	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
 		const OutwardPictureConfirmationState& previous,
 		const ActivePictureBounds& trustedGeometry,
@@ -1018,6 +1025,10 @@ namespace AlphaSourceCrop
 		uint64_t weakFringeFillSourceSequence = 0;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
+		// Independent bright/native run; broad AR confirmations may include dark frames.
+		ActivePictureBounds nativeOutwardReleaseCandidate;
+		uint64_t nativeOutwardReleaseLastSourceSequence = 0;
+		uint32_t nativeOutwardReleaseSamples = 0;
 		uint64_t lastEvaluatedSourceSequence = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
@@ -1065,6 +1076,12 @@ namespace AlphaSourceCrop
 		bool currentObservationAvailable = false;
 		ActivePictureClassification currentObservationClassification = ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds currentObservation;
+		ActivePictureAuthorityOrigin currentObservationOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		bool currentNativeObservationAvailable = false;
+		ActivePictureBounds currentNativeObservation;
+		// Fresh native outward proof can retire the episode entry; it cannot publish a crop.
+		OutwardPictureConfirmationState currentNativeOutwardProof;
+		uint64_t currentNativeOutwardProofPresentationEpoch = 0;
 		bool retentionEvaluated = false;
 		bool retentionSafe = false;
 		bool retentionExcludedBandsPixelSafe = false;
@@ -1102,6 +1119,7 @@ namespace AlphaSourceCrop
 		bool changedToFullRaster = false;
 		bool releasedToTrustedCrop = false;
 		bool bootstrapReleased = false;
+		bool outwardEntryReleased = false;
 		bool resetTransitionEvidence = false;
 		// Reopen ordinary acquisition after verified outward sampling correction.
 		// The caller must withdraw the undersized trusted rectangle, not only votes.
@@ -1127,6 +1145,10 @@ namespace AlphaSourceCrop
 	// and reopen ordinary acquisition; it never restores that unsafe old crop.
 	bool IsNearBlackNativeSamplingExpansion(const ActivePictureBounds& entry,
 		const ActivePictureBounds& candidate);
+	// Qualifies one current bright native sample for an obsolete-entry handoff.
+	// Ordinary acquisition must still admit any new crop on current pixels.
+	bool QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(
+		const NearBlackPresentationEpisodeInput& input);
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
     // Preserve validated ownership through the release frame and retire old inspection.
@@ -1135,6 +1157,26 @@ namespace AlphaSourceCrop
     inline bool NearBlackEpisodeResolvesInspection(const NearBlackPresentationEpisodeDecision& decision)
     { return decision.releasedToTrustedCrop; }
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
+	// Current strict caption/native-bar proof may establish logical picture bars
+	// during an episode. Global dark still blocks; presentation remains
+	// owned by the episode until its independent release conditions pass.
+	bool NearBlackBlocksCaptionBackedLogicalAcquisition(bool globalDark,
+		NearBlackPresentationMode episodeMode, bool currentStrictProof);
+	// Bounded bridge from native caption bootstrap to the first exact current
+	// subtitle-worker observation. A missing worker never causes a steady
+	// per-frame standalone scan. All frame counters are accepted sequences.
+	struct CaptionBootstrapScanInput
+	{
+		uint64_t sourceGeneration = 0, analysisDomainKey = 0, acceptedSequence = 0;
+		uint64_t attemptGeneration = 0, attemptDomainKey = 0;
+		uint64_t lastStandaloneSequence = 0, firstProofSequence = 0;
+		uint64_t bridgeFrames = 0, coldProbeIntervalFrames = 0;
+		bool hasEstablishedGeometry = false, establishedMatchesProof = false;
+	};
+	enum class CaptionBootstrapScanAction { NONE, COLD_PROBE, BRIDGE };
+	CaptionBootstrapScanAction SelectCaptionBootstrapScan(
+		const CaptionBootstrapScanInput& input);
+
 	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
 		bool stable, ActivePictureClassification classification);
 
@@ -1334,6 +1376,28 @@ namespace AlphaSourceCrop
 		Decision presentation;
 		bool blocked = false;
 	};
+
+	// A current confirmed caption may bound an independently trusted picture
+	// during first crop acquisition. The caption supplies extent, never picture
+	// authority; current visible pixels remain a veto on the final envelope.
+	struct CaptionBoundedFitAcquisitionInput
+	{
+		const Input* crop = nullptr;
+		ActivePictureBounds captionBounds;
+		uint64_t captionSourceGeneration = 0;
+		uint64_t captionSourceSequence = 0;
+		bool captionConfirmed = false;
+		bool initialAcquisition = false;
+		bool translationProposed = false;
+	};
+	struct CaptionBoundedFitAcquisitionDecision
+	{
+		bool available = false;
+		ActivePictureBounds bounds;
+		const char* reason = "caption acquisition unavailable";
+	};
+	CaptionBoundedFitAcquisitionDecision BuildCaptionBoundedFitAcquisition(
+		const CaptionBoundedFitAcquisitionInput& input);
 
 	// Candidate must be the result of Evaluate followed by presentation recovery.
 	// Run before fill/NLS so neither can use geometry rejected by this admission.

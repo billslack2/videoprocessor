@@ -10,6 +10,7 @@
 #include <vprenderer/AnamorphicPresentation.h>
 #include <NlsGeometryPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/SubtitleAspectRetention.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -36,6 +37,51 @@ namespace Tests
 			return input;
 		}
 
+		CaptionBoundedFitAcquisitionInput MakeCaptionFitInput(
+			Input& crop, int rasterWidth, int rasterHeight,
+			int pictureTop, int pictureBottom, int captionLeft,
+			int captionTop, int captionRight, int captionBottom)
+		{
+			crop = TrustedScopeCrop();
+			crop.rasterWidth = rasterWidth;
+			crop.rasterHeight = rasterHeight;
+			crop.frameSourceSequence = 8224;
+			crop.geometry = {
+				0, pictureTop, rasterWidth, pictureBottom,
+				rasterWidth, rasterHeight,
+				static_cast<double>(rasterWidth) / (pictureBottom - pictureTop),
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			crop.geometrySourceGeneration = crop.frameSourceGeneration;
+			crop.currentVisibleBoundsAvailable = true;
+			crop.currentVisibleBase = crop.geometry;
+			crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+			crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+			crop.currentVisibleBounds = crop.geometry;
+			crop.currentVisibleBounds.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			if (captionTop < pictureTop)
+				crop.currentVisibleBounds.top = (captionTop - 2) & ~1;
+			if (captionBottom > pictureBottom)
+				crop.currentVisibleBounds.bottom = (captionBottom + 3) & ~1;
+			crop.currentVisibleBounds.aspectRatio =
+				static_cast<double>(rasterWidth) /
+				(crop.currentVisibleBounds.bottom - crop.currentVisibleBounds.top);
+
+			CaptionBoundedFitAcquisitionInput request;
+			request.crop = &crop;
+			request.captionBounds = {
+				captionLeft, captionTop, captionRight, captionBottom,
+				rasterWidth, rasterHeight,
+				static_cast<double>(captionRight - captionLeft) /
+					(captionBottom - captionTop),
+				ActivePictureBounds::BarAxes::NONE };
+			request.captionSourceGeneration = crop.frameSourceGeneration;
+			request.captionSourceSequence = crop.frameSourceSequence;
+			request.captionConfirmed = true;
+			request.initialAcquisition = true;
+			request.translationProposed = true;
+			return request;
+		}
 		PresentationRecoveryInput AgencyBoundedRecovery(uint64_t sequence = 4013)
 		{
 			PresentationRecoveryInput input;
@@ -7065,6 +7111,155 @@ namespace Tests
 			Assert::AreEqual(1U, decision.state.confirmations);
 		}
 
+		TEST_METHOD(DarkNativeDistributedPictureRequiresThreeFreshExactFrames)
+		{
+			const ActivePictureBounds scope = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds candidate = {
+				0, 68, 3840, 2092, 3840, 2160, 3840.0 / 2024.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			auto makeEvidence = [&]()
+			{
+				ActivePicturePresentationRetentionEvidence evidence;
+				evidence.analysisValid = evidence.presentationValid = true;
+				evidence.expansionStripsAvailable = true;
+				evidence.expansionBase = scope;
+				evidence.expansionCandidate = candidate;
+				auto setDarkDistributedStrip = [](ActivePictureEdgeEvidence& edge, int pixels)
+				{
+					edge.barPixels = pixels;
+					edge.blackFraction = 0.04;
+					edge.continuity = 0.0;
+					edge.lumaP90 = 36.0;
+					edge.texture = 7.1;
+					edge.distributedSupportDepthRowsByQuartile.fill(0x3f);
+				};
+				setDarkDistributedStrip(evidence.expandingTop, scope.top - candidate.top);
+				setDarkDistributedStrip(evidence.expandingBottom, candidate.bottom - scope.bottom);
+				evidence.activePicture.available = true;
+				evidence.activePicture.classification =
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+				evidence.activePicture.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+				evidence.activePicture.trustedBounds = candidate;
+				evidence.activePicture.top.trusted = true;
+				evidence.activePicture.bottom.trusted = true;
+				evidence.activePicture.axisEvidence.vertical.scanComplete = true;
+				evidence.activePicture.axisEvidence.vertical.state =
+					ActivePictureAxisState::TRUSTED_BARS;
+				return evidence;
+			};
+			auto evidence = makeEvidence();
+			OutwardPictureConfirmationState state;
+			auto decision = ConfirmOutwardPictureTransition(state, scope, candidate,
+				evidence, 7, 0);
+			Assert::IsFalse(decision.nativeDistributedPicture);
+			Assert::AreEqual(0U, decision.state.confirmations);
+			decision = ConfirmOutwardPictureTransition(state, scope, candidate,
+				evidence, 7, 100);
+			Assert::IsFalse(decision.broadOpposingPicture);
+			Assert::IsTrue(decision.nativeDistributedPicture);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 7, 100);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 7, 101);
+			Assert::AreEqual(2U, decision.state.confirmations);
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 7, 103);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 8, 104);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 8, 105);
+			decision = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				evidence, 8, 106);
+			Assert::AreEqual(3U, decision.state.confirmations);
+			Assert::IsTrue(decision.authoritative);
+		}
+
+		TEST_METHOD(NativeDistributedProofRejectsLocalizedOrUnownedEvidenceAndCannotMixRoutes)
+		{
+			const ActivePictureBounds scope = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds candidate = {
+				0, 68, 3840, 2092, 3840, 2160, 3840.0 / 2024.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid = evidence.presentationValid = true;
+			evidence.expansionStripsAvailable = true;
+			evidence.expansionBase = scope;
+			evidence.expansionCandidate = candidate;
+			auto setDarkDistributedStrip = [](ActivePictureEdgeEvidence& edge, int pixels)
+			{
+				edge.barPixels = pixels;
+				edge.blackFraction = 0.04;
+				edge.continuity = 0.0;
+				edge.lumaP90 = 36.0;
+				edge.texture = 7.1;
+				edge.distributedSupportDepthRowsByQuartile.fill(0x3f);
+			};
+			setDarkDistributedStrip(evidence.expandingTop, scope.top - candidate.top);
+			setDarkDistributedStrip(evidence.expandingBottom, candidate.bottom - scope.bottom);
+			evidence.activePicture.available = true;
+			evidence.activePicture.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			evidence.activePicture.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+			evidence.activePicture.trustedBounds = candidate;
+			evidence.activePicture.top.trusted = evidence.activePicture.bottom.trusted = true;
+			evidence.activePicture.axisEvidence.vertical.scanComplete = true;
+			evidence.activePicture.axisEvidence.vertical.state = ActivePictureAxisState::TRUSTED_BARS;
+
+			evidence.expandingTop.distributedSupportDepthRowsByQuartile[2] = 0x01;
+			auto decision = ConfirmOutwardPictureTransition({}, scope, candidate, evidence, 7, 100);
+			Assert::IsFalse(decision.nativeDistributedPicture);
+			Assert::AreEqual(0U, decision.state.confirmations);
+			evidence.expandingTop.distributedSupportDepthRowsByQuartile.fill(0x3f);
+			auto rejectsNative = [&](ActivePicturePresentationRetentionEvidence invalid)
+			{
+				const auto rejected = ConfirmOutwardPictureTransition({}, scope,
+				candidate, invalid, 7, 100);
+				Assert::IsFalse(rejected.nativeDistributedPicture);
+				Assert::AreEqual(0U, rejected.state.confirmations);
+			};
+			auto invalid = evidence; invalid.analysisValid = false; rejectsNative(invalid);
+			invalid = evidence; invalid.presentationValid = false; rejectsNative(invalid);
+			invalid = evidence; invalid.globalNearBlack = true; rejectsNative(invalid);
+			invalid = evidence; invalid.expansionStripsAvailable = false; rejectsNative(invalid);
+			invalid = evidence; invalid.expansionCandidate.bottom--; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.classification = ActivePictureClassification::PROVISIONAL; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.authorityOrigin = ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.trustedBounds.top++; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.top.trusted = false; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.bottom.trusted = false; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.axisEvidence.vertical.scanComplete = false; rejectsNative(invalid);
+			invalid = evidence; invalid.activePicture.axisEvidence.vertical.state = ActivePictureAxisState::UNKNOWN; rejectsNative(invalid);
+
+
+
+			decision = ConfirmOutwardPictureTransition({}, scope, candidate, evidence, 7, 100);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			auto broad = evidence;
+			broad.expandingTop.blackFraction = broad.expandingBottom.blackFraction = 0.30;
+			broad.expandingTop.continuity = broad.expandingBottom.continuity = 0.40;
+			broad.expandingTop.lumaP90 = broad.expandingBottom.lumaP90 = 200.0;
+			auto switched = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
+				broad, 7, 101);
+			Assert::IsTrue(switched.broadOpposingPicture);
+			Assert::AreEqual(1U, switched.state.confirmations);
+			decision = ConfirmOutwardPictureTransition(switched.state, scope, candidate,
+				evidence, 7, 102);
+			Assert::IsTrue(decision.nativeDistributedPicture);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+		}
+
 		TEST_METHOD(CadenceRepeatCannotAdvanceOutwardPictureConfirmation)
 		{
 			const ActivePictureBounds scope = {
@@ -8734,6 +8929,191 @@ namespace Tests
 				finalBase.sourceBounds.top);
 		}
 
+		TEST_METHOD(ConfirmedCaptionFitAcquiresOnlyTheCurrentPictureAndCaptionEnvelope)
+		{
+			Input crop;
+			auto request = MakeCaptionFitInput(crop, 3840, 2160,
+				276, 1884, 1414, 1670, 2414, 1914);
+			crop.verticalTranslationActive = true;
+			crop.verticalTranslationPixels = 72;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+
+			const auto translated = Evaluate(crop);
+			Assert::IsTrue(translated.applyCrop);
+			Assert::IsTrue(translated.verticallyTranslated);
+			Assert::AreEqual(348, translated.sourceBounds.top);
+			Assert::AreEqual(1956, translated.sourceBounds.bottom);
+
+			// The old same-height translation clips the trusted picture's top
+			// 72 rows. The existing current-visible veto must continue to reject it.
+			const auto blocked = AdmitCropPresentation({}, crop, translated, 1);
+			Assert::IsTrue(blocked.blocked);
+			AssertFullRaster(blocked.presentation);
+			Assert::IsFalse(blocked.state.available);
+
+			const auto bounded = BuildCaptionBoundedFitAcquisition(request);
+			Assert::IsTrue(bounded.available);
+			Assert::AreEqual(0, bounded.bounds.left);
+			Assert::AreEqual(276, bounded.bounds.top);
+			Assert::AreEqual(3840, bounded.bounds.right);
+			Assert::AreEqual(1916, bounded.bounds.bottom);
+
+			// Route the caption-bounded candidate through the ordinary policy
+			// and admission stages, exactly as the renderer does after the helper.
+			crop.verticalTranslationActive = false;
+			crop.verticalTranslationPixels = 0;
+			crop.outwardPresentationActive = true;
+			crop.outwardExpansionAvailable = true;
+			crop.outwardExpansion = bounded.bounds;
+			crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+			const auto fit = Evaluate(crop);
+			Assert::IsTrue(fit.applyCrop);
+			Assert::IsTrue(fit.outwardExpanded);
+			Assert::IsFalse(fit.verticallyTranslated);
+			Assert::AreEqual(static_cast<int>(DecisionOwner::OUTWARD_FIT),
+				static_cast<int>(fit.owner));
+			Assert::AreEqual(276, fit.sourceBounds.top);
+			Assert::AreEqual(1916, fit.sourceBounds.bottom);
+
+			PresentationRecoveryInput recovery;
+			recovery.crop = crop;
+			recovery.candidate = fit;
+			recovery.presentationEpoch = 1;
+			const auto recovered = EvaluatePresentationRecovery(recovery);
+			Assert::IsFalse(recovered.state.active);
+			Assert::AreEqual(276, recovered.presentation.sourceBounds.top);
+			Assert::AreEqual(1916, recovered.presentation.sourceBounds.bottom);
+
+			const auto admitted = AdmitCropPresentation({}, crop,
+				recovered.presentation, 1);
+			Assert::IsFalse(admitted.blocked);
+			Assert::IsTrue(admitted.state.available);
+			Assert::AreEqual(276, admitted.presentation.sourceBounds.top);
+			Assert::AreEqual(1916, admitted.presentation.sourceBounds.bottom);
+
+			for (const auto mode : { SubtitlePreviewMode::None,
+				SubtitlePreviewMode::GeneratedGrayBackground,
+				SubtitlePreviewMode::BlackBackground })
+			{
+				const auto display = SubtitlePresentationBounds(fit, mode);
+				Assert::AreEqual(fit.sourceBounds.top, display.top);
+				Assert::AreEqual(fit.sourceBounds.bottom, display.bottom);
+				Assert::AreEqual(fit.sourceBounds.bottom - fit.sourceBounds.top,
+					display.bottom - display.top);
+			}
+		}
+
+		TEST_METHOD(ConfirmedCaptionFitUsesMeasuredCoordinatesAtTopBottomAndSmallRaster)
+		{
+			struct Fixture
+			{
+				int width, height, pictureTop, pictureBottom;
+				int captionLeft, captionTop, captionRight, captionBottom;
+				int expectedTop, expectedBottom;
+			};
+			const Fixture fixtures[] = {
+				{ 3840, 2160, 276, 1884, 1414, 1670, 2414, 1914, 276, 1916 },
+				{ 3840, 2160, 276, 1884, 1414, 246, 2414, 520, 244, 1884 },
+				{ 640, 360, 46, 314, 232, 300, 410, 338, 46, 340 },
+			};
+			for (const auto& fixture : fixtures)
+			{
+				Input crop;
+				const auto request = MakeCaptionFitInput(crop,
+					fixture.width, fixture.height,
+					fixture.pictureTop, fixture.pictureBottom,
+					fixture.captionLeft, fixture.captionTop,
+					fixture.captionRight, fixture.captionBottom);
+				const auto bounded = BuildCaptionBoundedFitAcquisition(request);
+				Assert::IsTrue(bounded.available);
+				Assert::AreEqual(fixture.expectedTop, bounded.bounds.top);
+				Assert::AreEqual(fixture.expectedBottom, bounded.bounds.bottom);
+				Assert::AreEqual(fixture.width, bounded.bounds.right);
+				Assert::AreEqual(fixture.width, bounded.bounds.rasterWidth);
+				Assert::AreEqual(fixture.height, bounded.bounds.rasterHeight);
+				Assert::AreEqual(
+					static_cast<double>(fixture.width) /
+						(fixture.expectedBottom - fixture.expectedTop),
+					bounded.bounds.aspectRatio, 0.000001);
+			}
+		}
+
+		TEST_METHOD(CaptionFitRejectsStaleUnconfirmedUnpairedOrWrongEdgeEvidence)
+		{
+			for (int fault = 0; fault < 14; ++fault)
+			{
+				Input crop;
+				auto request = MakeCaptionFitInput(crop, 3840, 2160,
+					276, 1884, 1414, 1670, 2414, 1914);
+				switch (fault)
+				{
+				case 0: crop.sharedGeometryAvailable = false; break; // Missing picture authority.
+				case 1: request.captionConfirmed = false; break; // Broad texture is not a confirmed glyph/card.
+				case 2: --request.captionSourceGeneration; break;
+				case 3: --request.captionSourceSequence; break;
+				case 4: crop.currentVisibleBoundsAvailable = false; break;
+				case 5: --crop.currentVisibleSourceGeneration; break;
+				case 6: --crop.currentVisibleSourceSequence; break;
+				case 7: crop.currentVisibleBase.top += 2; break;
+				case 8: // A box crossing both trusted picture edges has no single caption side.
+					request.captionBounds.top = 250;
+					request.captionBounds.bottom = 1914;
+					break;
+				case 9: // A box contained inside the picture cannot justify an outward fit.
+					request.captionBounds.top = 1670;
+					request.captionBounds.bottom = 1800;
+					break;
+				case 10: // Current unrelated content extends beyond the bounded caption proof.
+					crop.currentVisibleBounds.bottom = 1924;
+					break;
+				case 11: request.initialAcquisition = false; break;
+				case 12: request.translationProposed = false; break;
+				case 13: // The caption lies beyond the current raster.
+					request.captionBounds.bottom = 2162;
+					break;
+				}
+				const auto bounded = BuildCaptionBoundedFitAcquisition(request);
+				Assert::IsFalse(bounded.available,
+					L"Caption extent cannot replace stale picture or visible-pixel proof.");
+			}
+
+			Input crop;
+			auto broad = MakeCaptionFitInput(crop, 3840, 2160,
+				276, 1884, 0, 1600, 3840, 1940);
+			broad.captionConfirmed = false;
+			const auto broadTexture = BuildCaptionBoundedFitAcquisition(broad);
+			Assert::IsFalse(broadTexture.available);
+		}
+
+		TEST_METHOD(CaptionFitDoesNotReplaceAConfirmedRealPictureExpansion)
+		{
+			Input crop;
+			auto request = MakeCaptionFitInput(crop, 3840, 2160,
+				276, 1884, 1414, 1670, 2414, 1914);
+			crop.outwardPresentationActive = true;
+			crop.outwardExpansionAvailable = true;
+			crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+			crop.outwardExpansion = crop.geometry;
+			crop.outwardExpansion.bottom = 2000;
+			crop.outwardExpansion.aspectRatio = 3840.0 / 1724.0;
+			crop.currentVisibleBounds.bottom = 2000;
+			crop.currentVisibleBounds.aspectRatio = 3840.0 / 1724.0;
+
+			Assert::IsFalse(BuildCaptionBoundedFitAcquisition(request).available);
+			const auto pictureExpansion = Evaluate(crop);
+			Assert::IsTrue(pictureExpansion.applyCrop);
+			Assert::IsTrue(pictureExpansion.outwardExpanded);
+			Assert::AreEqual(static_cast<int>(DecisionOwner::OUTWARD_FIT),
+				static_cast<int>(pictureExpansion.owner));
+			Assert::AreEqual(276, pictureExpansion.sourceBounds.top);
+			Assert::AreEqual(2000, pictureExpansion.sourceBounds.bottom);
+			const auto admitted = AdmitCropPresentation({}, crop,
+				pictureExpansion, 1);
+			Assert::IsFalse(admitted.blocked);
+			Assert::AreEqual(2000, admitted.presentation.sourceBounds.bottom);
+		}
+
 		TEST_METHOD(SparseSubtitleTranslatesSameSizeWindowWithoutChangingNlsAspect)
 		{
 			Input input = TrustedScopeCrop();
@@ -9690,6 +10070,120 @@ namespace Tests
 			Assert::AreEqual(0u, decision.state.outwardConfirmationSamples);
 		}
 
+		TEST_METHOD(CaptionBackedLogicalAcquisitionRequiresFreshProofDuringEpisode)
+		{
+			for (const auto mode : { NearBlackPresentationMode::RETAIN_CROP,
+				NearBlackPresentationMode::FULL_RASTER })
+			{
+				Assert::IsTrue(NearBlackBlocksCaptionBackedLogicalAcquisition(
+					true, mode, true),
+					L"Global darkness blocks logical acquisition even with current proof.");
+				Assert::IsTrue(NearBlackBlocksCaptionBackedLogicalAcquisition(
+					false, mode, false),
+					L"An active episode needs current strict caption/bar proof.");
+				Assert::IsFalse(NearBlackBlocksCaptionBackedLogicalAcquisition(
+					false, mode, true),
+					L"Current strict proof may acquire logical geometry during an active episode.");
+			}
+
+			Assert::IsTrue(NearBlackBlocksCaptionBackedLogicalAcquisition(
+				true, NearBlackPresentationMode::INACTIVE, true));
+			Assert::IsFalse(NearBlackBlocksCaptionBackedLogicalAcquisition(
+				false, NearBlackPresentationMode::INACTIVE, false),
+				L"Ordinary non-episode acquisition remains unchanged.");
+			Assert::IsFalse(NearBlackBlocksCaptionBackedLogicalAcquisition(
+				false, NearBlackPresentationMode::INACTIVE, true));
+		}
+		TEST_METHOD(CaptionBootstrapScanUsesBoundedProofBurstAndColdRateLimit)
+		{
+			CaptionBootstrapScanInput input;
+			input.sourceGeneration = 5;
+			input.analysisDomainKey = 8;
+			input.acceptedSequence = 100;
+			input.bridgeFrames = 12;
+			input.coldProbeIntervalFrames = 24;
+
+			Assert::AreEqual(int(CaptionBootstrapScanAction::COLD_PROBE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"A new no-presentation source starts with one standalone probe.");
+
+			input.attemptGeneration = input.sourceGeneration;
+			input.attemptDomainKey = input.analysisDomainKey;
+			input.lastStandaloneSequence = 100;
+			input.acceptedSequence = 123;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"Cold retries remain rate-limited before one second.");
+			input.acceptedSequence = 124;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::COLD_PROBE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"An expired proof may be retried at the cold-probe cadence.");
+
+			// Production records the sequence of every standalone probe.
+			input.lastStandaloneSequence = 124;
+			input.firstProofSequence = 124;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::BRIDGE),
+				int(SelectCaptionBootstrapScan(input)));
+			input.acceptedSequence = 125;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::BRIDGE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"A successful cold proof immediately opens the adjacent confirmation burst.");
+			input.acceptedSequence = 135; // Exactly 12 accepted sequences including 124.
+			Assert::AreEqual(int(CaptionBootstrapScanAction::BRIDGE),
+				int(SelectCaptionBootstrapScan(input)));
+			// Production also advances this marker on each bridge scan.
+			input.lastStandaloneSequence = 135;
+			input.acceptedSequence = 136;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"The contiguous bridge ends at its exclusive 12-frame bound.");
+			input.acceptedSequence = 158;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"Expiry does not turn the burst into a per-frame retry before the cold cadence.");
+			input.acceptedSequence = 159;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::COLD_PROBE),
+				int(SelectCaptionBootstrapScan(input)));
+
+			input.acceptedSequence = 130;
+			input.hasEstablishedGeometry = true;
+			input.establishedMatchesProof = true;
+			// Production records the sequence of every standalone probe.
+			input.lastStandaloneSequence = 124;
+			input.firstProofSequence = 124;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::BRIDGE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"An established presentation continues the bridge only for identical geometry.");
+			input.establishedMatchesProof = false;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"Established geometry mismatch terminates the proof burst.");
+
+			input.hasEstablishedGeometry = false;
+			input.establishedMatchesProof = false;
+			input.sourceGeneration = 6;
+			input.acceptedSequence = 131;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::COLD_PROBE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"A new source generation can start a fresh cold probe immediately.");
+			input.sourceGeneration = 5;
+			input.analysisDomainKey = 9;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::COLD_PROBE),
+				int(SelectCaptionBootstrapScan(input)),
+				L"A changed analysis domain cannot reuse the old proof or rate limit.");
+
+			input.sourceGeneration = 0;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)));
+			input.sourceGeneration = 5;
+			input.analysisDomainKey = 0;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)));
+			input.analysisDomainKey = 8;
+			input.acceptedSequence = 0;
+			Assert::AreEqual(int(CaptionBootstrapScanAction::NONE),
+				int(SelectCaptionBootstrapScan(input)));
+		}
 		TEST_METHOD(NearBlackEpisodeSuppressesPublishedAndHeldBarGeometryMutation)
 		{
 			Assert::IsTrue(ShouldSuppressNearBlackBarGeometryMutation(true, true,
@@ -10233,6 +10727,229 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(NearBlackEpisodeRetiresObsoleteNativeEntryAfterCurrentOutwardProof)
+		{
+			const ActivePictureBounds oldCrop = {
+				0, 276, 3840, 1884, 3840, 2160, 2.3881,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds newCrop = {
+				0, 68, 3840, 2092, 3840, 2160, 1.8972,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 47;
+			input.previous.presentationEpoch = 53;
+			input.previous.entryTrustedCropAvailable = true;
+			input.previous.entryTrustedCrop = oldCrop;
+			input.previous.entryTrustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
+			input.previous.fullRasterStartedSourceSequence = 1300;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = false;
+			input.trustedCropAvailable = true;
+			input.trustedCrop = oldCrop;
+			input.trustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
+			input.currentObservationAvailable = true;
+			input.currentObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.currentObservation = newCrop;
+			input.currentObservationOrigin = ActivePictureAuthorityOrigin::NATIVE;
+			input.currentNativeObservationAvailable = true;
+			input.currentNativeObservation = newCrop;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.retentionEvaluated = true;
+			input.retentionSafe = false;
+			input.retentionBounds = oldCrop;
+			input.retentionSourceGeneration = 47;
+			input.retentionSourceSequence = 1339;
+			input.presentationEpoch = 53;
+			input.sourceGeneration = 47;
+			input.sourceSequence = 1339;
+			input.currentNativeOutwardProof.base = oldCrop;
+			input.currentNativeOutwardProof.candidate = newCrop;
+			input.currentNativeOutwardProof.referenceCandidate = newCrop;
+			input.currentNativeOutwardProof.proofRoute = OutwardPictureProofRoute::BROAD_OCCUPANCY;
+			input.currentNativeOutwardProof.confirmations =
+				OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+			input.currentNativeOutwardProof.sourceGeneration = 47;
+			input.currentNativeOutwardProof.firstPictureSourceSequence = 1337;
+			input.currentNativeOutwardProof.lastObservedSourceSequence = 1339;
+			input.currentNativeOutwardProofPresentationEpoch = 53;
+
+			Assert::IsTrue(QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(input));
+			auto first = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(first.outwardEntryReleased);
+			Assert::AreEqual(1u, first.state.nativeOutwardReleaseSamples);
+			auto next = input;
+			next.previous = first.state;
+			next.sourceSequence = 1340;
+			next.retentionSourceSequence = 1340;
+			next.currentNativeOutwardProof.lastObservedSourceSequence = 1340;
+			auto second = EvaluateNearBlackPresentationEpisode(next);
+			Assert::IsFalse(second.outwardEntryReleased);
+			Assert::AreEqual(2u, second.state.nativeOutwardReleaseSamples);
+			next.previous = second.state;
+			next.sourceSequence = 1341;
+			next.retentionSourceSequence = 1341;
+			next.currentNativeOutwardProof.lastObservedSourceSequence = 1341;
+			const auto decision = EvaluateNearBlackPresentationEpisode(next);
+			Assert::IsTrue(decision.ended);
+			Assert::IsTrue(decision.outwardEntryReleased);
+			Assert::IsTrue(decision.bootstrapReleased);
+			Assert::IsTrue(decision.resetTrustedGeometry);
+			Assert::IsFalse(decision.releasedToTrustedCrop);
+			Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::INACTIVE),
+				static_cast<int>(decision.state.mode));
+
+			auto latchedAfterProofBegan = input;
+			latchedAfterProofBegan.previous.fullRasterStartedSourceSequence = 1338;
+			Assert::IsTrue(QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(latchedAfterProofBegan));
+
+			auto dark = input;
+			dark.globalNearBlack = true;
+			auto darkDecision = EvaluateNearBlackPresentationEpisode(dark);
+			Assert::AreEqual(0u, darkDecision.state.nativeOutwardReleaseSamples);
+			dark.previous = darkDecision.state;
+			dark.sourceSequence = 1340;
+			dark.retentionSourceSequence = 1340;
+			dark.currentNativeOutwardProof.lastObservedSourceSequence = 1340;
+			darkDecision = EvaluateNearBlackPresentationEpisode(dark);
+			Assert::AreEqual(0u, darkDecision.state.nativeOutwardReleaseSamples);
+			dark.globalNearBlack = false;
+			dark.previous = darkDecision.state;
+			dark.sourceSequence = 1341;
+			dark.retentionSourceSequence = 1341;
+			dark.currentNativeOutwardProof.lastObservedSourceSequence = 1341;
+			const auto firstBright = EvaluateNearBlackPresentationEpisode(dark);
+			Assert::IsFalse(firstBright.outwardEntryReleased);
+			Assert::AreEqual(1u, firstBright.state.nativeOutwardReleaseSamples);
+			dark.previous = firstBright.state;
+			dark.sourceSequence = 1342;
+			dark.retentionSourceSequence = 1342;
+			dark.currentNativeOutwardProof.lastObservedSourceSequence = 1342;
+			const auto secondBright = EvaluateNearBlackPresentationEpisode(dark);
+			Assert::IsFalse(secondBright.outwardEntryReleased);
+			dark.previous = secondBright.state;
+			dark.sourceSequence = 1343;
+			dark.retentionSourceSequence = 1343;
+			dark.currentNativeOutwardProof.lastObservedSourceSequence = 1343;
+			Assert::IsTrue(EvaluateNearBlackPresentationEpisode(dark).outwardEntryReleased);
+
+			auto weak = input;
+			weak.currentNativeOutwardProof.confirmations = 1;
+			auto weakDecision = EvaluateNearBlackPresentationEpisode(weak);
+			for (uint64_t sequence = 1340; sequence <= 1341; ++sequence)
+			{
+				weak.previous = weakDecision.state;
+				weak.sourceSequence = sequence;
+				weak.retentionSourceSequence = sequence;
+				weak.currentNativeOutwardProof.lastObservedSourceSequence = sequence;
+				weak.currentNativeOutwardProof.confirmations = 2;
+				weakDecision = EvaluateNearBlackPresentationEpisode(weak);
+			}
+			Assert::IsFalse(weakDecision.outwardEntryReleased);
+			Assert::AreEqual(3u, weakDecision.state.nativeOutwardReleaseSamples);
+
+			// A 24 Hz source presented at 60 Hz may repeat each certified frame.
+			auto cadence = input;
+			auto cadenceDecision = EvaluateNearBlackPresentationEpisode(cadence);
+			cadence.previous = cadenceDecision.state;
+			cadence.cadenceRepeat = true;
+			cadenceDecision = EvaluateNearBlackPresentationEpisode(cadence);
+			Assert::AreEqual(1u, cadenceDecision.state.nativeOutwardReleaseSamples);
+			cadence.previous = cadenceDecision.state;
+			cadenceDecision = EvaluateNearBlackPresentationEpisode(cadence);
+			Assert::AreEqual(1u, cadenceDecision.state.nativeOutwardReleaseSamples);
+			cadence.cadenceRepeat = false;
+			cadence.previous = cadenceDecision.state;
+			cadence.sourceSequence = 1340;
+			cadence.retentionSourceSequence = 1340;
+			cadence.currentNativeOutwardProof.lastObservedSourceSequence = 1340;
+			cadenceDecision = EvaluateNearBlackPresentationEpisode(cadence);
+			Assert::AreEqual(2u, cadenceDecision.state.nativeOutwardReleaseSamples);
+			cadence.previous = cadenceDecision.state;
+			cadence.cadenceRepeat = true;
+			cadenceDecision = EvaluateNearBlackPresentationEpisode(cadence);
+			Assert::AreEqual(2u, cadenceDecision.state.nativeOutwardReleaseSamples);
+			cadence.previous = cadenceDecision.state;
+			cadence.cadenceRepeat = false;
+			cadence.sourceSequence = 1341;
+			cadence.retentionSourceSequence = 1341;
+			cadence.currentNativeOutwardProof.lastObservedSourceSequence = 1341;
+			Assert::IsTrue(EvaluateNearBlackPresentationEpisode(cadence).outwardEntryReleased);
+
+			// Keep the producer's anchored candidate across one detector step
+			// while requiring each frame's actual candidate to match its proof.
+			auto jitter = input;
+			auto jitterDecision = EvaluateNearBlackPresentationEpisode(jitter);
+			jitter.previous = jitterDecision.state;
+			jitter.sourceSequence = 1340;
+			jitter.retentionSourceSequence = 1340;
+			jitter.currentNativeOutwardProof.lastObservedSourceSequence = 1340;
+			jitter.currentObservation.top += 2;
+			jitter.currentObservation.bottom -= 2;
+			jitter.currentNativeOutwardProof.candidate = jitter.currentObservation;
+			jitter.currentNativeObservation = jitter.currentObservation;
+			jitterDecision = EvaluateNearBlackPresentationEpisode(jitter);
+			Assert::AreEqual(2u, jitterDecision.state.nativeOutwardReleaseSamples);
+			jitter.previous = jitterDecision.state;
+			jitter.sourceSequence = 1341;
+			jitter.retentionSourceSequence = 1341;
+			jitter.currentNativeOutwardProof.lastObservedSourceSequence = 1341;
+			Assert::IsTrue(EvaluateNearBlackPresentationEpisode(jitter).outwardEntryReleased);
+			auto reject = [](const NearBlackPresentationEpisodeInput& changed)
+			{
+				Assert::IsFalse(QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(changed));
+				Assert::IsFalse(EvaluateNearBlackPresentationEpisode(changed).outwardEntryReleased);
+			};
+			auto changed = input;
+			changed.globalNearBlack = true;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.confirmations = 0;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.lastObservedSourceSequence--;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.firstPictureSourceSequence = 0;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.sourceGeneration++;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProofPresentationEpoch++;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.base.top += 2;
+			reject(changed);
+			changed = input;
+			changed.currentNativeOutwardProof.candidate.bottom -= 2;
+			reject(changed);
+			changed = input;
+			changed.currentObservationOrigin = ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+			reject(changed);
+			changed = input;
+			changed.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+			reject(changed);
+			changed = input;
+			changed.currentNativeObservation.top += 2;
+			reject(changed);
+			changed = input;
+			changed.retentionSafe = true;
+			reject(changed);
+			changed = input;
+			changed.retentionSourceSequence--;
+			reject(changed);
+			changed = input;
+			changed.boundedVisibleContentOutsideCrop = false;
+			reject(changed);
+			changed = input;
+			changed.sceneBoundary = true;
+			reject(changed);
+			changed = input;
+			changed.cadenceRepeat = true;
+			reject(changed);
+		}
 		TEST_METHOD(NearBlackCropRevalidationRejectsUnrelatedOrStaleAuthority)
 		{
 			const ActivePictureBounds scope = TrustedScopeCrop().geometry;

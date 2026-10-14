@@ -1,6 +1,8 @@
 #include "pch.h"
 
 #include "ActivePictureEvidence.h"
+#include "SubtitleBarEvidence.h"
+#include "SubtitleBoxLookahead.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +12,8 @@
 
 namespace
 {
+bool CurrentOwnedInkAt(const SubtitleInkSnapshot& ink, int x, int y);
+
 constexpr int kLineSamples = 48;
 constexpr int kEdgeDepthSamples = 6;
 constexpr int kGlobalGridWidth = 16;
@@ -184,7 +188,7 @@ void SummarizeSidePicture(const ActivePictureSideProbe& probe,
 }
 
 ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
-	SampleContext& samples, int top, int bottom)
+	SampleContext& samples, int top, int bottom, const SubtitleInkSnapshot* currentInk = nullptr)
 {
 	ActivePictureVerticalBarProfile result;
 	result.evaluated = true;
@@ -212,12 +216,16 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 	{
 		const int y = (2 * d + 1) * std::max(1, top - adjacentRows) / 16;
 		referenceRows.push_back(y);
+        int known=0,leftKnown=0,rightKnown=0;
 		for (int i = 0; i < columns; ++i)
 		{
+            if(currentInk && CurrentOwnedInkAt(*currentInk,xAt(i),y))continue;
+            ++known;leftKnown+=i<columns/8;rightKnown+=i>=columns-columns/8;
 			AnalysisLumaSample value;
 			if (!sampleAt(xAt(i), y, value)) return result;
 			ys.push_back(value.luma); us.push_back(value.chromaU); vs.push_back(value.chromaV);
 		}
+        if(known<columns/3 || leftKnown<4 || rightKnown<4)return result;
 	}
 	const int yMedian = static_cast<int>(Percentile(ys, .5));
 	const int uMedian = static_cast<int>(Percentile(us, .5));
@@ -248,11 +256,16 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 			rows.push_back(y);
 		std::sort(rows.begin(), rows.end());
 		rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
-		for (int y : rows)
+		for (int y : rows) {
+            int known=0,leftKnown=0,rightKnown=0;
 			for (int i = 0; i < columns; ++i)
 			{
 				AnalysisLumaSample value;
 				const int x = xAt(i);
+                // Only current detector-owned strokes can be unknown. In
+                // particular, do not mask the subtitle's box or inter-line gap.
+                if(currentInk && CurrentOwnedInkAt(*currentInk,x,y))continue;
+                ++known;leftKnown+=i<columns/8;rightKnown+=i>=columns-columns/8;
 				if (!sampleAt(x, y, value)) return result;
 				const int dy = std::abs(static_cast<int>(value.luma) - yMedian);
 				const int duv = std::max(std::abs(static_cast<int>(value.chromaU) - uMedian),
@@ -277,6 +290,10 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 					}
 				}
 			}
+            if(known<columns/3 || leftKnown<4 || rightKnown<4) {
+                result.reason="excluded-band-support-insufficient";return result;
+            }
+        }
 	}
 	result.completed = true;
 	result.clean = result.firstMismatchY < 0;
@@ -305,6 +322,7 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 		const int y = top ? outerOffset + depth : samples.source.height - 1 - outerOffset - depth;
 		int lineBlack = 0;
 		int previous = -1;
+		std::array<int, 4> aboveNearBlack{};
 		for (int i = 0; i < kLineSamples; ++i)
 		{
 			const int x = ((i * 2 + 1) * samples.source.width) /
@@ -313,6 +331,8 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 			luma.push_back(value);
 			black += value <= blackThreshold;
 			lineBlack += value <= blackThreshold;
+			if (value > blackThreshold)
+				++aboveNearBlack[i / (kLineSamples / 4)];
 			if (previous >= 0)
 				texture += std::abs(value - previous);
 			previous = value;
@@ -320,6 +340,12 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 			samples.Chroma(x, y, u, v);
 			neutral += std::abs(u - 512) <= 32 &&
 				std::abs(v - 512) <= 32;
+		}
+		for (size_t quartile = 0; quartile < aboveNearBlack.size(); ++quartile)
+		{
+			if (aboveNearBlack[quartile] >= kLineSamples / 8)
+				evidence.distributedSupportDepthRowsByQuartile[quartile] |=
+					static_cast<uint8_t>(1u << d);
 		}
 		continuousLines += lineBlack >= 44;
 	}
@@ -387,6 +413,7 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 		const int x = left ? outerOffset + depth : samples.source.width - 1 - outerOffset - depth;
 		int lineBlack = 0;
 		int previous = -1;
+		std::array<int, 4> aboveNearBlack{};
 		for (int i = 0; i < kLineSamples; ++i)
 		{
 			const int y = ((i * 2 + 1) * samples.source.height) /
@@ -395,6 +422,8 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 			luma.push_back(value);
 			black += value <= blackThreshold;
 			lineBlack += value <= blackThreshold;
+			if (value > blackThreshold)
+				++aboveNearBlack[i / (kLineSamples / 4)];
 			if (previous >= 0)
 				texture += std::abs(value - previous);
 			previous = value;
@@ -402,6 +431,12 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 			samples.Chroma(x, y, u, v);
 			neutral += std::abs(u - 512) <= 32 &&
 				std::abs(v - 512) <= 32;
+		}
+		for (size_t quartile = 0; quartile < aboveNearBlack.size(); ++quartile)
+		{
+			if (aboveNearBlack[quartile] >= kLineSamples / 8)
+				evidence.distributedSupportDepthRowsByQuartile[quartile] |=
+					static_cast<uint8_t>(1u << d);
 		}
 		continuousLines += lineBlack >= 44;
 	}
@@ -1179,6 +1214,573 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	return result;
 }
 
+
+ActivePictureEvidence EvaluateMeasuredVerticalBarHypothesis(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    const ActivePictureBounds& measuredCandidate)
+{
+    ActivePictureEvidence result = observed;
+    const auto& raw = observed.proposedBounds;
+    const auto& axes = observed.axisEvidence;
+    if (!source.IsValid() || !observed.available ||
+        observed.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        raw.rasterWidth != source.width || raw.rasterHeight != source.height ||
+        raw.top < 0 || raw.bottom > source.height || raw.top >= raw.bottom ||
+        observed.classification != ActivePictureClassification::PROVISIONAL ||
+        axes.vertical.reason != ActivePictureAxisReason::BAR_ASYMMETRY ||
+        !axes.vertical.FailedBar() || !axes.vertical.scanComplete ||
+        !observed.top.trusted || !observed.bottom.trusted ||
+        axes.horizontal.state != ActivePictureAxisState::FULL_EXTENT_SUPPORTED ||
+        axes.horizontal.reason != ActivePictureAxisReason::FULL_EXTENT_SUPPORTED ||
+        !axes.horizontal.scanComplete || axes.horizontal.barCandidate ||
+        raw.left != 0 || raw.right != source.width ||
+        measuredCandidate.rasterWidth != source.width ||
+        measuredCandidate.rasterHeight != source.height ||
+        measuredCandidate.left != 0 ||
+        measuredCandidate.right != source.width ||
+        measuredCandidate.top <= 0 ||
+        measuredCandidate.bottom >= source.height ||
+        measuredCandidate.top >= measuredCandidate.bottom ||
+        (measuredCandidate.top & 1) != 0 ||
+        (measuredCandidate.bottom & 1) != 0)
+        return result;
+
+    const int step = std::max(2, source.height / 540);
+    const int topBar = measuredCandidate.top;
+    const int bottomBar = source.height - measuredCandidate.bottom;
+    const int symmetryTolerance = std::max(step * 2, source.height / 360);
+    if (topBar <= step * 2 || bottomBar <= step * 2 ||
+        topBar >= source.height / 3 || bottomBar >= source.height / 3 ||
+        measuredCandidate.bottom - measuredCandidate.top < source.height / 3 ||
+        std::abs(topBar - bottomBar) > symmetryTolerance)
+        return result;
+    const bool topMatchesRaw = std::abs(raw.top - measuredCandidate.top) <= step;
+    const bool bottomMatchesRaw = std::abs(raw.bottom - measuredCandidate.bottom) <= step;
+    // The known clean edge anchors the nomination. The other must be displaced
+    // inward from the raw text-contaminated boundary, never into picture.
+    if (topMatchesRaw == bottomMatchesRaw ||
+        (topMatchesRaw && measuredCandidate.bottom >= raw.bottom - step) ||
+        (bottomMatchesRaw && measuredCandidate.top <= raw.top + step))
+        return result;
+    const auto& clean = topMatchesRaw ? observed.top : observed.bottom;
+    if (!std::isfinite(clean.lumaFloor) || clean.lumaFloor < 0.0 ||
+        clean.lumaFloor > 80.0)
+        return result;
+    const int floor = static_cast<int>(clean.lumaFloor);
+    const int blackThreshold = std::min(104, floor + 24);
+    SampleContext samples{source};
+    auto top = InspectHorizontalEdge(samples, true, topBar,
+        measuredCandidate.top, floor, blackThreshold);
+    auto bottom = InspectHorizontalEdge(samples, false, bottomBar,
+        measuredCandidate.bottom, floor, blackThreshold);
+    const bool strictEdges = top.trusted && bottom.trusted;
+    const bool connectedPicture = strictEdges &&
+        (HasHorizontalPictureContinuation(samples, true,
+            measuredCandidate.top, blackThreshold) ||
+         HasHorizontalPictureContinuation(samples, false,
+            measuredCandidate.bottom, blackThreshold));
+    result.lumaSamples += samples.lumaSamples;
+    result.chromaSamples += samples.chromaSamples;
+    if (!strictEdges || connectedPicture)
+        return result;
+
+    result.top = top;
+    result.bottom = bottom;
+    result.trustedBounds = {0, measuredCandidate.top, source.width,
+        measuredCandidate.bottom, source.width, source.height,
+        static_cast<double>(source.width) /
+            (measuredCandidate.bottom - measuredCandidate.top),
+        ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    result.axisEvidence.vertical.state =
+        ActivePictureAxisState::TRUSTED_BARS;
+    result.axisEvidence.vertical.reason =
+        ActivePictureAxisReason::BAR_CONFIRMED;
+    result.classification =
+        ActivePictureClassification::BAR_CROP_TRUSTED;
+    result.reason = "measured flank bars pass strict current picture edges";
+    return result;
+}
+
+
+ActivePictureEvidence EvaluateCaptionBackedVerticalBarHypothesis(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    SubtitleScriptHint scriptHint,
+    uint64_t sequence)
+{
+    if (!source.IsValid() || !sequence || !observed.available ||
+        observed.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        observed.classification != ActivePictureClassification::PROVISIONAL ||
+        observed.axisEvidence.vertical.reason !=
+            ActivePictureAxisReason::BAR_ASYMMETRY)
+        return observed;
+    const auto bars = ExtractSubtitleBarEvidence(source);
+    if (!bars.available || bars.top <= 0 || bars.bottom >= source.height)
+        return observed;
+    const int measuredTop = bars.top & ~1;
+    const int measuredBottom = std::min(source.height, (bars.bottom + 1) & ~1);
+    if (measuredBottom <= measuredTop)
+        return observed;
+    const ActivePictureBounds candidate = {
+        0, measuredTop, source.width, measuredBottom,
+        source.width, source.height,
+        static_cast<double>(source.width) / (measuredBottom - measuredTop),
+        ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    auto strict = EvaluateMeasuredVerticalBarHypothesis(source, observed, candidate);
+    if (strict.classification != ActivePictureClassification::BAR_CROP_TRUSTED)
+        return observed;
+
+    SubtitleBoxDetector scanner;
+    scanner.SetScriptHint(scriptHint);
+    const auto caption = scanner.Analyze(source, measuredTop, measuredBottom,
+        sequence, 0);
+    const int step = std::max(2, source.height / 540);
+    const bool displacedTop =
+        measuredTop > observed.proposedBounds.top + step;
+    const bool displacedBottom =
+        measuredBottom < observed.proposedBounds.bottom - step;
+    const bool actualInkCrosses =
+        caption.detected && !caption.workLimit && caption.anchor.Valid() &&
+        caption.nearBarEligibilityMeasured && caption.nearBarEligible &&
+        ((displacedTop && caption.anchor.top < measuredTop &&
+            caption.anchor.bottom > measuredTop) ||
+         (displacedBottom && caption.anchor.top < measuredBottom &&
+            caption.anchor.bottom > measuredBottom));
+    if (!actualInkCrosses)
+        return observed;
+    strict.reason = "measured native bars with current crossing glyph proof";
+    return strict;
+}
+
+namespace
+{
+struct OccludedBarInspection
+{
+    ActivePictureEdgeEvidence edge;
+    int flankSupport = 0;
+    size_t unknown = 0, samples = 0;
+    bool backingExcluded = false, connectedPicture = false;
+};
+
+// The subtitle's sampled ownership is a reason to skip a source pixel, never
+// an assertion that the pixel was black. Unowned background remains visible to
+// the ordinary bar proof. The tiny neighborhood covers antialiased stroke
+// fringes without turning the caption's bounding rectangle into a mask.
+bool CurrentOwnedInkAt(const SubtitleInkSnapshot& ink, int x, int y)
+{
+    if (!ink.rawEvidenceComplete || ink.step <= 0 || ink.width <= 0 ||
+        ink.height <= 0 || ink.sourceRows.size() != size_t(ink.height) ||
+        ink.ownedInk.empty())
+        return false;
+    const int rowTolerance = std::max(1, ink.step);
+    auto row = std::lower_bound(ink.sourceRows.begin(), ink.sourceRows.end(), y);
+    int nearest = -1;
+    if (row != ink.sourceRows.end() && std::abs(*row - y) <= rowTolerance)
+        nearest = int(row - ink.sourceRows.begin());
+    if (row != ink.sourceRows.begin() &&
+        (nearest < 0 || std::abs(*(row - 1) - y) <
+            std::abs(ink.sourceRows[size_t(nearest)] - y)) &&
+        std::abs(*(row - 1) - y) <= rowTolerance)
+        nearest = int(row - ink.sourceRows.begin()) - 1;
+    if (nearest < 0) return false;
+    const int column = x / ink.step;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            if (ink.Get(column + dx, nearest + dy, true)) return true;
+    return false;
+}
+
+std::array<SubtitleBoxRect, 3> MeasuredBoundaryPanels(
+    const SubtitleBoxObservation& current,
+    const ActivePictureBounds& candidate)
+{
+    std::array<SubtitleBoxRect, 3> panels{};
+    if (!current.text.capturePanelMeasured ||
+        !current.text.anchor.Valid()) return panels;
+    // capturePanel is a union for subtitle cleanup. A union may cover real
+    // picture between two disjoint line cards, so AR may exclude only each
+    // independently measured line interior. Empty legacy line panels grant no
+    // backing exclusion; exact sampled owned ink can still explain glyphs.
+    for (size_t i = 0; i < panels.size(); ++i)
+    {
+        const auto& card = current.text.lineCapturePanels[i];
+        const auto& line = current.text.lineBounds[i];
+        if (!card.Valid() || !line.Valid() ||
+            card.left < 0 || card.right > candidate.rasterWidth ||
+            card.top < 0 || card.bottom > candidate.rasterHeight ||
+            card.right <= line.left || card.left >= line.right ||
+            card.bottom <= line.top || card.top >= line.bottom)
+            continue;
+        // Capture panels are clipped to picture. They may exclude only their
+        // own measured picture-side interior at the boundary-contrast row,
+        // never inferred card continuation into the encoded bar.
+        if ((card.top <= candidate.top + 2 &&
+                card.bottom > candidate.top + 2) ||
+            (card.top < candidate.bottom - 3 &&
+                card.bottom >= candidate.bottom - 3))
+            panels[i] = card;
+    }
+    return panels;
+}
+
+OccludedBarInspection InspectSubtitleOccludedBar(
+    const AnalysisLumaSource& source, bool top, int boundary, int floor,
+    const SubtitleBoxObservation& current,
+    const std::array<SubtitleBoxRect, 3>& measuredPanels)
+{
+    OccludedBarInspection out;
+    const int barPixels = top ? boundary : source.height - boundary;
+    out.edge.barPixels = barPixels;
+    if (barPixels <= 0) return out;
+    const int threshold = std::min(104, floor + 24);
+    auto unknownAt = [&](int x, int y) {
+        for (const auto& card : measuredPanels)
+            if (card.Valid() && x >= card.left && x < card.right &&
+                y >= card.top && y < card.bottom)
+            { out.backingExcluded = true; return true; }
+        return current.ink && CurrentOwnedInkAt(*current.ink, x, y);
+    };
+    std::vector<int> levels;
+    levels.reserve(kEdgeDepthSamples * kLineSamples);
+    int black = 0, neutral = 0, known = 0, continuous = 0;
+    double texture = 0.0;
+    int texturePairs = 0;
+    for (int d = 0; d < kEdgeDepthSamples; ++d)
+    {
+        const int depth = std::min(barPixels - 1,
+            ((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
+        const int y = top ? depth : source.height - 1 - depth;
+        int rowKnown = 0, rowBlack = 0, prior = -1;
+        int leftKnown = 0, rightKnown = 0;
+        for (int i = 0; i < kLineSamples; ++i)
+        {
+            const int x = ((i * 2 + 1) * source.width) /
+                (kLineSamples * 2);
+            if (unknownAt(x, y)) { ++out.unknown; prior = -1; continue; }
+            AnalysisLumaSample pixel;
+            if (!source.Sample(x, y, pixel)) return out;
+            ++out.samples; ++known; ++rowKnown;
+            if (i < kLineSamples / 8) ++leftKnown;
+            if (i >= kLineSamples - kLineSamples / 8) ++rightKnown;
+            levels.push_back(pixel.luma);
+            const bool isBlack = pixel.luma <= threshold;
+            black += isBlack; rowBlack += isBlack;
+            neutral += std::abs(int(pixel.chromaU) - 512) <= 32 &&
+                std::abs(int(pixel.chromaV) - 512) <= 32;
+            if (prior >= 0) { texture += std::abs(pixel.luma - prior); ++texturePairs; }
+            prior = pixel.luma;
+        }
+        if (leftKnown < 4 || rightKnown < 4 || rowKnown < 16) return out;
+        if (rowBlack * 100 >= rowKnown * 95) ++continuous;
+        out.flankSupport += leftKnown + rightKnown;
+    }
+    if (known < kEdgeDepthSamples * 16 ||
+        out.unknown * 3 > kEdgeDepthSamples * kLineSamples * 2 ||
+        out.flankSupport < kEdgeDepthSamples * 8)
+        return out;
+    const double outerMean = double(std::accumulate(levels.begin(), levels.end(), 0LL)) / known;
+    double innerMean = 0.0;
+    int innerKnown = 0;
+    const int innerY = Bounded(top ? boundary + 2 : boundary - 3,
+        0, source.height - 1);
+    for (int i = 0; i < kLineSamples; ++i)
+    {
+        const int x = ((i * 2 + 1) * source.width) / (kLineSamples * 2);
+        if (unknownAt(x, innerY)) { ++out.unknown; continue; }
+        AnalysisLumaSample pixel;
+        if (!source.Sample(x, innerY, pixel)) return out;
+        ++out.samples; innerMean += pixel.luma; ++innerKnown;
+    }
+    if (innerKnown < 16) return out;
+    innerMean /= innerKnown;
+    out.edge.blackFraction = double(black) / known;
+    out.edge.lumaFloor = floor;
+    out.edge.lumaP90 = Percentile(levels, 0.90);
+    out.edge.lumaDispersion = out.edge.lumaP90 - Percentile(levels, 0.10);
+    out.edge.texture = texture / std::max(1, texturePairs);
+    out.edge.neutralChromaFraction = double(neutral) / known;
+    out.edge.innerBoundaryContrast = innerMean - outerMean;
+    out.edge.continuity = double(continuous) / kEdgeDepthSamples;
+    const double requiredContrast =
+        barPixels < source.height / 20 ? 18.0 : 10.0;
+    out.edge.trusted = out.edge.blackFraction >= 0.95 &&
+        out.edge.lumaP90 <= threshold &&
+        out.edge.lumaDispersion <= 24.0 && out.edge.texture <= 8.0 &&
+        out.edge.neutralChromaFraction >= 0.90 &&
+        out.edge.innerBoundaryContrast >= requiredContrast &&
+        out.edge.continuity >= 0.99;
+    if (!out.edge.trusted) return out;
+    // Never allow masking to explain an actual picture continuation. It is
+    // checked at the same distributed columns as the normal native proof.
+    const int step = std::max(2, source.height / 540);
+    const int inside = top ? boundary + step : boundary - 1 - step;
+    const int outside = top ? boundary - 1 - step : boundary + step;
+    const int farther = top ? boundary - 1 - 2 * step : boundary + 2 * step;
+    if (inside < 0 || inside >= source.height || outside < 0 ||
+        outside >= source.height || farther < 0 || farther >= source.height)
+        return out;
+    bool previousConnected = false;
+    for (int i = 0; i < kVisibleExtentLineSamples; ++i)
+    {
+        const int x = ((2 * i + 1) * source.width) /
+            (2 * kVisibleExtentLineSamples);
+        if (unknownAt(x, inside) || unknownAt(x, outside) ||
+            unknownAt(x, farther)) { previousConnected = false; continue; }
+        AnalysisLumaSample a, b, c;
+        if (!source.Sample(x, inside, a) || !source.Sample(x, outside, b) ||
+            !source.Sample(x, farther, c)) return out;
+        out.samples += 3;
+        auto visible = [&](const AnalysisLumaSample& pixel) {
+            return pixel.luma > threshold + 8 ||
+                ((std::abs(int(pixel.chromaU) - 512) >= 64 ||
+                    std::abs(int(pixel.chromaV) - 512) >= 64) &&
+                    pixel.luma >= threshold + 8);
+        };
+        const bool connected = visible(a) && visible(b) && visible(c);
+        if (connected && previousConnected) out.connectedPicture = true;
+        previousConnected = connected;
+    }
+    return out;
+}
+}
+
+bool SubtitleAssistedVerticalBarProof::IsCurrentFor(
+    const AnalysisLumaSource& source,
+    const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t currentPolicyGeneration, uint64_t currentContinuityGeneration,
+    SubtitleScriptHint currentScriptHint) const
+{
+    return accepted && source.IsValid() &&
+        source.generation == currentIdentity.transportGeneration &&
+        width == source.width && height == source.height &&
+        SameAnalysisFrameIdentity(identity, currentIdentity) &&
+        policyGeneration == currentPolicyGeneration &&
+        continuityGeneration == currentContinuityGeneration &&
+        scriptHint == currentScriptHint;
+}
+
+SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observedNative,
+    const SubtitleBoxObservation& current,
+    const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration,
+    uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint)
+{
+    SubtitleAssistedVerticalBarProof proof;
+    proof.reason = "current-independent-bars-unavailable";
+    const auto& horizontal=observedNative.axisEvidence.horizontal;
+    const bool fullWidth=horizontal.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED &&
+        horizontal.reason==ActivePictureAxisReason::FULL_EXTENT_SUPPORTED &&
+        horizontal.scanComplete && !horizontal.barCandidate &&
+        observedNative.proposedBounds.left==0 && observedNative.proposedBounds.right==source.width;
+    const bool uncertainSides=horizontal.FailedBar() && horizontal.scanComplete &&
+        horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED;
+
+    if (!source.IsValid() || !source.generation ||
+        source.generation != currentIdentity.transportGeneration ||
+        !currentIdentity.acceptedSequence ||
+        !observedNative.available ||
+        observedNative.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        observedNative.proposedBounds.rasterWidth != source.width ||
+        observedNative.proposedBounds.rasterHeight != source.height ||
+        observedNative.proposedBounds.left < 0 ||
+        observedNative.proposedBounds.right > source.width ||
+        observedNative.proposedBounds.left >= observedNative.proposedBounds.right ||
+        observedNative.proposedBounds.top < 0 ||
+        observedNative.proposedBounds.bottom > source.height ||
+        observedNative.proposedBounds.top >= observedNative.proposedBounds.bottom ||
+        (!fullWidth && !uncertainSides) ||
+        !current.analyzed || current.analysisRefresh || current.pendingRefresh ||
+        current.discontinuity || !current.independentBarAnalysis ||
+        !current.barAuthority || current.barTrackingAuthority ||
+        current.currentAnchorUsesTrackedEdge ||
+        current.policyGeneration != policyGeneration ||
+        current.continuityGeneration != continuityGeneration ||
+        current.scriptHint != scriptHint ||
+        current.width != source.width || current.height != source.height ||
+        !SameAnalysisFrameIdentity(current.identity, currentIdentity) ||
+        !current.text.detected || current.text.held || current.text.workLimit ||
+        !current.text.nearBarEligibilityMeasured || !current.text.nearBarEligible ||
+        !current.text.anchor.Valid() ||
+        !current.ink || !current.ink->rawEvidenceComplete ||
+        current.ink->ownedInk.empty() ||
+        !current.barEvidence.available ||
+        current.barEvidence.captionBackedTop ||
+        current.barEvidence.captionBackedBottom ||
+        current.barEvidence.topRevalidatedAtReference ||
+        current.barEvidence.bottomRevalidatedAtReference ||
+        current.barEvidence.topSupport < 16 ||
+        current.barEvidence.bottomSupport < 16 ||
+        current.barEvidence.topBoundarySupport < 8 ||
+        current.barEvidence.bottomBoundarySupport < 8)
+        return proof;
+
+    const int step = std::max(2, source.height / 540);
+    // Preserve chroma-safe source bounds without moving a nominated edge
+    // into picture. The independent extractor may report an odd source row.
+    const int top = current.pictureTop & ~1;
+    const int bottom = std::min(source.height, (current.pictureBottom + 1) & ~1);
+    const int symmetryTolerance = std::max(step * 2, source.height / 360);
+    const int topBar = top, bottomBar = source.height - bottom;
+    if (top <= step * 2 || bottom >= source.height - step * 2 ||
+        top >= bottom || topBar >= source.height / 3 ||
+        bottomBar >= source.height / 3 ||
+        bottom - top < source.height / 3 ||
+        (top & 1) || (bottom & 1) ||
+        std::abs(topBar - bottomBar) > symmetryTolerance ||
+        std::abs(current.barEvidence.top - top) > step ||
+        std::abs(current.barEvidence.bottom - bottom) > step ||
+        current.barEvidence.topFloor < 0 ||
+        current.barEvidence.bottomFloor < 0 ||
+        current.barEvidence.topFloor > 80 ||
+        current.barEvidence.bottomFloor > 80 ||
+        std::abs(current.barEvidence.topFloor -
+            current.barEvidence.bottomFloor) > 12)
+    {
+        proof.reason = "independent-bar-geometry-invalid";
+        return proof;
+    }
+    proof.candidate = {0, top, source.width, bottom,
+        source.width, source.height,
+        double(source.width) / (bottom - top),
+        ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    const auto measuredPanels = MeasuredBoundaryPanels(current, proof.candidate);
+    const auto topEdge = InspectSubtitleOccludedBar(source, true, top,
+        current.barEvidence.topFloor, current, measuredPanels);
+    const auto bottomEdge = InspectSubtitleOccludedBar(source, false, bottom,
+        current.barEvidence.bottomFloor, current, measuredPanels);
+    proof.topFlankSupport = topEdge.flankSupport;
+    proof.bottomFlankSupport = bottomEdge.flankSupport;
+    proof.unknownSamples = topEdge.unknown + bottomEdge.unknown;
+    proof.lumaSamples = topEdge.samples + bottomEdge.samples;
+    proof.usedMeasuredBacking = topEdge.backingExcluded || bottomEdge.backingExcluded;
+    if (!topEdge.edge.trusted || !bottomEdge.edge.trusted ||
+        topEdge.connectedPicture || bottomEdge.connectedPicture)
+    {
+        proof.reason = topEdge.connectedPicture || bottomEdge.connectedPicture ?
+            "connected-picture-crosses-bar" : "unoccluded-edge-unproved";
+        return proof;
+    }
+    proof.evidence = observedNative;
+    if(uncertainSides) {
+        // Reuse the existing strictly inspected vertical-only route. All
+        // columns remain visible; neither a dark side nor a subtitle can
+        // manufacture horizontal authority. Retain two scan steps of edge
+        // uncertainty and prove every sampled remaining bar pixel to the same
+        // four-code tolerance as ordinary dark-scene vertical acquisition.
+        const int guardedTop=((top-2*step+1)/2)*2;
+        const int guardedBottom=(std::min)(source.height,((bottom+2*step)/2)*2);
+        if(guardedTop<=0 || guardedBottom>=source.height) {
+            proof.reason="vertical-guard-invalid";return proof;
+        }
+        SampleContext samples{source};
+        auto profile=InspectVerticalCropBarProfile(samples,guardedTop,guardedBottom,current.ink.get());
+        proof.lumaSamples+=samples.lumaSamples;
+        proof.evidence.verticalBarGuardProfile=profile;
+        if(!profile.completed || !profile.clean) {
+            proof.reason="subtitle-excluded-band-profile-failed";return proof;
+        }
+        proof.candidate.top=guardedTop;proof.candidate.bottom=guardedBottom;
+        proof.candidate.aspectRatio=double(source.width)/(guardedBottom-guardedTop);
+        auto& axes=proof.evidence.axisEvidence;
+        axes.sidePictureWidth=source.width;axes.sidePictureHeight=source.height;
+        axes.sidePictureTop=top;axes.sidePictureBottom=bottom;
+        axes.sidePictureThreshold=(std::min)(128,current.barEvidence.topFloor+48);
+        axes.verticalCropProfileEvaluated=true;axes.verticalCropProfileClean=true;
+        axes.verticalCropGlyphExclusions=true;
+        axes.verticalCropGuardTop=top-guardedTop;
+        axes.verticalCropGuardBottom=guardedBottom-bottom;
+    }
+    proof.evidence.top = topEdge.edge;
+    proof.evidence.bottom = bottomEdge.edge;
+    proof.evidence.top.barPixels=proof.candidate.top;
+    proof.evidence.bottom.barPixels=source.height-proof.candidate.bottom;
+    proof.evidence.trustedBounds = proof.candidate;
+    proof.evidence.axisEvidence.vertical.state =
+        ActivePictureAxisState::TRUSTED_BARS;
+    proof.evidence.axisEvidence.vertical.reason =
+        ActivePictureAxisReason::BAR_CONFIRMED;
+    proof.evidence.axisEvidence.vertical.scanComplete=true;
+    proof.evidence.axisEvidence.vertical.barCandidate=true;
+    proof.evidence.classification =
+        ActivePictureClassification::BAR_CROP_TRUSTED;
+    proof.evidence.lumaSamples += proof.lumaSamples;
+    proof.evidence.reason = "exact-current subtitle with independently proved native bars";
+    proof.identity = currentIdentity;
+    proof.policyGeneration = policyGeneration;
+    proof.continuityGeneration = continuityGeneration;
+    proof.scriptHint = scriptHint;
+    proof.width = source.width; proof.height = source.height;
+    proof.accepted = true;
+    proof.reason = uncertainSides ? "current-subtitle-masked-vertical-profile-proved" :
+        "current-native-bars-and-unoccluded-edges-proved";
+    return proof;
+}
+
+ActivePictureEvidence EvaluateCurrentCaptionVerticalBarReaffirmation(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    const ActivePictureBounds& established,
+    const SubtitleBoxObservation& current,
+    const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration,
+    uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint)
+{
+    if (!source.IsValid() || !currentIdentity.acceptedSequence ||
+        !source.generation || source.generation != currentIdentity.transportGeneration ||
+        !current.analyzed || current.analysisRefresh || current.pendingRefresh ||
+        !current.barAuthority || current.barTrackingAuthority ||
+        current.currentAnchorUsesTrackedEdge ||
+        current.policyGeneration != policyGeneration ||
+        current.continuityGeneration != continuityGeneration ||
+        current.scriptHint != scriptHint ||
+        current.width != source.width || current.height != source.height ||
+        !SameAnalysisFrameIdentity(current.identity, currentIdentity) ||
+        !current.sharedPicture.AvailableFor(currentIdentity, source.width, source.height) ||
+        current.sharedPicture.bounds.left != established.left ||
+        current.sharedPicture.bounds.top != established.top ||
+        current.sharedPicture.bounds.right != established.right ||
+        current.sharedPicture.bounds.bottom != established.bottom ||
+        current.pictureTop != established.top ||
+        current.pictureBottom != established.bottom ||
+        !current.text.detected || current.text.held || current.text.workLimit ||
+        !current.text.nearBarEligibilityMeasured || !current.text.nearBarEligible ||
+        !current.text.anchor.Valid())
+        return observed;
+
+    const int step = std::max(2, source.height / 540);
+    const auto& anchor = current.text.anchor;
+    const bool displacedTop = established.top > observed.proposedBounds.top + step;
+    const bool displacedBottom = established.bottom < observed.proposedBounds.bottom - step;
+    if (!((displacedTop && anchor.top < established.top &&
+            anchor.bottom > established.top) ||
+          (displacedBottom && anchor.top < established.bottom &&
+            anchor.bottom > established.bottom)))
+        return observed;
+
+    auto strict = EvaluateMeasuredVerticalBarHypothesis(source, observed, established);
+    if (strict.classification != ActivePictureClassification::BAR_CROP_TRUSTED)
+    {
+        // The earlier aligned-bar bootstrap can have one raw edge untrusted.
+        // Reapply its same current-pixel proof, but only to the exact
+        // established rectangle; a new geometry needs fresh acquisition.
+        auto aligned = EvaluateSymmetricVerticalBarHypothesis(source, observed, true);
+        if (aligned.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            aligned.trustedBounds.left == established.left &&
+            aligned.trustedBounds.top == established.top &&
+            aligned.trustedBounds.right == established.right &&
+            aligned.trustedBounds.bottom == established.bottom)
+            strict = aligned;
+    }
+    if (strict.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+        strict.reason = "current worker glyph and strict native bars reaffirm picture";
+    return strict;
+}
+
 ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view)
 {
@@ -1220,6 +1822,124 @@ ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 	result.nearBlack = result.lumaP90 <= kGlobalNearBlackP90;
 	result.lumaSamples = samples.lumaSamples;
 	return result;
+}
+
+
+ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
+	const ActivePictureGlobalNearBlackEvidence& global)
+{
+	ActivePictureArDarknessEvidence result;
+	result.global = global;
+	if (!global.evaluated || !global.nearBlack || !source.IsValid() ||
+		currentNative.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+		!currentNative.available ||
+		currentNative.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		currentNative.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
+		!currentNative.top.trusted || !currentNative.bottom.trusted)
+		return result;
+
+	const ActivePictureBounds& bounds = currentNative.trustedBounds;
+	if (!IsValidBoundsForSource(bounds, source) ||
+		(static_cast<unsigned>(bounds.trustedBarAxes) &
+		static_cast<unsigned>(ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0 ||
+		bounds.top < std::max(8, source.height / 64) ||
+		source.height - bounds.bottom < std::max(8, source.height / 64) ||
+		bounds.right - bounds.left < 64 || bounds.bottom - bounds.top < 64)
+		return result;
+
+	// Test both encoded bars away from their picture boundary. The raw native
+	// detector already certified these edges; this small read only establishes
+	// a current source-relative floor for the dark-picture distinction.
+	SampleContext samples{ source };
+	std::vector<int> topBar, bottomBar;
+	topBar.reserve(32);
+	bottomBar.reserve(32);
+	for (int row = 0; row < 2; ++row)
+	{
+		const int topY = ((row * 2 + 1) * bounds.top) / 4;
+		const int bottomY = bounds.bottom +
+			((row * 2 + 1) * (source.height - bounds.bottom)) / 4;
+		for (int column = 0; column < 16; ++column)
+		{
+			const int x = static_cast<int>((int64_t(column * 2 + 1) * source.width) / 32);
+			topBar.push_back(samples.Luma(x, topY));
+			bottomBar.push_back(samples.Luma(x, bottomY));
+		}
+	}
+	result.lumaSamples = samples.lumaSamples;
+	const double topFloor = Percentile(topBar, 0.50);
+	const double bottomFloor = Percentile(bottomBar, 0.50);
+	result.barFloor = std::max(topFloor, bottomFloor);
+	if (std::abs(topFloor - bottomFloor) > 8.0 ||
+		Percentile(topBar, 0.90) > topFloor + 8.0 ||
+		Percentile(bottomBar, 0.90) > bottomFloor + 8.0)
+		return result;
+
+	// Exclude picture edges and subtitle zones. A few bright glyphs or stars
+	// can increase a global percentile, but cannot create texture across most
+	// independent interior tiles or a broad low-frequency scene structure.
+	const int pictureWidth = bounds.right - bounds.left;
+	const int pictureHeight = bounds.bottom - bounds.top;
+	const int innerLeft = bounds.left + pictureWidth / 20;
+	const int innerRight = bounds.right - pictureWidth / 20;
+	const int innerTop = bounds.top + pictureHeight / 10;
+	const int innerBottom = bounds.bottom - pictureHeight / 10;
+	const int innerWidth = innerRight - innerLeft;
+	const int innerHeight = innerBottom - innerTop;
+	if (innerWidth < 32 || innerHeight < 32) return result;
+
+	std::vector<int> picture;
+	std::vector<int> tileMedians;
+	picture.reserve(4 * 4 * 6 * 6);
+	tileMedians.reserve(16);
+	bool texturedQuadrant[4] = {};
+	for (int tileY = 0; tileY < 4; ++tileY)
+	{
+		for (int tileX = 0; tileX < 4; ++tileX)
+		{
+			std::vector<int> tile;
+			tile.reserve(36);
+			for (int sampleY = 0; sampleY < 6; ++sampleY)
+			{
+				const int gridY = tileY * 6 + sampleY;
+				const int y = innerTop + static_cast<int>(
+					(int64_t(gridY * 2 + 1) * innerHeight) / 48);
+				for (int sampleX = 0; sampleX < 6; ++sampleX)
+				{
+					const int gridX = tileX * 6 + sampleX;
+					const int x = innerLeft + static_cast<int>(
+						(int64_t(gridX * 2 + 1) * innerWidth) / 48);
+					const int luma = samples.Luma(x, y);
+					tile.push_back(luma);
+					picture.push_back(luma);
+				}
+			}
+			tileMedians.push_back(static_cast<int>(Percentile(tile, 0.50)));
+			if (Percentile(tile, 0.90) - Percentile(tile, 0.10) >= 12.0)
+			{
+				++result.texturedTiles;
+				texturedQuadrant[(tileY / 2) * 2 + tileX / 2] = true;
+			}
+		}
+	}
+	result.lumaSamples = samples.lumaSamples;
+	for (bool textured : texturedQuadrant) result.texturedQuadrants += textured ? 1 : 0;
+	result.pictureMedian = Percentile(picture, 0.50);
+	result.tileMedianSpread = Percentile(tileMedians, 0.90) -
+		Percentile(tileMedians, 0.10);
+	result.distributedDarkPicture =
+		result.pictureMedian >= result.barFloor + 32.0 &&
+		result.texturedTiles >= 12 && result.texturedQuadrants == 4 &&
+		result.tileMedianSpread >= 16.0;
+	return result;
+}
+
+ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative)
+{
+	return EvaluateActivePictureArDarkness(source, currentNative,
+		EvaluateActivePictureGlobalNearBlack(source));
 }
 
 
@@ -1312,6 +2032,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	result.globalLumaP90 = global.lumaP90;
 	result.globalNearBlack = global.nearBlack;
 	result.lumaSamples += global.lumaSamples;
+	const ActivePictureArDarknessEvidence arDarkness =
+		EvaluateActivePictureArDarkness(source, result.activePicture, global);
+	result.distributedDarkPicture = arDarkness.distributedDarkPicture;
+	result.lumaSamples += arDarkness.lumaSamples;
 
 	SampleContext samples{ source };
 
@@ -1433,7 +2157,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	// aspect authority. Broad current bands must remain safe. Disputed-row
 	// pixels are reported separately: edge tolerance is not proof of blackness.
 	if (result.excludedBandsPixelSafe && !result.proposedBoundsContained &&
-		result.proposedBoundsAvailable && !result.globalNearBlack &&
+		result.proposedBoundsAvailable && !result.EffectiveArNearBlack() &&
 		result.activePicture.classification == ActivePictureClassification::PROVISIONAL &&
 		IsVerticalSamplingProposal(trustedPresentation,result.activePicture.proposedBounds))
 	{
@@ -1447,7 +2171,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	// missing the opposite edge by one scan step. Keep the original contract
 	// only with a separate current strip certificate, not geometry tolerance.
 	else if (result.excludedBandsPixelSafe && !result.proposedBoundsContained &&
-		result.proposedBoundsAvailable && !result.globalNearBlack &&
+		result.proposedBoundsAvailable && !result.EffectiveArNearBlack() &&
 		result.activePicture.classification == ActivePictureClassification::PROVISIONAL &&
 		IsPartialVerticalSamplingProposal(trustedPresentation, result.activePicture.proposedBounds))
 	{
@@ -1464,7 +2188,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
 		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
-		 result.globalNearBlack || geometryUnavailable);
+		 result.EffectiveArNearBlack() || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 
@@ -1482,7 +2206,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			: "partial inward proposal has conflicting outward-strip pixels";
 	else if (result.samplingStripConflict)
 		result.reason = "one-scan-step border content tolerated within established framing";
-	else if (result.globalNearBlack)
+	else if (result.EffectiveArNearBlack())
 		result.reason = "valid global near-black frame is pixel-safe without geometry";
 	else if (geometryUnavailable)
 		result.reason = "current excluded bands remain pixel-safe despite unavailable geometry";
@@ -1673,7 +2397,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
 		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
-		 result.globalNearBlack || geometryUnavailable);
+		 result.EffectiveArNearBlack() || geometryUnavailable);
 	result.relocatedOverlayExclusionEvaluated = true;
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
@@ -1813,7 +2537,7 @@ ActivePictureEvidence ConstrainNearBlackGeometryChange(
 {
 	ActivePictureEvidence evidence = retention.activePicture;
 	if (!retention.analysisValid || !retention.presentationValid ||
-		!retention.globalNearBlack || !evidence.available ||
+		!retention.EffectiveArNearBlack() || !evidence.available ||
 		evidence.classification == ActivePictureClassification::UNAVAILABLE ||
 		evidence.classification == ActivePictureClassification::PROVISIONAL)
 	{

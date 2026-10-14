@@ -19,6 +19,7 @@ struct SubtitleBarEvidence
     double topBlackFraction = 0.0, bottomBlackFraction = 0.0;
     size_t samples = 0;
     bool topRecoveredAtShallowerEdge = false, bottomRecoveredAtShallowerEdge = false;
+    bool topDistributedBoundary = false, bottomDistributedBoundary = false;
     // Reference-only proof is deliberately separate from acquisition authority.
     // The caller owns the lifetime and identity of a previously strong plane.
     bool topRevalidatedAtReference = false, bottomRevalidatedAtReference = false;
@@ -49,7 +50,7 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         return std::abs(int(value.chromaU)-512)<=32 && std::abs(int(value.chromaV)-512)<=32;
     };
     auto inspect = [&](bool bottom,int& floor,int& depth,int& support,
-                       double& fraction,int& boundarySupport,int& maxIntrusion) {
+                       double& fraction,int& boundarySupport,int& maxIntrusion,bool distributed=false) {
         auto row=[&](int d){return bottom?source.height-1-d:d;};
         std::array<int,Columns*3> levels{};
         int n=0,neutralSamples=0;
@@ -85,8 +86,8 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         // picture. Its top edge may own most column runs, so the all-column
         // median would mistake the panel for the picture/bar boundary. Use
         // matching runs at both outside flanks to propose the plane instead.
-        // If either flank is obscured, do not infer a new boundary from an
-        // interior edge alone.
+        // The ordinary path requires both flanks. A failed edge may try the
+        // stricter distributed proof below; an interior edge alone is insufficient.
         constexpr int FlankColumns=Columns/8;
         std::array<int,2*FlankColumns> flankRuns{};
         for(int i=0;i<FlankColumns;++i) {
@@ -95,6 +96,25 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         }
         std::nth_element(flankRuns.begin(),flankRuns.begin()+FlankColumns,flankRuns.end());
         depth=flankRuns[FlankColumns];
+        if(distributed) {
+            // Nominate the densest native run cluster, not a mirrored edge or
+            // a subtitle rectangle. Only a single bounded alternative is tried.
+            // Dark picture at an outer flank can otherwise move its median far
+            // inside the image even when many other columns expose the edge.
+            auto ordered=runs;
+            std::sort(ordered.begin(),ordered.end());
+            int bestBegin=0,bestCount=0;
+            for(int begin=0,end=0;begin<Columns;++begin) {
+                if(ordered[begin]<2*step+1 || ordered[begin]>=limit)continue;
+                end=(std::max)(end,begin);
+                while(end<Columns && ordered[end]<limit &&
+                    ordered[end]-ordered[begin]<=tolerance)++end;
+                if(end-begin>bestCount) {bestBegin=begin;bestCount=end-begin;}
+            }
+            if(bestCount<Columns/4)return false;
+            depth=ordered[bestBegin+bestCount/2];
+        }
+        support=boundarySupport=maxIntrusion=0;fraction=0.0;
         int leftSupport=0,rightSupport=0;
         for(int i=0;i<Columns;++i) {
             if(std::abs(runs[i]-depth)>tolerance)continue;
@@ -102,14 +122,17 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             if(i<FlankColumns)++leftSupport;
             if(i>=Columns-FlankColumns)++rightSupport;
         }
-        if(depth<2*step+1 || depth>=limit || support*5<Columns ||
-            leftSupport<FlankColumns*3/4 || rightSupport<FlankColumns*3/4)return false;
+        if(depth<2*step+1 || depth>=limit || support<(distributed?Columns/4:(Columns+4)/5) ||
+            (!distributed && (leftSupport<FlankColumns*3/4 ||
+                rightSupport<FlankColumns*3/4)))return false;
 
         // A threshold crossing alone is not an encoded edge: smooth dark scene
         // gradients also cross the black threshold. Require abrupt native-row
         // contrast at distributed columns close to this frame's proposed plane.
         unsigned boundaryZones=0;
         int leftBoundarySupport=0,rightBoundarySupport=0;
+        std::array<int,4> zoneSupport{};
+        int firstBoundary=Columns,lastBoundary=-1;
         for(int i=0;i<Columns;++i) {
             if(std::abs(runs[i]-depth)>tolerance)continue;
             // Resampling can spread a sharp encoded edge over several rows.
@@ -126,13 +149,24 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             const int neighboringRise=(std::max)({0,values[1]-values[0],values[8]-values[7]});
             if(jump>=8 && jump>neighboringRise*3/2+2) {
                 ++boundarySupport;boundaryZones|=1u<<(i/32);
+                ++zoneSupport[i/32];firstBoundary=(std::min)(firstBoundary,i);
+                lastBoundary=i;
                 if(i<FlankColumns)++leftBoundarySupport;
                 if(i>=Columns-FlankColumns)++rightBoundarySupport;
             }
         }
         int zones=0;for(unsigned bits=boundaryZones;bits;bits>>=1)zones+=bits&1;
-        if(boundarySupport<8 || zones<2 ||
+        if(distributed) {
+            // Demand more independent sharp transitions than the normal path,
+            // spread across at least a third of the raster and two populated
+            // zones. A compact light/sign/card cannot establish a new plane.
+            int populatedZones=0;
+            for(int count:zoneSupport)populatedZones+=count>=4;
+            if(boundarySupport<16 || populatedZones<2 ||
+                lastBoundary-firstBoundary<Columns/3)return false;
+        } else if(boundarySupport<8 || zones<2 ||
             leftBoundarySupport<4 || rightBoundarySupport<4)return false;
+        const double requiredBlackFraction=distributed?0.97:0.85;
         size_t blackCount=0,total=0;
         for(int d=0;d<depth;d+=step) {
             int intrusion=0;
@@ -150,7 +184,7 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         // picture. If that alone trips the long-intrusion veto, recheck the
         // immediately shallower current-pixel planes. Never move deeper into
         // the picture, and keep the distributed transition evidence above.
-        if (fraction>=0.85 && maxIntrusion>=Columns/5)
+        if (fraction>=requiredBlackFraction && maxIntrusion>=Columns/5)
         {
             const int medianDepth=depth;
             for (int offset=1;offset<=2 && maxIntrusion>=Columns/5;++offset)
@@ -175,7 +209,7 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
                 }
                 const double candidateFraction=candidateTotal?
                     double(candidateBlack)/candidateTotal:0.0;
-                if(candidateFraction>=0.85 && candidateMaxIntrusion<Columns/5) {
+                if(candidateFraction>=requiredBlackFraction && candidateMaxIntrusion<Columns/5) {
                     depth=candidate;support=candidateSupport;
                     maxIntrusion=candidateMaxIntrusion;fraction=candidateFraction;
                     break;
@@ -188,17 +222,42 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         }
         // Glyph strokes have gaps; a contiguous intrusion spanning a fifth of
         // the raster is picture content even when the entire band is 85% black.
-        return fraction>=0.85 && maxIntrusion<Columns/5;
+        return fraction>=requiredBlackFraction && maxIntrusion<Columns/5;
     };
-    const bool top=inspect(false,result.topFloor,result.topDepth,result.topSupport,
+    bool top=inspect(false,result.topFloor,result.topDepth,result.topSupport,
         result.topBlackFraction,result.topBoundarySupport,result.topMaxIntrusion);
-    const bool bottom=inspect(true,result.bottomFloor,result.bottomDepth,result.bottomSupport,
+    bool bottom=inspect(true,result.bottomFloor,result.bottomDepth,result.bottomSupport,
         result.bottomBlackFraction,result.bottomBoundarySupport,result.bottomMaxIntrusion);
+    if(!top || !bottom) {
+        auto fallback=result;
+        const bool distributedTop=top || inspect(false,fallback.topFloor,fallback.topDepth,
+            fallback.topSupport,fallback.topBlackFraction,fallback.topBoundarySupport,
+            fallback.topMaxIntrusion,true);
+        const bool distributedBottom=bottom || inspect(true,fallback.bottomFloor,fallback.bottomDepth,
+            fallback.bottomSupport,fallback.bottomBlackFraction,fallback.bottomBoundarySupport,
+            fallback.bottomMaxIntrusion,true);
+        // A fallback edge is usable only with a separately measured opposing
+        // plane. Symmetry is a veto, never a source of missing pixel evidence.
+        // Keep ordinary asymmetric/single-edge behavior exactly as before.
+        if(distributedTop && distributedBottom &&
+            std::abs(fallback.topDepth-fallback.bottomDepth)<=tolerance &&
+            fallback.topFloor<=80 && fallback.bottomFloor<=80 &&
+            std::abs(fallback.topFloor-fallback.bottomFloor)<=12) {
+            fallback.topDistributedBoundary=!top;
+            fallback.bottomDistributedBoundary=!bottom;
+            fallback.samples=result.samples;
+            fallback.topRecoveredAtShallowerEdge=result.topRecoveredAtShallowerEdge;
+            fallback.bottomRecoveredAtShallowerEdge=result.bottomRecoveredAtShallowerEdge;
+            result=fallback;top=bottom=true;
+        }
+    }
     if(top)result.top=result.topDepth;
     if(bottom)result.bottom=source.height-result.bottomDepth;
     result.available=top||bottom;
     result.reason=top?(bottom?"current-flat-independent-bars":"current-flat-top-bar"):
         (bottom?"current-flat-bottom-bar":"no-current-flat-bar");
+    if(result.topDistributedBoundary || result.bottomDistributedBoundary)
+        result.reason="current-distributed-independent-bars";
     return result;
 }
 
@@ -329,6 +388,67 @@ inline SubtitleBarEvidence RevalidateSubtitleBarEvidence(const AnalysisLumaSourc
         result.topReferenceBoundarySupport,result.topReferenceBlackFraction,result.topReferenceMaxIntrusion);
     if(referenceBottom<source.height) result.bottomRevalidatedAtReference=inspect(true,source.height-referenceBottom,
         result.bottomReferenceBoundarySupport,result.bottomReferenceBlackFraction,result.bottomReferenceMaxIntrusion);
+    return result;
+}
+
+// Select subtitle analysis planes from this frame's pixels. A retained Classic
+// picture supplies candidate planes, not pixel authority: a freshly proved
+// different edge wins on its own side. The other side remains independently
+// usable even if its counterpart cannot be proved. This never changes the
+// presentation crop or grants active-picture authority.
+inline SubtitleBarEvidence ResolveCurrentSubtitleAnalysisBars(const AnalysisLumaSource& source,
+    const SubtitleBarEvidence& current, int referenceTop, int referenceBottom,
+    const SubtitleInkSnapshot* candidateInk = nullptr,
+    const SubtitleBoxRect* candidateAnchor = nullptr)
+{
+    SubtitleBarEvidence result=current;
+    if(!source.IsValid() || referenceTop<0 || referenceBottom>source.height ||
+        referenceTop>=referenceBottom) {
+        result.available=false;result.top=0;result.bottom=source.height;
+        result.reason="invalid-subtitle-analysis-bars";
+        return result;
+    }
+    const bool currentTop=current.available && current.top>0 && current.top<source.height;
+    const bool currentBottom=current.available && current.bottom>0 && current.bottom<source.height;
+    result.top=currentTop?current.top:0;
+    result.bottom=currentBottom?current.bottom:source.height;
+    // Revalidate each missing side in isolation. RevalidateSubtitleBarEvidence
+    // rejects a changed current edge globally, which is correct for retaining
+    // an entire old aperture but must not discard the valid opposite side.
+    if(!currentTop && referenceTop>0) {
+        SubtitleBarEvidence neutral;neutral.bottom=source.height;
+        const auto proved=RevalidateSubtitleBarEvidence(source,neutral,referenceTop,
+            source.height,candidateInk,candidateAnchor);
+        result.samples+=proved.samples;
+        result.topReferenceBoundarySupport=proved.topReferenceBoundarySupport;
+        result.topReferenceBlackFraction=proved.topReferenceBlackFraction;
+        result.topReferenceMaxIntrusion=proved.topReferenceMaxIntrusion;
+        if(proved.topRevalidatedAtReference) {
+            result.top=referenceTop;result.topRevalidatedAtReference=true;
+        }
+    }
+    if(!currentBottom && referenceBottom<source.height) {
+        SubtitleBarEvidence neutral;neutral.bottom=source.height;
+        const auto proved=RevalidateSubtitleBarEvidence(source,neutral,0,
+            referenceBottom,candidateInk,candidateAnchor);
+        result.samples+=proved.samples;
+        result.bottomReferenceBoundarySupport=proved.bottomReferenceBoundarySupport;
+        result.bottomReferenceBlackFraction=proved.bottomReferenceBlackFraction;
+        result.bottomReferenceMaxIntrusion=proved.bottomReferenceMaxIntrusion;
+        if(proved.bottomRevalidatedAtReference) {
+            result.bottom=referenceBottom;result.bottomRevalidatedAtReference=true;
+        }
+    }
+    result.referenceTop=referenceTop;result.referenceBottom=referenceBottom;
+    result.available=result.top>0 || result.bottom<source.height;
+    if(result.top>=result.bottom) {
+        result.available=false;result.top=0;result.bottom=source.height;
+        result.reason="conflicting-subtitle-analysis-bars";
+    } else if(result.topRevalidatedAtReference || result.bottomRevalidatedAtReference)
+        result.reason="current-pixel-revalidated-shared-bar";
+    else if(result.available)
+        result.reason="current-independent-subtitle-bars";
+    else result.reason="no-current-subtitle-bar-proof";
     return result;
 }
 

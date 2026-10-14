@@ -155,7 +155,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     std::array<uint32_t,1024> barHistogram{};
     uint32_t barSamples=0;
     const bool planar = source.format == AnalysisLumaFormat::P010 ||
-        source.format == AnalysisLumaFormat::P210;
+        source.format == AnalysisLumaFormat::P210 ||
+        source.format == AnalysisLumaFormat::DecodedDolbyVision422;
     for(int y=0;y<h;++y)
     {
         if(y>=topEnd && y<bottomStart) continue;
@@ -175,7 +176,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             {
                 const auto* row=reinterpret_cast<const uint16_t*>(source.data+static_cast<size_t>(sy)*source.rowBytes);
                 luma=row[sx]>>6;
-                const int cy=source.format==AnalysisLumaFormat::P210?sy:sy/2;
+                const int cy=source.format==AnalysisLumaFormat::P010?sy/2:sy;
                 const auto* uv=reinterpret_cast<const uint16_t*>(source.data+
                     source.rowBytes*source.height+static_cast<size_t>(cy)*source.chromaRowBytes);
                 u=uv[(sx/2)*2]>>6;v=uv[(sx/2)*2+1]>>6;

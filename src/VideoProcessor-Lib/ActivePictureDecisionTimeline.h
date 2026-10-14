@@ -16,11 +16,24 @@ struct ActivePictureFrameIdentity
 	uint64_t sourceFormatGeneration = 0;
 	uint64_t viewportGeneration = 0;
 	uint64_t rendererGeneration = 0;
+	// Effective analysis representation; transport identity remains immutable.
+	uint64_t analysisDomainKey = 0;
 };
 
 bool SameActivePictureFrameIdentity(
 	const ActivePictureFrameIdentity& left,
 	const ActivePictureFrameIdentity& right);
+
+// Evidence and worker caches additionally require the same decoded/source
+// interpretation. Transport queue matching deliberately uses the comparator above.
+inline bool SameAnalysisFrameIdentity(
+    const ActivePictureFrameIdentity& left,
+    const ActivePictureFrameIdentity& right)
+{
+    return SameActivePictureFrameIdentity(left, right) &&
+        left.analysisDomainKey == right.analysisDomainKey;
+}
+
 
 
 enum class ActivePictureScheduledDecisionValidation
@@ -216,6 +229,7 @@ private:
 	std::deque<AcceptedIdentity> m_accepted;
 	std::deque<ContinuityBoundary> m_continuityBoundaries;
 	uint64_t m_transportGeneration = 0;
+    uint64_t m_lastAnalysisDomainKey = 0;
 	uint64_t m_lastAcceptedSequence = 0;
 	uint64_t m_lastConsumedSequence = 0;
 	bool m_hasAcceptedSequence = false;

@@ -118,9 +118,26 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
             }
         }
     }
+    static void ArabicTextLine(std::vector<uint16_t>& f,int left,int top,int width,int height) {
+        Fill(f,left-8,top-4,left+width+8,top+height+4,64);
+        const int joinY=top+height*2/3;
+        Fill(f,left,joinY,left+width,joinY+3,700);
+        for(int x=left+7;x<left+width-5;x+=20) {
+            Fill(f,x,top+2,x+3,top+height-3,700);
+            Fill(f,x+8,top+4,x+11,top+height-1,700);
+        }
+        Fill(f,left+2,top+height/2,left+5,top+height-2,700);
+        Fill(f,left+width-5,top+3,left+width-2,top+height/2,700);
+        for(int x=left+12;x<left+width-5;x+=31)Fill(f,x,top,x+2,top+2,700);
+    }
     static std::vector<uint16_t> Pixels(bool full=false) {
         std::vector<uint16_t> f(640*360*3/2,uint16_t(512<<6));
         Fill(f,0,0,640,360,64); Fill(f,0,full?0:45,640,full?360:315,300); return f;
+    }
+    static std::vector<uint16_t> BarredPixels(int top,int bottom) {
+        auto f=Pixels(true);
+        Fill(f,0,0,640,top,64);Fill(f,0,bottom,640,360,64);
+        return f;
     }
     static AnalysisLumaSource Source(std::vector<uint16_t>& pixels) {
         AnalysisLumaSource source;
@@ -393,11 +410,14 @@ public:
         }
     }
     TEST_METHOD(SharedPictureAuthorityKeepsCaptionAcrossAmbiguousBarPixels) {
-        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);
-        Fill(pixels,260,100,380,200,300);Text(pixels,200,310,16);
+        auto pixels=Pixels();
+        // Keep an actual bright picture with a centered dark intrusion, plus real current
+        // black-band boundaries. The text card crosses the actual lower edge.
+        Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
         const auto source=Source(pixels);
         const auto independent=ExtractSubtitleBarEvidence(source);
-        Assert::IsFalse(independent.bottom<360 && independent.available);
+        Assert::IsTrue(independent.available,L"dark picture texture must not erase current edge proof");
+        Assert::AreEqual(45,independent.top);Assert::AreEqual(315,independent.bottom);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
         SubtitleMeasurementSampler sampler;SubtitleBoxPresentation tracker;uint64_t cue=0;
@@ -419,7 +439,7 @@ public:
         Assert::IsFalse(blank.text.detected);
         Assert::IsFalse(tracker.Consume(SubtitleBoxLookahead::Resolve(&blank,1,0,0),250,1000.0/60).detected);
     }
-    TEST_METHOD(SharedPictureAuthorityWithdrawalAndContextChangesStopDetection) {
+    TEST_METHOD(IndependentCurrentBarsAllowAnalysisWithoutSharedPresentationAuthority) {
         auto pixels=Pixels();Text(pixels,200,318,16);SubtitleMeasurementSampler sampler;
         for(int change=0;change<6;++change) {
             auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
@@ -431,7 +451,129 @@ public:
             if(change==4)++key.sharedPicture.identity.sourceFormatGeneration;
             if(change==5)++key.sharedPicture.identity.rendererGeneration;
             auto observation=sampler.Measure(Source(pixels),key,{},60);
-            Assert::IsFalse(observation.barAuthority);Assert::IsFalse(observation.text.detected);
+            Assert::IsTrue(observation.barAuthority);Assert::IsTrue(observation.text.detected);
+            Assert::IsTrue(observation.independentBarAnalysis);
+            Assert::AreEqual(45,observation.pictureTop);Assert::AreEqual(315,observation.pictureBottom);
+            Assert::IsFalse(observation.sharedPicture.AvailableFor(key.identity,640,360),
+                L"Independent scanning must not manufacture shared crop authority");
+        }
+        // Removing physical bars must still reject picture lights, regardless
+        // of an old presentation snapshot or a previously detected cue.
+        Fill(pixels,0,0,640,360,256);Text(pixels,200,318,16);
+        auto key=Cue(2);key.sharedPicture.required=true;
+        auto withoutBars=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsFalse(withoutBars.barAuthority);
+        Assert::IsFalse(withoutBars.text.detected);
+        Assert::IsFalse(withoutBars.subtitleArProof.accepted);
+    }
+    TEST_METHOD(IndependentPixelMeasurementSurvivesPresentationSnapshotChangeOnly) {
+        auto observation=Cue(7);observation.independentBarAnalysis=true;
+        observation.sharedPicture.required=true;
+        observation.sharedPicture.identity=observation.identity;
+        SubtitlePictureAuthority published=observation.sharedPicture;
+        published.bounds={0,45,640,315,640,360};
+        Assert::IsTrue(SubtitleBoxLookahead::RebindIndependentPicture(observation,published));
+        Assert::IsTrue(observation.sharedPicture.Matches(published));
+        Assert::IsTrue(SameAnalysisFrameIdentity(observation.identity,Identity(7)));
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,Identity(8),640,360,0,0,false,{}));
+        auto otherDomain=Identity(7);++otherDomain.analysisDomainKey;
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,otherDomain,640,360,0,0,false,{}));
+        auto nextContinuity=observation;
+        ++nextContinuity.continuityGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentMeasurement(
+            observation,nextContinuity.continuityGeneration));
+        Assert::IsFalse(SubtitleMeasurementWorker::SameKey(observation,nextContinuity),
+            L"A stale independent proof must not suppress the new worker scan");
+        for (int invalid=0;invalid<4;++invalid) {
+            auto unsafe=observation;unsafe.sharedPicture.bounds={};
+            if(invalid==0)unsafe.pendingRefresh=true;
+            if(invalid==1)unsafe.analysisRefresh=true;
+            if(invalid==2)unsafe.barTrackingAuthority=true;
+            if(invalid==3)unsafe.independentBarAnalysis=false;
+            Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentPicture(unsafe,published));
+        }
+    }
+    TEST_METHOD(CurrentNegativeScanCanRebindBetweenUnavailablePictureSnapshots) {
+        const auto identity=Identity(37);
+        for(int scenario=0;scenario<2;++scenario) {
+            auto pixels=Pixels(true);
+            if(scenario==1)Fill(pixels,0,0,640,45,64); // one strong edge, no bottom bar
+            auto key=Cue(identity.acceptedSequence);
+            key.identity=identity;key.policyGeneration=11;key.continuityGeneration=13;
+            key.sharedPicture.required=true;
+            key.sharedPicture.identity=identity;
+            key.sharedPicture.identity.viewportGeneration++;
+            key.sharedPicture.bounds={0,0,640,360,640,360}; // invalid full-raster authority
+            SubtitleBarTrackingReference prior;
+            prior.identity=Identity(identity.acceptedSequence-1);
+            prior.width=640;prior.height=360;prior.pictureTop=45;prior.pictureBottom=315;
+            prior.policyGeneration=key.policyGeneration;
+            prior.continuityGeneration=key.continuityGeneration;
+            prior.scriptHint=key.scriptHint;prior.valid=true;
+            SubtitleMeasurementSampler sampler;
+            auto observation=sampler.Measure(Source(pixels),key,prior,60);
+            Assert::IsTrue(observation.analyzed);
+            Assert::IsFalse(observation.text.detected);
+            Assert::IsFalse(observation.independentBarAnalysis,
+                L"A negative scan with no bars or only one edge is not an independent bar certificate.");
+            Assert::IsTrue(observation.pictureAuthorityUnavailableForMeasurement);
+            Assert::IsFalse(observation.sharedPicture.AvailableFor(identity,640,360));
+
+            auto nextSnapshot=key.sharedPicture;
+            nextSnapshot.identity.rendererGeneration++;
+            nextSnapshot.bounds={};
+            Assert::IsFalse(nextSnapshot.AvailableFor(identity,640,360));
+            Assert::IsFalse(observation.sharedPicture.Matches(nextSnapshot));
+            Assert::IsTrue(SubtitleBoxLookahead::RebindIndependentPicture(
+                observation,nextSnapshot),
+                L"This completed exact-frame scan used raw current bars; neither unavailable snapshot supplied geometry.");
+            Assert::IsTrue(observation.sharedPicture.Matches(nextSnapshot));
+            Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+                identity,640,360,11,13,false,{}),
+                L"The required-but-unavailable branch never consumed its supplied valid predecessor.");
+            auto changedReference=prior;
+            changedReference.identity=Identity(2);
+            Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+                identity,640,360,11,13,false,changedReference),
+                L"Changing the irrelevant current predecessor cannot invalidate this exact-frame scan.");
+
+            auto changedFrame=identity;
+            ++changedFrame.acceptedSequence;++changedFrame.sourceFrameNumber;
+            ++changedFrame.captureTimestamp;
+            Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+                changedFrame,640,360,11,13,false,{}),
+                L"Snapshot rebinding does not relax exact source-frame identity.");
+            Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+                identity,640,360,11,14,false,{}),
+                L"The cold-scan reuse path still requires the exact continuity generation.");
+            Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentMeasurement(
+                observation,observation.continuityGeneration+1),
+                L"Snapshot rebinding does not relax continuity-bound certificate rules.");
+
+            auto authorityNowAvailable=observation;
+            auto available=nextSnapshot;
+            available.identity=identity;
+            available.bounds={0,45,640,315,640,360};
+            Assert::IsTrue(available.AvailableFor(identity,640,360));
+            Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentPicture(
+                authorityNowAvailable,available),
+                L"A newly available shared snapshot can change caption analysis and must trigger a rescan.");
+            authorityNowAvailable.sharedPicture=available;
+            Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(authorityNowAvailable,
+                identity,640,360,11,13,false,{}),
+                L"A newly available shared authority disables the unavailable-snapshot shortcut.");
+
+            for(int unsafe=0;unsafe<5;++unsafe) {
+                auto guarded=observation;
+                if(unsafe==0)guarded.barTrackingAuthority=true;
+                if(unsafe==1)guarded.hasBarTrackingReference=true;
+                if(unsafe==2)guarded.currentAnchorUsesTrackedEdge=true;
+                if(unsafe==3)guarded.analysisRefresh=true;
+                if(unsafe==4)guarded.pendingRefresh=true;
+                Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(guarded,
+                    identity,640,360,11,13,false,{}),
+                    L"Tracked, refreshed, or pending measurements cannot use the cold-scan shortcut.");
+            }
         }
     }
     TEST_METHOD(WorkerKeyIncludesSharedAuthorityEvenForSameSourceFrame) {
@@ -442,18 +584,173 @@ public:
         b=a;b.sharedPicture.bounds={};Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
         b=a;b.sharedPicture.required=false;Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
     }
-    TEST_METHOD(PendingMeasurementUsesSharedAuthorityWithoutIndependentBarVeto) {
-        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);Text(pixels,200,310,16);
+    TEST_METHOD(PendingMeasurementUsesSharedAuthorityWhenCurrentBandsRemainValid) {
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
         auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
         key.sharedPicture.bounds={0,45,640,315,640,360};SubtitleMeasurementSampler sampler;
         auto observed=sampler.Measure(Source(pixels),key,{},60);
         Assert::IsTrue(observed.text.detected);
-        auto ready=SubtitleBoxLookahead::Resolve(&observed,1,0,0);SubtitlePendingMeasurementGuard guard;
+        auto ready=SubtitleBoxLookahead::Resolve(&observed,1,7,8);SubtitlePendingMeasurementGuard guard;
         guard.Resolve(ready,Source(pixels),1000.0/60,250);
+        SubtitleBoxPresentation presentation;
+        const auto acquired=presentation.Consume(ConfirmedPreview(observed),250,1000.0/60);
+        Assert::IsTrue(acquired.detected);
+        for(uint64_t sequence=2;sequence<=4;++sequence) {
+            SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(sequence);
+            Assert::IsTrue(guard.Resolve(pending,Source(pixels),1000.0/60,250));
+            Assert::IsTrue(pending.current.pendingRefresh);
+            const auto kept=presentation.Consume(pending,250,1000.0/60);
+            Assert::IsTrue(kept.detected);Assert::AreEqual(acquired.cue,kept.cue,
+                L"fresh current bar proof and unchanged glyph pixels retain the old cue");
+        }
+        SubtitleBoxPreview stale;stale.current=key;stale.current.identity=Identity(5);
+        stale.current.sharedPicture.bounds={};
+        Assert::IsFalse(guard.Resolve(stale,Source(pixels),1000.0/60,250));
+    }
+    TEST_METHOD(SharedRetainedBoundsUseCurrentBandsAndRejectInteriorCityLights) {
+        auto pixels=BarredPixels(11,348);
+        // A bright, card-backed pattern crosses retained top=45, but lies
+        // wholly inside this frame's active picture, whose top edge is 11.
+        Text(pixels,200,34,16);
+        const auto source=Source(pixels);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360};
+        auto key=Cue(1);key.nearBarDistance=0;key.sharedPicture=authority;
+        SubtitleMeasurementSampler sampler;
+        const auto observation=sampler.Measure(source,key,{},60);
+        Assert::IsTrue(observation.sharedPicture.Matches(authority),L"Classic presentation snapshot stays intact");
+        Assert::IsTrue(observation.barAuthority);
+        Assert::AreEqual(11,observation.pictureTop,L"analysis uses the current top edge");
+        Assert::AreEqual(348,observation.pictureBottom,L"analysis uses the current bottom edge");
+        Assert::IsFalse(observation.text.detected,
+            L"a pattern crossing only the obsolete retained plane is interior picture content");
+    }
+    TEST_METHOD(UniformDarkRasterCannotSubstituteForCurrentSharedBandEvidence) {
+        auto pixels=Pixels(true);Fill(pixels,0,0,640,360,64);Text(pixels,200,310,16);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360};
+        auto key=Cue(1);key.sharedPicture=authority;
+        SubtitleMeasurementSampler sampler;
+        const auto observation=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsTrue(observation.sharedPicture.Matches(authority));
+        Assert::IsFalse(observation.barAuthority,
+            L"uniform darkness and a caption-shaped card do not establish a physical picture edge");
+        Assert::IsFalse(observation.text.detected);
+    }
+    TEST_METHOD(SharedCurrentSingleSideBarsPreserveOnlyTheProvedOppositeSide) {
+        for(bool topOnly : {true,false}) {
+            auto pixels=Pixels(true);
+            if(topOnly) {
+                Fill(pixels,0,0,640,11,64);
+                Text(pixels,200,3,7);
+            } else {
+                Fill(pixels,0,348,640,360,64);
+                Text(pixels,200,336,7);
+            }
+            const auto source=Source(pixels);
+            SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+            authority.bounds={0,45,640,315,640,360};
+            auto key=Cue(1);key.nearBarDistance=0;key.sharedPicture=authority;
+            SubtitleMeasurementSampler sampler;
+            const auto observation=sampler.Measure(source,key,{},60);
+            Assert::IsTrue(observation.barAuthority);
+            Assert::AreEqual(topOnly?11:0,observation.pictureTop);
+            Assert::AreEqual(topOnly?360:348,observation.pictureBottom);
+            Assert::IsTrue(observation.text.detected,
+                L"a real caption crossing the one currently proved band remains eligible");
+        }
+    }
+    TEST_METHOD(SharedCurrentBottomBoundaryRetainsArabicHintMultilineCaption) {
+        auto pixels=BarredPixels(11,348);
+        ArabicTextLine(pixels,220,307,180,14);ArabicTextLine(pixels,260,336,120,14);
+        const auto source=Source(pixels);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360};
+        auto key=Cue(1);key.nearBarDistance=0;key.scriptHint=SubtitleScriptHint::Arabic;
+        key.sharedPicture=authority;
+        SubtitleMeasurementSampler sampler;
+        const auto observation=sampler.Measure(source,key,{},60);
+        Assert::AreEqual(11,observation.pictureTop);
+        Assert::AreEqual(348,observation.pictureBottom);
+        Assert::IsTrue(observation.text.detected,L"caption crossing the current lower boundary is retained");
+        Assert::AreEqual(2,observation.text.lineCount,L"both Arabic-hint lines remain grouped");
+    }
+    TEST_METHOD(SharedCurrentEdgeThreeLineCaptionsSurviveSupportedScriptHints) {
+        for(SubtitleScriptHint script : {SubtitleScriptHint::Latin,SubtitleScriptHint::Cjk,
+            SubtitleScriptHint::Thai}) {
+            auto pixels=BarredPixels(11,348);
+            Text(pixels,200,298,15);Text(pixels,215,318,12);Text(pixels,240,338,8);
+            const auto source=Source(pixels);
+            SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+            authority.bounds={0,45,640,315,640,360};
+            auto key=Cue(1);key.nearBarDistance=0;key.scriptHint=script;
+            key.sharedPicture=authority;
+            SubtitleMeasurementSampler sampler;
+            const auto observation=sampler.Measure(source,key,{},60);
+            Assert::AreEqual(11,observation.pictureTop);
+            Assert::AreEqual(348,observation.pictureBottom);
+            Assert::IsTrue(observation.text.detected,
+                L"the current bottom-edge anchor remains admissible for each script hint");
+            Assert::AreEqual(3,observation.text.lineCount,
+                L"three physically present rows remain grouped around the current edge anchor");
+        }
+        auto arabicPixels=BarredPixels(11,348);
+        ArabicTextLine(arabicPixels,220,296,180,14);
+        ArabicTextLine(arabicPixels,235,316,150,14);
+        ArabicTextLine(arabicPixels,260,336,120,14);
+        const auto arabicSource=Source(arabicPixels);
+        SubtitlePictureAuthority arabicAuthority;arabicAuthority.required=true;
+        arabicAuthority.identity=Identity(1);arabicAuthority.bounds={0,45,640,315,640,360};
+        auto arabicKey=Cue(1);arabicKey.nearBarDistance=0;
+        arabicKey.scriptHint=SubtitleScriptHint::Arabic;arabicKey.sharedPicture=arabicAuthority;
+        SubtitleMeasurementSampler arabicSampler;
+        const auto arabic=arabicSampler.Measure(arabicSource,arabicKey,{},60);
+        Assert::AreEqual(11,arabic.pictureTop);Assert::AreEqual(348,arabic.pictureBottom);
+        Assert::IsTrue(arabic.text.detected);Assert::AreEqual(3,arabic.text.lineCount,
+            L"three joined Arabic rows remain grouped around the current edge anchor");
+    }
+    TEST_METHOD(PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged) {
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360};
+        auto key=Cue(1);key.sharedPicture=authority;SubtitleMeasurementSampler sampler;
+        const auto observed=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsTrue(observed.text.detected);
+        SubtitlePendingMeasurementGuard guard;
+        auto accepted=SubtitleBoxLookahead::Resolve(&observed,1,0,0);
+        guard.Resolve(accepted,Source(pixels),1000.0/60,250);
+
+        // Keep every pixel in the guard's expanded line sampling rectangles
+        // identical, but remove the full-width black bands and their edges.
+        // The retained Classic authority and accepted glyph samples therefore
+        // remain unchanged while current physical bar evidence is absent.
+        auto noBars=Pixels(true);Fill(noBars,0,0,640,360,300);
+        const int step=SubtitleBoxDetector::SamplingStep(640,360);
+        for(int line=0;line<observed.text.lineCount && line<3;++line) {
+            const auto r=observed.text.lineBounds[line];
+            const int top=(std::max)(0,r.top-step),bottom=(std::min)(360,r.bottom+step);
+            const int left=(std::max)(0,r.left-step),right=(std::min)(640,r.right+step);
+            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
+                noBars[size_t(y)*640+x]=pixels[size_t(y)*640+x];
+        }
         SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(2);
-        Assert::IsTrue(guard.Resolve(pending,Source(pixels),1000.0/60,250));
-        pending={};pending.current=key;pending.current.identity=Identity(3);pending.current.sharedPicture.bounds={};
-        Assert::IsFalse(guard.Resolve(pending,Source(pixels),1000.0/60,250));
+        Assert::IsFalse(guard.Resolve(pending,Source(noBars),1000.0/60,250));
+        Assert::AreEqual(std::string("current-bars-changed"),std::string(guard.DecisionReason()),
+            L"old shared bounds and unchanged accepted glyph pixels cannot stand in for disappeared physical bars");
+    }
+    TEST_METHOD(PendingSharedCueRejectsCurrentBandGeometryChange) {
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360};
+        auto key=Cue(1);key.sharedPicture=authority;SubtitleMeasurementSampler sampler;
+        const auto observed=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsTrue(observed.text.detected);
+        SubtitlePendingMeasurementGuard guard;
+        guard.Resolve(SubtitleBoxLookahead::Resolve(&observed,1,0,0),Source(pixels),1000.0/60,250);
+        auto shifted=BarredPixels(60,300);Text(shifted,200,310,16);
+        auto pending=SubtitleBoxPreview{};pending.current=key;pending.current.identity=Identity(2);
+        Assert::IsFalse(guard.Resolve(pending,Source(shifted),1000.0/60,250),
+            L"matching caption pixels and retained Classic identity cannot reuse a cue after both current bars move");
     }
 
     TEST_METHOD(BackedMinorCoverageVariationRetainsCueBeyondGrace) {
@@ -1821,6 +2118,43 @@ public:
         Text(pixels,200,324,22);
         source=Source(pixels);const auto o=SubtitleBoxLookahead::Measure(detector,source,ExtractActivePictureEvidence(source),Identity(1),false);
         Assert::IsFalse(o.barEvidence.captionBackedBottom,L"no unconditional full-black-frame acquisition");
+    }
+    TEST_METHOD(DistributedBarsRecoverDarkFlanksWithoutMirroring) {
+        for(bool darkLeft:{false,true}) {
+            auto pixels=Pixels();
+            const int left=darkLeft?0:440,right=darkLeft?200:640;
+            Fill(pixels,left,45,right,75,70);
+            Fill(pixels,left,285,right,315,70);
+            const auto bars=ExtractSubtitleBarEvidence(Source(pixels));
+            Assert::AreEqual(45,bars.top);Assert::AreEqual(315,bars.bottom);
+            Assert::IsTrue(bars.topDistributedBoundary && bars.bottomDistributedBoundary);
+            Assert::IsTrue(bars.topBoundarySupport>=16 && bars.bottomBoundarySupport>=16);
+            Assert::IsTrue(bars.topBlackFraction>=0.97 && bars.bottomBlackFraction>=0.97);
+            Assert::IsTrue(bars.samples<70000,L"The failed-flank fallback has a fixed sampling budget.");
+        }
+    }
+    TEST_METHOD(DistributedBarsRequireSeparateOpposingEvidenceAndRejectIntrusion) {
+        for(int mode=0;mode<4;++mode) {
+            auto pixels=Pixels();
+            Fill(pixels,0,45,200,75,70);
+            if(mode==0)Fill(pixels,0,315,640,360,300); // no opposite bar
+            if(mode==1)Fill(pixels,0,315,640,325,300); // asymmetric opposite bar
+            if(mode==2)Fill(pixels,180,25,440,45,300); // connected picture
+            if(mode==3) { // compact interior light, no broad edge evidence
+                Fill(pixels,0,45,640,75,70);
+                Fill(pixels,250,45,340,65,300);
+            }
+            const auto bars=ExtractSubtitleBarEvidence(Source(pixels));
+            Assert::IsFalse(bars.topDistributedBoundary);
+            if(mode!=3)Assert::AreEqual(0,bars.top,L"Failure must preserve the unproved top edge, not mirror the bottom.");
+            else Assert::IsTrue(bars.top!=45,L"A compact interior light must not establish its own bar plane.");
+        }
+    }
+    TEST_METHOD(DistributedBarsDoNotAlterOrdinaryWideCardGeometry) {
+        auto pixels=Pixels();Fill(pixels,80,280,560,340,64);Text(pixels,255,301,10);
+        const auto bars=ExtractSubtitleBarEvidence(Source(pixels));
+        Assert::AreEqual(45,bars.top);Assert::AreEqual(315,bars.bottom);
+        Assert::IsFalse(bars.topDistributedBoundary || bars.bottomDistributedBoundary);
     }
     TEST_METHOD(SubtitleBarsProveAsymmetricAndSingleEdgesIndependently) {
         for(int mode=0;mode<3;++mode) {

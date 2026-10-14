@@ -372,6 +372,7 @@ static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowW
         }
         if (identity.transportGeneration != nomination.sourceGeneration ||
             !identity.sourceFormatGeneration || identity.sourceFormatGeneration != nomination.sourceFormatGeneration ||
+            identity.analysisDomainKey != firstId.analysisDomainKey ||
             identity.rendererGeneration != nomination.rendererGeneration ||
             identity.viewportGeneration != nomination.viewportGeneration ||
             sample.policyGeneration != nomination.policyGeneration)
@@ -604,7 +605,7 @@ bool ValidateAndAdoptGuardedRememberedEdgeReturn(
         certificate.policyGeneration != currentContext.policyGeneration ||
         certificate.createdTickMs != nomination.timestampMs || currentContext.timestampMs < certificate.createdTickMs ||
         currentContext.timestampMs-certificate.createdTickMs > 500 ||
-        !SameActivePictureFrameIdentity(certificate.identities[0],currentIdentity) ||
+        !SameAnalysisFrameIdentity(certificate.identities[0],currentIdentity) ||
         currentIdentity.transportGeneration != nomination.sourceGeneration || currentSource.generation != nomination.sourceGeneration ||
         currentContext.sourceGeneration != nomination.sourceGeneration || currentContext.sceneId != nomination.sceneId ||
         currentContext.sourceSequence != nomination.sourceSequence || currentIdentity.acceptedSequence != nomination.sourceSequence ||
@@ -622,6 +623,7 @@ bool ValidateAndAdoptGuardedRememberedEdgeReturn(
         const auto& proof = observation.rememberedEdgeReturnProof;
         if (identity.transportGeneration != nomination.sourceGeneration ||
             identity.sourceFormatGeneration != nomination.sourceFormatGeneration ||
+            identity.analysisDomainKey != currentIdentity.analysisDomainKey ||
             identity.rendererGeneration != nomination.rendererGeneration || identity.viewportGeneration != nomination.viewportGeneration ||
             identity.acceptedSequence != currentIdentity.acceptedSequence+i ||
             identity.sourceFrameNumber != currentIdentity.sourceFrameNumber+i || !identity.captureTimestamp ||

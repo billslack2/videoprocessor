@@ -8,6 +8,11 @@
 
 #include "AnalysisLumaSource.h"
 #include "ActivePictureTransitionModel.h"
+#include "ActivePictureDecisionTimeline.h"
+
+enum class SubtitleScriptHint : int;
+struct SubtitleBoxObservation;
+struct ActivePictureFrameIdentity;
 
 
 // Shared presentation-only interpretation of the current provisional retention
@@ -30,6 +35,10 @@ struct P010PlaneView
 struct ActivePictureEdgeEvidence
 {
 	int barPixels = 0;
+	// For each of four equal along-edge quartiles, the low six bits identify
+	// sampled depth rows with at least half their samples above the source-aware
+	// near-black cutoff. This remains pixel evidence, never crop authority.
+	std::array<uint8_t, 4> distributedSupportDepthRowsByQuartile{};
 	double blackFraction = 0.0;
 	double lumaFloor = 0.0;
 	double lumaP90 = 0.0;
@@ -148,6 +157,27 @@ struct ActivePictureGlobalNearBlackEvidence
 	size_t lumaSamples = 0;
 };
 
+// AR-only interpretation of a globally dark frame. A current native bar
+// measurement may expose a broadly textured, dark picture between genuinely
+// black encoded bars. Preserve the raw global classification for title and
+// subtitle policies; only AR acquisition and its temporal proof may use the
+// effective result. This is pixel evidence, never crop authority by itself.
+struct ActivePictureArDarknessEvidence
+{
+	ActivePictureGlobalNearBlackEvidence global;
+	bool distributedDarkPicture = false;
+	int texturedTiles = 0;
+	int texturedQuadrants = 0;
+	double barFloor = 0.0;
+	double pictureMedian = 0.0;
+	double tileMedianSpread = 0.0;
+	size_t lumaSamples = 0;
+	bool EffectiveNearBlack() const
+	{
+		return global.nearBlack && !distributedDarkPicture;
+	}
+};
+
 
 // Diagnostic witness from the actual two supporting depth lines. No additional sampling.
 struct ActivePictureVisibleExtentDiagnostic
@@ -183,7 +213,10 @@ struct ActivePicturePresentationRetentionEvidence
 	bool analysisValid = false;
 	bool presentationValid = false;
 	double globalLumaP90 = 0.0;
-	bool globalNearBlack = false;
+	bool globalNearBlack = false; // Raw full-raster classifier, kept for diagnostics.
+	bool distributedDarkPicture = false; // Current native bars plus broad interior structure.
+
+	bool EffectiveArNearBlack() const { return globalNearBlack && !distributedDarkPicture; }
 	bool proposedBoundsAvailable = false;
 	bool proposedBoundsContained = false;
 	// Retention-only proof for one provisional vertical scan step; no new authority.
@@ -258,6 +291,13 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 	const AnalysisLumaSource& source);
 
+ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
+	const ActivePictureGlobalNearBlackEvidence& global);
+
+ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative);
+
 ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 	const P010PlaneView& view);
 
@@ -272,6 +312,70 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
 	const ActivePictureEvidence& observed,
     bool allowRejectedAlignedEdge = false);
+
+// Startup-only: independently proved flank bars nominate a native-coordinate
+// pair when a sparse subtitle makes the raw vertical axis asymmetric. The
+// nominated pair still has to pass both ordinary strict AR edge checks and
+// the connected-picture veto. Text itself never grants picture authority.
+ActivePictureEvidence EvaluateMeasuredVerticalBarHypothesis(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    const ActivePictureBounds& measuredCandidate);
+
+// Complete startup proof: independent current flank nomination, native strict
+// AR edges, then actual current glyph ink crossing only the displaced edge.
+// Returns the unchanged provisional observation unless every proof succeeds.
+ActivePictureEvidence EvaluateCaptionBackedVerticalBarHypothesis(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    SubtitleScriptHint scriptHint,
+    uint64_t sequence);
+
+// Reaffirm only an already established native picture from the exact current
+// worker observation. The worker supplies the unpadded glyph anchor; current
+// pixels must independently pass the same strict picture-edge checks.
+ActivePictureEvidence EvaluateCurrentCaptionVerticalBarReaffirmation(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observed,
+    const ActivePictureBounds& established,
+    const SubtitleBoxObservation& current,
+    const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration,
+    uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint);
+
+// Exact-current subtitle evidence may explain sparse glyphs or a measured opaque
+// card obscuring an independently nominated native bar. Neither the cue nor
+// its padded cleanup bounds nominate a picture edge. All unoccluded samples
+// must pass physical bar and picture-edge checks; excluded pixels are unknown.
+struct SubtitleAssistedVerticalBarProof
+{
+    bool accepted = false;
+    ActivePictureEvidence evidence;
+    ActivePictureBounds candidate;
+    ActivePictureFrameIdentity identity;
+    uint64_t policyGeneration = 0, continuityGeneration = 0;
+    SubtitleScriptHint scriptHint = static_cast<SubtitleScriptHint>(0);
+    int width = 0, height = 0;
+    int topFlankSupport = 0, bottomFlankSupport = 0;
+    size_t unknownSamples = 0, lumaSamples = 0;
+    bool usedMeasuredBacking = false;
+    const char* reason = "not-evaluated";
+
+    bool IsCurrentFor(const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity& currentIdentity,
+        uint64_t currentPolicyGeneration, uint64_t currentContinuityGeneration,
+        SubtitleScriptHint currentScriptHint) const;
+};
+
+SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
+    const AnalysisLumaSource& source,
+    const ActivePictureEvidence& observedNative,
+    const SubtitleBoxObservation& current,
+    const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration,
+    uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint);
 
 // Bounded presentation-retention inspection. The excluded-band predicate uses
 // the same black, luma-dispersion, texture, neutral-chroma, and continuity

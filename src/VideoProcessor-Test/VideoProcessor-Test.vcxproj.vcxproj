@@ -184,6 +184,8 @@
     <ClCompile Include="SubtitleBoxDetectorTests.cpp" />
     <ClCompile Include="SubtitleOpaqueCardRefinementTests.cpp" />
     <ClCompile Include="SubtitleBoxLookaheadTests.cpp" />
+    <ClCompile Include="AnalysisRecoveryParityTests.cpp" />
+    <ClCompile Include="AnalysisRecoveryDvTests.cpp" />
     <ClCompile Include="SubtitleMeasurementWorkerTests.cpp" />
     <ClCompile Include="SubtitleCutPasteTests.cpp" />
     <ClCompile Include="LookaheadOutwardProofTests.cpp">

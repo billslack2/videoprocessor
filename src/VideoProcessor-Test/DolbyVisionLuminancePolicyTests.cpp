@@ -9,6 +9,19 @@ namespace Tests
     TEST_CLASS(DolbyVisionLuminancePolicyTests)
     {
     public:
+        TEST_METHOD(ValidDvFramesKeepPublishedStatusStableBetweenFrames)
+        {
+            Assert::IsFalse(
+                DolbyVisionLuminancePolicy::ShouldClearStatusForFrame(
+                    true, true));
+            Assert::IsTrue(
+                DolbyVisionLuminancePolicy::ShouldClearStatusForFrame(
+                    true, false));
+            Assert::IsTrue(
+                DolbyVisionLuminancePolicy::ShouldClearStatusForFrame(
+                    false, true));
+        }
+
         TEST_METHOD(RecoveredRangeReplacesFallbackAndClearsInventedContentLight)
         {
             pl_hdr_metadata hdr{};
