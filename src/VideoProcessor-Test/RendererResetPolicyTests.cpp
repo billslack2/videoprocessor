@@ -4,14 +4,180 @@
 #include <BoundedDeliveryGate.h>
 #include <MadVRShaderTransactionPolicy.h>
 #include <RendererResetPolicy.h>
+#include <SubtitleProfileUpdatePolicy.h>
+#include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests
 {
+    struct SubtitleUpdateSettingsFixture
+    {
+        int subtitleCutPasteBackground = 0;
+        int subtitleGeneratedGray = 0;
+        int subtitleBoxPadding = 0;
+        int subtitlePaddingPolicy = 0;
+        int subtitleMode = 0;
+        int subtitleMoveInset = 0;
+        int subtitleTextReductionPercent = 0;
+        int subtitleRoundedCorners = 0;
+        int subtitleFloatBackground = 0;
+        int subtitleTemporalFill = 0;
+        int subtitleStretchFill = 0;
+        int scopeSubtitleFit = 0;
+        int configuredScreenAspect = 0;
+        int configuredScreenTarget = 0;
+        int verticalAlignment = 0;
+        int screenEdgePadding = 0;
+        int anamorphicScale = 0;
+        int automaticSourceCropRequested = 0;
+        int automaticSourceCrop = 0;
+        int cropNarrowerContentToFillScreen = 0;
+        int cropNarrowerContentAspectLimitConfigured = 0;
+        int cropNarrowerContentAspectLimit = 0;
+        int cropWiderContentToFillScreen = 0;
+        int cropWiderContentAspectLimitConfigured = 0;
+        int cropWiderContentAspectLimit = 0;
+        int fixedCropAspectConfigured = 0;
+        int fixedCropAspect = 0;
+        int subtitleDetectionOptimization = 0;
+        int subtitleScriptHint = 0;
+        int subtitleNearBarDistance = 0;
+        int subtitleHoldMs = 0;
+        int scopeSubtitleHoldMs = 0;
+        int scopeSubtitleEngageDriftMs = 0;
+        int scopeSubtitleReleaseDriftMs = 0;
+        int scopeSubtitlePaddingPixels = 0;
+        int scopeSubtitleTargetBufferPixels = 0;
+        int hdrPeakAnalysisPictureOnly = 0;
+        int hdrPeakAnalysisMotionCompensation = 0;
+        int hdrPeakAnalysisHeightPercent = 0;
+        int hdrPeakAnalysisPosition = 0;
+        int detector = 0, viewport = 0, format = 0, futureSetting = 0;
+        static std::string Fingerprint(const SubtitleUpdateSettingsFixture& s)
+        {
+            std::ostringstream out;
+            out << s.subtitleCutPasteBackground << '|';
+            out << s.subtitleGeneratedGray << '|';
+            out << s.subtitleBoxPadding << '|';
+            out << s.subtitlePaddingPolicy << '|';
+            out << s.subtitleMode << '|';
+            out << s.subtitleMoveInset << '|';
+            out << s.subtitleTextReductionPercent << '|';
+            out << s.subtitleRoundedCorners << '|';
+            out << s.subtitleFloatBackground << '|';
+            out << s.subtitleTemporalFill << '|';
+            out << s.subtitleStretchFill << '|';
+            out << s.scopeSubtitleFit << '|';
+            out << s.configuredScreenAspect << '|';
+            out << s.configuredScreenTarget << '|';
+            out << s.verticalAlignment << '|';
+            out << s.screenEdgePadding << '|';
+            out << s.anamorphicScale << '|';
+            out << s.automaticSourceCropRequested << '|';
+            out << s.automaticSourceCrop << '|';
+            out << s.cropNarrowerContentToFillScreen << '|';
+            out << s.cropNarrowerContentAspectLimitConfigured << '|';
+            out << s.cropNarrowerContentAspectLimit << '|';
+            out << s.cropWiderContentToFillScreen << '|';
+            out << s.cropWiderContentAspectLimitConfigured << '|';
+            out << s.cropWiderContentAspectLimit << '|';
+            out << s.fixedCropAspectConfigured << '|';
+            out << s.fixedCropAspect << '|';
+            out << s.subtitleDetectionOptimization << '|';
+            out << s.subtitleScriptHint << '|';
+            out << s.subtitleNearBarDistance << '|';
+            out << s.subtitleHoldMs << '|';
+            out << s.scopeSubtitleHoldMs << '|';
+            out << s.scopeSubtitleEngageDriftMs << '|';
+            out << s.scopeSubtitleReleaseDriftMs << '|';
+            out << s.scopeSubtitlePaddingPixels << '|';
+            out << s.scopeSubtitleTargetBufferPixels << '|';
+            out << s.hdrPeakAnalysisPictureOnly << '|';
+            out << s.hdrPeakAnalysisMotionCompensation << '|';
+            out << s.hdrPeakAnalysisHeightPercent << '|';
+            out << s.hdrPeakAnalysisPosition << '|';
+            out << s.detector << '|' << s.viewport << '|' << s.format << '|' << s.futureSetting;
+            return out.str();
+        }
+    };
+
 	TEST_CLASS(RendererResetPolicyTests)
 	{
 	public:
+        TEST_METHOD(SubtitlePresentationFieldsPreservePictureContractOnly)
+        {
+            using S = SubtitleUpdateSettingsFixture;
+            const S before;
+            int S::* fields[] = {&S::subtitleCutPasteBackground,&S::subtitleGeneratedGray,&S::subtitleBoxPadding,&S::subtitlePaddingPolicy,&S::subtitleMode,&S::subtitleMoveInset,&S::subtitleTextReductionPercent,&S::subtitleRoundedCorners,&S::subtitleFloatBackground,&S::subtitleTemporalFill,&S::subtitleStretchFill,&S::scopeSubtitleFit,&S::scopeSubtitleHoldMs,&S::scopeSubtitleEngageDriftMs,&S::scopeSubtitleReleaseDriftMs,&S::scopeSubtitlePaddingPixels,&S::scopeSubtitleTargetBufferPixels,&S::hdrPeakAnalysisPictureOnly,&S::hdrPeakAnalysisMotionCompensation,&S::hdrPeakAnalysisHeightPercent,&S::hdrPeakAnalysisPosition};
+            for (const auto field : fields)
+            {
+                auto after = before;
+                after.*field = 1;
+                Assert::IsTrue(IsSubtitlePresentationOnlyUpdate(before, after, S::Fingerprint));
+                after.viewport = 1;
+                Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before, after, S::Fingerprint));
+            }
+        }
+        TEST_METHOD(SubtitleUpdateRejectsDetectorFormatUnknownAndNoChange)
+        {
+            using S = SubtitleUpdateSettingsFixture;
+            const S before;
+            Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before, before, S::Fingerprint));
+            for (int which = 0; which < 4; ++which)
+            {
+                auto after = before;
+                after.subtitleMode = 2;
+                if (which == 0) after.detector = 1;
+                if (which == 1) after.viewport = 1;
+                if (which == 2) after.format = 1;
+                if (which == 3) after.futureSetting = 1;
+                Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before, after, S::Fingerprint));
+            }
+        }
+        TEST_METHOD(SubtitleOffClassicBlackAndReconstructionTransitionsArePresentationOnly)
+        {
+            using S = SubtitleUpdateSettingsFixture;
+            for (int from = 0; from < 4; ++from)
+                for (int to = 0; to < 4; ++to)
+                {
+                    S before, after;
+                    before.subtitleMode = from; before.scopeSubtitleFit = from != 0;
+                    after.subtitleMode = to; after.scopeSubtitleFit = to != 0;
+                    after.subtitleGeneratedGray = to == 3;
+                    before.subtitleGeneratedGray = from == 3;
+                    before.scopeSubtitleEngageDriftMs = from ? 500 : 0;
+                    after.scopeSubtitleEngageDriftMs = to ? 500 : 0;
+                    before.scopeSubtitleReleaseDriftMs = from ? 2000 : 0;
+                    after.scopeSubtitleReleaseDriftMs = to ? 2000 : 0;
+                    before.scopeSubtitlePaddingPixels = from > 1 ? 20 : 0;
+                    after.scopeSubtitlePaddingPixels = to > 1 ? 20 : 0;
+                    before.hdrPeakAnalysisMotionCompensation = from == 2;
+                    after.hdrPeakAnalysisMotionCompensation = to == 2;
+                    Assert::AreEqual(from != to, IsSubtitlePresentationOnlyUpdate(before, after, S::Fingerprint));
+                }
+        }
+        TEST_METHOD(SubtitleUpdateRequiresCommittedViewportEvenAfterMailboxConsumption)
+        {
+            Assert::IsFalse(SubtitleUpdateHasCommittedContext(true, 3, 4));
+            Assert::IsFalse(SubtitleUpdateHasCommittedContext(false, 3, 4));
+            Assert::IsTrue(SubtitleUpdateHasCommittedContext(false, 4, 4));
+            Assert::IsFalse(SubtitleUpdateHasCommittedContext(true, 4, 4));
+        }
+        TEST_METHOD(SubtitleContextGuardRejectsFieldsEvenWhenFingerprintOmitsThem)
+        {
+            using S = SubtitleUpdateSettingsFixture;
+            const S before;
+            int S::* fields[] = {&S::configuredScreenAspect,&S::configuredScreenTarget,&S::verticalAlignment,&S::screenEdgePadding,&S::anamorphicScale,&S::automaticSourceCropRequested,&S::automaticSourceCrop,&S::cropNarrowerContentToFillScreen,&S::cropNarrowerContentAspectLimitConfigured,&S::cropNarrowerContentAspectLimit,&S::cropWiderContentToFillScreen,&S::cropWiderContentAspectLimitConfigured,&S::cropWiderContentAspectLimit,&S::fixedCropAspectConfigured,&S::fixedCropAspect,&S::subtitleDetectionOptimization,&S::subtitleScriptHint,&S::subtitleNearBarDistance,&S::subtitleHoldMs};
+            for (const auto field : fields)
+            {
+                auto after = before;
+                after.subtitleMode = 1;
+                after.*field = 1;
+                Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before, after,
+                    [](const S& s) { return std::to_string(s.subtitleMode); }));
+            }
+        }
 		TEST_METHOD(DisplayTransitionCannotDelayPostStartReset)
 		{
 			const int postStartPriority =

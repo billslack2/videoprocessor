@@ -222,6 +222,9 @@
     <ClInclude Include="RendererResetPolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SubtitleProfileUpdatePolicy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
 	<ClInclude Include="InvalidCaptureStateGrace.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>
