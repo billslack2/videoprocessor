@@ -1,4 +1,5 @@
 #include <pch.h>
+#include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 
 #include "LibplaceboVideoRenderer.h"
@@ -1006,7 +1007,7 @@ namespace
 		{
 			stream
 				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
-				<< settings.verticalAlignment << '|'
+				<< settings.verticalAlignment << '|' << settings.screenEdgePadding << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCropRequested << '|'
 				<< settings.automaticSourceCrop << '|'
@@ -4230,6 +4231,7 @@ struct LibplaceboVideoRenderer::Impl
     std::atomic<SubtitlePreviewMode> selectedSubtitleMode{SubtitlePreviewMode::None};
 	mutable std::mutex publishedSettingsMutex;
 	RendererSettings publishedActiveSettings;
+    uint64_t publishedViewportRequestSerial = 0;
 	bool publishedSettingsAvailable = false;
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
@@ -7542,7 +7544,7 @@ struct LibplaceboVideoRenderer::Impl
 		return pendingProfileIntent.HasPending();
 	}
 
-	void ApplyViewportSettingsLocked(const RendererSettings& settings)
+	void ApplyViewportSettingsLocked(const RendererSettings& settings, bool preservePicture = false)
 	{
 		const bool renderingBehaviorChanged =
 			configuredScreenAspect != settings.configuredScreenAspect ||
@@ -7654,7 +7656,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.scopeSubtitleTargetBufferPixels =
 			settings.scopeSubtitleTargetBufferPixels;
 		PublishSettingsState(activeSettings);
-		if (renderingBehaviorChanged)
+		if (renderingBehaviorChanged && !preservePicture)
 		{
 			// ApplyViewportTarget advances the viewport serial for this immutable
 			// snapshot. RenderLocked consumes that boundary once, after these new
@@ -7875,6 +7877,7 @@ struct LibplaceboVideoRenderer::Impl
 		const std::string restart = EffectiveSettingsFingerprint(settings, false);
 		std::lock_guard<std::mutex> guard(publishedSettingsMutex);
 		publishedActiveSettings = settings;
+        publishedViewportRequestSerial = renderViewportRequestSerial;
 		publishedSettingsAvailable = true;
 		effectiveSettingsFingerprint = effective;
 		restartSettingsFingerprint = restart;
@@ -8016,6 +8019,18 @@ struct LibplaceboVideoRenderer::Impl
 		effectiveFingerprint = effectiveSettingsFingerprint;
 		restartFingerprint = restartSettingsFingerprint;
 	}
+
+    bool CanPreservePictureForSubtitleUpdate(const RendererSettings& settings, uint64_t requestedSerial)
+    {
+        // Do not classify against a snapshot superseded by a queued viewport.
+        if (HasPendingProfileSettings()) return false;
+        std::lock_guard<std::mutex> guard(publishedSettingsMutex);
+        return publishedSettingsAvailable &&
+            SubtitleUpdateHasCommittedContext(false, publishedViewportRequestSerial, requestedSerial) &&
+            IsSubtitlePresentationOnlyUpdate(
+            publishedActiveSettings, settings,
+            [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
+    }
 
 	bool CanApplyProfileSettingsLive(const RendererSettings& settings) const
 	{
@@ -8161,6 +8176,9 @@ struct LibplaceboVideoRenderer::Impl
 		ViewportIntentMailbox<RendererSettings>::Intent pending;
 		if (!pendingProfileIntent.Consume(pending))
 			return;
+        const bool subtitleOnly = pending.viewportRequestSerial == renderViewportRequestSerial &&
+            IsSubtitlePresentationOnlyUpdate(activeSettings, pending.settings,
+                [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
 		if (!ApplyProfileSettingsLiveLocked(pending.settings))
 		{
 			DebugLog::Log(
@@ -8172,10 +8190,24 @@ struct LibplaceboVideoRenderer::Impl
 			renderLoadMeter.ResetForPipelineChange();
 			coreRenderLoadMeter.ResetForPipelineChange();
 			originalPrRenderLoadMeter.ResetForPipelineChange();
-			ApplyViewportSettingsLocked(pending.settings);
+			ApplyViewportSettingsLocked(pending.settings, subtitleOnly);
+            if (subtitleOnly)
+            {
+                ClearScopeSubtitleEvidence();
+                subtitleBoxPresentation.Reset();
+                subtitlePendingGuard.Reset();
+                subtitlePaddingGuard.Reset();
+                subtitleCutPastePresentation.Reset();
+                subtitleLayoutAnchor.Reset();
+                lastRenderedCaptionAnchor = {};
+                captionConfirmationHold = {};
+                DebugLog::Log("Alpha subtitle presentation update: AR authority, history and admission preserved; subtitle placement refreshed; viewport=%llu",
+                    static_cast<unsigned long long>(pending.viewportRequestSerial));
+            }
 			renderConfiguredScreenActive = pending.configuredScreenActive;
 			renderViewportRequestSerial = pending.viewportRequestSerial;
 			renderViewportRequestNs = pending.viewportRequestNs;
+            PublishSettingsState(activeSettings);
 			DebugLog::Log(
 				"libplacebo queued profile and viewport intent applied atomically on render thread: request=%llu",
 				static_cast<unsigned long long>(renderViewportRequestSerial));
@@ -17286,8 +17318,10 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	}
 	if (!rendererRestartRequired && m_impl)
 	{
-		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
-			candidateSettings.configuredScreenAspect, "application snapshot");
+        if (!m_impl->CanPreservePictureForSubtitleUpdate(candidateSettings,
+            m_viewportRequestSerial.load(std::memory_order_acquire)))
+            ApplyViewportTarget(candidateSettings.configuredScreenTarget,
+                candidateSettings.configuredScreenAspect, "application snapshot");
 		const uint64_t viewportRequestSerial =
 			m_viewportRequestSerial.load(std::memory_order_acquire);
 		const int64_t viewportRequestNs =
