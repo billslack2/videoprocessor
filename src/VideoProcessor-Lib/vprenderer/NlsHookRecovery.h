@@ -24,13 +24,13 @@ namespace NlsHookRecovery
     // libplacebo may return success after disabling a failing user hook. Never
     // present that unintended full-screen linear stretch. One retry uses the
     // already-selected source pixels and rebuilt ordinary destination/overlays.
-    template<class RebuildFallback>
+    template<class RebuildFallback, class Draw>
     Result Render(pl_renderer renderer, pl_gpu gpu, const pl_frame& source,
         pl_frame& target, const pl_frame& fullTarget, pl_render_params& params,
-        const pl_hook* activeNls, RebuildFallback rebuildFallback)
+        const pl_hook* activeNls, RebuildFallback rebuildFallback, Draw draw)
     {
         Result result;
-        result.rendered = pl_render_image(renderer, &source, &target, &params);
+        result.rendered = draw(source,target,params);
         const auto errors = pl_renderer_get_errors(renderer);
         result.errors = static_cast<unsigned>(errors.errors);
         if (!activeNls) return result;
@@ -45,7 +45,14 @@ namespace NlsHookRecovery
         rebuildFallback();
         const float black[] = { 0.0f, 0.0f, 0.0f };
         pl_frame_clear(gpu, &fullTarget, black);
-        result.rendered = pl_render_image(renderer, &source, &target, &params);
+        result.rendered = draw(source,target,params);
         return result;
+    }
+    template<class RebuildFallback>
+    Result Render(pl_renderer renderer, pl_gpu gpu, const pl_frame& source,
+        pl_frame& target, const pl_frame& fullTarget, pl_render_params& params,
+        const pl_hook* activeNls, RebuildFallback rebuildFallback) {
+        return Render(renderer,gpu,source,target,fullTarget,params,activeNls,rebuildFallback,
+            [renderer](const pl_frame& image,const pl_frame& destination,pl_render_params& parameters){return pl_render_image(renderer,&image,&destination,&parameters);});
     }
 }

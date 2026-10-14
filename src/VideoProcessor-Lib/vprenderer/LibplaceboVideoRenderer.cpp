@@ -40,6 +40,8 @@
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <vprenderer/NlsHookRecovery.h>
+#include <MotionConfig.h>
+#include <vprenderer/TemporalRenderer.h>
 #include <SubtitleBoxDetector.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleMeasurementWorker.h>
@@ -813,6 +815,8 @@ namespace
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
 		std::string downscaler = "auto";
+        std::string chromaUpscaler="bicubic";
+        MotionConfig::Settings motion;
 		std::string debandStrength = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
@@ -943,6 +947,7 @@ namespace
             << ToneMappingTuning::Fingerprint(settings.toneTuning)
             << settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
 			<< settings.upscaler << '|' << settings.downscaler << '|'
+            << settings.chromaUpscaler << '|' << settings.motion.Fingerprint() << '|'
 			<< settings.debandStrength << '|'
 			<< static_cast<int>(settings.deband) << '|'
 			<< static_cast<int>(settings.sigmoid) << '|'
@@ -1225,7 +1230,7 @@ namespace
 				std::string section = "profiles." + group.name + "." + profileName;
 				if (RendererProfileConfig::IsTargetModel(config))
 				{
-					const std::string root = group.name == "display" ?
+					const std::string root = group.name == "motion" ? "vprenderer.motion" : group.name == "display" ?
 						"vprenderer" :
 						(group.name == "input" ? "vprenderer.input" :
 							(group.name == "scaling" ? "vprenderer.scaling" :
@@ -1247,7 +1252,8 @@ namespace
 							ProfileSectionIdentity::Resolve(config, root, group.defaultSelection), 0, 0 };
 						ApplyDisplayRuleOverrides(config, baselineRule, settings);
 					}
-					section = ProfileSectionIdentity::Resolve(config, root, profileName);
+                    if(group.name=="motion")section=ProfileSectionIdentity::Resolve(config,"vprenderer.motion",profileName);
+                    else section = ProfileSectionIdentity::Resolve(config, root, profileName);
 				}
 				const DisplayRule rule = { group.name + "/" + profileName,
 					section, profile->second.priority, 0 };
@@ -1780,6 +1786,8 @@ namespace
 		readPeakDetection(settings.peakDetection);
 		readChoice("upscaler", settings.upscaler, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 		readChoice("downscaler", settings.downscaler, { "auto", "gpu", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
+        readChoice("chroma_upscaler",settings.chromaUpscaler,{"bilinear","bicubic","lanczos","ewa_lanczos","ewa_lanczossharp"});
+        MotionConfig::Read(config,rule.section,settings.motion);
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
@@ -2198,6 +2206,8 @@ namespace
 					"libplacebo: deband_strength must be Auto, off, light, or default; retaining the debanding setting");
 		}
 		settings.sigmoid = ReadAutoToggle(config, "sigmoid");
+        settings.chromaUpscaler=ReadChoice(config,"chroma_upscaler","bicubic",{"bilinear","bicubic","lanczos","ewa_lanczos","ewa_lanczossharp"});
+        MotionConfig::Read(config,"vprenderer.motion",settings.motion);
 		settings.dithering = ReadDithering(config, "dithering");
 		settings.displayBitDepth = ReadChoice(
 			config, "display_bit_depth", "auto", { "auto", "8", "10" });
@@ -3847,6 +3857,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nextSourceLuminanceLogTick = 0;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
+    TemporalRenderer temporalRenderer;
+    std::string lastMotionStatus;
 	CComPtr<ID3D11DeviceContext> renderTimingContext;
 	// The headline result sums tightly bounded command stages from one frame.
 	AlphaD3D11FrameGpuTimer gpuFrameTimer;
@@ -4506,7 +4518,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
 	{
-		cadenceCorrectionPolicy.Reset(queueGeneration);
+		temporalRenderer.Clear();
+        cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
 		renderLoadMeter.DiscardPendingSamples();
 		coreRenderLoadMeter.DiscardPendingSamples();
@@ -4582,7 +4595,8 @@ struct LibplaceboVideoRenderer::Impl
             pl_mpv_user_shader_destroy(&subtitleCutPasteHook);
             subtitleCutPasteHookFailed = false;
             subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset();
-			pl_renderer_destroy(&renderer);
+			temporalRenderer.Clear();
+            pl_renderer_destroy(&renderer);
 			pl_lut_free(&displayLut);
 			if (d3d11)
 			{
@@ -5252,7 +5266,7 @@ struct LibplaceboVideoRenderer::Impl
 		const std::string downscaler = optionText("downscaler");
 		const std::string resolved = serialized ? serialized : "<unavailable>";
 		DebugLog::Log(
-			"libplacebo resolved render options (%s): upscaler=%s downscaler=%s frame_mixing_active=0 (single-image rendering; preset frame_mixer is unused) all=%s",
+			"libplacebo resolved render options (%s): upscaler=%s downscaler=%s frame_mixing=motion_profile (matched-rate bypass unless Always) all=%s",
 			lifecycle, upscaler.c_str(), downscaler.c_str(), resolved.c_str());
 		pl_options_free(&options);
 	}
@@ -5272,6 +5286,7 @@ struct LibplaceboVideoRenderer::Impl
 		parameterSettings.contrastRecovery = settings.contrastRecovery;
 		parameterSettings.upscaler = settings.upscaler;
 		parameterSettings.downscaler = settings.downscaler;
+        parameterSettings.chromaUpscaler=settings.chromaUpscaler;
 		parameterSettings.debandStrength = settings.debandStrength;
 		parameterSettings.deband =
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.deband);
@@ -6884,7 +6899,8 @@ struct LibplaceboVideoRenderer::Impl
 		bool suppressLimited,
 		const char* trigger)
 	{
-		pl_swapchain_destroy(&swapchain);
+		temporalRenderer.Clear();
+        pl_swapchain_destroy(&swapchain);
 		ReleaseVpOwnedSwapchain();
 		swapchainBlit = blit;
 		suppressLimitedNegotiation = suppressLimited;
@@ -7678,6 +7694,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.contrastRecovery = next.contrastRecovery;
 		currentTransport.upscaler = next.upscaler;
 		currentTransport.downscaler = next.downscaler;
+        currentTransport.chromaUpscaler=next.chromaUpscaler;
 		currentTransport.debandStrength = next.debandStrength;
 		currentTransport.deband = next.deband;
 		currentTransport.sigmoid = next.sigmoid;
@@ -7740,6 +7757,8 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.debandStrength != next.debandStrength ||
 			current.deband != next.deband, "deband");
 		changed(current.sigmoid != next.sigmoid, "sigmoid");
+        changed(current.chromaUpscaler != next.chromaUpscaler,"chroma_upscaler");
+        changed(current.motion.Fingerprint()!=next.motion.Fingerprint(),"motion");
 		changed(current.dithering != next.dithering, "dithering");
 		changed(current.displayBitDepth != next.displayBitDepth, "display_bit_depth");
 		changed(current.sdrInputTransfer != next.sdrInputTransfer ||
@@ -11036,6 +11055,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
 			(lastRenderedEotf != state.eotf || lastRenderedColorspace != state.colorspace))
 		{
+            temporalRenderer.Clear();
 			// pl_render_image tracks source and target changes itself. Do not add a
 			// custom flush or invalidation lifecycle here: libplacebo owns its
 			// resident programs and persistent cache entries.
@@ -12059,6 +12079,7 @@ struct LibplaceboVideoRenderer::Impl
 				if (doviMetadataCache.size() >= 512)
 				{
 					pl_renderer_flush_cache(renderer);
+                    temporalRenderer.Clear(); // Retained frames borrow the cached Dolby matrices.
 					doviMetadataCache.clear();
 					DebugLog::Log("Dolby Vision RGB tunnel: matrix cache recycled after 512 entries");
 				}
@@ -12177,6 +12198,10 @@ struct LibplaceboVideoRenderer::Impl
 		if (!nativeRgbUpload)
 			pl_frame_set_chroma_location(&image, PL_CHROMA_LEFT);
 
+        if(temporalRenderer.Active()) {
+            if(!temporalRenderer.Capture(d3d11->gpu,image,sourceSequence))temporalRenderer.Bypass(temporalRenderer.status);
+            if(temporalRenderer.skipOutput)return true;
+        }
 		struct pl_swapchain_frame swapchainFrame{};
 		pl_tex vpOwnedFrameTarget = nullptr;
 		CComPtr<ID3D11Texture2D> vpOwnedBackbuffer;
@@ -15599,7 +15624,14 @@ struct LibplaceboVideoRenderer::Impl
 			target.num_overlays = overlayCount;
 		}
 		};
+        if(subtitleCompositionSucceeded && temporalRenderer.Active()) {
+            temporalRenderer.Bypass("Motion: unavailable with source subtitle composition");
+        }
 		assembleOverlays();
+        if(lastMotionStatus!=temporalRenderer.status) {
+            lastMotionStatus=temporalRenderer.status;
+            DebugLog::Log("VP motion: %s delay_ms=%.3f source_hz=%.6f display_hz=%.6f",lastMotionStatus.c_str(),temporalRenderer.DelayMs(),captureRateHz,renderLoadDisplayRefreshHz.load());
+        }
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
@@ -15628,6 +15660,8 @@ struct LibplaceboVideoRenderer::Impl
                     requestedShaderSelector, nlsDecision.mode);
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
+            }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
+                return temporalRenderer.Render(renderer,source,destination,parameters);
             });
         bool rendered = hookRender.rendered;
         if (hookRender.retried)
@@ -18375,6 +18409,8 @@ bool LibplaceboVideoRenderer::GetPresentationTimingStatus(CString& status) const
 			break;
 		}
 	}
+	value += "; ";
+    value += m_impl->temporalRenderer.status.c_str();
 	status = CString(value);
 	return true;
 }
@@ -20002,6 +20038,18 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 			if (!staleGeneration)
 			{
+                const double sourcePts=m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
+                    static_cast<double>(frame.GetTimingTimestamp())/m_timingClock->TimingClockTicksPerSecond():
+                    static_cast<double>(sourceSequence)/captureRateHz;
+                m_impl->temporalRenderer.Begin(m_impl->activeSettings.motion,captureRateHz,
+                    m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
+                    state&&state->displayMode&&state->displayMode->IsInterlaced(),
+                    state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
+                    frameGeneration,sourceSequence,sourcePts,frame.IsSourceDiscontinuity());
+                const auto motionOutputs=m_impl->temporalRenderer.outputs;
+                const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
+                for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
+                    if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
@@ -20022,12 +20070,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 					desiredQueueDepth,
 					oldestQueuedAgeMs,
 					preRenderTimings,
-					cadenceRepeat,
+					cadenceRepeat || motionDraw>0,
 					captureRateHz,
 					m_impl->renderConfiguredScreenActive,
 					m_impl->renderViewportRequestSerial,
 					m_impl->renderViewportRequestNs,
-					m_sceneDetectionEnabled.load(std::memory_order_acquire),
+					m_sceneDetectionEnabled.load(std::memory_order_acquire) && !m_impl->temporalRenderer.Active(),
 					m_videoConversionOverride,
 					m_sceneDetectorGeneration.load(std::memory_order_acquire),
 					m_sceneDetectedCount,
@@ -20035,6 +20083,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 					correctionDecision,
 					presentationTargetTimingKnown,
 					presentationTargetLeadMs);
+                    if(!rendered)break;
+                    std::lock_guard<std::mutex> motionQueueGuard(m_queueMutex);
+                    if(m_stopRequested||frameGeneration!=m_queueGeneration)break;
+                }
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(
 						SteadyClock::now() - renderCycleStart).count();

@@ -59,6 +59,6 @@ EOTF TranslateEOTF(LONGLONG electroOpticalTransferFuncValue);
 
 ColorSpace Translate(BMDColorspace, uint32_t verticalLines);
 
-DisplayModeSharedPtr Translate(BMDDisplayMode);
+DisplayModeSharedPtr Translate(BMDDisplayMode, BMDFieldDominance dominance=bmdUnknownFieldDominance);
 
 double FPS(BMDDisplayMode displayMode);

@@ -392,6 +392,9 @@ namespace LibplaceboRenderParameters
                 if (settings.toneTuning[i]) *peakFields[i - ToneMappingTuning::Percentile] = static_cast<float>(*settings.toneTuning[i]);
         }
 
+        const char* chromaExport=Upscaler(settings.chromaUpscaler);
+        projection.renderParams.plane_upscaler=ReadLibplaceboData<pl_filter_config>(chromaExport,error);
+        if(!projection.renderParams.plane_upscaler)return false;
 		if (settings.upscaler != "auto")
 		{
 			const char* exportName = Upscaler(settings.upscaler);

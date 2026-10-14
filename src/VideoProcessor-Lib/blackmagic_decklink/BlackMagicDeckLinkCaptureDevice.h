@@ -117,6 +117,7 @@ private:
 	bool m_videoFrameSeen = false;
 	BMDPixelFormat m_bmdPixelFormat = BMD_PIXEL_FORMAT_INVALID;
 	BMDDisplayMode m_bmdDisplayMode = BMD_DISPLAY_MODE_INVALID;
+    BMDFieldDominance m_bmdFieldDominance=bmdUnknownFieldDominance;
 	timingclocktime_t m_ticksPerFrame = TIMING_CLOCK_TIME_INVALID;
 	bool m_videoHasInputSource = false;
 	bool m_videoInvertedVertical = false;

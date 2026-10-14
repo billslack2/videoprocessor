@@ -49,6 +49,7 @@ namespace LibplaceboRenderParameters
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
 		std::string downscaler = "auto";
+        std::string chromaUpscaler = "bicubic";
 		// Canonical setting for new configuration. "Auto" preserves the
 		// quality preset, "off" disables it, and the other values select an
 		// explicit parameter set. `deband` remains for legacy configuration.
