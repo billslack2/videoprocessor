@@ -2655,7 +2655,23 @@ namespace AlphaSourceCrop
         // requested owner and must never use this target-coverage exception.
         const bool engaging = confirmed && translation.engagingTranslation;
         const double resolved = translation.resolvedTranslationPixels;
-        if (engaging && (std::abs(resolved) > std::abs(owner.translationPixels) + 1.0 ||
+        if (engaging && translation.engageIntervalAvailable)
+        {
+            const double start = translation.engageStartTranslationPixels;
+            const double target = translation.engageTargetTranslationPixels;
+            const double applied = translation.engageAppliedTranslationPixels;
+            // A confirmed target may reverse an existing engage/release pose.
+            // Certify that exact animation interval; an arbitrary opposite-sign
+            // displacement or an overshoot is not retained scope authority.
+            if (!std::isfinite(start) || !std::isfinite(target) || !std::isfinite(applied) ||
+                std::abs(target - owner.translationPixels) > 0.5 ||
+                std::abs(applied - resolved) > 1.0 ||
+                applied < std::min(start, target) || applied > std::max(start, target) ||
+                base.top + start < 0 || base.bottom + start > base.rasterHeight ||
+                base.top + target < 0 || base.bottom + target > base.rasterHeight)
+                return false;
+        }
+        else if (engaging && (std::abs(resolved) > std::abs(owner.translationPixels) + 1.0 ||
             (resolved != 0.0 && (resolved > 0) != (owner.translationPixels > 0))))
             return false;
         const double shift = freshPending ? pending.candidateTranslationPixels :
@@ -4018,6 +4034,199 @@ namespace AlphaSourceCrop
 		return result;
 	}
 
+    CaptionConfirmationPresentationHoldDecision EvaluateCaptionConfirmationPresentationHold(
+        const CaptionConfirmationPresentationHoldInput& input)
+    {
+        CaptionConfirmationPresentationHoldDecision result;
+        const auto reject = [&](const char* reason) {
+            result.reason = reason;
+            return result; // Rejection never preserves or extends a prior lease.
+        };
+        if (!input.eligible || input.competingPresentation ||
+            (!input.pendingConfirmation && !input.zeroEngage) ||
+            !input.pictureCurrentTrusted || !input.captionCurrentMeasured ||
+            !input.nearBlackEvaluated || input.nearBlack)
+            return reject("confirmation hold lacks current eligibility");
+        if (!input.sourceGeneration || !input.sourceSequence || !input.analysisDomainKey ||
+            input.pictureGeneration != input.sourceGeneration || input.pictureSequence != input.sourceSequence ||
+            input.captionGeneration != input.sourceGeneration || input.captionSequence != input.sourceSequence ||
+            input.visibleGeneration != input.sourceGeneration || input.visibleSequence != input.sourceSequence ||
+            input.retentionGeneration != input.sourceGeneration || input.retentionSequence != input.sourceSequence ||
+            !SameTrustedCropContract(input.retentionBase, input.picture))
+            return reject("confirmation hold evidence identity mismatch");
+        const auto& picture = input.picture;
+        const auto& caption = input.caption;
+        const int width = picture.rasterWidth, height = picture.rasterHeight;
+        if (!ValidBounds(picture, width, height) || !CropEdgesAreChromaAligned(picture, width, height) ||
+            picture.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            picture.left != 0 || picture.right != width || picture.top <= 0 || picture.bottom >= height ||
+            !ValidBounds(caption, width, height) || caption.left < picture.left || caption.right > picture.right ||
+            !ValidBounds(input.visibleBounds, width, height) || !ContainedBounds(input.visibleBounds, picture))
+            return reject("confirmation hold geometry unavailable");
+        const bool top = caption.top < picture.top, bottom = caption.bottom > picture.bottom;
+        const double target = input.targetTranslationPixels;
+        if (top == bottom || !std::isfinite(target) || std::abs(target) <= 0.5 ||
+            (top != (target < 0)) || picture.top + target < 0 || picture.bottom + target > height)
+            return reject("confirmation hold target does not match caption");
+        // A conservative rectangular envelope, not a claim that every pixel
+        // inside it is text. It must contain the entire current visible witness.
+        auto envelope = picture;
+        if (top) envelope.top = std::max(0, (caption.top - 2) & ~1);
+        else envelope.bottom = std::min(height, (caption.bottom + 3) & ~1);
+        if (!ContainedBounds(envelope, caption) || !ContainedBounds(envelope, input.visibleBounds))
+            return reject("confirmation hold has unexplained visible content");
+
+        const auto& rendered = input.lastRendered;
+        if (!rendered.available || rendered.sourceGeneration != input.sourceGeneration ||
+            rendered.analysisDomainKey != input.analysisDomainKey || rendered.sourceFormatKey != input.sourceFormatKey ||
+            rendered.presentationEpoch != input.presentationEpoch ||
+            !rendered.sourceSequence || rendered.sourceSequence > input.sourceSequence ||
+            input.sourceSequence - rendered.sourceSequence > 1 || rendered.tick > input.currentTick ||
+            input.currentTick - rendered.tick > 500 ||
+            !ValidBounds(rendered.bounds, width, height) || !CropEdgesAreChromaAligned(rendered.bounds, width, height) ||
+            !ContainedBounds(rendered.bounds, envelope))
+            return reject("confirmation hold lacks continuous containing presentation");
+
+        if (input.previous.active)
+        {
+            const auto& prior = input.previous;
+            if (prior.anchor.sourceGeneration != input.sourceGeneration ||
+                prior.anchor.analysisDomainKey != input.analysisDomainKey ||
+                prior.anchor.sourceFormatKey != input.sourceFormatKey ||
+                prior.anchor.presentationEpoch != input.presentationEpoch ||
+                !SameBounds(prior.anchor.bounds, rendered.bounds) ||
+                !SameTrustedCropContract(prior.picture, picture) ||
+                std::abs(prior.targetTranslationPixels - target) > 0.5 ||
+                !prior.lastSequence || input.sourceSequence < prior.lastSequence ||
+                input.sourceSequence - prior.lastSequence > 1 ||
+                (input.sourceSequence == prior.lastSequence && !input.cadenceRepeat) ||
+                input.currentTick < prior.startedTick || input.currentTick - prior.startedTick >= 500)
+                return reject("confirmation hold context changed or expired");
+            result.state = prior;
+        }
+        else
+        {
+            if (input.cadenceRepeat || rendered.sourceSequence == input.sourceSequence)
+                return reject("confirmation hold cannot originate on a repeated frame");
+            result.state.active = true;
+            result.state.anchor = rendered;
+            result.state.picture = picture;
+            result.state.firstSequence = input.sourceSequence;
+            result.state.startedTick = input.currentTick;
+            result.state.targetTranslationPixels = target;
+        }
+        result.state.lastSequence = input.sourceSequence;
+        result.hold = true;
+        result.bounds = result.state.anchor.bounds;
+        result.reason = "last rendered presentation contains current picture and caption while target confirms";
+        return result;
+    }
+
+    CropPresentationAdmissionDecision CompleteCaptionAcquisitionTranslation(
+        const CaptionBoundedFitAcquisitionInput& acquisition,
+        const CropPresentationAdmissionDecision& admittedFit,
+        const EstablishedSubtitleTranslationInput& translation,
+        uint64_t presentationEpoch, uint64_t currentTick, std::string* diagnosticReason)
+    {
+        const auto reject = [&](const char* reason) {
+            if (diagnosticReason) *diagnosticReason = reason;
+            return admittedFit;
+        };
+        const auto proof = BuildCaptionBoundedFitAcquisition(acquisition);
+        if (!proof.available) return reject(proof.reason);
+        if (admittedFit.blocked || !admittedFit.presentation.applyCrop ||
+            admittedFit.presentation.owner != DecisionOwner::OUTWARD_FIT ||
+            !admittedFit.presentation.outwardExpanded ||
+            !SameBounds(admittedFit.presentation.sourceBounds, proof.bounds))
+            return reject("admitted-fit-mismatch");
+        const auto& crop = *acquisition.crop;
+        const auto& owner = translation.presentation;
+        if (!HasCurrentCropPresentationAdmission(admittedFit.state, crop, presentationEpoch))
+            return reject("admission-contract-mismatch");
+        if (!admittedFit.state.outwardPresentationAvailable ||
+            admittedFit.state.presentationSourceSequence != crop.frameSourceSequence ||
+            !SameBounds(admittedFit.state.outwardPresentation, proof.bounds))
+            return reject("admission-envelope-mismatch");
+        if (!crop.verticalTranslationActive) return reject("translation-inactive");
+        if (crop.verticalTranslationConfirmationPending) return reject("translation-confirmation-pending");
+        if (crop.verticalFitConfirmationPending) return reject("fit-confirmation-pending");
+        if (crop.verticalInspectionPending) return reject("inspection-pending");
+        if (crop.movingPictureTransition) return reject("moving-picture-transition");
+        if (translation.competingPresentation) return reject("competing-presentation");
+        if (translation.sourceGeneration != crop.frameSourceGeneration)
+            return reject("translation-generation-mismatch");
+        if (!SameBounds(translation.base, crop.geometry)) return reject("translation-base-mismatch");
+        if (owner.action != VerticalBarPresentationAction::TRANSLATE) return reject("owner-not-translation");
+        if (owner.sourceSequence == 0 || owner.sourceSequence > crop.frameSourceSequence)
+            return reject("owner-sequence-invalid");
+        if (!CanRetainVerticalBarPresentationAcrossAuthorityGap(owner, translation.sourceGeneration,
+                crop.frameSourceGeneration, currentTick, translation.holdMs, crop.frameSourceSequence))
+            return reject("owner-lifetime-expired");
+        if (!std::isfinite(owner.translationPixels)) return reject("target-nonfinite");
+        if (translation.resolvedTranslationPixels != crop.verticalTranslationPixels)
+            return reject("routed-displacement-mismatch");
+
+        const double target = owner.translationPixels;
+        const double applied = crop.verticalTranslationPixels;
+        if (std::abs(target) <= 0.5 || crop.geometry.top + target < 0 ||
+            crop.geometry.bottom + target > crop.rasterHeight)
+            return reject("target-outside-raster");
+        // The confirmed target must cover this caption, not an old/opposite cue.
+        auto covered = crop.geometry;
+        covered.top += static_cast<int>(std::min(0.0, target));
+        covered.bottom += static_cast<int>(std::max(0.0, target));
+        if (!ContainedBounds(covered, proof.bounds)) return reject("target-does-not-cover-caption-envelope");
+        if (translation.engagingTranslation)
+        {
+            const double start = translation.engageStartTranslationPixels;
+            const double end = translation.engageTargetTranslationPixels;
+            const double pose = translation.engageAppliedTranslationPixels;
+            if (!translation.engageIntervalAvailable) return reject("drift-snapshot-unavailable");
+            if (!std::isfinite(start) || !std::isfinite(end) || !std::isfinite(pose))
+                return reject("drift-snapshot-nonfinite");
+            if (std::abs(end - target) > 0.5) return reject("drift-target-mismatch");
+            if (pose < std::min(start, end) || pose > std::max(start, end))
+                return reject("drift-pose-outside-interval");
+            if (crop.geometry.top + start < 0 || crop.geometry.bottom + start > crop.rasterHeight)
+                return reject("drift-start-outside-raster");
+            // Compare against the same chroma-aligned route used by rendering.
+            // A legitimate fractional pose can round outward by almost two pixels.
+            VerticalBarPresentationResolutionInput poseInput;
+            poseInput.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+            poseInput.translationPixels = static_cast<float>(pose);
+            poseInput.authoritativeTop = crop.geometry.top;
+            poseInput.authoritativeBottom = crop.geometry.bottom;
+            poseInput.rasterHeight = crop.rasterHeight;
+            const auto routedPose = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(poseInput));
+            if (!routedPose.translationActive || routedPose.translationPixels != crop.verticalTranslationPixels)
+                return reject("drift-pose-mismatch");
+        }
+        else if (std::abs(applied - target) > 1.0)
+            return reject("settled-target-mismatch");
+
+        // No second recovery observation or confirmation vote. The logical
+        // acquisition above and normal bounded translation resolve atomically.
+        const auto candidate = Evaluate(crop);
+        if (!candidate.applyCrop || candidate.owner != DecisionOwner::VERTICAL_TRANSLATION)
+            return reject(candidate.reason.c_str());
+        auto result = AdmitCropPresentation(admittedFit.state, crop, candidate, presentationEpoch);
+        if (result.blocked || !result.presentation.applyCrop) return reject(result.presentation.reason.c_str());
+        result.presentation.reason = "current caption acquisition completed directly in confirmed translation";
+        if (diagnosticReason) *diagnosticReason = "accepted";
+        return result;
+    }
+
+	bool HasCurrentCropPresentationAdmission(const CropPresentationAdmissionState& previous,
+		const Input& input, uint64_t presentationEpoch)
+	{
+		return previous.available && input.frameSourceGeneration != 0 &&
+			previous.sourceGeneration == input.frameSourceGeneration &&
+			previous.presentationEpoch == presentationEpoch &&
+			previous.trustedCrop.rasterWidth == input.rasterWidth &&
+			previous.trustedCrop.rasterHeight == input.rasterHeight &&
+			SameTrustedCropContract(previous.trustedCrop, input.geometry);
+	}
+
 	CropPresentationAdmissionDecision AdmitCropPresentation(
 		const CropPresentationAdmissionState& previous,
 		const Input& input, const Decision& candidate,
@@ -4044,8 +4253,8 @@ namespace AlphaSourceCrop
 		// retention owner is permission to reuse an admitted picture contract,
 		// not permission to acquire one. In particular, subtitle confirmation
 		// must wait for picture authority instead of manufacturing it.
-		const bool previouslyPresented = result.state.available &&
-			SameTrustedCropContract(result.state.trustedCrop, input.geometry);
+		const bool previouslyPresented = HasCurrentCropPresentationAdmission(
+			result.state, input, presentationEpoch);
 		// Only resolved picture/fit/translation owners may introduce a new
 		// presentation. A freshly published detector rectangle does not turn
 		// a pending retention owner into acquisition proof.

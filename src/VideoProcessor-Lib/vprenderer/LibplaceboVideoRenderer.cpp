@@ -4063,6 +4063,13 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
+    // Physical presentation history only; never fed back into detector authority.
+    AlphaSourceCrop::CaptionConfirmationPresentationAnchor lastRenderedCaptionAnchor;
+    AlphaSourceCrop::CaptionConfirmationPresentationHoldState captionConfirmationHold;
+    int captionAnchorStyle = -1;
+    uint64_t captionHoldLastLogTick = 0;
+    std::string captionHoldLastLogReason;
+    double captionAnchorScreenAspect = 0.0, captionAnchorAnamorphic = 0.0;
     bool weakFringeFillPreviouslyRetained = false;
     bool establishedScopeSubtitlePreviouslyRetained = false;
 	bool cropAdmissionPreviouslyBlocked = false;
@@ -8525,6 +8532,8 @@ struct LibplaceboVideoRenderer::Impl
 		latestCropSamplingReaffirmed = false;
 		cropPresentationRecovery = {};
 		cropPresentationAdmission = {};
+        lastRenderedCaptionAnchor = {};
+        captionConfirmationHold = {};
 		cropAdmissionPreviouslyBlocked = false;
 		cropDiagnosticActive = false;
 		cropDiagnosticPreviousAvailable = false;
@@ -12319,6 +12328,13 @@ struct LibplaceboVideoRenderer::Impl
         bool subtitleCompositionSucceeded = false;
         ActivePictureBounds currentConfirmedCaptionBounds;
         bool currentConfirmedCaptionAvailable = false;
+        bool currentMeasuredCaptionAvailable = false;
+        AlphaSourceCrop::CaptionConfirmationPresentationAnchor renderedCaptionCandidate;
+        AlphaSourceCrop::CaptionConfirmationPresentationHoldState renderedCaptionHoldCandidate;
+        const bool captionAnchorContextMatches =
+            captionAnchorStyle == static_cast<int>(subtitlePreviewMode) &&
+            captionAnchorScreenAspect == configuredScreenAspect &&
+            captionAnchorAnamorphic == anamorphicScale;
         SubtitleBoxPadding safeSubtitlePadding = activeSettings.subtitleBoxPadding;
         if (subtitlePreviewEnabled)
         {
@@ -12409,7 +12425,7 @@ struct LibplaceboVideoRenderer::Impl
                 currentText.detected && !currentText.workLimit &&
                 currentText.nearBarEligibilityMeasured && currentText.nearBarEligible &&
                 subtitleBoxResult.detected && !subtitleBoxResult.held &&
-                subtitleBoxResult.observations >= 2 &&
+                subtitleBoxResult.observations >= 1 &&
                 subtitleBoxResult.bounds.Valid() && currentText.bounds.Valid())
             {
                 SubtitleBoxRect caption = subtitleBoxResult.bounds;
@@ -12429,7 +12445,10 @@ struct LibplaceboVideoRenderer::Impl
                     static_cast<double>(caption.right - caption.left) /
                         std::max(1, caption.bottom - caption.top),
                     ActivePictureBounds::BarAxes::NONE };
-                currentConfirmedCaptionAvailable = true;
+                // A measured cue may protect an already displayed superset.
+                // Acquiring a new crop still requires the original two observations.
+                currentMeasuredCaptionAvailable = true;
+                currentConfirmedCaptionAvailable = subtitleBoxResult.observations >= 2;
             }
             if(activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5 &&
                 !cadenceRepeat && analysisSource.IsValid() && subtitlePreview->available &&
@@ -12738,6 +12757,8 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
+             currentMeasuredCaptionAvailable, captionAnchorContextMatches, &state, &videoFrame,
+             &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
              recoveredSubtitleInspection, recoveredSubtitleBars,
 			 subtitleBarAuthority,
@@ -13368,6 +13389,11 @@ struct LibplaceboVideoRenderer::Impl
             establishedTranslation.holdMs = scopeSubtitleHoldMs;
             establishedTranslation.resolvedTranslationPixels = verticalTranslationPixels;
             establishedTranslation.engagingTranslation = requestedSubtitleTranslation && scopeSubtitleDrift.IsActive();
+            establishedTranslation.engageIntervalAvailable = establishedTranslation.engagingTranslation &&
+                scopeSubtitleDrift.TryGetActiveInterval(
+                    establishedTranslation.engageStartTranslationPixels,
+                    establishedTranslation.engageTargetTranslationPixels,
+                    establishedTranslation.engageAppliedTranslationPixels);
             establishedTranslation.competingPresentation = !automaticSourceCrop || !configuredScreenActive ||
                 fixedCropAspectConfigured || nlsRequested || inwardCaptionProtected ||
                 (!verticalTranslationActive && !establishedTranslation.engagingTranslation &&
@@ -13737,10 +13763,12 @@ struct LibplaceboVideoRenderer::Impl
             captionFitInput.captionSourceGeneration = frameGeneration;
             captionFitInput.captionSourceSequence = sourceSequence;
             captionFitInput.captionConfirmed = currentConfirmedCaptionAvailable;
-            captionFitInput.initialAcquisition = !cropPresentationAdmission.available;
+            captionFitInput.initialAcquisition = !AlphaSourceCrop::HasCurrentCropPresentationAdmission(
+                cropPresentationAdmission, cropInput, viewportRequestSerial);
             captionFitInput.translationProposed = cropInput.verticalTranslationActive;
             const auto captionFitAcquisition =
                 AlphaSourceCrop::BuildCaptionBoundedFitAcquisition(captionFitInput);
+            const auto captionTranslationInput = cropInput;
             if (captionFitAcquisition.available)
             {
                 cropInput.verticalTranslationActive = false;
@@ -13876,8 +13904,56 @@ struct LibplaceboVideoRenderer::Impl
 					nearBlackBoundedDecision.presentation.reason.c_str());
 			nearBlackPresentationEpisode = nearBlackBoundedDecision.state;
 			cropDecision = nearBlackBoundedDecision.presentation;
-			const auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
-				cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+			auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
+                cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+            if (captionFitAcquisition.available)
+            {
+                // Preserve inspection/recovery changes; restore only fields the
+                // temporary caption-fit branch changed. Never publish its size.
+                auto translatedInput = cropInput;
+                translatedInput.verticalTranslationActive = captionTranslationInput.verticalTranslationActive;
+                translatedInput.verticalTranslationConfirmationPending = captionTranslationInput.verticalTranslationConfirmationPending;
+                translatedInput.verticalFitConfirmationPending = captionTranslationInput.verticalFitConfirmationPending;
+                translatedInput.verticalTranslationBaseRetentionActive = captionTranslationInput.verticalTranslationBaseRetentionActive;
+                translatedInput.verticalTranslationEngageBaseRetentionActive = captionTranslationInput.verticalTranslationEngageBaseRetentionActive;
+                translatedInput.outwardPresentationActive = captionTranslationInput.outwardPresentationActive;
+                translatedInput.outwardExpansionAvailable = captionTranslationInput.outwardExpansionAvailable;
+                translatedInput.outwardExpansion = captionTranslationInput.outwardExpansion;
+                translatedInput.outwardExpansionSourceGeneration = captionTranslationInput.outwardExpansionSourceGeneration;
+                auto handoffInput = captionFitInput;
+                handoffInput.crop = &translatedInput;
+                std::string handoffReason = "recovery-active";
+                const auto completed = cropPresentationRecovery.active ? admissionDecision :
+                    AlphaSourceCrop::CompleteCaptionAcquisitionTranslation(
+                        handoffInput, admissionDecision, establishedTranslation, viewportRequestSerial,
+                        episodeInput.currentTick, &handoffReason);
+                DebugLog::Log("Alpha caption acquisition handoff: generation=%llu sequence=%llu epoch=%llu accepted=%d reason=\"%s\" recovery=%d owner_sequence=%llu owner_generation=%llu target=%.3f routed=%d drift=%d interval=%d start=%.3f end=%.3f pose=%.3f competing=%d auto=%d screen=%d fixed=%d nls=%d inward=%d fail_open=%d fit=%d invalid_expansion=%d picture_handoff=%d side_content=%d/%d side_expansion=%d/%d moving=%d/%d base=%d,%d-%d,%d trusted=%d,%d-%d,%d",
+                    frameGeneration, sourceSequence, viewportRequestSerial,
+                    completed.presentation.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION ? 1 : 0,
+                    handoffReason.c_str(), cropPresentationRecovery.active ? 1 : 0,
+                    establishedTranslation.presentation.sourceSequence, establishedTranslation.sourceGeneration,
+                    static_cast<double>(establishedTranslation.presentation.translationPixels), verticalTranslationPixels,
+                    establishedTranslation.engagingTranslation ? 1 : 0, establishedTranslation.engageIntervalAvailable ? 1 : 0,
+                    static_cast<double>(establishedTranslation.engageStartTranslationPixels),
+                    static_cast<double>(establishedTranslation.engageTargetTranslationPixels),
+                    static_cast<double>(establishedTranslation.engageAppliedTranslationPixels),
+                    establishedTranslation.competingPresentation ? 1 : 0, automaticSourceCrop ? 1 : 0,
+                    configuredScreenActive ? 1 : 0, fixedCropAspectConfigured ? 1 : 0, nlsRequested ? 1 : 0,
+                    inwardCaptionProtected ? 1 : 0, verticalFailOpen ? 1 : 0, verticalFitActive ? 1 : 0,
+                    outwardExpansionInvalid ? 1 : 0, pictureTransitionHandoff.active ? 1 : 0,
+                    leftBarContentActive ? 1 : 0, rightBarContentActive ? 1 : 0,
+                    currentDetectorLeftExpansion ? 1 : 0, currentDetectorRightExpansion ? 1 : 0,
+                    movingPictureTransition.active ? 1 : 0, movingPictureTransition.awaitingPublication ? 1 : 0,
+                    establishedTranslation.base.left, establishedTranslation.base.top,
+                    establishedTranslation.base.right, establishedTranslation.base.bottom,
+                    cropInput.geometry.left, cropInput.geometry.top, cropInput.geometry.right, cropInput.geometry.bottom);
+                if (completed.presentation.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION)
+                {
+                    cropInput = translatedInput;
+                    admissionDecision = completed;
+                    cropDecision = completed.presentation;
+                }
+            }
 			const auto admissionLogTick = GetTickCount64();
 			if (admissionDecision.blocked != cropAdmissionPreviouslyBlocked ||
 				(admissionDecision.blocked &&
@@ -14041,9 +14117,106 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateAspectLimitFill(
 					aspectLimitInput);
 			}
+            AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
+            captionHoldInput.previous = captionConfirmationHold;
+            captionHoldInput.lastRendered = lastRenderedCaptionAnchor;
+            captionHoldInput.sourceGeneration = frameGeneration;
+            captionHoldInput.analysisDomainKey = queuedAnalysisDomainKey;
+            captionHoldInput.sourceFormatKey = AlphaSourceFormatKey(state);
+            captionHoldInput.presentationEpoch = viewportRequestSerial;
+            captionHoldInput.sourceSequence = sourceSequence;
+            captionHoldInput.currentTick = episodeInput.currentTick;
+            captionHoldInput.picture = cropInput.geometry;
+            captionHoldInput.pictureGeneration = cropInput.geometrySourceGeneration;
+            captionHoldInput.pictureSequence = latestActivePictureEvidenceFrame;
+            captionHoldInput.pictureCurrentTrusted = cropInput.sharedGeometryAvailable &&
+                cropInput.latestObservationSupportsCrop &&
+                cropInput.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                episodeInput.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE;
+            captionHoldInput.caption = currentConfirmedCaptionBounds;
+            captionHoldInput.captionCurrentMeasured = currentMeasuredCaptionAvailable;
+            captionHoldInput.captionGeneration = frameGeneration;
+            captionHoldInput.captionSequence = sourceSequence;
+            captionHoldInput.visibleBounds = cropInput.currentVisibleBounds;
+            captionHoldInput.visibleGeneration = cropInput.currentVisibleSourceGeneration;
+            captionHoldInput.visibleSequence = cropInput.currentVisibleSourceSequence;
+            captionHoldInput.retentionBase = episodeInput.retentionBounds;
+            captionHoldInput.retentionGeneration = episodeInput.retentionSourceGeneration;
+            captionHoldInput.retentionSequence = episodeInput.retentionSourceSequence;
+            captionHoldInput.nearBlackEvaluated = episodeInput.nearBlackEvaluated;
+            captionHoldInput.nearBlack = episodeInput.globalNearBlack;
+            captionHoldInput.cadenceRepeat = cadenceRepeat;
+            captionHoldInput.pendingConfirmation = verticalTranslationConfirmationPending;
+            captionHoldInput.zeroEngage = !verticalTranslationConfirmationPending &&
+                establishedTranslation.engagingTranslation && establishedTranslation.engageIntervalAvailable &&
+                std::abs(establishedTranslation.engageAppliedTranslationPixels) <= 0.001f &&
+                std::abs(establishedTranslation.engageStartTranslationPixels) <= 0.001f &&
+                verticalTranslationPixels == 0 &&
+                scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+                scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+                scopeVerticalBarPresentation.sourceSequence == sourceSequence;
+            const double pendingCaptionTarget = scopeSubtitleTranslationConfirmation.candidateTranslationPixels;
+            const double pendingCaptionMagnitude = std::min(
+                std::abs(pendingCaptionTarget) + std::max(0, scopeSubtitleTargetBufferPixels),
+                static_cast<double>(pendingCaptionTarget < 0 ? cropInput.geometry.top : height - cropInput.geometry.bottom));
+            captionHoldInput.targetTranslationPixels = verticalTranslationConfirmationPending
+                ? (pendingCaptionTarget < 0 ? -pendingCaptionMagnitude : pendingCaptionMagnitude)
+                : establishedTranslation.engageTargetTranslationPixels;
+            captionHoldInput.eligible = captionAnchorContextMatches &&
+                !cropDecision.applyCrop && !aspectLimitFill.applied &&
+                cropInput.automaticCropEnabled && configuredScreenActive &&
+                episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
+                cropInput.currentVisibleBoundsAvailable &&
+                !cropInput.fullRasterPresentationAuthoritative;
+            captionHoldInput.competingPresentation = establishedTranslation.competingPresentation ||
+                videoFrame.IsSourceDiscontinuity() ||
+                (!cadenceRepeat && (sceneResult.safeBoundary || sceneResult.hardCutCandidate)) ||
+                cropInput.presentationFailOpen || cropInput.verticalInspectionPending ||
+                cropInput.verticalFitConfirmationPending || cropInput.movingPictureTransition ||
+                cropInput.nearBlackEpisodeFullRaster || cropInput.nearBlackEpisodeRetainCrop ||
+                protectedCaptionFit || nearBlackBoundedDecision.boundedPresentation ||
+                scopeSubtitleEvidenceSourceGeneration != frameGeneration;
+            const auto captionHoldDecision =
+                AlphaSourceCrop::EvaluateCaptionConfirmationPresentationHold(captionHoldInput);
+            const bool captionPresentationHeld = captionHoldDecision.hold;
+            if (captionPresentationHeld)
+            {
+                // Substitute only the final source rectangle, after all admission
+                // and recovery decisions. Do not turn this into an admitted crop.
+                aspectLimitFill.applied = true;
+                aspectLimitFill.sourceBounds = captionHoldDecision.bounds;
+                aspectLimitFill.reason = captionHoldDecision.reason;
+                renderedCaptionHoldCandidate = captionHoldDecision.state;
+            }
+            const bool captionHoldLogDue = captionPresentationHeld || captionConfirmationHold.active ||
+                (!cropDecision.applyCrop && (captionHoldInput.pendingConfirmation || captionHoldInput.zeroEngage) &&
+                 (captionHoldLastLogReason != captionHoldDecision.reason ||
+                  episodeInput.currentTick - captionHoldLastLogTick >= 2000));
+            if (captionHoldLogDue)
+            {
+                captionHoldLastLogTick = episodeInput.currentTick;
+                captionHoldLastLogReason = captionHoldDecision.reason;
+                DebugLog::Log("Alpha caption confirmation presentation: generation=%llu sequence=%llu held=%d first=%llu elapsed_ms=%llu reason=\"%s\" rect=%d,%d-%d,%d eligible=%d competing=%d picture_current=%d caption_current=%d near_black=%d/%d target=%.3f picture=%d,%d-%d,%d visible=%d,%d-%d,%d caption=%d,%d-%d,%d anchor=%d:%llu:%d,%d-%d,%d",
+                    frameGeneration, sourceSequence, captionPresentationHeld ? 1 : 0,
+                    captionHoldDecision.state.firstSequence,
+                    captionPresentationHeld ? episodeInput.currentTick - captionHoldDecision.state.startedTick : 0,
+                    captionHoldDecision.reason, captionHoldDecision.bounds.left, captionHoldDecision.bounds.top,
+                    captionHoldDecision.bounds.right, captionHoldDecision.bounds.bottom,
+                    captionHoldInput.eligible ? 1 : 0, captionHoldInput.competingPresentation ? 1 : 0,
+                    captionHoldInput.pictureCurrentTrusted ? 1 : 0, captionHoldInput.captionCurrentMeasured ? 1 : 0,
+                    captionHoldInput.nearBlackEvaluated ? 1 : 0, captionHoldInput.nearBlack ? 1 : 0,
+                    captionHoldInput.targetTranslationPixels,
+                    captionHoldInput.picture.left, captionHoldInput.picture.top, captionHoldInput.picture.right, captionHoldInput.picture.bottom,
+                    captionHoldInput.visibleBounds.left, captionHoldInput.visibleBounds.top, captionHoldInput.visibleBounds.right, captionHoldInput.visibleBounds.bottom,
+                    captionHoldInput.caption.left, captionHoldInput.caption.top, captionHoldInput.caption.right, captionHoldInput.caption.bottom,
+                    lastRenderedCaptionAnchor.available ? 1 : 0, lastRenderedCaptionAnchor.sourceSequence,
+                    lastRenderedCaptionAnchor.bounds.left, lastRenderedCaptionAnchor.bounds.top,
+                    lastRenderedCaptionAnchor.bounds.right, lastRenderedCaptionAnchor.bounds.bottom);
+            }
             // Keep only an actually applied optional fill on this admitted native base.
             // Recording presentation never publishes or refreshes detector authority.
-            cropPresentationAdmission.optionalFillApplied = aspectLimitFill.applied &&
+            cropPresentationAdmission.optionalFillApplied = !captionPresentationHeld && aspectLimitFill.applied &&
                 cropDecision.applyCrop && !fixedCropAspectConfigured && !nlsRequested &&
                 !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
                 !cropInput.movingPictureTransition && !recoveryDecision.state.active &&
@@ -14056,6 +14229,23 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
+            const bool captionAnchorEligible = captionPresentationHeld ||
+                (cropDecision.applyCrop && !cropDecision.verticallyTranslated &&
+                 !verticalTranslationConfirmationPending && !verticalFitConfirmationPending &&
+                 !fixedCropAspectConfigured && !nlsRequested && !cropInput.movingPictureTransition &&
+                 !cropInput.presentationFailOpen && !cropInput.nearBlackEpisodeFullRaster &&
+                 !cropInput.nearBlackEpisodeRetainCrop && verticalTranslationPixels == 0);
+            if (captionAnchorEligible)
+            {
+                renderedCaptionCandidate.available = true;
+                renderedCaptionCandidate.bounds = presentationCropBounds;
+                renderedCaptionCandidate.sourceGeneration = frameGeneration;
+                renderedCaptionCandidate.analysisDomainKey = queuedAnalysisDomainKey;
+                renderedCaptionCandidate.sourceFormatKey = AlphaSourceFormatKey(state);
+                renderedCaptionCandidate.presentationEpoch = viewportRequestSerial;
+                renderedCaptionCandidate.sourceSequence = sourceSequence;
+                renderedCaptionCandidate.tick = episodeInput.currentTick;
+            }
             {
                 auto id=activePictureIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
                 id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
@@ -14519,7 +14709,7 @@ struct LibplaceboVideoRenderer::Impl
 					presentationCropBounds.right);
 				source.crop.y1 = static_cast<float>(
 					presentationCropBounds.bottom);
-				if (trustedActivePicture)
+				if (trustedActivePicture && !captionPresentationHeld)
 					*trustedActivePicture = true;
 			}
 			// This is the sole per-frame NLS authority. Derive every mapping input
@@ -16023,6 +16213,14 @@ struct LibplaceboVideoRenderer::Impl
 				sourceUploadCpuIntervalSamples = 0;
 			}
 		}
+        // Failed submissions cannot establish or renew a presentation anchor.
+        lastRenderedCaptionAnchor = rendered && submitted
+            ? renderedCaptionCandidate : AlphaSourceCrop::CaptionConfirmationPresentationAnchor{};
+        captionConfirmationHold = rendered && submitted
+            ? renderedCaptionHoldCandidate : AlphaSourceCrop::CaptionConfirmationPresentationHoldState{};
+        captionAnchorStyle = static_cast<int>(subtitlePreviewMode);
+        captionAnchorScreenAspect = configuredScreenAspect;
+        captionAnchorAnamorphic = anamorphicScale;
 		if (rendered && submitted)
 		{
 			hasPresentedFrame = true;

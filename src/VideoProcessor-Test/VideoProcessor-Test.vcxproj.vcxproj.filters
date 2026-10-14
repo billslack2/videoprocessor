@@ -44,6 +44,9 @@
     <ClCompile Include="PresentationEnvelopeCompositionTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SubtitleTranslationReversalTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="AlphaSourceCropPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

@@ -499,6 +499,14 @@ namespace AlphaSourceCrop
 		float Resolve(float targetTranslationPixels, uint64_t currentTick,
 			uint64_t durationMs);
 		bool IsActive() const { return driftActive; }
+		bool TryGetActiveInterval(float& start, float& target, float& applied) const
+		{
+			if (!driftActive) return false;
+			start = driftStartTranslationPixels;
+			target = targetTranslationPixels;
+			applied = lastAppliedTranslationPixels;
+			return true;
+		}
 		// The sample which lands exactly on the trusted base needs one final
 		// generation-checked presentation decision. Consume this marker once so a
 		// lost current observation cannot cause a full-raster flash at release.
@@ -1358,6 +1366,12 @@ namespace AlphaSourceCrop
         int resolvedTranslationPixels = 0;
         // A configured engage may not have reached its confirmed target yet.
         bool engagingTranslation = false;
+        // Snapshot from the active renderer drift, not inferred from the new
+        // target. A reversal may still be on the old side of the trusted base.
+        bool engageIntervalAvailable = false;
+        float engageStartTranslationPixels = 0.0f;
+        float engageTargetTranslationPixels = 0.0f;
+        float engageAppliedTranslationPixels = 0.0f;
         bool competingPresentation = false;
     };
 
@@ -1398,6 +1412,69 @@ namespace AlphaSourceCrop
 	};
 	CaptionBoundedFitAcquisitionDecision BuildCaptionBoundedFitAcquisition(
 		const CaptionBoundedFitAcquisitionInput& input);
+
+    struct CaptionConfirmationPresentationAnchor
+    {
+        bool available = false; // Set only after successful rendering/submission.
+        ActivePictureBounds bounds;
+        uint64_t sourceGeneration = 0, analysisDomainKey = 0, sourceFormatKey = 0, presentationEpoch = 0;
+        uint64_t sourceSequence = 0, tick = 0;
+    };
+
+    struct CaptionConfirmationPresentationHoldState
+    {
+        bool active = false;
+        CaptionConfirmationPresentationAnchor anchor;
+        ActivePictureBounds picture;
+        uint64_t firstSequence = 0, lastSequence = 0, startedTick = 0;
+        double targetTranslationPixels = 0.0;
+    };
+
+    struct CaptionConfirmationPresentationHoldInput
+    {
+        CaptionConfirmationPresentationHoldState previous;
+        CaptionConfirmationPresentationAnchor lastRendered;
+        ActivePictureBounds picture, caption, visibleBounds, retentionBase;
+        uint64_t sourceGeneration = 0, analysisDomainKey = 0, sourceFormatKey = 0, presentationEpoch = 0;
+        uint64_t sourceSequence = 0, currentTick = 0;
+        uint64_t pictureGeneration = 0, pictureSequence = 0;
+        uint64_t captionGeneration = 0, captionSequence = 0;
+        uint64_t visibleGeneration = 0, visibleSequence = 0;
+        uint64_t retentionGeneration = 0, retentionSequence = 0;
+        bool eligible = false, pictureCurrentTrusted = false, captionCurrentMeasured = false;
+        bool nearBlackEvaluated = false, nearBlack = false;
+        bool pendingConfirmation = false, zeroEngage = false, competingPresentation = false;
+        bool cadenceRepeat = false;
+        // Include the configured target buffer during pending confirmation so
+        // the same target survives its accepted zero-displacement engage frame.
+        double targetTranslationPixels = 0.0;
+    };
+
+    struct CaptionConfirmationPresentationHoldDecision
+    {
+        CaptionConfirmationPresentationHoldState state;
+        bool hold = false;
+        ActivePictureBounds bounds;
+        const char* reason = "caption confirmation hold unavailable";
+    };
+
+    // Presentation only. Never establishes picture/translation authority or
+    // changes admission, recovery, subtitle confirmation, or temporal votes.
+    CaptionConfirmationPresentationHoldDecision EvaluateCaptionConfirmationPresentationHold(
+        const CaptionConfirmationPresentationHoldInput& input);
+
+    // Complete a recovered, admitted caption-fit acquisition without displaying
+    // its temporary size. Failure preserves that safe fit verbatim.
+    CropPresentationAdmissionDecision CompleteCaptionAcquisitionTranslation(
+        const CaptionBoundedFitAcquisitionInput& acquisition,
+        const CropPresentationAdmissionDecision& admittedFit,
+        const EstablishedSubtitleTranslationInput& translation,
+        uint64_t presentationEpoch, uint64_t currentTick, std::string* diagnosticReason = nullptr);
+
+	// Admission belongs to a specific source, viewport and trusted picture contract.
+	// A different movie aspect ratio must acquire its own safe presentation.
+	bool HasCurrentCropPresentationAdmission(const CropPresentationAdmissionState& previous,
+		const Input& input, uint64_t presentationEpoch);
 
 	// Candidate must be the result of Evaluate followed by presentation recovery.
 	// Run before fill/NLS so neither can use geometry rejected by this admission.

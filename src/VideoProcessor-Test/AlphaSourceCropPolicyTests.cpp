@@ -6,6 +6,7 @@
 #include <SceneDetector.h>
 #include <CropDiagnosticThrottle.h>
 #include <vector>
+#include <limits>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <NlsGeometryPolicy.h>
@@ -8928,6 +8929,621 @@ namespace Tests
 			Assert::AreEqual(1608, finalBase.sourceBounds.bottom -
 				finalBase.sourceBounds.top);
 		}
+
+        struct CaptionConfirmationHoldFixture
+        {
+            CaptionConfirmationPresentationHoldInput input;
+            explicit CaptionConfirmationHoldFixture(bool upper = false)
+            {
+                input.sourceGeneration = 2; input.analysisDomainKey = 7;
+                input.sourceFormatKey = 11; input.presentationEpoch = 3;
+                input.sourceSequence = 1210; input.currentTick = 1000;
+                input.picture = {0,268,3840,1892,3840,2160,2.3645,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                input.retentionBase = input.picture;
+                input.caption = {1246,upper ? 116 : 1778,2606,upper ? 382 : 2042,
+                    3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+                input.visibleBounds = input.picture;
+                if (upper) input.visibleBounds.top = 128;
+                else input.visibleBounds.bottom = 2024;
+                input.lastRendered.available = true;
+                input.lastRendered.bounds = {0,62,3840,2106,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+                input.lastRendered.sourceGeneration = input.sourceGeneration;
+                input.lastRendered.analysisDomainKey = input.analysisDomainKey;
+                input.lastRendered.sourceFormatKey = input.sourceFormatKey;
+                input.lastRendered.presentationEpoch = input.presentationEpoch;
+                input.lastRendered.sourceSequence = 1209; input.lastRendered.tick = 958;
+                input.eligible = input.pictureCurrentTrusted = input.captionCurrentMeasured = true;
+                input.nearBlackEvaluated = input.pendingConfirmation = true;
+                input.targetTranslationPixels = upper ? -174.0 : 174.0;
+                PairEvidence();
+            }
+            void PairEvidence()
+            {
+                input.pictureGeneration = input.captionGeneration = input.visibleGeneration =
+                    input.retentionGeneration = input.sourceGeneration;
+                input.pictureSequence = input.captionSequence = input.visibleSequence =
+                    input.retentionSequence = input.sourceSequence;
+            }
+            void Commit(const CaptionConfirmationPresentationHoldDecision& decision)
+            {
+                Assert::IsTrue(decision.hold);
+                input.previous = decision.state;
+                input.lastRendered.bounds = decision.bounds;
+                input.lastRendered.sourceSequence = input.sourceSequence;
+                input.lastRendered.tick = input.currentTick;
+            }
+            void Advance()
+            {
+                ++input.sourceSequence; input.currentTick += 42; input.cadenceRepeat = false;
+                PairEvidence();
+            }
+        };
+
+        TEST_METHOD(CaptionConfirmationKeepsExactRenderedAnchorThroughPendingAndZeroEngage)
+        {
+            for (bool upper : {false, true})
+            {
+                CaptionConfirmationHoldFixture fixture(upper);
+                const auto originalAnchor = fixture.input.lastRendered;
+                for (int frame = 0; frame < 6; ++frame)
+                {
+                    fixture.input.pendingConfirmation = frame < 5;
+                    fixture.input.zeroEngage = frame == 5;
+                    const auto held = EvaluateCaptionConfirmationPresentationHold(fixture.input);
+                    Assert::IsTrue(held.hold);
+                    Assert::AreEqual(62, held.bounds.top);
+                    Assert::AreEqual(2106, held.bounds.bottom);
+                    Assert::AreEqual(uint64_t(1000), held.state.startedTick);
+                    Assert::AreEqual(uint64_t(1210), held.state.firstSequence);
+                    Assert::AreEqual(originalAnchor.sourceSequence, held.state.anchor.sourceSequence);
+                    fixture.Commit(held);
+                    // Repeated rendering can reuse this exact source proof but
+                    // cannot refresh the absolute deadline or anchor identity.
+                    fixture.input.cadenceRepeat = true;
+                    ++fixture.input.currentTick;
+                    const auto repeated = EvaluateCaptionConfirmationPresentationHold(fixture.input);
+                    Assert::IsTrue(repeated.hold);
+                    Assert::AreEqual(held.state.startedTick, repeated.state.startedTick);
+                    Assert::AreEqual(held.state.firstSequence, repeated.state.firstSequence);
+                    fixture.Commit(repeated);
+                    fixture.Advance();
+                }
+                fixture.input.pendingConfirmation = fixture.input.zeroEngage = false;
+                const auto released = EvaluateCaptionConfirmationPresentationHold(fixture.input);
+                Assert::IsFalse(released.hold);
+                Assert::IsFalse(released.state.active);
+            }
+        }
+
+        TEST_METHOD(OrderedPendingCaptionCadenceHoldsUntilAtomicTranslationWithoutChangingVotes)
+        {
+            for (bool upper : {false, true})
+            {
+                const float direction = upper ? -1.0f : 1.0f;
+                CaptionConfirmationHoldFixture fixture(upper);
+                VerticalTranslationConfirmationState confirmations;
+                VerticalBarPresentationState owner;
+                VerticalTranslationDrift drift;
+                CropPresentationAdmissionState admission;
+                admission.available = true;
+                admission.sourceGeneration = fixture.input.sourceGeneration;
+                admission.presentationEpoch = fixture.input.presentationEpoch;
+                admission.trustedCrop = fixture.input.picture;
+                admission.trustedCrop.top = 68; admission.trustedCrop.bottom = 2092;
+                PresentationRecoveryState recoveryState;
+                recoveryState.active = true;
+                recoveryState.sourceGeneration = fixture.input.sourceGeneration;
+                recoveryState.presentationEpoch = fixture.input.presentationEpoch;
+                recoveryState.trustedCrop = fixture.input.picture;
+                recoveryState.startedSourceSequence = 964;
+                recoveryState.startedTick = 700;
+                recoveryState.lastSourceSequence = 1209;
+                // Exercise a coherent already-withdrawn recovery episode. The
+                // recorded cadence/rectangles are inputs, not a reconstruction
+                // of every earlier native measurement in the live recording.
+                recoveryState.fallbackBoundsAvailable = true;
+                recoveryState.fallbackBounds = {0, 0, 3840, 2160, 3840, 2160,
+                    3840.0 / 2160.0, ActivePictureBounds::BarAxes::NONE};
+                unsigned analyzedSamples = 0;
+                for (uint64_t sequence = 1210; sequence <= 1216; ++sequence)
+                {
+                    Assert::AreEqual(sequence, fixture.input.sourceSequence);
+                    const uint64_t tick = fixture.input.currentTick;
+                    if (sequence == 1210 || sequence == 1212 || sequence == 1215)
+                    {
+                        VerticalTranslationConfirmationInput scan;
+                        scan.previous = confirmations;
+                        scan.observed.action = VerticalBarPresentationAction::TRANSLATE;
+                        scan.observed.translationPixels = direction * 164.0f;
+                        scan.sourceSequence = sequence;
+                        scan.targetBufferPixels = 10;
+                        scan.maximumTranslationMagnitudePixels = 268;
+                        const auto confirmed = ConfirmVerticalTranslation(scan);
+                        confirmations = confirmed.state;
+                        ++analyzedSamples;
+                        Assert::AreEqual(sequence == 1215, confirmed.newlyAccepted);
+                        if (confirmed.newlyAccepted)
+                        {
+                            owner.action = confirmed.effective.action;
+                            owner.translationPixels = confirmed.effective.translationPixels;
+                            owner.sourceSequence = sequence;
+                            owner.lastDetectionTick = tick;
+                            Assert::AreEqual(direction * 174.0f, owner.translationPixels);
+                        }
+                    }
+                    const unsigned expectedVotes = sequence < 1212 ? 1u : sequence < 1215 ? 2u : 0u;
+                    Assert::AreEqual(expectedVotes, unsigned(confirmations.confirmations));
+                    const auto votesBeforeHold = confirmations;
+                    const float pose = drift.Resolve(owner.translationPixels, tick, 500);
+                    VerticalBarPresentationResolutionInput resolution;
+                    resolution.detailedAction = owner.action;
+                    resolution.translationPixels = pose;
+                    resolution.zeroTranslationRetainsTrustedBase = drift.IsActive();
+                    resolution.authoritativeTop = fixture.input.picture.top;
+                    resolution.authoritativeBottom = fixture.input.picture.bottom;
+                    resolution.rasterHeight = 2160;
+                    const auto routing = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+
+                    Input crop;
+                    auto acquisition = MakeCaptionFitInput(crop, 3840, 2160, 268, 1892,
+                        1246, upper ? 116 : 1778, 2606, upper ? 382 : 2042);
+                    crop.frameSourceGeneration = crop.geometrySourceGeneration = fixture.input.sourceGeneration;
+                    crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.frameLocalPresentationRetentionEvaluated = true;
+                    crop.frameSourceSequence = crop.currentVisibleSourceSequence = sequence;
+                    crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+                    crop.currentVisibleBounds = fixture.input.visibleBounds;
+                    crop.verticalTranslationBase = crop.geometry;
+                    crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+                    crop.verticalTranslationPixels = routing.translationPixels;
+                    crop.verticalTranslationActive = routing.translationActive;
+                    crop.verticalTranslationConfirmationPending = confirmations.confirmations != 0;
+                    crop.verticalTranslationEngageBaseRetentionActive = drift.IsActive() && !routing.translationActive;
+                    acquisition.captionSourceGeneration = crop.frameSourceGeneration;
+                    acquisition.captionSourceSequence = sequence;
+                    acquisition.captionConfirmed = sequence > 1210; // First measured cue is one observation.
+                    acquisition.translationProposed = routing.translationActive;
+                    acquisition.initialAcquisition = !HasCurrentCropPresentationAdmission(admission, crop, 3);
+                    const auto original = crop;
+                    const auto proof = BuildCaptionBoundedFitAcquisition(acquisition);
+                    Assert::AreEqual(sequence == 1216, proof.available);
+                    if (proof.available)
+                    {
+                        crop.verticalTranslationActive = false;
+                        crop.verticalTranslationEngageBaseRetentionActive = false;
+                        crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+                        crop.outwardExpansion = proof.bounds;
+                        crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+                    }
+                    PresentationRecoveryInput recovery;
+                    recovery.previous = recoveryState;
+                    recovery.previousAdmission = admission;
+                    recovery.crop = crop;
+                    recovery.candidate = Evaluate(crop);
+                    recovery.measurementCurrent = recovery.retentionEvaluated = recovery.observationAvailable = true;
+                    recovery.retentionSourceGeneration = crop.frameSourceGeneration;
+                    recovery.retentionSourceSequence = sequence;
+                    recovery.retentionBounds = recovery.observation = recovery.observedTrustedCrop = crop.geometry;
+                    recovery.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                    recovery.nearBlackEvaluated = true;
+                    recovery.currentTick = tick;
+                    recovery.presentationEpoch = 3;
+                    recovery.framesPerSecond = 23.976;
+                    recovery.confirmedPresentationResolved = proof.available;
+                    const auto recovered = EvaluatePresentationRecovery(recovery);
+                    recoveryState = recovered.state;
+                    recovery.previous = recoveryState;
+                    recovery.candidate = recovered.presentation;
+                    const auto bounded = EvaluateNearBlackBoundedPresentation({}, recovery);
+                    const auto admitted = AdmitCropPresentation(admission, crop, bounded.presentation, 3);
+
+                    fixture.input.pendingConfirmation = confirmations.confirmations != 0;
+                    fixture.input.zeroEngage = sequence == 1215 && drift.IsActive() && !routing.translationActive;
+                    fixture.input.eligible = !admitted.presentation.applyCrop;
+                    const auto beforeHold = recoveryState;
+                    const auto held = EvaluateCaptionConfirmationPresentationHold(fixture.input);
+                    Assert::AreEqual(votesBeforeHold.confirmations, confirmations.confirmations);
+                    Assert::AreEqual(votesBeforeHold.lastObservedSourceSequence, confirmations.lastObservedSourceSequence);
+                    Assert::AreEqual(votesBeforeHold.candidateTranslationPixels, confirmations.candidateTranslationPixels);
+                    Assert::AreEqual(beforeHold.startedTick, recoveryState.startedTick);
+                    Assert::AreEqual(beforeHold.startedSourceSequence, recoveryState.startedSourceSequence);
+                    Assert::AreEqual(beforeHold.samples, recoveryState.samples);
+                    ActivePictureBounds finalBounds;
+                    if (sequence < 1216)
+                    {
+                        Assert::IsFalse(admitted.presentation.applyCrop);
+                        Assert::IsTrue(recoveryState.active);
+                        Assert::AreEqual(uint64_t(700), recoveryState.startedTick);
+                        Assert::AreEqual(uint64_t(964), recoveryState.startedSourceSequence);
+                        Assert::IsTrue(held.hold);
+                        finalBounds = held.bounds;
+                        Assert::AreEqual(62, finalBounds.top);
+                        Assert::AreEqual(2106, finalBounds.bottom);
+                        fixture.Commit(held);
+                        // The bridge has not admitted the new logical scope.
+                        Assert::AreEqual(68, admission.trustedCrop.top);
+                        Assert::AreEqual(2092, admission.trustedCrop.bottom);
+                    }
+                    else
+                    {
+                        Assert::IsFalse(held.hold);
+                        Assert::IsFalse(recoveryState.active);
+                        Assert::IsTrue(admitted.presentation.owner == DecisionOwner::OUTWARD_FIT);
+                        EstablishedSubtitleTranslationInput translation;
+                        translation.base = original.geometry;
+                        translation.sourceGeneration = original.frameSourceGeneration;
+                        translation.presentation = owner;
+                        translation.holdMs = 2000;
+                        translation.resolvedTranslationPixels = routing.translationPixels;
+                        translation.engagingTranslation = drift.IsActive();
+                        translation.engageIntervalAvailable = drift.TryGetActiveInterval(
+                            translation.engageStartTranslationPixels, translation.engageTargetTranslationPixels,
+                            translation.engageAppliedTranslationPixels);
+                        acquisition.crop = &original;
+                        const auto final = CompleteCaptionAcquisitionTranslation(acquisition, admitted, translation, 3, tick);
+                        Assert::IsTrue(final.presentation.owner == DecisionOwner::VERTICAL_TRANSLATION);
+                        Assert::IsTrue(final.presentation.applyCrop);
+                        finalBounds = final.presentation.sourceBounds;
+                        Assert::AreEqual(1624, finalBounds.bottom - finalBounds.top);
+                        Assert::AreEqual(268, final.state.trustedCrop.top);
+                    }
+                    Assert::IsTrue(finalBounds.top > 0 && finalBounds.bottom < 2160);
+                    fixture.Advance();
+                }
+                Assert::AreEqual(3u, analyzedSamples);
+            }
+        }
+
+        TEST_METHOD(CaptionConfirmationHoldRejectsUnpairedUnsafeOrUnrenderedEvidence)
+        {
+            for (int variant = 0; variant < 32; ++variant)
+            {
+                CaptionConfirmationHoldFixture fixture;
+                auto& i = fixture.input;
+                switch (variant)
+                {
+                case 0: i.eligible = false; break;
+                case 1: i.competingPresentation = true; break;
+                case 2: i.pictureCurrentTrusted = false; break;
+                case 3: i.captionCurrentMeasured = false; break;
+                case 4: i.nearBlackEvaluated = false; break;
+                case 5: i.nearBlack = true; break;
+                case 6: --i.pictureSequence; break;
+                case 7: --i.captionSequence; break;
+                case 8: --i.visibleSequence; break;
+                case 9: --i.retentionSequence; break;
+                case 10: ++i.captionGeneration; break;
+                case 11: ++i.visibleGeneration; break;
+                case 12: ++i.retentionGeneration; break;
+                case 13: i.retentionBase.top += 2; break;
+                case 14: i.lastRendered.available = false; break;
+                case 15: ++i.lastRendered.sourceGeneration; break;
+                case 16: ++i.lastRendered.analysisDomainKey; break;
+                case 17: ++i.lastRendered.sourceFormatKey; break;
+                case 18: ++i.lastRendered.presentationEpoch; break;
+                case 19: --i.lastRendered.sourceSequence; break;
+                case 20: i.lastRendered.tick = 1001; break;
+                case 21: i.lastRendered.tick = 1; break;
+                case 22: i.lastRendered.bounds.bottom = 2040; break;
+                case 23: i.lastRendered.bounds.left = 2; break;
+                case 24: i.visibleBounds.top = 200; break;
+                case 25: i.visibleBounds.bottom = 2046; break;
+                case 26: i.caption.top = 100; break;
+                case 27: i.targetTranslationPixels = -174; break;
+                case 28: i.targetTranslationPixels = std::numeric_limits<double>::infinity(); break;
+                case 29: i.cadenceRepeat = true; break;
+                case 30: i.picture.trustedBarAxes = ActivePictureBounds::BarAxes::NONE; break;
+                case 31: ++i.pictureGeneration; break;
+                }
+                const auto rejected = EvaluateCaptionConfirmationPresentationHold(i);
+                Assert::IsFalse(rejected.hold, (L"hold rejection " + std::to_wstring(variant)).c_str());
+                Assert::IsFalse(rejected.state.active);
+            }
+        }
+
+        TEST_METHOD(CaptionConfirmationHoldCannotRenewAcrossGapsTargetChangesOrDeadline)
+        {
+            for (int variant = 0; variant < 8; ++variant)
+            {
+                CaptionConfirmationHoldFixture fixture;
+                fixture.Commit(EvaluateCaptionConfirmationPresentationHold(fixture.input));
+                fixture.Advance();
+                auto& i = fixture.input;
+                switch (variant)
+                {
+                case 0: ++i.sourceSequence; fixture.PairEvidence(); break;
+                case 1: i.targetTranslationPixels += 2; break;
+                case 2: i.picture.top += 2; i.retentionBase = i.picture; i.visibleBounds.top = i.picture.top; break;
+                case 3: ++i.sourceFormatKey; i.lastRendered.sourceFormatKey = i.sourceFormatKey; break;
+                case 4: ++i.analysisDomainKey; i.lastRendered.analysisDomainKey = i.analysisDomainKey; break;
+                case 5: ++i.presentationEpoch; i.lastRendered.presentationEpoch = i.presentationEpoch; break;
+                case 6: i.currentTick = 1500; i.lastRendered.tick = 1499; break;
+                case 7: i.lastRendered.bounds.top -= 2; break;
+                }
+                const auto rejected = EvaluateCaptionConfirmationPresentationHold(i);
+                Assert::IsFalse(rejected.hold, (L"hold continuity rejection " + std::to_wstring(variant)).c_str());
+                Assert::IsFalse(rejected.state.active);
+            }
+            CaptionConfirmationHoldFixture repeated;
+            repeated.Commit(EvaluateCaptionConfirmationPresentationHold(repeated.input));
+            repeated.input.cadenceRepeat = true;
+            repeated.input.currentTick = 1499;
+            repeated.input.lastRendered.tick = 1498;
+            const auto last = EvaluateCaptionConfirmationPresentationHold(repeated.input);
+            Assert::IsTrue(last.hold);
+            repeated.Commit(last);
+            repeated.input.currentTick = 1500;
+            Assert::IsFalse(EvaluateCaptionConfirmationPresentationHold(repeated.input).hold);
+        }
+
+        TEST_METHOD(NewScopeContractAcquiresCaptionFitAfterTallPictureWasAdmitted)
+        {
+            Input crop;
+            auto request = MakeCaptionFitInput(crop,3840,2160,268,1892,1246,1778,2606,2042);
+            CropPresentationAdmissionState previous;
+            previous.available=true;previous.sourceGeneration=crop.frameSourceGeneration;
+            previous.presentationEpoch=3;previous.trustedCrop=crop.geometry;
+            previous.trustedCrop.top=68;previous.trustedCrop.bottom=2092;
+            // The former available-only check suppressed the safe fit here.
+            request.initialAcquisition=!HasCurrentCropPresentationAdmission(previous,crop,3);
+            Assert::IsTrue(request.initialAcquisition);
+            const auto bounded=BuildCaptionBoundedFitAcquisition(request);
+            Assert::IsTrue(bounded.available);
+            Assert::AreEqual(268,bounded.bounds.top);
+            Assert::AreEqual(2044,bounded.bounds.bottom);
+            crop.outwardPresentationActive=true;crop.outwardExpansionAvailable=true;
+            crop.outwardExpansion=bounded.bounds;crop.outwardExpansionSourceGeneration=crop.frameSourceGeneration;
+            const auto admitted=AdmitCropPresentation(previous,crop,Evaluate(crop),3);
+            Assert::IsFalse(admitted.blocked);
+            Assert::IsTrue(admitted.presentation.applyCrop);
+            Assert::IsTrue(HasCurrentCropPresentationAdmission(admitted.state,crop,3));
+            request.initialAcquisition=!HasCurrentCropPresentationAdmission(admitted.state,crop,3);
+            Assert::IsFalse(request.initialAcquisition);
+            Assert::IsFalse(BuildCaptionBoundedFitAcquisition(request).available);
+        }
+
+        TEST_METHOD(CaptionAcquisitionAdmissionIdentityCannotCrossEpochGenerationOrGeometry)
+        {
+            Input crop;
+            auto request=MakeCaptionFitInput(crop,3840,2160,268,1892,1246,1778,2606,2042);
+            CropPresentationAdmissionState previous;
+            previous.available=true;previous.sourceGeneration=crop.frameSourceGeneration;
+            previous.presentationEpoch=3;previous.trustedCrop=crop.geometry;
+            Assert::IsTrue(HasCurrentCropPresentationAdmission(previous,crop,3));
+            for(int mismatch=0;mismatch<6;++mismatch) {
+                auto changed=previous;
+                if(mismatch==0) changed.sourceGeneration++;
+                if(mismatch==1) changed.presentationEpoch++;
+                if(mismatch==2) changed.trustedCrop.rasterHeight++;
+                if(mismatch==3) changed.trustedCrop.top-=2;
+                if(mismatch==4) changed.trustedCrop.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                if(mismatch==5) changed.available=false;
+                request.initialAcquisition=!HasCurrentCropPresentationAdmission(changed,crop,3);
+                Assert::IsTrue(request.initialAcquisition);
+                // A stale admission never supplies missing current authority.
+                request.captionConfirmed=false;
+                Assert::IsFalse(BuildCaptionBoundedFitAcquisition(request).available);
+                request.captionConfirmed=true;
+                crop.latestObservationSupportsCrop=false;
+                Assert::IsFalse(BuildCaptionBoundedFitAcquisition(request).available);
+                crop.latestObservationSupportsCrop=true;
+            }
+            crop.currentVisibleBounds.top=100; // Picture outside the caption union remains a veto.
+            Assert::IsFalse(BuildCaptionBoundedFitAcquisition(request).available);
+        }
+
+        TEST_METHOD(CaptionAcquisitionPublishesFinalTranslationWithoutIntermediateFit)
+        {
+            for (bool top : {false, true})
+            {
+                Input crop;
+                auto request = MakeCaptionFitInput(crop, 3840, 2160, 268, 1892,
+                    1246, top ? 116 : 1778, 2606, top ? 382 : 2042);
+                const auto proof = BuildCaptionBoundedFitAcquisition(request);
+                auto fit = crop;
+                fit.outwardPresentationActive = fit.outwardExpansionAvailable = true;
+                fit.outwardExpansion = proof.bounds;
+                fit.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+                const auto admitted = AdmitCropPresentation({}, fit, Evaluate(fit), 3);
+                Assert::IsFalse(admitted.blocked);
+                EstablishedSubtitleTranslationInput owner;
+                owner.base = crop.geometry;
+                owner.sourceGeneration = crop.frameSourceGeneration;
+                owner.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+                owner.presentation.sourceSequence = crop.frameSourceSequence - 1;
+                owner.presentation.lastDetectionTick = 990;
+                owner.holdMs = 5000;
+                owner.presentation.translationPixels = top ? -174.0f : 174.0f;
+                owner.resolvedTranslationPixels = top ? -34 : 34;
+                owner.engagingTranslation = owner.engageIntervalAvailable = true;
+                owner.engageTargetTranslationPixels = owner.presentation.translationPixels;
+                owner.engageAppliedTranslationPixels = float(owner.resolvedTranslationPixels);
+                crop.verticalTranslationActive = true;
+                crop.verticalTranslationBase = crop.geometry;
+                crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+                crop.verticalTranslationPixels = owner.resolvedTranslationPixels;
+                const auto final = CompleteCaptionAcquisitionTranslation(request, admitted, owner, 3, 1000);
+                Assert::IsTrue(final.presentation.owner == DecisionOwner::VERTICAL_TRANSLATION);
+                Assert::IsTrue(final.presentation.verticallyTranslated);
+                Assert::IsFalse(final.presentation.outwardExpanded);
+                Assert::IsFalse(final.state.outwardPresentationAvailable);
+                Assert::AreEqual(1624, final.presentation.sourceBounds.bottom - final.presentation.sourceBounds.top);
+                // The next frame uses the same final size, with only normal drift.
+                ++crop.frameSourceSequence;
+                ++crop.currentVisibleSourceSequence;
+                crop.verticalTranslationPixels += top ? -2 : 2;
+                const auto next = AdmitCropPresentation(final.state, crop, Evaluate(crop), 3);
+                Assert::IsFalse(next.blocked);
+                Assert::AreEqual(1624, next.presentation.sourceBounds.bottom - next.presentation.sourceBounds.top);
+            }
+        }
+
+        TEST_METHOD(RecordedCaptionAcquisitionRunsRecoveryAdmissionRoutingAndHandoffInRendererOrder)
+        {
+            for (int direction : {-1, 1})
+            for (int variant = 0; variant < 4; ++variant)
+            {
+                Input original;
+                auto request = MakeCaptionFitInput(original, 3840, 2160, 268, 1892,
+                    1246, direction < 0 ? 116 : 1778, 2606, direction < 0 ? 382 : 2042);
+                original.frameSourceSequence = original.currentVisibleSourceSequence = 842;
+                request.captionSourceSequence = 842;
+                VerticalTranslationDrift drift;
+                drift.Resolve(0, 900, 0);
+                drift.Resolve(174.0f * direction, 1000, 500);
+                const float pose = drift.Resolve(174.0f * direction, variant == 3 ? 1048 : 1050, 500);
+                VerticalBarPresentationResolutionInput resolution;
+                resolution.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+                resolution.translationPixels = pose;
+                resolution.authoritativeTop = original.geometry.top;
+                resolution.authoritativeBottom = original.geometry.bottom;
+                resolution.rasterHeight = original.rasterHeight;
+                const auto routing = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+                if (variant == 3) Assert::IsTrue(std::abs(pose - routing.translationPixels) > 1.0f);
+                Assert::AreEqual(18 * direction, routing.translationPixels);
+                original.verticalTranslationActive = routing.translationActive;
+                original.verticalTranslationPixels = routing.translationPixels;
+                original.verticalTranslationBase = original.geometry;
+                original.verticalTranslationSourceGeneration = original.frameSourceGeneration;
+                EstablishedSubtitleTranslationInput owner;
+                owner.base = original.geometry;
+                owner.sourceGeneration = original.frameSourceGeneration;
+                owner.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+                owner.presentation.sourceSequence = 841;
+                owner.presentation.lastDetectionTick = 1000;
+                owner.presentation.translationPixels = 174.0f * direction;
+                owner.holdMs = 2000;
+                owner.resolvedTranslationPixels = routing.translationPixels;
+                owner.engagingTranslation = drift.IsActive();
+                owner.engageIntervalAvailable = drift.TryGetActiveInterval(
+                    owner.engageStartTranslationPixels, owner.engageTargetTranslationPixels,
+                    owner.engageAppliedTranslationPixels);
+                CropPresentationAdmissionState prior;
+                prior.available = true;
+                prior.sourceGeneration = original.frameSourceGeneration;
+                prior.presentationEpoch = 1;
+                prior.trustedCrop = original.geometry;
+                prior.trustedCrop.top = 68;
+                prior.trustedCrop.bottom = 2092;
+                request.initialAcquisition = !HasCurrentCropPresentationAdmission(prior, original, 1);
+                auto fit = original;
+                fit.verticalTranslationActive = false;
+                fit.outwardPresentationActive = fit.outwardExpansionAvailable = true;
+                fit.outwardExpansion = BuildCaptionBoundedFitAcquisition(request).bounds;
+                fit.outwardExpansionSourceGeneration = fit.frameSourceGeneration;
+                PresentationRecoveryInput recovery;
+                recovery.crop = fit;
+                recovery.previousAdmission = prior;
+                recovery.previous.active = true;
+                recovery.previous.sourceGeneration = fit.frameSourceGeneration;
+                recovery.previous.presentationEpoch = 1;
+                recovery.previous.trustedCrop = fit.geometry;
+                recovery.previous.startedSourceSequence = 836;
+                recovery.previous.startedTick = 800;
+                recovery.previous.lastSourceSequence = 841;
+                recovery.currentTick = 1050;
+                recovery.presentationEpoch = 1;
+                recovery.measurementCurrent = recovery.retentionEvaluated = true;
+                recovery.retentionSourceGeneration = fit.frameSourceGeneration;
+                recovery.retentionSourceSequence = 842;
+                recovery.retentionBounds = fit.geometry;
+                recovery.confirmedPresentationResolved = true;
+                recovery.candidate = Evaluate(fit);
+                const auto recovered = EvaluatePresentationRecovery(recovery);
+                Assert::IsFalse(recovered.state.active);
+                recovery.previous = recovered.state;
+                recovery.candidate = recovered.presentation;
+                const auto bounded = EvaluateNearBlackBoundedPresentation({}, recovery);
+                const auto admitted = AdmitCropPresentation(prior, fit, bounded.presentation, 1);
+                Assert::IsFalse(admitted.blocked);
+                Assert::IsTrue(admitted.presentation.owner == DecisionOwner::OUTWARD_FIT);
+                // Mirror final renderer input restoration, preserving later vetoes.
+                auto translated = fit;
+                translated.verticalTranslationActive = original.verticalTranslationActive;
+                translated.outwardPresentationActive = original.outwardPresentationActive;
+                translated.outwardExpansionAvailable = original.outwardExpansionAvailable;
+                translated.outwardExpansion = original.outwardExpansion;
+                translated.outwardExpansionSourceGeneration = original.outwardExpansionSourceGeneration;
+                if (variant == 1) translated.verticalInspectionPending = true;
+                if (variant == 2) owner.competingPresentation = true;
+                request.crop = &translated;
+                std::string reason;
+                const auto final = CompleteCaptionAcquisitionTranslation(request, admitted, owner, 1, 1050, &reason);
+                Assert::AreEqual(std::string((variant == 0 || variant == 3) ? "accepted" :
+                    variant == 1 ? "inspection-pending" : "competing-presentation"), reason);
+                Assert::IsTrue(final.presentation.owner == ((variant == 0 || variant == 3) ?
+                    DecisionOwner::VERTICAL_TRANSLATION : DecisionOwner::OUTWARD_FIT));
+            }
+        }
+
+        TEST_METHOD(CaptionAtomicHandoffRejectsStaleOwnersAndLateVetoesWithoutChangingSafeFit)
+        {
+            for (int variant = 0; variant < 27; ++variant)
+            {
+                Input crop;
+                auto request = MakeCaptionFitInput(crop, 3840, 2160, 268, 1892, 1246, 1778, 2606, 2042);
+                auto fit = crop;
+                fit.outwardPresentationActive = fit.outwardExpansionAvailable = true;
+                fit.outwardExpansion = BuildCaptionBoundedFitAcquisition(request).bounds;
+                fit.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+                auto admitted = AdmitCropPresentation({}, fit, Evaluate(fit), 3);
+                EstablishedSubtitleTranslationInput owner;
+                owner.base = crop.geometry;
+                owner.sourceGeneration = crop.frameSourceGeneration;
+                owner.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+                owner.presentation.sourceSequence = crop.frameSourceSequence - 1;
+                owner.presentation.lastDetectionTick = 990;
+                owner.holdMs = 5000;
+                owner.presentation.translationPixels = 174.0f;
+                owner.resolvedTranslationPixels = 34;
+                owner.engagingTranslation = owner.engageIntervalAvailable = true;
+                owner.engageTargetTranslationPixels = 174.0f;
+                owner.engageAppliedTranslationPixels = 34.0f;
+                crop.verticalTranslationActive = true;
+                crop.verticalTranslationBase = crop.geometry;
+                crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+                crop.verticalTranslationPixels = 34;
+                switch (variant)
+                {
+                case 0: owner.presentation.sourceSequence = crop.frameSourceSequence + 1; break;
+                case 1: ++owner.sourceGeneration; break;
+                case 2: owner.presentation.translationPixels = -174; break;
+                case 3: owner.presentation.translationPixels = 100; break;
+                case 4: owner.engageIntervalAvailable = false; break;
+                case 5: owner.engageAppliedTranslationPixels = 50; break;
+                case 6: owner.competingPresentation = true; break;
+                case 7: crop.verticalTranslationConfirmationPending = true; break;
+                case 8: crop.verticalInspectionPending = true; break;
+                case 9: crop.presentationFailOpen = true; break;
+                case 10: crop.nearBlackEpisodeFullRaster = true; break;
+                case 11: crop.currentVisibleBounds.top = 100; break;
+                case 12: --request.captionSourceSequence; break;
+                case 13: --admitted.state.presentationSourceSequence; break;
+                case 14: ++admitted.state.presentationEpoch; break;
+                case 15: admitted.blocked = true; break;
+                case 16: crop.latestObservationSupportsCrop = false; break;
+                case 17: crop.verticalTranslationSourceGeneration++; break;
+                case 18: owner.holdMs = 1; break;
+                case 19: owner.engageTargetTranslationPixels = 150; break;
+                case 20: owner.engageStartTranslationPixels = 300; break;
+                case 21: owner.engageAppliedTranslationPixels = 200; break;
+                case 22: admitted.presentation.applyCrop = false; break;
+                case 23: crop.nearBlackEpisodeRetainCrop = true; break;
+                case 24: crop.verticalFitConfirmationPending = true; break;
+                case 25: owner.holdMs = 0; owner.presentation.sourceSequence = 0; break;
+                case 26: owner.holdMs = 0; owner.presentation.sourceSequence = crop.frameSourceSequence + 1; break;
+                }
+                const auto rejected = CompleteCaptionAcquisitionTranslation(request, admitted, owner, 3, 1000);
+                Assert::AreEqual(admitted.blocked, rejected.blocked);
+                Assert::IsTrue(rejected.presentation.owner == admitted.presentation.owner,
+                    (L"rejection variant " + std::to_wstring(variant)).c_str());
+                Assert::AreEqual(admitted.presentation.reason, rejected.presentation.reason);
+                Assert::AreEqual(admitted.presentation.sourceBounds.top, rejected.presentation.sourceBounds.top);
+                Assert::AreEqual(admitted.presentation.sourceBounds.bottom, rejected.presentation.sourceBounds.bottom);
+                Assert::AreEqual(admitted.state.presentationSourceSequence, rejected.state.presentationSourceSequence);
+                Assert::AreEqual(admitted.state.outwardPresentationAvailable, rejected.state.outwardPresentationAvailable);
+            }
+        }
 
 		TEST_METHOD(ConfirmedCaptionFitAcquiresOnlyTheCurrentPictureAndCaptionEnvelope)
 		{
