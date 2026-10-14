@@ -12784,6 +12784,16 @@ struct LibplaceboVideoRenderer::Impl
             const bool logAnalysisChange=analysisChanged && analysisLogNow-subtitleAnalysisLogTick>=250;
             if (subtitleBoxResult.cue != subtitleBoxLoggedCue || subtitleBoxResult.revised || sourceSequence % 120 == 0 || logAnalysisChange)
             {
+                if (activeSettings.motion.smoothMotion != "off" || temporalRenderer.Active())
+                    DebugLog::Log("SUBTITLE MOTION: generation=%llu sequence=%llu repeat=%d mode=%d requested=%s active=%d mixing=%d history=%zu source_pts=%.6f output_pts=%.6f preview_available=%d analysis_valid=%d cue=%llu detected=%d held=%d composed=%d status=\"%s\"",
+                        frameGeneration,sourceSequence,cadenceRepeat?1:0,static_cast<int>(subtitlePreviewMode),
+                        activeSettings.motion.smoothMotion.c_str(),temporalRenderer.Active()?1:0,
+                        temporalRenderer.Mixing()?1:0,temporalRenderer.HistoryDepth(),
+                        temporalRenderer.currentPts,temporalRenderer.outputPts,subtitlePreview->available?1:0,
+                        analysisSource.IsValid()?1:0,static_cast<unsigned long long>(subtitleBoxResult.cue),
+                        subtitleBoxResult.detected?1:0,subtitleBoxResult.held?1:0,subtitleCompositionSucceeded?1:0,
+                        temporalRenderer.status.c_str());
+
                 const auto& r=subtitleBoxResult.bounds;
                 const auto& bars=subtitlePreview->current.barEvidence;
 				DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d raw_lines=%d resolved_lines=%d box=%d,%d-%d,%d padding=%d,%d,%d bar_authority=%d bar_tracking=%d picture=%d-%d consume_ms=%.3f peak_consume_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d future_available=%d matching_frames=%u analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d current_scan_ms=%.3f window_new_scan_ms=%.3f window_new_scans=%u worker_async=1 bar_reason=%s bar_depth=%d/%d bar_support=%d/%d bar_black_fraction=%.4f/%.4f reference_proof=%d/%d reference_support=%d/%d reference_black_fraction=%.4f/%.4f reference_max_intrusion=%d/%d bar_samples=%zu",
@@ -15655,6 +15665,9 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		};
         if(subtitleCompositionSucceeded && temporalRenderer.Active()) {
+            // Defensive guard for future call sites that omit the Begin policy.
+            DebugLog::Log("VP motion subtitle policy violation: generation=%llu sequence=%llu mode=%d action=fail-closed",
+                frameGeneration,sourceSequence,static_cast<int>(subtitlePreviewMode));
             temporalRenderer.Bypass("Motion: unavailable with source subtitle composition");
         }
 		assembleOverlays();
@@ -20075,7 +20088,8 @@ void LibplaceboVideoRenderer::RenderLoop()
                     m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
                     state&&state->displayMode&&state->displayMode->IsInterlaced(),
                     state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
-                    frameGeneration,sourceSequence,sourcePts,frame.IsSourceDiscontinuity());
+                    frameGeneration,sourceSequence,sourcePts,frame.IsSourceDiscontinuity(),
+                    m_impl->SubtitleCutPasteTestEnabled(m_impl->activeSettings));
                 const auto motionOutputs=m_impl->temporalRenderer.outputs;
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {

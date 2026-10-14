@@ -45,7 +45,8 @@ public:
     bool Mixing() const{return mixing;}
     double DelayMs() const{return Active()?delay*sourceDuration*1000.0:0;}
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
-        bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity) {
+        bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
+        bool sourceSubtitleComposition=false) {
         outputs.clear();skipOutput=false;currentPts=pts;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
@@ -57,6 +58,16 @@ public:
             (inputInterlaced||requested.deinterlace=="force");
         const double nominalHz=sourceHz*(newInterlaced&&requested.cadence=="field"?2.0:1.0);
         const bool newMix=MotionConfig::Mix(requested,nominalHz,displayHz);
+        // Source repair/relocation currently belongs to the current captured
+        // frame, whereas temporal history contains original, delayed pixels.
+        // Decide compatibility before scheduling output draws, never from cue
+        // detection success: a per-cue bypass changes the time domain mid-frame.
+        if (sourceSubtitleComposition && (newMix || newInterlaced)) {
+            Bypass("Motion: bypassed for subtitle reconstruction (profile policy)");
+            outputs.push_back(pts);outputPts=pts;
+            return;
+        }
+
         const bool changed=settings.Fingerprint()!=requested.Fingerprint()||generation!=epoch||
             interlaced!=newInterlaced||mixing!=newMix||(newInterlaced&&topFirst!=newTopFirst)||
             (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
