@@ -4078,7 +4078,7 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createRendererPage());
     pages_->addWidget(createDirectShowPage());
     pages_->addWidget(createViewportPage());
-    pages_->addWidget(createLldvPage());
+    pages_->addWidget(createDvPage());
     pages_->addWidget(createShortcutsPage());
     pages_->addWidget(createActionsPage());
     pages_->addWidget(createStandardShadersPage());
@@ -4118,7 +4118,7 @@ QWidget* ConfigEditorWindow::createShell()
     };
     addLeaf(QStringLiteral("General"), 0);
     addLeaf(QStringLiteral("Queue"), 1);
-    addLeaf(QStringLiteral("LLDV"), 5);
+    addLeaf(QStringLiteral("DV"), 5);
     QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 14);
     addLeaf(QStringLiteral("Actions"), 7);
     QPushButton* shortcutsNavigation = addLeaf(QStringLiteral("Shortcuts"), 15);
@@ -4829,7 +4829,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     {
         QString key;
         QWidget* widget = nullptr;
-        enum Kind { Text, Boolean, SdrGamma, Choice, Integer } kind = Text;
+        enum Kind { Text, Boolean, SdrGamma, Choice, Integer, DvMode } kind = Text;
         double displayScale = 1.0;
     };
     struct State { QString section; bool loading = false; };
@@ -4851,6 +4851,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto fields = std::make_shared<std::vector<Field>>();
     std::function<void()> updateOutputCompatibility = [] {};
     std::function<void()> updateToneControls = [] {};
+    std::function<void()> updateDvModeControls = [] {};
+    QWidget* dvModeControls = nullptr;
+    QRadioButton* dvLldvMode = nullptr;
 
     auto* splitter = new ResponsiveSplitter;
 
@@ -6451,14 +6454,60 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
     if (sectionPrefix == QStringLiteral("lldv"))
     {
-        detailLayout->addWidget(helpLabel(QStringLiteral(
-            "Uses the selected profile for recognized HDFury LLDV input and sends the same effective metadata to DirectShow and VP Renderer.")));
-        detailLayout->addWidget(bindCheckField(QStringLiteral("Alternate LLDV detection"),
+        dvModeControls = new QWidget;
+        auto* modeLayout = new QVBoxLayout(dvModeControls);
+        modeLayout->setContentsMargins(0, 0, 0, 0);
+        modeLayout->setSpacing(8);
+        modeLayout->addWidget(new QLabel(QStringLiteral("Input mode")));
+        auto* choices = new QHBoxLayout;
+        choices->setSpacing(28);
+        auto* tunneling = new QRadioButton(QStringLiteral("DV Tunneling"));
+        tunneling->setObjectName(QStringLiteral("config.dv.mode.tunneling"));
+        dvLldvMode = new QRadioButton(QStringLiteral("LLDV"));
+        dvLldvMode->setObjectName(QStringLiteral("config.dv.mode.lldv"));
+        auto* modes = new QButtonGroup(dvModeControls);
+        modes->addButton(tunneling);
+        modes->addButton(dvLldvMode);
+        choices->addWidget(tunneling);
+        choices->addWidget(dvLldvMode);
+        choices->addStretch();
+        modeLayout->addLayout(choices);
+        auto* summary = helpLabel(QStringLiteral(
+            "DV Tunneling uses VP Renderer and needs no additional input settings."));
+        modeLayout->addWidget(summary);
+        detailLayout->insertWidget(2, dvModeControls);
+        fields->push_back({ QStringLiteral("dolby_vision_tunnel"), tunneling, Field::DvMode });
+
+        auto* lldvSettings = new QWidget;
+        lldvSettings->setObjectName(QStringLiteral("config.dv.lldv_settings"));
+        auto* lldvLayout = new QVBoxLayout(lldvSettings);
+        lldvLayout->setContentsMargins(0, 0, 0, 0);
+        lldvLayout->setSpacing(12);
+        lldvLayout->addWidget(helpLabel(QStringLiteral(
+            "Uses this profile's metadata for recognized HDFury LLDV input with DirectShow and VP Renderer.")));
+        lldvLayout->addWidget(bindCheckField(QStringLiteral("Alternate LLDV detection"),
             QStringLiteral("general"), QStringLiteral("newlldv")));
-        detailLayout->addWidget(helpLabel(QStringLiteral(
-            "Applies to all LLDV profiles. Uses VP's newer LLDV detection heuristic. Restart VideoProcessor after changing this setting.")));
+        lldvLayout->addWidget(helpLabel(QStringLiteral(
+            "Alternate detection applies to all LLDV profiles. Restart VideoProcessor after changing it.")));
+        lldvLayout->addWidget(profileFields);
+        detailLayout->addWidget(lldvSettings);
+        updateDvModeControls = [tunneling, lldvSettings, summary]()
+        {
+            lldvSettings->setVisible(!tunneling->isChecked());
+            summary->setVisible(tunneling->isChecked());
+        };
+        connect(tunneling, &QRadioButton::toggled, this,
+            [this, state, updateDvModeControls](bool enabled)
+        {
+            updateDvModeControls();
+            if (state->loading || state->section.isEmpty() || !document_) return;
+            document_->SetKnown(state->section.toStdString(), "dolby_vision_tunnel",
+                enabled ? "true" : "false");
+            markDirty();
+        });
     }
-    detailLayout->addWidget(profileFields);
+    else
+        detailLayout->addWidget(profileFields);
     detailLayout->addStretch();
 
     const auto updateQueuePolicyPresentation = [queuePolicy, queuePolicySummary,
@@ -6518,7 +6567,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
-        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility, updateToneControls](QListWidgetItem* current)
+        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility, updateToneControls, dvModeControls, dvLldvMode, updateDvModeControls](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -6529,6 +6578,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         useRule->setEnabled(available);
         rule->setEnabled(available && useRule->isChecked());
         profileFields->setEnabled(available);
+        if (dvModeControls) dvModeControls->setEnabled(available);
         remove->setEnabled(available && list->count() > 1);
         up->setEnabled(available && list->currentRow() > 0);
         down->setEnabled(available && list->currentRow() + 1 < list->count());
@@ -6632,6 +6682,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             if (sectionPrefix == QStringLiteral("lldv"))
             {
+                if (key == QStringLiteral("dolby_vision_tunnel"))
+                    return value(QStringLiteral("general"), key,
+                        value(QStringLiteral("command_line"), key, QStringLiteral("false")));
                 QString enabled = value(QStringLiteral("general"), QStringLiteral("newlldv"));
                 if (enabled.isEmpty()) enabled = value(QStringLiteral("general"), QStringLiteral("new_lldv"));
                 if (enabled.isEmpty()) enabled = value(QStringLiteral("command_line"), QStringLiteral("newlldv"));
@@ -6822,6 +6875,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     mode == QStringLiteral("on") ? QStringLiteral("Compensate for calibrated display gamma to produce the desired SDR gamma when no usable LUT is attached.") :
                     QStringLiteral("No SDR gamma adjustment without a LUT. A usable LUT handles calibration; other processing still applies."));
             }
+            else if (field.kind == Field::DvMode)
+            {
+                const bool tunnel = configuredBooleanValue(configured, false);
+                if (tunnel) qobject_cast<QRadioButton*>(field.widget)->setChecked(true);
+                else dvLldvMode->setChecked(true);
+            }
             else if (field.kind == Field::Boolean)
             {
                 auto* check = qobject_cast<QCheckBox*>(field.widget);
@@ -6958,6 +7017,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
         state->loading = false;
         updateToneControls();
+        updateDvModeControls();
 		if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
 		{
 			auto* alignment = profileFields->findChild<QComboBox*>(
@@ -7318,6 +7378,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     splitter->addWidget(createCard(QStringLiteral("Profiles"),
         QStringLiteral("The first profile in the list is the default. Add, remove, or reorder profiles here."), listContent));
     auto* detailsCard=createCard(QStringLiteral("Profile details"),
+        sectionPrefix == QStringLiteral("lldv") ?
+        QStringLiteral("Choose this profile's input mode, shortcut, and rule.") :
         QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
         detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
@@ -7545,10 +7607,10 @@ QWidget* ConfigEditorWindow::createZoomPage()
 		QStringLiteral("vprenderer.zoom"));
 }
 
-QWidget* ConfigEditorWindow::createLldvPage()
+QWidget* ConfigEditorWindow::createDvPage()
 {
-    return createProfilePage(QStringLiteral("LLDV"),
-        QStringLiteral("Configure ordered LLDV metadata profiles shared by every renderer. The first profile is the default."),
+    return createProfilePage(QStringLiteral("DV"),
+        QStringLiteral("Configure Dolby Vision profiles. Each profile selects DV Tunneling or LLDV."),
         QStringLiteral("lldv"));
 }
 

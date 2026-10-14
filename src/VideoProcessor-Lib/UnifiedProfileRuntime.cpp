@@ -125,7 +125,9 @@ namespace
 			left.queue.resetQueueTooLargePercent !=
 				right.queue.resetQueueTooLargePercent)
 			return false;
-		if (left.lldv.profile != right.lldv.profile ||
+		if (left.lldv.hasDolbyVisionTunnel != right.lldv.hasDolbyVisionTunnel ||
+			left.lldv.dolbyVisionTunnel != right.lldv.dolbyVisionTunnel ||
+			left.lldv.profile != right.lldv.profile ||
 			left.lldv.hasMaxCll != right.lldv.hasMaxCll ||
 			left.lldv.maxCll != right.lldv.maxCll ||
 			left.lldv.hasMaxFall != right.lldv.hasMaxFall ||

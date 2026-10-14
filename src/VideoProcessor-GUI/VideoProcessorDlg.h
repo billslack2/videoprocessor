@@ -333,6 +333,8 @@ protected:
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
 	bool m_useNewLldvHeuristic = false;
 	bool m_enableDolbyVisionTunnel = false;
+	// -1 preserves the legacy global flag; 0/1 comes from the active DV profile.
+	int m_profileDolbyVisionTunnelOverride = -1;
 	// Tester-facing LLDV diagnostics are emitted only when the decision or
 	// effective result changes, rather than for every state rebuild.
 	std::string m_lastLldvDecisionDiagnostic;

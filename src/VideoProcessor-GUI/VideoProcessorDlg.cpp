@@ -11555,10 +11555,12 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// metadata.  There is no exposed VSIF to prove this, so only apply the
 	// heuristic when explicitly enabled, the user selected both LLDV follow
 	// modes, and the candidate has remained stable for 1.5 seconds.
-	const bool isHDFuryLLDV = m_useNewLldvHeuristic
-		? (m_newLldvCandidateConfirmed &&
-			IsNewLldvModeSelected())
-		: isLegacyHDFuryLLDV;
+	const bool enableDolbyVisionTunnel = m_profileDolbyVisionTunnelOverride >= 0
+		? m_profileDolbyVisionTunnelOverride != 0 : m_enableDolbyVisionTunnel;
+	const bool isHDFuryLLDV = m_profileDolbyVisionTunnelOverride != 1 &&
+		(m_useNewLldvHeuristic
+			? (m_newLldvCandidateConfirmed && IsNewLldvModeSelected())
+			: isLegacyHDFuryLLDV);
 	const std::string rawEotf =
 		CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString();
 	const std::string rawColorspace =
@@ -11791,7 +11793,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	const RendererId* rendererId = rendererIndex >= 0 ?
 		reinterpret_cast<const RendererId*>(
 			m_rendererCombo.GetItemData(rendererIndex)) : nullptr;
-	videoState->dolbyVisionTunnel = m_enableDolbyVisionTunnel &&
+	videoState->dolbyVisionTunnel = enableDolbyVisionTunnel &&
 		rendererId && rendererId->backend == RendererBackend::LIBPLACEBO &&
 		m_captureDeviceVideoState->valid &&
 		m_captureDeviceVideoState->videoFrameEncoding == VideoFrameEncoding::R210 &&
@@ -11823,7 +11825,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 			hdr.maxFall = 1000;
 		DebugLog::Log("Dolby Vision RGB tunnel: effective source R210/12-bit 4:2:2 PQ BT.2020");
 	}
-	else if (m_enableDolbyVisionTunnel)
+	else if (enableDolbyVisionTunnel)
 		DebugLog::Log("Dolby Vision RGB tunnel: waiting for R210 SDR capture state");
 
 	m_builtVideoState = videoState;
@@ -12439,6 +12441,17 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	}
 
 	bool lldvPolicyChanged = false;
+	const int desiredDvMode = snapshot->lldv.hasDolbyVisionTunnel
+		? (snapshot->lldv.dolbyVisionTunnel ? 1 : 0) : -1;
+	if (m_profileDolbyVisionTunnelOverride != desiredDvMode)
+	{
+		m_profileDolbyVisionTunnelOverride = desiredDvMode;
+		lldvPolicyChanged = true;
+		DebugLog::Log("DV profile mode applied: profile=%s mode=%s",
+			snapshot->lldv.profile.empty() ? "(none)" : snapshot->lldv.profile.c_str(),
+			snapshot->lldv.UseDolbyVisionTunnel(m_enableDolbyVisionTunnel)
+				? "DV Tunneling" : "LLDV");
+	}
 	if (!snapshot->lldv.profile.empty())
 	{
 		auto applyLldvOverride = [&lldvPolicyChanged](double& destination,

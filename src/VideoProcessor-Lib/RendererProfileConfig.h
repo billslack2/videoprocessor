@@ -295,6 +295,8 @@ namespace RendererProfileConfig
 	// effective default when no profile field supplies it.
 	struct ResolvedLldv
 	{
+		bool hasDolbyVisionTunnel = false;
+		bool dolbyVisionTunnel = false;
 		std::string group = "lldv";
 		std::string profile;
 		bool hasMaxCll = false;
@@ -305,6 +307,12 @@ namespace RendererProfileConfig
 		double masteringMinLuminance = 0.0;
 		bool hasMasteringMaxLuminance = false;
 		double masteringMaxLuminance = 0.0;
+
+		// Old configurations continue to use the application/command-line flag.
+		bool UseDolbyVisionTunnel(bool legacyEnabled) const
+		{
+			return hasDolbyVisionTunnel ? dolbyVisionTunnel : legacyEnabled;
+		}
 
 		LldvMetadata EffectiveMetadata(bool useNewLldvHeuristic) const
 		{
@@ -775,6 +783,7 @@ namespace RendererProfileConfig
 		}
 		if (group == "lldv")
 		{
+			if (key == "dolby_vision_tunnel") return IsBoolean(value);
 			if (key == "max_cll" || key == "max_fall" ||
 				key == "mastering_min_luminance")
 				return IsNumberInRange(value, 0.0,
@@ -2856,6 +2865,16 @@ namespace RendererProfileConfig
 		}
 		lldv.profile = profile->second.name;
 		const auto& settings = profile->second.settings;
+		const auto mode = settings.find("dolby_vision_tunnel");
+		if (mode != settings.end())
+		{
+			if (!ParseBoolean(mode->second, lldv.dolbyVisionTunnel))
+			{
+				error = "[lldv." + lldv.profile + "] dolby_vision_tunnel is invalid";
+				return false;
+			}
+			lldv.hasDolbyVisionTunnel = true;
+		}
 		auto resolve = [&](const char* key, bool& configured,
 			double& destination, bool strictlyPositive) -> bool
 		{

@@ -308,6 +308,7 @@ namespace MainConfigSchema
 		}
 
 		const std::vector<ConfigSchema::KeyRule> lldvRules = {
+			ConfigSchema::Boolean("dolby_vision_tunnel"),
 			ConfigSchema::Any("when"),
 			ConfigSchema::Any("shortcut"),
 			ConfigSchema::Any("cycle_shortcut"),
