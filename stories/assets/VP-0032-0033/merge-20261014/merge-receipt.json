@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-14",
+  "repository": "billslack2/videoprocessor",
+  "beta": {
+    "branch": "v1.4.01-beta",
+    "testedCommit": "304422d1f8616e59a7780a2ab5956c19fc57ef82",
+    "mergeCommit": "f06430fd1d081cc0d5fdbddec1b45d9671eac34f",
+    "pullRequest": 158,
+    "nativeChecks": 259,
+    "uiChecks": 3,
+    "pluginApi": 26
+  },
+  "dv2": {
+    "branch": "dv2",
+    "testedCommit": "ead3f04552e1d0b56eb6c2170752f533e9c67224",
+    "preservedBase": "4dac8b8658033f8c123614a232ab07fce4323b0f",
+    "mergeCommit": "4c080e8d5f2d2d472c85ed1393aeeae5ff98db56",
+    "pullRequest": 159,
+    "nativeChecks": 324,
+    "uiChecks": 4,
+    "pluginApi": 28
+  },
+  "configuration": "x64 Release",
+  "deployed": false,
+  "liveVisualQualityTested": false,
+  "limitation": "Source subtitle cut/paste composition bypasses temporal processing and reports the reason.",
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-20261014\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "DF3EE58B25680FE9F5751EB98948A83D990883890C1F57946C28941B37EBAA81"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-20261014\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "3C771542C1E7404A204177E6946C7CEAA899046C18F4A88A8FD5E9E2001DFCD1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "F64AC8418541F1CCC4DD33DA2766D12D0D243FEFEBEC7A46626659B13082AF9E"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "533E169B20099041F0641476DDA1D7BA852EF8EA59A810572D18689EB5BED268"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "FE0328B0422ED6F20C8201F27670D2DF3C08C7CF3C39C410841CA95D38D39807"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "E676733595BDAEDCFD429FCFE407FECCC419397D69499EFB0A4808F17ABBECBA"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress — configuration and renderer integration implemented; beta merged, DV2 integration checks pending.
+Review — implemented and merged into beta and DV2; requested build/configuration checks passed. Awaiting user review of controls.
 
 ## User story
 
@@ -73,3 +73,14 @@ does not provide it, or add motion-compensated frame interpolation.
 ## Implementation progress — 2026-10-14
 
 User authorized full Motion/chroma configuration and merges into current beta and DV2. Validation is narrowed to VP configuration loading, persistence and libplacebo integration; visual-quality comparisons are not required for this request. Beta PR [#158](https://github.com/billslack2/videoprocessor/pull/158) merged; DV2 is preserving its independent additions and newly merged subtitle/aspect-ratio fix before retesting. No deployment or active configuration changes.
+
+## Merged implementation — 2026-10-14
+
+- Beta: [PR #158](https://github.com/billslack2/videoprocessor/pull/158), merge `f06430fd1d081cc0d5fdbddec1b45d9671eac34f`; tested source `304422d1f8616e59a7780a2ab5956c19fc57ef82`.
+- DV2: [PR #159](https://github.com/billslack2/videoprocessor/pull/159), merge `4c080e8d5f2d2d472c85ed1393aeeae5ff98db56`; tested source `ead3f04552e1d0b56eb6c2170752f533e9c67224` preserves DV2 base `4dac8b8658033f8c123614a232ab07fce4323b0f`, including its new subtitle/aspect-ratio fix.
+- Both merged trees are byte-for-byte identical at the source-tree level to their tested feature commits. Separate clean x64 Release builds passed, including stable and beta libplacebo plugins.
+- Beta: 259 native integration checks and three focused Qt checks pass. DV2: 324 native checks, including tunnel/luminance/analysis diagnostics and renderer reset policies, plus four focused Qt checks including existing DV/LLDV controls, pass.
+- Motion page exposes Smooth motion Off/Auto/Always (default Off), all four bundled mixers, Deinterlacing Auto/Off/Force, Weave/Bob/YADIF/BWDIF (default BWDIF), reported/overridden field order, field/frame cadence and YADIF spatial-check control. Scaling exposes explicit independent chroma reconstruction, default Bicubic without Auto. Compact tabs retain one row with scroll overflow.
+- Capture field order, owned bounded GPU history, timestamps, field submission, discontinuity/reset behavior and configuration persistence are validated. Historical visual-quality comparisons are not required for this request: the user explicitly narrowed testing to VP configuration and libplacebo integration.
+- Source subtitle cut/paste composition currently bypasses temporal processing with a diagnostic. Native HDR passthrough remains deferred. No playback/deployment or active configuration edits were performed.
+- [Build/test receipts and Motion screenshot](../assets/VP-0032-0033/merge-20261014/README.md). Host/plugin API is 26 on beta and 28 on DV2; matched binaries are required within each branch.
