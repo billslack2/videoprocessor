@@ -7041,6 +7041,17 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     auto* mode=requireControl<QComboBox>(window,"config.vprenderer.motion.smooth_motion");
     auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
     require(mode->currentData()=="off"&&mixer->currentData()=="oversample","Motion defaults changed");
+    require(requireControl<QLabel>(window,"motionSection.smoothMotion")->isVisible(),"Smooth motion section is not expanded");
+    require(requireControl<QLabel>(window,"motionSection.deinterlacing")->isVisible(),"Deinterlacing section is not expanded");
+    auto* advanced=requireControl<QToolButton>(window,"rendererSection.deinterlacingAdvanced");
+    require(!advanced->isChecked(),"Advanced deinterlacing should start collapsed");
+    advanced->setChecked(true);
+    for(const char* key:{"smooth_motion","frame_mixer","deinterlace","deinterlace_algorithm","field_order","deinterlace_cadence","deinterlace_skip_spatial"}) {
+        auto* control=requireControl<QComboBox>(window,QString("config.vprenderer.motion.")+key);
+        require(!control->toolTip().trimmed().isEmpty(),"Motion control tooltip is blank");
+    }
+    require(mixer->toolTip().contains("Applies only to smooth motion"),"Mixer relationship is not explained");
+
     selectData(mode,"always");selectData(mixer,"cubic");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.field_order"),"bottom");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm"),"yadif");
