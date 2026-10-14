@@ -5424,8 +5424,11 @@ namespace VideoProcessorTest
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
-			const std::string path = std::string(temporaryDirectory) +
-				"VideoProcessor-dv-profile-mode.cfg";
+			char fixtureDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempFileNameA(temporaryDirectory, "dvp", 0, fixtureDirectory) != 0);
+			Assert::IsTrue(DeleteFileA(fixtureDirectory));
+			Assert::IsTrue(CreateDirectoryA(fixtureDirectory, nullptr));
+			const std::string path = std::string(fixtureDirectory) + "\\VideoProcessor.cfg";
 			const auto writeConfig = [&](const std::string& mode)
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
@@ -5484,7 +5487,9 @@ namespace VideoProcessorTest
 			Assert::IsTrue(invalid.Load(path));
 			Assert::IsFalse(runtime.Reload(invalid, source, reload, error));
 			Assert::IsTrue(runtime.GetSnapshot()->lldv.UseDolbyVisionTunnel(true));
+			DeleteFileA(runtime.StatePath().c_str());
 			DeleteFileA(path.c_str());
+			RemoveDirectoryA(fixtureDirectory);
 		}
 		TEST_METHOD(LegacyLldvRootRemainsTheBaselineProfile)
 		{
