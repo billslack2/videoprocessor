@@ -102,6 +102,15 @@ may require **Restart capture**. Record this limitation instead of claiming
 seamless switching. Fresh complete DM is needed after discarded metadata;
 a `no_md` header alone cannot restore it.
 
+Known recovery edge from source review: metadata IDs have only 16 values.
+A gap spanning at least 16 picture periods, or a sufficiently long run without
+authenticated headers, can hide a complete ID cycle. A returning `no_md`
+header can then match an obsolete cached ID before the current 24-rejected-frame
+cutoff clears it. This has not been reproduced on hardware. Complete HDMI
+recovery robustness is not claimed; a policy change needs a dedicated synthetic
+regression covering ID wrap, fresh-DM recovery and suspension behavior. Normal
+continuous `no_md` reuse remains valid and must not acquire an arbitrary expiry.
+
 Then enable VP crop/zoom after unpacking and repeat a scene plus a chapter seek.
 **Pass:** visible image geometry, chroma alignment and color remain consistent
 with the uncropped run, including the letterbox boundary. Crop is a viewport
