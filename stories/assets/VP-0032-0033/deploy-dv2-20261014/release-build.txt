@@ -1,0 +1,206 @@
+
+  BlackMagicDeckLink.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\BlackMagic DeckLink SDK.lib
+  MicrosoftDirectshowBaseclasses.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\Microsoft Directshow Baseclasses.lib
+  LAVFilters.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\LAVFilters.lib
+  mpc_video_renderer.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\MPC Video Renderer.lib
+  VideoProcessor-Lib.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessor-Lib.lib
+  VideoProcessor-Test.vcxproj.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessor-Test.dll
+  Written E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-GUI\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/4c080e8d5f2d2d472c85ed1393aeeae5ff98db56");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-14 13:16:25 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.3.005-beta-4c080e8");
+  static const TCHAR* VERSION_BRANCH=TEXT("dv2");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("4c080e8");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+  ModernOperatorView.cpp
+  VideoProcessorApp.cpp
+  VideoProcessorDlg.cpp
+  version.cpp
+  Generating code
+  6 of 20100 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    107 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-GUI.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessor-GUI.exe
+  Written E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/4c080e8d5f2d2d472c85ed1393aeeae5ff98db56");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-14 13:16:25 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.3.005-beta-4c080e8");
+  static const TCHAR* VERSION_BRANCH=TEXT("dv2");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("4c080e8");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+     Creating library E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer\VideoProcessorVPRenderer.lib and object E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer\VideoProcessorVPRenderer.exp
+  Generating code
+  2 of 11939 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    84 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-VPRenderer.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer\VideoProcessorVPRenderer.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libdovi.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libplacebo-360.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\gcc-libs\README
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.
+  VideoProcessor-ConfigDiscovery.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll
+  VideoProcessor-Config.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessorConfig.exe
+          1 file(s) copied.
+          1 file(s) copied.
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessorConfig.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+  VideoProcessor-ConfigTests.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessorConfigTests.exe
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessorConfigTests.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding Qt6Network for qtuiotouchplugin.dll from plugin type: generic
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+          1 file(s) copied.
+  VideoProcessor-OutputProbe.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\VideoProcessorOutputProbe.exe
+  Written E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/4c080e8d5f2d2d472c85ed1393aeeae5ff98db56");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-14 13:16:25 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.3.005-beta-4c080e8");
+  static const TCHAR* VERSION_BRANCH=TEXT("dv2");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("4c080e8");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+     Creating library E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib and object E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.exp
+  Generating code
+  2 of 11900 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    84 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-VPRendererBeta.vcxproj -> E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libdovi.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libplacebo-377.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\gcc-libs\README
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\renderer-motion-chroma-dv2-20261014\3rdparty\libplacebo-beta\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.

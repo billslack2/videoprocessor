@@ -84,3 +84,9 @@ User authorized full Motion/chroma configuration and merges into current beta an
 - Capture field order, owned bounded GPU history, timestamps, field submission, discontinuity/reset behavior and configuration persistence are validated. Historical visual-quality comparisons are not required for this request: the user explicitly narrowed testing to VP configuration and libplacebo integration.
 - Source subtitle cut/paste composition currently bypasses temporal processing with a diagnostic. Native HDR passthrough remains deferred. No playback/deployment or active configuration edits were performed.
 - [Build/test receipts and Motion screenshot](../assets/VP-0032-0033/merge-20261014/README.md). Host/plugin API is 26 on beta and 28 on DV2; matched binaries are required within each branch.
+
+## DV2 deployed — 2026-10-14
+
+User authorized deploying DV2. Deployed exact merged `dv2` tip `4c080e8d5f2d2d472c85ed1393aeeae5ff98db56` from a successful clean x64 Release solution build. Host, stable/beta renderer plugins, Config UI, Config discovery and output probe plus matching runtime records and HTML help were backed up and updated; all copied hashes match build artifacts. One differing Qt offscreen plugin was also backed up and updated; remaining dependency hashes already matched.
+
+Backup: `C:\Videoprocessor\vp\deployment-backups\dv2-4c080e8d5f2d-20261014-133826`. Active `VideoProcessor.cfg` and `VideoProcessor.state` remained byte-identical; no configuration edits. 199 focused config/parameter/motion/plugin checks passed. The deployed Config app opened Motion against a disposable copy of the operator config, exited successfully, and showed default Off smooth motion and Auto/BWDIF deinterlacing. VP playback was not launched. [Deployment receipt, build/test logs and screenshot](../assets/VP-0032-0033/deploy-dv2-20261014/README.md). Review status is unchanged.

@@ -1,0 +1,111 @@
+{
+  "sourceCommit": "4c080e8d5f2d2d472c85ed1393aeeae5ff98db56",
+  "branch": "dv2",
+  "configuration": "x64 Release",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\dv2-4c080e8d5f2d-20261014-133826",
+  "deployedAt": "2026-10-14T13:38:28.1952834-04:00",
+  "configurationEdits": [],
+  "configurationSha256": "1FA5D2840FED1502D54FF41E688C59B6FF2045AD219FDC01BEEBCC7CCCFC3C8F",
+  "stateSha256": "5D98C91F02A6785F84A5DCFB3FB818D5427A04B9309F9A67A4A55177352C6D5E",
+  "hashVerified": true,
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessor-GUI.exe",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "before": "364B54223A557689B2D9257CC829A0BA4D4553990E41236FC934FE44B05CE78E",
+      "after": "1A2C3A4A6B8BFAF6B766AC6EED1EB52B52E940C746D516D79FEE673CCCE4A088"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "relative": "VideoProcessor.exe.runtime.json",
+      "before": "EF632445B29D0F1EFB6250802FFFB1DFA43F7B33CD5C1985C55B0B44BF113F00",
+      "after": "01AE0D14A3B2919504D7724E6D3670D5957534288565700E92DC4375A8991002"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfig.exe",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "relative": "config/VideoProcessorConfig.exe",
+      "before": "3EDC69B8396C13490E7567D28F726CF9840B6D9F473672E5052F8ADA23FDC0B8",
+      "after": "FE0328B0422ED6F20C8201F27670D2DF3C08C7CF3C39C410841CA95D38D39807"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfig.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe.runtime.json",
+      "relative": "config/VideoProcessorConfig.exe.runtime.json",
+      "before": "7F6354285F2792053E3442F57F3F7ABEAC780FCCC5C5BA66AECE47E846FF5F8E",
+      "after": "26D922AC0ACABC0AE2674A94CD8578FC45D68C4B78F8DACAA0AE52D56570A347"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "relative": "config/VideoProcessorConfigDiscovery.dll",
+      "before": "E9DDEB5228575DF13716C833157CB63837C863FD153CE79F10E8D9139F7215C5",
+      "after": "B1A7D7B15FD4698F5BB7228A8D6159B6482462C4CD7AFCD2A611E20783701DD1"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "relative": "config/VideoProcessorConfigDiscovery.dll.runtime.json",
+      "before": "373978CFD8D660EE1341927085EF3FA630A5B298633B0BEE59CF933A0C5BA0A7",
+      "after": "02B8D4EFBE35A8F3F5025D529240439DC4269BE4BDAF36491EC42B4D9CA4BDFF"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorOutputProbe.exe",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessorOutputProbe.exe",
+      "relative": "VideoProcessorOutputProbe.exe",
+      "before": "81D362E9E1C83467CA0CB4E11951C402CA13E137B798A6C8FC142E81C61D5914",
+      "after": "BFE0F0AF0393041B256F266E824FA4E6805F1F6701CBD59B910C3F359CF9754F"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorOutputProbe.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessorOutputProbe.exe.runtime.json",
+      "relative": "VideoProcessorOutputProbe.exe.runtime.json",
+      "before": "BA2C54B1BDD9E374AD981EE32B165E8EACEAE37E841A628586C31E8A9BCCA949",
+      "after": "1C094D1595E0A7CEA928C6084A4B399CB828008FC2C0F4DB5F85E8BA3D2D26C1"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer/VideoProcessorVPRenderer.dll",
+      "before": "DB9AC9E0A7E1B84D9127A130447397C582A61B32D150311BA85601A92B2194E4",
+      "after": "0344CBA4A4D0113E2B3BFF51CB40D43C166777A3AAC4BEBC155D5B7A2D62EEAB"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "relative": "vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "before": "393322A003459C0041DF42C30475C3720A6DC9DB0CFAF05984C2B1BE82FC9F13",
+      "after": "3B89531C22E4976A3EE8BAA0CE16605530E1EBBF064ABBB276567BF77735956B"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "before": "4D0BC7CE296F6FFC36F8D06E5CCDABCD85E336F487B55651103BEFC41426324A",
+      "after": "1A12A85350C484D8E2204980D3652D07131D41C33A7EC519D9C743DCCC5BFB5E"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "relative": "vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "before": "CDA5FB7C8F079D4C7AFF6C67CC7261C7FDC80A997F9025C46BD3607CBDD93EB9",
+      "after": "196E7D103243BC03C7C1A674C0F42157E81E83C5E729434CDE65505895400778"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\CONFIGURATION.html",
+      "destination": "C:\\Videoprocessor\\vp\\CONFIGURATION.html",
+      "relative": "CONFIGURATION.html",
+      "before": "8423E36066C056D7A3055DE1112F96859064DB980D209D6C69C7402F1EFF4DBA",
+      "after": "8D24ED42641F775C0B60EE21E400FC6FCC7A2F4CAF35130ACAC5F77002B255C3"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\platforms\\qoffscreen.dll",
+      "destination": "C:\\Videoprocessor\\vp\\config\\platforms\\qoffscreen.dll",
+      "relative": "config/platforms/qoffscreen.dll",
+      "before": null,
+      "after": "733D193144FB9C8A00B6D5E96C730668C86AEF16DB63754914D11E135D56E5A2"
+    }
+  ]
+}
