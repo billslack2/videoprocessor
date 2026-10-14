@@ -7374,6 +7374,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     splitter->addWidget(createCard(QStringLiteral("Profiles"),
         QStringLiteral("The first profile in the list is the default. Add, remove, or reorder profiles here."), listContent));
     auto* detailsCard=createCard(QStringLiteral("Profile details"),
+        sectionPrefix==QStringLiteral("vprenderer.motion") ? QStringLiteral("Configure playback processing; shortcuts and rules follow below.") :
         QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
         detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
