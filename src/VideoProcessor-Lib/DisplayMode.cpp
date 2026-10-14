@@ -16,10 +16,11 @@ DisplayMode::DisplayMode(
 	unsigned int frameHeight,
 	bool interlaced,
 	unsigned int timeScale,
-	unsigned int frameDuration):
+	unsigned int frameDuration, FieldOrder fieldOrder):
 	m_frameWidth(frameWidth),
 	m_frameHeight(frameHeight),
 	m_interlaced(interlaced),
+    m_fieldOrder(fieldOrder),
 	m_timeScale(timeScale),
 	m_frameDuration(frameDuration)
 {
@@ -92,7 +93,7 @@ bool DisplayMode::operator == (const DisplayMode& other) const
 		FrameHeight() == other.FrameHeight() &&
 		TimeScale() == other.TimeScale() &&
 		FrameDuration() == other.FrameDuration() &&
-		IsInterlaced() == other.IsInterlaced();
+		IsInterlaced() == other.IsInterlaced() && FirstFieldOrder() == other.FirstFieldOrder();
 }
 
 

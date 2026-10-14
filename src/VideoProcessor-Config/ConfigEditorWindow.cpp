@@ -2342,6 +2342,7 @@ void ConfigEditorWindow::installProfileContextMenu(QListWidget* list,
 				{ QStringLiteral("vprenderer"), QStringLiteral("display") },
 				{ QStringLiteral("vprenderer.color"), QStringLiteral("color") },
 				{ QStringLiteral("vprenderer.scaling"), QStringLiteral("scaling") },
+                { QStringLiteral("vprenderer.motion"), QStringLiteral("motion") },
 				{ QStringLiteral("vprenderer.output"), QStringLiteral("output") },
 				{ QStringLiteral("vprenderer.viewport"), QStringLiteral("viewport") },
 				{ QStringLiteral("vprenderer.zoom"), QStringLiteral("zoom") },
@@ -4106,6 +4107,9 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createPage(QStringLiteral("Updates"),
         QStringLiteral("Manage updates on this computer. Remote VideoProcessors update separately."), updatePanel_));
 
+    pages_->addWidget(createProfilePage(QStringLiteral("Motion"),
+        QStringLiteral("Configure smooth motion and field-aware deinterlacing. Changes apply after renderer restart."),
+        QStringLiteral("vprenderer.motion")));
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
     const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
@@ -4180,7 +4184,7 @@ QWidget* ConfigEditorWindow::createShell()
                 { QStringLiteral("NLS"), 9 } }, page);
         }
         else if (page == 2 || page == 4 || page == 11 || page == 13 ||
-			page == 16 || page == 17 || page == 18 || page == 19)
+			page == 16 || page == 17 || page == 18 || page == 19 || page == 21)
         {
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
@@ -4189,7 +4193,8 @@ QWidget* ConfigEditorWindow::createShell()
 				{ QStringLiteral("Screen"), 4 },
 				{ QStringLiteral("Zoom"), 18 },
                 { QStringLiteral("Subtitles"), 19 },
-				{ QStringLiteral("Processing"), 11 } }, page);
+				{ QStringLiteral("Motion"), 21 },
+                { QStringLiteral("Processing"), 11 } }, page);
         }
         else if (page == 3 || page == 12)
         {
@@ -4889,10 +4894,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     const bool showsActiveProfile = sectionPrefix == QStringLiteral("queue") ||
         sectionPrefix == QStringLiteral("vprenderer") ||
         sectionPrefix == QStringLiteral("vprenderer.scaling") ||
+        sectionPrefix == QStringLiteral("vprenderer.motion") ||
         sectionPrefix == QStringLiteral("vprenderer.color") ||
         sectionPrefix == QStringLiteral("vprenderer.viewport") ||
         sectionPrefix == QStringLiteral("vprenderer.zoom") ||
-        sectionPrefix == QStringLiteral("vprenderer.subtitles");
+        sectionPrefix == QStringLiteral("vprenderer.subtitles") ||
+        sectionPrefix == QStringLiteral("vprenderer.motion");
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
@@ -6114,6 +6121,32 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
     }
 
+    else if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
+        form=addPlainForm();
+        auto* smoothMotion=addChoice(QStringLiteral("Smooth motion"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
+        auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("oversample"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("cubic")});
+        auto* deinterlacing=addChoice(QStringLiteral("Deinterlacing"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
+        auto* deinterlaceAlgorithm=addChoice(QStringLiteral("Algorithm"),QStringLiteral("deinterlace_algorithm"),{QStringLiteral("bwdif"),QStringLiteral("yadif"),QStringLiteral("bob"),QStringLiteral("weave")});
+        auto* fieldOrder=addChoice(QStringLiteral("Field order"),QStringLiteral("field_order"),{QStringLiteral("auto"),QStringLiteral("top"),QStringLiteral("bottom")});
+        auto* fieldCadence=addChoice(QStringLiteral("Output cadence"),QStringLiteral("deinterlace_cadence"),{QStringLiteral("field"),QStringLiteral("frame")});
+        auto* spatialCheck=addChoice(QStringLiteral("YADIF skip spatial check"),QStringLiteral("deinterlace_skip_spatial"),{QStringLiteral("false"),QStringLiteral("true")});
+        smoothMotion->setItemText(smoothMotion->findData("off"),"Off");
+        smoothMotion->setItemText(smoothMotion->findData("auto"),"Auto — only for cadence mismatch");
+        smoothMotion->setItemText(smoothMotion->findData("always"),"Always");
+        fieldOrder->setItemText(fieldOrder->findData("auto"),"From input");
+        fieldOrder->setItemText(fieldOrder->findData("top"),"Top field first");
+        fieldOrder->setItemText(fieldOrder->findData("bottom"),"Bottom field first");
+        fieldCadence->setItemText(fieldCadence->findData("field"),"Field rate (preserve motion)");
+        fieldCadence->setItemText(fieldCadence->findData("frame"),"Frame rate");
+        updateToneControls=[smoothMotion,frameMixer,deinterlacing,deinterlaceAlgorithm,fieldOrder,fieldCadence,spatialCheck] {
+            frameMixer->setEnabled(smoothMotion->currentData().toString()!="off");
+            const bool enabled=deinterlacing->currentData().toString()!="off";
+            deinterlaceAlgorithm->setEnabled(enabled);fieldOrder->setEnabled(enabled);fieldCadence->setEnabled(enabled);
+            spatialCheck->setEnabled(enabled&&deinterlaceAlgorithm->currentData().toString()=="yadif");
+        };
+        for(auto* combo:{smoothMotion,deinterlacing,deinterlaceAlgorithm})connect(combo,qOverload<int>(&QComboBox::currentIndexChanged),this,[updateToneControls]{updateToneControls();});
+        detailLayout->addWidget(helpLabel(QStringLiteral("Auto smooth motion activates only for a verified cadence mismatch. Mixing blends frames; it does not generate motion-compensated frames. Deinterlacing Auto requires interlaced input and known field order. Temporal filters add bounded frame buffering.")));
+    }
 	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
 	{
 		form = addPlainForm();
@@ -6138,12 +6171,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		downscaler->setItemText(downscaler->findData(QStringLiteral("gpu")),
 			QStringLiteral("Built-in GPU sampling"));
 		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
-		auto* antiRinging = addChoice(QStringLiteral("Anti-ringing"),
+		auto* antiRinging = addChoice(QStringLiteral("Sigmoid upscaling"),
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
 			QStringLiteral("on"), QStringLiteral("off") });
 		antiRinging->setToolTip(QStringLiteral(
 			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
+        addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
+        detailLayout->addWidget(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
 	}
     else if (sectionPrefix == QStringLiteral("vprenderer.subtitles"))
     {
@@ -6508,8 +6543,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
     }
-    else
-        detailLayout->addWidget(profileFields);
+    else if(sectionPrefix==QStringLiteral("vprenderer.motion"))detailLayout->insertWidget(2,profileFields);
+    else detailLayout->addWidget(profileFields);
     detailLayout->addStretch();
 
     const auto updateQueuePolicyPresentation = [queuePolicy, queuePolicySummary,
@@ -6719,6 +6754,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     key == QStringLiteral("diagnostic_allow_full_g22") ||
                     key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
                 return QStringLiteral("AUTO");
+            }
+            if(sectionPrefix==QStringLiteral("vprenderer.scaling")&&key==QStringLiteral("chroma_upscaler"))return QStringLiteral("bicubic");
+            if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
+                if(key=="smooth_motion")return "off";
+                if(key=="frame_mixer")return "oversample";
+                if(key=="deinterlace")return "auto";
+                if(key=="deinterlace_algorithm")return "bwdif";
+                if(key=="field_order")return "auto";
+                if(key=="deinterlace_cadence")return "field";
+                if(key=="deinterlace_skip_spatial")return "false";
             }
             return {};
         };
@@ -7157,6 +7202,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 });
     }
 
+    if(document_ && sectionPrefix==QStringLiteral("vprenderer.motion") && profileSections(sectionPrefix).isEmpty()) {
+        document_->AddSection("vprenderer.motion");
+        const std::pair<const char*,const char*> defaults[]={
+            {"label","Default"},{"smooth_motion","off"},{"frame_mixer","oversample"},
+            {"deinterlace","auto"},{"deinterlace_algorithm","bwdif"},{"field_order","auto"},
+            {"deinterlace_cadence","field"},{"deinterlace_skip_spatial","false"}};
+        for(const auto& entry:defaults)document_->SetKnown("vprenderer.motion",entry.first,entry.second);
+    }
     ProfileListPolicy listPolicy;
     listPolicy.sections = [this, sectionPrefix]
         { return profileSections(sectionPrefix); };

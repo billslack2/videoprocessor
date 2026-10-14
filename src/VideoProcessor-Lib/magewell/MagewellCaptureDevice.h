@@ -166,6 +166,7 @@ private:
 		unsigned int width = 0;
 		unsigned int height = 0;
 		bool interlaced = false;
+        DisplayMode::FieldOrder fieldOrder=DisplayMode::FieldOrder::Unknown;
 		unsigned int frameDuration100ns = 0;
 		MWCAP_VIDEO_COLOR_FORMAT colorFormat = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
 		MWCAP_VIDEO_QUANTIZATION_RANGE quantRange = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;

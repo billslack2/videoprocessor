@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -583,6 +583,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		ResetVideoState();
 		m_bmdPixelFormat = bmdPixelFormat;
 		m_bmdDisplayMode = newMode->GetDisplayMode();
+        m_bmdFieldDominance=newMode->GetFieldDominance();
 		m_ticksPerFrame = (timingclocktime_t)round((1.0 / FPS(m_bmdDisplayMode)) * TimingClockTicksPerSecond());
 
 		// Inform callback handlers that stream will be invalid before re-starting
@@ -1094,7 +1095,7 @@ bool BlackMagicDeckLinkCaptureDevice::SendVideoStateCallback(
 			assert(m_videoColorSpace != BMD_COLOR_SPACE_INVALID);
 
 			videoState->valid = true;
-			videoState->displayMode = Translate(m_bmdDisplayMode);
+			videoState->displayMode = Translate(m_bmdDisplayMode,m_bmdFieldDominance);
 			videoState->eotf = TranslateEOTF(m_videoEotf);
 			videoState->colorspace = Translate(
 				(BMDColorspace)m_videoColorSpace,
