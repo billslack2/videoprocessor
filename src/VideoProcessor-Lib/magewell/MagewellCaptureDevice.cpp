@@ -800,7 +800,7 @@ void MagewellCaptureDevice::PublishCardState(const SignalDescription& signal)
 		cardState->inputDisplayMode = std::make_shared<DisplayMode>(
 			signal.width, signal.height, signal.interlaced,
 			static_cast<unsigned int>(MAGEWELL_CLOCK_TICKS_SECOND),
-			signal.frameDuration100ns);
+			signal.frameDuration100ns,signal.fieldOrder);
 
 	// Show the wire format independently of the supported capture output.
 	switch (signal.colorFormat)
@@ -879,7 +879,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 	videoState->displayMode = std::make_shared<DisplayMode>(
 		signal.width, signal.height, signal.interlaced,
 		static_cast<unsigned int>(MAGEWELL_CLOCK_TICKS_SECOND),
-		signal.frameDuration100ns);
+		signal.frameDuration100ns,signal.fieldOrder);
 	videoState->videoFrameEncoding = encoding;
 	videoState->eotf = signal.eotf;
 	videoState->colorspace = signal.colorSpace;
@@ -1393,6 +1393,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			continue;
 		}
 		frameInfoFailures = 0;
+        if(current.interlaced && frameInfo.bInterlaced && !frameInfo.bSegmentedFrame) {
+            const auto order=frameInfo.bTopFieldFirst?DisplayMode::FieldOrder::TopFirst:DisplayMode::FieldOrder::BottomFirst;
+            if(current.fieldOrder!=order){current.fieldOrder=order;if(!PublishVideoState(current,encoding,captureRunToken))continue;}
+        }
 
 		// Convert the card's P210 into the v210 the renderer expects. Done
 		// before the frame is handed over so everything downstream sees the

@@ -267,6 +267,10 @@ QString VpTheme::StyleSheet()
             padding: 7px 13px;
             margin-right: 3px;
         }
+        QTabBar[sectionTabs="true"]::tab {
+            min-width: 0px;
+            padding: 7px 10px;
+        }
         QTabBar::tab:hover { color: #e8f3fb; background: #172a3b; }
         QTabBar::tab:selected {
             color: #f2f8fd;

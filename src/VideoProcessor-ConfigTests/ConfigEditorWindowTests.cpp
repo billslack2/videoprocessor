@@ -904,7 +904,7 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 20,
+    require(pages->count() == 22,
         "Renderer, Scaling, Color, Output, Screen, Zoom, Processing, shader, and shortcut pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
@@ -946,7 +946,7 @@ void testEveryPageRoundTrips()
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
         QStringLiteral("Scaling"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"), QStringLiteral("Subtitles"),
-        QStringLiteral("Processing") });
+        QStringLiteral("Motion"), QStringLiteral("Processing") });
     directShow->click();
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
     shortcutsNavigation->click();
@@ -1543,18 +1543,20 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
         QStringLiteral("Scaling"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"), QStringLiteral("Subtitles"),
-        QStringLiteral("Processing") });
+        QStringLiteral("Motion"), QStringLiteral("Processing") });
     runSequence({
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
         { 5, 19, "Subtitles", "config.vprenderer.subtitles.profiles" },
-        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 6, 21, "Motion", "config.vprenderer.motion.profiles" },
+        { 7, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 2, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
         { 5, 19, "Subtitles", "config.vprenderer.subtitles.profiles" },
-        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 6, 21, "Motion", "config.vprenderer.motion.profiles" },
+        { 7, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
@@ -6940,6 +6942,35 @@ void testSubtitleHdrLegacyFallbackAndSharedModes()
     require(!requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent")->isEnabled(),"Percentage controls enabled during Smart mode");
 }
 
+void testMotionAndChromaControlsPersistAndExposeNewTab()
+{
+    QTemporaryDir directory;
+    const QString path=copyFixture(directory);
+    QFile file(path); require(file.open(QIODevice::Append),"Cannot add Motion fixture");
+    file.write("\n[vprenderer.motion]\nsmooth_motion: off\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\nfield_order: auto\ndeinterlace_cadence: field\ndeinterlace_skip_spatial: false\n");file.close();
+    ConfigEditorWindow window(path,0,true);window.selectPage(21);window.show();QApplication::processEvents();
+    auto* tabs=requireControl<QTabBar>(window,"settingsSectionTabs");
+    require(tabs->count()==8&&tabs->tabText(6)=="Motion"&&tabs->currentIndex()==6,"Motion tab is missing or not selected");
+    auto* mode=requireControl<QComboBox>(window,"config.vprenderer.motion.smooth_motion");
+    auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
+    require(mode->currentData()=="off"&&mixer->currentData()=="oversample","Motion defaults changed");
+    selectData(mode,"always");selectData(mixer,"cubic");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.field_order"),"bottom");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm"),"yadif");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_cadence"),"frame");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_skip_spatial"),"true");
+    window.selectPage(17);
+    auto* chroma=requireControl<QComboBox>(window,"config.vprenderer.scaling.chroma_upscaler");
+    require(chroma->findData("auto")==-1,"Chroma unexpectedly exposes Auto");
+    selectData(chroma,"lanczos");save(window);
+    ConfigEditorWindow reopened(path,0,true);reopened.selectPage(21);
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.smooth_motion")->currentData()=="always","Smooth motion did not persist");
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.frame_mixer")->currentData()=="cubic","Mixer did not persist");
+    reopened.selectPage(17);require(requireControl<QComboBox>(reopened,"config.vprenderer.scaling.chroma_upscaler")->currentData()=="lanczos","Chroma did not persist");
+    const QString images=qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if(!images.isEmpty()){reopened.resize(1040,700);reopened.show();reopened.selectPage(21);QApplication::processEvents();reopened.grab().save(images+"/motion.png");reopened.selectPage(17);QApplication::processEvents();reopened.grab().save(images+"/chroma.png");}
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -6979,6 +7010,7 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);
     failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);

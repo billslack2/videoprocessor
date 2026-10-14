@@ -21,7 +21,7 @@ namespace DisplayRuleExpression
 
 	inline bool IsProfileGroup(const std::string& name)
 	{
-		return name == "input" || name == "scaling" ||
+		return name == "input" || name == "scaling" || name == "motion" ||
 			name == "display" || name == "color" || name == "output" ||
 			name == "viewport" || name == "zoom" || name == "subtitles" || name == "queue" ||
 			name == "lldv" || name == "nls" ||

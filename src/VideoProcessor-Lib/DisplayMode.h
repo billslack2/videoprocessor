@@ -27,6 +27,8 @@ class DisplayMode
 {
 public:
 
+	enum class FieldOrder { Unknown=0, TopFirst=1, BottomFirst=2 };
+    FieldOrder FirstFieldOrder() const { return m_fieldOrder; }
 	// Constructor, width and height in pixels/frame
 	// - width & height in pixels
 	// - timeScale in ticks per second
@@ -36,7 +38,7 @@ public:
 		unsigned int frameHeight,
 		bool interlaced,  // Two field per frame expected
 		unsigned int timeScale,
-		unsigned int frameDuration);
+		unsigned int frameDuration, FieldOrder fieldOrder=FieldOrder::Unknown);
 
 	// Amount of X-axis pixels per frame
 	unsigned int FrameWidth() const { return m_frameWidth; }
@@ -71,6 +73,7 @@ private:
 	const unsigned int m_frameWidth;
 	const unsigned int m_frameHeight;
 	const bool m_interlaced;
+    const FieldOrder m_fieldOrder;
 	const unsigned int m_timeScale;
 	const unsigned int m_frameDuration;
 };
