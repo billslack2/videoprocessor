@@ -3511,7 +3511,7 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshots)
 		{
-			Assert::AreEqual(static_cast<uint32_t>(24),
+			Assert::AreEqual(static_cast<uint32_t>(26),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 

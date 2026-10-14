@@ -93,6 +93,7 @@ general.profile_change_display_seconds	general-profile-change-display	General di
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
 vprenderer.subtitles.<variant>.subtitle_script_hint	subtitle-script-hint	Subtitles	no
+lldv.dolby_vision_tunnel	dv-profile-mode	DV profiles	no
 lldv.max_cll	lldv-max-cll	LLDV metadata	no
 lldv.max_fall	lldv-max-fall	LLDV metadata	no
 lldv.mastering_min_luminance	lldv-mastering-min-luminance	LLDV metadata	no
