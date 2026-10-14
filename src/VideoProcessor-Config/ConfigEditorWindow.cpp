@@ -6461,15 +6461,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         modeLayout->addWidget(new QLabel(QStringLiteral("Input mode")));
         auto* choices = new QHBoxLayout;
         choices->setSpacing(28);
-        auto* tunneling = new QRadioButton(QStringLiteral("DV Tunneling"));
-        tunneling->setObjectName(QStringLiteral("config.dv.mode.tunneling"));
         dvLldvMode = new QRadioButton(QStringLiteral("LLDV"));
         dvLldvMode->setObjectName(QStringLiteral("config.dv.mode.lldv"));
+        auto* tunneling = new QRadioButton(QStringLiteral("DV Tunneling"));
+        tunneling->setObjectName(QStringLiteral("config.dv.mode.tunneling"));
         auto* modes = new QButtonGroup(dvModeControls);
-        modes->addButton(tunneling);
         modes->addButton(dvLldvMode);
-        choices->addWidget(tunneling);
+        modes->addButton(tunneling);
         choices->addWidget(dvLldvMode);
+        choices->addWidget(tunneling);
         choices->addStretch();
         modeLayout->addLayout(choices);
         auto* summary = helpLabel(QStringLiteral(
