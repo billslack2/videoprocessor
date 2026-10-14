@@ -10,6 +10,9 @@
     <ClCompile Include="WindowResizeLayoutTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DolbyVisionTunnelFormatterTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="VideoFrameFormatterTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

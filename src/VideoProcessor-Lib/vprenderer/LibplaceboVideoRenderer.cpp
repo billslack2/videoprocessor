@@ -4997,7 +4997,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void CaptureRenderedOutput(ID3D11Texture2D* authoritativeBackbuffer,
 		const char* owner, uint64_t frameGeneration, uint64_t sourceSequence,
-		const struct pl_frame& sourceImage)
+		const struct pl_frame& sourceImage,
+		const DolbyVisionLuminanceStatus& captureDvLuminance)
 	{
 		std::vector<uint32_t> pixels;
 		D3D11_TEXTURE2D_DESC desc{};
@@ -5027,6 +5028,12 @@ struct LibplaceboVideoRenderer::Impl
 			pixels.size() * sizeof(uint32_t));
 		const std::wstring pngPath = directory + L"\\" + stem + L".png";
 		const std::wstring jsonPath = directory + L"\\" + stem + L".json";
+		// The caller supplies this frame's DM status, not the mutable UI
+		// snapshot which can reset concurrently on a source transition. The
+		// HDMI image is already composed; 12-bit ingress does not prove FEL.
+		const bool captureDolbyVision =
+			sourceImage.repr.sys == PL_COLOR_SYSTEM_DOLBYVISION &&
+			sourceImage.repr.dovi != nullptr;
 		std::ostringstream metadata;
 		metadata.imbue(std::locale::classic());
 		metadata << std::setprecision(10)
@@ -5066,6 +5073,26 @@ struct LibplaceboVideoRenderer::Impl
 			<< "  \"target_transfer_effective\": \"" <<
 				LibplaceboOutput::ToString(lastSdrGammaDecision.actualTarget) << "\",\n"
 			<< "  \"transfer_only_caveats\": \"YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and display response may still alter output\",\n"
+			<< "  \"source_representation\": \"" << JsonEscape(
+				pl_color_system_name(sourceImage.repr.sys)) << "\",\n"
+			<< "  \"source_sample_depth\": " << sourceImage.repr.bits.sample_depth << ",\n"
+			<< "  \"source_color_depth\": " << sourceImage.repr.bits.color_depth << ",\n"
+			<< "  \"source_bit_shift\": " << sourceImage.repr.bits.bit_shift << ",\n"
+			<< "  \"dolby_vision\": {\"active\": " <<
+				(captureDolbyVision ? "true" : "false") <<
+				", \"composition\": \"" <<
+				(captureDolbyVision ? "source-player" : "not-applicable") <<
+				"\", \"fel_status\": \"" <<
+				(captureDolbyVision ? "unknown" : "not-applicable") <<
+				"\", \"source_range_origin\": \"" <<
+				(captureDolbyVision ?
+					(captureDvLuminance.sourceRangeFromMetadata ? "DM" : "fallback") :
+					"not-applicable") << "\", \"l1_present\": " <<
+				(captureDolbyVision && captureDvLuminance.sceneAvailable ? "true" : "false") <<
+				", \"source_min_nits\": " << sourceImage.color.hdr.min_luma <<
+				", \"source_max_nits\": " << sourceImage.color.hdr.max_luma <<
+				", \"scene_peak_pq\": " << sourceImage.color.hdr.max_pq_y <<
+				", \"scene_average_pq\": " << sourceImage.color.hdr.avg_pq_y << "},\n"
 			<< "  \"source_levels\": \"" <<
 				(sourceImage.repr.levels == PL_COLOR_LEVELS_LIMITED ?
 					"limited" : "full") << "\",\n"
@@ -10662,6 +10689,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
 		const int height = static_cast<int>(state.displayMode->FrameHeight());
+		DolbyVisionLuminanceStatus frameDvLuminance;
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool tunnelRgbFallback = state.dolbyVisionTunnel &&
 			convertedPayload && !convertedPayload->dolby.valid &&
@@ -11623,6 +11651,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			image.repr.dovi = found->second.get();
 			const auto luminance = DolbyVisionLuminancePolicy::Apply(dm, image.color.hdr);
+			frameDvLuminance = luminance;
 			const uint64_t luminanceTick = GetTickCount64();
 			if (luminanceTick >= nextSourceLuminanceLogTick)
 			{
@@ -14935,7 +14964,7 @@ struct LibplaceboVideoRenderer::Impl
 				std::memory_order_acq_rel))
 			{
 				CaptureRenderedOutput(vpOwnedBackbuffer, "VP-owned-DXGI",
-					frameGeneration, sourceSequence, image);
+					frameGeneration, sourceSequence, image, frameDvLuminance);
 			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
@@ -14969,7 +14998,7 @@ struct LibplaceboVideoRenderer::Impl
 				std::memory_order_acq_rel))
 			{
 				CaptureRenderedOutput(nullptr, "libplacebo-owned",
-					frameGeneration, sourceSequence, image);
+					frameGeneration, sourceSequence, image, frameDvLuminance);
 			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
