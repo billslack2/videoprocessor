@@ -57,8 +57,8 @@ they must not contain requirements that are absent from this file.
 | VP-0023 | Done | Alpha P010 sample-range contract and conversion regression tests |
 | VP-0030 | Done | Rotate debug logs with a fixed default retention of ten files |
 | VP-0031 | Done | Make debug-log retention configurable |
-| VP-0032 | Backlog | Alpha renderer field-aware GPU deinterlacing |
-| VP-0033 | Backlog | Alpha renderer libplacebo frame-mixing smooth motion |
+| VP-0032 | In progress | Alpha renderer field-aware GPU deinterlacing |
+| VP-0033 | In progress | Alpha renderer libplacebo frame-mixing smooth motion |
 | VP-0034 | Done | Restart-free mixed-aspect NLS |
 | VP-0035 | Done | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |

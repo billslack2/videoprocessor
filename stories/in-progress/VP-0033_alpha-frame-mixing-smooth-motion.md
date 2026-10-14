@@ -2,9 +2,7 @@
 
 ## Status
 
-Backlog — low priority. Alpha refresh-rate switching normally removes the need
-for this feature. It is a fallback for unavoidable source/display-rate mismatch,
-not a replacement for correct refresh switching.
+In progress — configuration and renderer integration implemented; beta merged, DV2 integration checks pending.
 
 ## User story
 
@@ -70,3 +68,7 @@ cadence, nor weaken the existing display-rate/restart safety rules.
 - It is disabled by default and never replaces normal refresh-rate matching.
 - Timing, buffering, and fallback behavior are bounded and observable.
 - The feature does not claim or attempt true motion-compensated interpolation.
+
+## Implementation progress — 2026-10-14
+
+User authorized full Motion/chroma configuration and merges into current beta and DV2. Validation is narrowed to VP configuration loading, persistence and libplacebo integration; visual-quality comparisons are not required for this request. Beta PR [#158](https://github.com/billslack2/videoprocessor/pull/158) merged; DV2 is preserving its independent additions and newly merged subtitle/aspect-ratio fix before retesting. No deployment or active configuration changes.

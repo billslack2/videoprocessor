@@ -2,8 +2,7 @@
 
 ## Status
 
-Backlog — low priority. This matters for interlaced broadcast and legacy inputs,
-but not for the progressive HDMI/movie paths that currently dominate VP use.
+In progress — configuration and renderer integration implemented; beta merged, DV2 integration checks pending.
 
 ## User story
 
@@ -70,3 +69,7 @@ does not provide it, or add motion-compensated frame interpolation.
   queue starvation, or presentation loops.
 - Existing progressive Alpha playback is unchanged when the feature is off or
   unavailable.
+
+## Implementation progress — 2026-10-14
+
+User authorized full Motion/chroma configuration and merges into current beta and DV2. Validation is narrowed to VP configuration loading, persistence and libplacebo integration; visual-quality comparisons are not required for this request. Beta PR [#158](https://github.com/billslack2/videoprocessor/pull/158) merged; DV2 is preserving its independent additions and newly merged subtitle/aspect-ratio fix before retesting. No deployment or active configuration changes.
