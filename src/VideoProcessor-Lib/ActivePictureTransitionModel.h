@@ -181,6 +181,10 @@ struct ActivePictureAxisEvidenceSet
 	uint8_t leftPictureStrongZoneMask = 0, rightPictureStrongZoneMask = 0;
 	int leftPictureNonBlackMinimum = -1, rightPictureNonBlackMinimum = -1;
 	bool verticalCropProfileEvaluated = false, verticalCropProfileClean = false;
+    // Exact-current glyph exclusions are independently proved by the subtitle
+    // worker. Their strict profile retains two scan steps for filtered chroma;
+    // the ordinary unmasked profile keeps its existing one-step contract.
+    bool verticalCropGlyphExclusions = false;
 	// Outward padding retains uncertainty rows; it is never extra inward crop.
 	int verticalCropGuardTop = 0, verticalCropGuardBottom = 0;
 	bool HasVerticalCropBoundaryGuard() const
@@ -191,6 +195,7 @@ struct ActivePictureAxisEvidenceSet
 	bool HasFailedBar() const { return horizontal.FailedBar() || vertical.FailedBar(); }
 	bool SupportsVerticalCropDespiteSideAmbiguity(const ActivePictureBounds& bounds) const
 	{
+        const int maxGuard=std::max(2,bounds.rasterHeight/540)*(verticalCropGlyphExclusions?2:1);
 		return horizontal.FailedBar() && horizontal.scanComplete &&
 			horizontal.reason == ActivePictureAxisReason::BAR_EDGE_REJECTED &&
 			vertical.state == ActivePictureAxisState::TRUSTED_BARS && vertical.scanComplete &&
@@ -199,8 +204,8 @@ struct ActivePictureAxisEvidenceSet
 			bounds.rasterWidth >= 320 && bounds.rasterHeight >= 180 &&
 			bounds.top > 0 && bounds.bottom < bounds.rasterHeight && bounds.bottom > bounds.top &&
 			sidePictureWidth == bounds.rasterWidth && sidePictureHeight == bounds.rasterHeight &&
-			verticalCropGuardTop >= 0 && verticalCropGuardTop <= std::max(2, bounds.rasterHeight / 540) &&
-			verticalCropGuardBottom >= 0 && verticalCropGuardBottom <= std::max(2, bounds.rasterHeight / 540) &&
+			verticalCropGuardTop >= 0 && verticalCropGuardTop <= maxGuard &&
+			verticalCropGuardBottom >= 0 && verticalCropGuardBottom <= maxGuard &&
 			sidePictureTop >= bounds.top && sidePictureTop < sidePictureBottom &&
 			sidePictureBottom <= bounds.bottom &&
 			sidePictureTop - bounds.top == verticalCropGuardTop &&
@@ -232,6 +237,7 @@ struct ActivePictureAxisEvidenceSet
 			rightPictureNonBlackMinimum == other.rightPictureNonBlackMinimum &&
 			verticalCropProfileEvaluated == other.verticalCropProfileEvaluated &&
 			verticalCropProfileClean == other.verticalCropProfileClean &&
+            verticalCropGlyphExclusions == other.verticalCropGlyphExclusions &&
 			verticalCropGuardTop == other.verticalCropGuardTop && verticalCropGuardBottom == other.verticalCropGuardBottom;
 	}
 };

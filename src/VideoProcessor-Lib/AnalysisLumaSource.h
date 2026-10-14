@@ -2,20 +2,22 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include <ColorSpace.h>
 #include <VideoFrameEncoding.h>
 
-// A renderer-independent, source-coordinate analysis contract. It never owns
-// pixels: consumers may only request the small, bounded sample grids they need.
-// RGB sources are decoded into 10-bit full-range luma/chroma evidence so P010
-// consumers do not need a converted full-frame buffer.
+// A renderer-independent, source-coordinate analysis contract. Legacy raw
+// views can borrow pixels or retain an immutable per-frame backing owner.
+// The sampler retains beta 10-bit rounding and chroma footprints.
 enum class AnalysisLumaFormat
 {
 	P010,
 	P210,
 	NativeRgb,
 	NativeYuv422,
+	DecodedDolbyVision422,
+	SdrTunnelRgb,
 };
 
 struct AnalysisLumaSample
@@ -37,6 +39,8 @@ struct AnalysisLumaSource
 	VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
 	ColorSpace colorspace = ColorSpace::UNKNOWN;
 	uint64_t generation = 0;
+	uint8_t rgbBitAlignment = 0; // SDR tunnel: 1 high, 2 low eight bits
+	std::shared_ptr<const void> backingOwner;
 
 	bool IsValid() const;
 	bool Sample(int x, int y, AnalysisLumaSample& result) const;

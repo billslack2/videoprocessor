@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 enum class RendererResetReason
@@ -67,6 +68,19 @@ constexpr bool QueuePolicyApplyRequiresGraphReset(
 	bool directShowRendererActive)
 {
 	return directShowRendererActive;
+}
+
+// A bounded Alpha queue can remain full during normal downstream
+// backpressure. Do not infer a stalled renderer from queue occupancy alone;
+// this predicate only recognizes an actual hard-capacity violation.
+constexpr bool AlphaQueueOverflowRequiresRecovery(
+	bool alphaRendererActive,
+	std::size_t rawQueueSize,
+	std::size_t convertedQueueSize,
+	std::size_t capacity)
+{
+	return alphaRendererActive && capacity > 0 &&
+		(rawQueueSize > capacity || convertedQueueSize > capacity);
 }
 
 enum class DirectShowGraphEventImpact

@@ -74,3 +74,11 @@ extern "C" __declspec(dllexport) bool __cdecl VideoProcessorLibplaceboIsBeta()
     return false;
 #endif
 }
+
+extern "C" __declspec(dllexport) void __cdecl
+VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink(void* context,
+    AnalysisDiagnosticTrace::RecordSink records, AnalysisDiagnosticTrace::FrameSink frames,
+    AnalysisDiagnosticTrace::FrameCaptureActiveCallback active)
+{
+    AnalysisDiagnosticTrace::SetExternalSinks(context,records,frames,active);
+}

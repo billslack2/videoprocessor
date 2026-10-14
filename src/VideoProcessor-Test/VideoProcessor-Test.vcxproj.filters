@@ -15,6 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AnalysisRecoveryParityTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AnalysisRecoveryDvTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Tests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -50,5 +56,10 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="AnalysisDiagnosticTraceTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
 </Project>

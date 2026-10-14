@@ -6,6 +6,13 @@
 
 namespace DolbyVisionLuminancePolicy
 {
+    constexpr bool ShouldClearStatusForFrame(
+        bool tunnelActive,
+        bool frameHasMetadata)
+    {
+        return !tunnelActive || !frameHasMetadata;
+    }
+
     // The HDMI tunnel supplies DM source range and L1 scene data, not HDR10
     // MaxCLL/MaxFALL. Keep the supplied static range only as an explicit fallback.
     inline DolbyVisionLuminanceStatus Apply(

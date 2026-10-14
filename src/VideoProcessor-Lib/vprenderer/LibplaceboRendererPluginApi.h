@@ -1,6 +1,7 @@
 #pragma once
 
 #include <IRenderer.h>
+#include <AnalysisDiagnosticTrace.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 
@@ -11,7 +12,7 @@
 // Increment whenever the factory signature or any shared interface vtable
 // or shared snapshot layout changes. The executable and optional renderer DLL are deployed separately,
 // so this is the fail-closed ABI boundary for a mismatched pair.
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 26;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 27;
 static constexpr const char* VP_LIBPLACEBO_FLAVOR_EXPORT = "VideoProcessorLibplaceboIsBeta";
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";
@@ -34,3 +35,8 @@ using VideoProcessorLibplaceboCreateRendererFn = IVideoRenderer* (__cdecl *)(
 	VideoProcessorLibplaceboLogSink logSink);
 using VideoProcessorLibplaceboDestroyRendererFn = void (__cdecl *)(
 	IVideoRenderer* renderer);
+
+static constexpr const char* VP_LIBPLACEBO_DIAGNOSTIC_EXPORT = "VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink";
+using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
+    AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
+    AnalysisDiagnosticTrace::FrameCaptureActiveCallback);

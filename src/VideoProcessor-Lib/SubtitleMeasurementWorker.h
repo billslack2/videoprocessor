@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -15,13 +16,28 @@
 class SubtitleMeasurementSampler {
 public:
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
-        const SubtitleBarTrackingReference& prior,double /*fps*/) {
+        const SubtitleBarTrackingReference& prior,double /*fps*/,
+        const ActivePictureEvidence& nativeEvidence = {}) {
         const auto started=std::chrono::steady_clock::now();
+        if(m_analysisDomainKey!=key.identity.analysisDomainKey) {
+            m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
+        }
         m_scanner.SetOptimizationMode(key.optimizationMode);
         m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+        if (result.independentBarAnalysis && result.text.detected && !result.text.held &&
+            !result.text.workLimit) {
+            const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
+            // Prepared queued pixels use a format generation for cache ownership;
+            // the proof contract is bound to the immutable transport identity.
+            auto proofSource=source;proofSource.generation=result.identity.transportGeneration;
+            result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,result,
+                result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
+            if (result.subtitleArProof.accepted)
+                result.subtitleArDarkness=EvaluateActivePictureArDarkness(proofSource,result.subtitleArProof.evidence);
+        }
         // Explicit per-process diagnostic opt-in: save one native
         // input without changing capture, subtitle settings or presentation.
         static const std::string capturePath=[] {
@@ -29,8 +45,17 @@ public:
             _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_PATH");
             const std::string path=value?value:"";std::free(value);return path;
         }();
+        static const bool captureDark=[] {
+            char* value=nullptr;size_t size=0;
+            _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_ALLOW_DARK");
+            const bool enabled=value && std::string(value)=="1";
+            std::free(value);return enabled;
+        }();
+        // Dark-scene diagnostics must not be vetoed by the classification being
+        // investigated. Wait through startup before this explicit capture.
         if(!m_capturedDiagnostic && !capturePath.empty() && source.IsValid() &&
-            !EvaluateActivePictureGlobalNearBlack(source).nearBlack) {
+            (captureDark ? key.identity.acceptedSequence>=240 :
+                !EvaluateActivePictureGlobalNearBlack(source).nearBlack)) {
             m_capturedDiagnostic=true;
             std::ofstream pixels(capturePath,std::ios::binary);
             pixels.write(reinterpret_cast<const char*>(source.data),source.dataBytes);
@@ -45,6 +70,7 @@ public:
     }
 private:
     SubtitleBoxDetector m_scanner;
+    uint64_t m_analysisDomainKey=0;
     bool m_capturedDiagnostic=false;
 };
 
@@ -62,31 +88,83 @@ public:
         auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.active=m_active;
         m_diagnostics={};return out;
     }
+    void Trace(const SubtitleBoxObservation& key,const char* stage,const char* reason="",uint64_t mismatch=0) const noexcept {
+        auto r=AnalysisTraceRecord(key.identity,this,stage,reason);r.kind=AnalysisDiagnosticRecordKindV1::Worker;
+        r.policyGeneration=key.policyGeneration;r.continuityGeneration=key.continuityGeneration;
+        r.nearBarDistance=key.nearBarDistance;r.optimizationMode=key.optimizationMode;r.scriptHint=static_cast<uint32_t>(key.scriptHint);
+        r.sourceWidth=key.width;r.sourceHeight=key.height;r.discontinuity=key.discontinuity;
+        r.flags=(key.analyzed?1u:0u)|(key.text.detected?2u:0u)|(key.sharedPicture.required?4u:0u)|
+            (key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?8u:0u)|(key.pictureAuthorityUnavailableForMeasurement?16u:0u);
+        r.counters[0]=mismatch;r.counters[1]=key.sharedPicture.identity.acceptedSequence;
+        r.resultCode=key.text.lineCount;AnalysisTraceRect(r.subtitle,key.text.bounds);
+        r.metrics[0]=key.analysisMs;r.metrics[1]=key.pictureTop;r.metrics[2]=key.pictureBottom;
+        AnalysisDiagnosticTrace::Emit(r);
+    }
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
-        return SameActivePictureFrameIdentity(a.identity,b.identity) &&
+        const bool samePicture=a.sharedPicture.Matches(b.sharedPicture);
+        // A worker request with no usable shared snapshot follows the same
+        // exact-frame raw-bar path regardless of which unavailable snapshot
+        // was published. This lets active/pending work coalesce safely; a
+        // newly available authority still requires a separate scan.
+        const bool sameUnavailablePictureScan=
+            a.pictureAuthorityUnavailableForMeasurement &&
+            b.pictureAuthorityUnavailableForMeasurement &&
+            a.sharedPicture.required && b.sharedPicture.required &&
+            !a.sharedPicture.AvailableFor(a.identity,a.width,a.height) &&
+            !b.sharedPicture.AvailableFor(b.identity,b.width,b.height);
+        return SameAnalysisFrameIdentity(a.identity,b.identity) &&
             a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode && a.scriptHint==b.scriptHint &&
             a.policyGeneration==b.policyGeneration &&
-            (a.continuityGeneration==b.continuityGeneration || (a.sharedPicture.required && b.sharedPicture.required)) &&
-            a.discontinuity==b.discontinuity && a.sharedPicture.Matches(b.sharedPicture);
+            (a.continuityGeneration==b.continuityGeneration ||
+                (!a.pictureAuthorityUnavailableForMeasurement &&
+                    !b.pictureAuthorityUnavailableForMeasurement &&
+                    !a.independentBarAnalysis && !b.independentBarAnalysis &&
+                    a.sharedPicture.required && b.sharedPicture.required)) &&
+            a.discontinuity==b.discontinuity && (samePicture || sameUnavailablePictureScan);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        for(auto i=m_ready.begin();i!=m_ready.end();++i) if(SameKey(*i,key)) {
-            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(*i,key.continuityGeneration))continue;
-            out=std::move(*i);m_ready.erase(i);return true;
+        uint64_t mismatches=0;
+        for(auto i=m_ready.begin();i!=m_ready.end();++i) {
+            auto candidate=*i;
+            if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture) ||
+                !SameKey(candidate,key)) {
+                mismatches|=(!SameActivePictureFrameIdentity(candidate.identity,key.identity)?1ull:0ull)|
+                    (candidate.identity.analysisDomainKey!=key.identity.analysisDomainKey?2ull:0ull)|
+                    (candidate.policyGeneration!=key.policyGeneration?4ull:0ull)|
+                    (candidate.continuityGeneration!=key.continuityGeneration?8ull:0ull)|
+                    (!candidate.sharedPicture.Matches(key.sharedPicture)?16ull:0ull)|
+                    (candidate.scriptHint!=key.scriptHint?32ull:0ull)|
+                    (candidate.discontinuity!=key.discontinuity?64ull:0ull)|
+                    (candidate.nearBarDistance!=key.nearBarDistance || candidate.optimizationMode!=key.optimizationMode?128ull:0ull)|
+                    (candidate.width!=key.width || candidate.height!=key.height?256ull:0ull);
+                continue;
+            }
+            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
+            Trace(candidate,"worker-consumed","exact-key-accepted");out=std::move(candidate);m_ready.erase(i);return true;
         }
+        Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
         ++m_diagnostics.requestMisses;return false;
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
+        auto requestKey=key;
+        // QueueSubtitleMeasurement submits only valid prepared sources. Mark
+        // the request's scan path here so active and pending jobs can coalesce
+        // before Measure has produced an observation.
+        requestKey.pictureAuthorityUnavailableForMeasurement=
+            requestKey.sharedPicture.required &&
+            !requestKey.sharedPicture.AvailableFor(
+                requestKey.identity,requestKey.width,requestKey.height);
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return;
-        if(m_active && SameKey(m_activeKey,key))return;
-        for(const auto& job:m_pending)if(SameKey(job.key,key))return;
-        for(const auto& ready:m_ready)if(SameKey(ready,key))return;
-        if(m_pending.size()>=8){m_pending.pop_front();++m_diagnostics.dropped;}
-        m_pending.push_back({key,std::move(work)});
+        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");return;}
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");return;}
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");return;}
+        if(m_pending.size()>=8){Trace(m_pending.front().key,"worker-drop","pending-capacity");m_pending.pop_front();++m_diagnostics.dropped;}
+        Trace(requestKey,"worker-submit");
+        m_pending.push_back({requestKey,std::move(work)});
         if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
         m_changed.notify_one();
     }
@@ -108,10 +186,12 @@ private:
                 job=std::move(m_pending.front());m_pending.pop_front();
                 m_active=true;m_activeKey=job.key;
             }
+            Trace(job.key,"worker-start");
             const auto workStart=std::chrono::steady_clock::now();
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
             try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
             {std::lock_guard<std::mutex> lock(m_mutex);
                 const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
@@ -208,7 +288,8 @@ public:
         if(m_elapsed+elapsedMs>(std::max)(0,(std::min)(1000,holdMs)))return Reject("pending-budget-expired");
         if(key.discontinuity || !source.IsValid() ||
             source.width!=key.width || source.height!=key.height || a.transportGeneration!=b.transportGeneration ||
-            a.sourceFormatGeneration!=b.sourceFormatGeneration || a.viewportGeneration!=b.viewportGeneration ||
+            a.sourceFormatGeneration!=b.sourceFormatGeneration || a.analysisDomainKey!=b.analysisDomainKey ||
+            a.viewportGeneration!=b.viewportGeneration ||
             a.rendererGeneration!=b.rendererGeneration || key.width!=old.width || key.height!=old.height ||
             key.nearBarDistance!=old.nearBarDistance || key.scriptHint!=old.scriptHint || key.policyGeneration!=old.policyGeneration ||
             key.continuityGeneration!=old.continuityGeneration) return Reject("pending-context-changed");
@@ -222,8 +303,21 @@ public:
         SubtitleBarEvidence bars;
         if(key.sharedPicture.required) {
             if(!key.sharedPicture.Matches(old.sharedPicture) ||
-                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) return Reject("shared-picture-changed");
-            bars=old.barEvidence;
+                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height))
+                return Reject("shared-picture-changed");
+            // Matching retained Classic geometry does not prove that its bar
+            // planes still exist on this frame. Pending reuse needs the same
+            // current-pixel proof as a complete shared measurement, and the
+            // effective analysis planes must equal the accepted cue's planes.
+            bars=ResolveCurrentSubtitleAnalysisBars(source,ExtractSubtitleBarEvidence(source),
+                key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom);
+            // No fresh detector ink exists on a pending frame. A fixed-plane
+            // revalidation could otherwise mistake the old glyphs themselves
+            // for an encoded edge after the physical bar disappears.
+            if(!bars.available || bars.topRevalidatedAtReference ||
+                bars.bottomRevalidatedAtReference ||
+                bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom)
+                return Reject("current-bars-changed");
         } else {
             bars=ExtractSubtitleBarEvidence(source);
             if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) return Reject("current-bars-changed");

@@ -21,6 +21,13 @@ namespace
 			(static_cast<uint16_t>(address[1]) << 8)) >> 6);
 	}
 
+	// DV output stores exact 12-bit codes in the high bits of 16-bit lanes.
+	// The established detector contract uses the upper ten bits (no rounding).
+	uint16_t DecodedDolbyVisionCode(const uint8_t* address)
+	{
+		return P010Code(address);
+	}
+
 	uint32_t ReadBigEndian32(const uint8_t* address)
 	{
 		return (static_cast<uint32_t>(address[0]) << 24) |
@@ -278,6 +285,10 @@ bool AnalysisLumaSource::IsValid() const
 	if (!CheckedMultiply(rowBytes, static_cast<size_t>(height), requiredBytes) ||
 		requiredBytes > dataBytes)
 		return false;
+	if (format == AnalysisLumaFormat::SdrTunnelRgb)
+		return encoding == VideoFrameEncoding::R210 &&
+			(rgbBitAlignment == 1 || rgbBitAlignment == 2) &&
+			rowBytes >= static_cast<size_t>(width) * 4;
 	if (format == AnalysisLumaFormat::NativeRgb)
 	{
 		if (encoding == VideoFrameEncoding::R12B ||
@@ -302,7 +313,8 @@ bool AnalysisLumaSource::IsValid() const
 		chromaRowBytes < static_cast<size_t>(width) * 2)
 		return false;
 	size_t chromaBytes = 0;
-	const size_t chromaHeight = format == AnalysisLumaFormat::P210 ?
+	const size_t chromaHeight = format == AnalysisLumaFormat::P210 ||
+		format == AnalysisLumaFormat::DecodedDolbyVision422 ?
 		static_cast<size_t>(height) : static_cast<size_t>(height / 2);
 	return CheckedMultiply(chromaRowBytes, chromaHeight, chromaBytes) &&
 		requiredBytes <= std::numeric_limits<size_t>::max() - chromaBytes &&
@@ -313,31 +325,51 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)
 		return false;
-	if (format != AnalysisLumaFormat::NativeRgb)
+	if (format != AnalysisLumaFormat::NativeRgb &&
+		format != AnalysisLumaFormat::SdrTunnelRgb)
 	{
 		if (format == AnalysisLumaFormat::NativeYuv422)
 			return ReadNativeYuv422(*this, x, y, result);
 		const uint8_t* luma = data + static_cast<size_t>(y) * rowBytes +
 			static_cast<size_t>(x) * 2;
 		const size_t lumaBytes = rowBytes * static_cast<size_t>(height);
-		const size_t chromaLine = format == AnalysisLumaFormat::P210 ?
+		const size_t chromaLine = format == AnalysisLumaFormat::P210 ||
+			format == AnalysisLumaFormat::DecodedDolbyVision422 ?
 			static_cast<size_t>(y) : static_cast<size_t>(y / 2);
 		const uint8_t* chroma = data + lumaBytes + chromaLine * chromaRowBytes +
 			static_cast<size_t>(x / 2) * 4;
-		result.luma = P010Code(luma);
-		result.chromaU = P010Code(chroma);
-		result.chromaV = P010Code(chroma + 2);
+		const auto readCode = format == AnalysisLumaFormat::DecodedDolbyVision422 ?
+			DecodedDolbyVisionCode : P010Code;
+		result.luma = readCode(luma);
+		result.chromaU = readCode(chroma);
+		result.chromaV = readCode(chroma + 2);
 		return true;
 	}
 	uint16_t red = 0;
 	uint16_t green = 0;
 	uint16_t blue = 0;
-	if (!ReadRgb10(*this, x, y, red, green, blue))
+	if (format == AnalysisLumaFormat::SdrTunnelRgb)
+	{
+		const uint8_t* pixel = data + static_cast<size_t>(y) * rowBytes +
+			static_cast<size_t>(x) * 4;
+		const uint32_t word = ReadBigEndian32(pixel);
+		auto channel = [this](uint16_t code)
+		{
+			const uint8_t byte = static_cast<uint8_t>(rgbBitAlignment == 1 ?
+				(code >> 2) : (code & 0xff));
+			return Expand8To10(byte);
+		};
+		red = channel(static_cast<uint16_t>((word >> 20) & 0x3ff));
+		green = channel(static_cast<uint16_t>((word >> 10) & 0x3ff));
+		blue = channel(static_cast<uint16_t>(word & 0x3ff));
+	}
+	else if (!ReadRgb10(*this, x, y, red, green, blue))
 		return false;
 	const bool bt2020 = colorspace == ColorSpace::BT_2020;
-	const bool limitedRgb = encoding == VideoFrameEncoding::R210 ||
+	const bool limitedRgb = format != AnalysisLumaFormat::SdrTunnelRgb &&
+		(encoding == VideoFrameEncoding::R210 ||
 		encoding == VideoFrameEncoding::R10b ||
-		encoding == VideoFrameEncoding::R10l;
+		encoding == VideoFrameEncoding::R10l);
 	if (limitedRgb)
 	{
 		const LimitedRgbCoefficients& coefficients = bt2020 ?
@@ -377,6 +409,10 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 
 const char* AnalysisLumaFormatName(const AnalysisLumaSource& source)
 {
+	if (source.format == AnalysisLumaFormat::DecodedDolbyVision422)
+		return "decoded-dv-12bit-422";
+	if (source.format == AnalysisLumaFormat::SdrTunnelRgb)
+		return "sdr-tunnel-rgb8";
 	if (source.format == AnalysisLumaFormat::NativeRgb)
 		return "native-rgb-sparse";
 	if (source.format == AnalysisLumaFormat::NativeYuv422)

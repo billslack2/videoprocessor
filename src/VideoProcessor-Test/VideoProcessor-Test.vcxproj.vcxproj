@@ -185,6 +185,8 @@
     <ClCompile Include="SubtitleBoxDetectorTests.cpp" />
     <ClCompile Include="SubtitleOpaqueCardRefinementTests.cpp" />
     <ClCompile Include="SubtitleBoxLookaheadTests.cpp" />
+    <ClCompile Include="AnalysisRecoveryParityTests.cpp" />
+    <ClCompile Include="AnalysisRecoveryDvTests.cpp" />
     <ClCompile Include="SubtitleMeasurementWorkerTests.cpp" />
     <ClCompile Include="SubtitleCutPasteTests.cpp" />
     <ClCompile Include="LookaheadOutwardProofTests.cpp">
@@ -200,6 +202,9 @@
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="NearBlackNativeBoundaryRecoveryTests.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="SubtitleTranslationReversalTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="AlphaSourceCropPolicyTests.cpp">
@@ -249,6 +254,8 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="DebugLogRetentionTests.cpp" />
+    <ClCompile Include="AnalysisDiagnosticTraceTests.cpp" />
+    <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
 	<ClCompile Include="DisplayRefreshRateEstimatorTests.cpp" />
 	<ClCompile Include="DisplayRefreshRateWindowTests.cpp" />

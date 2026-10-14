@@ -54,6 +54,10 @@
   in the sidecar must be supplied from independently observed source geometry) and a `.txt` sidecar (dimensions, strides, format, encoding, color space,
   picture bounds, script hint). Clear the variable for ordinary launches; do
   not commit captured video pixels. This does not change active configuration.
+  If the suspected fault is the near-black classification itself, also set
+  `VP_SUBTITLE_CAPTURE_ALLOW_DARK=1` for that diagnostic child only. It captures
+  after 240 accepted frames so a dark paused picture is not vetoed by the
+  classifier under investigation. Clear both variables for ordinary launches.
 
 ## Deployment
 

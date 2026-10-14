@@ -49,6 +49,7 @@ namespace AlphaSourceCrop
         {
             return a.transportGeneration == b.transportGeneration &&
                 a.sourceFormatGeneration == b.sourceFormatGeneration &&
+                a.analysisDomainKey == b.analysisDomainKey &&
                 a.viewportGeneration == b.viewportGeneration &&
                 a.rendererGeneration == b.rendererGeneration;
         }
@@ -63,7 +64,7 @@ namespace AlphaSourceCrop
                 observation.axisEvidence.HasFailedBar() ||
                 !BothEdgesExpand(base, observation.bounds) ||
                 !retention.analysisValid || !retention.presentationValid ||
-                retention.globalNearBlack || !retention.expansionStripsAvailable ||
+                retention.EffectiveArNearBlack() || !retention.expansionStripsAvailable ||
                 !SameBounds(retention.expansionBase, base) ||
                 !SameBounds(retention.expansionCandidate, observation.bounds))
                 return false;
@@ -140,7 +141,7 @@ namespace AlphaSourceCrop
             current.sourceGeneration != identity.transportGeneration ||
             current.sourceSequence == 0 || current.sourceSequence != identity.acceptedSequence ||
             !SameBounds(current.presentationBeforeObservation, current.trustedGeometry) ||
-            current.retention.globalNearBlack ||
+            current.retention.EffectiveArNearBlack() ||
             current.presentation.action != VerticalBarPresentationAction::NONE ||
             current.translationDriftActive || current.previousOutward.verticalPresentationSeen ||
             current.evidence.classification == ActivePictureClassification::FULL_RASTER_TRUSTED)
@@ -258,7 +259,7 @@ namespace AlphaSourceCrop
         const bool retainedCrop = current.evidence.available &&
             current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
             current.retention.analysisValid && current.retention.presentationValid &&
-            !current.retention.globalNearBlack && current.retention.excludedBandsPixelSafe &&
+            !current.retention.EffectiveArNearBlack() && current.retention.excludedBandsPixelSafe &&
             SameBounds(state.base, current.trustedGeometry) &&
             (ContainsBounds(current.trustedGeometry, current.evidence.trustedBounds) ||
              IsPixelSafeCropReaffirmation(current.trustedGeometry, current.evidence.trustedBounds, true));
@@ -314,7 +315,7 @@ namespace AlphaSourceCrop
         {
             const auto& sample = samples[i];
             relativeReady = relativeReady && sample.nearBlackEvaluated &&
-                !sample.retention.globalNearBlack && sample.retention.analysisValid && sample.retention.presentationValid &&
+                !sample.retention.EffectiveArNearBlack() && sample.retention.analysisValid && sample.retention.presentationValid &&
                 sample.retention.expansionStripsAvailable &&
                 SameBounds(first.observation.bounds, sample.observation.bounds) &&
                 CurrentRelativeEvidence(base, sample.observation, sample.relativeContrast,
@@ -502,7 +503,7 @@ namespace AlphaSourceCrop
                 sample.observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
                 sample.observation.axisEvidence.HasBlockingFailedBar(sample.observation.bounds) ||
                 !SameBounds(first.observation.bounds, sample.observation.bounds) ||
-                !sample.nearBlackEvaluated || sample.retention.globalNearBlack)
+                !sample.nearBlackEvaluated || sample.retention.EffectiveArNearBlack())
                 return {};
             if (i != 0 &&
                 ((sample.identity.sourceFrameNumber != 0 || samples[i-1].identity.sourceFrameNumber != 0) &&
@@ -590,7 +591,7 @@ namespace AlphaSourceCrop
             !CurrentScheduledExpansion(proof, currentIdentity, current, modelWouldAdmit) ||
             current.translationDriftActive || !current.retention.analysisValid ||
             !current.retention.presentationValid || !current.retention.expansionStripsAvailable ||
-            current.retention.globalNearBlack)
+            current.retention.EffectiveArNearBlack())
             return false;
         if (current.presentation.action == VerticalBarPresentationAction::FIT)
         {

@@ -2,6 +2,7 @@
 #include <vprenderer/SubtitleBarRecovery.h>
 
 #include <ActivePictureEvidence.h>
+#include <SubtitleBoxLookahead.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
@@ -11,6 +12,9 @@
 #include <vector>
 #include <chrono>
 #include <sstream>
+#include <cstdlib>
+#include <fstream>
+#include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -137,6 +141,160 @@ namespace VideoProcessorTest
 				static_cast<double>(width) / (bottom - top),
 				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
+		void FillDistributedDarkPicture(P010Frame& frame, int top, int bottom,
+			int barFloor)
+		{
+			frame.Fill(barFloor, 512, 512);
+			frame.BlackOutside(0, top, frame.width, bottom, barFloor);
+
+			const int innerLeft = frame.width / 20;
+			const int innerRight = frame.width - frame.width / 20;
+			const int innerTop = top + (bottom - top) / 10;
+			const int innerBottom = bottom - (bottom - top) / 10;
+			const int innerWidth = innerRight - innerLeft;
+			const int innerHeight = innerBottom - innerTop;
+
+			for (int y = top; y < bottom; ++y)
+			{
+				const int gridY = std::max(0, std::min(23,
+					(y - innerTop) * 24 / innerHeight));
+				for (int x = 0; x < frame.width; ++x)
+				{
+					const int gridX = std::max(0, std::min(23,
+						(x - innerLeft) * 24 / innerWidth));
+					const int tileX = gridX / 6;
+					const int tileY = gridY / 6;
+					const bool lowerTile = (tileX == 0 && tileY == 0) ||
+						(tileX == 3 && tileY == 3);
+					const int low = barFloor == 0
+						? (lowerTile ? 36 : 48)
+						: (lowerTile ? 68 : 84);
+					const int high = barFloor == 0
+						? (lowerTile ? 48 : 64)
+						: (lowerTile ? 80 : 96);
+					const int code = (gridX % 6) < 4 ? high : low;
+					WriteCode(frame.bytes.data() +
+						static_cast<size_t>(y) * frame.pitch + x * 2, code);
+				}
+			}
+		}
+
+		AnalysisLumaSource AsDecodedDolbyVisionSource(
+			const P010Frame& frame)
+		{
+			AnalysisLumaSource source = frame.P210Source();
+			source.format = AnalysisLumaFormat::DecodedDolbyVision422;
+			source.encoding = VideoFrameEncoding::UNKNOWN;
+			return source;
+		}
+		P010Frame MakeMeasuredBarProbe(bool p210 = false,
+			bool connectedTop = false, bool connectedBottom = false,
+			bool unequalSideBars = false)
+		{
+			P010Frame frame(3840, 2160, 64, p210);
+			frame.BlackOutside(unequalSideBars ? 64 : 0, 272,
+				unequalSideBars ? 3712 : 3840, 1884);
+			// A short sparse intrusion in the lower encoded bar moves the raw
+			// full-width scan inward. Both outside flanks still show the true,
+			// symmetric 272/1884 picture edges. It is deliberately geometry-only;
+			// renderer publication also requires a real crossing text anchor.
+			frame.FillRectangle(1400, 1920, 1900, 1924, 800);
+			if (connectedTop)
+				frame.FillRectangle(1400, 260, 1480, 284, 300);
+			if (connectedBottom)
+				frame.FillRectangle(1400, 1876, 1480, 1896, 300);
+			return frame;
+		}
+
+		void AddProbeTwoLineCaption(P010Frame& frame, bool crossingGlyph)
+		{
+			// A centered opaque card crosses the bottom boundary. Only the second
+			// line's actual glyphs cross in the positive case; the negative case
+			// keeps the same card but both glyph lines remain inside the picture.
+			frame.FillRectangle(900, 1738, 2940, 1900, 64);
+			const int lineTops[2] = { 1750, crossingGlyph ? 1832 : 1812 };
+			for (int top : lineTops)
+				for (int glyph = 0; glyph < 29; ++glyph)
+				{
+					const int x = 1108 + glyph * 56;
+					frame.FillRectangle(x - 2, top - 2, x + 36, top + 58, 64);
+					frame.FillRectangle(x, top, x + 34, top + 56, 800);
+					frame.FillRectangle(x + 8, top + 10, x + 26, top + 46, 64);
+				}
+		}
+		void AddMeasuredProofCard(P010Frame& frame, int pictureBottom,
+			bool crossingGlyph, int panelLeft = 1190, int panelRight = 2650)
+		{
+			const int firstTop = pictureBottom - 134;
+			const int secondTop = pictureBottom - (crossingGlyph ? 52 : 72);
+			frame.FillRectangle(panelLeft, pictureBottom - 146, panelRight,
+				pictureBottom + 16, 64);
+			for (const int top : { firstTop, secondTop })
+				for (int glyph = 0; glyph < 26; ++glyph)
+				{
+					const int x = panelLeft + 20 + glyph * 52;
+					frame.FillRectangle(x - 2, top - 2, x + 36, top + 58, 64);
+					frame.FillRectangle(x, top, x + 34, top + 56, 800);
+					frame.FillRectangle(x + 8, top + 10, x + 26, top + 46, 64);
+				}
+		}
+
+		ActivePictureFrameIdentity MakeSubtitleProofIdentity(
+			const AnalysisLumaSource& source, uint64_t sequence)
+		{
+			ActivePictureFrameIdentity identity;
+			identity.transportGeneration = source.generation;
+			identity.acceptedSequence = sequence;
+			identity.sourceFrameNumber = 1000 + sequence;
+			identity.captureTimestamp = 1000000 + sequence * 1000;
+			identity.sourceFormatGeneration = 3;
+			identity.viewportGeneration = 7;
+			identity.rendererGeneration = 11;
+			identity.analysisDomainKey = 13;
+			return identity;
+		}
+
+		SubtitleBoxObservation MeasureSubtitleProofFrame(
+			const AnalysisLumaSource& source,
+			const ActivePictureFrameIdentity& identity,
+			uint64_t policyGeneration, uint64_t continuityGeneration,
+			SubtitleScriptHint scriptHint,
+			const ActivePictureBounds* sharedBounds = nullptr,
+			const ActivePictureFrameIdentity* sharedIdentity = nullptr)
+		{
+			SubtitleBoxDetector scanner;
+			scanner.SetScriptHint(scriptHint);
+			scanner.SetNearBarDistance(20);
+			SubtitlePictureAuthority shared;
+			shared.required = true;
+			shared.identity = sharedIdentity ? *sharedIdentity : identity;
+			if (sharedBounds)
+				shared.bounds = *sharedBounds;
+			return SubtitleBoxLookahead::Measure(scanner, source,
+				ExtractActivePictureEvidence(source), identity, false, {},
+				policyGeneration, continuityGeneration, shared);
+		}
+
+		P010Frame MakeSubtitleProofFrame(int pictureTop, int pictureBottom,
+			bool crossingGlyph, int panelLeft = 1190, int panelRight = 2650)
+		{
+			P010Frame frame(3840, 2160);
+			frame.BlackOutside(0, pictureTop, frame.width, pictureBottom, 64);
+			AddMeasuredProofCard(frame, pictureBottom, crossingGlyph,
+				panelLeft, panelRight);
+			return frame;
+		}
+		ActivePictureBounds CurrentMeasuredVerticalBars(
+			const AnalysisLumaSource& source, SubtitleBarEvidence* evidence = nullptr)
+		{
+			const auto bars = ExtractSubtitleBarEvidence(source);
+			if (evidence) *evidence = bars;
+			const int top = bars.top & ~1;
+			const int bottom = std::min(source.height, (bars.bottom + 1) & ~1);
+			return { 0, top, source.width, bottom, source.width, source.height,
+				static_cast<double>(source.width) / std::max(1, bottom - top),
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+		}
         struct ContainedInspectionFixture
         {
             AlphaSourceCrop::VerticalInspectionBridgeState inspection;
@@ -234,6 +392,835 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(ExpansionStripsRecordDistributedAboveBlackFloorSupport)
+        {
+            P010Frame frame(3840, 2160);
+            frame.BlackOutside(0, 68, 3840, 2092, 64);
+            const auto scope = ScopePresentation(3840, 2160, 276, 1884);
+            const auto evidence = EvaluateActivePicturePresentationRetention(
+                frame.P010Source(), scope);
+            Assert::IsTrue(evidence.analysisValid && evidence.presentationValid);
+            Assert::IsTrue(evidence.expansionStripsAvailable);
+            Assert::AreEqual(64, evidence.presentationBlackFloor);
+            Assert::AreEqual(88, evidence.presentationBlackThreshold);
+            for (const auto* edge : { &evidence.expandingTop, &evidence.expandingBottom })
+            {
+                for (const uint8_t rowMask : edge->distributedSupportDepthRowsByQuartile)
+                {
+                    int supportedRows = 0;
+                    for (int depth = 0; depth < 6; ++depth)
+                        supportedRows += (rowMask >> depth) & 1u;
+                    Assert::IsTrue(supportedRows >= 2,
+                        L"Every along-edge quartile needs support on multiple sampled depth rows.");
+                }
+            }
+        }
+
+        TEST_METHOD(MeasuredCurrentFlanksRecoverOnlyStrictSymmetricBarsFromRawAsymmetry)
+        {
+            for (bool p210 : { false, true })
+            {
+                auto frame = MakeMeasuredBarProbe(p210);
+                const auto source = p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw = ExtractActivePictureEvidence(source);
+                SubtitleBarEvidence independent;
+                const auto candidate = CurrentMeasuredVerticalBars(source, &independent);
+
+                Assert::IsTrue(raw.available);
+                Assert::IsTrue(raw.classification == ActivePictureClassification::PROVISIONAL);
+                Assert::IsTrue(raw.axisEvidence.vertical.reason == ActivePictureAxisReason::BAR_ASYMMETRY);
+                Assert::IsTrue(raw.top.trusted && raw.bottom.trusted,
+                    L"The raw asymmetry has two individually plausible but unequal edge measurements.");
+                Assert::IsTrue(raw.axisEvidence.horizontal.state == ActivePictureAxisState::FULL_EXTENT_SUPPORTED &&
+                    raw.axisEvidence.horizontal.reason == ActivePictureAxisReason::FULL_EXTENT_SUPPORTED &&
+                    !raw.axisEvidence.horizontal.barCandidate);
+                Assert::IsTrue(independent.available);
+                Assert::AreEqual(272, candidate.top);
+                Assert::AreEqual(1884, candidate.bottom);
+                Assert::IsTrue(candidate.top == (candidate.top & ~1) &&
+                    candidate.bottom == (candidate.bottom & ~1));
+                Assert::IsTrue(raw.proposedBounds.bottom > candidate.bottom +
+                    std::max(2, source.height / 540),
+                    L"The current bar pair must correct a materially displaced raw edge.");
+
+                const auto recovered = EvaluateMeasuredVerticalBarHypothesis(
+                    source, raw, candidate);
+                Assert::IsTrue(recovered.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(candidate.top, recovered.trustedBounds.top);
+                Assert::AreEqual(candidate.bottom, recovered.trustedBounds.bottom);
+                Assert::IsTrue(recovered.trustedBounds.trustedBarAxes ==
+                    ActivePictureBounds::BarAxes::TOP_BOTTOM);
+            }
+        }
+
+        TEST_METHOD(MeasuredBarsRejectMissingStaleAsymmetricAndConflictingEvidence)
+        {
+            auto frame = MakeMeasuredBarProbe();
+            const auto source = frame.P010Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const auto candidate = CurrentMeasuredVerticalBars(source);
+            Assert::IsTrue(raw.classification == ActivePictureClassification::PROVISIONAL);
+
+            auto rejects = [&](const AnalysisLumaSource& pixels,
+                const ActivePictureEvidence& observed,
+                const ActivePictureBounds& measured)
+            {
+                const auto result = EvaluateMeasuredVerticalBarHypothesis(
+                    pixels, observed, measured);
+                Assert::IsFalse(result.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+            };
+
+            auto missingTop = candidate;
+            missingTop.top = 0;
+            rejects(source, raw, missingTop);
+
+            auto staleRaster = candidate;
+            --staleRaster.rasterWidth;
+            rejects(source, raw, staleRaster);
+
+            auto asymmetric = candidate;
+            asymmetric.bottom = 1840;
+            rejects(source, raw, asymmetric);
+
+            auto shiftedInsidePicture = candidate;
+            shiftedInsidePicture.bottom = 1860;
+            rejects(source, raw, shiftedInsidePicture);
+
+            auto conflictingAxes = raw;
+            conflictingAxes.axisEvidence.horizontal.state = ActivePictureAxisState::UNKNOWN;
+            conflictingAxes.axisEvidence.horizontal.reason = ActivePictureAxisReason::BAR_EDGE_REJECTED;
+            conflictingAxes.axisEvidence.horizontal.scanComplete = true;
+            conflictingAxes.axisEvidence.horizontal.barCandidate = true;
+            rejects(source, conflictingAxes, candidate);
+
+            for (bool connectedTop : { false, true })
+            for (bool connectedBottom : { false, true })
+            {
+                if (connectedTop == connectedBottom) continue;
+                auto connected = MakeMeasuredBarProbe(false, connectedTop, connectedBottom);
+                const auto connectedSource = connected.P010Source();
+                const auto connectedRaw = ExtractActivePictureEvidence(connectedSource);
+                SubtitleBarEvidence connectedBars;
+                const auto connectedCandidate = CurrentMeasuredVerticalBars(connectedSource, &connectedBars);
+                Assert::IsTrue(connectedBars.available);
+                Assert::AreEqual(272, connectedCandidate.top);
+                Assert::AreEqual(1884, connectedCandidate.bottom);
+                Assert::IsTrue(connectedRaw.classification == ActivePictureClassification::PROVISIONAL);
+                // Reuse the clean asymmetric nomination against the modified current pixels.
+                // This reaches the measured helper's own continuation veto.
+                rejects(connectedSource, raw, connectedCandidate);
+                rejects(connectedSource, connectedRaw, connectedCandidate);
+            }
+        }
+
+        TEST_METHOD(MeasuredPairCannotOverrideFullRasterOrAConflictingHorizontalAxis)
+        {
+            P010Frame full(3840, 2160, 64);
+            const auto fullSource = full.P010Source();
+            const auto fullRaw = ExtractActivePictureEvidence(fullSource);
+            const ActivePictureBounds fabricated = {
+                0, 272, 3840, 1884, 3840, 2160,
+                3840.0 / (1884 - 272), ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            Assert::IsTrue(fullRaw.classification == ActivePictureClassification::FULL_RASTER_TRUSTED);
+            Assert::IsFalse(EvaluateMeasuredVerticalBarHypothesis(
+                fullSource, fullRaw, fabricated).classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED);
+
+            auto sideBars = MakeMeasuredBarProbe(false, false, false, true);
+            const auto sideSource = sideBars.P010Source();
+            const auto sideRaw = ExtractActivePictureEvidence(sideSource);
+            const auto sideCandidate = CurrentMeasuredVerticalBars(sideSource);
+            Assert::IsTrue(sideRaw.axisEvidence.horizontal.state !=
+                ActivePictureAxisState::FULL_EXTENT_SUPPORTED ||
+                sideRaw.axisEvidence.horizontal.reason !=
+                    ActivePictureAxisReason::FULL_EXTENT_SUPPORTED);
+            Assert::IsFalse(EvaluateMeasuredVerticalBarHypothesis(
+                sideSource, sideRaw, sideCandidate).classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"A vertically plausible pair cannot erase unresolved or cropped horizontal geometry.");
+        }
+        TEST_METHOD(ColdStartMeasuredBarWrapperRequiresCurrentCrossingGlyphs)
+        {
+            auto captioned = MakeMeasuredBarProbe();
+            AddProbeTwoLineCaption(captioned, true);
+            const auto captionSource = captioned.P010Source();
+            const auto captionRaw = ExtractActivePictureEvidence(captionSource);
+            const auto captionBars = CurrentMeasuredVerticalBars(captionSource);
+            Assert::IsTrue(captionRaw.classification == ActivePictureClassification::PROVISIONAL);
+            Assert::IsTrue(captionRaw.axisEvidence.vertical.reason == ActivePictureAxisReason::BAR_ASYMMETRY);
+            SubtitleBoxDetector scanner;
+            scanner.SetScriptHint(SubtitleScriptHint::Latin);
+            const auto measuredText = scanner.Analyze(captionSource, captionBars.top,
+                captionBars.bottom, 7, captionSource.generation);
+            Assert::IsTrue(measuredText.detected && !measuredText.workLimit);
+            Assert::AreEqual(2, measuredText.lineCount,
+                L"The fixture must contain a real two-line cue, not a rectangular proxy.");
+            Assert::IsTrue(measuredText.anchor.Valid());
+            Assert::IsTrue(measuredText.nearBarEligibilityMeasured && measuredText.nearBarEligible);
+            Assert::IsTrue(measuredText.anchor.top < captionBars.bottom &&
+                measuredText.anchor.bottom > captionBars.bottom,
+                L"Actual detector-owned anchor glyphs must cross the corrected lower boundary.");
+
+            const auto backed = EvaluateCaptionBackedVerticalBarHypothesis(
+                captionSource, captionRaw, SubtitleScriptHint::Latin, 7);
+            Assert::IsTrue(backed.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(captionBars.top, backed.trustedBounds.top);
+            Assert::AreEqual(captionBars.bottom, backed.trustedBounds.bottom);
+
+            auto panelOnly = MakeMeasuredBarProbe();
+            panelOnly.FillRectangle(1400, 1828, 2400, 1896, 64);
+            const auto panelSource = panelOnly.P010Source();
+            const auto panelRaw = ExtractActivePictureEvidence(panelSource);
+            Assert::IsTrue(panelRaw.classification == ActivePictureClassification::PROVISIONAL);
+            const auto panelResult = EvaluateCaptionBackedVerticalBarHypothesis(
+                panelSource, panelRaw, SubtitleScriptHint::Latin, 8);
+            Assert::IsFalse(panelResult.classification == ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"An opaque card plus sparse horizontal intrusion cannot substitute for owned glyphs.");
+
+            auto paddedOnly = MakeMeasuredBarProbe();
+            AddProbeTwoLineCaption(paddedOnly, false);
+            const auto paddedSource = paddedOnly.P010Source();
+            const auto paddedRaw = ExtractActivePictureEvidence(paddedSource);
+            Assert::IsTrue(paddedRaw.classification == ActivePictureClassification::PROVISIONAL);
+            const auto paddedResult = EvaluateCaptionBackedVerticalBarHypothesis(
+                paddedSource, paddedRaw, SubtitleScriptHint::Latin, 9);
+            Assert::IsFalse(paddedResult.classification == ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"A card or padded box crossing the boundary is insufficient when glyph anchors stay inside.");
+        }
+        TEST_METHOD(CurrentWorkerReaffirmationRequiresExactFreshIdentityAndGlyphEvidence)
+        {
+            auto frame = MakeMeasuredBarProbe();
+            AddProbeTwoLineCaption(frame, true);
+            const auto source = frame.P010Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const auto established = CurrentMeasuredVerticalBars(source);
+            const uint64_t sequence = 17, policy = 41, continuity = 9;
+            const auto script = SubtitleScriptHint::Latin;
+
+            ActivePictureFrameIdentity identity;
+            identity.transportGeneration = source.generation;
+            identity.acceptedSequence = sequence;
+            identity.sourceFrameNumber = 120;
+            identity.captureTimestamp = 120000;
+            identity.sourceFormatGeneration = 2;
+            identity.viewportGeneration = 6;
+            identity.rendererGeneration = 8;
+            identity.analysisDomainKey = 10;
+
+            SubtitleBoxDetector scanner;
+            scanner.SetScriptHint(script);
+            auto text = scanner.Analyze(source, established.top, established.bottom,
+                sequence, identity.viewportGeneration);
+            Assert::IsTrue(text.detected && !text.held && !text.workLimit);
+            Assert::IsTrue(text.nearBarEligibilityMeasured && text.nearBarEligible);
+            Assert::IsTrue(text.anchor.Valid() && text.anchor.top < established.bottom &&
+                text.anchor.bottom > established.bottom);
+
+            SubtitleBoxObservation current;
+            current.sharedPicture.required = true;
+            current.sharedPicture.bounds = established;
+            current.sharedPicture.identity = identity;
+            current.nearBarDistance = scanner.NearBarDistance();
+            current.optimizationMode = scanner.OptimizationMode();
+            current.scriptHint = script;
+            current.identity = identity;
+            current.text = text;
+            current.width = source.width;
+            current.height = source.height;
+            current.pictureTop = established.top;
+            current.pictureBottom = established.bottom;
+            current.policyGeneration = policy;
+            current.continuityGeneration = continuity;
+            current.analyzed = true;
+            current.barAuthority = true;
+
+            const auto reaffirmed = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                source, raw, established, current, identity, policy, continuity, script);
+            Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+                int(reaffirmed.classification));
+            Assert::AreEqual(established.top, reaffirmed.trustedBounds.top);
+            Assert::AreEqual(established.bottom, reaffirmed.trustedBounds.bottom);
+
+            auto rejects = [&](const SubtitleBoxObservation& candidate)
+            {
+                const auto result = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                    source, raw, established, candidate, identity, policy, continuity, script);
+                Assert::IsFalse(result.classification ==
+                    ActivePictureClassification::BAR_CROP_TRUSTED);
+            };
+
+            uint64_t ActivePictureFrameIdentity::* const identityFields[] = {
+                &ActivePictureFrameIdentity::transportGeneration,
+                &ActivePictureFrameIdentity::acceptedSequence,
+                &ActivePictureFrameIdentity::sourceFrameNumber,
+                &ActivePictureFrameIdentity::captureTimestamp,
+                &ActivePictureFrameIdentity::sourceFormatGeneration,
+                &ActivePictureFrameIdentity::viewportGeneration,
+                &ActivePictureFrameIdentity::rendererGeneration,
+                &ActivePictureFrameIdentity::analysisDomainKey};
+            for (const auto field : identityFields)
+            {
+                auto stale = current;
+                ++(stale.identity.*field);
+                rejects(stale);
+            }
+
+            auto wrongAuthorityDomain = current;
+            ++wrongAuthorityDomain.sharedPicture.identity.analysisDomainKey;
+            rejects(wrongAuthorityDomain);
+            auto missingSharedAuthority = current;
+            missingSharedAuthority.sharedPicture.required = false;
+            rejects(missingSharedAuthority);
+            auto movedSharedBounds = current;
+            movedSharedBounds.sharedPicture.bounds.bottom -= 2;
+            rejects(movedSharedBounds);
+            auto movedPictureBottom = current;
+            movedPictureBottom.pictureBottom -= 2;
+            rejects(movedPictureBottom);
+
+            auto wrongScript = current;
+            wrongScript.scriptHint = SubtitleScriptHint::Thai;
+            rejects(wrongScript);
+            auto wrongPolicy = current;
+            ++wrongPolicy.policyGeneration;
+            rejects(wrongPolicy);
+            auto wrongContinuity = current;
+            ++wrongContinuity.continuityGeneration;
+            rejects(wrongContinuity);
+            auto notAnalyzed = current;
+            notAnalyzed.analyzed = false;
+            rejects(notAnalyzed);
+            auto cheapRefresh = current;
+            cheapRefresh.analysisRefresh = true;
+            rejects(cheapRefresh);
+            auto pendingRefresh = current;
+            pendingRefresh.pendingRefresh = true;
+            rejects(pendingRefresh);
+            auto noBarAuthority = current;
+            noBarAuthority.barAuthority = false;
+            rejects(noBarAuthority);
+            auto trackedBars = current;
+            trackedBars.barTrackingAuthority = true;
+            rejects(trackedBars);
+            auto trackedAnchor = current;
+            trackedAnchor.currentAnchorUsesTrackedEdge = true;
+            rejects(trackedAnchor);
+            auto heldText = current;
+            heldText.text.held = true;
+            rejects(heldText);
+            auto workLimitedText = current;
+            workLimitedText.text.workLimit = true;
+            rejects(workLimitedText);
+            auto missingText = current;
+            missingText.text.detected = false;
+            rejects(missingText);
+            auto unmeasuredEligibility = current;
+            unmeasuredEligibility.text.nearBarEligibilityMeasured = false;
+            rejects(unmeasuredEligibility);
+            auto ineligibleText = current;
+            ineligibleText.text.nearBarEligible = false;
+            rejects(ineligibleText);
+            auto nonCrossingAnchor = current;
+            nonCrossingAnchor.text.anchor = {1100, 1500, 1200, 1550};
+            rejects(nonCrossingAnchor);
+
+            auto wrongSourceGeneration = source;
+            ++wrongSourceGeneration.generation;
+            const auto generationMismatch = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                wrongSourceGeneration, raw, established, current, identity,
+                policy, continuity, script);
+            Assert::IsFalse(generationMismatch.classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED);
+            auto wrongCurrentIdentity = identity;
+            ++wrongCurrentIdentity.acceptedSequence;
+            const auto identityMismatch = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                source, raw, established, current, wrongCurrentIdentity,
+                policy, continuity, script);
+            Assert::IsFalse(identityMismatch.classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED);
+        }
+        TEST_METHOD(DistributedBarsAcquireCurrentSubtitleAndArAcrossAnalysisFormats)
+        {
+            for(int format=0;format<3;++format)
+            {
+                P010Frame frame(3840,2160,0,format!=0);
+                frame.BlackOutside(0,276,3840,1884,64);
+                frame.FillRectangle(0,276,1100,1884,70);
+                AddMeasuredProofCard(frame,1884,true);
+                auto source=format==0?frame.P010Source():frame.P210Source();
+                if(format==2) {
+                    source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+                    source.colorspace=ColorSpace::BT_2020;
+                }
+                const auto identity=MakeSubtitleProofIdentity(source,1);
+                const auto raw=ExtractActivePictureEvidence(source);
+                const auto current=MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin);
+                Assert::IsTrue(current.barEvidence.topDistributedBoundary);
+                Assert::IsTrue(current.barEvidence.bottomDistributedBoundary);
+                Assert::IsTrue(current.independentBarAnalysis && current.text.detected);
+                Assert::IsTrue(current.text.lineCount>=2);
+                const auto proof=EvaluateSubtitleAssistedVerticalBarProof(source,raw,current,
+                    identity,47,23,SubtitleScriptHint::Latin);
+                Logger::WriteMessage(proof.reason);
+                Logger::WriteMessage(proof.evidence.verticalBarGuardProfile.reason);
+                Assert::IsTrue(proof.accepted,L"Cold subtitle acquisition must not depend on an already accepted AR.");
+                Assert::AreEqual(268,proof.candidate.top);Assert::AreEqual(1892,proof.candidate.bottom);
+                Assert::AreEqual(0,proof.candidate.left);Assert::AreEqual(source.width,proof.candidate.right);
+                Assert::IsTrue(proof.evidence.axisEvidence.horizontal.FailedBar());
+                Assert::IsTrue(proof.evidence.axisEvidence.HasVerifiedVerticalCropProfile(proof.candidate));
+                auto missingMaskContract=proof.evidence.axisEvidence;
+                missingMaskContract.verticalCropGlyphExclusions=false;
+                Assert::IsFalse(missingMaskContract.HasVerifiedVerticalCropProfile(proof.candidate));
+                ActivePictureTransitionModel model;
+                ActivePictureTransitionDecision decision;
+                for(uint64_t sequence=1;sequence<=ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;++sequence) {
+                    const auto freshIdentity=MakeSubtitleProofIdentity(source,sequence);
+                    const auto fresh=MeasureSubtitleProofFrame(source,freshIdentity,47,23,SubtitleScriptHint::Latin);
+                    const auto freshProof=EvaluateSubtitleAssistedVerticalBarProof(source,raw,fresh,
+                        freshIdentity,47,23,SubtitleScriptHint::Latin);
+                    Assert::IsTrue(freshProof.accepted);
+                    decision=model.Observe(MakeActivePictureObservation(freshProof.evidence,sequence,24.0));
+                }
+                Assert::IsTrue(decision.publish && decision.stable);
+                Assert::AreEqual(268,decision.bounds.top);
+                Assert::AreEqual(1892,decision.bounds.bottom);
+                auto stale=identity;++stale.acceptedSequence;
+                Assert::IsFalse(proof.IsCurrentFor(source,stale,47,23,SubtitleScriptHint::Latin));
+                // Even a small dim unowned patch must fail the strict masked
+                // profile; aggregate black coverage would otherwise accept it.
+                frame.FillRectangle(100,1960,500,1964,80);
+                const auto dimPatch=EvaluateSubtitleAssistedVerticalBarProof(source,
+                    ExtractActivePictureEvidence(source),current,identity,47,23,
+                    SubtitleScriptHint::Latin);
+                Assert::IsFalse(dimPatch.accepted);
+                Assert::AreEqual(std::string("subtitle-excluded-band-profile-failed"),
+                    std::string(dimPatch.reason));
+                frame.FillRectangle(100,1960,500,1964,64);
+                // Keep the current glyph ownership, but put real picture through
+                // the proposed bar outside it: the AR proof must still veto it.
+                frame.FillRectangle(100,1800,850,1970,300);
+                Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(source,
+                    ExtractActivePictureEvidence(source),current,identity,47,23,
+                    SubtitleScriptHint::Latin).accepted);
+            }
+        }
+
+        TEST_METHOD(SubtitleAssistedProofUsesCurrentBackingOrOwnedCrossingInk)
+        {
+            const uint64_t policy = 43, continuity = 17;
+            const auto script = SubtitleScriptHint::Latin;
+            auto backingFrame = MakeSubtitleProofFrame(272, 1884, false);
+            const auto backingSource = backingFrame.P010Source();
+            const auto backingRaw = ExtractActivePictureEvidence(backingSource);
+            const auto backingIdentity = MakeSubtitleProofIdentity(backingSource, 1);
+            auto backingCurrent = MeasureSubtitleProofFrame(backingSource,
+                backingIdentity, policy, continuity, script);
+            Assert::IsTrue(backingCurrent.analyzed && backingCurrent.barAuthority &&
+                backingCurrent.independentBarAnalysis);
+            Assert::IsTrue(backingCurrent.text.detected &&
+                !backingCurrent.text.held && !backingCurrent.text.workLimit);
+            Assert::IsTrue(backingCurrent.text.nearBarEligibilityMeasured &&
+                backingCurrent.text.nearBarEligible);
+            Assert::IsTrue(backingCurrent.text.capturePanelMeasured &&
+                backingCurrent.text.capturePanel.Valid());
+            Assert::IsTrue(backingCurrent.text.lineCount >= 2 &&
+                backingCurrent.text.lineCapturePanels[0].Valid() &&
+                backingCurrent.text.lineCapturePanels[1].Valid(),
+                L"The backing positive uses the detector's measured per-line card interiors.");
+            Assert::IsTrue(backingCurrent.text.anchor.bottom <
+                backingCurrent.pictureBottom,
+                L"This case has a current near-bar cue whose glyphs stay inside the picture.");
+            Assert::IsTrue(backingCurrent.text.capturePanel.bottom >=
+                backingCurrent.pictureBottom - 3,
+                L"Only the measured panel touches the picture-side boundary row.");
+
+            const auto backingProof = EvaluateSubtitleAssistedVerticalBarProof(
+                backingSource, backingRaw, backingCurrent, backingIdentity,
+                policy, continuity, script);
+            Assert::IsTrue(backingProof.accepted,
+                L"Current native edges and measured picture-side backing should prove this geometry.");
+            Assert::IsTrue(backingProof.usedMeasuredBacking);
+            Assert::IsTrue(backingProof.IsCurrentFor(backingSource, backingIdentity,
+                policy, continuity, script));
+            Assert::AreEqual(272, backingProof.candidate.top);
+            Assert::AreEqual(1884, backingProof.candidate.bottom);
+
+            // Repeat a real current worker scan with the established geometry.
+            const auto nextIdentity = MakeSubtitleProofIdentity(backingSource, 2);
+            auto nextCurrent = MeasureSubtitleProofFrame(backingSource, nextIdentity,
+                policy, continuity, script, &backingProof.candidate, &backingIdentity);
+            const auto nextProof = EvaluateSubtitleAssistedVerticalBarProof(
+                backingSource, backingRaw, nextCurrent, nextIdentity,
+                policy, continuity, script);
+            Assert::IsTrue(nextProof.accepted);
+            Assert::IsTrue(nextProof.IsCurrentFor(backingSource, nextIdentity,
+                policy, continuity, script));
+
+            auto stale = nextIdentity;
+            ++stale.acceptedSequence;
+            Assert::IsFalse(nextProof.IsCurrentFor(backingSource, stale,
+                policy, continuity, script));
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                backingSource, backingRaw, nextCurrent, stale,
+                policy, continuity, script).accepted);
+
+            uint64_t ActivePictureFrameIdentity::* const staleIdentityFields[] = {
+                &ActivePictureFrameIdentity::sourceFrameNumber,
+                &ActivePictureFrameIdentity::captureTimestamp,
+                &ActivePictureFrameIdentity::analysisDomainKey };
+            for (const auto field : staleIdentityFields)
+            {
+                auto wrongIdentity = nextIdentity;
+                ++(wrongIdentity.*field);
+                Assert::IsFalse(nextProof.IsCurrentFor(backingSource,
+                    wrongIdentity, policy, continuity, script));
+                Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                    backingSource, backingRaw, nextCurrent, wrongIdentity,
+                    policy, continuity, script).accepted);
+            }
+            Assert::IsFalse(nextProof.IsCurrentFor(backingSource, nextIdentity,
+                policy + 1, continuity, script));
+            Assert::IsFalse(nextProof.IsCurrentFor(backingSource, nextIdentity,
+                policy, continuity + 1, script));
+            Assert::IsFalse(nextProof.IsCurrentFor(backingSource, nextIdentity,
+                policy, continuity, SubtitleScriptHint::Thai));
+
+            auto crossingFrame = MakeSubtitleProofFrame(272, 1884, true);
+            const auto crossingSource = crossingFrame.P010Source();
+            const auto crossingRaw = ExtractActivePictureEvidence(crossingSource);
+            const auto crossingIdentity = MakeSubtitleProofIdentity(crossingSource, 3);
+            auto crossingCurrent = MeasureSubtitleProofFrame(crossingSource,
+                crossingIdentity, policy, continuity, script);
+            Assert::IsTrue(crossingCurrent.independentBarAnalysis &&
+                crossingCurrent.text.detected && crossingCurrent.ink &&
+                crossingCurrent.ink->rawEvidenceComplete);
+            Assert::IsTrue(crossingCurrent.text.anchor.top <
+                crossingCurrent.pictureBottom &&
+                crossingCurrent.text.anchor.bottom >
+                crossingCurrent.pictureBottom,
+                L"This case has detector-owned current glyphs crossing the bar edge.");
+            const auto crossingProof = EvaluateSubtitleAssistedVerticalBarProof(
+                crossingSource, crossingRaw, crossingCurrent, crossingIdentity,
+                policy, continuity, script);
+            Assert::IsTrue(crossingProof.accepted);
+            Assert::IsTrue(crossingProof.unknownSamples > 0,
+                L"Crossing glyph samples are unknown rather than treated as black support.");
+
+            // Stress an over-inclusive (>2/3) current ownership mask. It may
+            // remove support, but it must never manufacture edge evidence.
+            auto overOccluded = crossingCurrent;
+            auto overOccludedInk = std::make_shared<SubtitleInkSnapshot>(
+                *crossingCurrent.ink);
+            for (auto& word : overOccludedInk->ownedInk)
+                word = ~uint64_t{ 0 };
+            overOccluded.ink = overOccludedInk;
+            const auto insufficientSupport = EvaluateSubtitleAssistedVerticalBarProof(
+                crossingSource, crossingRaw, overOccluded, crossingIdentity,
+                policy, continuity, script);
+            Assert::IsFalse(insufficientSupport.accepted,
+                L"An over-inclusive glyph mask exceeding two thirds of edge samples leaves insufficient independent support.");
+
+            // Current native bars may replace an older retained aperture while
+            // the same kind of current caption is visible.
+            auto changedFrame = MakeSubtitleProofFrame(188, 1972, true);
+            const auto changedSource = changedFrame.P010Source();
+            const auto changedIdentity = MakeSubtitleProofIdentity(changedSource, 4);
+            auto changedCurrent = MeasureSubtitleProofFrame(changedSource,
+                changedIdentity, policy, continuity, script,
+                &backingProof.candidate, &backingIdentity);
+            const auto changedRaw = ExtractActivePictureEvidence(changedSource);
+            const auto changedProof = EvaluateSubtitleAssistedVerticalBarProof(
+                changedSource, changedRaw, changedCurrent, changedIdentity,
+                policy, continuity, script);
+            Assert::IsTrue(changedProof.accepted,
+                L"Fresh current physical bars and cue pixels can update changed geometry.");
+            Assert::AreEqual(188, changedProof.candidate.top);
+            Assert::AreEqual(1972, changedProof.candidate.bottom);
+        }
+
+
+
+        TEST_METHOD(SubtitleProofAcceptsGenuinelyMeasuredSixtyPercentBackingCard)
+        {
+            const uint64_t policy = 67, continuity = 31;
+            const auto script = SubtitleScriptHint::Latin;
+            auto frame = MakeSubtitleProofFrame(272, 1884, false);
+            // Extend the source card on both sides of its centered current text.
+            // The resulting physical opaque card spans 60% of the raster.
+            frame.FillRectangle(768, 1738, 1190, 1900, 64);
+            frame.FillRectangle(2650, 1738, 3072, 1900, 64);
+
+            const auto source = frame.P010Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const auto identity = MakeSubtitleProofIdentity(source, 21);
+            auto current = MeasureSubtitleProofFrame(source, identity,
+                policy, continuity, script);
+            Assert::IsTrue(current.text.detected && current.text.lineCount >= 2 &&
+                current.text.capturePanelMeasured && current.text.capturePanel.Valid());
+            Assert::IsTrue(current.text.capturePanel.right -
+                current.text.capturePanel.left >= source.width * 55 / 100,
+                L"The worker must measure the broad card from source pixels, not accept a hand-authored panel.");
+            for (int line = 0; line < 2; ++line)
+                Assert::IsTrue(current.text.lineCapturePanels[line].Valid() &&
+                    current.text.lineCapturePanels[line].right -
+                        current.text.lineCapturePanels[line].left >= source.width * 55 / 100,
+                    L"Each accepted subtitle line must retain its measured wide card interior.");
+
+            const auto proof = EvaluateSubtitleAssistedVerticalBarProof(
+                source, raw, current, identity, policy, continuity, script);
+            Assert::IsTrue(proof.accepted,
+                L"A measured 60%-width opaque card can obscure the center while both native outer flanks remain sufficient.");
+            Assert::IsTrue(proof.usedMeasuredBacking);
+            Assert::IsTrue(proof.topFlankSupport >= 48 &&
+                proof.bottomFlankSupport >= 48);
+            Assert::AreEqual(272, proof.candidate.top);
+            Assert::AreEqual(1884, proof.candidate.bottom);
+        }
+
+        TEST_METHOD(ContinuousSubtitlesCarryChangedBoundsThroughTheArTransitionModel)
+        {
+            const uint64_t policy = 71, continuity = 37;
+            const auto script = SubtitleScriptHint::Latin;
+            auto oldFrame = MakeSubtitleProofFrame(272, 1884, true);
+            auto newFrame = MakeSubtitleProofFrame(188, 1972, true);
+            SubtitleBoxDetector scanner;
+            scanner.SetScriptHint(script);
+            scanner.SetNearBarDistance(20);
+            ActivePictureTransitionModel model;
+            ActivePictureBounds sharedBounds;
+            ActivePictureFrameIdentity sharedIdentity;
+            ActivePictureTransitionDecision transition;
+            uint64_t sequence = 1;
+            unsigned subtitleFrames = 0;
+
+            auto observe = [&](const P010Frame& pixels)
+            {
+                const auto source = pixels.P010Source();
+                const auto raw = ExtractActivePictureEvidence(source);
+                const auto identity = MakeSubtitleProofIdentity(source, sequence);
+                SubtitlePictureAuthority shared;
+                shared.required = true;
+                shared.identity = sharedIdentity.acceptedSequence
+                    ? sharedIdentity : identity;
+                shared.bounds = sharedBounds;
+                const auto current = SubtitleBoxLookahead::Measure(scanner,
+                    source, raw, identity, false, {}, policy, continuity, shared);
+                Assert::IsTrue(current.text.detected && !current.text.held &&
+                    !current.text.workLimit,
+                    L"A current subtitle is present on every frame through the geometry transition.");
+                const auto proof = EvaluateSubtitleAssistedVerticalBarProof(
+                    source, raw, current, identity, policy, continuity, script);
+                Assert::IsTrue(proof.accepted,
+                    L"Current subtitle pixels and fresh native bars must prove each frame without a clean interval.");
+                transition = model.Observe(MakeActivePictureObservation(
+                    proof.evidence, sequence, 24.0));
+                sharedBounds = proof.candidate;
+                sharedIdentity = identity;
+                ++sequence;
+                ++subtitleFrames;
+            };
+
+            for (int frame = 0; frame < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+                ++frame)
+                observe(oldFrame);
+            Assert::IsTrue(transition.publish && transition.stable,
+                L"The initial crop is published after adjacent current subtitle proofs.");
+            Assert::AreEqual(272, transition.bounds.top);
+            Assert::AreEqual(1884, transition.bounds.bottom);
+
+            // The subtitle persists while the measured native aperture expands.
+            // Every adjacent frame has a real crossing cue; no empty-caption or
+            // subtitle-free frame is inserted before publication.
+            observe(newFrame);
+            Assert::IsFalse(transition.publish,
+                L"One changed-boundary proof remains pending confirmation.");
+            Assert::AreEqual(272, transition.stableBounds.top,
+                L"The established presentation remains while the changed geometry is pending.");
+            Assert::AreEqual(1884, transition.stableBounds.bottom);
+            observe(newFrame);
+            Assert::IsTrue(transition.publish && transition.stable,
+                L"Adjacent current proofs publish the expanded crop without a clean-caption frame.");
+            Assert::AreEqual(188, transition.bounds.top);
+            Assert::AreEqual(1972, transition.bounds.bottom);
+            Assert::AreEqual(6u, subtitleFrames);
+        }
+
+        TEST_METHOD(SubtitleProofDoesNotMaskTheGapBetweenMeasuredLineCards)
+        {
+            const uint64_t policy = 61, continuity = 29;
+            const auto script = SubtitleScriptHint::Latin;
+            auto frame = MakeSubtitleProofFrame(272, 1884, false);
+            const auto source = frame.P010Source();
+            const auto identity = MakeSubtitleProofIdentity(source, 17);
+            auto current = MeasureSubtitleProofFrame(source, identity,
+                policy, continuity, script);
+            Assert::IsTrue(current.analyzed && current.text.detected &&
+                current.independentBarAnalysis && current.ink &&
+                current.ink->rawEvidenceComplete);
+            Assert::AreEqual(1884, current.pictureBottom);
+
+            // Add a narrow real picture continuation after the worker has
+            // established current subtitle, bar, and ink evidence. The raw
+            // native scan is refreshed against the changed source pixels; the
+            // added stripe is too narrow to change its independent bar profile.
+            // It avoids all 48 broad edge samples but intersects adjacent dense
+            // continuity samples, which must remain visible through the gap.
+            frame.FillRectangle(120, 1810, 220, 1884, 64);
+            frame.FillRectangle(420, 1810, 520, 1884, 64);
+            frame.FillRectangle(300, 1874, 340, 1898, 800);
+            const auto raw = ExtractActivePictureEvidence(source);
+            Assert::AreEqual(static_cast<int>(ActivePictureClassification::PROVISIONAL),
+                static_cast<int>(raw.classification));
+            Assert::IsTrue(raw.axisEvidence.vertical.reason ==
+                ActivePictureAxisReason::BAR_PICTURE_CONTINUATION,
+                L"The added stripe is independently recognized as connected picture, while the worker's current physical bars and geometry remain unchanged.");
+
+            // Provide explicit per-line measured-card geometry to isolate the
+            // pure proof's backing-mask contract. Each synthetic line box
+            // intersects its own actual black panel; the aggregate cleanup
+            // rectangle also contains the uncovered bright stripe.
+            current.text.lineCount = 2;
+            current.text.lineBounds = {};
+            current.text.lineBounds[0] = {140, 1820, 200, 1850};
+            current.text.lineBounds[1] = {440, 1820, 500, 1850};
+            current.text.lineCapturePanels = {};
+            current.text.lineCapturePanels[0] = {120, 1810, 220, 1884};
+            current.text.lineCapturePanels[1] = {420, 1810, 520, 1884};
+            current.text.capturePanelMeasured = true;
+            current.text.capturePanel = {120, 1810, 520, 1884};
+            Assert::IsTrue(current.text.capturePanel.left <= 300 &&
+                current.text.capturePanel.right >= 340);
+            Assert::IsFalse(current.text.lineCapturePanels[0].left <= 300 &&
+                current.text.lineCapturePanels[0].right >= 340);
+            Assert::IsFalse(current.text.lineCapturePanels[1].left <= 300 &&
+                current.text.lineCapturePanels[1].right >= 340);
+
+            const auto proof = EvaluateSubtitleAssistedVerticalBarProof(
+                source, raw, current, identity, policy, continuity, script);
+            Assert::IsFalse(proof.accepted,
+                L"The picture stripe in the gap between line cards must remain visible and veto the stale crop.");
+            Assert::AreEqual(std::string("connected-picture-crosses-bar"),
+                std::string(proof.reason));
+        }
+
+        TEST_METHOD(SubtitleAssistedProofRejectsUnsupportedCityLikeContentAndStaleWorkerState)
+        {
+            const uint64_t policy = 59, continuity = 23;
+            const auto script = SubtitleScriptHint::Latin;
+            P010Frame fullRaster(3840, 2160);
+            fullRaster.Fill(300, 512, 512);
+            // Subtitle-like text sits among bright lower-frame details, but
+            // there are no encoded bars or physical boundaries to prove.
+            for (int x : { 48, 184, 3660, 3776 })
+                fullRaster.FillRectangle(x, 2010, x + 44, 2110, 800);
+            AddMeasuredProofCard(fullRaster, 2080, true);
+            const auto source = fullRaster.P010Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const auto identity = MakeSubtitleProofIdentity(source, 5);
+            auto current = MeasureSubtitleProofFrame(source, identity,
+                policy, continuity, script);
+            const auto rejected = EvaluateSubtitleAssistedVerticalBarProof(
+                source, raw, current, identity, policy, continuity, script);
+            Assert::IsFalse(rejected.accepted,
+                L"Bright picture detail and a near-edge cue cannot invent physical bars.");
+            Assert::IsTrue(raw.classification !=
+                ActivePictureClassification::BAR_CROP_TRUSTED ||
+                !current.independentBarAnalysis);
+
+            auto supportedFrame = MakeSubtitleProofFrame(272, 1884, true);
+            const auto supportedSource = supportedFrame.P010Source();
+            const auto supportedRaw = ExtractActivePictureEvidence(supportedSource);
+            const auto supportedIdentity = MakeSubtitleProofIdentity(supportedSource, 6);
+            auto supportedCurrent = MeasureSubtitleProofFrame(supportedSource,
+                supportedIdentity, policy, continuity, script);
+            Assert::IsTrue(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, supportedCurrent,
+                supportedIdentity, policy, continuity, script).accepted);
+
+            auto staleWorker = supportedCurrent;
+            ++staleWorker.identity.analysisDomainKey;
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, staleWorker, supportedIdentity,
+                policy, continuity, script).accepted);
+            staleWorker = supportedCurrent;
+            staleWorker.independentBarAnalysis = false;
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, staleWorker, supportedIdentity,
+                policy, continuity, script).accepted);
+            staleWorker = supportedCurrent;
+            staleWorker.text.held = true;
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, staleWorker, supportedIdentity,
+                policy, continuity, script).accepted);
+            staleWorker = supportedCurrent;
+            staleWorker.pendingRefresh = true;
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, staleWorker, supportedIdentity,
+                policy, continuity, script).accepted);
+            staleWorker = supportedCurrent;
+            staleWorker.discontinuity = true;
+            Assert::IsFalse(EvaluateSubtitleAssistedVerticalBarProof(
+                supportedSource, supportedRaw, staleWorker, supportedIdentity,
+                policy, continuity, script).accepted);
+        }
+        TEST_METHOD(CurrentWorkerReaffirmationStillRequiresFreshStrictBarPixels)
+        {
+            auto frame = MakeMeasuredBarProbe();
+            // This dim, one-row stripe is outside the active picture and below
+            // glyph contrast, but lands in a strict lower-bar profile sample.
+            frame.FillRectangle(200, 1906, 900, 1907, 150);
+            AddProbeTwoLineCaption(frame, true);
+            const auto source = frame.P010Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const ActivePictureBounds established = {
+                0, 272, 3840, 1884, 3840, 2160,
+                3840.0 / (1884 - 272), ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            Assert::IsTrue(raw.classification == ActivePictureClassification::PROVISIONAL);
+            Assert::IsTrue(raw.axisEvidence.vertical.reason ==
+                ActivePictureAxisReason::BAR_ASYMMETRY);
+            Assert::IsFalse(EvaluateMeasuredVerticalBarHypothesis(
+                source, raw, established).classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"A current non-black bar sample must fail the existing strict edge proof.");
+
+            const uint64_t sequence = 21, policy = 43, continuity = 11;
+            const auto script = SubtitleScriptHint::Latin;
+            ActivePictureFrameIdentity identity;
+            identity.transportGeneration = source.generation;
+            identity.acceptedSequence = sequence;
+            identity.sourceFrameNumber = 124;
+            identity.captureTimestamp = 124000;
+            identity.sourceFormatGeneration = 2;
+            identity.viewportGeneration = 6;
+            identity.rendererGeneration = 8;
+            identity.analysisDomainKey = 10;
+            SubtitleBoxDetector scanner;
+            scanner.SetScriptHint(script);
+            auto text = scanner.Analyze(source, established.top, established.bottom,
+                sequence, identity.viewportGeneration);
+            Assert::IsTrue(text.detected && !text.workLimit &&
+                text.nearBarEligibilityMeasured && text.nearBarEligible);
+            Assert::IsTrue(text.anchor.top < established.bottom &&
+                text.anchor.bottom > established.bottom);
+            SubtitleBoxObservation current;
+            current.sharedPicture.required = true;
+            current.sharedPicture.bounds = established;
+            current.sharedPicture.identity = identity;
+            current.scriptHint = script;
+            current.identity = identity;
+            current.text = text;
+            current.width = source.width;
+            current.height = source.height;
+            current.pictureTop = established.top;
+            current.pictureBottom = established.bottom;
+            current.policyGeneration = policy;
+            current.continuityGeneration = continuity;
+            current.analyzed = current.barAuthority = true;
+            const auto result = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                source, raw, established, current, identity, policy, continuity, script);
+            Assert::IsFalse(result.classification ==
+                ActivePictureClassification::BAR_CROP_TRUSTED);
+        }
         TEST_METHOD(SharedSubtitleRecoveryReprovesBarsWithoutActiveCaptionHold)
         {
             P010Frame frame(640,360); frame.BlackOutside(0,46,640,314);
@@ -4101,6 +5088,329 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(256), global.lumaSamples);
 		}
 
+		TEST_METHOD(DistributedDarkPictureRequiresNativeBarsAndMatchesP010P210AndDv)
+		{
+			for (int barFloor : { 0, 64 })
+			{
+				P010Frame frame(640, 360, 0, true);
+				FillDistributedDarkPicture(frame, 44, 316, barFloor);
+
+				for (int format = 0; format < 3; ++format)
+				{
+					AnalysisLumaSource source = format == 0
+						? frame.P010Source()
+						: format == 1 ? frame.P210Source()
+							: AsDecodedDolbyVisionSource(frame);
+					const auto native = ExtractActivePictureEvidence(source);
+					Assert::IsTrue(native.available);
+					Assert::AreEqual(static_cast<int>(
+						ActivePictureClassification::BAR_CROP_TRUSTED),
+						static_cast<int>(native.classification));
+					Assert::AreEqual(static_cast<int>(
+						ActivePictureAxisState::TRUSTED_BARS),
+						static_cast<int>(native.axisEvidence.vertical.state));
+					Assert::IsTrue(native.top.trusted && native.bottom.trusted);
+
+					const auto global = EvaluateActivePictureGlobalNearBlack(source);
+					Assert::IsTrue(global.evaluated);
+					Assert::IsTrue(global.nearBlack);
+					const auto ar = EvaluateActivePictureArDarkness(
+						source, native, global);
+					Assert::IsTrue(ar.distributedDarkPicture);
+					Assert::IsFalse(ar.EffectiveNearBlack());
+					Assert::IsTrue(ar.pictureMedian >= ar.barFloor + 32.0);
+					Assert::IsTrue(ar.texturedTiles >= 12);
+					Assert::AreEqual(4, ar.texturedQuadrants);
+					Assert::IsTrue(ar.tileMedianSpread >= 16.0);
+				}
+			}
+		}
+
+		TEST_METHOD(DistributedDarkPictureReleasesOnlyEstablishedGeometryFromDarkSuppression)
+		{
+			P010Frame frame(640, 360, 0, true);
+			FillDistributedDarkPicture(frame, 44, 316, 0);
+			const auto source = frame.P010Source();
+			const auto oldPresentation = ScopePresentation(640, 360, 52, 308);
+			const auto retention = EvaluateActivePicturePresentationRetention(
+				source, oldPresentation);
+
+			Assert::IsTrue(retention.globalNearBlack);
+			Assert::IsTrue(retention.distributedDarkPicture);
+			Assert::IsFalse(retention.EffectiveArNearBlack());
+			Assert::IsTrue(retention.activePicture.available);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(retention.activePicture.classification));
+			const auto expanded = ConstrainNearBlackGeometryChange(
+				retention, oldPresentation);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(expanded.classification));
+			Assert::AreEqual(retention.activePicture.trustedBounds.top,
+				expanded.trustedBounds.top);
+			Assert::AreEqual(retention.activePicture.trustedBounds.bottom,
+				expanded.trustedBounds.bottom);
+			Assert::IsTrue(expanded.trustedBounds.top < oldPresentation.top);
+			Assert::IsTrue(expanded.trustedBounds.bottom > oldPresentation.bottom);
+
+			// A manually assembled near-black result has no distributed-picture
+			// certificate. Its default must continue to protect changed geometry.
+			ActivePicturePresentationRetentionEvidence rawNearBlack;
+			rawNearBlack.analysisValid = true;
+			rawNearBlack.presentationValid = true;
+			rawNearBlack.globalNearBlack = true;
+			rawNearBlack.activePicture = retention.activePicture;
+			Assert::IsTrue(rawNearBlack.EffectiveArNearBlack());
+			Assert::IsFalse(rawNearBlack.distributedDarkPicture);
+			const auto protectedGeometry = ConstrainNearBlackGeometryChange(
+				rawNearBlack, oldPresentation);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(protectedGeometry.classification));
+			Assert::AreEqual(expanded.trustedBounds.top,
+				protectedGeometry.proposedBounds.top);
+			Assert::AreEqual(expanded.trustedBounds.bottom,
+				protectedGeometry.proposedBounds.bottom);
+		}
+
+		TEST_METHOD(ArDarknessExceptionRejectsTitlesCreditsUniformFadesNoiseAndInvalidProof)
+		{
+			const int top = 44, bottom = 316;
+			P010Frame structured(640, 360, 0, true);
+			FillDistributedDarkPicture(structured, top, bottom, 0);
+			const auto structuredSource = structured.P010Source();
+			const auto native = ExtractActivePictureEvidence(structuredSource);
+			const auto global = EvaluateActivePictureGlobalNearBlack(
+				structuredSource);
+			const auto accepted = EvaluateActivePictureArDarkness(
+				structuredSource, native, global);
+			Assert::IsTrue(accepted.distributedDarkPicture);
+
+			P010Frame sparseTitle(640, 360, 0, true);
+			sparseTitle.Fill(90, 512, 512);
+			sparseTitle.BlackOutside(0, top, 640, bottom, 64);
+			sparseTitle.FillRectangle(112, 100, 240, 108, 700);
+			sparseTitle.FillRectangle(160, 176, 288, 184, 700);
+			sparseTitle.FillRectangle(72, 276, 200, 284, 700);
+			const auto titleSource = sparseTitle.P010Source();
+			const auto titleNative = ExtractActivePictureEvidence(titleSource);
+			const auto titleGlobal = EvaluateActivePictureGlobalNearBlack(
+				titleSource);
+			Assert::IsTrue(titleGlobal.nearBlack);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(titleNative.classification));
+			Assert::IsTrue(titleNative.top.trusted);
+			Assert::IsTrue(titleNative.bottom.trusted);
+			const auto title = EvaluateActivePictureArDarkness(
+				titleSource, titleNative, titleGlobal);
+			Assert::IsFalse(title.distributedDarkPicture);
+			Assert::IsTrue(title.EffectiveNearBlack());
+
+			P010Frame credits(640, 360, 0, true);
+			credits.Fill(48, 512, 512);
+			credits.BlackOutside(0, top, 640, bottom, 0);
+			const int innerLeft = 640 / 20;
+			const int innerTop = top + (bottom - top) / 10;
+			const int innerWidth = 640 - 2 * innerLeft;
+			const int innerHeight = (bottom - top) -
+				2 * ((bottom - top) / 10);
+			// Seven offset credit rows create glyph-like high-contrast strokes
+			// in every tile while leaving tile medians and global P90 at the
+			// flat dark background. The rows avoid the global sample grid.
+			for (int line = 0; line < 7; ++line)
+			{
+				const int gridY = line < 6 ? line * 3 + 2 : 21;
+				const int y = innerTop +
+					((gridY * 2 + 1) * innerHeight) / 48;
+				for (int gridX = 0; gridX < 24; ++gridX)
+				{
+					if (gridX % 6 >= 4 || gridX == 4 || gridX == 9 ||
+						gridX == 14 || gridX == 19)
+						continue;
+					const int x = innerLeft +
+						((gridX * 2 + 1) * innerWidth) / 48;
+					credits.FillRectangle(x - 1, y - 1, x + 2, y + 2, 900);
+				}
+			}
+			const auto creditsSource = credits.P010Source();
+			const auto creditsNative = ExtractActivePictureEvidence(creditsSource);
+			const auto creditsGlobal = EvaluateActivePictureGlobalNearBlack(
+				creditsSource);
+			Assert::IsTrue(creditsGlobal.nearBlack);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(creditsNative.classification));
+			Assert::IsTrue(creditsNative.top.trusted);
+			Assert::IsTrue(creditsNative.bottom.trusted);
+			const auto creditsResult = EvaluateActivePictureArDarkness(
+				creditsSource, creditsNative, creditsGlobal);
+			Assert::IsTrue(creditsResult.texturedTiles >= 12);
+			Assert::AreEqual(4, creditsResult.texturedQuadrants);
+			Assert::IsTrue(creditsResult.tileMedianSpread < 16.0);
+			Assert::IsFalse(creditsResult.distributedDarkPicture);
+			Assert::IsTrue(creditsResult.EffectiveNearBlack());
+
+			P010Frame uniform(640, 360, 0, true);
+			uniform.Fill(0, 512, 512);
+			uniform.BlackOutside(0, top, 640, bottom, 0);
+			uniform.FillRectangle(0, top, 640, bottom, 48);
+			const auto uniformSource = uniform.P010Source();
+			const auto uniformNative = ExtractActivePictureEvidence(uniformSource);
+			const auto uniformGlobal = EvaluateActivePictureGlobalNearBlack(
+				uniformSource);
+			Assert::IsTrue(uniformGlobal.nearBlack);
+			const auto uniformResult = EvaluateActivePictureArDarkness(
+				uniformSource, uniformNative, uniformGlobal);
+			Assert::IsFalse(uniformResult.distributedDarkPicture);
+			Assert::IsTrue(uniformResult.EffectiveNearBlack());
+
+			P010Frame noise(640, 360, 0, true);
+			noise.Fill(0, 512, 512);
+			noise.BlackOutside(0, top, 640, bottom, 0);
+			for (int y = top; y < bottom; ++y)
+				for (int x = 0; x < noise.width; ++x)
+				{
+					const uint32_t hash =
+						static_cast<uint32_t>(x) * 73856093u ^
+						static_cast<uint32_t>(y) * 19349663u;
+					WriteCode(noise.bytes.data() +
+						static_cast<size_t>(y) * noise.pitch + x * 2,
+						36 + static_cast<int>(hash % 37));
+				}
+			const auto noiseSource = noise.P010Source();
+			const auto noiseNative = ExtractActivePictureEvidence(noiseSource);
+			const auto noiseGlobal = EvaluateActivePictureGlobalNearBlack(
+				noiseSource);
+			Assert::IsTrue(noiseGlobal.nearBlack);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(noiseNative.classification));
+			Assert::IsTrue(noiseNative.top.trusted);
+			Assert::IsTrue(noiseNative.bottom.trusted);
+			const auto noiseResult = EvaluateActivePictureArDarkness(
+				noiseSource, noiseNative, noiseGlobal);
+			Assert::IsTrue(noiseResult.pictureMedian >=
+				noiseResult.barFloor + 32.0);
+			Assert::IsTrue(noiseResult.texturedTiles >= 12);
+			Assert::AreEqual(4, noiseResult.texturedQuadrants);
+			Assert::IsTrue(noiseResult.tileMedianSpread < 16.0);
+			Assert::IsFalse(noiseResult.distributedDarkPicture);
+			Assert::IsTrue(noiseResult.EffectiveNearBlack());
+
+			P010Frame noBars(640, 360, 0, true);
+			FillDistributedDarkPicture(noBars, 0, 360, 0);
+			const auto noBarsSource = noBars.P010Source();
+			const auto noBarsNative = ExtractActivePictureEvidence(noBarsSource);
+			const auto noBarsGlobal = EvaluateActivePictureGlobalNearBlack(
+				noBarsSource);
+			Assert::IsTrue(noBarsGlobal.nearBlack);
+			Assert::IsFalse(noBarsNative.classification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED);
+			Assert::IsTrue(noBarsNative.axisEvidence.vertical.state !=
+				ActivePictureAxisState::TRUSTED_BARS);
+			Assert::IsFalse(noBarsNative.top.trusted);
+			Assert::IsFalse(noBarsNative.bottom.trusted);
+			const auto noBarsResult = EvaluateActivePictureArDarkness(
+				noBarsSource, noBarsNative, noBarsGlobal);
+			Assert::IsFalse(noBarsResult.distributedDarkPicture);
+			Assert::IsTrue(noBarsResult.EffectiveNearBlack());
+
+			auto rejected = [&](ActivePictureEvidence changed)
+			{
+				const auto result = EvaluateActivePictureArDarkness(
+					structuredSource, changed, global);
+				Assert::IsFalse(result.distributedDarkPicture);
+				Assert::IsTrue(result.EffectiveNearBlack());
+			};
+			auto changed = native;
+			changed.classification = ActivePictureClassification::PROVISIONAL;
+			rejected(changed);
+			changed = native;
+			changed.authorityOrigin =
+				ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+			rejected(changed);
+			changed = native;
+			changed.axisEvidence.vertical.state = ActivePictureAxisState::UNKNOWN;
+			rejected(changed);
+			changed = native;
+			changed.top.trusted = false;
+			rejected(changed);
+			changed = native;
+			changed.bottom.trusted = false;
+			rejected(changed);
+			changed = native;
+			changed.trustedBounds.rasterWidth += 1;
+			rejected(changed);
+
+			auto notDark = global;
+			notDark.nearBlack = false;
+			const auto bright = EvaluateActivePictureArDarkness(
+				structuredSource, native, notDark);
+			Assert::IsFalse(bright.distributedDarkPicture);
+			Assert::IsFalse(bright.EffectiveNearBlack());
+
+			auto invalidSource = structuredSource;
+			invalidSource.dataBytes = 1;
+			Assert::IsFalse(EvaluateActivePictureArDarkness(
+				invalidSource, native, global).distributedDarkPicture);
+		}
+
+		TEST_METHOD(OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture)
+		{
+			char* path = nullptr;
+			size_t length = 0;
+			_dupenv_s(&path, &length, "VP_DARK_AR_ANALYSIS_FRAME");
+			const std::string fixture = path ? path : "";
+			std::free(path);
+			if (fixture.empty())
+			{
+				Logger::WriteMessage(
+					L"Set VP_DARK_AR_ANALYSIS_FRAME to run the captured dark-scene diagnostic.");
+				return;
+			}
+
+			std::ifstream metadata(fixture + ".txt");
+			AnalysisLumaSource source;
+			int format = 0, encoding = 0, colorspace = 0;
+			int top = 0, bottom = 0, script = 0;
+			metadata >> source.width >> source.height >> source.rowBytes
+				>> source.chromaRowBytes >> format >> encoding >> colorspace
+				>> top >> bottom >> script;
+			Assert::IsTrue(bool(metadata));
+			std::ifstream input(fixture, std::ios::binary | std::ios::ate);
+			Assert::IsTrue(bool(input));
+			const auto byteCount = input.tellg();
+			Assert::IsTrue(byteCount > 0);
+			std::vector<uint8_t> pixels(static_cast<size_t>(byteCount));
+			input.seekg(0);
+			input.read(reinterpret_cast<char*>(pixels.data()),
+				static_cast<std::streamsize>(pixels.size()));
+			Assert::IsTrue(bool(input));
+
+			source.data = pixels.data();
+			source.dataBytes = pixels.size();
+			source.format = static_cast<AnalysisLumaFormat>(format);
+			source.encoding = static_cast<VideoFrameEncoding>(encoding);
+			source.colorspace = static_cast<ColorSpace>(colorspace);
+			source.generation = 1;
+			Assert::IsTrue(source.IsValid());
+
+			const auto native = ExtractActivePictureEvidence(source);
+			const auto global = EvaluateActivePictureGlobalNearBlack(source);
+			const auto ar = EvaluateActivePictureArDarkness(
+				source, native, global);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(native.classification));
+			Assert::IsTrue(native.top.trusted && native.bottom.trusted);
+			Assert::IsTrue(global.nearBlack);
+			Assert::IsTrue(ar.distributedDarkPicture);
+			Assert::IsFalse(ar.EffectiveNearBlack());
+			Assert::IsTrue(ar.texturedTiles >= 12);
+			Assert::AreEqual(4, ar.texturedQuadrants);
+		}
 		TEST_METHOD(NearBlackEpisodeBlocksOnlyNewBarCropAuthority)
 		{
 			ActivePictureEvidence bars;

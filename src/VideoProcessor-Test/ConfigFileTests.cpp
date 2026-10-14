@@ -3509,9 +3509,9 @@ namespace VideoProcessorTest
 				true, selections, selections, true));
 		}
 
-		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshots)
+		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics)
 		{
-			Assert::AreEqual(static_cast<uint32_t>(26),
+			Assert::AreEqual(static_cast<uint32_t>(27),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 

@@ -21,6 +21,7 @@
 #include <RendererPostStallResetAdvisor.h>
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <DisplayRuleExpression.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
@@ -3841,6 +3842,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::mutex ingressStatusMutex;
 	DolbyVisionLuminanceStatus sourceLuminance;
 	bool sourceLuminanceObserved = false;
+	uint64_t sourceLuminanceQueueGeneration = 0;
 	uint64_t nextSourceLuminanceLogTick = 0;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
@@ -3888,6 +3890,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsGeometrySourceGeneration = 0;
 	uint64_t nlsGeometrySourceFormatKey = 0;
 	uint64_t activePictureAnalysisSourceGeneration = 0;
+    uint64_t activePictureAnalysisDomainKey = 0;
 	NlsMappingDecision nlsDecision;
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
@@ -4007,6 +4010,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::MovingPictureTransitionState movingPictureTransition;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
+	uint64_t outwardPictureConfirmationEpoch = 0;
 	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
@@ -4043,6 +4047,13 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t lastPresentationObservationLogTick = 0;
 	uint64_t latestActivePictureEvidenceFrame = 0;
 	bool latestActivePictureEvidenceWasStartupHypothesis = false;
+	unsigned captionProofLastRoute = 0;
+	uint64_t captionProofLastLogTick = 0;
+	uint64_t captionBootstrapSourceGeneration = 0;
+	uint64_t captionBootstrapAnalysisDomainKey = 0;
+	uint64_t captionBootstrapLastStandaloneSequence = 0;
+	uint64_t captionBootstrapFirstProofSequence = 0;
+	ActivePictureBounds captionBootstrapProofBounds;
 	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestCropSamplingReaffirmed = false;
 	uint64_t lastSamplingEnvelopeLogTick = 0;
@@ -4052,6 +4063,13 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
+    // Physical presentation history only; never fed back into detector authority.
+    AlphaSourceCrop::CaptionConfirmationPresentationAnchor lastRenderedCaptionAnchor;
+    AlphaSourceCrop::CaptionConfirmationPresentationHoldState captionConfirmationHold;
+    int captionAnchorStyle = -1;
+    uint64_t captionHoldLastLogTick = 0;
+    std::string captionHoldLastLogReason;
+    double captionAnchorScreenAspect = 0.0, captionAnchorAnamorphic = 0.0;
     bool weakFringeFillPreviouslyRetained = false;
     bool establishedScopeSubtitlePreviouslyRetained = false;
 	bool cropAdmissionPreviouslyBlocked = false;
@@ -4083,8 +4101,20 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureBounds latestActivePicturePresentationRetentionBounds;
 	uint64_t latestActivePicturePresentationRetentionSourceGeneration = 0;
 	uint64_t latestActivePicturePresentationRetentionSourceSequence = 0;
-	bool latestActivePictureGlobalNearBlackEvaluated = false;
-	bool latestActivePictureGlobalNearBlack = false;
+	bool latestActivePictureArNearBlackEvaluated = false;
+	bool latestActivePictureArNearBlack = false;
+    bool latestActivePictureRawGlobalNearBlack = false;
+    uint64_t latestArDarknessGeneration = 0, latestArDarknessSequence = 0, latestArDarknessDomain = 0;
+    bool LatestArNearBlackForSource(uint64_t generation, uint64_t sequence, uint64_t domain) const
+    {
+        // A distributed-picture exception belongs to one measured source frame.
+        // Presentation repeats may reuse that identity, but a fresh unmeasured
+        // frame must not inherit the exception across a cut or format reset.
+        return latestActivePictureArNearBlack ||
+            (latestActivePictureRawGlobalNearBlack &&
+             (generation != latestArDarknessGeneration || sequence != latestArDarknessSequence ||
+              domain != latestArDarknessDomain));
+    }
 	double latestActivePictureGlobalLumaP90 = 0.0;
 	bool latestActivePictureOutwardVisibleBoundsAvailable = false;
 	bool latestKnownTrustedReacquisitionAvailable = false;
@@ -7836,38 +7866,92 @@ struct LibplaceboVideoRenderer::Impl
 		return selectedSubtitleMode.load(std::memory_order_acquire);
 	}
 
+    // One owner/cache follows a captured frame through lookahead and display.
+    // Live and queued labels share the captured analysis interpretation;
+    // render upload conversion never selects ordinary analysis pixels.
+    static PreparedAnalysisFrame PrepareFrameAnalysis(const VideoFrame& frame,
+        const VideoState& state,
+        const std::shared_ptr<const QueuedFrame::ConvertedPayload>& converted,
+        const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache,
+        AnalysisSourceProfile profile, uint64_t generation,
+        bool rendererUsesNative = false, bool converted422 = false)
+    {
+        if (!cache || !state.displayMode) return {};
+        std::lock_guard<std::mutex> guard(cache->mutex);
+        auto& stored = profile == AnalysisSourceProfile::LiveRenderer ? cache->live : cache->queued;
+        const bool sameSelection = profile == AnalysisSourceProfile::QueuedCapture ||
+            (cache->liveNative == rendererUsesNative && cache->live422 == converted422);
+        if (stored.IsValid() && sameSelection) {
+            auto result = stored;
+            result.source.generation = generation;
+            return result;
+        }
+        if (!cache->nativeOwner && frame.GetData()) {
+            auto owner = std::shared_ptr<VideoFrame>(new VideoFrame(frame),
+                [](VideoFrame* p) { p->SourceBufferRelease(); delete p; });
+            owner->SourceBufferAddRef();
+            cache->nativeOwner = owner;
+        }
+        AnalysisFrameInput input;
+        input.nativeData = reinterpret_cast<const uint8_t*>(frame.GetData());
+        input.nativeBytes = static_cast<size_t>(state.BytesPerFrame());
+        input.nativeRowBytes = static_cast<size_t>(state.BytesPerRow());
+        input.nativeOwner = cache->nativeOwner;
+        input.width = static_cast<int>(state.displayMode->FrameWidth());
+        input.height = static_cast<int>(state.displayMode->FrameHeight());
+        input.encoding = state.videoFrameEncoding;
+        input.colorspace = state.colorspace;
+        input.transferKey = static_cast<uint32_t>(state.eotf);
+        input.sourceGeneration = generation;
+        input.profile = profile;
+        input.rendererUsesNative = rendererUsesNative;
+        input.converted422 = converted422;
+        input.dolbyVisionTunnel = state.dolbyVisionTunnel;
+        if (converted) {
+            input.convertedData = converted->pixels.data();
+            input.convertedBytes = converted->pixels.size();
+            input.convertedOwner = converted;
+            input.convertedContract = converted->contract;
+            input.dolby = converted->dolby;
+        }
+        auto prepared = PrepareAnalysisFrame(input);
+        if (!prepared.IsValid()) return {}; // Pending conversion is never cached as evidence.
+        const auto& other = profile == AnalysisSourceProfile::LiveRenderer ? cache->queued : cache->live;
+        if (other.IsValid() && other.domainKey == prepared.domainKey) {
+            prepared = other;
+            prepared.profile = profile;
+            prepared.source.generation = generation;
+        }
+        stored = prepared;
+        if (profile == AnalysisSourceProfile::LiveRenderer) {
+            cache->liveNative = rendererUsesNative;
+            cache->live422 = converted422;
+        }
+        return prepared;
+    }
+
     SubtitleBoxObservation QueueSubtitleMeasurement(const VideoFrame& frame,const VideoState& state,
         const ActivePictureFrameIdentity& identity,bool discontinuity,
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
-        SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture)
+        SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
+        const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {})
     {
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
+        key.identity.analysisDomainKey=prepared.domainKey;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;
         key.scriptHint=scriptHint;key.discontinuity=discontinuity;
         key.width=static_cast<int>(state.displayMode->FrameWidth());
         key.height=static_cast<int>(state.displayMode->FrameHeight());
+        if (!prepared.IsValid()) return key;
         SubtitleBoxObservation ready;
         if(subtitleMeasurementWorker.TryTake(key,ready) &&
-            SubtitleBoxLookahead::CanReuseMeasurement(ready,identity,key.width,key.height,
+            SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint))return ready;
-        AnalysisLumaFormat format;AlphaNativeRgbLayout layout;
-        if(GetAlphaNativeRgbLayout(state.videoFrameEncoding,layout))format=AnalysisLumaFormat::NativeRgb;
-        else if(state.videoFrameEncoding==VideoFrameEncoding::UYVY || state.videoFrameEncoding==VideoFrameEncoding::HDYC ||
-            state.videoFrameEncoding==VideoFrameEncoding::V210)format=AnalysisLumaFormat::NativeYuv422;
-        else return key;
-        AnalysisLumaSource source={reinterpret_cast<const uint8_t*>(frame.GetData()),
-            static_cast<size_t>(state.BytesPerFrame()),key.width,key.height,
-            static_cast<size_t>(state.BytesPerRow()),0,format,state.videoFrameEncoding,state.colorspace,
-            identity.sourceFormatGeneration};
-        if(!source.IsValid())return key;
-        // VideoFrame copies do not acquire ownership automatically.
-        auto owner=std::shared_ptr<VideoFrame>(new VideoFrame(frame),[](VideoFrame* p){p->SourceBufferRelease();delete p;});
-        owner->SourceBufferAddRef();
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
-        subtitleMeasurementWorker.Submit(key,[owner,source,key,prior,fps](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
+        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            return scanner.Measure(source,key,reference,fps);
+            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence);
         });
         return key;
     }
@@ -8463,11 +8547,20 @@ struct LibplaceboVideoRenderer::Impl
 		lastPresentationObservationAxes = 0;
 		latestActivePictureEvidenceFrame = 0;
 		latestActivePictureEvidenceWasStartupHypothesis = false;
+		captionBootstrapSourceGeneration = 0;
+		captionBootstrapAnalysisDomainKey = 0;
+		captionBootstrapLastStandaloneSequence = 0;
+		captionBootstrapFirstProofSequence = 0;
+		captionBootstrapProofBounds = {};
+		captionProofLastRoute = 0;
+		captionProofLastLogTick = 0;
 		presentationOwnedGeometryTransitionDeferred = false;
 		latestCropRetentionEvidence = {};
 		latestCropSamplingReaffirmed = false;
 		cropPresentationRecovery = {};
 		cropPresentationAdmission = {};
+        lastRenderedCaptionAnchor = {};
+        captionConfirmationHold = {};
 		cropAdmissionPreviouslyBlocked = false;
 		cropDiagnosticActive = false;
 		cropDiagnosticPreviousAvailable = false;
@@ -8477,8 +8570,10 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePicturePresentationRetentionBounds = {};
 		latestActivePicturePresentationRetentionSourceGeneration = 0;
 		latestActivePicturePresentationRetentionSourceSequence = 0;
-		latestActivePictureGlobalNearBlackEvaluated = false;
-		latestActivePictureGlobalNearBlack = false;
+		latestActivePictureArNearBlackEvaluated = false;
+		latestActivePictureArNearBlack = false;
+		latestActivePictureRawGlobalNearBlack = false;
+		latestArDarknessGeneration = latestArDarknessSequence = latestArDarknessDomain = 0;
 		latestActivePictureGlobalLumaP90 = 0.0;
 		latestActivePictureOutwardVisibleBoundsAvailable = false;
 		latestKnownTrustedReacquisitionAvailable = false;
@@ -8553,6 +8648,22 @@ struct LibplaceboVideoRenderer::Impl
 		lastHdrPeakAnalysisPolicy.clear();
 		nativeBoundaryReacquisitionPending = false;
 	}
+
+    void ClearAnalysisForDecodeGap(uint64_t sceneDetectorGeneration)
+    {
+        ClearActivePictureAuthorityForReacquisition();
+        activePictureAnalysisDomainKey = 0;
+        activePictureAnalysisSourceGeneration = 0;
+        sceneDetector.Reset(sceneDetectorGeneration);
+        subtitleBoxPresentation.Reset();
+        subtitlePendingGuard.Reset();
+        subtitleStabilityTelemetry.Reset();
+        subtitlePaddingGuard.Reset();
+        subtitleCutPastePresentation.Reset();
+        subtitleLayoutAnchor.Reset();
+        subtitleTemporalValid = false;
+        subtitleTemporalCleanFrames = 0;
+    }
 
 	void ClearPresentationStateForReset(uint64_t resetEpoch)
 	{
@@ -9106,7 +9217,8 @@ struct LibplaceboVideoRenderer::Impl
 		const ActivePictureFrameDecision* scheduledDecision = nullptr,
 		const AlphaSourceCrop::BufferedPictureExpansionProof* bufferedExpansion = nullptr,
         const GuardedRememberedEdgeReturnCertificate* guardedReturn = nullptr,
-		bool sparseSceneCut = false, bool cadenceRepeat = false, bool confirmedSceneCut = false)
+		bool sparseSceneCut = false, bool cadenceRepeat = false, bool confirmedSceneCut = false,
+		const SubtitleBoxPreview* currentSubtitlePreview = nullptr)
 	{
 		ConfigureSparseBoundaryExperiment();
         ConfigureRememberedEdgeReturn();
@@ -9115,6 +9227,13 @@ struct LibplaceboVideoRenderer::Impl
 		renderParams.num_hooks = 0;
 		if (activePictureAnalysisSourceGeneration != analysisSource.generation)
 		{
+			captionBootstrapSourceGeneration = 0;
+			captionBootstrapAnalysisDomainKey = 0;
+			captionBootstrapLastStandaloneSequence = 0;
+			captionBootstrapFirstProofSequence = 0;
+			captionBootstrapProofBounds = {};
+			captionProofLastRoute = 0;
+			captionProofLastLogTick = 0;
 			sparseBoundaryExperiment.Reset();
 			nlsGeometryOrigin = ActivePictureAuthorityOrigin::NATIVE;
             if (rememberedEdgeEnabled && analysisSource.generation != 0 &&
@@ -9230,7 +9349,45 @@ struct LibplaceboVideoRenderer::Impl
 		const bool forceStartupBootstrapAnalysis =
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
-		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
+        // The transition model needs adjacent trusted observations. Sparse
+        // cadence would exhaust the bounded bootstrap bridge before four
+        // observations at high frame rates. Force only this successful-proof
+        // burst, in its original source/domain and exact established geometry.
+        const uint64_t captionBurstFrames =
+            ActivePictureTransitionModel::INITIAL_CONFIRMATIONS +
+            SubtitleBoxLookahead::MaxFrames;
+        const bool captionBurstGeometryCompatible =
+            !nlsGeometryAvailable ||
+            nlsGeometryClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+            (nlsGeometrySourceGeneration == analysisSource.generation &&
+             nlsGeometry.left == captionBootstrapProofBounds.left &&
+             nlsGeometry.top == captionBootstrapProofBounds.top &&
+             nlsGeometry.right == captionBootstrapProofBounds.right &&
+             nlsGeometry.bottom == captionBootstrapProofBounds.bottom);
+        const bool currentWorkerBarProof = currentSubtitlePreview &&
+            currentSubtitlePreview->current.subtitleArProof.IsCurrentFor(analysisSource,currentIdentity,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                activeSettings.subtitleScriptHint);
+        // A newly proved boundary may wake acquisition, but an unchanged
+        // subtitle must not raise steady-state AR scanning above its cadence.
+        const auto* workerCandidate=currentWorkerBarProof ?
+            &currentSubtitlePreview->current.subtitleArProof.candidate : nullptr;
+        const bool forceWorkerBarAcquisition=workerCandidate && automaticSourceCrop &&
+            configuredScreenActive && SubtitlePreviewEnabled(activeSettings) &&
+            !nlsRequested && !fixedCropAspectConfigured &&
+            (!nlsGeometryAvailable ||
+             nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+             nlsGeometrySourceGeneration!=analysisSource.generation ||
+             nlsGeometry.left!=workerCandidate->left || nlsGeometry.top!=workerCandidate->top ||
+             nlsGeometry.right!=workerCandidate->right || nlsGeometry.bottom!=workerCandidate->bottom);
+        const bool forceCaptionBootstrapBurstAnalysis =
+            captionBootstrapFirstProofSequence &&
+            captionBootstrapSourceGeneration == analysisSource.generation &&
+            captionBootstrapAnalysisDomainKey == currentIdentity.analysisDomainKey &&
+            frameNumber >= captionBootstrapFirstProofSequence &&
+            frameNumber - captionBootstrapFirstProofSequence < captionBurstFrames &&
+            captionBurstGeometryCompatible;
+		if (scheduledAnalysis || forceAnalysis || forceWorkerBarAcquisition || forceCaptionBootstrapBurstAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
 			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis ||
             (rememberedEdgeEnabled && rememberedContext.enabled) ||
 			(sparseBoundaryEnabled && (sparseBoundaryStartupGate.IsOpen(analysisSource.generation) ||
@@ -9287,6 +9444,20 @@ struct LibplaceboVideoRenderer::Impl
 				latestRawPictureEvidence = evidence;
 				nativeBootstrapEvidence = evidence;
 			}
+            // AR darkness is rebutted only by current independently measured native
+            // bars and distributed picture structure. Caption/sparse inference below
+            // keeps the raw global-dark guard; it cannot supply this certificate.
+            auto arDarkness = EvaluateActivePictureArDarkness(
+                analysisSource, latestRawPictureEvidence, globalNearBlack);
+            if (globalNearBlack.nearBlack && frameNumber % 120 == 0)
+                DebugLog::Log("Alpha AR darkness: sequence=%llu generation=%llu raw_near_black=%d ar_near_black=%d p90=%.1f distributed_picture=%d textured_tiles=%d quadrants=%d bar_floor=%.1f picture_median=%.1f median_spread=%.1f samples=%zu",
+                    static_cast<unsigned long long>(frameNumber),
+                    static_cast<unsigned long long>(analysisSource.generation),
+                    globalNearBlack.nearBlack ? 1 : 0, arDarkness.EffectiveNearBlack() ? 1 : 0,
+                    globalNearBlack.lumaP90, arDarkness.distributedDarkPicture ? 1 : 0,
+                    arDarkness.texturedTiles, arDarkness.texturedQuadrants,
+                    arDarkness.barFloor, arDarkness.pictureMedian,
+                    arDarkness.tileMedianSpread, arDarkness.lumaSamples);
 			// Preserve current native movement/axis evidence before any hypothesis or promotion.
 			const auto sparseNativeEvidence = latestRawPictureEvidence;
             TraceRememberedEdgeShadow(analysisSource, sparseNativeEvidence, rememberedContext);
@@ -9491,58 +9662,172 @@ struct LibplaceboVideoRenderer::Impl
 							currentIdentity.viewportGeneration));
 				}
 			}
-			latestActivePictureEvidenceWasStartupHypothesis = false;
-			if (evidence.available && evidence.classification == ActivePictureClassification::PROVISIONAL)
-			{
-				ActivePictureEvidence hypothesis = hadCompatiblePresentation ? evidence :
-					EvaluateSymmetricVerticalBarHypothesis(analysisSource, evidence);
-                // A paused caption can invalidate bar statistics while leaving
-                // the measured boundary aligned with the clean opposite bar.
-                // Acquire or reaffirm only with fresh native bar/continuation proof AND
-                // a detected caption crossing that rejected edge. All styles
-                // then consume the same picture authority and protect the text.
-                if (hypothesis.classification == ActivePictureClassification::PROVISIONAL &&
+            latestActivePictureEvidenceWasStartupHypothesis = false;
+            bool captionBackedStrictProofCurrent = false;
+            unsigned captionProofRoute = 0; // 1: reaffirm, 2: cold scan, 3: bridge, 4: independent worker.
+            double captionStandaloneMs = 0.0;
+            if (automaticSourceCrop && configuredScreenActive &&
+                SubtitlePreviewEnabled(activeSettings) && !nlsRequested &&
+                !fixedCropAspectConfigured && currentWorkerBarProof &&
+                currentSubtitlePreview->current.subtitleArDarkness.global.evaluated &&
+                !currentSubtitlePreview->current.subtitleArDarkness.EffectiveNearBlack())
+            {
+                evidence=currentSubtitlePreview->current.subtitleArProof.evidence;
+                arDarkness=currentSubtitlePreview->current.subtitleArDarkness;
+                captionBackedStrictProofCurrent=true;
+                captionProofRoute=4;
+            }
+            if (evidence.available && evidence.classification == ActivePictureClassification::PROVISIONAL)
+            {
+                ActivePictureEvidence hypothesis = hadCompatiblePresentation ? evidence :
+                    EvaluateSymmetricVerticalBarHypothesis(analysisSource, evidence);
+                // The caption may bias one raw edge. It explains the discrepancy;
+                // native bars and picture continuation still grant AR authority.
+                const bool captionRouteEligible =
                     automaticSourceCrop && configuredScreenActive && scopeSubtitleFit &&
-                    !nlsRequested && !fixedCropAspectConfigured &&
-                    globalNearBlack.evaluated && !globalNearBlack.nearBlack)
+                    SubtitlePreviewEnabled(activeSettings) && !nlsRequested &&
+                    !fixedCropAspectConfigured && globalNearBlack.evaluated &&
+                    !globalNearBlack.nearBlack;
+                if (!captionBackedStrictProofCurrent && captionRouteEligible && hadCurrentTrustedCropGeometry &&
+                    currentSubtitlePreview && currentSubtitlePreview->available)
                 {
-                    auto captionHypothesis = EvaluateSymmetricVerticalBarHypothesis(
-                        analysisSource, evidence, true);
-                    if (captionHypothesis.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+                    auto workerProof = EvaluateCurrentCaptionVerticalBarReaffirmation(
+                        analysisSource, evidence, presentationBeforeObservation,
+                        currentSubtitlePreview->current, currentIdentity,
+                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                        activeSettings.subtitleScriptHint);
+                    if (workerProof.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
                     {
-                        SubtitleBoxDetector captionScanner;
-                        captionScanner.SetScriptHint(activeSettings.subtitleScriptHint);
-                        const auto& bounds = captionHypothesis.trustedBounds;
-                        const auto caption = captionScanner.Analyze(analysisSource,
-                            bounds.top, bounds.bottom, analysisSource.generation, frameNumber);
-                        const bool crossesRejectedEdge = caption.detected &&
-                            (((!evidence.top.trusted || evidence.proposedBounds.top < bounds.top) &&
-                                caption.bounds.top < bounds.top && caption.bounds.bottom > bounds.top) ||
-                             ((!evidence.bottom.trusted || evidence.proposedBounds.bottom > bounds.bottom) &&
-                                caption.bounds.top < bounds.bottom && caption.bounds.bottom > bounds.bottom));
-                        // Once acquired, this certificate can reaffirm only
-                        // the same physical bars. It cannot nominate a format
-                        // change or rely on an expired caption observation.
-                        const int tolerance = (std::max)(2, analysisSource.height / 540);
-                        const bool sameBars = !hadCompatiblePresentation ||
-                            (presentationBeforeObservation.left == bounds.left &&
-                             presentationBeforeObservation.right == bounds.right &&
-                             std::abs(presentationBeforeObservation.top-bounds.top) <= tolerance &&
-                             std::abs(presentationBeforeObservation.bottom-bounds.bottom) <= tolerance);
-                        if (crossesRejectedEdge && sameBars)
-                        {
-                            hypothesis = captionHypothesis;
-                            hypothesis.reason = "aligned bars with current native crossing-caption proof";
-                        }
+                        hypothesis = workerProof;
+                        captionBackedStrictProofCurrent = true;
+                        captionProofRoute = 1;
                     }
                 }
-				if (hypothesis.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED)
-				{
-					evidence = hypothesis;
-					latestActivePictureEvidenceWasStartupHypothesis = !hadCompatiblePresentation;
-				}
-			}
+                if (captionRouteEligible && !captionBackedStrictProofCurrent)
+                {
+                    // Initial publication needs adjacent confirmations, and queued
+                    // subtitle observations may still carry the old picture authority.
+                    // The bridge covers exactly that model plus lookahead horizon;
+                    // after it, an absent worker cannot trigger per-frame scans.
+                    const uint64_t bridgeFrames =
+                        ActivePictureTransitionModel::INITIAL_CONFIRMATIONS +
+                        SubtitleBoxLookahead::MaxFrames;
+                    const uint64_t coldProbeInterval = std::max<uint64_t>(1,
+                        static_cast<uint64_t>(std::llround(std::max(1.0, framesPerSecond))));
+                    AlphaSourceCrop::CaptionBootstrapScanInput scanInput;
+                    scanInput.sourceGeneration = analysisSource.generation;
+                    scanInput.analysisDomainKey = currentIdentity.analysisDomainKey;
+                    scanInput.acceptedSequence = frameNumber;
+                    scanInput.attemptGeneration = captionBootstrapSourceGeneration;
+                    scanInput.attemptDomainKey = captionBootstrapAnalysisDomainKey;
+                    scanInput.lastStandaloneSequence = captionBootstrapLastStandaloneSequence;
+                    scanInput.firstProofSequence = captionBootstrapFirstProofSequence;
+                    scanInput.bridgeFrames = bridgeFrames;
+                    scanInput.coldProbeIntervalFrames = coldProbeInterval;
+                    scanInput.hasEstablishedGeometry = hadCompatiblePresentation;
+                    scanInput.establishedMatchesProof = hadCurrentTrustedCropGeometry &&
+                        presentationBeforeObservation.left == captionBootstrapProofBounds.left &&
+                        presentationBeforeObservation.top == captionBootstrapProofBounds.top &&
+                        presentationBeforeObservation.right == captionBootstrapProofBounds.right &&
+                        presentationBeforeObservation.bottom == captionBootstrapProofBounds.bottom;
+                    const auto scanAction = AlphaSourceCrop::SelectCaptionBootstrapScan(scanInput);
+                    if (scanAction != AlphaSourceCrop::CaptionBootstrapScanAction::NONE)
+                    {
+                        // A new cold probe starts a new bounded sequence of
+                        // confirmations; it never extends an expired bridge.
+                        if (scanAction == AlphaSourceCrop::CaptionBootstrapScanAction::COLD_PROBE)
+                        {
+                            captionBootstrapFirstProofSequence = 0;
+                            captionBootstrapProofBounds = {};
+                        }
+                        const auto scanStart = SteadyClock::now();
+                        captionBootstrapSourceGeneration = analysisSource.generation;
+                        captionBootstrapAnalysisDomainKey = currentIdentity.analysisDomainKey;
+                        captionBootstrapLastStandaloneSequence = frameNumber;
+                        auto scanned = EvaluateSymmetricVerticalBarHypothesis(
+                            analysisSource, evidence, true);
+                        if (scanned.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+                        {
+                            SubtitleBoxDetector captionScanner;
+                            captionScanner.SetScriptHint(activeSettings.subtitleScriptHint);
+                            const auto& bounds = scanned.trustedBounds;
+                            const auto caption = captionScanner.Analyze(analysisSource,
+                                bounds.top, bounds.bottom, frameNumber,
+                                currentIdentity.viewportGeneration);
+                            const int step = std::max(2, analysisSource.height / 540);
+                            const bool displacedTop = bounds.top > evidence.proposedBounds.top + step;
+                            const bool displacedBottom = bounds.bottom < evidence.proposedBounds.bottom - step;
+                            const bool actualInkCrosses = caption.detected && !caption.held &&
+                                !caption.workLimit && caption.anchor.Valid() &&
+                                caption.nearBarEligibilityMeasured && caption.nearBarEligible &&
+                                ((displacedTop && caption.anchor.top < bounds.top &&
+                                    caption.anchor.bottom > bounds.top) ||
+                                 (displacedBottom && caption.anchor.top < bounds.bottom &&
+                                    caption.anchor.bottom > bounds.bottom));
+                            if (!actualInkCrosses)
+                                scanned = evidence;
+                        }
+                        if (scanned.classification == ActivePictureClassification::PROVISIONAL)
+                            scanned = EvaluateCaptionBackedVerticalBarHypothesis(
+                                analysisSource, evidence, activeSettings.subtitleScriptHint, frameNumber);
+                        const bool exactEstablishedGeometry = !hadCompatiblePresentation ||
+                            (hadCurrentTrustedCropGeometry &&
+                             scanned.trustedBounds.left == presentationBeforeObservation.left &&
+                             scanned.trustedBounds.top == presentationBeforeObservation.top &&
+                             scanned.trustedBounds.right == presentationBeforeObservation.right &&
+                             scanned.trustedBounds.bottom == presentationBeforeObservation.bottom);
+                        if (scanned.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                            exactEstablishedGeometry)
+                        {
+                            hypothesis = scanned;
+                            captionBackedStrictProofCurrent = true;
+                            captionProofRoute = scanAction == AlphaSourceCrop::CaptionBootstrapScanAction::COLD_PROBE ? 2 : 3;
+                            if (!hadCompatiblePresentation && !captionBootstrapFirstProofSequence)
+                            {
+                                captionBootstrapFirstProofSequence = frameNumber;
+                                captionBootstrapProofBounds = scanned.trustedBounds;
+                            }
+                        }
+                        captionStandaloneMs = std::chrono::duration<double, std::milli>(
+                            SteadyClock::now() - scanStart).count();
+                    }
+                }
+                if (hypothesis.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+                {
+                    evidence = hypothesis;
+                    latestActivePictureEvidenceWasStartupHypothesis = !hadCompatiblePresentation;
+                }
+            }
+            if (currentSubtitlePreview && currentSubtitlePreview->current.analyzed &&
+                SameAnalysisFrameIdentity(currentSubtitlePreview->current.identity,currentIdentity) &&
+                frameNumber % 120 == 0) {
+                const auto& proof=currentSubtitlePreview->current.subtitleArProof;
+                DebugLog::Log("Alpha subtitle AR proof: generation=%llu sequence=%llu current=%d accepted=%d candidate=%d,%d-%d,%d flank_support=%d/%d unknown=%llu samples=%llu backing=%d reason=%s",
+                    static_cast<unsigned long long>(analysisSource.generation),
+                    static_cast<unsigned long long>(frameNumber),currentWorkerBarProof?1:0,proof.accepted?1:0,
+                    proof.candidate.left,proof.candidate.top,proof.candidate.right,proof.candidate.bottom,
+                    proof.topFlankSupport,proof.bottomFlankSupport,
+                    static_cast<unsigned long long>(proof.unknownSamples),
+                    static_cast<unsigned long long>(proof.lumaSamples),proof.usedMeasuredBacking?1:0,proof.reason);
+            }
+            const uint64_t captionProofTick = GetTickCount64();
+            if (captionProofRoute != captionProofLastRoute ||
+                (captionProofRoute && captionProofTick - captionProofLastLogTick >= 1000))
+            {
+                captionProofLastRoute = captionProofRoute;
+                captionProofLastLogTick = captionProofTick;
+                DebugLog::Log("Alpha caption picture proof: generation=%llu sequence=%llu route=%u raw=%d,%d-%d,%d picture=%d,%d-%d,%d episode=%d p90=%.1f standalone_ms=%.3f",
+                    static_cast<unsigned long long>(analysisSource.generation),
+                    static_cast<unsigned long long>(frameNumber), captionProofRoute,
+                    latestRawPictureEvidence.proposedBounds.left,
+                    latestRawPictureEvidence.proposedBounds.top,
+                    latestRawPictureEvidence.proposedBounds.right,
+                    latestRawPictureEvidence.proposedBounds.bottom,
+                    evidence.trustedBounds.left, evidence.trustedBounds.top,
+                    evidence.trustedBounds.right, evidence.trustedBounds.bottom,
+                    static_cast<int>(nearBlackPresentationEpisode.mode),
+                    globalNearBlack.lumaP90, captionStandaloneMs);
+            }
 			const auto diagnosticMeasuredClass = latestRawPictureEvidence.classification;
             const auto diagnosticMeasuredBounds = diagnosticMeasuredClass == ActivePictureClassification::PROVISIONAL
                 ? latestRawPictureEvidence.proposedBounds : latestRawPictureEvidence.trustedBounds;
@@ -9725,11 +10010,19 @@ struct LibplaceboVideoRenderer::Impl
                 if (guardedCertificateValidated) evidence = guardedCurrent.evidence;
             }
 			const bool nearBlackAcquisitionBlocked =
-				(globalNearBlack.evaluated && globalNearBlack.nearBlack) ||
+				(globalNearBlack.evaluated && arDarkness.EffectiveNearBlack()) ||
 				nearBlackPresentationEpisode.mode !=
 					AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+            // Strict current caption/native-bar proof may establish the
+            // logical picture during an episode. It cannot release episode-owned
+            // presentation. Raw darkness can only be rebutted by independent
+            // distributed native-picture evidence, never by the caption.
+            const bool captionLogicalAcquisitionBlocked =
+                AlphaSourceCrop::NearBlackBlocksCaptionBackedLogicalAcquisition(
+                    globalNearBlack.evaluated && arDarkness.EffectiveNearBlack(),
+                    nearBlackPresentationEpisode.mode, captionBackedStrictProofCurrent);
 			evidence = ConstrainNearBlackCropAcquisition(
-				evidence, nearBlackAcquisitionBlocked);
+				evidence, captionLogicalAcquisitionBlocked);
 			latestActivePictureObservationSupportsCrop = false;
 			latestCropSamplingReaffirmed = false;
 			latestActivePictureEvidenceAvailable = evidence.available;
@@ -9895,6 +10188,7 @@ struct LibplaceboVideoRenderer::Impl
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
 			outwardPictureConfirmation = admission.outward.state;
+			outwardPictureConfirmationEpoch = currentIdentity.viewportGeneration;
 			if (deferPresentationOwnedTransition !=
 				presentationOwnedGeometryTransitionDeferred)
 			{
@@ -9934,7 +10228,7 @@ struct LibplaceboVideoRenderer::Impl
 					scheduledDecision->transition, evidence.classification,
 				admission.observation.transitionDeferred, &publicationAdmission,
 					&admission.observation.axisEvidence, (admission.outward.authoritative || bufferedExpansionReady) &&
-					retentionEvidence.expansionStripsAvailable && !retentionEvidence.globalNearBlack);
+					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack());
 			if (scheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -10042,6 +10336,35 @@ struct LibplaceboVideoRenderer::Impl
                 (uint64_t(admission.outward.broadOpposingPicture) << 12) |
                 (uint64_t(evidence.axisEvidence.horizontal.reason) << 16) |
                 (uint64_t(evidence.axisEvidence.vertical.reason) << 20);
+            {
+                auto trace=AnalysisTraceRecord(currentIdentity,this,"ar-decision",transition.reason.c_str());
+                trace.analysisFormat=static_cast<uint64_t>(analysisSource.format);trace.sourceWidth=analysisSource.width;trace.sourceHeight=analysisSource.height;
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                AnalysisTraceText(trace.detail,evidence.reason.c_str());
+                AnalysisTraceRect(trace.previous,presentationBeforeObservation);AnalysisTraceRect(trace.measured,diagnosticMeasuredBounds);
+                AnalysisTraceRect(trace.candidate,latestActivePictureEvidenceBounds);AnalysisTraceRect(trace.published,transition.bounds);
+                trace.resultCode=static_cast<int32_t>(evidence.classification);trace.cadenceRepeat=cadenceRepeat;
+                trace.flags=(transition.publish?1u:0u)|(applyScheduledDecision?2u:0u)|(admission.deferPresentation?4u:0u)|
+                    (admission.deferOutward?8u:0u)|(admission.deferPartialComposition?16u:0u)|(nearBlackAcquisitionBlocked?32u:0u)|
+                    (bufferedExpansionReady?64u:0u)|(globalNearBlack.nearBlack?128u:0u);
+                trace.counters[0]=transition.matchingCandidates;trace.counters[1]=transition.contradictoryCandidates;
+                trace.counters[2]=transition.candidateReversals;trace.counters[3]=transition.decisionLatencyFrames;
+                trace.counters[4]=admission.outward.state.confirmations;trace.counters[5]=AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+                trace.counters[6]=static_cast<uint64_t>(evidence.axisEvidence.horizontal.reason);
+                trace.counters[7]=static_cast<uint64_t>(evidence.axisEvidence.vertical.reason);
+                trace.metrics[0]=globalNearBlack.lumaP90;trace.metrics[1]=scopeSubtitleHoldMs;
+                trace.metrics[2]=scopeSubtitleEngageDriftMs;trace.metrics[3]=scopeSubtitleReleaseDriftMs;
+                trace.acceptedSeeds=scopeSubtitleAnalysisFrame!=0;trace.pendingFrames=diagnosticPending;
+                AnalysisDiagnosticTrace::Emit(trace);
+                auto edges=AnalysisTraceRecord(currentIdentity,this,"ar-edges",retentionEvidence.expansionStripsAvailable?"expansion-strips":"excluded-bands");
+                AnalysisTraceRect(edges.previous,retentionEvidence.expansionBase);AnalysisTraceRect(edges.candidate,retentionEvidence.expansionCandidate);
+                const auto& r=retentionEvidence;
+                const auto put=[&](int index,const auto& b){ edges.metrics[index]=b.barPixels;edges.metrics[index+1]=b.blackFraction;
+                    edges.metrics[index+2]=b.lumaP90;edges.metrics[index+3]=b.texture;edges.metrics[index+4]=b.continuity;edges.metrics[index+5]=b.neutralChromaFraction; };
+                put(0,r.expansionStripsAvailable?r.expandingLeft:r.excludedLeft);put(6,r.expansionStripsAvailable?r.expandingTop:r.excludedTop);
+                put(12,r.expansionStripsAvailable?r.expandingRight:r.excludedRight);put(18,r.expansionStripsAvailable?r.expandingBottom:r.excludedBottom);
+                edges.flags=(r.analysisValid?1u:0u)|(r.presentationValid?2u:0u);AnalysisDiagnosticTrace::Emit(edges);
+            }
             if (pictureDecisionDiagnostics.Observe(now, analysisSource.generation,
                 currentIdentity.viewportGeneration, frameNumber, diagnosticPending,
                 diagnosticKey, transition.publish || (scheduledDecision && !applyScheduledDecision)))
@@ -10123,7 +10446,7 @@ struct LibplaceboVideoRenderer::Impl
 				localStableTrustedContract;
 			const bool suppressEpisodeBarGeometryMutation =
 				AlphaSourceCrop::ShouldSuppressNearBlackBarGeometryMutation(
-					nearBlackAcquisitionBlocked, transition.stable,
+					captionLogicalAcquisitionBlocked, transition.stable,
 					transition.authoritativeClassification);
 			if (scheduledDecision && !applyScheduledDecision)
 			{
@@ -10294,9 +10617,13 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePicturePresentationRetentionSourceSequence =
 				latestActivePicturePresentationRetentionEvaluated
 					? frameNumber : 0;
-			latestActivePictureGlobalNearBlackEvaluated =
+			latestActivePictureArNearBlackEvaluated =
 				globalNearBlack.evaluated;
-			latestActivePictureGlobalNearBlack = globalNearBlack.nearBlack;
+			latestActivePictureArNearBlack = arDarkness.EffectiveNearBlack();
+            latestActivePictureRawGlobalNearBlack = globalNearBlack.nearBlack;
+            latestArDarknessGeneration = analysisSource.generation;
+            latestArDarknessSequence = frameNumber;
+            latestArDarknessDomain = currentIdentity.analysisDomainKey;
 			latestActivePictureGlobalLumaP90 = globalNearBlack.lumaP90;
 			latestActivePictureOutwardVisibleBoundsAvailable =
 				hadCompatiblePresentation &&
@@ -10482,8 +10809,8 @@ struct LibplaceboVideoRenderer::Impl
 					transition.clearTransition ? 1 : 0,
 					static_cast<int>(evidence.classification),
 					latestActivePicturePresentationRetentionSafe ? 1 : 0,
-					latestActivePictureGlobalNearBlackEvaluated ? 1 : 0,
-					latestActivePictureGlobalNearBlack ? 1 : 0,
+					latestActivePictureArNearBlackEvaluated ? 1 : 0,
+					latestActivePictureArNearBlack ? 1 : 0,
 					latestActivePictureGlobalLumaP90,
 					AlphaSourceCrop::NearBlackPresentationModeName(
 						nearBlackPresentationEpisode.mode),
@@ -10518,6 +10845,7 @@ struct LibplaceboVideoRenderer::Impl
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
 		const std::shared_ptr<const QueuedFrame::ConvertedPayload>& convertedPayload,
+        const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache,
 		uint64_t frameGeneration,
 		uint64_t sourceSequence,
 		const ActivePictureFrameIdentity& activePictureIdentity,
@@ -10692,14 +11020,24 @@ struct LibplaceboVideoRenderer::Impl
 		DolbyVisionLuminanceStatus frameDvLuminance;
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool tunnelRgbFallback = state.dolbyVisionTunnel &&
+			state.videoFrameEncoding == VideoFrameEncoding::R210 &&
 			convertedPayload && !convertedPayload->dolby.valid &&
 			convertedPayload->dolby.allowSdrFallback &&
-			convertedPayload->dolby.rgbBitAlignment != 0;
+			(convertedPayload->dolby.rgbBitAlignment == 1 ||
+				convertedPayload->dolby.rgbBitAlignment == 2);
+		const bool tunnelActive =
+			state.dolbyVisionTunnel && !tunnelRgbFallback;
+		if (DolbyVisionLuminancePolicy::ShouldClearStatusForFrame(
+			tunnelActive,
+			convertedPayload && convertedPayload->dolby.valid))
 		{
 			std::lock_guard<std::mutex> guard(ingressStatusMutex);
-			sourceLuminance = {};
-			sourceLuminance.tunnelActive = state.dolbyVisionTunnel && !tunnelRgbFallback;
-			sourceLuminanceObserved = true;
+			if (sourceLuminanceQueueGeneration == frameGeneration)
+			{
+				sourceLuminance = {};
+				sourceLuminance.tunnelActive = tunnelActive;
+				sourceLuminanceObserved = true;
+			}
 		}
 		const bool nativeRgbUpload = tunnelRgbFallback ?
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout) :
@@ -10729,8 +11067,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (!convertedPayload || convertedPayload->pixels.empty())
 				return false;
 			formattedContract = convertedPayload->contract;
-			if (state.dolbyVisionTunnel && !convertedPayload->dolby.valid)
-				return false;
+
 			if (!formattedContract.IsValid())
 				throw std::runtime_error(
 					"Alpha formatter did not declare its output range contract");
@@ -10761,40 +11098,71 @@ struct LibplaceboVideoRenderer::Impl
 					chromaHeight, formattedContract);
 			}
 		}
-		if (nativeRgbUpload)
-		{
-			analysisSource = {
-				reinterpret_cast<const uint8_t*>(videoFrame.GetData()),
-				static_cast<size_t>(state.BytesPerFrame()), width, height,
-				static_cast<size_t>(state.BytesPerRow()), 0,
-				AnalysisLumaFormat::NativeRgb, state.videoFrameEncoding,
-				tunnelRgbFallback ? ColorSpace::REC_709 : state.colorspace,
-				frameGeneration
-			};
-		}
-		else
-		{
-			analysisSource = {
-				yPixels, convertedPayload->pixels.size(), width, height, p010RowBytes,
-				p010RowBytes, lossless422Upload ? AnalysisLumaFormat::P210 :
-				AnalysisLumaFormat::P010,
-				state.videoFrameEncoding, state.colorspace, frameGeneration
-			};
-		}
-		// The subtitle worker learns glyph pixels from the captured RGB frame.
-		// Keep its presentation-time matching in that same sample domain for a
-		// Dolby Vision tunnel; the converted planes carry IPTPQ-C2 components.
-		AnalysisLumaSource subtitlePixelSource = analysisSource;
-		if (state.dolbyVisionTunnel)
-		{
-			subtitlePixelSource = {
-				reinterpret_cast<const uint8_t*>(videoFrame.GetData()),
-				static_cast<size_t>(state.BytesPerFrame()), width, height,
-				static_cast<size_t>(state.BytesPerRow()), 0,
-				AnalysisLumaFormat::NativeRgb, state.videoFrameEncoding,
-				state.colorspace, frameGeneration
-			};
-		}
+        const auto preparedLive = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
+            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload,lossless422Upload);
+        const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
+            analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
+        analysisSource = preparedLive.source;
+        {
+            auto id=activePictureIdentity;id.analysisDomainKey=preparedLive.domainKey;
+            id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
+            id.viewportGeneration=viewportRequestSerial;id.sourceFormatGeneration=AlphaSourceFormatKey(state);
+            auto trace=AnalysisTraceRecord(id,this,"analysis-input",preparedLive.IsValid()?"source-ready":"source-unavailable");
+            trace.sourceWidth=width;trace.sourceHeight=height;trace.analysisWidth=analysisSource.width;
+            trace.analysisHeight=analysisSource.height;trace.analysisFormat=static_cast<uint64_t>(analysisSource.format);
+            trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+            trace.cadenceRepeat=cadenceRepeat;trace.discontinuity=videoFrame.IsSourceDiscontinuity();
+            trace.nearBarDistance=activeSettings.subtitleNearBarDistance;trace.optimizationMode=activeSettings.subtitleDetectionOptimization;
+            trace.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
+            trace.frameDuration100ns=state.displayMode->TimeScale()>0?
+                static_cast<int64_t>(10000000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale()):0;
+            trace.sourceFormat=static_cast<uint64_t>(analysisSource.encoding);
+            trace.counters[0]=static_cast<uint64_t>(analysisSource.encoding);trace.counters[1]=static_cast<uint64_t>(analysisSource.colorspace);
+            trace.counters[2]=preparedLive.transferKey;trace.counters[3]=static_cast<uint64_t>(preparedLive.sampleRange);
+            trace.counters[4]=preparedLive.colorDepth;trace.counters[5]=preparedLive.bitShift;
+            AnalysisDiagnosticTrace::Emit(trace);
+            if (preparedLive.IsValid() && AnalysisDiagnosticTrace::FramesActive()) {
+                AnalysisDiagnosticFramePacketV1 packet;packet.structSize=sizeof(packet);
+                packet.width=width;packet.height=height;packet.stride0=analysisSource.rowBytes;packet.stride1=analysisSource.chromaRowBytes;
+                packet.format=static_cast<uint32_t>(analysisSource.format);packet.encoding=static_cast<uint32_t>(analysisSource.encoding);
+                packet.colorspace=static_cast<uint32_t>(analysisSource.colorspace);packet.rgbBitAlignment=analysisSource.rgbBitAlignment;
+                packet.top=nlsGeometryAvailable?nlsGeometry.top:0;packet.bottom=nlsGeometryAvailable?nlsGeometry.bottom:0;
+                packet.scriptHint=trace.scriptHint;packet.transportGeneration=id.transportGeneration;
+                packet.acceptedSequence=id.acceptedSequence;packet.sourceFrameNumber=id.sourceFrameNumber;
+                packet.captureTimestamp=id.captureTimestamp;packet.sourceFormatGeneration=id.sourceFormatGeneration;
+                packet.viewportGeneration=id.viewportGeneration;packet.rendererGeneration=id.rendererGeneration;
+                packet.analysisDomainKey=id.analysisDomainKey;packet.policyGeneration=trace.policyGeneration;
+                packet.continuityGeneration=trace.continuityGeneration;packet.nearBarDistance=trace.nearBarDistance;
+                packet.optimizationMode=trace.optimizationMode;packet.frameDuration100ns=trace.frameDuration100ns;
+                packet.discontinuity=trace.discontinuity;packet.cadenceRepeat=cadenceRepeat;
+                packet.data=analysisSource.data;packet.dataBytes=analysisSource.dataBytes;
+                packet.ownerContext=&preparedLive.sourceOwner;packet.retainOwner=RetainAnalysisTraceOwner;packet.releaseOwner=ReleaseAnalysisTraceOwner;
+                AnalysisDiagnosticTrace::EmitFrame(packet);
+            }
+        }
+
+        // All consumers use native capture evidence (validated decoded storage
+        // for DV), regardless of the renderer's P010/P210 upload choice.
+        const uint64_t queuedAnalysisDomainKey = preparedQueued.domainKey;
+        if (activePictureAnalysisDomainKey != preparedLive.domainKey) {
+            DebugLog::Log("Alpha analysis contract: source=%s live_domain=%llu queued_domain=%llu same_domain=%d storage_depth=%u storage_shift=%u sample_codes=10bit source_size=%dx%d render_native=%d render_422=%d",
+                AnalysisLumaFormatName(preparedLive.source),
+                static_cast<unsigned long long>(preparedLive.domainKey),
+                static_cast<unsigned long long>(preparedQueued.domainKey),
+                preparedLive.IsValid() && preparedQueued.IsValid() &&
+                    preparedLive.domainKey == preparedQueued.domainKey,
+                static_cast<unsigned>(preparedLive.colorDepth),
+                static_cast<unsigned>(preparedLive.bitShift), width, height,
+                nativeRgbUpload, lossless422Upload);
+            activePictureAnalysisSourceGeneration = 0;
+            activePictureAnalysisDomainKey = preparedLive.domainKey;
+            sceneDetector.Reset(sceneDetectorGeneration);
+            subtitleBoxPresentation.Reset();
+            subtitlePendingGuard.Reset();
+            subtitleTemporalValid = false;
+            subtitleTemporalCleanFrames = 0;
+        }
+
 		if (!analysisSource.IsValid())
 		{
 			renderParams.hooks = nullptr;
@@ -10921,16 +11289,34 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleTranslationConfirmation = {};
 			scopeSubtitleFitConfirmation = {};
 		}
+        SubtitleBoxPreview earlySubtitlePreview;
 		if (analysisSource.IsValid())
 		{
 			ActivePictureFrameIdentity currentActivePictureIdentity =
 				activePictureIdentity;
+			currentActivePictureIdentity.analysisDomainKey = queuedAnalysisDomainKey;
 			currentActivePictureIdentity.transportGeneration = frameGeneration;
 			currentActivePictureIdentity.sourceFormatGeneration =
 				AlphaSourceFormatKey(state);
 			currentActivePictureIdentity.viewportGeneration =
 				viewportRequestSerial;
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
+            // Consume a completed exact-frame worker job before AR evaluates this
+            // frame. An empty queue result is unknown; rendering never waits.
+            if (SubtitlePreviewEnabled(activeSettings) &&
+                (!subtitlePreview || !SubtitleBoxLookahead::IsCurrent(*subtitlePreview,
+                    currentActivePictureIdentity,localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration))) {
+                auto shared=subtitleSharedPicture;shared.required=true;
+                const auto observed=QueueSubtitleMeasurement(videoFrame,state,currentActivePictureIdentity,
+                    videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
+                    activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
+                    shared,preparedQueued);
+                earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
+            }
 			// Scene detection resets temporal candidates above, but it is not crop
 			// authority and therefore is not a blanket veto for a scheduled decision.
 			// In particular, EXACT_INWARD remains eligible when the current cut frame
@@ -10947,7 +11333,8 @@ struct LibplaceboVideoRenderer::Impl
 					verifyRetainedProfileGeometryThisFrame,
 				activePicturePreviewDecision, bufferedExpansion, guardedReturn,
 				!cadenceRepeat && (sceneResult.safeBoundary || sceneResult.hardCutCandidate ||
-					sceneResult.hardCutConfirmed), cadenceRepeat, !cadenceRepeat && sceneResult.hardCutConfirmed);
+					sceneResult.hardCutConfirmed), cadenceRepeat, !cadenceRepeat && sceneResult.hardCutConfirmed,
+				subtitlePreview);
 		}
 		else
 		{
@@ -10970,8 +11357,10 @@ struct LibplaceboVideoRenderer::Impl
 			latestCropSamplingReaffirmed = false;
 			latestActivePicturePresentationRetentionEvaluated = true;
 			latestActivePicturePresentationRetentionSafe = false;
-			latestActivePictureGlobalNearBlackEvaluated = false;
-			latestActivePictureGlobalNearBlack = false;
+			latestActivePictureArNearBlackEvaluated = false;
+			latestActivePictureArNearBlack = false;
+			latestActivePictureRawGlobalNearBlack = false;
+			latestArDarknessGeneration = latestArDarknessSequence = latestArDarknessDomain = 0;
 			latestActivePictureGlobalLumaP90 = 0.0;
 			latestActivePictureOutwardVisibleBoundsAvailable = false;
 			latestActivePicturePresentationRetentionReason =
@@ -10980,6 +11369,12 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthoritySourceGeneration = 0;
 			activePictureAmbiguityHold.Reset();
 		}
+        if (state.dolbyVisionTunnel && !analysisSource.IsValid())
+        {
+            ClearAnalysisForDecodeGap(sceneDetectorGeneration);
+            return false;
+        }
+
 		// A near-black entry is also a scene notification, but darkness alone
 		// does not disprove an established full-frame picture. Evaluate this once
 		// before scene handling can erase that history, then use the same decision
@@ -11209,7 +11604,7 @@ struct LibplaceboVideoRenderer::Impl
 			activePictureAmbiguityHold.IsActive(
 				GetTickCount64(), frameGeneration);
 		const bool latestEvidenceAllowsBarOverlay =
-			!latestActivePictureGlobalNearBlack &&
+			!LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey) &&
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
 			latestActivePictureEvidenceAvailable &&
@@ -11286,12 +11681,12 @@ struct LibplaceboVideoRenderer::Impl
 		const bool retiringTranslationFitInspection =
 			AlphaSourceCrop::CanInspectRetiringTranslationFit(heldAnalysisInput,
 				scopeSubtitleFitConfirmation,
-				latestActivePictureGlobalNearBlack ||
+				LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey) ||
 				nearBlackPresentationEpisode.mode != AlphaSourceCrop::NearBlackPresentationMode::INACTIVE ||
 				AlphaSourceCrop::HasCurrentMovingPictureTransition(
 					movingPictureTransition, frameGeneration, sourceSequence));
 		const bool heldBarAnalysisAuthority =
-			!latestActivePictureGlobalNearBlack &&
+			!LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey) &&
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
 			(retiringTranslationFitInspection ||
@@ -11365,6 +11760,7 @@ struct LibplaceboVideoRenderer::Impl
         subtitleSharedPicture.required=true;
         subtitleSharedPicture.bounds=inwardCaptionProtected?ActivePictureBounds{}:scopeSubtitleAnalysisBounds;
         subtitleSharedPicture.identity=activePictureIdentity;
+        subtitleSharedPicture.identity.analysisDomainKey=queuedAnalysisDomainKey;
         subtitleSharedPicture.identity.transportGeneration=frameGeneration;
         subtitleSharedPicture.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
         subtitleSharedPicture.identity.viewportGeneration=viewportRequestSerial;
@@ -11663,7 +12059,11 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			{
 				std::lock_guard<std::mutex> guard(ingressStatusMutex);
-				sourceLuminance = luminance;
+				if (sourceLuminanceQueueGeneration == frameGeneration)
+				{
+					sourceLuminance = luminance;
+					sourceLuminanceObserved = true;
+				}
 			}
 		}
 		if (state.eotf == EOTF::SDR &&
@@ -11955,15 +12355,32 @@ struct LibplaceboVideoRenderer::Impl
         struct pl_frame subtitleComposedImage = image;
         SubtitleCutPasteGeometry relocatedSubtitle;
         bool subtitleCompositionSucceeded = false;
+        ActivePictureBounds currentConfirmedCaptionBounds;
+        bool currentConfirmedCaptionAvailable = false;
+        bool currentMeasuredCaptionAvailable = false;
+        AlphaSourceCrop::CaptionConfirmationPresentationAnchor renderedCaptionCandidate;
+        AlphaSourceCrop::CaptionConfirmationPresentationHoldState renderedCaptionHoldCandidate;
+        const bool captionAnchorContextMatches =
+            captionAnchorStyle == static_cast<int>(subtitlePreviewMode) &&
+            captionAnchorScreenAspect == configuredScreenAspect &&
+            captionAnchorAnamorphic == anamorphicScale;
         SubtitleBoxPadding safeSubtitlePadding = activeSettings.subtitleBoxPadding;
         if (subtitlePreviewEnabled)
         {
             auto subtitleIdentity = activePictureIdentity;
+            subtitleIdentity.analysisDomainKey = queuedAnalysisDomainKey;
             subtitleIdentity.transportGeneration = frameGeneration;
             subtitleIdentity.sourceFormatGeneration = AlphaSourceFormatKey(state);
             subtitleIdentity.viewportGeneration = viewportRequestSerial;
             subtitleIdentity.rendererGeneration = frameGeneration;
             SubtitleBoxPreview reboundPreview;
+            if (subtitlePreview && subtitlePreview->available &&
+                subtitlePreview->current.independentBarAnalysis &&
+                !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
+                reboundPreview=*subtitlePreview;
+                SubtitleBoxLookahead::RebindIndependentPicture(reboundPreview.current,subtitleSharedPicture);
+                subtitlePreview=&reboundPreview;
+            }
             if(subtitlePreview && subtitlePreview->available &&
                 subtitlePreview->continuityGeneration!=localBoundaryContinuityGeneration) {
                 auto observed=subtitlePreview->current;
@@ -11994,7 +12411,7 @@ struct LibplaceboVideoRenderer::Impl
                     const auto observed = QueueSubtitleMeasurement(videoFrame,state,subtitleIdentity,
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
-                        activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture);
+                        activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,preparedQueued);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;
@@ -12018,15 +12435,52 @@ struct LibplaceboVideoRenderer::Impl
             ++subtitlePerf.frames;
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
-                if(subtitlePendingGuard.Resolve(currentSubtitlePreview,subtitlePixelSource,subtitleFrameMs,activeSettings.subtitleHoldMs))++subtitlePerf.recovered;
+                if(subtitlePendingGuard.Resolve(currentSubtitlePreview,analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs))++subtitlePerf.recovered;
                 else if(subtitlePerf.pending-subtitlePerf.recovered<=4)
                     DebugLog::Log("SUBTITLE PENDING: frame=%llu reason=%s",sourceSequence,subtitlePendingGuard.DecisionReason());
             }
-            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,subtitlePixelSource);
+            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview, activeSettings.subtitleHoldMs,subtitleFrameMs);
+
+            // A bounded source caption can constrain a first picture crop only
+            // when this exact analyzed frame still owns the accepted cue.
+            const auto& currentText = currentSubtitlePreview.current.text;
+            if (barAuthority &&
+                SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,
+                    subtitleIdentity) &&
+                currentSubtitlePreview.current.analyzed &&
+                !currentSubtitlePreview.current.pendingRefresh &&
+                currentText.detected && !currentText.workLimit &&
+                currentText.nearBarEligibilityMeasured && currentText.nearBarEligible &&
+                subtitleBoxResult.detected && !subtitleBoxResult.held &&
+                subtitleBoxResult.observations >= 1 &&
+                subtitleBoxResult.bounds.Valid() && currentText.bounds.Valid())
+            {
+                SubtitleBoxRect caption = subtitleBoxResult.bounds;
+                caption.left = std::min(caption.left, currentText.bounds.left);
+                caption.top = std::min(caption.top, currentText.bounds.top);
+                caption.right = std::max(caption.right, currentText.bounds.right);
+                caption.bottom = std::max(caption.bottom, currentText.bounds.bottom);
+                if (currentText.provenSourcePanel.Valid())
+                {
+                    caption.left = std::min(caption.left, currentText.provenSourcePanel.left);
+                    caption.top = std::min(caption.top, currentText.provenSourcePanel.top);
+                    caption.right = std::max(caption.right, currentText.provenSourcePanel.right);
+                    caption.bottom = std::max(caption.bottom, currentText.provenSourcePanel.bottom);
+                }
+                currentConfirmedCaptionBounds = { caption.left, caption.top,
+                    caption.right, caption.bottom, width, height,
+                    static_cast<double>(caption.right - caption.left) /
+                        std::max(1, caption.bottom - caption.top),
+                    ActivePictureBounds::BarAxes::NONE };
+                // A measured cue may protect an already displayed superset.
+                // Acquiring a new crop still requires the original two observations.
+                currentMeasuredCaptionAvailable = true;
+                currentConfirmedCaptionAvailable = subtitleBoxResult.observations >= 2;
+            }
             if(activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5 &&
-                !cadenceRepeat && subtitlePixelSource.IsValid() && subtitlePreview->available &&
+                !cadenceRepeat && analysisSource.IsValid() && subtitlePreview->available &&
                 subtitlePreview->current.analyzed && !subtitlePreview->current.pendingRefresh &&
                 !subtitleBoxResult.detected && !subtitlePreview->current.text.detected &&
                 !videoFrame.IsSourceDiscontinuity()) {
@@ -12039,7 +12493,7 @@ struct LibplaceboVideoRenderer::Impl
                     if(subtitleTemporalCleanFrames>=8 &&
                         (!subtitleTemporalTick || tick-subtitleTemporalTick>=250)) {
                         SubtitleTemporalFill::Signature samples;
-                        if(SubtitleTemporalFill::Capture(subtitlePixelSource,samples) &&
+                        if(SubtitleTemporalFill::Capture(analysisSource,samples) &&
                             [&]() {
                                 PipelinePreparationScope preparing(libplaceboRenderStartedTick);
                                 return CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
@@ -12047,7 +12501,7 @@ struct LibplaceboVideoRenderer::Impl
                             }()) {
                             subtitleTemporalSamples=samples;
                             subtitleTemporalScene=sceneResult.eventId;
-                            subtitleTemporalGeneration=subtitlePixelSource.generation;
+                            subtitleTemporalGeneration=analysisSource.generation;
                             subtitleTemporalTick=tick;
                             subtitleTemporalValid=true;
                         }
@@ -12060,7 +12514,7 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    subtitlePixelSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -12166,11 +12620,11 @@ struct LibplaceboVideoRenderer::Impl
                                 subtitleCompositionTexture->params.blit_dst &&
                                 subtitleTemporalTexture->params.w==width &&
                                 subtitleTemporalTexture->params.h==height &&
-                                subtitleTemporalGeneration==subtitlePixelSource.generation &&
+                                subtitleTemporalGeneration==analysisSource.generation &&
                                 subtitleTemporalScene==sceneResult.eventId &&
                                 tick>=subtitleTemporalTick && tick-subtitleTemporalTick<=10000 &&
                                 !videoFrame.IsSourceDiscontinuity() &&
-                                SubtitleTemporalFill::Matches(subtitlePixelSource,
+                                SubtitleTemporalFill::Matches(analysisSource,
                                     subtitleTemporalSamples,cleanup,
                                     move.pictureTop,move.pictureBottom);
                             if(donorReady) {
@@ -12220,6 +12674,21 @@ struct LibplaceboVideoRenderer::Impl
             subtitleBoxHeldFrames += !cadenceRepeat && subtitleBoxResult.held;
             const auto analysisLogNow=GetTickCount64();
             const auto& rawAnalysis=subtitlePreview->current.text;
+            {
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-output",rawAnalysis.diagnosticReason);
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                trace.nearBarDistance=activeSettings.subtitleNearBarDistance;trace.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
+                AnalysisTraceRect(trace.subtitle,subtitleBoxResult.bounds);trace.resultCode=subtitleBoxResult.lineCount;
+                trace.flags=(subtitleBoxResult.detected?1u:0u)|(subtitleBoxResult.held?2u:0u)|(subtitleCompositionSucceeded?4u:0u)|
+                    (barAuthority?8u:0u)|(subtitlePreview->current.analyzed?16u:0u)|(rawAnalysis.workLimit?32u:0u);
+                trace.counters[0]=subtitlePreview->current.identity.acceptedSequence;trace.counters[1]=subtitlePreview->current.identity.analysisDomainKey;
+                trace.counters[2]=subtitleBoxResult.cue;trace.counters[3]=subtitlePreview->matchingFrames;
+                trace.counters[4]=rawAnalysis.lineCount;trace.counters[5]=rawAnalysis.diagnosticComponentCount;
+                trace.metrics[0]=rawAnalysis.diagnosticNearBarGap;trace.metrics[1]=subtitlePreview->current.analysisMs;
+                trace.metrics[2]=subtitlePreview->current.pictureTop;trace.metrics[3]=subtitlePreview->current.pictureBottom;
+                AnalysisTraceText(trace.detail,subtitleBoxPresentation.DecisionReason());AnalysisDiagnosticTrace::Emit(trace);
+            }
+
             const bool analysisChanged=std::strcmp(subtitleLoggedAnalysisReason,rawAnalysis.diagnosticReason)!=0 ||
                 subtitleLoggedAnalysisWorkLimit!=rawAnalysis.workLimit ||
                 (subtitleLoggedAnalysisGap>=0)!=(rawAnalysis.diagnosticNearBarGap>=0);
@@ -12310,12 +12779,15 @@ struct LibplaceboVideoRenderer::Impl
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
-			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
+			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
 			 subtitlePreviewMode,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
+             currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
+             currentMeasuredCaptionAvailable, captionAnchorContextMatches, &state, &videoFrame,
+             &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
              recoveredSubtitleInspection, recoveredSubtitleBars,
 			 subtitleBarAuthority,
@@ -12484,7 +12956,7 @@ struct LibplaceboVideoRenderer::Impl
 					currentDetectorEnvelope,
 					latestObservationIsProvisional ||
 						(latestObservationIsUnavailable &&
-						 latestActivePictureGlobalNearBlack) ||
+						 LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey)) ||
 						(!effectiveLatestSupportsCrop &&
 						 latestActivePictureEvidenceClassification ==
 							ActivePictureClassification::BAR_CROP_TRUSTED),
@@ -12567,8 +13039,8 @@ struct LibplaceboVideoRenderer::Impl
 				latestCropRetentionEvidence.analysisValid && latestCropRetentionEvidence.presentationValid &&
 				latestCropRetentionEvidence.outwardVisibleBoundsAvailable;
 			refinementFitInput.outwardAvailable = currentDetectorEnvelope && envelopeInput.baseMatchesEffectiveGeometry;
-			refinementFitInput.nearBlackEvaluated = latestActivePictureGlobalNearBlackEvaluated;
-			refinementFitInput.nearBlack = latestActivePictureGlobalNearBlack;
+			refinementFitInput.nearBlackEvaluated = latestActivePictureArNearBlackEvaluated;
+			refinementFitInput.nearBlack = LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey);
 			refinementFitInput.moving = movingPictureTransition.active || movingPictureTransition.awaitingPublication;
 			refinementFitInput.competingOwner = !nlsGeometryAvailable || useSceneVerificationGeometry ||
 				detailedVerticalActive || requestedSubtitleTranslation || subtitleDriftTranslation ||
@@ -12793,8 +13265,8 @@ struct LibplaceboVideoRenderer::Impl
 				(sceneDetectionEnabled || automaticSourceCrop) && committedFullStillAvailable;
 			fullRetentionInput.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
 			fullRetentionInput.cadenceRepeat = cadenceRepeat;
-			fullRetentionInput.nearBlackEvaluated = latestActivePictureGlobalNearBlackEvaluated;
-			fullRetentionInput.globalNearBlack = latestActivePictureGlobalNearBlack;
+			fullRetentionInput.nearBlackEvaluated = latestActivePictureArNearBlackEvaluated;
+			fullRetentionInput.globalNearBlack = LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey);
 			fullRetentionInput.rawClassification = latestRawPictureEvidence.classification;
 			fullRetentionInput.rawBounds = latestRawPictureEvidence.trustedBounds;
 			fullRetentionInput.frameWidth = width;
@@ -12831,9 +13303,9 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.measurementCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;
 			episodeInput.nearBlackEvaluated =
-				latestActivePictureGlobalNearBlackEvaluated;
+				latestActivePictureArNearBlackEvaluated;
 			episodeInput.globalNearBlack =
-				latestActivePictureGlobalNearBlack;
+				LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey);
 			episodeInput.sceneBoundary =
 				!cadenceRepeat && sceneResult.safeBoundary && !retainFullRasterAtDarknessBoundary;
 			episodeInput.trustedCropAvailable =
@@ -12871,6 +13343,11 @@ struct LibplaceboVideoRenderer::Impl
 			// prevent acquisition. Recovery of the unchanged entry contract needs
 			// the raw classification, with all current-pixel/provenance gates intact.
 			episodeInput.currentObservationClassification = latestCropRetentionEvidence.activePicture.classification;
+			episodeInput.currentObservationOrigin = latestCropRetentionEvidence.activePicture.authorityOrigin;
+			episodeInput.currentNativeObservationAvailable = latestCropRetentionEvidence.activePicture.available;
+			episodeInput.currentNativeObservation = latestCropRetentionEvidence.activePicture.trustedBounds;
+			episodeInput.currentNativeOutwardProof = outwardPictureConfirmation;
+			episodeInput.currentNativeOutwardProofPresentationEpoch = outwardPictureConfirmationEpoch;
 			episodeInput.retentionBounds = episodeInput.retentionEvaluated
 				? latestActivePicturePresentationRetentionBounds
 				: ActivePictureBounds{};
@@ -12941,6 +13418,11 @@ struct LibplaceboVideoRenderer::Impl
             establishedTranslation.holdMs = scopeSubtitleHoldMs;
             establishedTranslation.resolvedTranslationPixels = verticalTranslationPixels;
             establishedTranslation.engagingTranslation = requestedSubtitleTranslation && scopeSubtitleDrift.IsActive();
+            establishedTranslation.engageIntervalAvailable = establishedTranslation.engagingTranslation &&
+                scopeSubtitleDrift.TryGetActiveInterval(
+                    establishedTranslation.engageStartTranslationPixels,
+                    establishedTranslation.engageTargetTranslationPixels,
+                    establishedTranslation.engageAppliedTranslationPixels);
             establishedTranslation.competingPresentation = !automaticSourceCrop || !configuredScreenActive ||
                 fixedCropAspectConfigured || nlsRequested || inwardCaptionProtected ||
                 (!verticalTranslationActive && !establishedTranslation.engagingTranslation &&
@@ -13060,6 +13542,20 @@ struct LibplaceboVideoRenderer::Impl
 					episodeInput.sceneBoundary ? 1 : 0,
 					episodeDecision.reason.c_str());
 			}
+			if (episodeDecision.outwardEntryReleased)
+				DebugLog::Log("Alpha native outward episode handoff: generation=%llu sequence=%llu epoch=%llu old=%d,%d-%d,%d current=%d,%d-%d,%d proof=%u/%u route=%u action=withdraw_old_then_reacquire",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(viewportRequestSerial),
+					nearBlackPresentationEpisode.entryTrustedCrop.left,
+					nearBlackPresentationEpisode.entryTrustedCrop.top,
+					nearBlackPresentationEpisode.entryTrustedCrop.right,
+					nearBlackPresentationEpisode.entryTrustedCrop.bottom,
+					episodeInput.currentObservation.left, episodeInput.currentObservation.top,
+					episodeInput.currentObservation.right, episodeInput.currentObservation.bottom,
+					static_cast<unsigned>(episodeInput.currentNativeOutwardProof.confirmations),
+					static_cast<unsigned>(AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED),
+					static_cast<unsigned>(episodeInput.currentNativeOutwardProof.proofRoute));
 			if (episodeDecision.resetTransitionEvidence)
 			{
 				nlsTransition.ResetCandidateEvidence();
@@ -13069,6 +13565,8 @@ struct LibplaceboVideoRenderer::Impl
 			if (episodeDecision.resetTrustedGeometry)
 			{
 				nativeBoundaryReacquisitionPending = true;
+				const auto& verifiedNativeBounds = episodeDecision.outwardEntryReleased
+					? episodeInput.currentObservation : episodeInput.nativeBootstrapContract;
 				DebugLog::Log("Alpha native boundary recovery: generation=%llu sequence=%llu old_rect=%d,%d-%d,%d verified_rect=%d,%d-%d,%d action=withdraw_obsolete_authority_then_reacquire",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
@@ -13076,10 +13574,10 @@ struct LibplaceboVideoRenderer::Impl
 					nearBlackPresentationEpisode.entryTrustedCrop.top,
 					nearBlackPresentationEpisode.entryTrustedCrop.right,
 					nearBlackPresentationEpisode.entryTrustedCrop.bottom,
-					episodeInput.nativeBootstrapContract.left,
-					episodeInput.nativeBootstrapContract.top,
-					episodeInput.nativeBootstrapContract.right,
-					episodeInput.nativeBootstrapContract.bottom);
+					verifiedNativeBounds.left,
+					verifiedNativeBounds.top,
+					verifiedNativeBounds.right,
+					verifiedNativeBounds.bottom);
 			}
 			nearBlackPresentationEpisode = episodeDecision.state;
 			const bool nearBlackEpisodeRetainCrop =
@@ -13283,6 +13781,35 @@ struct LibplaceboVideoRenderer::Impl
             // from the trusted movie bounds before subtitle/retention expansion.
             cropInput.automaticCropEnabled = AlphaSourceCrop::ShouldApplyDynamicSourceCrop(
                 automaticSourceCropRequested, scopeSubtitleFit, cropInput, configuredFillInput);
+
+            // A first crop cannot translate away real picture pixels merely to
+            // reveal a caption in one bar. When the current subtitle worker has
+            // independently confirmed that caption, acquire a bounded picture
+            // plus caption fit instead. Unrelated visible pixels still veto it.
+            AlphaSourceCrop::CaptionBoundedFitAcquisitionInput captionFitInput;
+            captionFitInput.crop = &cropInput;
+            captionFitInput.captionBounds = currentConfirmedCaptionBounds;
+            captionFitInput.captionSourceGeneration = frameGeneration;
+            captionFitInput.captionSourceSequence = sourceSequence;
+            captionFitInput.captionConfirmed = currentConfirmedCaptionAvailable;
+            captionFitInput.initialAcquisition = !AlphaSourceCrop::HasCurrentCropPresentationAdmission(
+                cropPresentationAdmission, cropInput, viewportRequestSerial);
+            captionFitInput.translationProposed = cropInput.verticalTranslationActive;
+            const auto captionFitAcquisition =
+                AlphaSourceCrop::BuildCaptionBoundedFitAcquisition(captionFitInput);
+            const auto captionTranslationInput = cropInput;
+            if (captionFitAcquisition.available)
+            {
+                cropInput.verticalTranslationActive = false;
+                cropInput.verticalTranslationConfirmationPending = false;
+                cropInput.verticalFitConfirmationPending = false;
+                cropInput.verticalTranslationBaseRetentionActive = false;
+                cropInput.verticalTranslationEngageBaseRetentionActive = false;
+                cropInput.outwardPresentationActive = true;
+                cropInput.outwardExpansionAvailable = true;
+                cropInput.outwardExpansion = captionFitAcquisition.bounds;
+                cropInput.outwardExpansionSourceGeneration = frameGeneration;
+            }
 			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
@@ -13370,6 +13897,10 @@ struct LibplaceboVideoRenderer::Impl
 			recoveryInput.crop = cropInput;
 			recoveryInput.candidate = cropDecision;
 			recoveryInput.confirmedPresentationResolved = episodeDecision.releasedToTrustedCrop ||
+                (captionFitAcquisition.available && cropDecision.applyCrop &&
+                 cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                 ActivePictureBoundsContain(cropDecision.sourceBounds,
+                     captionFitAcquisition.bounds)) ||
                 (protectedCaptionFit && cropDecision.applyCrop &&
                  cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
                  ActivePictureBoundsContain(cropDecision.sourceBounds,
@@ -13402,8 +13933,56 @@ struct LibplaceboVideoRenderer::Impl
 					nearBlackBoundedDecision.presentation.reason.c_str());
 			nearBlackPresentationEpisode = nearBlackBoundedDecision.state;
 			cropDecision = nearBlackBoundedDecision.presentation;
-			const auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
-				cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+			auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
+                cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+            if (captionFitAcquisition.available)
+            {
+                // Preserve inspection/recovery changes; restore only fields the
+                // temporary caption-fit branch changed. Never publish its size.
+                auto translatedInput = cropInput;
+                translatedInput.verticalTranslationActive = captionTranslationInput.verticalTranslationActive;
+                translatedInput.verticalTranslationConfirmationPending = captionTranslationInput.verticalTranslationConfirmationPending;
+                translatedInput.verticalFitConfirmationPending = captionTranslationInput.verticalFitConfirmationPending;
+                translatedInput.verticalTranslationBaseRetentionActive = captionTranslationInput.verticalTranslationBaseRetentionActive;
+                translatedInput.verticalTranslationEngageBaseRetentionActive = captionTranslationInput.verticalTranslationEngageBaseRetentionActive;
+                translatedInput.outwardPresentationActive = captionTranslationInput.outwardPresentationActive;
+                translatedInput.outwardExpansionAvailable = captionTranslationInput.outwardExpansionAvailable;
+                translatedInput.outwardExpansion = captionTranslationInput.outwardExpansion;
+                translatedInput.outwardExpansionSourceGeneration = captionTranslationInput.outwardExpansionSourceGeneration;
+                auto handoffInput = captionFitInput;
+                handoffInput.crop = &translatedInput;
+                std::string handoffReason = "recovery-active";
+                const auto completed = cropPresentationRecovery.active ? admissionDecision :
+                    AlphaSourceCrop::CompleteCaptionAcquisitionTranslation(
+                        handoffInput, admissionDecision, establishedTranslation, viewportRequestSerial,
+                        episodeInput.currentTick, &handoffReason);
+                DebugLog::Log("Alpha caption acquisition handoff: generation=%llu sequence=%llu epoch=%llu accepted=%d reason=\"%s\" recovery=%d owner_sequence=%llu owner_generation=%llu target=%.3f routed=%d drift=%d interval=%d start=%.3f end=%.3f pose=%.3f competing=%d auto=%d screen=%d fixed=%d nls=%d inward=%d fail_open=%d fit=%d invalid_expansion=%d picture_handoff=%d side_content=%d/%d side_expansion=%d/%d moving=%d/%d base=%d,%d-%d,%d trusted=%d,%d-%d,%d",
+                    frameGeneration, sourceSequence, viewportRequestSerial,
+                    completed.presentation.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION ? 1 : 0,
+                    handoffReason.c_str(), cropPresentationRecovery.active ? 1 : 0,
+                    establishedTranslation.presentation.sourceSequence, establishedTranslation.sourceGeneration,
+                    static_cast<double>(establishedTranslation.presentation.translationPixels), verticalTranslationPixels,
+                    establishedTranslation.engagingTranslation ? 1 : 0, establishedTranslation.engageIntervalAvailable ? 1 : 0,
+                    static_cast<double>(establishedTranslation.engageStartTranslationPixels),
+                    static_cast<double>(establishedTranslation.engageTargetTranslationPixels),
+                    static_cast<double>(establishedTranslation.engageAppliedTranslationPixels),
+                    establishedTranslation.competingPresentation ? 1 : 0, automaticSourceCrop ? 1 : 0,
+                    configuredScreenActive ? 1 : 0, fixedCropAspectConfigured ? 1 : 0, nlsRequested ? 1 : 0,
+                    inwardCaptionProtected ? 1 : 0, verticalFailOpen ? 1 : 0, verticalFitActive ? 1 : 0,
+                    outwardExpansionInvalid ? 1 : 0, pictureTransitionHandoff.active ? 1 : 0,
+                    leftBarContentActive ? 1 : 0, rightBarContentActive ? 1 : 0,
+                    currentDetectorLeftExpansion ? 1 : 0, currentDetectorRightExpansion ? 1 : 0,
+                    movingPictureTransition.active ? 1 : 0, movingPictureTransition.awaitingPublication ? 1 : 0,
+                    establishedTranslation.base.left, establishedTranslation.base.top,
+                    establishedTranslation.base.right, establishedTranslation.base.bottom,
+                    cropInput.geometry.left, cropInput.geometry.top, cropInput.geometry.right, cropInput.geometry.bottom);
+                if (completed.presentation.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION)
+                {
+                    cropInput = translatedInput;
+                    admissionDecision = completed;
+                    cropDecision = completed.presentation;
+                }
+            }
 			const auto admissionLogTick = GetTickCount64();
 			if (admissionDecision.blocked != cropAdmissionPreviouslyBlocked ||
 				(admissionDecision.blocked &&
@@ -13567,9 +14146,106 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateAspectLimitFill(
 					aspectLimitInput);
 			}
+            AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
+            captionHoldInput.previous = captionConfirmationHold;
+            captionHoldInput.lastRendered = lastRenderedCaptionAnchor;
+            captionHoldInput.sourceGeneration = frameGeneration;
+            captionHoldInput.analysisDomainKey = queuedAnalysisDomainKey;
+            captionHoldInput.sourceFormatKey = AlphaSourceFormatKey(state);
+            captionHoldInput.presentationEpoch = viewportRequestSerial;
+            captionHoldInput.sourceSequence = sourceSequence;
+            captionHoldInput.currentTick = episodeInput.currentTick;
+            captionHoldInput.picture = cropInput.geometry;
+            captionHoldInput.pictureGeneration = cropInput.geometrySourceGeneration;
+            captionHoldInput.pictureSequence = latestActivePictureEvidenceFrame;
+            captionHoldInput.pictureCurrentTrusted = cropInput.sharedGeometryAvailable &&
+                cropInput.latestObservationSupportsCrop &&
+                cropInput.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                episodeInput.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE;
+            captionHoldInput.caption = currentConfirmedCaptionBounds;
+            captionHoldInput.captionCurrentMeasured = currentMeasuredCaptionAvailable;
+            captionHoldInput.captionGeneration = frameGeneration;
+            captionHoldInput.captionSequence = sourceSequence;
+            captionHoldInput.visibleBounds = cropInput.currentVisibleBounds;
+            captionHoldInput.visibleGeneration = cropInput.currentVisibleSourceGeneration;
+            captionHoldInput.visibleSequence = cropInput.currentVisibleSourceSequence;
+            captionHoldInput.retentionBase = episodeInput.retentionBounds;
+            captionHoldInput.retentionGeneration = episodeInput.retentionSourceGeneration;
+            captionHoldInput.retentionSequence = episodeInput.retentionSourceSequence;
+            captionHoldInput.nearBlackEvaluated = episodeInput.nearBlackEvaluated;
+            captionHoldInput.nearBlack = episodeInput.globalNearBlack;
+            captionHoldInput.cadenceRepeat = cadenceRepeat;
+            captionHoldInput.pendingConfirmation = verticalTranslationConfirmationPending;
+            captionHoldInput.zeroEngage = !verticalTranslationConfirmationPending &&
+                establishedTranslation.engagingTranslation && establishedTranslation.engageIntervalAvailable &&
+                std::abs(establishedTranslation.engageAppliedTranslationPixels) <= 0.001f &&
+                std::abs(establishedTranslation.engageStartTranslationPixels) <= 0.001f &&
+                verticalTranslationPixels == 0 &&
+                scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+                scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+                scopeVerticalBarPresentation.sourceSequence == sourceSequence;
+            const double pendingCaptionTarget = scopeSubtitleTranslationConfirmation.candidateTranslationPixels;
+            const double pendingCaptionMagnitude = std::min(
+                std::abs(pendingCaptionTarget) + std::max(0, scopeSubtitleTargetBufferPixels),
+                static_cast<double>(pendingCaptionTarget < 0 ? cropInput.geometry.top : height - cropInput.geometry.bottom));
+            captionHoldInput.targetTranslationPixels = verticalTranslationConfirmationPending
+                ? (pendingCaptionTarget < 0 ? -pendingCaptionMagnitude : pendingCaptionMagnitude)
+                : establishedTranslation.engageTargetTranslationPixels;
+            captionHoldInput.eligible = captionAnchorContextMatches &&
+                !cropDecision.applyCrop && !aspectLimitFill.applied &&
+                cropInput.automaticCropEnabled && configuredScreenActive &&
+                episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
+                cropInput.currentVisibleBoundsAvailable &&
+                !cropInput.fullRasterPresentationAuthoritative;
+            captionHoldInput.competingPresentation = establishedTranslation.competingPresentation ||
+                videoFrame.IsSourceDiscontinuity() ||
+                (!cadenceRepeat && (sceneResult.safeBoundary || sceneResult.hardCutCandidate)) ||
+                cropInput.presentationFailOpen || cropInput.verticalInspectionPending ||
+                cropInput.verticalFitConfirmationPending || cropInput.movingPictureTransition ||
+                cropInput.nearBlackEpisodeFullRaster || cropInput.nearBlackEpisodeRetainCrop ||
+                protectedCaptionFit || nearBlackBoundedDecision.boundedPresentation ||
+                scopeSubtitleEvidenceSourceGeneration != frameGeneration;
+            const auto captionHoldDecision =
+                AlphaSourceCrop::EvaluateCaptionConfirmationPresentationHold(captionHoldInput);
+            const bool captionPresentationHeld = captionHoldDecision.hold;
+            if (captionPresentationHeld)
+            {
+                // Substitute only the final source rectangle, after all admission
+                // and recovery decisions. Do not turn this into an admitted crop.
+                aspectLimitFill.applied = true;
+                aspectLimitFill.sourceBounds = captionHoldDecision.bounds;
+                aspectLimitFill.reason = captionHoldDecision.reason;
+                renderedCaptionHoldCandidate = captionHoldDecision.state;
+            }
+            const bool captionHoldLogDue = captionPresentationHeld || captionConfirmationHold.active ||
+                (!cropDecision.applyCrop && (captionHoldInput.pendingConfirmation || captionHoldInput.zeroEngage) &&
+                 (captionHoldLastLogReason != captionHoldDecision.reason ||
+                  episodeInput.currentTick - captionHoldLastLogTick >= 2000));
+            if (captionHoldLogDue)
+            {
+                captionHoldLastLogTick = episodeInput.currentTick;
+                captionHoldLastLogReason = captionHoldDecision.reason;
+                DebugLog::Log("Alpha caption confirmation presentation: generation=%llu sequence=%llu held=%d first=%llu elapsed_ms=%llu reason=\"%s\" rect=%d,%d-%d,%d eligible=%d competing=%d picture_current=%d caption_current=%d near_black=%d/%d target=%.3f picture=%d,%d-%d,%d visible=%d,%d-%d,%d caption=%d,%d-%d,%d anchor=%d:%llu:%d,%d-%d,%d",
+                    frameGeneration, sourceSequence, captionPresentationHeld ? 1 : 0,
+                    captionHoldDecision.state.firstSequence,
+                    captionPresentationHeld ? episodeInput.currentTick - captionHoldDecision.state.startedTick : 0,
+                    captionHoldDecision.reason, captionHoldDecision.bounds.left, captionHoldDecision.bounds.top,
+                    captionHoldDecision.bounds.right, captionHoldDecision.bounds.bottom,
+                    captionHoldInput.eligible ? 1 : 0, captionHoldInput.competingPresentation ? 1 : 0,
+                    captionHoldInput.pictureCurrentTrusted ? 1 : 0, captionHoldInput.captionCurrentMeasured ? 1 : 0,
+                    captionHoldInput.nearBlackEvaluated ? 1 : 0, captionHoldInput.nearBlack ? 1 : 0,
+                    captionHoldInput.targetTranslationPixels,
+                    captionHoldInput.picture.left, captionHoldInput.picture.top, captionHoldInput.picture.right, captionHoldInput.picture.bottom,
+                    captionHoldInput.visibleBounds.left, captionHoldInput.visibleBounds.top, captionHoldInput.visibleBounds.right, captionHoldInput.visibleBounds.bottom,
+                    captionHoldInput.caption.left, captionHoldInput.caption.top, captionHoldInput.caption.right, captionHoldInput.caption.bottom,
+                    lastRenderedCaptionAnchor.available ? 1 : 0, lastRenderedCaptionAnchor.sourceSequence,
+                    lastRenderedCaptionAnchor.bounds.left, lastRenderedCaptionAnchor.bounds.top,
+                    lastRenderedCaptionAnchor.bounds.right, lastRenderedCaptionAnchor.bounds.bottom);
+            }
             // Keep only an actually applied optional fill on this admitted native base.
             // Recording presentation never publishes or refreshes detector authority.
-            cropPresentationAdmission.optionalFillApplied = aspectLimitFill.applied &&
+            cropPresentationAdmission.optionalFillApplied = !captionPresentationHeld && aspectLimitFill.applied &&
                 cropDecision.applyCrop && !fixedCropAspectConfigured && !nlsRequested &&
                 !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
                 !cropInput.movingPictureTransition && !recoveryDecision.state.active &&
@@ -13582,6 +14258,40 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
+            const bool captionAnchorEligible = captionPresentationHeld ||
+                (cropDecision.applyCrop && !cropDecision.verticallyTranslated &&
+                 !verticalTranslationConfirmationPending && !verticalFitConfirmationPending &&
+                 !fixedCropAspectConfigured && !nlsRequested && !cropInput.movingPictureTransition &&
+                 !cropInput.presentationFailOpen && !cropInput.nearBlackEpisodeFullRaster &&
+                 !cropInput.nearBlackEpisodeRetainCrop && verticalTranslationPixels == 0);
+            if (captionAnchorEligible)
+            {
+                renderedCaptionCandidate.available = true;
+                renderedCaptionCandidate.bounds = presentationCropBounds;
+                renderedCaptionCandidate.sourceGeneration = frameGeneration;
+                renderedCaptionCandidate.analysisDomainKey = queuedAnalysisDomainKey;
+                renderedCaptionCandidate.sourceFormatKey = AlphaSourceFormatKey(state);
+                renderedCaptionCandidate.presentationEpoch = viewportRequestSerial;
+                renderedCaptionCandidate.sourceSequence = sourceSequence;
+                renderedCaptionCandidate.tick = episodeInput.currentTick;
+            }
+            {
+                auto id=activePictureIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
+                id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
+                auto trace=AnalysisTraceRecord(id,this,"presentation",cropDecision.reason.c_str());
+                AnalysisTraceRect(trace.previous,cropDiagnosticPreviousBounds);AnalysisTraceRect(trace.measured,latestActivePictureEvidenceBounds);
+                AnalysisTraceRect(trace.published,effectiveGeometry);AnalysisTraceRect(trace.displayed,presentationCropBounds);
+                trace.cadenceRepeat=cadenceRepeat;trace.resultCode=static_cast<int32_t>(cropDecision.owner);
+                trace.flags=(cropDecision.applyCrop?1u:0u)|(aspectLimitFill.applied?2u:0u)|(cropPresentationRecovery.active?4u:0u)|
+                    (nearBlackEpisodeFullRaster?8u:0u)|(admissionDecision.blocked?16u:0u);
+                trace.counters[0]=recoveryDecision.samples;trace.counters[1]=recoveryDecision.required;
+                trace.counters[2]=episodeDecision.revalidationSamples;trace.counters[3]=episodeDecision.revalidationSamplesRequired;
+                trace.counters[4]=episodeDecision.revalidationGates;trace.counters[5]=episodeInput.sceneBoundary;
+                trace.metrics[0]=latestActivePictureGlobalLumaP90;trace.metrics[1]=configuredScreenAspect;
+                trace.viewportLeft=static_cast<int32_t>(target.crop.x0);trace.viewportTop=static_cast<int32_t>(target.crop.y0);
+                trace.viewportRight=static_cast<int32_t>(target.crop.x1);trace.viewportBottom=static_cast<int32_t>(target.crop.y1);
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
 			// Diagnostics reuse the evidence already sampled above; no pixel scans.
 			if (!cropTraceConfigured)
 			{
@@ -13943,8 +14653,8 @@ struct LibplaceboVideoRenderer::Impl
 					currentContainedInspectionRetention ? 1 : 0,
 					verticalFailOpen ? 1 : 0, outwardExpansionInvalid ? 1 : 0,
 					latestCropRetentionEvidence.samplingStripPeakY, latestCropRetentionEvidence.samplingStripPeakChromaDelta,
-					latestActivePictureGlobalNearBlackEvaluated ? 1 : 0,
-					latestActivePictureGlobalNearBlack ? 1 : 0,
+					latestActivePictureArNearBlackEvaluated ? 1 : 0,
+					LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey) ? 1 : 0,
 					latestActivePictureGlobalLumaP90,
 					AlphaSourceCrop::NearBlackPresentationModeName(
 						nearBlackPresentationEpisode.mode),
@@ -14028,7 +14738,7 @@ struct LibplaceboVideoRenderer::Impl
 					presentationCropBounds.right);
 				source.crop.y1 = static_cast<float>(
 					presentationCropBounds.bottom);
-				if (trustedActivePicture)
+				if (trustedActivePicture && !captionPresentationHeld)
 					*trustedActivePicture = true;
 			}
 			// This is the sole per-frame NLS authority. Derive every mapping input
@@ -14214,8 +14924,8 @@ struct LibplaceboVideoRenderer::Impl
 					finalScreen.right - picture.right, finalScreen.bottom - picture.bottom,
 					automaticSourceCrop ? 1 : 0, fixedCropAspectConfigured ? 1 : 0,
 					aspectLimitFill.applied ? 1 : 0,
-					latestActivePictureGlobalNearBlackEvaluated ? 1 : 0,
-					latestActivePictureGlobalNearBlack ? 1 : 0,
+					latestActivePictureArNearBlackEvaluated ? 1 : 0,
+					LatestArNearBlackForSource(frameGeneration, sourceSequence, queuedAnalysisDomainKey) ? 1 : 0,
 					latestActivePictureGlobalLumaP90,
 					edgeCurrent ? 1 : 0,
 					static_cast<unsigned long long>(latestActivePictureEvidenceFrame),
@@ -15532,6 +16242,14 @@ struct LibplaceboVideoRenderer::Impl
 				sourceUploadCpuIntervalSamples = 0;
 			}
 		}
+        // Failed submissions cannot establish or renew a presentation anchor.
+        lastRenderedCaptionAnchor = rendered && submitted
+            ? renderedCaptionCandidate : AlphaSourceCrop::CaptionConfirmationPresentationAnchor{};
+        captionConfirmationHold = rendered && submitted
+            ? renderedCaptionHoldCandidate : AlphaSourceCrop::CaptionConfirmationPresentationHoldState{};
+        captionAnchorStyle = static_cast<int>(subtitlePreviewMode);
+        captionAnchorScreenAspect = configuredScreenAspect;
+        captionAnchorAnamorphic = anamorphicScale;
 		if (rendered && submitted)
 		{
 			hasPresentedFrame = true;
@@ -15627,6 +16345,7 @@ uint64_t AlphaSourceFormatKey(const VideoState& state)
 	mix(static_cast<uint64_t>(state.eotf));
 	mix(static_cast<uint64_t>(state.colorspace));
 	mix(state.invertedVertical ? 1ULL : 0ULL);
+    mix(state.dolbyVisionTunnel ? 1ULL : 0ULL);
 	if (state.displayMode)
 	{
 		mix(static_cast<uint64_t>(state.displayMode->FrameWidth()));
@@ -17735,6 +18454,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
     bool subtitlePreviewEnabled = false;
+    bool subtitleAssistedArEnabled = false;
     int subtitleNearBarDistance=20;
     int subtitleDetectionOptimization=0;
     SubtitleScriptHint subtitleScriptHint=SubtitleScriptHint::Latin;
@@ -17790,6 +18510,9 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         subtitleScriptHint=m_impl->activeSettings.subtitleScriptHint;
         subtitlePreviewEnabled = m_impl->SubtitlePreviewEnabled(
 			m_impl->activeSettings);
+        subtitleAssistedArEnabled=subtitlePreviewEnabled && m_impl->automaticSourceCrop &&
+            m_impl->renderConfiguredScreenActive && !m_impl->nlsRequested &&
+            !m_impl->fixedCropAspectConfigured;
         if (!previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
             (m_impl->rememberedEdgeShadow && rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick)))
         {
@@ -17936,8 +18659,13 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		subtitlePreviewEnabled)
 	{
 		const auto& firstState=*previewFrames.front().state;
+        auto firstAnalysisIdentity=previewFrames.front().activePictureIdentity;
+        const auto preparedFirst=Impl::PrepareFrameAnalysis(previewFrames.front().frame,firstState,
+            previewFrames.front().converted,previewFrames.front().analysis,AnalysisSourceProfile::QueuedCapture,
+            firstAnalysisIdentity.sourceFormatGeneration,false,firstState.dolbyVisionTunnel);
+        firstAnalysisIdentity.analysisDomainKey=preparedFirst.domainKey;
 		subtitleBarTrackingReference=m_impl->subtitleBoxPresentation.BarTrackingReferenceFor(
-			previewFrames.front().activePictureIdentity,
+			firstAnalysisIdentity,
 			static_cast<int>(firstState.displayMode->FrameWidth()),
 			static_cast<int>(firstState.displayMode->FrameHeight()),
             lookaheadPolicyGeneration,subtitleContinuityGeneration,subtitleScriptHint);
@@ -17962,38 +18690,35 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			continue;
 		}
 		const VideoState& state = *queued.state;
-		AnalysisLumaFormat format;
-		AlphaNativeRgbLayout rgbLayout;
-		if (GetAlphaNativeRgbLayout(state.videoFrameEncoding, rgbLayout))
-			format = AnalysisLumaFormat::NativeRgb;
-		else if (state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
-			state.videoFrameEncoding == VideoFrameEncoding::HDYC ||
-			state.videoFrameEncoding == VideoFrameEncoding::V210)
-			format = AnalysisLumaFormat::NativeYuv422;
-		else
-		{
-			subtitleBarTrackingReference={};
-			continue;
-		}
-		AnalysisLumaSource source = {
-			reinterpret_cast<const uint8_t*>(queued.frame.GetData()),
-			static_cast<size_t>(state.BytesPerFrame()),
-			static_cast<int>(state.displayMode->FrameWidth()),
-			static_cast<int>(state.displayMode->FrameHeight()),
-			static_cast<size_t>(state.BytesPerRow()), 0, format,
-			state.videoFrameEncoding, state.colorspace,
-			queued.activePictureIdentity.sourceFormatGeneration
-		};
-		const ActivePictureEvidence evidence = queued.activePicturePreviewAnalyzed
-			? queued.activePicturePreviewEvidence : ExtractActivePictureEvidence(source);
+        const auto prepared = Impl::PrepareFrameAnalysis(queued.frame,state,queued.converted,
+            queued.analysis,AnalysisSourceProfile::QueuedCapture,
+            queued.activePictureIdentity.sourceFormatGeneration,false,state.dolbyVisionTunnel);
+        if (!prepared.IsValid()) {
+            subtitleBarTrackingReference={};
+            if(state.dolbyVisionTunnel) break; // Never bridge a decode/metadata gap.
+            continue; // Preserve beta traversal for unsupported ordinary capture formats.
+        }
+        const auto& source=prepared.source;
+        auto analysisIdentity=queued.activePictureIdentity;
+        analysisIdentity.analysisDomainKey=prepared.domainKey;
+        auto sharedPicture=subtitleSharedPictureSnapshot;
+        // A retained picture snapshot from another interpretation is unavailable.
+        if (sharedPicture.required && sharedPicture.identity.analysisDomainKey != prepared.domainKey)
+            sharedPicture.bounds={};
+        const bool cachedPictureEvidence=queued.activePicturePreviewAnalyzed &&
+            queued.activePicturePreviewDomainKey==prepared.domainKey;
+        const ActivePictureEvidence evidence=cachedPictureEvidence ?
+            queued.activePicturePreviewEvidence : ExtractActivePictureEvidence(source);
+
         if (rememberedIndex < subtitleObservations.size())
         {
             auto cachedSubtitleObservation=queued.subtitleBoxObservation;
+            SubtitleBoxLookahead::RebindIndependentPicture(cachedSubtitleObservation,sharedPicture);
             SubtitleBoxLookahead::RebindIndependentMeasurement(cachedSubtitleObservation,subtitleContinuityGeneration);
             if (cachedSubtitleObservation.optimizationMode==subtitleDetectionOptimization && cachedSubtitleObservation.nearBarDistance==subtitleNearBarDistance &&
-                cachedSubtitleObservation.sharedPicture.Matches(subtitleSharedPictureSnapshot) &&
+                cachedSubtitleObservation.sharedPicture.Matches(sharedPicture) &&
                 SubtitleBoxLookahead::CanReuseMeasurement(cachedSubtitleObservation,
-                queued.activePictureIdentity,source.width,source.height,lookaheadPolicyGeneration,
+                analysisIdentity,source.width,source.height,lookaheadPolicyGeneration,
                 subtitleContinuityGeneration,queued.frame.IsSourceDiscontinuity(),
                 subtitleBarTrackingReference,subtitleScriptHint))
                 subtitleObservations[rememberedIndex] = cachedSubtitleObservation;
@@ -18002,10 +18727,10 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 // Return immediately if a worker result is not ready. The queue
                 // supplies future frames without putting their scans on playback.
                 subtitleObservations[rememberedIndex]=m_impl->QueueSubtitleMeasurement(
-                    queued.frame,state,queued.activePictureIdentity,queued.frame.IsSourceDiscontinuity(),
+                    queued.frame,state,analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
-                    subtitleSharedPictureSnapshot);
+                    sharedPicture,prepared,evidence);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);
@@ -18013,19 +18738,33 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         if (rememberedWindowTrace && rememberedIndex < rememberedWindowSamples.size())
         {
             auto& shadow = rememberedWindowSamples[rememberedIndex];
+            shadow.identity = analysisIdentity;
             shadow.source = source;
             shadow.raw = evidence; // Native extraction only, before caption inspection.
             shadow.available = true;
         }
 
         auto observedEvidence = evidence;
+        bool subtitleArProofAccepted=false;
+        if (subtitleAssistedArEnabled && rememberedIndex < subtitleObservations.size()) {
+            const auto& proof=subtitleObservations[rememberedIndex].subtitleArProof;
+            auto proofSource=source;proofSource.generation=analysisIdentity.transportGeneration;
+            const auto& darkness=subtitleObservations[rememberedIndex].subtitleArDarkness;
+            if (proof.IsCurrentFor(proofSource,analysisIdentity,lookaheadPolicyGeneration,
+                subtitleContinuityGeneration,subtitleScriptHint) &&
+                darkness.global.evaluated && !darkness.EffectiveNearBlack())
+            {
+                observedEvidence=proof.evidence;
+                subtitleArProofAccepted=true;
+            }
+        }
         if (inwardCaptionInspectionEligible &&
             queued.activePictureIdentity.transportGeneration == inwardCaptionSourceGeneration &&
             queued.activePictureIdentity.viewportGeneration == inwardCaptionViewport)
         {
             const auto caption = AlphaSourceCrop::InspectInwardCaptionEvidence(
                 source, evidence, proofBase, liveProofModel);
-            if (caption.valid) observedEvidence = caption.picture;
+            if (!subtitleArProofAccepted && caption.valid) observedEvidence = caption.picture;
         }
 		PreviewEvidence preview;
 		// Cache only extraction. Candidate proof belongs to this exact live
@@ -18034,21 +18773,29 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		if (observedEvidence.available && observedEvidence.classification ==
 			ActivePictureClassification::BAR_CROP_TRUSTED)
 		{
-			if (queued.activePicturePreviewAnalyzed && queued.activePicturePreviewNearBlackEvaluated)
+            if (subtitleArProofAccepted) {
+                const auto& darkness=subtitleObservations[rememberedIndex].subtitleArDarkness;
+                preview.nearBlackEvaluated=darkness.global.evaluated;
+                preview.nearBlack=darkness.EffectiveNearBlack();
+            }
+			else if (cachedPictureEvidence && queued.activePicturePreviewNearBlackEvaluated)
 			{
 				preview.nearBlackEvaluated = queued.activePicturePreviewNearBlackEvaluated;
 				preview.nearBlack = queued.activePicturePreviewNearBlack;
 			}
 			else
 			{
-				const auto globalNearBlack = EvaluateActivePictureGlobalNearBlack(source);
-				preview.nearBlackEvaluated = globalNearBlack.evaluated;
-				preview.nearBlack = globalNearBlack.nearBlack;
+                // Bind lookahead to its raw current native extraction, before
+                // caption inspection modifies observedEvidence. Same AR policy
+                // as live acquisition and presentation recovery.
+                const auto arDarkness = EvaluateActivePictureArDarkness(source, evidence);
+                preview.nearBlackEvaluated = arDarkness.global.evaluated;
+                preview.nearBlack = arDarkness.EffectiveNearBlack();
 			}
 		}
 		preview.framesPerSecond = state.displayMode->RefreshRateHz();
         auto sample = AlphaSourceCrop::MakeBufferedPictureSample(
-            queued.activePictureIdentity, observedEvidence, preview.framesPerSecond,
+            analysisIdentity, observedEvidence, preview.framesPerSecond,
             preview.nearBlackEvaluated, preview.nearBlack);
         preview.identity = sample.identity;
         preview.observation = sample.observation;
@@ -18276,6 +19023,19 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 (uint64_t(inspectExpansion) << 8) | (uint64_t(diagnosticBuilt) << 9) |
                 (uint64_t(diagnosticProofValid) << 10) | (uint64_t(previewFrames.size() < 3) << 11) |
                 (uint64_t(shadowFit) << 12) | (uint64_t(shadowBuilt) << 13) | (uint64_t(shadowDiagnostic.passes) << 14);
+            {
+                auto trace=AnalysisTraceRecord(first.identity,m_impl.get(),"lookahead",diagnosticQueueStage);
+                trace.policyGeneration=lookaheadPolicyGeneration;trace.continuityGeneration=m_activePictureTimeline.ContinuityGeneration();
+                AnalysisTraceRect(trace.previous,proofBase);AnalysisTraceRect(trace.candidate,first.observation.bounds);
+                trace.resultCode=static_cast<int32_t>(first.observation.classification);
+                trace.flags=(diagnosticBuilt?1u:0u)|(diagnosticProofValid?2u:0u)|(diagnosticOwnerEligible?4u:0u)|(pending?8u:0u);
+                trace.counters[0]=configured;trace.counters[1]=queuedFutureFrames;trace.counters[2]=observations.size();
+                trace.counters[3]=proofSamples.size();trace.counters[4]=diagnosticOwner;
+                trace.counters[5]=static_cast<uint64_t>(first.observation.axisEvidence.horizontal.reason);
+                trace.counters[6]=static_cast<uint64_t>(first.observation.axisEvidence.vertical.reason);
+                trace.metrics[0]=proofInspectionMs;AnalysisTraceText(trace.detail,shadowDiagnostic.reason);
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             if (m_picturePreviewDiagnostics.Observe(GetTickCount64(), first.identity.transportGeneration,
                 first.identity.viewportGeneration, first.identity.acceptedSequence, pending, key))
             {
@@ -18352,9 +19112,10 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 						preview.identity.acceptedSequence;
 				});
 			if (queued == m_frameQueue.end() ||
-				queued->activePicturePreviewAnalyzed)
+				(queued->activePicturePreviewAnalyzed && queued->activePicturePreviewDomainKey==preview.identity.analysisDomainKey))
 				continue;
 			queued->activePicturePreviewAnalyzed = true;
+            queued->activePicturePreviewDomainKey=preview.identity.analysisDomainKey;
 			queued->activePicturePreviewEvidence = preview.evidence;
 			queued->activePicturePreviewNearBlackEvaluated = preview.nearBlackEvaluated;
 			queued->activePicturePreviewNearBlack = preview.nearBlack;
@@ -18800,7 +19561,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 		VideoFrame frame;
 		VideoStateComPtr state;
 		std::shared_ptr<const QueuedFrame::ConvertedPayload> convertedPayload;
+        std::shared_ptr<QueuedFrame::AnalysisPayload> analysisCache;
 		bool conversionFailed = false;
+        bool invalidDvAnalysisGap = false;
 		uint64_t frameGeneration = 0;
 		uint64_t sourceSequence = 0;
 		ActivePictureFrameIdentity activePictureIdentity;
@@ -18930,6 +19693,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			frame = m_frameQueue.front().frame;
 			state = m_frameQueue.front().state;
 			convertedPayload = m_frameQueue.front().converted;
+            analysisCache = m_frameQueue.front().analysis;
 			conversionFailed = m_frameQueue.front().conversionFailed;
 			frameGeneration = m_frameQueue.front().generation;
 			sourceSequence = m_frameQueue.front().sourceSequence;
@@ -18957,8 +19721,30 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_frameQueue.front().cadencePresentId;
 			cadenceDeadlineSeconds =
 				m_frameQueue.front().cadenceDeadlineSeconds;
-			m_activePictureTimeline.MarkConsumed(
-				m_frameQueue.front().activePictureIdentity);
+			const auto& dequeued = m_frameQueue.front();
+			if (dequeued.state && dequeued.state->dolbyVisionTunnel)
+			{
+				if (dequeued.conversionFailed)
+				{
+					invalidDvAnalysisGap = true;
+				}
+				else if (dequeued.converted)
+				{
+					const auto prepared = Impl::PrepareFrameAnalysis(
+						dequeued.frame, *dequeued.state, dequeued.converted,
+						dequeued.analysis, AnalysisSourceProfile::QueuedCapture,
+						dequeued.activePictureIdentity.sourceFormatGeneration,
+						false, true);
+					invalidDvAnalysisGap = !prepared.IsValid();
+				}
+			}
+			if (invalidDvAnalysisGap)
+				m_activePictureTimeline.MarkDiscarded(
+					dequeued.activePictureIdentity,
+					dequeued.frame.GetCounter());
+			else
+				m_activePictureTimeline.MarkConsumed(
+					dequeued.activePictureIdentity);
 			m_frameQueue.pop_front();
 
 
@@ -19064,6 +19850,17 @@ void LibplaceboVideoRenderer::RenderLoop()
 		const double captureRateHz =
 			m_measuredFrameRate.load(std::memory_order_relaxed);
 		const SteadyClock::time_point renderCycleStart = SteadyClock::now();
+        if (invalidDvAnalysisGap && m_impl)
+        {
+            // A completed failed decode is also a live-analysis boundary, even
+            // when the frame is dropped before RenderLocked can inspect it.
+            std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+            m_impl->ClearAnalysisForDecodeGap(m_sceneDetectorGeneration.load(std::memory_order_acquire));
+            m_sceneDetectionStatus.store(static_cast<int>(
+                m_sceneDetectionEnabled.load(std::memory_order_acquire) ?
+                SceneDetectorStatus::Failed : SceneDetectorStatus::Disabled),
+                std::memory_order_release);
+        }
 		if (conversionFailed)
 		{
 			frame.SourceBufferRelease();
@@ -19136,7 +19933,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                         subtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
                             subtitlePreview.policyGeneration,m_impl->localBoundaryContinuityGeneration);
                 }
-                subtitlePreviewCurrent = SubtitleBoxLookahead::IsCurrent(subtitlePreview,
+                subtitlePreviewCurrent = SubtitleBoxLookahead::IsCurrentTransport(subtitlePreview,
                     activePictureIdentity,activePictureCurrentPolicyGeneration,
                     m_impl->localBoundaryContinuityGeneration);
 				activePicturePreviewPolicyMatches =
@@ -19175,6 +19972,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					frame,
 					state,
 					convertedPayload,
+                    analysisCache,
 					frameGeneration,
 					sourceSequence,
 					activePictureIdentity,
@@ -19598,6 +20396,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 						repeatFrame.frame = frame;
 						repeatFrame.state = state;
 						repeatFrame.converted = convertedPayload;
+                        repeatFrame.analysis = analysisCache;
 						repeatFrame.generation = frameGeneration;
 						repeatFrame.sourceSequence = sourceSequence;
 						repeatFrame.activePictureIdentity = activePictureIdentity;
@@ -19741,6 +20540,13 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		capacity = m_useFrameQueue ? m_frameQueueMaxSize : 1;
 		if (m_impl)
 		{
+			{
+				std::lock_guard<std::mutex> statusGuard(
+					m_impl->ingressStatusMutex);
+				m_impl->sourceLuminance = {};
+				m_impl->sourceLuminanceObserved = false;
+				m_impl->sourceLuminanceQueueGeneration = generation;
+			}
 			m_impl->renderLoadMeter.ResetForGeneration(generation);
 			m_impl->coreRenderLoadMeter.ResetForGeneration(generation);
 			m_impl->originalPrRenderLoadMeter.ResetForGeneration(generation);

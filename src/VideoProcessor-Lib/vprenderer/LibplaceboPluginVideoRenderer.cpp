@@ -6,6 +6,7 @@
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
+#include <AnalysisDiagnosticHooks.h>
 
 #include <stdexcept>
 #include <string>
@@ -13,6 +14,7 @@
 
 namespace
 {
+    std::atomic<unsigned> activeDiagnosticProducers{0};
 	struct PluginExports
 	{
 		HMODULE module = nullptr;
@@ -20,10 +22,29 @@ namespace
 		VideoProcessorLibplaceboDestroyRendererFn destroyRenderer = nullptr;
 	};
 
+    void __cdecl ForwardAnalysisRecord(void* context,const AnalysisDiagnosticRecordV1* record) {
+        if(record) static_cast<AnalysisDiagnosticTrace*>(context)->Submit(*record);
+    }
+    void __cdecl ForwardAnalysisFrame(void* context,const AnalysisDiagnosticFramePacketV1* frame) {
+        if(frame) static_cast<AnalysisDiagnosticTrace*>(context)->SubmitFrame(*frame);
+    }
+    bool __cdecl AnalysisFramesActive(void* context) {
+        return static_cast<AnalysisDiagnosticTrace*>(context)->IsFrameCaptureActive();
+    }
+    void TraceLifecycle(const char* text) {
+        AnalysisDiagnosticRecordV1 r;r.kind=AnalysisDiagnosticRecordKindV1::Event;
+        AnalysisTraceText(r.stage,"renderer-lifecycle");AnalysisTraceText(r.reason,text);
+        AnalysisDiagnosticTrace::Instance().Submit(r);
+    }
 	void __cdecl ForwardPluginLog(const char* message)
 	{
-		if (message)
-			DebugLog::Log("%s", message);
+        if (message) {
+            // These already-generated messages describe state resets, never pixels.
+            if (strstr(message,"authority reset") || strstr(message,"look-ahead configured") ||
+                strstr(message,"presentation target:") || strstr(message,"analysis contract:") ||
+                strstr(message,"source generation")) TraceLifecycle(message);
+            DebugLog::Log("%s", message);
+        }
 	}
 
 	std::wstring ExecutableDirectory()
@@ -107,6 +128,15 @@ namespace
 			return PluginExports{};
 		}
 
+        const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
+            GetProcAddress(result.module,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
+        if (!diagnostics) {
+            DebugLog::Log("VP Renderer missing required analysis diagnostic export");
+            FreeLibrary(result.module);return PluginExports{};
+        }
+        auto& recorder=AnalysisDiagnosticTrace::Instance();
+        diagnostics(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive);
+
 		DebugLog::Log(
 			"Optional VP Renderer plugin loaded: API=%u path=%ls",
 			apiVersion,
@@ -154,6 +184,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	else if (!rendererConfig.GetWarnings().empty())
 		throw std::runtime_error(rendererConfig.GetWarnings().front());
 
+	TraceLifecycle("renderer-create; detector state will initialize");
 	m_renderer = plugin.createRenderer(
 		&callback,
 		rendererGeneration,
@@ -167,14 +198,19 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	if (!m_renderer)
 		throw std::runtime_error("optional libplacebo renderer plugin failed to create a renderer");
 	m_destroyRenderer = plugin.destroyRenderer;
+    activeDiagnosticProducers.fetch_add(1, std::memory_order_relaxed);
+    AnalysisDiagnosticTrace::Instance().SetProducerAvailable(true,true);
 }
 
 
 LibplaceboPluginVideoRenderer::~LibplaceboPluginVideoRenderer()
 {
+    TraceLifecycle("renderer-destroy; detector and worker state will be discarded; trace retained");
 	if (m_renderer && m_destroyRenderer)
 		m_destroyRenderer(m_renderer);
 	m_renderer = nullptr;
+    if (activeDiagnosticProducers.fetch_sub(1, std::memory_order_relaxed) == 1)
+        AnalysisDiagnosticTrace::Instance().SetProducerAvailable(false,false);
 }
 
 
