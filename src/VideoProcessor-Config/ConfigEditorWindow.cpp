@@ -6123,12 +6123,26 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
 
     else if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
-        form=addCollapsibleSection(QStringLiteral("smoothMotion"),QStringLiteral("Smooth motion"),
-            QStringLiteral("Blends neighboring frames to reduce judder when the source and display rates do not match. Adds frame buffering."),true);
+        const auto addMotionSection=[&](const QString& id,const QString& heading,const QString& explanation) {
+            auto* section=new QWidget(profileFields);
+            section->setAccessibleName(heading);
+            auto* layout=new QVBoxLayout(section);
+            layout->setContentsMargins(0,0,0,4);layout->setSpacing(5);
+            auto* title=new QLabel(heading);
+            title->setObjectName(QStringLiteral("motionSection.")+id);
+            auto font=title->font();font.setBold(true);title->setFont(font);
+            layout->addWidget(title);layout->addWidget(helpLabel(explanation));
+            auto* controls=new QWidget(section);
+            auto* sectionForm=createForm(controls);layout->addWidget(controls);
+            profileFieldsLayout->addWidget(section);
+            return sectionForm;
+        };
+        form=addMotionSection(QStringLiteral("smoothMotion"),QStringLiteral("Smooth motion"),
+            QStringLiteral("Blends frames to reduce cadence judder; adds buffering."));
         auto* smoothMotion=addChoice(QStringLiteral("Mode"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
         auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("oversample"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("cubic")});
-        form=addCollapsibleSection(QStringLiteral("deinterlacing"),QStringLiteral("Deinterlacing"),
-            QStringLiteral("Converts interlaced video into progressive frames. Auto leaves progressive input unchanged."),true);
+        form=addMotionSection(QStringLiteral("deinterlacing"),QStringLiteral("Deinterlacing"),
+            QStringLiteral("Converts interlaced video to progressive frames. Auto detects input."));
         auto* deinterlacing=addChoice(QStringLiteral("Mode"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
         auto* deinterlaceAlgorithm=addChoice(QStringLiteral("Algorithm"),QStringLiteral("deinterlace_algorithm"),{QStringLiteral("bwdif"),QStringLiteral("yadif"),QStringLiteral("bob"),QStringLiteral("weave")});
         auto* fieldOrder=addChoice(QStringLiteral("Field order"),QStringLiteral("field_order"),{QStringLiteral("auto"),QStringLiteral("top"),QStringLiteral("bottom")});

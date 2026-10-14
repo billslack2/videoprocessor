@@ -7041,8 +7041,8 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     auto* mode=requireControl<QComboBox>(window,"config.vprenderer.motion.smooth_motion");
     auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
     require(mode->currentData()=="off"&&mixer->currentData()=="oversample","Motion defaults changed");
-    require(requireControl<QToolButton>(window,"rendererSection.smoothMotion")->isChecked(),"Smooth motion section is not expanded");
-    require(requireControl<QToolButton>(window,"rendererSection.deinterlacing")->isChecked(),"Deinterlacing section is not expanded");
+    require(requireControl<QLabel>(window,"motionSection.smoothMotion")->isVisible(),"Smooth motion section is not expanded");
+    require(requireControl<QLabel>(window,"motionSection.deinterlacing")->isVisible(),"Deinterlacing section is not expanded");
     auto* advanced=requireControl<QToolButton>(window,"rendererSection.deinterlacingAdvanced");
     require(!advanced->isChecked(),"Advanced deinterlacing should start collapsed");
     advanced->setChecked(true);
