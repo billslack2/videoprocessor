@@ -13,6 +13,7 @@
 #include "AspectRatio.h"
 #include "HdrTargetLuminance.h"
 #include "ToneMappingTuning.h"
+#include "MotionConfig.h"
 
 #include <algorithm>
 #include <cctype>
@@ -611,8 +612,19 @@ namespace RendererProfileConfig
 			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off", "passthrough" });
 			expected = "an input-owned setting"; return false;
 		}
+        if (group == "motion") {
+            if(key=="smooth_motion")return IsChoice(value,{"off","auto","always"});
+            if(key=="frame_mixer")return IsChoice(value,{"oversample","hermite","linear","cubic"});
+            if(key=="deinterlace")return IsChoice(value,{"auto","off","force"});
+            if(key=="deinterlace_algorithm")return IsChoice(value,{"weave","bob","yadif","bwdif"});
+            if(key=="field_order")return IsChoice(value,{"auto","top","bottom"});
+            if(key=="deinterlace_cadence")return IsChoice(value,{"field","frame"});
+            if(key=="deinterlace_skip_spatial")return IsBoolean(value);
+            expected="a motion-owned setting";return false;
+        }
 		if (group == "scaling")
 		{
+            if(key=="chroma_upscaler")return IsChoice(value,{"bilinear","bicubic","lanczos","ewa_lanczos","ewa_lanczossharp"});
 			if (key == "quality") return IsChoice(value, { "fast", "balanced", "high" });
 			if (key == "upscaler") return IsChoice(value, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 			if (key == "downscaler")
@@ -790,7 +802,7 @@ namespace RendererProfileConfig
 	inline bool ValidateBaseSetting(const std::string& key, const std::string& value)
 	{
 		std::string ignored;
-		for (const char* group : { "input", "scaling", "display", "output", "viewport" })
+		for (const char* group : { "input", "scaling", "motion", "display", "output", "viewport" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		if (key == "video_conversion")
 			return IsChoice(value, { "none", "off", "v210_to_p010", "uyvy_to_p010" });
@@ -850,7 +862,7 @@ namespace RendererProfileConfig
 		std::string ignored;
 		// Legacy [vpvr.display] and literal [vprenderer] files may still carry
 		// output transport. Current files keep transport in [vprenderer.color.*].
-		for (const char* group : { "input", "scaling", "display", "output" })
+		for (const char* group : { "input", "scaling", "motion", "display", "output" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		return key == "deband" &&
 			IsChoice(value, { "auto", "on", "off" });
@@ -1037,7 +1049,7 @@ namespace RendererProfileConfig
 
 	inline bool IsRendererChildNamespace(const std::string& name)
 	{
-		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom", "subtitles" })
+		for (const char* child : { "input", "input_processing", "scaling", "motion", "color", "output", "viewport", "zoom", "subtitles" })
 		{
 			const std::string root(child);
 			if (name == root ||
@@ -1267,6 +1279,7 @@ namespace RendererProfileConfig
 		const GroupSpec specs[] = {
 			{ "input", "vprenderer.input", true },
 			{ "scaling", "vprenderer.scaling", true },
+            { "motion", "vprenderer.motion", true },
 			{ "display", "vprenderer", false },
 			{ "color", "vprenderer.color", true },
 
@@ -1333,7 +1346,7 @@ namespace RendererProfileConfig
 				{
                     if (std::string(spec.name) != "subtitles" && IsLegacySubtitleKey(entry.first)) continue;
 					if ((std::string(spec.name) == "viewport" ||
-						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles") && entry.first == "label")
+						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles" || std::string(spec.name) == "motion") && entry.first == "label")
 					{
 						base.label = entry.second;
 						continue;
@@ -1487,7 +1500,7 @@ namespace RendererProfileConfig
 				{
                     if (std::string(spec.name) != "subtitles" && IsLegacySubtitleKey(entry.first)) continue;
 					if ((std::string(spec.name) == "viewport" ||
-						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles") && entry.first == "label")
+						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles" || std::string(spec.name) == "motion") && entry.first == "label")
 					{
 						profile.label = entry.second;
 						continue;
@@ -1935,7 +1948,7 @@ namespace RendererProfileConfig
 		}
 
 		const std::vector<std::string> expectedGroups = {
-			"input", "scaling", "display", "color", "output", "viewport",
+			"input", "scaling", "motion", "display", "color", "output", "viewport",
 			"zoom", "subtitles", "queue", "lldv" };
 		for (const std::string& groupName : expectedGroups)
 		{
