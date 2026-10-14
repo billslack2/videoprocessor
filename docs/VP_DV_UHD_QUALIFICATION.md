@@ -16,7 +16,6 @@ no hardware or FEL qualification is claimed by this document.
 | --- | --- | --- |
 | JRVR disc/title or file playback | Decoded base layer, enhancement layer and DV metadata | In the player/rendering pipeline |
 | VP TV-led HDMI capture | The source player's composed DV image and HDMI display-management metadata | In the source player, before HDMI |
-| A future VP file input | Would need to demux, decode and synchronize both layers and their metadata | Could use libplacebo's enhancement-layer interface |
 
 JRiver's supplied Media Center 36.0.9 announcement describes automatic Profile
 7 EL processing for Windows title-mode discs/folders and MKV/MP4, an advanced
@@ -26,22 +25,13 @@ is the behavioral reference. JRVR renderer source was not available for this
 review; its private algorithms, frame-pairing rules and exact libplacebo use
 have not been audited.
 
-The public [LAV 0.82 release](https://github.com/Nevcairiel/LAVFilters/releases/tag/0.82)
-added EL demuxing and DV metadata on the primary Blu-ray video stream.
-[LAV 0.83](https://github.com/Nevcairiel/LAVFilters/releases/tag/0.83) records EL
-stability fixes. Its [demuxer](https://github.com/Nevcairiel/LAVFilters/blob/master/demuxer/Demuxers/LAVFDemuxer.cpp)
-uses `dovi_split` to expose an EL/RPU stream with timing inherited from the base
-stream. These are inspectable components, not JRVR renderer source.
-
-[Upstream mpv's FEL integration](https://github.com/mpv-player/mpv/pull/17932)
-provides a public source reference for splitting interleaved layers, pairing
-decoded frames and uploading EL to libplacebo. The
-[libplacebo frame API](https://github.com/haasn/libplacebo/blob/master/src/include/libplacebo/renderer.h)
-accepts a fully described enhancement frame with composition driven by base
-frame metadata. Sharing libplacebo does not supply missing source layers.
-A future file input must keep both layers aligned through seek, crop and scale;
-[Dolby's Profile 7 notes](https://ott.dolby.com/OnDelKits/Dolby_Vision_Online_Delivery_Kit/v1/Documentation/Specs/Visio_Profiles/help_files/topics/c_notes_profile_public.html)
-require full BL/EL alignment and top-left chroma siting.
+VP supports HDMI capture only. Direct movie-file or disc playback is outside
+its product scope. The relevant comparison is preservation of the source
+player's reconstructed picture through HDMI capture and SDR tone mapping.
+The [libplacebo frame API](https://github.com/haasn/libplacebo/blob/master/src/include/libplacebo/renderer.h)
+requires a decoded enhancement frame for FEL composition. HDMI capture does
+not provide that separate frame; sharing libplacebo cannot recover an
+enhancement layer omitted by the source player.
 
 VP should unpack the composed HDMI image once. Do not attach a synthetic EL
 or apply bitstream RPU reshaping again to these samples. VP's current L1-informed
