@@ -5012,7 +5012,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     if (sectionPrefix != QStringLiteral("vprenderer") &&
         sectionPrefix != QStringLiteral("vprenderer.color") &&
         sectionPrefix != QStringLiteral("vprenderer.viewport") &&
-        sectionPrefix != QStringLiteral("vprenderer.zoom"))
+        sectionPrefix != QStringLiteral("vprenderer.zoom") &&
+        sectionPrefix != QStringLiteral("vprenderer.motion"))
         form = addPlainForm();
     QCheckBox* sdrGammaEnabled = nullptr;
     QLabel* sdrGammaStatus = nullptr;
@@ -6122,12 +6123,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
 
     else if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
-        form=addPlainForm();
-        auto* smoothMotion=addChoice(QStringLiteral("Smooth motion"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
+        form=addCollapsibleSection(QStringLiteral("smoothMotion"),QStringLiteral("Smooth motion"),
+            QStringLiteral("Blends neighboring frames to reduce judder when the source and display rates do not match. Adds frame buffering."),true);
+        auto* smoothMotion=addChoice(QStringLiteral("Mode"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
         auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("oversample"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("cubic")});
-        auto* deinterlacing=addChoice(QStringLiteral("Deinterlacing"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
+        form=addCollapsibleSection(QStringLiteral("deinterlacing"),QStringLiteral("Deinterlacing"),
+            QStringLiteral("Converts interlaced video into progressive frames. Auto leaves progressive input unchanged."),true);
+        auto* deinterlacing=addChoice(QStringLiteral("Mode"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
         auto* deinterlaceAlgorithm=addChoice(QStringLiteral("Algorithm"),QStringLiteral("deinterlace_algorithm"),{QStringLiteral("bwdif"),QStringLiteral("yadif"),QStringLiteral("bob"),QStringLiteral("weave")});
         auto* fieldOrder=addChoice(QStringLiteral("Field order"),QStringLiteral("field_order"),{QStringLiteral("auto"),QStringLiteral("top"),QStringLiteral("bottom")});
+        form=addCollapsibleSection(QStringLiteral("deinterlacingAdvanced"),QStringLiteral("Advanced deinterlacing"),QStringLiteral("Output cadence and YADIF-specific tuning."),false);
         auto* fieldCadence=addChoice(QStringLiteral("Output cadence"),QStringLiteral("deinterlace_cadence"),{QStringLiteral("field"),QStringLiteral("frame")});
         auto* spatialCheck=addChoice(QStringLiteral("YADIF skip spatial check"),QStringLiteral("deinterlace_skip_spatial"),{QStringLiteral("false"),QStringLiteral("true")});
         smoothMotion->setItemText(smoothMotion->findData("off"),"Off");
@@ -6138,6 +6143,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         fieldOrder->setItemText(fieldOrder->findData("bottom"),"Bottom field first");
         fieldCadence->setItemText(fieldCadence->findData("field"),"Field rate (preserve motion)");
         fieldCadence->setItemText(fieldCadence->findData("frame"),"Frame rate");
+        for(auto* combo:{deinterlaceAlgorithm}) {
+            for(const auto& label: {QStringLiteral("bwdif"),QStringLiteral("yadif"),QStringLiteral("bob")})
+                combo->setItemText(combo->findData(label),label.toUpper());
+        }
+        const auto setMotionHelp=[&](QComboBox* combo,const QString& text) {
+            combo->setToolTip(text);
+            combo->setProperty("settingHelp",text);
+            if(auto* layout=qobject_cast<QFormLayout*>(combo->parentWidget()->layout()))
+                if(auto* label=layout->labelForField(combo))label->setToolTip(text);
+        };
+        setMotionHelp(smoothMotion,QStringLiteral("Smooth motion blends neighboring frames; it does not generate motion-compensated frames like RIFE.\nOff: normal playback (default).\nAuto: blend only when measured source/display rates are not an integer match.\nAlways: blend even at matching rates. Active mixing adds frame buffering."));
+        setMotionHelp(frameMixer,QStringLiteral("Applies only to smooth motion.\nOversample: default frame blending.\nHermite: smooth transition between neighboring frames.\nLinear: linear blend between neighboring frames.\nCubic: wider temporal filter using more neighboring frames, with more buffering.\nThese are libplacebo frame mixers, not image upscalers."));
+        setMotionHelp(deinterlacing,QStringLiteral("Applies to interlaced input.\nAuto: deinterlace only when input reports interlacing and a known field order (default).\nOff: leave input unchanged.\nForce: apply the selected algorithm even if input is reported progressive; field order must still be known or explicitly selected."));
+        setMotionHelp(deinterlaceAlgorithm,QStringLiteral("Applies only to deinterlacing.\nBWDIF: default temporal deinterlacer.\nYADIF: alternative temporal deinterlacer.\nBob: deinterlace each field without neighboring-frame references.\nWeave: preserve both fields in the original frame.\nBWDIF/YADIF use neighboring frames; missing references fall back to Bob."));
+        setMotionHelp(fieldOrder,QStringLiteral("The order in which interlaced fields were captured.\nFrom input: use capture metadata (default). Unknown order bypasses deinterlacing.\nTop/Bottom field first: override missing or incorrect metadata. An incorrect order can cause uneven motion."));
+        setMotionHelp(fieldCadence,QStringLiteral("Applies only to deinterlacing.\nField rate: submit both fields as separate progressive images to preserve motion (default), limited by the actual display refresh rate.\nFrame rate: submit one field-derived image per source frame."));
+        setMotionHelp(spatialCheck,QStringLiteral("Applies only to YADIF. False keeps its spatial check enabled (default). True skips that check. Leave False unless you specifically need this YADIF option."));
         updateToneControls=[smoothMotion,frameMixer,deinterlacing,deinterlaceAlgorithm,fieldOrder,fieldCadence,spatialCheck] {
             frameMixer->setEnabled(smoothMotion->currentData().toString()!="off");
             const bool enabled=deinterlacing->currentData().toString()!="off";
@@ -6145,7 +6167,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             spatialCheck->setEnabled(enabled&&deinterlaceAlgorithm->currentData().toString()=="yadif");
         };
         for(auto* combo:{smoothMotion,deinterlacing,deinterlaceAlgorithm})connect(combo,qOverload<int>(&QComboBox::currentIndexChanged),this,[updateToneControls]{updateToneControls();});
-        detailLayout->addWidget(helpLabel(QStringLiteral("Auto smooth motion activates only for a verified cadence mismatch. Mixing blends frames; it does not generate motion-compensated frames. Deinterlacing Auto requires interlaced input and known field order. Temporal filters add bounded frame buffering.")));
+
     }
 	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
 	{
@@ -6881,11 +6903,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (!field.widget->property("settingHelp").isValid())
                     field.widget->setProperty("settingHelp", field.widget->toolTip());
-                field.widget->setToolTip(field.widget->property("settingHelp").toString() + QStringLiteral("\n") + (raw.isEmpty() ?
-                (defaultProfile ?
+                QStringList tooltipParts;
+                const QString settingHelp=field.widget->property("settingHelp").toString().trimmed();
+                if(!settingHelp.isEmpty())tooltipParts.push_back(settingHelp);
+                if(raw.isEmpty())tooltipParts.push_back(defaultProfile ?
                     QStringLiteral("Using the built-in default. Editing creates an explicit setting.") :
-                    QStringLiteral("Inherited from the default profile. Editing creates an override.")) :
-                    QString()));
+                    QStringLiteral("Inherited from the default profile. Editing creates an override."));
+                field.widget->setToolTip(tooltipParts.join(u'\n'));
             }
             field.widget->style()->unpolish(field.widget);
             field.widget->style()->polish(field.widget);
