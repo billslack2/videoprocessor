@@ -191,3 +191,11 @@ vprenderer.color.output_transport_gamma	vprenderer-output-transport-gamma	Color 
 vprenderer.color.output_diagnostics	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
 vprenderer.color.diagnostic_disable_shader_cache	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
 vprenderer.color.diagnostic_allow_full_g22	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
+vprenderer.scaling.chroma_upscaler	vprenderer-scaling-chroma-upscaler	VP Renderer	no
+vprenderer.motion.smooth_motion	vprenderer-motion-smooth-motion	VP Renderer	yes
+vprenderer.motion.frame_mixer	vprenderer-motion-frame-mixer	VP Renderer	no
+vprenderer.motion.deinterlace	vprenderer-motion-deinterlace	VP Renderer	yes
+vprenderer.motion.deinterlace_algorithm	vprenderer-motion-deinterlace-algorithm	VP Renderer	no
+vprenderer.motion.field_order	vprenderer-motion-field-order	VP Renderer	yes
+vprenderer.motion.deinterlace_cadence	vprenderer-motion-deinterlace-cadence	VP Renderer	no
+vprenderer.motion.deinterlace_skip_spatial	vprenderer-motion-deinterlace-skip-spatial	VP Renderer	no

@@ -7435,6 +7435,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto* detailsCard=createCard(QStringLiteral("Profile details"),
         sectionPrefix == QStringLiteral("lldv") ?
         QStringLiteral("Choose this profile's input mode, shortcut, and rule.") :
+        sectionPrefix==QStringLiteral("vprenderer.motion") ? QStringLiteral("Configure playback processing; shortcuts and rules follow below.") :
         QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
         detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
