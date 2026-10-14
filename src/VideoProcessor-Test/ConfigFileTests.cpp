@@ -5420,6 +5420,72 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(DvProfilesResolveModeAndPublishModeOnlyReloads)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-dv-profile-mode.cfg";
+			const auto writeConfig = [&](const std::string& mode)
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\ndolby_vision_tunnel: true\n"
+					"[lldv.legacy]\nmax_cll: 1000\n"
+					"[lldv.tunnel]\nmax_fall: 401\n";
+				if (!mode.empty()) file << "dolby_vision_tunnel: " << mode << "\n";
+				file << "[lldv.plain]\ndolby_vision_tunnel: false\n";
+			};
+			const auto source = [](const std::string& name, std::string& value)
+			{
+				if (name == "eotf") { value = "HDR"; return true; }
+				if (name == "transfer") { value = "PQ"; return true; }
+				return false;
+			};
+			writeConfig("true");
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, source, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto legacy = runtime.GetSnapshot();
+			Assert::IsFalse(legacy->lldv.hasDolbyVisionTunnel);
+			Assert::IsTrue(legacy->lldv.UseDolbyVisionTunnel(true));
+			Assert::IsFalse(legacy->lldv.UseDolbyVisionTunnel(false));
+
+			UnifiedProfileRuntime::SelectionResult selection;
+			Assert::IsTrue(runtime.SelectProfile("lldv", "plain", true, source, selection, error));
+			Assert::IsTrue(selection.snapshot->lldv.hasDolbyVisionTunnel);
+			Assert::IsFalse(selection.snapshot->lldv.UseDolbyVisionTunnel(true));
+			Assert::IsTrue(runtime.SelectProfile("lldv", "tunnel", true, source, selection, error));
+			Assert::IsTrue(selection.snapshot->lldv.UseDolbyVisionTunnel(false));
+			Assert::IsTrue(selection.snapshot->lldv.hasMaxCll);
+			Assert::IsTrue(std::abs(selection.snapshot->lldv.maxCll - 1000.0) < 1e-12);
+
+			writeConfig("false");
+			ConfigFile updated;
+			Assert::IsTrue(updated.Load(path));
+			UnifiedProfileRuntime::RefreshResult reload;
+			Assert::IsTrue(runtime.Reload(updated, source, reload, error));
+			Assert::IsTrue(reload.changed);
+			Assert::AreEqual("tunnel", reload.snapshot->lldv.profile.c_str());
+			Assert::IsFalse(reload.snapshot->lldv.UseDolbyVisionTunnel(true));
+
+			writeConfig("");
+			ConfigFile legacyAgain;
+			Assert::IsTrue(legacyAgain.Load(path));
+			Assert::IsTrue(runtime.Reload(legacyAgain, source, reload, error));
+			Assert::IsTrue(reload.changed);
+			Assert::IsFalse(reload.snapshot->lldv.hasDolbyVisionTunnel);
+			Assert::IsTrue(reload.snapshot->lldv.UseDolbyVisionTunnel(true));
+
+			writeConfig("invalid");
+			ConfigFile invalid;
+			Assert::IsTrue(invalid.Load(path));
+			Assert::IsFalse(runtime.Reload(invalid, source, reload, error));
+			Assert::IsTrue(runtime.GetSnapshot()->lldv.UseDolbyVisionTunnel(true));
+			DeleteFileA(path.c_str());
+		}
 		TEST_METHOD(LegacyLldvRootRemainsTheBaselineProfile)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

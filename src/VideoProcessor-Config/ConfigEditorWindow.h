@@ -100,7 +100,7 @@ private:
         const QString& section);
     QWidget* createViewportPage();
 	QWidget* createZoomPage();
-    QWidget* createLldvPage();
+    QWidget* createDvPage();
     QWidget* createStandardShadersPage();
     QWidget* createNlsShadersPage();
     QWidget* createShadersSetupPage();

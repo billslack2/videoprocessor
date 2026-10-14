@@ -94,7 +94,9 @@ renderer: VP Renderer
 quality: high</pre>
 </section>
 
-<h2 id="lldv">LLDV metadata</h2>
+<h2 id="lldv">DV profiles and LLDV metadata</h2>
+<p>Config's <strong>DV</strong> page gives each profile an <strong>Input mode</strong> choice: <strong>DV Tunneling</strong> or <strong>LLDV</strong>. The profile list, name, shortcuts, cycling, and rules apply to both modes. LLDV keeps the existing metadata fields; DV Tunneling hides those fields without deleting their saved values.</p>
+<article id="dv-profile-mode" data-fields="lldv.dolby_vision_tunnel"><h3><code>[lldv.&lt;profile&gt;] dolby_vision_tunnel</code></h3><p><strong>Values:</strong> <code>true</code> selects DV Tunneling; <code>false</code> selects LLDV. An omitted value inherits the first profile's value; if no profile supplies it, VP preserves the legacy <code>[general]</code> or command-line tunnel flag. The <code>lldv</code> section and profile group names remain supported for compatibility.</p><p>DV Tunneling requires VP Renderer, a TV-led RGB Dolby Vision tunnel captured as DeckLink r210, a real Dolby Vision EDID, and no Vertex2 scaling. It does not need LLDV luminance overrides. Selecting a DV profile applies its mode through the same state rebuild used by existing LLDV profile changes.</p></article>
 <p>LLDV uses ordered named profiles such as <code>[lldv.cinema]</code>, with the same profile list, shortcuts, cycling and rules as the other profile groups. The first profile is the default; one profile is active at a time and supplies the same metadata to DirectShow and VP Renderer. Config migrates an existing <code>[lldv]</code> section into one named profile on save, preserving its settings and comments. Existing named profiles keep their names. Alternate LLDV detection remains a global setting and requires a restart.</p>
 <div class="group">
 <article id="lldv-max-cll" data-fields="lldv.max_cll"><h3><code>max_cll</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum content light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>

@@ -2431,6 +2431,93 @@ void testUpdateShutdownDiscardsEditsWithoutPrompt()
     }
 }
 
+void testDvModeSelectorPreservesLldvSettings()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray original = readBytes(path);
+    original.replace("[lldv]", "[lldv.cinema]\ndolby_vision_tunnel: false");
+    original.replace("#max_cll: 1000", "max_cll: 1234");
+    original.replace("#max_fall: 401", "max_fall: 432");
+    original.replace("fullscreen_monitor_name:", "#fullscreen_monitor_name:");
+    original += "\n[lldv.streaming]\ndolby_vision_tunnel: true\n";
+    QFile fixture(path);
+    require(fixture.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Cannot prepare per-profile DV fixture");
+    require(fixture.write(original) == original.size(), "Cannot write DV mode fixture");
+    fixture.close();
+    ConfigEditorWindow window(path, 0, true);
+    window.resize(1180, 1000);
+    window.selectPage(5);
+    window.show();
+    QApplication::processEvents();
+    auto* list = requireControl<QListWidget>(window, "config.lldv.profiles");
+    auto* tunneling = requireControl<QRadioButton>(window, "config.dv.mode.tunneling");
+    auto* lldv = requireControl<QRadioButton>(window, "config.dv.mode.lldv");
+    auto* metadata = requireControl<QWidget>(window, "config.dv.lldv_settings");
+    require(list->count() == 2 && lldv->isChecked() && metadata->isVisible(),
+        "Cinema must open in LLDV mode with its existing fields");
+    bool dvNavigation = false;
+    for (auto* button : window.findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("DV") && button->isChecked())
+            dvNavigation = true;
+    require(dvNavigation, "The navigation entry was not renamed to DV");
+    const auto capture = [&window](const QString& name)
+    {
+        const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+        if (captures.isEmpty()) return;
+        QDir().mkpath(captures);
+        QApplication::processEvents();
+        require(window.grab().save(QDir(captures).filePath(name)),
+            "Cannot capture per-profile DV preview");
+    };
+    save(window);
+    capture("dv-lldv-preview.png");
+    list->setCurrentRow(1);
+    require(tunneling->isChecked() && !lldv->isChecked() && !metadata->isVisible(),
+        "Streaming did not load its own DV Tunneling mode");
+    require(list->isVisible(), "DV Tunneling hid the profile list");
+    capture("dv-tunneling-preview.png");
+
+    // Change Streaming only, then verify Cinema still owns its original mode.
+    lldv->click();
+    list->setCurrentRow(0);
+    require(lldv->isChecked() && metadata->isVisible(),
+        "Changing Streaming changed Cinema's mode");
+    require(requireControl<QLineEdit>(window, "config.lldv.max_cll")->text() == "1234",
+        "Changing another profile lost Cinema metadata");
+    tunneling->click();
+    list->setCurrentRow(1);
+    require(lldv->isChecked() && metadata->isVisible(),
+        "Changing Cinema changed Streaming's mode");
+    save(window);
+
+    ConfigFile config;
+    require(config.Load(path.toStdString()), "Cannot load saved DV profiles");
+    RendererProfileConfig::Model model;
+    std::string error;
+    require(RendererProfileConfig::Read(config, model, error), error.c_str());
+    require(model.profiles.at("lldv.cinema").settings.at("dolby_vision_tunnel") == "true" &&
+        model.profiles.at("lldv.streaming").settings.at("dolby_vision_tunnel") == "false",
+        "Profile modes were not saved independently");
+    RendererProfileConfig::ResolvedLldv cinemaMode;
+    RendererProfileConfig::ResolvedLldv streamingMode;
+    require(RendererProfileConfig::ResolveLldv(model, "cinema", cinemaMode, error), error.c_str());
+    require(RendererProfileConfig::ResolveLldv(model, "streaming", streamingMode, error), error.c_str());
+    require(cinemaMode.UseDolbyVisionTunnel(false) && !streamingMode.UseDolbyVisionTunnel(true),
+        "Saved profile selections did not resolve to their runtime modes");
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("max_cll: 1234") && saved.contains("max_fall: 432") &&
+        saved.contains("#mastering_max_luminance: 4000"),
+        "Changing profile modes lost LLDV metadata or comments");
+    ConfigEditorWindow reopened(path, 0, true);
+    auto* reopenedList = requireControl<QListWidget>(reopened, "config.lldv.profiles");
+    require(requireControl<QRadioButton>(reopened, "config.dv.mode.tunneling")->isChecked(),
+        "Cinema's saved DV Tunneling mode was not restored");
+    reopenedList->setCurrentRow(1);
+    require(requireControl<QRadioButton>(reopened, "config.dv.mode.lldv")->isChecked(),
+        "Streaming's saved LLDV mode was not restored");
+}
 void testLldvStandardProfiles()
 {
     QTemporaryDir directory;
@@ -7036,6 +7123,7 @@ int main(int argc, char** argv)
         testLldvNamedMetadataIsPreserved);
     failures += run("optional config sections are created when edited",
         testOptionalSectionsAreCreatedWhenEdited);
+    failures += run("DV mode selector preserves LLDV settings", testDvModeSelectorPreservesLldvSettings);
     failures += run("LLDV standard profiles", testLldvStandardProfiles);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
