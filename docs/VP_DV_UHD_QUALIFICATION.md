@@ -96,7 +96,7 @@ with timestamps matching this run; do not use a stale log from another session.
 returns after reacquisition; the previous title's matrix or L1 values do not
 remain active after a stream reset; and audio/video timing remains usable.
 Compare transitions with the documented loss/EOS contract. After DV lock,
-prolonged loss suspends submission and may retain the last displayed image;
+untrusted pictures present black immediately; prolonged loss also clears cached DM;
 that is not successful continued decoding. A same-mode SDR switch without EOS
 may require **Restart capture**. Record this limitation instead of claiming
 seamless switching. Fresh complete DM is needed after discarded metadata;

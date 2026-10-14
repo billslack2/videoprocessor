@@ -36,15 +36,19 @@ the immediate next captured picture or with a later packet that names
 the affected metadata ID; EOS separately ends the HDR stream. The
 renderer bounds its metadata-matrix cache at 512 entries.
 
-After DV lock, 24 consecutive pictures without a complete usable metadata
-transaction suspend DV frame submission and discard cached active/pending
-metadata. The renderer can retain the last presented picture. CRC loss does
-not authorize SDR passthrough: a damaged/scaled tunnel is indistinguishable
-from a same-mode SDR switch without EOS. Fresh complete DM is required to
-resume; a valid no_md header alone cannot rebuild discarded matrices. An EOS
-boundary or capture video-state reset permits SDR again. Transient loss under
-24 pictures keeps the existing matrix unless a valid header changes its ID.
-A same-mode SDR switch that omits EOS may therefore require Restart capture.
+After DV lock, a picture without a CRC-valid supported header is presented as
+black immediately, before upload, tone mapping or image analysis. Cached DM
+is retained for brief loss, but it cannot authorize displaying untrusted pixels.
+A valid `no_md` header with the current ID resumes normal rendering using that
+cache. Temporal interpolation history is cleared while black is presented.
+
+After 24 consecutive pictures without a complete usable metadata transaction,
+cached active/pending metadata is discarded. Black continues until fresh complete
+DM is available; a valid `no_md` header alone cannot rebuild discarded matrices.
+CRC loss does not authorize SDR passthrough: a damaged/scaled tunnel is
+indistinguishable from a same-mode SDR switch without EOS. An EOS boundary or
+capture video-state reset permits SDR again. A same-mode SDR switch that omits
+EOS may therefore remain black until Restart capture.
 
 DeckLink reports the transport container as RGB 10-bit 4:4:4 (r210).
 The DV tunnel inside that container is 12-bit 4:2:2, which the VP OSD

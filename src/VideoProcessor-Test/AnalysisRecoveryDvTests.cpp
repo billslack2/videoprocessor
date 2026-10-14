@@ -266,6 +266,22 @@ namespace Tests
 			verify(2, 129, 2); // low 8 bits; nonzero low bits disambiguate it
 		}
 
+		TEST_METHOD(TransitionBlankExcludesCachedDmPixelsFromAllAnalysisProfiles)
+		{
+			auto decoded = MakeDecoded12Bit422(4, 2);
+			auto tunnel = MakeR210Rgb8(4, 2, 1, 240);
+			for (const auto profile : { AnalysisSourceProfile::LiveRenderer,
+				AnalysisSourceProfile::QueuedCapture })
+			{
+				auto input = MakeDvInput(decoded, tunnel, 4, 2, profile);
+				Assert::IsTrue(PrepareAnalysisFrame(input).IsValid());
+				input.dolby.requiresBlackFrame = true;
+				Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+				input.dolby.requiresBlackFrame = false;
+				Assert::IsTrue(PrepareAnalysisFrame(input).IsValid());
+			}
+		}
+
 		TEST_METHOD(InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence)
 		{
 			auto decoded = MakeDecoded12Bit422(4, 2);

@@ -233,6 +233,7 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 	m_missingPacketFrames = 0;
 	m_missingPacketReported = false;
 	m_tunnelConfirmed = false;
+	m_currentPictureHasValidHeader = false;
 	m_diagnosticFrames = 0;
 	m_crcFailedCopies = 0;
 	m_recoveredPackets = 0;
@@ -470,6 +471,9 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 		acceptedMetadata = true;
 		break;
 	}
+	// Metadata retention is separate from permission to display this picture.
+	// On source exit, ordinary RGB/blank pixels must never use cached DV matrices.
+	m_currentPictureHasValidHeader = supportedHeader;
 	if (acceptedMetadata)
 	{
 		m_missingPacketFrames = 0;

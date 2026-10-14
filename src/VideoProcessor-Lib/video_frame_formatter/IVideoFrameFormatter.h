@@ -52,6 +52,9 @@ struct DolbyVisionTunnelFrameMetadata
     bool fullRange = true;
     // CRC loss after DV lock is not evidence that the source became SDR.
     bool allowSdrFallback = false;
+    // Cached DM can survive a brief loss, but an untrusted current picture
+    // must be presented as black and excluded from image analysis.
+    bool requiresBlackFrame = false;
     uint8_t rgbBitAlignment = 0; // 1: high 8 bits of r210, 2: low 8 bits
     float nonlinear[3][3] = {};
     float nonlinearOffset[3] = {};

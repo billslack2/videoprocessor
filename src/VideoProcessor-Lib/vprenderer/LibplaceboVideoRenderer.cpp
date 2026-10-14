@@ -4663,7 +4663,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool outputResourcesRetired = false;
 	bool externalStateAbandonedForShutdown = false;
 
-	bool PresentBlackFrame()
+	bool dvTransitionBlackActive = false;
+
+	bool PresentBlackFrame(bool logPresentation = true)
 	{
 		if (!d3d11 || !d3d11->gpu || !swapchain)
 			return false;
@@ -4706,8 +4708,9 @@ struct LibplaceboVideoRenderer::Impl
 			backbuffer.Release();
 			const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
 			const bool presented = SUCCEEDED(presentResult);
-			DebugLog::Log(
-				"VP-owned DXGI terminal black: generation=%llu clear=whole_surface present=%d result=0x%08lX",
+			if (logPresentation || !presented)
+				DebugLog::Log(
+				"VP-owned DXGI black frame: generation=%llu clear=whole_surface present=%d result=0x%08lX",
 				static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
 				presented ? 1 : 0, static_cast<unsigned long>(presentResult));
 			return presented;
@@ -11079,6 +11082,33 @@ struct LibplaceboVideoRenderer::Impl
 				convertedPayload->dolby.rgbBitAlignment == 2);
 		const bool tunnelActive =
 			state.dolbyVisionTunnel && !tunnelRgbFallback;
+		if (tunnelActive && (!convertedPayload ||
+			!convertedPayload->dolby.valid || convertedPayload->dolby.requiresBlackFrame))
+		{
+			// Clear the output itself: zero opponent-color samples are not RGB
+			// black, and skipping presentation would retain the last bad frame.
+			temporalRenderer.Clear();
+			{
+				std::lock_guard<std::mutex> guard(ingressStatusMutex);
+				if (sourceLuminanceQueueGeneration == frameGeneration)
+				{
+					sourceLuminance = {};
+					sourceLuminance.tunnelActive = true;
+					sourceLuminanceObserved = true;
+				}
+			}
+			const bool presented = PresentBlackFrame(!dvTransitionBlackActive);
+			if (presented && !dvTransitionBlackActive)
+				DebugLog::Log("Dolby Vision transition: presenting black until a trusted picture is available");
+			dvTransitionBlackActive = presented;
+			return presented;
+		}
+		if (dvTransitionBlackActive)
+		{
+			DebugLog::Log("Dolby Vision transition: trusted %s picture restored",
+				tunnelRgbFallback || !state.dolbyVisionTunnel ? "SDR/non-tunnel" : "DV");
+			dvTransitionBlackActive = false;
+		}
 		if (DolbyVisionLuminancePolicy::ShouldClearStatusForFrame(
 			tunnelActive,
 			convertedPayload && convertedPayload->dolby.valid))
