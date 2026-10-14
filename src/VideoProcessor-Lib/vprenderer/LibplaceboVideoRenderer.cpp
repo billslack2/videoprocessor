@@ -1832,7 +1832,6 @@ namespace
 			settings.switchRefreshRate =
 				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 		}
-		readChoice("quality", settings.quality, { "fast", "balanced", "high" });
 		readChoice("tone_mapping", settings.toneMapping, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 		readPeakDetection(settings.peakDetection);
@@ -2235,8 +2234,7 @@ namespace
 			settings.switchRefreshRate =
 				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 
-		settings.quality = ReadChoice(
-			config, "quality", "high", { "fast", "balanced", "high" });
+		// Quality is retired: the base is always the High preset (QualityProfileMigration.h).
 		settings.toneMapping = ReadChoice(
 			config, "tone_mapping", "auto",
 			{ "auto", "spline", "bt2390", "st2094-40", "reinhard" });
