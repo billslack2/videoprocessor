@@ -59,7 +59,7 @@ public:
         const bool newMix=MotionConfig::Mix(requested,nominalHz,displayHz);
         const bool changed=settings.Fingerprint()!=requested.Fingerprint()||generation!=epoch||
             interlaced!=newInterlaced||mixing!=newMix||(newInterlaced&&topFirst!=newTopFirst)||
-            (sourceDuration>0&&std::abs(sourceDuration-1.0/sourceHz)>1e-7)||
+            (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
             (std::abs(measuredDisplayHz-displayHz)>(std::max)(0.1,displayHz*0.001));
         if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz)))Clear();
         settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;
