@@ -10,6 +10,7 @@
 #include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
+#include "QualityProfileMigration.h"
 #include "ProfileListController.h"
 #include "InlineColorPicker.h"
 #include "ToneMappingControl.h"
@@ -123,7 +124,6 @@ QString RenderingBuiltInDefault(const QString& key)
 {
     if (key == QStringLiteral("dynamic_target")) return QStringLiteral("true");
     if (key == QStringLiteral("custom_tone_mapping")) return QStringLiteral("false");
-    if (key == QStringLiteral("quality")) return QStringLiteral("high");
     if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
     if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");
     if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
@@ -1907,7 +1907,7 @@ void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QStrin
     else if (root == QStringLiteral("vprenderer.scaling"))
     {
         // Moved from the Rendering seed with their settings.
-        set("quality", "high"); set("display_bit_depth", "10");
+        set("display_bit_depth", "10");
         set("dithering", "auto");
     }
     else if (root == QStringLiteral("vprenderer.color"))
@@ -2232,55 +2232,40 @@ void ConfigEditorWindow::migrateProcessingToScaling()
 {
     if (!configurationLoaded_ || !document_) return;
 
-    // Quality, debanding, dithering and dither target depth are Scaling settings now,
-    // with no tie to any Rendering profile. VP still reads them from a
-    // Rendering profile, applied after Scaling, so none may stay behind there.
-    // The default Rendering profile's values go to the first (default) Scaling
-    // profile where it does not set them; the other profiles inherit them as
-    // any Scaling setting. Other Rendering profiles' values are dropped.
-    const QStringList keys = { QStringLiteral("quality"), QStringLiteral("deband_strength"),
-        QStringLiteral("dithering"), QStringLiteral("display_bit_depth") };
-    const QStringList rendering = profileSections(QStringLiteral("vprenderer"));
-    bool found = false;
-    for (const QString& section : rendering)
-        for (const QString& key : keys + QStringList{ QStringLiteral("deband") })
-            found = found || !value(section, key).isEmpty();
-    if (!found) return;
-
-    // His legacy deband key, read as his profile loader reads it; the Scaling
-    // family accepts only deband_strength.
-    const auto settingIn = [this](const QString& section, const QString& key) {
-        QString configured = value(section, key).trimmed();
-        if (configured.isEmpty() && key == QStringLiteral("deband_strength"))
-        {
-            const QString legacy = value(section, QStringLiteral("deband")).trimmed().toLower();
-            if (legacy == QStringLiteral("on") || legacy == QStringLiteral("true")) configured = QStringLiteral("default");
-            else if (legacy == QStringLiteral("off") || legacy == QStringLiteral("false")) configured = QStringLiteral("off");
-            else if (legacy == QStringLiteral("auto")) configured = QStringLiteral("AUTO");
-        }
-        return configured;
-    };
-    QStringList scaling = profileSections(QStringLiteral("vprenderer.scaling"));
-    if (!rendering.isEmpty())
+    // Quality is retired and debanding, dithering and dither depth are Scaling
+    // settings now. VP's loader applies the same plan in memory, so the editor
+    // shows and saves exactly what VP runs.
+    QualityProfileMigration::Sections sections;
+    std::vector<std::string> order;
+    std::map<std::string, std::string> originalNames;
+    for (const auto& section : document_->SectionNames())
     {
-        QString target = scaling.isEmpty() ? QString() : scaling.front();
-        for (const QString& key : keys)
-        {
-            const QString moved = settingIn(rendering.front(), key);
-            if (moved.isEmpty()) continue;
-            if (target.isEmpty())
-            {
-                target = QStringLiteral("vprenderer.scaling.Default");
-                document_->AddSection(target.toStdString());
-            }
-            if (value(target, key).isEmpty())
-                document_->SetKnown(target.toStdString(), key.toStdString().c_str(),
-                    moved.toLocal8Bit().constData());
-        }
+        const auto normalized = ConfigFile::NormalizeName(section);
+        order.push_back(normalized);
+        originalNames[normalized] = section;
+        auto& values = sections[normalized];
+        for (const auto& setting : document_->SectionSettings(section))
+            values[ConfigFile::NormalizeName(setting.first)] = setting.second;
     }
-    for (const QString& section : rendering)
-        for (const QString& key : keys + QStringList{ QStringLiteral("deband") })
-            document_->RemoveKnown(section.toStdString(), key.toStdString().c_str());
+    const auto plan = QualityProfileMigration::Build(sections, order);
+    if (plan.Empty()) return;
+    // A Scaling copy keeps its Rendering profile's spelling.
+    const std::string scalingPrefix = "vprenderer.scaling.";
+    for (const auto& section : plan.newSections)
+    {
+        std::string destination = section;
+        const auto source = originalNames.find("vprenderer." + section.substr(scalingPrefix.size()));
+        if (source != originalNames.end())
+            destination = scalingPrefix + source->second.substr(std::string("vprenderer.").size());
+        document_->AddSection(destination);
+        originalNames[ConfigFile::NormalizeName(section)] = destination;
+    }
+    for (const auto& item : plan.sets)
+        document_->SetKnown(originalNames.at(std::get<0>(item)), std::get<1>(item).c_str(),
+            std::get<2>(item));
+    for (const auto& item : plan.removals)
+        document_->RemoveKnown(originalNames.at(item.first), item.second.c_str());
+    document_->requiresMigrationBackup = document_->existedAtLoad;
     dirty_ = true;
     hasPendingMigrations_ = true;
 }
@@ -3105,17 +3090,7 @@ void ConfigEditorWindow::refreshCalibrationControls()
 
 void ConfigEditorWindow::refreshRendererAutoStatus()
 {
-    // Quality lives on the Scaling / Quality page and decides only its Autos.
-    const auto qualityControl = findChild<QComboBox*>(
-        QStringLiteral("config.vprenderer.scaling.quality"));
-    const QString quality = effectiveChoiceValue(qualityControl);
-    const auto qualityValue = [&quality](const QString& high,
-        const QString& balanced, const QString& fast)
-    {
-        if (quality == QStringLiteral("fast")) return fast;
-        if (quality == QStringLiteral("balanced")) return balanced;
-        return high;
-    };
+    // Quality is retired: every Auto below is the old High preset.
     const auto isAuto = [](QWidget* control)
     {
         if (const auto* combo = qobject_cast<QComboBox*>(control))
@@ -3162,36 +3137,31 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
             text = QStringLiteral("Perceptual");
         else if (binding.key == QStringLiteral("peak_detection"))
         {
-            text = QStringLiteral("High quality"); // tone mapping ignores Quality
+            text = QStringLiteral("High quality");
         }
         else if (binding.key == QStringLiteral("contrast_recovery"))
         {
-            text = QStringLiteral("0.30"); // tone mapping ignores Quality
+            text = QStringLiteral("0.30");
         }
         else if (binding.key == QStringLiteral("upscaler"))
         {
-            text = qualityValue(QStringLiteral("EWA Lanczos sharp"),
-                QStringLiteral("Lanczos"), QStringLiteral("Built-in sampling"));
+            text = QStringLiteral("EWA Lanczos sharp");
         }
         else if (binding.key == QStringLiteral("downscaler"))
         {
-            text = qualityValue(QStringLiteral("Hermite"),
-                QStringLiteral("Hermite"), QStringLiteral("Built-in sampling"));
+            text = QStringLiteral("Hermite");
         }
         else if (binding.key == QStringLiteral("deband_strength"))
         {
-            text = qualityValue(QStringLiteral("Standard"), QStringLiteral("Off"),
-                QStringLiteral("Off"));
+            text = QStringLiteral("Standard");
         }
         else if (binding.key == QStringLiteral("sigmoid"))
         {
-            text = qualityValue(QStringLiteral("On"), QStringLiteral("On"),
-                QStringLiteral("Off"));
+            text = QStringLiteral("On");
         }
         else if (binding.key == QStringLiteral("dithering"))
         {
-            text = qualityValue(QStringLiteral("Blue noise"),
-                QStringLiteral("Blue noise"), QStringLiteral("Off"));
+            text = QStringLiteral("Blue noise");
         }
         else if (binding.key == QStringLiteral("display_bit_depth"))
             text = QStringLiteral("Output format");
@@ -3226,7 +3196,6 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
     // profile, as on Rendering / DTM (his grey marks only inherited ones).
     // This runs after his change handler and after a profile loads.
     QList<QComboBox*> scalingChoices;
-    if (qualityControl) scalingChoices << qualityControl;
     for (const RendererAutoStatusBinding& binding : rendererAutoStatusBindings_)
         if (binding.sectionPrefix == QStringLiteral("vprenderer.scaling"))
             if (auto* combo = qobject_cast<QComboBox*>(binding.control))
@@ -3240,43 +3209,6 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         combo->setProperty("inherited", grey);
         combo->style()->unpolish(combo);
         combo->style()->polish(combo);
-    }
-    // Under Quality on the Scaling / Quality page: what it still decides (the
-    // settings at Auto) and what the profile sets itself. As before the move,
-    // a changed setting overrides only its own part of the preset.
-    if (auto* warning = findChild<QLabel*>(QStringLiteral("scalingQualityWarning")))
-    {
-        const std::pair<const char*, QString> decided[] = {
-            { "upscaler", QStringLiteral("upscaler ") + qualityValue(QStringLiteral("EWA Lanczos sharp"), QStringLiteral("Lanczos"), QStringLiteral("built-in sampling")) },
-            { "downscaler", QStringLiteral("downscaler ") + qualityValue(QStringLiteral("Hermite"), QStringLiteral("Hermite"), QStringLiteral("built-in sampling")) },
-            { "sigmoid", QStringLiteral("sigmoid ") + qualityValue(QStringLiteral("on"), QStringLiteral("on"), QStringLiteral("off")) },
-            { "deband_strength", QStringLiteral("debanding ") + qualityValue(QStringLiteral("Standard"), QStringLiteral("off"), QStringLiteral("off")) },
-            { "dithering", QStringLiteral("dithering ") + qualityValue(QStringLiteral("blue noise"), QStringLiteral("blue noise"), QStringLiteral("off")) } };
-        // Each covered setting: at Auto (Quality decides it), set in this
-        // profile, or not set here and taken from the default (first) profile.
-        QStringList gives, own, fromDefault;
-        for (const auto& [key, text] : decided)
-            for (const RendererAutoStatusBinding& binding : rendererAutoStatusBindings_)
-            {
-                const auto* combo = qobject_cast<QComboBox*>(binding.control);
-                if (binding.sectionPrefix != QStringLiteral("vprenderer.scaling") ||
-                    binding.key != QLatin1String(key) || !combo)
-                    continue;
-                const QString selected = combo->currentData().toString().trimmed();
-                const QString effective = selected.isEmpty() ?
-                    combo->property("effectiveValue").toString().trimmed() : selected;
-                if (effective.isEmpty() || effective.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0)
-                    gives << text;
-                else
-                    (selected.isEmpty() ? fromDefault : own) << text.section(u' ', 0, 0);
-            }
-        const QString name = qualityValue(QStringLiteral("High"), QStringLiteral("Balanced"), QStringLiteral("Fast"));
-        warning->setText((gives.isEmpty() ?
-            QStringLiteral("Quality decides nothing in this profile: every setting it covers has a value.") :
-            QStringLiteral("Quality decides Auto here. %1 gives: %2.").arg(name, gives.join(QStringLiteral(", ")))) +
-            (own.isEmpty() ? QString() : QStringLiteral(" Set in this profile: %1.").arg(own.join(QStringLiteral(", ")))) +
-            (fromDefault.isEmpty() ? QString() : QStringLiteral(" Set in the default profile: %1.").arg(fromDefault.join(QStringLiteral(", ")))) +
-            QStringLiteral(" Tone mapping ignores it."));
     }
 }
 
@@ -7307,20 +7239,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
 	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
 	{
-        // Above both sections: Quality decides Auto in each of them.
-        form = addPlainForm();
-        // Moved from the Rendering page: Quality decides only this page's Auto
-        // settings; tone mapping ignores it.
-        auto* quality = addChoice(QStringLiteral("Quality"),
-            QStringLiteral("quality"), { QStringLiteral("high"),
-            QStringLiteral("balanced"), QStringLiteral("fast") });
-        connect(quality, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this](int) { refreshRendererAutoStatus(); });
-        // Amber: a warning, not an error; refreshRendererAutoStatus fills it.
-        auto* qualityWarning = helpLabel(QString());
-        qualityWarning->setObjectName(QStringLiteral("scalingQualityWarning"));
-        qualityWarning->setStyleSheet(QStringLiteral("color: #e8a93b;"));
-        form->addRow(qualityWarning);
 		form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Scaling"),
 			QString(), false);
 		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
@@ -7348,7 +7266,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
 			QStringLiteral("on"), QStringLiteral("off") });
 		antiRinging->setToolTip(QStringLiteral(
-			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
+			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto is On."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
         addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
         form->addRow(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
@@ -7389,8 +7307,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         dithering->setItemText(15, QStringLiteral("Error diffusion: Sierra 3"));
         dithering->setItemText(16, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
-            "Auto follows Quality above: Blue noise for Balanced "
-            "and High, or Off for Fast. Blue noise is libplacebo's default and "
+            "Auto is Blue noise, libplacebo's default and "
             "recommended mode. Ordered modes and White noise are alternate "
             "libplacebo methods. Error-diffusion modes require compute shaders "
             "and are substantially more expensive. The display-calibration LUT "
@@ -8953,8 +8870,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     if (fillRenderingProfiles)
     {
         // Rendering / DTM: no "Inherited / not set" in a drop-down. It goes
-        // where the choices already hold Auto, or where VP has no Auto
-        // (quality); where VP takes auto but the choices lack it, it becomes Auto.
+        // where the choices already hold Auto, or where VP has no Auto;
+        // where VP takes auto but the choices lack it, it becomes Auto.
         for (const Field& field : *fields)
             if (auto* combo = qobject_cast<QComboBox*>(field.widget))
             {
