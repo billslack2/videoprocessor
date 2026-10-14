@@ -584,6 +584,8 @@ void ValidateRendererConfigRules()
 	}
 	for (const std::string& warning : unifiedModel.warnings)
 		DebugLog::Log("configuration migration warning: %s", warning.c_str());
+	for (const std::string& warning : rendererConfig.GetMigrationWarnings())
+		DebugLog::Log("configuration migration warning: %s", warning.c_str());
 
 	auto validateOwnedSections = [](const ConfigFile& config)
 	{
