@@ -610,6 +610,74 @@ namespace Tests
             AssertPeak(Deliver(formatter, picture, 15), 2048);
         }
 
+        TEST_METHOD(MovieExitBlanksFirstUntrustedPictureButRetainsDmForRecovery)
+        {
+            for (const bool high8 : { false, true })
+            {
+                SenderPicture picture(high8);
+                Formatter formatter;
+                formatter.OnVideoState(picture.state);
+                picture.Embed(Packetize(DmBody()));
+                Assert::IsFalse(Deliver(formatter, picture, 1).requiresBlackFrame);
+
+                // HDMI goes blank before capture publishes its new menu mode.
+                // Cached DV decoding of this RGB picture used to create color.
+                std::fill(picture.input.begin(), picture.input.end(), 0);
+                const auto lost = Deliver(formatter, picture, 2);
+                AssertPeak(lost, 3072); // cache survives a brief interruption
+                Assert::IsTrue(lost.requiresBlackFrame);
+                Assert::IsFalse(lost.allowSdrFallback);
+
+                SenderPicture resumed(high8);
+                resumed.Embed(Packetize({}, 3, 3, true));
+                std::vector<BYTE> output;
+                const auto recovered = Deliver(formatter, resumed, 3, &output);
+                AssertPeak(recovered, 3072);
+                Assert::IsFalse(recovered.requiresBlackFrame);
+                AssertExactSamples(resumed, output);
+            }
+        }
+
+        TEST_METHOD(BlankingPersistsThroughLostDmAndStopsOnFreshDmOrEos)
+        {
+            SenderPicture picture(false);
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            picture.Embed(Packetize(DmBody()));
+            Deliver(formatter, picture, 1);
+            std::fill(picture.input.begin(), picture.input.end(), 0);
+            for (uint64_t counter = 2; counter <= 25; ++counter)
+                Assert::IsTrue(Deliver(formatter, picture, counter).requiresBlackFrame);
+            picture.Embed(Packetize({}, 3, 3, true));
+            const auto noDm = Deliver(formatter, picture, 26);
+            Assert::IsFalse(noDm.valid);
+            Assert::IsTrue(noDm.requiresBlackFrame);
+            picture.Embed(Packetize(DmBody(2048)));
+            Assert::IsFalse(Deliver(formatter, picture, 27).requiresBlackFrame);
+            picture.Embed(Packetize({}, 3, 3, true, true));
+            Assert::IsFalse(Deliver(formatter, picture, 28).requiresBlackFrame);
+            std::fill(picture.input.begin(), picture.input.end(), 0);
+            const auto sdr = Deliver(formatter, picture, 29);
+            Assert::IsFalse(sdr.requiresBlackFrame);
+            Assert::IsTrue(sdr.allowSdrFallback);
+        }
+
+        TEST_METHOD(RecoveredHeaderAndDamagedContinuationDoNotBlankKnownDvPixels)
+        {
+            SenderPicture picture(true);
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            picture.Embed(Packetize(DmBody()));
+            Deliver(formatter, picture, 1);
+            picture.Embed(Packetize(DmBody(2048, true, 157)));
+            picture.CorruptCopy(0, 0);
+            picture.CorruptCopy(0, 1); // third header copy still authenticates DV
+            picture.CorruptAllCopies(1); // old DM remains usable for same ID
+            const auto dm = Deliver(formatter, picture, 2);
+            AssertPeak(dm, 3072);
+            Assert::IsFalse(dm.requiresBlackFrame);
+        }
+
         TEST_METHOD(LossLimitSuspendsUntilFreshCompleteDmWithoutSdrFallback)
         {
             SenderPicture picture(true);

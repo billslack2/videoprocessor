@@ -29,6 +29,8 @@ public:
 	{
 		auto metadata = m_metadata;
 		metadata.allowSdrFallback = !m_tunnelConfirmed;
+		metadata.requiresBlackFrame = m_tunnelConfirmed &&
+			(!m_currentPictureHasValidHeader || !metadata.valid);
 		return metadata;
 	}
 
@@ -49,6 +51,7 @@ private:
 	uint32_t m_missingPacketFrames = 0;
 	bool m_missingPacketReported = false;
 	bool m_tunnelConfirmed = false;
+	bool m_currentPictureHasValidHeader = false;
 	uint32_t m_diagnosticFrames = 0;
 	uint32_t m_crcFailedCopies = 0;
 	uint32_t m_recoveredPackets = 0;

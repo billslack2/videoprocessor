@@ -116,6 +116,8 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
     AnalysisLumaSource backing;
     if (input.dolbyVisionTunnel)
     {
+        if (input.dolby.requiresBlackFrame)
+            return result;
         if (input.dolby.valid)
         {
             if (input.encoding != VideoFrameEncoding::R210 ||
