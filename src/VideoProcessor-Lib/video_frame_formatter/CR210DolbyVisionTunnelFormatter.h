@@ -10,6 +10,9 @@
 class CR210DolbyVisionTunnelFormatter final : public IVideoFrameFormatter
 {
 public:
+	// Explicit dispatch also permits the scalar and SIMD paths to be qualified.
+	enum class ConversionMethod { AUTO, SCALAR, AVX2 };
+	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 	CR210DolbyVisionTunnelFormatter();
 	~CR210DolbyVisionTunnelFormatter() override;
 	CR210DolbyVisionTunnelFormatter(const CR210DolbyVisionTunnelFormatter&) = delete;
@@ -69,6 +72,7 @@ private:
 	uint64_t m_endOfStreamAfterCounter = 0;
 	bool m_hasEndOfStream = false;
 	bool m_hasAVX2 = false;
+	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
 	PTP_WORK m_conversionWork[MAX_WORKERS] = {};
 	uint32_t m_workerCount = 0;
 	const uint8_t* m_workerSource = nullptr;

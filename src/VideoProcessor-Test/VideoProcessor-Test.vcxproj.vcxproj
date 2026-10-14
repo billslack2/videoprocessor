@@ -180,6 +180,7 @@
     <ClCompile Include="CpuFeaturesTests.cpp" />
     <ClCompile Include="VideoFrameFormatterTests.cpp" />
     <ClCompile Include="DolbyVisionLuminancePolicyTests.cpp" />
+    <ClCompile Include="DolbyVisionTunnelFormatterTests.cpp" />
     <ClCompile Include="MovingPictureTransitionTests.cpp" />
     <ClCompile Include="SubtitleBoxDetectorTests.cpp" />
     <ClCompile Include="SubtitleOpaqueCardRefinementTests.cpp" />

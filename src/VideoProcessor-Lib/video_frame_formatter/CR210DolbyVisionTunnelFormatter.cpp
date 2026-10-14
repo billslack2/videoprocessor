@@ -570,7 +570,7 @@ void CR210DolbyVisionTunnelFormatter::ConvertRows(
 	const uint8_t* source, uint16_t* output, uint32_t firstRow,
 	uint32_t rowCount, bool leftAligned) const
 {
-	if (m_hasAVX2)
+	if (m_hasAVX2 && m_conversionMethod != ConversionMethod::SCALAR)
 	{
 		ConvertRowsAVX2(source, output, firstRow, rowCount, leftAligned);
 		return;
