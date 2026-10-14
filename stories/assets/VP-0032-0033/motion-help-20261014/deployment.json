@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "2a2b4242dfc950381fbdc15c4125ca4ead910f82",
+  "branch": "dv2",
+  "configuration": "x64 Release",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\dv2-2a2b4242dfc9-20261014-140116",
+  "deployedAt": "2026-10-14T14:01:17.7711452-04:00",
+  "configurationEdits": [],
+  "configurationSha256": "B4A73617379AEA84470A6D045AB1C4F48C144AE7480317AD26AF3F10F21E64BC",
+  "stateSha256": "B934FD15400486801A8B34C1D1D85D0D703295836D71F3439824ED3B045DA434",
+  "hashVerified": true,
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessor-GUI.exe",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "before": "1A2C3A4A6B8BFAF6B766AC6EED1EB52B52E940C746D516D79FEE673CCCE4A088",
+      "after": "63BE645C35281A56903CA78E395A8E326E4946BCFCB58099586330B080162D12"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "relative": "VideoProcessor.exe.runtime.json",
+      "before": "01AE0D14A3B2919504D7724E6D3670D5957534288565700E92DC4375A8991002",
+      "after": "058FE23F32F6F4CC506DEF85F73DC0ED2F2CB31CC83CDDF2FB08BFEC94031EA3"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfig.exe",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "relative": "config/VideoProcessorConfig.exe",
+      "before": "FE0328B0422ED6F20C8201F27670D2DF3C08C7CF3C39C410841CA95D38D39807",
+      "after": "73F73F64FA1C018E8F3D35155524D194C8D6A7414C5B7C8A3B8378E1CF7FE819"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\VideoProcessorConfig.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe.runtime.json",
+      "relative": "config/VideoProcessorConfig.exe.runtime.json",
+      "before": "26D922AC0ACABC0AE2674A94CD8578FC45D68C4B78F8DACAA0AE52D56570A347",
+      "after": "B2E1B0961D94A0A5BDF6DF0BC31427A4D9725E9EB2D9A7B68F48A784A91C53C6"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer/VideoProcessorVPRenderer.dll",
+      "before": "0344CBA4A4D0113E2B3BFF51CB40D43C166777A3AAC4BEBC155D5B7A2D62EEAB",
+      "after": "65F47E7833144323E57D06FFE8CC64E2AF53FF4AFB4D6469C7FB0B0C915E1969"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "relative": "vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "before": "3B89531C22E4976A3EE8BAA0CE16605530E1EBBF064ABBB276567BF77735956B",
+      "after": "51FDB8B26AC26CD794B044F8336A970965B2DC5640E0206C6DEC7B5AD51E7A5A"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "before": "1A12A85350C484D8E2204980D3652D07131D41C33A7EC519D9C743DCCC5BFB5E",
+      "after": "334986A77DB2F512F28686A745DD3C67DA2A372027FB85F84DACD7D9488924AE"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\renderer-motion-chroma-dv2-20261014\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "relative": "vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "before": "196E7D103243BC03C7C1A674C0F42157E81E83C5E729434CDE65505895400778",
+      "after": "EFFFF3FC9AD4504ADD20D5AAA1DB4676C96A9DBDB223E93B749D2716D5A8DCF6"
+    }
+  ]
+}
