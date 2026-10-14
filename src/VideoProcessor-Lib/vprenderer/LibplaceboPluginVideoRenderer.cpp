@@ -18,6 +18,7 @@ namespace
 		HMODULE module = nullptr;
 		VideoProcessorLibplaceboCreateRendererFn createRenderer = nullptr;
 		VideoProcessorLibplaceboDestroyRendererFn destroyRenderer = nullptr;
+		VideoProcessorLibplaceboGetHdrStatusFn getHdrStatus = nullptr; // optional
 	};
 
 	void __cdecl ForwardPluginLog(const char* message)
@@ -106,6 +107,8 @@ namespace
 			FreeLibrary(result.module);
 			return PluginExports{};
 		}
+		result.getHdrStatus = reinterpret_cast<VideoProcessorLibplaceboGetHdrStatusFn>(
+			GetProcAddress(result.module, VP_LIBPLACEBO_HDR_STATUS_EXPORT));
 
 		DebugLog::Log(
 			"Optional VP Renderer plugin loaded: API=%u path=%ls",
@@ -167,6 +170,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	if (!m_renderer)
 		throw std::runtime_error("optional libplacebo renderer plugin failed to create a renderer");
 	m_destroyRenderer = plugin.destroyRenderer;
+	m_getHdrStatus = plugin.getHdrStatus;
 }
 
 
@@ -514,6 +518,13 @@ uint64_t LibplaceboPluginVideoRenderer::DroppedFrameCount() const
 bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 {
 	return m_renderer->GetRenderLoad(load);
+}
+
+
+bool LibplaceboPluginVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
+{
+	status = {};
+	return m_getHdrStatus && m_getHdrStatus(m_renderer, &status);
 }
 
 
