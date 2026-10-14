@@ -248,6 +248,8 @@
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
     <ClInclude Include="AnalysisFrame.h" />
+    <ClInclude Include="AnalysisDiagnosticTrace.h" />
+    <ClInclude Include="AnalysisDiagnosticHooks.h" />
     <ClInclude Include="SubtitleBoxDetector.h" />
     <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
     <ClInclude Include="SubtitleBoxLookahead.h" />
@@ -343,6 +345,7 @@
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
 	<ClCompile Include="AnalysisLumaSource.cpp" />
     <ClCompile Include="AnalysisFrame.cpp" />
+    <ClCompile Include="AnalysisDiagnosticTrace.cpp" />
     <ClCompile Include="SubtitleBoxDetector.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="ActivePictureEvidence.cpp" />

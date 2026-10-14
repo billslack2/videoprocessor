@@ -21,6 +21,7 @@
 #include <RendererPostStallResetAdvisor.h>
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <DisplayRuleExpression.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
@@ -10299,6 +10300,35 @@ struct LibplaceboVideoRenderer::Impl
                 (uint64_t(admission.outward.broadOpposingPicture) << 12) |
                 (uint64_t(evidence.axisEvidence.horizontal.reason) << 16) |
                 (uint64_t(evidence.axisEvidence.vertical.reason) << 20);
+            {
+                auto trace=AnalysisTraceRecord(currentIdentity,this,"ar-decision",transition.reason.c_str());
+                trace.analysisFormat=static_cast<uint64_t>(analysisSource.format);trace.sourceWidth=analysisSource.width;trace.sourceHeight=analysisSource.height;
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                AnalysisTraceText(trace.detail,evidence.reason.c_str());
+                AnalysisTraceRect(trace.previous,presentationBeforeObservation);AnalysisTraceRect(trace.measured,diagnosticMeasuredBounds);
+                AnalysisTraceRect(trace.candidate,latestActivePictureEvidenceBounds);AnalysisTraceRect(trace.published,transition.bounds);
+                trace.resultCode=static_cast<int32_t>(evidence.classification);trace.cadenceRepeat=cadenceRepeat;
+                trace.flags=(transition.publish?1u:0u)|(applyScheduledDecision?2u:0u)|(admission.deferPresentation?4u:0u)|
+                    (admission.deferOutward?8u:0u)|(admission.deferPartialComposition?16u:0u)|(nearBlackAcquisitionBlocked?32u:0u)|
+                    (bufferedExpansionReady?64u:0u)|(globalNearBlack.nearBlack?128u:0u);
+                trace.counters[0]=transition.matchingCandidates;trace.counters[1]=transition.contradictoryCandidates;
+                trace.counters[2]=transition.candidateReversals;trace.counters[3]=transition.decisionLatencyFrames;
+                trace.counters[4]=admission.outward.state.confirmations;trace.counters[5]=AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+                trace.counters[6]=static_cast<uint64_t>(evidence.axisEvidence.horizontal.reason);
+                trace.counters[7]=static_cast<uint64_t>(evidence.axisEvidence.vertical.reason);
+                trace.metrics[0]=globalNearBlack.lumaP90;trace.metrics[1]=scopeSubtitleHoldMs;
+                trace.metrics[2]=scopeSubtitleEngageDriftMs;trace.metrics[3]=scopeSubtitleReleaseDriftMs;
+                trace.acceptedSeeds=scopeSubtitleAnalysisFrame!=0;trace.pendingFrames=diagnosticPending;
+                AnalysisDiagnosticTrace::Emit(trace);
+                auto edges=AnalysisTraceRecord(currentIdentity,this,"ar-edges",retentionEvidence.expansionStripsAvailable?"expansion-strips":"excluded-bands");
+                AnalysisTraceRect(edges.previous,retentionEvidence.expansionBase);AnalysisTraceRect(edges.candidate,retentionEvidence.expansionCandidate);
+                const auto& r=retentionEvidence;
+                const auto put=[&](int index,const auto& b){ edges.metrics[index]=b.barPixels;edges.metrics[index+1]=b.blackFraction;
+                    edges.metrics[index+2]=b.lumaP90;edges.metrics[index+3]=b.texture;edges.metrics[index+4]=b.continuity;edges.metrics[index+5]=b.neutralChromaFraction; };
+                put(0,r.expansionStripsAvailable?r.expandingLeft:r.excludedLeft);put(6,r.expansionStripsAvailable?r.expandingTop:r.excludedTop);
+                put(12,r.expansionStripsAvailable?r.expandingRight:r.excludedRight);put(18,r.expansionStripsAvailable?r.expandingBottom:r.excludedBottom);
+                edges.flags=(r.analysisValid?1u:0u)|(r.presentationValid?2u:0u);AnalysisDiagnosticTrace::Emit(edges);
+            }
             if (pictureDecisionDiagnostics.Observe(now, analysisSource.generation,
                 currentIdentity.viewportGeneration, frameNumber, diagnosticPending,
                 diagnosticKey, transition.publish || (scheduledDecision && !applyScheduledDecision)))
@@ -11036,6 +11066,44 @@ struct LibplaceboVideoRenderer::Impl
         const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
             analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
         analysisSource = preparedLive.source;
+        {
+            auto id=activePictureIdentity;id.analysisDomainKey=preparedLive.domainKey;
+            id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
+            id.viewportGeneration=viewportRequestSerial;id.sourceFormatGeneration=AlphaSourceFormatKey(state);
+            auto trace=AnalysisTraceRecord(id,this,"analysis-input",preparedLive.IsValid()?"source-ready":"source-unavailable");
+            trace.sourceWidth=width;trace.sourceHeight=height;trace.analysisWidth=analysisSource.width;
+            trace.analysisHeight=analysisSource.height;trace.analysisFormat=static_cast<uint64_t>(analysisSource.format);
+            trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+            trace.cadenceRepeat=cadenceRepeat;trace.discontinuity=videoFrame.IsSourceDiscontinuity();
+            trace.nearBarDistance=activeSettings.subtitleNearBarDistance;trace.optimizationMode=activeSettings.subtitleDetectionOptimization;
+            trace.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
+            trace.frameDuration100ns=state.displayMode->TimeScale()>0?
+                static_cast<int64_t>(10000000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale()):0;
+            trace.sourceFormat=static_cast<uint64_t>(analysisSource.encoding);
+            trace.counters[0]=static_cast<uint64_t>(analysisSource.encoding);trace.counters[1]=static_cast<uint64_t>(analysisSource.colorspace);
+            trace.counters[2]=preparedLive.transferKey;trace.counters[3]=static_cast<uint64_t>(preparedLive.sampleRange);
+            trace.counters[4]=preparedLive.colorDepth;trace.counters[5]=preparedLive.bitShift;
+            AnalysisDiagnosticTrace::Emit(trace);
+            if (preparedLive.IsValid() && AnalysisDiagnosticTrace::FramesActive()) {
+                AnalysisDiagnosticFramePacketV1 packet;packet.structSize=sizeof(packet);
+                packet.width=width;packet.height=height;packet.stride0=analysisSource.rowBytes;packet.stride1=analysisSource.chromaRowBytes;
+                packet.format=static_cast<uint32_t>(analysisSource.format);packet.encoding=static_cast<uint32_t>(analysisSource.encoding);
+                packet.colorspace=static_cast<uint32_t>(analysisSource.colorspace);packet.rgbBitAlignment=analysisSource.rgbBitAlignment;
+                packet.top=nlsGeometryAvailable?nlsGeometry.top:0;packet.bottom=nlsGeometryAvailable?nlsGeometry.bottom:0;
+                packet.scriptHint=trace.scriptHint;packet.transportGeneration=id.transportGeneration;
+                packet.acceptedSequence=id.acceptedSequence;packet.sourceFrameNumber=id.sourceFrameNumber;
+                packet.captureTimestamp=id.captureTimestamp;packet.sourceFormatGeneration=id.sourceFormatGeneration;
+                packet.viewportGeneration=id.viewportGeneration;packet.rendererGeneration=id.rendererGeneration;
+                packet.analysisDomainKey=id.analysisDomainKey;packet.policyGeneration=trace.policyGeneration;
+                packet.continuityGeneration=trace.continuityGeneration;packet.nearBarDistance=trace.nearBarDistance;
+                packet.optimizationMode=trace.optimizationMode;packet.frameDuration100ns=trace.frameDuration100ns;
+                packet.discontinuity=trace.discontinuity;packet.cadenceRepeat=cadenceRepeat;
+                packet.data=analysisSource.data;packet.dataBytes=analysisSource.dataBytes;
+                packet.ownerContext=&preparedLive.sourceOwner;packet.retainOwner=RetainAnalysisTraceOwner;packet.releaseOwner=ReleaseAnalysisTraceOwner;
+                AnalysisDiagnosticTrace::EmitFrame(packet);
+            }
+        }
+
         // All consumers use native capture evidence (validated decoded storage
         // for DV), regardless of the renderer's P010/P210 upload choice.
         const uint64_t queuedAnalysisDomainKey = preparedQueued.domainKey;
@@ -12558,6 +12626,21 @@ struct LibplaceboVideoRenderer::Impl
             subtitleBoxHeldFrames += !cadenceRepeat && subtitleBoxResult.held;
             const auto analysisLogNow=GetTickCount64();
             const auto& rawAnalysis=subtitlePreview->current.text;
+            {
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-output",rawAnalysis.diagnosticReason);
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                trace.nearBarDistance=activeSettings.subtitleNearBarDistance;trace.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
+                AnalysisTraceRect(trace.subtitle,subtitleBoxResult.bounds);trace.resultCode=subtitleBoxResult.lineCount;
+                trace.flags=(subtitleBoxResult.detected?1u:0u)|(subtitleBoxResult.held?2u:0u)|(subtitleCompositionSucceeded?4u:0u)|
+                    (barAuthority?8u:0u)|(subtitlePreview->current.analyzed?16u:0u)|(rawAnalysis.workLimit?32u:0u);
+                trace.counters[0]=subtitlePreview->current.identity.acceptedSequence;trace.counters[1]=subtitlePreview->current.identity.analysisDomainKey;
+                trace.counters[2]=subtitleBoxResult.cue;trace.counters[3]=subtitlePreview->matchingFrames;
+                trace.counters[4]=rawAnalysis.lineCount;trace.counters[5]=rawAnalysis.diagnosticComponentCount;
+                trace.metrics[0]=rawAnalysis.diagnosticNearBarGap;trace.metrics[1]=subtitlePreview->current.analysisMs;
+                trace.metrics[2]=subtitlePreview->current.pictureTop;trace.metrics[3]=subtitlePreview->current.pictureBottom;
+                AnalysisTraceText(trace.detail,subtitleBoxPresentation.DecisionReason());AnalysisDiagnosticTrace::Emit(trace);
+            }
+
             const bool analysisChanged=std::strcmp(subtitleLoggedAnalysisReason,rawAnalysis.diagnosticReason)!=0 ||
                 subtitleLoggedAnalysisWorkLimit!=rawAnalysis.workLimit ||
                 (subtitleLoggedAnalysisGap>=0)!=(rawAnalysis.diagnosticNearBarGap>=0);
@@ -12648,7 +12731,7 @@ struct LibplaceboVideoRenderer::Impl
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
 			 subtitlePreviewMode,
@@ -13973,6 +14056,23 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
+            {
+                auto id=activePictureIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
+                id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
+                auto trace=AnalysisTraceRecord(id,this,"presentation",cropDecision.reason.c_str());
+                AnalysisTraceRect(trace.previous,cropDiagnosticPreviousBounds);AnalysisTraceRect(trace.measured,latestActivePictureEvidenceBounds);
+                AnalysisTraceRect(trace.published,effectiveGeometry);AnalysisTraceRect(trace.displayed,presentationCropBounds);
+                trace.cadenceRepeat=cadenceRepeat;trace.resultCode=static_cast<int32_t>(cropDecision.owner);
+                trace.flags=(cropDecision.applyCrop?1u:0u)|(aspectLimitFill.applied?2u:0u)|(cropPresentationRecovery.active?4u:0u)|
+                    (nearBlackEpisodeFullRaster?8u:0u)|(admissionDecision.blocked?16u:0u);
+                trace.counters[0]=recoveryDecision.samples;trace.counters[1]=recoveryDecision.required;
+                trace.counters[2]=episodeDecision.revalidationSamples;trace.counters[3]=episodeDecision.revalidationSamplesRequired;
+                trace.counters[4]=episodeDecision.revalidationGates;trace.counters[5]=episodeInput.sceneBoundary;
+                trace.metrics[0]=latestActivePictureGlobalLumaP90;trace.metrics[1]=configuredScreenAspect;
+                trace.viewportLeft=static_cast<int32_t>(target.crop.x0);trace.viewportTop=static_cast<int32_t>(target.crop.y0);
+                trace.viewportRight=static_cast<int32_t>(target.crop.x1);trace.viewportBottom=static_cast<int32_t>(target.crop.y1);
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
 			// Diagnostics reuse the evidence already sampled above; no pixel scans.
 			if (!cropTraceConfigured)
 			{
@@ -18696,6 +18796,19 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 (uint64_t(inspectExpansion) << 8) | (uint64_t(diagnosticBuilt) << 9) |
                 (uint64_t(diagnosticProofValid) << 10) | (uint64_t(previewFrames.size() < 3) << 11) |
                 (uint64_t(shadowFit) << 12) | (uint64_t(shadowBuilt) << 13) | (uint64_t(shadowDiagnostic.passes) << 14);
+            {
+                auto trace=AnalysisTraceRecord(first.identity,m_impl.get(),"lookahead",diagnosticQueueStage);
+                trace.policyGeneration=lookaheadPolicyGeneration;trace.continuityGeneration=m_activePictureTimeline.ContinuityGeneration();
+                AnalysisTraceRect(trace.previous,proofBase);AnalysisTraceRect(trace.candidate,first.observation.bounds);
+                trace.resultCode=static_cast<int32_t>(first.observation.classification);
+                trace.flags=(diagnosticBuilt?1u:0u)|(diagnosticProofValid?2u:0u)|(diagnosticOwnerEligible?4u:0u)|(pending?8u:0u);
+                trace.counters[0]=configured;trace.counters[1]=queuedFutureFrames;trace.counters[2]=observations.size();
+                trace.counters[3]=proofSamples.size();trace.counters[4]=diagnosticOwner;
+                trace.counters[5]=static_cast<uint64_t>(first.observation.axisEvidence.horizontal.reason);
+                trace.counters[6]=static_cast<uint64_t>(first.observation.axisEvidence.vertical.reason);
+                trace.metrics[0]=proofInspectionMs;AnalysisTraceText(trace.detail,shadowDiagnostic.reason);
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             if (m_picturePreviewDiagnostics.Observe(GetTickCount64(), first.identity.transportGeneration,
                 first.identity.viewportGeneration, first.identity.acceptedSequence, pending, key))
             {

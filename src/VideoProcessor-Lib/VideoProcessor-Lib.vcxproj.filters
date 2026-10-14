@@ -699,4 +699,10 @@
     <ClInclude Include="CpuFeatures.h" />
     <ClCompile Include="CpuFeatures.cpp" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="AnalysisDiagnosticTrace.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AnalysisDiagnosticHooks.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="AnalysisDiagnosticTrace.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>

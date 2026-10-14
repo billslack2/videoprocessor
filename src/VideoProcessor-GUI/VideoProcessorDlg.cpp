@@ -9,6 +9,7 @@
 #include <pch.h>
 #include "BackendInputConfig.h"
 #include <ApplicationShutdownPolicy.h>
+#include <AnalysisDiagnosticTrace.h>
 #include <BuildIdentityPolicy.h>
 #include <UpdateLauncher.h>
 static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
@@ -80,6 +81,9 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+constexpr UINT CaptureAnalysisDiagnosticsMenuCommand = 0x1ef0;
+constexpr UINT CaptureAnalysisDiagnosticsWithFramesMenuCommand = 0x1f00;
+
 constexpr wchar_t ConfigurationEditorRelativePath[] =
 	L"config\\VideoProcessorConfig.exe";
 
@@ -138,6 +142,23 @@ bool GetApplicationDirectory(std::wstring& directory)
 std::wstring ConfigurationEditorPath(const std::wstring& applicationDirectory)
 {
 	return applicationDirectory + ConfigurationEditorRelativePath;
+}
+
+CString AnalysisDiagnosticPathToCString(const char* utf8Path)
+{
+	if (!utf8Path || !utf8Path[0])
+		return CString();
+
+	const int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+		utf8Path, -1, nullptr, 0);
+	if (required <= 0)
+		return CString(TEXT("(output folder path unavailable)"));
+
+	std::vector<wchar_t> widePath(static_cast<size_t>(required));
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8Path, -1,
+		widePath.data(), required) != required)
+		return CString(TEXT("(output folder path unavailable)"));
+	return CString(widePath.data());
 }
 
 bool ReadShortcutsForegroundOnly(const ConfigFile& config, bool& enabled,
@@ -5035,6 +5056,7 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 {
 	m_configurationRpcServer.Stop();
 	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
+	KillTimer(ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID);
 	ClearStagedConfiguration();
 	if (m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -8113,6 +8135,111 @@ void CVideoProcessorDlg::OnCommandCaptureRenderedOutput()
 		static_cast<LPCWSTR>(status));
 	OnRendererDetailString(
 		status, m_rendererGeneration.load(std::memory_order_acquire));
+}
+
+void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames)
+{
+	auto& trace = AnalysisDiagnosticTrace::Instance();
+	const AnalysisDiagnosticTraceStatus before = trace.Status();
+	AnalysisDiagnosticCaptureResult result =
+		AnalysisDiagnosticCaptureResult::InvalidRequest;
+	if (includeFrames && !before.producerConnected)
+		result = AnalysisDiagnosticCaptureResult::NoProducer;
+	else if (includeFrames && !before.frameCaptureSupported)
+		result = AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable;
+	else
+		result = trace.StartCapture(includeFrames);
+
+	const AnalysisDiagnosticTraceStatus status = trace.Status();
+	CString message;
+	UINT icon = MB_ICONINFORMATION;
+	switch (result)
+	{
+	case AnalysisDiagnosticCaptureResult::Started:
+		message = TEXT("Analysis diagnostic capture started.");
+		break;
+	case AnalysisDiagnosticCaptureResult::AlreadyRecording:
+		message = TEXT("An analysis diagnostic capture is already running.");
+		break;
+	case AnalysisDiagnosticCaptureResult::NoProducer:
+		message = TEXT("The active renderer has no connected analysis diagnostics producer. No capture was started.");
+		icon = MB_ICONWARNING;
+		break;
+	case AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable:
+		message = TEXT("The active renderer does not support input-frame capture. No capture was started.");
+		icon = MB_ICONWARNING;
+		break;
+	case AnalysisDiagnosticCaptureResult::Busy:
+		message = TEXT("The analysis diagnostic recorder is busy. No capture was started.");
+		icon = MB_ICONWARNING;
+		break;
+	case AnalysisDiagnosticCaptureResult::InvalidRequest:
+	default:
+		message = TEXT("The analysis diagnostic capture request was invalid. No capture was started.");
+		icon = MB_ICONERROR;
+		break;
+	}
+
+	if (status.recording)
+	{
+		CString progress;
+		progress.Format(TEXT("\n\nRecording: %s\nRecords written: %llu\nInput frames written: %llu"),
+			status.includeFrames ? TEXT("diagnostics and input frames") :
+			TEXT("diagnostics only"),
+			static_cast<unsigned long long>(status.recordsWritten),
+			static_cast<unsigned long long>(status.framesWritten));
+		message += progress;
+	}
+	if (result == AnalysisDiagnosticCaptureResult::Started ||
+		result == AnalysisDiagnosticCaptureResult::AlreadyRecording)
+	{
+		const CString outputPath =
+			AnalysisDiagnosticPathToCString(status.outputPath);
+		if (!outputPath.IsEmpty())
+		{
+			message += TEXT("\n\nOutput folder:\n");
+			message += outputPath;
+		}
+	}
+
+	DebugLog::Log(
+		"Analysis diagnostic capture request: include_frames=%d result=%u "
+		"recording=%d producer=%d frame_capture_supported=%d records=%llu "
+		"frames=%llu output=%s",
+		includeFrames ? 1 : 0, static_cast<unsigned int>(result),
+		status.recording ? 1 : 0, status.producerConnected ? 1 : 0,
+		status.frameCaptureSupported ? 1 : 0,
+		static_cast<unsigned long long>(status.recordsWritten),
+		static_cast<unsigned long long>(status.framesWritten),
+		status.outputPath);
+	if (result == AnalysisDiagnosticCaptureResult::Started ||
+		result == AnalysisDiagnosticCaptureResult::AlreadyRecording)
+	{
+		if (!m_analysisDiagnosticCaptionActive)
+			GetWindowText(m_analysisDiagnosticCaptionBeforeStatus);
+		CString caption = m_analysisDiagnosticCaptionBeforeStatus;
+		caption += TEXT(" - ");
+		caption += result == AnalysisDiagnosticCaptureResult::Started ?
+			TEXT("Analysis diagnostics recording") :
+			TEXT("Analysis diagnostics already recording");
+		if (status.includeFrames)
+			caption += TEXT(" with input frames");
+		SetWindowText(caption);
+		m_analysisDiagnosticCaptionActive = true;
+		m_analysisDiagnosticCaptionUntilTick = GetTickCount64() + 5000;
+		if (SetTimer(ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID, 5000, nullptr) == 0)
+		{
+			SetWindowText(m_analysisDiagnosticCaptionBeforeStatus);
+			m_analysisDiagnosticCaptionBeforeStatus.Empty();
+			m_analysisDiagnosticCaptionUntilTick = 0;
+			m_analysisDiagnosticCaptionActive = false;
+			DebugLog::Log(
+				"Analysis diagnostic capture status caption unavailable: timer creation failed");
+		}
+		return;
+	}
+	::MessageBoxW(GetSafeHwnd(), message, L"Analysis diagnostics",
+		MB_OK | icon);
 }
 
 void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
@@ -13581,6 +13708,12 @@ BOOL CVideoProcessorDlg::OnInitDialog()
     {
         systemMenu->AppendMenu(MF_SEPARATOR);
         systemMenu->AppendMenu(MF_STRING, UpdateLauncher::MenuCommand, L"Check for updates...");
+        systemMenu->AppendMenu(MF_SEPARATOR);
+        systemMenu->AppendMenu(MF_STRING, CaptureAnalysisDiagnosticsMenuCommand,
+            L"Capture analysis diagnostics...");
+        systemMenu->AppendMenu(MF_STRING,
+            CaptureAnalysisDiagnosticsWithFramesMenuCommand,
+            L"Capture analysis diagnostics with input frames...");
     }
     SetTimer(UpdateLauncher::StartupTimer, 30000, nullptr);
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
@@ -14675,6 +14808,16 @@ void CVideoProcessorDlg::OnSysCommand(UINT command, LPARAM lParam)
 {
     if ((command & 0xfff0) == UpdateLauncher::MenuCommand)
     { UpdateLauncher::Launch(false, GetSafeHwnd()); return; }
+	if ((command & 0xfff0) == CaptureAnalysisDiagnosticsMenuCommand)
+	{
+		OnCommandCaptureAnalysisDiagnostics(false);
+		return;
+	}
+	if ((command & 0xfff0) == CaptureAnalysisDiagnosticsWithFramesMenuCommand)
+	{
+		OnCommandCaptureAnalysisDiagnostics(true);
+		return;
+	}
 	if (ApplicationShutdownPolicy::IsCloseSystemCommand(command))
 	{
 		DebugLog::Log(
@@ -14693,6 +14836,18 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
     { SetTimer(nIDEvent, 6 * 60 * 60 * 1000, nullptr); UpdateLauncher::Launch(true); return; }
 	const ULONGLONG uiNow = GetTickCount64();
 	m_lastUiMessageTick.store(uiNow, std::memory_order_release);
+	if (nIDEvent == ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID)
+	{
+		if (uiNow < m_analysisDiagnosticCaptionUntilTick)
+			return;
+		KillTimer(ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID);
+		if (m_analysisDiagnosticCaptionActive)
+			SetWindowText(m_analysisDiagnosticCaptionBeforeStatus);
+		m_analysisDiagnosticCaptionBeforeStatus.Empty();
+		m_analysisDiagnosticCaptionUntilTick = 0;
+		m_analysisDiagnosticCaptionActive = false;
+		return;
+	}
 	if (nIDEvent == PROFILE_CHANGE_OVERLAY_TIMER_ID)
 	{
 		UpdateProfileChangeOverlay(uiNow);

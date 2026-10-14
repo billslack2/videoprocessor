@@ -114,6 +114,7 @@ static_assert(WM_MESSAGE_RENDERER_ACTION_EVENT !=
 #define QUEUE_PROFILE_RESET_TIMER_ID 14
 #define PROFILE_CHANGE_OVERLAY_TIMER_ID 15
 #define ASPECT_OSD_TIMER_ID 16
+#define ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID 17
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
@@ -285,6 +286,7 @@ public:
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
 	void OnCommandCaptureRenderedOutput();
+	void OnCommandCaptureAnalysisDiagnostics(bool includeFrames);
 	void OnCommandConfigEditor();
 
 	// ICaptureDeviceDiscovererCallback
@@ -496,6 +498,9 @@ protected:
 	HWND m_configurationEditorPresentationTarget = nullptr;
 	ULONGLONG m_configurationEditorPresentationQueuedTick = 0;
 	bool m_configurationEditorPresentationTimeoutLogged = false;
+	CString m_analysisDiagnosticCaptionBeforeStatus;
+	ULONGLONG m_analysisDiagnosticCaptionUntilTick = 0;
+	bool m_analysisDiagnosticCaptionActive = false;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;

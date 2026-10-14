@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -87,6 +88,18 @@ public:
         auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.active=m_active;
         m_diagnostics={};return out;
     }
+    void Trace(const SubtitleBoxObservation& key,const char* stage,const char* reason="",uint64_t mismatch=0) const noexcept {
+        auto r=AnalysisTraceRecord(key.identity,this,stage,reason);r.kind=AnalysisDiagnosticRecordKindV1::Worker;
+        r.policyGeneration=key.policyGeneration;r.continuityGeneration=key.continuityGeneration;
+        r.nearBarDistance=key.nearBarDistance;r.optimizationMode=key.optimizationMode;r.scriptHint=static_cast<uint32_t>(key.scriptHint);
+        r.sourceWidth=key.width;r.sourceHeight=key.height;r.discontinuity=key.discontinuity;
+        r.flags=(key.analyzed?1u:0u)|(key.text.detected?2u:0u)|(key.sharedPicture.required?4u:0u)|
+            (key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?8u:0u)|(key.pictureAuthorityUnavailableForMeasurement?16u:0u);
+        r.counters[0]=mismatch;r.counters[1]=key.sharedPicture.identity.acceptedSequence;
+        r.resultCode=key.text.lineCount;AnalysisTraceRect(r.subtitle,key.text.bounds);
+        r.metrics[0]=key.analysisMs;r.metrics[1]=key.pictureTop;r.metrics[2]=key.pictureBottom;
+        AnalysisDiagnosticTrace::Emit(r);
+    }
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
@@ -113,13 +126,26 @@ public:
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        uint64_t mismatches=0;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
             auto candidate=*i;
             if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture) ||
-                !SameKey(candidate,key)) continue;
-            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration))continue;
-            out=std::move(candidate);m_ready.erase(i);return true;
+                !SameKey(candidate,key)) {
+                mismatches|=(!SameActivePictureFrameIdentity(candidate.identity,key.identity)?1ull:0ull)|
+                    (candidate.identity.analysisDomainKey!=key.identity.analysisDomainKey?2ull:0ull)|
+                    (candidate.policyGeneration!=key.policyGeneration?4ull:0ull)|
+                    (candidate.continuityGeneration!=key.continuityGeneration?8ull:0ull)|
+                    (!candidate.sharedPicture.Matches(key.sharedPicture)?16ull:0ull)|
+                    (candidate.scriptHint!=key.scriptHint?32ull:0ull)|
+                    (candidate.discontinuity!=key.discontinuity?64ull:0ull)|
+                    (candidate.nearBarDistance!=key.nearBarDistance || candidate.optimizationMode!=key.optimizationMode?128ull:0ull)|
+                    (candidate.width!=key.width || candidate.height!=key.height?256ull:0ull);
+                continue;
+            }
+            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
+            Trace(candidate,"worker-consumed","exact-key-accepted");out=std::move(candidate);m_ready.erase(i);return true;
         }
+        Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
         ++m_diagnostics.requestMisses;return false;
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
@@ -133,10 +159,11 @@ public:
                 requestKey.identity,requestKey.width,requestKey.height);
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return;
-        if(m_active && SameKey(m_activeKey,requestKey))return;
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey))return;
-        for(const auto& ready:m_ready)if(SameKey(ready,requestKey))return;
-        if(m_pending.size()>=8){m_pending.pop_front();++m_diagnostics.dropped;}
+        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");return;}
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");return;}
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");return;}
+        if(m_pending.size()>=8){Trace(m_pending.front().key,"worker-drop","pending-capacity");m_pending.pop_front();++m_diagnostics.dropped;}
+        Trace(requestKey,"worker-submit");
         m_pending.push_back({requestKey,std::move(work)});
         if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
         m_changed.notify_one();
@@ -159,10 +186,12 @@ private:
                 job=std::move(m_pending.front());m_pending.pop_front();
                 m_active=true;m_activeKey=job.key;
             }
+            Trace(job.key,"worker-start");
             const auto workStart=std::chrono::steady_clock::now();
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
             try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
             {std::lock_guard<std::mutex> lock(m_mutex);
                 const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
