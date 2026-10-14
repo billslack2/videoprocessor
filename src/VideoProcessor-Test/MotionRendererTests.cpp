@@ -74,6 +74,36 @@ TEST_CLASS(MotionRendererTests){public:
         g.temporal.Begin(settings,30,60,true,2,1,4,3./30,false);Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,4));
         Assert::AreEqual(size_t(1),g.temporal.HistoryDepth());
     }
+    TEST_METHOD(SubtitleCompositionPolicySchedulesOneCurrentOutputAcrossCues){
+        MotionConfig::Settings settings;settings.smoothMotion="always";
+        TemporalRenderer r;
+        for(uint64_t i=1;i<=24;++i){
+            const double pts=double(i)/24;
+            r.Begin(settings,24,60,false,0,1,i,pts,false,true);
+            Assert::IsFalse(r.Active());Assert::IsFalse(r.Mixing());
+            Assert::AreEqual(size_t(1),r.outputs.size());
+            Assert::AreEqual(pts,r.outputPts);Assert::AreEqual(pts,r.outputs.front());
+            Assert::AreEqual(0.0,r.DelayMs());Assert::AreEqual(size_t(0),r.HistoryDepth());
+        }
+    }
+    TEST_METHOD(SubtitleCompositionTransitionDropsHistoryAndRestoresMixing){
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+        g.Upload(50);g.temporal.Begin(settings,24,60,false,0,1,1,0,false);
+        Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,1));
+        Assert::AreEqual(size_t(1),g.temporal.HistoryDepth());
+        g.temporal.Begin(settings,24,60,false,0,1,2,1./24,false,true);
+        Assert::IsFalse(g.temporal.Active());Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+        g.temporal.Begin(settings,24,60,false,0,1,3,2./24,false,false);
+        Assert::IsTrue(g.temporal.Mixing());Assert::IsTrue(g.temporal.outputs.size()>1);
+        Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+    }
+    TEST_METHOD(SubtitleCompositionPolicyAlsoPreventsFieldCadenceSwitching){
+        MotionConfig::Settings settings;TemporalRenderer r;
+        r.Begin(settings,30,60,true,1,1,1,0,false,true);
+        Assert::IsFalse(r.Active());Assert::AreEqual(size_t(1),r.outputs.size());
+        r.Begin(settings,30,60,true,1,1,2,1./30,false,false);
+        Assert::IsTrue(r.Active());Assert::AreEqual(size_t(2),r.outputs.size());
+    }
     TEST_METHOD(DefaultOffDoesNotAllocateTemporalHistory){
         MotionConfig::Settings settings;TemporalRenderer r;r.Begin(settings,24,60,false,0,1,1,0,false);
         Assert::IsFalse(r.Active());Assert::AreEqual(0.0,r.DelayMs());
