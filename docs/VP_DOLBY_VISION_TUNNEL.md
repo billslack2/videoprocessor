@@ -100,3 +100,29 @@ synthetic static values; recovered DM source range and L1 PQ fields are
 supplied separately. L1 peak/average are not relabelled as HDR10 MaxCLL/FALL.
 The output target brightness remains the configured projector/display target.
 The shared renderer API is bumped to 26 so older host/plugin pairs are rejected.
+## UHD disc player qualification
+
+A UHD player can use this same tunnel path when it sends compatible TV-led
+Dolby Vision. The player must reconstruct any Profile 7 enhancement layer
+before HDMI output. VP preserves and decodes the composed tunnel; it cannot
+recover an EL discarded by the source, or determine FEL/MEL from this signal.
+Use the [staged UHD test protocol](VP_DV_UHD_QUALIFICATION.md) before claiming
+hardware qualification. Dune is a transport test until its exact edition's
+FEL/MEL type and the player's behavior have been independently established.
+
+Rendered-output captures (`Ctrl+Alt+S`) now record the source representation,
+sample depth, color depth and bit shift, plus a `dolby_vision` object identifying
+active DV decoding, DM versus fallback source range, L1 presence and the PQ
+scene values supplied for that frame. `fel_status` remains `unknown` on DV HDMI
+input. These are additive fields in the existing capture JSON schema; the PNG
+still contains the final 10-bit output expanded losslessly to 16 bits, not the
+original 12-bit tunnel samples. See [capture interpretation](VP-0133_RENDERED_OUTPUT_CAPTURE.md).
+
+The reviewed Beta library is the bundled API 377 source at
+`billslack2/libplacebo` commit `8bccd6578c9e845f77205cec9e85fdb97bf36ed7`.
+Its Dolby decoder already normalizes the recovered codes and uses the supplied
+matrices. No second reshaping/FEL pass is appropriate for this HDMI route.
+With peak detection enabled, L1 PQ fields remain supplied, while measured
+maxRGB/average fields can also influence libplacebo's adaptive target. L1 is
+therefore an input to VP's selected tone mapping, not a complete Dolby display
+mapping implementation.

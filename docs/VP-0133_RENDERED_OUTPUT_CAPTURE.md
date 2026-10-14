@@ -59,3 +59,20 @@ explicit guarded experiments, and Limited/pure 2.4. Values such as 1.8, 2.0,
 2.6, and 2.8 have no matching implemented DXGI output contract. The log now
 states when one of those selections is unsupported and which fallback is used;
 do not treat changing such a value as proof that the rendered transfer changed.
+## Dolby Vision test captures
+
+For a validated HDMI DV tunnel, the sidecar also records:
+
+- `source_representation`, `source_sample_depth`, `source_color_depth` and
+  `source_bit_shift`: the libplacebo input contract, normally Dolby Vision with
+  12-bit codes shifted four bits in 16-bit samples.
+- `dolby_vision.active`, `composition`, `fel_status`: active DV decoding,
+  composition in the source player, and an explicitly unknown FEL status.
+- `source_range_origin`, `l1_present`, source minimum/maximum nits and scene
+  peak/average PQ values inside `dolby_vision`: the metadata supplied for the
+  captured frame. These DV-specific values are meaningful when `active` is true;
+  `l1_present` distinguishes absent L1 from a supplied all-zero black scene.
+
+The PNG remains final R10 output. It does not prove 12-bit ingress preservation
+or upstream FEL reconstruction. Use the independent software transport tests
+and [UHD qualification protocol](VP_DV_UHD_QUALIFICATION.md) for those claims.
