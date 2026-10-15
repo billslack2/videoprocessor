@@ -3886,6 +3886,7 @@ struct LibplaceboVideoRenderer::Impl
 	RendererHdrStatus hdrStatus;
 	bool hdrStatusPublished = false;
 	uint64_t hdrStatusNextTick = 0;
+	uint64_t hdrStatusNextLogTick = 0;
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -5546,6 +5547,21 @@ struct LibplaceboVideoRenderer::Impl
 				PL_HDR_PQ, PL_HDR_NITS, detected.max_pq_y);
 			next.detectedAvgNits = pl_hdr_rescale(
 				PL_HDR_PQ, PL_HDR_NITS, detected.avg_pq_y);
+			next.detectedLinearAvgNits = detected.scene_avg;
+		}
+		if (next.hdr && (next.detectedValid || next.sceneValid) &&
+			now >= hdrStatusNextLogTick)
+		{
+			hdrStatusNextLogTick = now + 5000;
+			DebugLog::Log(
+				"HDR luminance: dv=%d detection=%s detected_peak_nits=%.2f detected_avg_pq_nits=%.4f detected_avg_linear_nits=%.4f scene=%s scene_peak_nits=%.2f scene_avg_nits=%.4f",
+				next.dolbyVision ? 1 : 0,
+				!next.peakDetectionEnabled ? "off" :
+					next.detectedValid ? "valid" : "pending",
+				next.detectedPeakNits, next.detectedAvgNits,
+				next.detectedLinearAvgNits,
+				!next.sceneValid ? "none" : next.dolbyVision ? "L1" : "frame",
+				next.scenePeakNits, next.sceneAvgNits);
 		}
 		std::lock_guard<std::mutex> lock(hdrStatusMutex);
 		hdrStatus = next;

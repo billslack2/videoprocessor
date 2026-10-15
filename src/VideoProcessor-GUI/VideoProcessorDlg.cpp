@@ -99,12 +99,19 @@ CString FormatHdrLuminance(double value)
 	return text;
 }
 
-// Stats OSD: the HDR box's format without a trailing ".0".
+// Stats OSD: whole nits from 100, two decimals from 1, five below, trailing
+// zeros dropped. A Dolby Vision range is 12-bit PQ codes, so its lowest codes
+// sit near 0.00001 nits and its peak is rarely a round number.
 CString FormatOsdNits(double value)
 {
-	CString text = FormatHdrLuminance(value);
-	if (text.Right(2) == _T(".0"))
-		text.Truncate(text.GetLength() - 2);
+	CString text;
+	text.Format(value >= 100.0 ? _T("%.0f") :
+		value >= 1.0 ? _T("%.2f") : _T("%.5f"), value);
+	if (text.Find(_T('.')) >= 0)
+	{
+		text.TrimRight(_T('0'));
+		text.TrimRight(_T('.'));
+	}
 	return text;
 }
 
@@ -16660,14 +16667,23 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			if (!hdrStatus.peakDetectionEnabled)
 				detected = _T("off");
 			else if (hdrStatus.detectedValid)
-				detected.Format(_T("peak %.0f / avg %.0f"),
-					hdrStatus.detectedPeakNits, hdrStatus.detectedAvgNits);
+			{
+				// avg is the linear (FALL-style) average; a renderer whose
+				// libplacebo does not report it shows the peak alone.
+				detected.Format(_T("peak %s"),
+					FormatOsdNits(hdrStatus.detectedPeakNits).GetString());
+				if (hdrStatus.detectedLinearAvgNits > 0.0)
+					detected.AppendFormat(_T(" / avg %s"),
+						FormatOsdNits(hdrStatus.detectedLinearAvgNits).GetString());
+			}
 			// The combined form drops "nits" to fit the panel's fixed width.
+			// The scene average stays as authored (L1 is a PQ average).
 			if (hdrStatus.sceneValid)
-				stats.measuredHdr.Format(_T("%s | %s %.0f / %.0f"),
+				stats.measuredHdr.Format(_T("%s | %s %s / %s"),
 					detected.GetString(),
 					hdrStatus.dolbyVision ? _T("L1") : _T("frame"),
-					hdrStatus.scenePeakNits, hdrStatus.sceneAvgNits);
+					FormatOsdNits(hdrStatus.scenePeakNits).GetString(),
+					FormatOsdNits(hdrStatus.sceneAvgNits).GetString());
 			else if (hdrStatus.detectedValid)
 				stats.measuredHdr = detected + _T(" nits");
 			else if (!hdrStatus.peakDetectionEnabled)

@@ -72,7 +72,11 @@ struct RendererHdrStatus
 	bool peakDetectionEnabled = false;
 	bool detectedValid = false;
 	double detectedPeakNits = 0.0;
-	double detectedAvgNits = 0.0;
+	double detectedAvgNits = 0.0;       // PQ average of Y: what places the knee
+	// Linear average of maxRGB (libplacebo's scene_avg, the HDR10 FALL
+	// definition), smoothed like the peak. Zero when the renderer's libplacebo
+	// does not report it, as the stable renderer's 7.360.1 does not.
+	double detectedLinearAvgNits = 0.0;
 };
 
 
