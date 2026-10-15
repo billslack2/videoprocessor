@@ -153,6 +153,7 @@ private:
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
+    void migrateProcessingToScaling();
     void migrateUnifiedColorOutputProfiles();
     void migrateCalibrationProfiles();
     void migrateViewportZoomProfiles();
@@ -316,6 +317,9 @@ private:
     bool activeProfileSnapshotAvailable_ = false;
     QString subtitleHdrFallbackSelection_;
     std::function<void()> refreshSubtitleHdrFallback_;
+    // Rendering / DTM: before Save or Apply, writes every rendering profile's
+    // settings explicitly so none inherits from the default profile.
+    std::function<void()> freezeRenderingProfiles_;
     struct RendererAutoStatusBinding
     {
         QString sectionPrefix;
