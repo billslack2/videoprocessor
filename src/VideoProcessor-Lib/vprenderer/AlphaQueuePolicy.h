@@ -123,11 +123,18 @@ namespace AlphaQueuePolicy
 		return std::max(MINIMUM_RENDER_STALL_MS, framePeriodMs * 2.0);
 	}
 
-	inline double StaleBacklogAgeThresholdMs(double frameRateHz)
+	inline double StaleBacklogAgeThresholdMs(double frameRateHz, size_t desiredDepth = 1)
 	{
 		const double framePeriodMs =
 			1000.0 / ValidFrameRateOrDefault(frameRateHz);
-		return std::max(MINIMUM_STALE_BACKLOG_AGE_MS, framePeriodMs * 3.0);
+		// Age includes the intentional lookahead reserve. A normal 24-to-60 Hz
+        // three-output cycle can temporarily leave one extra queued source.
+        // Permit that bounded phase excursion without changing the target depth;
+        // a genuine two-source-period render stall still recovers immediately.
+        const double reserveAgeMs =
+            (static_cast<double>(NormalizeDesiredDepth(desiredDepth)) + 1.0) * framePeriodMs;
+        return std::max(std::max(MINIMUM_STALE_BACKLOG_AGE_MS, framePeriodMs * 3.0),
+            reserveAgeMs);
 	}
 
 	inline bool ShouldRecoverBacklog(size_t queueDepth, size_t desiredDepth,
@@ -136,7 +143,7 @@ namespace AlphaQueuePolicy
 		if (queueDepth <= NormalizeDesiredDepth(desiredDepth))
 			return false;
 		return renderCycleMs >= RenderStallThresholdMs(frameRateHz) ||
-			oldestQueuedAgeMs >= StaleBacklogAgeThresholdMs(frameRateHz);
+			oldestQueuedAgeMs >= StaleBacklogAgeThresholdMs(frameRateHz, desiredDepth);
 	}
 
 	inline bool TryParsePositiveSize(const std::string& value, size_t& parsedValue)

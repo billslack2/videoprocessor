@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleBoxDetector.h>
 #include <SubtitleOpaqueCardRefinement.h>
@@ -1852,8 +1852,32 @@ public:
         source.rowBytes=source.chromaRowBytes=w*2;
         SubtitleBoxDetector detector;
         const auto result=detector.Analyze(source,top,bottom,1,1);
-        Assert::IsTrue(result.detected);Assert::AreEqual(2,result.lineCount);
-        Assert::IsTrue(result.bounds.top<=1818 && result.bounds.left>=1440);
+        Assert::IsTrue(result.detected);
+        Assert::AreEqual(2, result.lineCount);
+        // Native terminal recovery may floor the true x1450 glyph to a grid
+        // cell before applying the existing ten-pixel display padding.
+        const auto ink = detector.InkSnapshot();
+        Assert::IsTrue(bool(ink) && ink->step > 0);
+        int grayRaw = 0, grayOwned = 0;
+        for (int row = 0; row < ink->height; ++row)
+        {
+            const int y = ink->sourceRows[size_t(row)];
+            if (y < 1818 || y >= 1866) continue;
+            for (int x = 1200; x < 1616; x += ink->step)
+            {
+                grayRaw += ink->Get(x / ink->step, row);
+                grayOwned += ink->Get(x / ink->step, row, true);
+            }
+        }
+        Assert::IsTrue(grayRaw > 0, L"The flat gray prefix must appear in current raw ink evidence.");
+        Assert::AreEqual(0, grayOwned,
+            L"The detector must not assign the gray picture prefix to a caption line.");
+        Assert::IsTrue(result.lineBounds[0].left >= 1450 &&
+            result.lineBounds[1].left >= 1450,
+            L"Both accepted caption lines must exclude the gray prefix.");
+        Assert::IsTrue(result.bounds.top <= 1818 &&
+            result.bounds.left >= 1450 - 10 - ink->step,
+            L"The displayed bounds may include only the existing padding and one sampling cell.");
     }
     TEST_METHOD(EqualBrightnessPicturePrefixNeedsTheLearnedSubtitleCoreColor) {
         for(bool coloredSubtitle:{false,true}) {

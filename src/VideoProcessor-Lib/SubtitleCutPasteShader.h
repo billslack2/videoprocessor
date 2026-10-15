@@ -40,6 +40,11 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MINIMUM 0.0
 //!MAXIMUM 1.0
 0.0
+//!PARAM composition_phase
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 2.0
+0.0
 //!PARAM source_left
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
@@ -640,6 +645,8 @@ vec4 subtitleReducedGlyph(vec2 center) {
 vec4 hook() {
     vec2 p=HOOKED_pos*HOOKED_size;
     if(enabled>0.5) {
+        bool cleanupOnly=composition_phase>0.5 && composition_phase<1.5;
+        bool layerOnly=composition_phase>1.5;
         bool inPanel=p.x>=destination_left-subtitlePanelSideExtension() && p.x<destination_right+subtitlePanelSideExtension() &&
             p.y>=subtitlePanelTop() && p.y<subtitlePanelBottom();
         bool inCleanup=subtitleInGeneratedCleanup(p);
@@ -648,7 +655,8 @@ vec4 hook() {
         vec3 generatedBackdrop=vec3(0.0);
         if(background_mode>4.5 && (inPanel || inCleanup))
             generatedBackdrop=subtitleGeneratedFill(p);
-        if(inPanel) {
+        if(layerOnly && !inPanel)return vec4(0.0);
+        if(inPanel && !cleanupOnly) {
             vec2 sourcePos=HOOKED_pos+vec2(source_left-destination_left,
                 source_top-destination_top)*HOOKED_pt;
             if(glyph_scale<0.9999 || panel_flags>=4.0)
@@ -713,14 +721,25 @@ vec4 hook() {
             // antialiased edge reveals the live destination pixels beneath it.
             float panelMask=background_mode>1.5 ? subtitleRoundedPanelMask(p) : 1.0;
             vec3 canvas=mix(original,backing,panelMask);
+            float borderAlpha=0.0;
+            vec3 borderColor=vec3(generated_border_r,generated_border_g,generated_border_b);
             if((background_mode>4.5 || (background_mode>2.5 && background_mode<3.5)) && generated_border_width>0.0) {
                 float inner=1.0-smoothstep(-0.75,0.75,
                     subtitleRoundedPanelDistance(p)+generated_border_width);
-                canvas=mix(canvas,vec3(generated_border_r,generated_border_g,generated_border_b),
-                    max(panelMask-inner,0.0)*generated_border_opacity);
+                borderAlpha=max(panelMask-inner,0.0)*generated_border_opacity;
+                canvas=mix(canvas,borderColor,borderAlpha);
+            }
+            if(layerOnly) {
+                // Straight source-transfer RGB plus independent alpha. Compose
+                // over the temporally processed picture in linear light.
+                float opacity=1.0-(1.0-panelMask)*(1.0-borderAlpha)*(1.0-alpha);
+                vec3 premultiplied=((backing*panelMask)*(1.0-borderAlpha)+
+                    borderColor*borderAlpha)*(1.0-alpha)+glyphColor*alpha;
+                return vec4(subtitleSignal(premultiplied/max(opacity,0.000001)),opacity);
             }
             return vec4(subtitleSignal(mix(canvas,glyphColor,alpha)),1.0);
         }
+        if(layerOnly)return vec4(0.0);
         // The original card can extend beyond display padding and beyond the
         // copied glyph rectangle. Remove it before testing the sampling extent.
         if(background_mode>4.5 && subtitleInGeneratedCleanup(p)) {
@@ -742,7 +761,7 @@ vec4 hook() {
             return vec4(0.0,0.0,0.0,1.0);
         }
     }
-    return HOOKED_tex(HOOKED_pos);
+    return composition_phase>1.5 ? vec4(0.0) : HOOKED_tex(HOOKED_pos);
 }
 )GLSL";
     // Saved textures cover only the subtitle ROI plus its Gaussian halo.
@@ -783,6 +802,7 @@ vec4 hook() {
 //!BIND HOOKED
 //!BIND VP_SUB_GAUSS
 //!WHEN blur_active
+//!COMPONENTS 4
 //!DESC Subtitle composition with smooth Gaussian background
 )GLSL"+std::string(common)+R"GLSL(
 vec3 subtitleGeneratedFill(vec2 p) {
@@ -794,6 +814,7 @@ vec3 subtitleGeneratedFill(vec2 p) {
 //!HOOK MAIN
 //!BIND HOOKED
 //!WHEN blur_active !
+//!COMPONENTS 4
 //!DESC Subtitle composition without background blur
 )GLSL"+std::string(common)+R"GLSL(
 vec3 subtitleGeneratedFill(vec2 p) {
@@ -807,13 +828,44 @@ vec3 subtitleGeneratedFill(vec2 p) {
     return pl_mpv_user_shader_parse(gpu,shader.data(),shader.size());
 }
 
+// Source-plane options are snapshotted per packet. In particular, debanding
+// must run on native YUV planes before normalization, not on the mixed RGB
+// picture during the final viewport pass. Preset filter pointers are libplacebo
+// static data; deband values are copied because renderer settings can change.
+struct SubtitleSourceProcessingOptions {
+    const pl_filter_config* planeUpscaler=nullptr;
+    const pl_filter_config* planeDownscaler=nullptr;
+    float antiringingStrength=0.0f;
+    bool debandEnabled=false;
+    pl_deband_params debandParams{};
+};
+
+inline SubtitleSourceProcessingOptions CaptureSubtitleSourceProcessingOptions(
+    const pl_render_params& settings)
+{
+    SubtitleSourceProcessingOptions options;
+    options.planeUpscaler=settings.plane_upscaler;
+    options.planeDownscaler=settings.plane_downscaler;
+    options.antiringingStrength=settings.antiringing_strength;
+    options.debandEnabled=settings.deband_params!=nullptr;
+    if(options.debandEnabled)options.debandParams=*settings.deband_params;
+    return options;
+}
+
+enum class SubtitleCompositionPhase : int {
+    All = 0,
+    CleanupOnly = 1,
+    LayerOnly = 2,
+};
+
 inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     const SubtitleCutPasteGeometry& geometry, int backgroundMode,
     pl_color_transfer transfer,
-    const SubtitleGeneratedGrayStyle& generated,bool stretchFill=false)
+    const SubtitleGeneratedGrayStyle& generated,bool stretchFill=false,
+    SubtitleCompositionPhase phase=SubtitleCompositionPhase::All)
 {
     if (!hook || backgroundMode<0 || backgroundMode>5) return false;
-    const char* names[]={"enabled","source_left","source_top","source_right","source_bottom",
+    const char* names[]={"enabled","composition_phase","source_left","source_top","source_right","source_bottom",
         "destination_left","destination_top","destination_right","destination_bottom","background_mode",
         "glyph_scale","glyph_translate_x","glyph_translate_y","panel_flags",
         "transfer_mode","picture_top","picture_bottom","transfer_gamma",
@@ -833,7 +885,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         transfer==PL_COLOR_TRC_GAMMA28?2.8f:2.4f;
     const auto& s=geometry.source;const auto& d=geometry.destination;
     const auto roi=ComputeSubtitleGaussianRegion(geometry,backgroundMode,generated.blurPixels);
-    const float values[]={geometry.valid?1.0f:0.0f,float(s.left),float(s.top),float(s.right),float(s.bottom),
+    const float values[]={geometry.valid?1.0f:0.0f,float(static_cast<int>(phase)),float(s.left),float(s.top),float(s.right),float(s.bottom),
         float(d.left),float(d.top),float(d.right),float(d.bottom),float(backgroundMode),
         geometry.glyphScale,geometry.glyphTranslateX,geometry.glyphTranslateY,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
@@ -849,18 +901,18 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float(geometry.pictureCapture.left),float(geometry.pictureCapture.top),
         float(geometry.pictureCapture.right),float(geometry.pictureCapture.bottom),float(geometry.glyphLines[0].left),float(geometry.glyphLines[0].top),float(geometry.glyphLines[0].right),float(geometry.glyphLines[0].bottom),float(geometry.glyphLines[1].left),float(geometry.glyphLines[1].top),float(geometry.glyphLines[1].right),float(geometry.glyphLines[1].bottom),float(geometry.glyphLines[2].left),float(geometry.glyphLines[2].top),float(geometry.glyphLines[2].right),float(geometry.glyphLines[2].bottom)};
     constexpr unsigned parameterCount=sizeof(names)/sizeof(names[0]);
-    static_assert(parameterCount<64,"parameter presence mask overflow");
     static_assert(sizeof(values)/sizeof(values[0])==parameterCount,"subtitle parameter mismatch");
-    uint64_t found=0;
+    bool found[parameterCount]{};
     for(int i=0;i<hook->num_parameters;++i) {
         const auto& parameter=hook->parameters[i];
         if(!parameter.name || !parameter.data || parameter.type!=PL_VAR_FLOAT ||
             parameter.mode!=PL_HOOK_PAR_DYNAMIC) continue;
         for(unsigned n=0;n<parameterCount;++n) if(std::strcmp(parameter.name,names[n])==0) {
-            parameter.data->f=values[n];found|=uint64_t{1}<<n;break;
+            parameter.data->f=values[n];found[n]=true;break;
         }
     }
-    return found==((uint64_t{1}<<parameterCount)-1);
+    for(bool present:found)if(!present)return false;
+    return true;
 }
 
 // Preserve the historical exact-black default for callers without explicit style.
@@ -878,7 +930,9 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
 // output tone mapping, scaling, NLS and viewport placement occur only afterward.
 inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
     const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
-    bool blitSource,bool blitDestination)
+    bool blitSource,bool blitDestination,bool independentAlpha=false,
+    const pl_deinterlace_params* deinterlaceParams=nullptr,
+    const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
     if(source.num_planes<1 || !source.planes[0].texture)return false;
     const auto texture=source.planes[0].texture;
@@ -897,13 +951,32 @@ inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
     if(!storage.format || !pl_tex_recreate(gpu,surface,&storage))return false;
     auto input=source;input.crop={0,0,float(storage.w),float(storage.h)};
     input.rotation=PL_ROTATION_0;input.overlays=nullptr;input.num_overlays=0;
+    // MPV hooks inherit the input alpha mode. The layer hook replaces alpha
+    // completely, but needs independent-alpha metadata through libplacebo.
+    if(independentAlpha)input.repr.alpha=PL_ALPHA_INDEPENDENT;
     pl_frame target{};target.num_planes=1;
     target.planes[0].texture=*surface;target.planes[0].components=4;
     for(int i=0;i<4;++i)target.planes[0].component_mapping[i]=i;
     target.repr.sys=PL_COLOR_SYSTEM_RGB;target.repr.levels=PL_COLOR_LEVELS_FULL;
-    target.repr.alpha=PL_ALPHA_NONE;target.color=source.color;
+    target.repr.alpha=independentAlpha?PL_ALPHA_INDEPENDENT:PL_ALPHA_NONE;target.color=source.color;
     auto params=pl_render_fast_params;
     params.dither_params=nullptr;params.peak_detect_params=nullptr;
+    // Native-plane deinterlacing runs before the MAIN subtitle hook. Keep the
+    // caller's field, first_field, prev and next on the copied source frame.
+    params.deinterlace_params=deinterlaceParams;
+    if(sourceProcessing) {
+        params.plane_upscaler=sourceProcessing->planeUpscaler;
+        params.plane_downscaler=sourceProcessing->planeDownscaler;
+        params.antiringing_strength=sourceProcessing->antiringingStrength;
+        params.deband_params=sourceProcessing->debandEnabled?
+            &sourceProcessing->debandParams:nullptr;
+    }
+    if(independentAlpha) {
+        // The default opaque clear forces alpha to one even for an RGBA hook.
+        // Every pixel is written by this full-raster pass.
+        params.background=PL_CLEAR_SKIP;
+        params.background_transparency=1.0f;
+    }
     params.hooks=hook?&hook:nullptr;params.num_hooks=hook?1:0;
     if(!pl_render_image(renderer,&input,&target,&params))return false;
     if(hook) {
@@ -918,16 +991,28 @@ inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
 
 inline bool ComposeSubtitleBeforeCrop(pl_renderer renderer,pl_gpu gpu,
     const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
-    bool temporalBlit=false)
+    bool temporalBlit=false,
+    const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
     return hook && RenderSubtitleFullRaster(renderer,gpu,source,hook,surface,
-        composed,false,temporalBlit);
+        composed,false,temporalBlit,false,nullptr,sourceProcessing);
+}
+
+// The layer carries straight RGB in source transfer and independent alpha.
+inline bool ComposeSubtitleLayerBeforeCrop(pl_renderer renderer,pl_gpu gpu,
+    const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& layer,
+    const pl_deinterlace_params* deinterlaceParams=nullptr,
+    const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
+{
+    return hook && RenderSubtitleFullRaster(renderer,gpu,source,hook,surface,
+        layer,true,false,true,deinterlaceParams,sourceProcessing);
 }
 
 inline bool CaptureSubtitleTemporalBackground(pl_renderer renderer,pl_gpu gpu,
-    const pl_frame& source,pl_tex* surface)
+    const pl_frame& source,pl_tex* surface,
+    const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
     pl_frame captured{};
     return RenderSubtitleFullRaster(renderer,gpu,source,nullptr,surface,
-        captured,true,false);
+        captured,true,false,false,nullptr,sourceProcessing);
 }

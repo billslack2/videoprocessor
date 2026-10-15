@@ -321,6 +321,51 @@ bool AnalysisLumaSource::IsValid() const
 		requiredBytes + chromaBytes <= dataBytes;
 }
 
+bool AnalysisLumaSource::RowWithinLimits(int y, uint16_t lumaMax,
+    uint16_t chromaDeviation, bool& withinLimits, size_t& samplesChecked) const
+{
+    withinLimits = false;
+    samplesChecked = 0;
+    if (!IsValid() || y < 0 || y >= height || lumaMax > 1023 || chromaDeviation > 512)
+        return false;
+    const auto inside = [=](const AnalysisLumaSample& sample) {
+        return sample.luma <= lumaMax &&
+            sample.chromaU >= 512 - chromaDeviation &&
+            sample.chromaU <= 512 + chromaDeviation &&
+            sample.chromaV >= 512 - chromaDeviation &&
+            sample.chromaV <= 512 + chromaDeviation;
+    };
+    if (format == AnalysisLumaFormat::P010 || format == AnalysisLumaFormat::P210 ||
+        format == AnalysisLumaFormat::DecodedDolbyVision422) {
+        // Same code readers and chroma footprint as Sample. Validate the
+        // immutable source once per row, not again for every native pixel.
+        const auto* luma = data + static_cast<size_t>(y) * rowBytes;
+        const size_t chromaLine = format == AnalysisLumaFormat::P010 ?
+            static_cast<size_t>(y / 2) : static_cast<size_t>(y);
+        const auto* chroma = data + rowBytes * static_cast<size_t>(height) +
+            chromaLine * chromaRowBytes;
+        const auto readCode = format == AnalysisLumaFormat::DecodedDolbyVision422 ?
+            DecodedDolbyVisionCode : P010Code;
+        for (int x = 0; x < width; ++x) {
+            const auto* pair = chroma + static_cast<size_t>(x / 2) * 4;
+            const AnalysisLumaSample sample = { readCode(luma + static_cast<size_t>(x) * 2),
+                readCode(pair), readCode(pair + 2) };
+            ++samplesChecked;
+            if (!inside(sample)) return true;
+        }
+    } else {
+        // Packed/RGB inputs retain the canonical format conversion path.
+        for (int x = 0; x < width; ++x) {
+            AnalysisLumaSample sample;
+            if (!Sample(x, y, sample)) return false;
+            ++samplesChecked;
+            if (!inside(sample)) return true;
+        }
+    }
+    withinLimits = true;
+    return true;
+}
+
 bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)

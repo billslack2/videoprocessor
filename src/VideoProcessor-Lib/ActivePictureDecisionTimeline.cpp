@@ -235,6 +235,7 @@ void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
 	m_accepted.clear();
+	m_consumed.clear();
 	m_continuityBoundaries.clear();
 	AdvanceContinuityGeneration();
 	m_transportGeneration = transportGeneration;
@@ -293,6 +294,13 @@ void ActivePictureDecisionTimeline::MarkConsumed(
 		return;
 	m_lastConsumedSequence = std::max(
 		m_lastConsumedSequence, identity.acceptedSequence);
+	if (identity.acceptedSequence &&
+		(m_consumed.empty() ||
+		 m_consumed.back().identity.acceptedSequence != identity.acceptedSequence)) {
+		m_consumed.push_back({identity});
+		while (m_consumed.size() > MAX_RETAINED_IDENTITIES)
+			m_consumed.pop_front();
+	}
 	while (!m_observed.empty() &&
 		m_observed.front().identity.acceptedSequence <= m_lastConsumedSequence)
 		m_observed.pop_front();
@@ -311,14 +319,86 @@ void ActivePictureDecisionTimeline::MarkConsumed(
 
 void ActivePictureDecisionTimeline::MarkDiscarded(
 	const ActivePictureFrameIdentity& identity,
-	uint64_t /* detectorFrameNumber */)
+	uint64_t /* detectorFrameNumber */, ActivePictureDiscardReason reason)
 {
 	if (identity.transportGeneration != m_transportGeneration)
 		return;
-	BreakContinuityAtSequence(identity.acceptedSequence);
+	BreakContinuityAtSequence(identity.acceptedSequence, reason,
+		reason == ActivePictureDiscardReason::BacklogRecovery ? &identity : nullptr);
 	MarkConsumed(identity);
 }
 
+
+bool ActivePictureDecisionTimeline::OnlyBacklogRetirementBetween(
+    const ActivePictureFrameIdentity& previousTemplate,
+    const ActivePictureFrameIdentity& current, uint64_t beforeContinuity,
+    uint64_t afterContinuity) const
+{
+    // The origin is the last acquired CURRENT-source cue template, not a
+    // delayed selected output. Every intervening accepted source must be
+    // explicitly dequeued or retired. Only backlog retirements may have
+    // broken AR continuity; neither fact grants subtitle pixel authority.
+    if (!beforeContinuity || !afterContinuity ||
+        beforeContinuity == afterContinuity ||
+        previousTemplate.transportGeneration != m_transportGeneration ||
+        !previousTemplate.analysisDomainKey || !current.analysisDomainKey ||
+        !previousTemplate.sourceFormatGeneration || !current.sourceFormatGeneration ||
+        !SameDecisionContext(previousTemplate, current) ||
+        !previousTemplate.acceptedSequence ||
+        previousTemplate.acceptedSequence >= UINT64_MAX - 1 ||
+        current.acceptedSequence <= previousTemplate.acceptedSequence + 1 ||
+        current.acceptedSequence - previousTemplate.acceptedSequence - 1 >
+            MAX_RETAINED_IDENTITIES ||
+        current.captureTimestamp <= previousTemplate.captureTimestamp)
+        return false;
+    const uint64_t gap = current.acceptedSequence - previousTemplate.acceptedSequence;
+    if ((previousTemplate.sourceFrameNumber || current.sourceFrameNumber) &&
+        (!previousTemplate.sourceFrameNumber || !current.sourceFrameNumber ||
+         previousTemplate.sourceFrameNumber > UINT64_MAX - gap ||
+         current.sourceFrameNumber <= previousTemplate.sourceFrameNumber ||
+         current.sourceFrameNumber - previousTemplate.sourceFrameNumber != gap))
+        return false;
+    uint64_t previousTimestamp = previousTemplate.captureTimestamp;
+    for (uint64_t sequence=previousTemplate.acceptedSequence+1;
+         sequence<current.acceptedSequence; ++sequence) {
+        const auto known=std::find_if(m_consumed.begin(),m_consumed.end(),
+            [sequence](const ConsumedIdentity& item) {
+                return item.identity.acceptedSequence==sequence;
+            });
+        if (known==m_consumed.end() ||
+            !SameTransportDecisionContext(known->identity,current) ||
+            known->identity.captureTimestamp<=previousTimestamp ||
+            known->identity.captureTimestamp>=current.captureTimestamp ||
+            (previousTemplate.sourceFrameNumber &&
+             known->identity.sourceFrameNumber !=
+                 previousTemplate.sourceFrameNumber +
+                     (sequence-previousTemplate.acceptedSequence)))
+            return false;
+        previousTimestamp=known->identity.captureTimestamp;
+    }
+    uint64_t expectedGeneration=beforeContinuity;
+    bool sawBacklog=false;
+    for (const auto& boundary : m_continuityBoundaries) {
+        if (boundary.beforeGeneration != expectedGeneration) continue;
+        if (boundary.discardReason != ActivePictureDiscardReason::BacklogRecovery ||
+            boundary.acceptedSequence <= previousTemplate.acceptedSequence ||
+            boundary.acceptedSequence >= current.acceptedSequence ||
+            !SameTransportDecisionContext(boundary.discardedIdentity,current) ||
+            boundary.discardedIdentity.acceptedSequence != boundary.acceptedSequence)
+            return false;
+        const auto known=std::find_if(m_consumed.begin(),m_consumed.end(),
+            [&boundary](const ConsumedIdentity& item) {
+                return item.identity.acceptedSequence==boundary.acceptedSequence;
+            });
+        if (known==m_consumed.end() ||
+            !SameActivePictureFrameIdentity(known->identity,boundary.discardedIdentity))
+            return false;
+        sawBacklog=true;
+        expectedGeneration=boundary.afterGeneration;
+        if (expectedGeneration==afterContinuity)return sawBacklog;
+    }
+    return false;
+}
 
 void ActivePictureDecisionTimeline::BreakContinuity(
 	uint64_t /* detectorFrameNumber */)
@@ -331,7 +411,8 @@ void ActivePictureDecisionTimeline::BreakContinuity(
 
 
 void ActivePictureDecisionTimeline::BreakContinuityAtSequence(
-	uint64_t acceptedSequence)
+	uint64_t acceptedSequence, ActivePictureDiscardReason reason,
+	const ActivePictureFrameIdentity* discarded)
 {
 	// A continuity break invalidates partial proof but is not itself a decoded
 	// source observation. Resetting candidate evidence lets the current real
@@ -339,17 +420,19 @@ void ActivePictureDecisionTimeline::BreakContinuityAtSequence(
 	m_transition.ResetCandidateEvidence();
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
-	RecordContinuityBoundary(acceptedSequence);
+	RecordContinuityBoundary(acceptedSequence, reason, discarded);
 }
 
 
 void ActivePictureDecisionTimeline::RecordContinuityBoundary(
-	uint64_t acceptedSequence)
+	uint64_t acceptedSequence, ActivePictureDiscardReason reason,
+	const ActivePictureFrameIdentity* discarded)
 {
 	const uint64_t beforeGeneration = m_continuityGeneration;
 	AdvanceContinuityGeneration();
 	m_continuityBoundaries.push_back(
-		{ beforeGeneration, m_continuityGeneration, acceptedSequence });
+		{ beforeGeneration, m_continuityGeneration, acceptedSequence, reason,
+		  discarded ? *discarded : ActivePictureFrameIdentity{} });
 	while (m_continuityBoundaries.size() > MAX_RETAINED_IDENTITIES)
 		m_continuityBoundaries.pop_front();
 }

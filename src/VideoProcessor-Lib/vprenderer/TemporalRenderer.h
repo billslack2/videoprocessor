@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <deque>
 #include <memory>
+#include <functional>
+#include <array>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -13,19 +15,83 @@
 // Render-thread-only ownership. Every history plane is a private GPU texture;
 // capture buffers and the reusable upload textures are never retained here.
 class TemporalRenderer {
+public:
+    struct PresentationGeometry {
+        pl_rect2d familyBase{};
+        pl_rect2d sourceCrop{};
+        pl_rect2d verifiedVisible{};
+        uint64_t viewportEpoch=0;
+        int owner=0;
+        bool valid=false,visibleSafe=false,emptyBandsSafe=false,cleaned=false;
+    };
+    // Mode selection is not proof that this source picture was cleaned. A
+    // rejected/pending cue keeps raw pixels and cannot blend into a repaired
+    // picture even if its final crop happens to be identical.
+    static bool HasCleanPresentation(bool compositionMode,bool sourceComposed,
+        bool exactNoCaptionConfirmed) {
+        return compositionMode && (sourceComposed || exactNoCaptionConfirmed);
+    }
+    static bool CompatiblePresentationGeometry(const PresentationGeometry& a,
+        const PresentationGeometry& b,const pl_rect2df& outputCrop) {
+        if(!a.valid)return true; // Standalone users without host annotations.
+        if(!b.valid||a.viewportEpoch!=b.viewportEpoch||a.owner!=b.owner||
+            !SameRect(a.familyBase,b.familyBase)||a.cleaned!=b.cleaned)return false;
+        if(a.cleaned&&b.cleaned)return true;
+        if(std::abs(outputCrop.x0-b.sourceCrop.x0)<0.5f&&
+            std::abs(outputCrop.y0-b.sourceCrop.y0)<0.5f&&
+            std::abs(outputCrop.x1-b.sourceCrop.x1)<0.5f&&
+            std::abs(outputCrop.y1-b.sourceCrop.y1)<0.5f)return true;
+        if(!b.visibleSafe)return false;
+        if(b.verifiedVisible.x1<=b.verifiedVisible.x0||
+            b.verifiedVisible.y1<=b.verifiedVisible.y0)return b.emptyBandsSafe;
+        return outputCrop.x0<=b.verifiedVisible.x0&&
+            outputCrop.y0<=b.verifiedVisible.y0&&
+            outputCrop.x1>=b.verifiedVisible.x1&&
+            outputCrop.y1>=b.verifiedVisible.y1;
+    }
+    using NativePrepare = std::function<bool(const pl_frame& fieldFrame,
+        const pl_deinterlace_params& algorithm,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds)>;
+private:
     struct Stored {
+        struct Prepared {
+            pl_frame frame{};
+            pl_tex texture=nullptr,subtitle=nullptr;
+            pl_rect2d subtitleBounds{};
+            uint64_t prevSignature=0,nextSignature=0,signature=0;
+            pl_deinterlace_algorithm algorithm=PL_DEINTERLACE_BOB;
+            bool valid=false;
+        };
+        std::array<Prepared,2> prepared{};
+        NativePrepare nativePrepare;
+        bool hasSubtitle=false;
+        pl_dovi_metadata dovi{};
         pl_frame frame{};
+        pl_tex subtitle=nullptr;
+        pl_rect2d subtitleBounds{};
+        uint64_t sequence=0;
+        PresentationGeometry presentation{};
         uint64_t signature=0;
         double pts=0;
         pl_gpu gpu=nullptr;
         pl_tex textures[PL_MAX_PLANES]{};
-        ~Stored(){if(gpu)for(auto& texture:textures)pl_tex_destroy(gpu,&texture);}
+        ~Stored(){if(gpu){for(auto& texture:textures)pl_tex_destroy(gpu,&texture);pl_tex_destroy(gpu,&subtitle);
+            for(auto& field:prepared){pl_tex_destroy(gpu,&field.texture);pl_tex_destroy(gpu,&field.subtitle);}}}
     };
+    static bool SameRect(pl_rect2d a,pl_rect2d b) {
+        return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
+    }
+    static bool CompatiblePresentation(const Stored& selected,const Stored& candidate,
+        const pl_rect2df& outputCrop) {
+        return CompatiblePresentationGeometry(selected.presentation,candidate.presentation,outputCrop);
+    }
     std::deque<std::unique_ptr<Stored>> history;
     pl_gpu gpu=nullptr;
+    pl_tex compositionSurface=nullptr;
     uint64_t generation=0,lastSequence=0,nextSignature=1;
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
-    bool initialized=false,interlaced=false,topFirst=true,mixing=false;
+    double submittedOutputPts=0;
+    bool submittedOutputAvailable=false;
+    bool initialized=false,interlaced=false,topFirst=true,mixing=false,composition=false,nativeMode=false;
     int delay=0;
     MotionConfig::Settings settings;
     const pl_filter_config* mixer=nullptr;
@@ -35,18 +101,58 @@ public:
     double currentPts=0,outputPts=0;
     bool skipOutput=false;
     pl_field lastSubmittedField=PL_FIELD_NONE;
+    uint64_t lastSubtitleSequence=0;
     size_t HistoryDepth() const { return history.size(); }
+    bool CompositionEnabled() const { return composition; }
+    bool NativeCompositionRequired() const { return composition&&interlaced&&Active(); }
+    bool CompositionOutputReady() const {
+        if(!composition||!Active())return true;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)return true;
+        return false;
+    }
+    uint64_t LastSubtitleSequence() const { return lastSubtitleSequence; }
+    uint64_t SelectedPacketSequence() const {
+        uint64_t selected=0;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)selected=packet->sequence;
+        return selected;
+    }
+    double SelectedPacketPts() const {
+        double selected=0.0;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)selected=packet->pts;
+        return selected;
+    }
+    double SourceDurationSeconds() const { return sourceDuration; }
+    uint64_t SelectedSubtitleSequence() const {
+        uint64_t selected=0;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)selected=(packet->subtitle||packet->hasSubtitle)?packet->sequence:0;
+        return selected;
+    }
+    bool HasCurrentFrame(uint64_t sequence) const { return !history.empty() && history.back()->sequence==sequence; }
+    bool AnnotatePresentation(uint64_t sequence,const PresentationGeometry& geometry) {
+        if(history.empty()||history.back()->sequence!=sequence)return false;
+        history.back()->presentation=geometry;
+        return true;
+    }
     const pl_deinterlace_params& DeinterlaceParameters() const { return deinterlace; }
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
-    void Clear(){history.clear();initialized=false;lastSequence=0;outputs.clear();}
+    void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
+    void Clear(){submittedOutputAvailable=false;history.clear();if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
+    double ScheduledOutputRateHz() const {
+        return Active() && initialized && std::isfinite(displayDuration) && displayDuration>0.0
+            ? 1.0/displayDuration : 0.0;
+    }
     double DelayMs() const{return Active()?delay*sourceDuration*1000.0:0;}
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
         bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
-        bool sourceSubtitleComposition=false) {
+        bool sourceSubtitleComposition=false,bool cadenceRepeat=false) {
         outputs.clear();skipOutput=false;currentPts=pts;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
@@ -58,22 +164,20 @@ public:
             (inputInterlaced||requested.deinterlace=="force");
         const double nominalHz=sourceHz*(newInterlaced&&requested.cadence=="field"?2.0:1.0);
         const bool newMix=MotionConfig::Mix(requested,nominalHz,displayHz);
-        // Source repair/relocation currently belongs to the current captured
-        // frame, whereas temporal history contains original, delayed pixels.
-        // Decide compatibility before scheduling output draws, never from cue
-        // detection success: a per-cue bypass changes the time domain mid-frame.
-        if (sourceSubtitleComposition && (newMix || newInterlaced)) {
-            Bypass("Motion: bypassed for subtitle reconstruction (profile policy)");
-            outputs.push_back(pts);outputPts=pts;
-            return;
-        }
-
         const bool changed=settings.Fingerprint()!=requested.Fingerprint()||generation!=epoch||
-            interlaced!=newInterlaced||mixing!=newMix||(newInterlaced&&topFirst!=newTopFirst)||
+            interlaced!=newInterlaced||mixing!=newMix||composition!=sourceSubtitleComposition||(newInterlaced&&topFirst!=newTopFirst)||
             (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
             (std::abs(measuredDisplayHz-displayHz)>(std::max)(0.1,displayHz*0.001));
+        if(cadenceRepeat && initialized && !changed && !discontinuity &&
+            sequence==lastSequence && pts==previousPts && Active()) {
+            if(submittedOutputAvailable && !history.empty()) {
+                outputPts=submittedOutputPts;
+                outputs.push_back(outputPts);
+            } else skipOutput=true;
+            return; // No new source fact, cadence tick, or history reset.
+        }
         if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz)))Clear();
-        settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;
+        settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;composition=sourceSubtitleComposition;
         topFirst=newTopFirst;measuredDisplayHz=displayHz;
         sourceDuration=1.0/sourceHz;
         deinterlace.algo=requested.algorithm=="bob"?PL_DEINTERLACE_BOB:requested.algorithm=="yadif"?PL_DEINTERLACE_YADIF:PL_DEINTERLACE_BWDIF;
@@ -102,11 +206,17 @@ public:
         if(!skipOutput)outputPts=outputs.front();
         status=(mixing?"Smooth motion: "+requested.mixer:"Smooth motion: bypassed")+
             (interlaced?"; deinterlacing: "+requested.algorithm+(topFirst?" TFF":" BFF"):"; progressive")+
-            "; buffer "+std::to_string(delay)+" frame(s)";
+            "; buffer "+std::to_string(delay)+" frame(s)"+
+            (composition?"; subtitles synchronized":"");
         previousPts=pts;lastSequence=sequence;
     }
-    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence) {
+    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={}) {
         gpu=device;if(!Active())return true;
+        auto fail=[&](const char* reason) {
+            if(composition)Clear(); // Never mix around a partially captured packet.
+            status=reason;
+            return false;
+        };
         if(!history.empty()&&history.back()->pts==currentPts)return true;
         // Recycle the oldest slot once the bounded history is full. Copies
         // and draws share the same ordered GPU queue, so reuse cannot overwrite
@@ -114,29 +224,475 @@ public:
         std::unique_ptr<Stored> stored;
         if(history.size()==8){stored=std::move(history.front());history.pop_front();}
         else stored=std::make_unique<Stored>();
-        stored->gpu=device;stored->pts=currentPts;
+        stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
+        stored->nativePrepare={};stored->hasSubtitle=false;
+        for(auto& field:stored->prepared)field.valid=false;
+        stored->subtitleBounds={};
         stored->frame=source;stored->frame.overlays=nullptr;stored->frame.num_overlays=0;
         stored->frame.prev=nullptr;stored->frame.next=nullptr;stored->signature=nextSignature++;
         // First null every borrowed plane so partial failure cannot destroy it.
         for(int p=0;p<source.num_planes;++p)stored->frame.planes[p].texture=nullptr;
         for(int p=0;p<source.num_planes;++p){
             const pl_tex original=source.planes[p].texture;
-            if(!original||!original->params.blit_src){status="Motion: source texture cannot be retained";return false;}
+            if(!original||!original->params.blit_src){return fail("Motion: source texture cannot be retained");}
             pl_tex_params params=original->params;params.initial_data=nullptr;params.user_data=nullptr;
             params.import_handle=static_cast<pl_handle_type>(0);params.export_handle=static_cast<pl_handle_type>(0);
             params.blit_src=true;params.blit_dst=true;params.sampleable=true;
-            if(!pl_tex_recreate(device,&stored->textures[p],&params)){status="Motion: history texture allocation failed";return false;}
+            if(!pl_tex_recreate(device,&stored->textures[p],&params)){return fail("Motion: history texture allocation failed");}
             stored->frame.planes[p].texture=stored->textures[p];
-            if(!stored->frame.planes[p].texture){status="Motion: history texture allocation failed";return false;}
+            if(!stored->frame.planes[p].texture){return fail("Motion: history texture allocation failed");}
             pl_tex_blit_params copy{};copy.src=original;copy.dst=stored->frame.planes[p].texture;
             pl_tex_blit(device,&copy);
         }
+        if(subtitleLayer) {
+            if(!subtitleLayer->params.blit_src || subtitleLayer->params.w!=source.planes[0].texture->params.w ||
+                subtitleLayer->params.h!=source.planes[0].texture->params.h) {
+                return fail("Motion: subtitle layer cannot be retained");
+            }
+            if(layerBounds.x1<=layerBounds.x0 || layerBounds.y1<=layerBounds.y0)
+                layerBounds={0,0,subtitleLayer->params.w,subtitleLayer->params.h};
+            layerBounds.x0=(std::max)(0,layerBounds.x0);
+            layerBounds.y0=(std::max)(0,layerBounds.y0);
+            layerBounds.x1=(std::min)(subtitleLayer->params.w,layerBounds.x1);
+            layerBounds.y1=(std::min)(subtitleLayer->params.h,layerBounds.y1);
+            // Field parity is defined in the full source raster. An even
+            // upper boundary keeps ROI-local parity identical to source parity.
+            if(interlaced){layerBounds.y0&=~1;layerBounds.y1=(std::min)(subtitleLayer->params.h,(layerBounds.y1+1)&~1);}
+            if(layerBounds.x1<=layerBounds.x0 || layerBounds.y1<=layerBounds.y0) {
+                return fail("Motion: subtitle layer bounds are empty");
+            }
+            pl_tex_params params=subtitleLayer->params;
+            params.w=layerBounds.x1-layerBounds.x0;
+            params.h=layerBounds.y1-layerBounds.y0;
+            params.initial_data=nullptr;params.user_data=nullptr;
+            params.import_handle=static_cast<pl_handle_type>(0);
+            params.export_handle=static_cast<pl_handle_type>(0);
+            params.blit_src=true;params.blit_dst=true;params.sampleable=true;
+            if(!pl_tex_recreate(device,&stored->subtitle,&params)){
+                return fail("Motion: subtitle layer allocation failed");
+            }
+            pl_tex_blit_params copy{};
+            copy.src=subtitleLayer;copy.dst=stored->subtitle;
+            copy.src_rc.x0=layerBounds.x0;copy.src_rc.y0=layerBounds.y0;
+            copy.src_rc.x1=layerBounds.x1;copy.src_rc.y1=layerBounds.y1;
+            copy.src_rc.z0=0;copy.src_rc.z1=1;
+            copy.dst_rc.x0=0;copy.dst_rc.y0=0;
+            copy.dst_rc.x1=params.w;copy.dst_rc.y1=params.h;
+            copy.dst_rc.z0=0;copy.dst_rc.z1=1;
+            pl_tex_blit(device,&copy);
+            stored->subtitleBounds=layerBounds;
+        } else pl_tex_destroy(device,&stored->subtitle);
         history.push_back(std::move(stored));
         while(history.size()>8)history.pop_front();
         return true;
     }
+    bool CaptureComposition(pl_gpu device,const pl_frame& cleanRgbFullRaster,
+        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={}) {
+        if(!composition||NativeCompositionRequired())return false;
+        if(nativeMode){Clear();nativeMode=false;}
+        const bool normalized=cleanRgbFullRaster.num_planes==1 &&
+            cleanRgbFullRaster.planes[0].texture &&
+            cleanRgbFullRaster.planes[0].components>=3 &&
+            cleanRgbFullRaster.repr.sys==PL_COLOR_SYSTEM_RGB &&
+            cleanRgbFullRaster.repr.levels==PL_COLOR_LEVELS_FULL &&
+            cleanRgbFullRaster.repr.alpha==PL_ALPHA_NONE &&
+            !cleanRgbFullRaster.repr.dovi &&
+            !cleanRgbFullRaster.lut &&
+            !cleanRgbFullRaster.icc && !cleanRgbFullRaster.profile.data &&
+            !cleanRgbFullRaster.acquire && !cleanRgbFullRaster.release &&
+                  !cleanRgbFullRaster.planes[0].texture->params.user_data &&
+            !cleanRgbFullRaster.overlays && cleanRgbFullRaster.num_overlays==0 &&
+            std::abs(cleanRgbFullRaster.crop.x0)<0.001f &&
+            std::abs(cleanRgbFullRaster.crop.y0)<0.001f &&
+            std::abs(cleanRgbFullRaster.crop.x1-cleanRgbFullRaster.planes[0].texture->params.w)<0.001f &&
+            std::abs(cleanRgbFullRaster.crop.y1-cleanRgbFullRaster.planes[0].texture->params.h)<0.001f;
+        if(!normalized) {
+            Clear();status="Motion: subtitle picture is not normalized RGB";return false;
+        }
+        if(!history.empty()) {
+            const auto& prior=history.back()->frame;
+            const pl_tex priorTexture=prior.planes[0].texture;
+            const pl_tex currentTexture=cleanRgbFullRaster.planes[0].texture;
+            if(!priorTexture || priorTexture->params.w!=currentTexture->params.w ||
+                priorTexture->params.h!=currentTexture->params.h ||
+                prior.color.primaries!=cleanRgbFullRaster.color.primaries ||
+                prior.color.transfer!=cleanRgbFullRaster.color.transfer) {
+                Clear();status="Motion: subtitle picture format changed";return false;
+            }
+        }
+        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds);
+    }
+    // The callback owns its shader inputs and may use scratch textures only for
+    // the duration of a call. Capture immediately copies raw planes; prepared
+    // field pictures and layers are copied when the output field is rendered.
+    bool CaptureNativeComposition(pl_gpu device,const pl_frame& raw,
+        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false) {
+        if(!NativeCompositionRequired()||!prepare)return false;
+        if(!history.empty()&&history.back()->pts==currentPts) {
+            if(history.back()->sequence==sequence)return true;
+            status="Motion: duplicate subtitle PTS changed source identity";return false;
+        }
+        if(raw.num_planes<1||raw.num_planes>PL_MAX_PLANES||!raw.planes[0].texture||
+            raw.acquire||raw.release||raw.icc||raw.profile.data||raw.lut||
+            raw.overlays||raw.num_overlays||
+            (raw.repr.sys==PL_COLOR_SYSTEM_DOLBYVISION&&!raw.repr.dovi)) {
+            Clear();status="Motion: native subtitle packet has borrowed metadata";return false;
+        }
+        for(int p=0;p<raw.num_planes;++p)
+            if(!raw.planes[p].texture||raw.planes[p].texture->params.user_data) {
+                Clear();status="Motion: native subtitle packet has borrowed texture";return false;
+            }
+        if(!nativeMode){if(!history.empty())Clear();nativeMode=true;}
+        if(!history.empty()) {
+            const auto& prior=history.back()->frame;
+            bool compatible=prior.num_planes==raw.num_planes&&
+                prior.repr.sys==raw.repr.sys&&prior.repr.levels==raw.repr.levels&&
+                prior.repr.alpha==raw.repr.alpha&&
+                pl_bit_encoding_equal(&prior.repr.bits,&raw.repr.bits)&&
+                prior.color.primaries==raw.color.primaries&&
+                prior.color.transfer==raw.color.transfer;
+            for(int p=0;compatible&&p<raw.num_planes;++p) {
+                const auto& a=prior.planes[p];const auto& b=raw.planes[p];
+                compatible=a.texture->params.w==b.texture->params.w&&
+                    a.texture->params.h==b.texture->params.h&&
+                    a.texture->params.format==b.texture->params.format&&
+                    a.components==b.components&&a.shift_x==b.shift_x&&
+                    a.shift_y==b.shift_y&&a.flipped==b.flipped&&
+                    a.address_mode==b.address_mode;
+                for(int c=0;compatible&&c<a.components;++c)
+                    compatible=a.component_mapping[c]==b.component_mapping[c];
+            }
+            if(!compatible){Clear();status="Motion: native subtitle picture format changed";return false;}
+        }
+        if(!Capture(device,raw,sequence))return false;
+        auto& packet=*history.back();
+        packet.nativePrepare=std::move(prepare);packet.hasSubtitle=hasSubtitle;
+        if(raw.repr.dovi){packet.dovi=*raw.repr.dovi;packet.frame.repr.dovi=&packet.dovi;}
+        else packet.frame.repr.dovi=nullptr;
+        return true;
+    }
+    bool PrepareNativeField(size_t index,int fieldIndex) {
+        if(index>=history.size()||fieldIndex<0||fieldIndex>1)return false;
+        Stored& packet=*history[index];
+        auto& prepared=packet.prepared[fieldIndex];
+        const Stored* prev=index?history[index-1].get():nullptr;
+        const Stored* next=index+1<history.size()?history[index+1].get():nullptr;
+        if (packet.presentation.valid) {
+            const auto& crop=packet.presentation.sourceCrop;
+            const pl_rect2df presented={float(crop.x0),float(crop.y0),
+                float(crop.x1),float(crop.y1)};
+            if(prev&&!CompatiblePresentation(packet,*prev,presented))prev=nullptr;
+            if(next&&!CompatiblePresentation(packet,*next,presented))next=nullptr;
+        }
+        const uint64_t prevSignature=prev?prev->signature:0;
+        const uint64_t nextSignature=next?next->signature:0;
+        pl_deinterlace_params effective=deinterlace;
+        if(!prev||!next)effective.algo=PL_DEINTERLACE_BOB;
+        if(prepared.valid&&prepared.prevSignature==prevSignature&&
+            prepared.nextSignature==nextSignature&&prepared.algorithm==effective.algo)
+            return true;
+        if(!packet.nativePrepare){status="Motion: native subtitle callback missing";return false;}
+        pl_frame field=packet.frame;
+        field.crop={0,0,float(packet.frame.planes[0].texture->params.w),
+            float(packet.frame.planes[0].texture->params.h)};
+        field.rotation=PL_ROTATION_0;
+        field.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
+        field.field=fieldIndex?pl_field_other(field.first_field):field.first_field;
+        field.prev=prev?&prev->frame:nullptr;
+        field.next=next?&next->frame:nullptr;
+        pl_frame clean{};pl_tex layer=nullptr;pl_rect2d bounds{};
+        if(!packet.nativePrepare(field,effective,clean,layer,bounds)) {
+            status="Motion: native subtitle field preparation failed";return false;
+        }
+        const pl_tex input=clean.num_planes==1?clean.planes[0].texture:nullptr;
+        if(!input||clean.planes[0].components<3||
+            clean.repr.sys!=PL_COLOR_SYSTEM_RGB||
+            clean.repr.levels!=PL_COLOR_LEVELS_FULL||clean.repr.alpha!=PL_ALPHA_NONE||
+            clean.repr.dovi||clean.lut||clean.icc||clean.profile.data||
+            clean.acquire||clean.release||clean.overlays||clean.num_overlays||
+            !input->params.blit_src||input->params.user_data||
+            input->params.w!=field.planes[0].texture->params.w||
+            input->params.h!=field.planes[0].texture->params.h||
+            std::abs(clean.crop.x0)>0.001f||std::abs(clean.crop.y0)>0.001f||
+            std::abs(clean.crop.x1-input->params.w)>0.001f||
+            std::abs(clean.crop.y1-input->params.h)>0.001f) {
+            status="Motion: native subtitle callback returned invalid RGB";return false;
+        }
+        pl_tex_params params=input->params;
+        params.initial_data=nullptr;params.user_data=nullptr;
+        params.import_handle=static_cast<pl_handle_type>(0);
+        params.export_handle=static_cast<pl_handle_type>(0);
+        params.sampleable=true;params.blit_dst=true;params.blit_src=true;
+        if(!pl_tex_recreate(gpu,&prepared.texture,&params)) {
+            status="Motion: native field allocation failed";return false;
+        }
+        pl_tex_blit_params copy{};copy.src=input;copy.dst=prepared.texture;
+        pl_tex_blit(gpu,&copy);
+        prepared.frame=clean;
+        prepared.frame.planes[0].texture=prepared.texture;
+        prepared.frame.rotation=PL_ROTATION_0;
+        prepared.frame.field=PL_FIELD_NONE;prepared.frame.first_field=PL_FIELD_NONE;
+        prepared.frame.prev=nullptr;prepared.frame.next=nullptr;
+        prepared.frame.overlays=nullptr;prepared.frame.num_overlays=0;
+        prepared.subtitleBounds={};
+        if(layer) {
+            if(!layer->params.blit_src||layer->params.user_data||
+                layer->params.w!=input->params.w||layer->params.h!=input->params.h) {
+                status="Motion: native subtitle callback returned invalid layer";return false;
+            }
+            if(bounds.x1<=bounds.x0||bounds.y1<=bounds.y0)
+                bounds={0,0,layer->params.w,layer->params.h};
+            bounds.x0=(std::max)(0,bounds.x0);bounds.y0=(std::max)(0,bounds.y0);
+            bounds.x1=(std::min)(layer->params.w,bounds.x1);
+            bounds.y1=(std::min)(layer->params.h,bounds.y1);
+            if(bounds.x1<=bounds.x0||bounds.y1<=bounds.y0) {
+                status="Motion: native subtitle layer bounds are empty";return false;
+            }
+            pl_tex_params layerParams=layer->params;
+            layerParams.w=bounds.x1-bounds.x0;layerParams.h=bounds.y1-bounds.y0;
+            layerParams.initial_data=nullptr;layerParams.user_data=nullptr;
+            layerParams.import_handle=static_cast<pl_handle_type>(0);
+            layerParams.export_handle=static_cast<pl_handle_type>(0);
+            layerParams.sampleable=true;layerParams.blit_dst=true;layerParams.blit_src=true;
+            if(!pl_tex_recreate(gpu,&prepared.subtitle,&layerParams)) {
+                status="Motion: native subtitle layer allocation failed";return false;
+            }
+            pl_tex_blit_params layerCopy{};
+            layerCopy.src=layer;layerCopy.dst=prepared.subtitle;
+            layerCopy.src_rc={bounds.x0,bounds.y0,0,bounds.x1,bounds.y1,1};
+            layerCopy.dst_rc={0,0,0,layerParams.w,layerParams.h,1};
+            pl_tex_blit(gpu,&layerCopy);
+            prepared.subtitleBounds=bounds;
+        } else pl_tex_destroy(gpu,&prepared.subtitle);
+        prepared.prevSignature=prevSignature;prepared.nextSignature=nextSignature;
+        prepared.algorithm=effective.algo;prepared.signature=this->nextSignature++;
+        prepared.valid=true;
+        return true;
+    }
+    struct NativeEntry {size_t index;int field;double offset;};
+    std::vector<NativeEntry> NativeEntriesForOutput() const {
+        std::vector<NativeEntry> all;
+        const bool fields=interlaced&&settings.cadence=="field";
+        const double unit=sourceDuration/(fields?2.0:1.0);
+        all.reserve(history.size()*(fields?2:1));
+        for(size_t i=0;i<history.size();++i)
+            for(int f=0;f<(fields?2:1);++f)
+                all.push_back({i,f,(history[i]->pts+f*unit-outputPts)/unit});
+        if(all.empty())return all;
+        if(!mixing) {
+            NativeEntry selected=all.front();
+            for(const auto& entry:all)if(entry.offset<=1e-6)selected=entry;
+            return {selected};
+        }
+        std::vector<NativeEntry> selected;
+        if(!mixer||!mixer->kernel||mixer->kernel==&pl_filter_function_oversample) {
+            // Built-in oversample integrates the current frame through one
+            // display interval, then needs the first frame beyond that span.
+            size_t current=0;
+            for(size_t i=0;i<all.size();++i)
+                if(all[i].offset<=1e-6)current=i;
+            const double interval=displayDuration/unit;
+            selected.push_back(all[current]);
+            bool endpoint=false;
+            for(size_t i=current+1;i<all.size();++i) {
+                selected.push_back(all[i]);
+                if(all[i].offset>interval+1e-6){endpoint=true;break;}
+            }
+            if(!endpoint&&selected.size()==1&&current+1<all.size())
+                selected.push_back(all[current+1]);
+        } else {
+            pl_render_params radiusParams=pl_render_fast_params;
+            radiusParams.frame_mixer=mixer;
+            const double radius=pl_frame_mix_radius(&radiusParams)*
+                (std::max)(1.0,displayDuration/unit)+1e-6;
+            for(const auto& entry:all)
+                if(std::abs(entry.offset)<=radius)selected.push_back(entry);
+            if(selected.empty()) {
+                NativeEntry nearest=all.front();double distance=std::abs(nearest.offset);
+                for(const auto& entry:all)if(std::abs(entry.offset)<distance) {
+                    nearest=entry;distance=std::abs(entry.offset);
+                }
+                selected.push_back(nearest);
+            }
+        }
+        return selected;
+    }
+    bool PreflightCompositionOutput() {
+        if(!composition||!Active())return true;
+        if(history.empty()||!gpu){status="Motion: subtitle picture history unavailable";return false;}
+        if(!CompositionOutputReady()){
+            status="Motion: subtitle composition buffering";return false;
+        }
+        if(!nativeMode)return true;
+        const bool fields=interlaced&&settings.cadence=="field";
+        const double unit=sourceDuration/(fields?2.0:1.0);
+        size_t cueIndex=history.size();
+        for(size_t i=0;i<history.size();++i)
+            if(history[i]->pts<=outputPts+1e-8)cueIndex=i;
+        if(cueIndex<history.size()) {
+            const int field=fields&&outputPts>=history[cueIndex]->pts+unit-1e-8?1:0;
+            if(!PrepareNativeField(cueIndex,field)){Clear();return false;}
+        }
+        for(const auto& entry:NativeEntriesForOutput())
+            if(!PrepareNativeField(entry.index,entry.field)){Clear();return false;}
+        return true;
+    }
+    bool RenderComposition(pl_renderer renderer,const pl_frame& source,
+        const pl_frame& target,pl_render_params& params) {
+        if(!PreflightCompositionOutput())return false;
+        const Stored* cue=nullptr;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)cue=packet.get();
+        const bool fields=interlaced&&settings.cadence=="field";
+        const double unit=sourceDuration/(fields?2.0:1.0);
+        // Deque elements are individually allocated, so locate by identity.
+        size_t selectedCueIndex=0;
+        if(cue)for(size_t i=0;i<history.size();++i)if(history[i].get()==cue){selectedCueIndex=i;break;}
+        const int cueField=fields&&cue&&outputPts>=cue->pts+unit-1e-8?1:0;
+        if(nativeMode&&cue&&!PrepareNativeField(selectedCueIndex,cueField)){
+            Clear();return false;
+        }
+        const pl_tex selectedLayer=cue?(nativeMode?cue->prepared[cueField].subtitle:cue->subtitle):nullptr;
+        const pl_rect2d selectedBounds=cue?(nativeMode?cue->prepared[cueField].subtitleBounds:cue->subtitleBounds):pl_rect2d{};
+        lastSubtitleSequence=selectedLayer?cue->sequence:0;
+        const Stored* reference=cue?cue:history.front().get();
+        const pl_tex picture=reference->frame.planes[0].texture;
+        if(!picture)return false;
+        pl_tex_params surface{};
+        surface.w=picture->params.w;surface.h=picture->params.h;
+        surface.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
+            static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_BLENDABLE));
+        surface.sampleable=true;surface.renderable=true;
+        if(!surface.format||!pl_tex_recreate(gpu,&compositionSurface,&surface)){
+            status="Motion: linear composition surface unavailable";return false;
+        }
+
+        // The output packet is discrete. Picture frames remain eligible for
+        // temporal blending, but every source frame is cropped to the full
+        // raster here; the current viewport crop is applied only to the final
+        // composited image below.
+        std::vector<pl_frame> frames;
+        std::vector<const pl_frame*> pointers;
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        std::vector<uint64_t> signatures;
+        std::vector<Timestamp> timestamps;
+        std::vector<NativeEntry> entries;
+        if(nativeMode)entries=NativeEntriesForOutput();
+        else {
+            entries.reserve(history.size()*(fields?2:1));
+            for(size_t i=0;i<history.size();++i)
+                for(int f=0;f<(fields?2:1);++f)
+                    entries.push_back({i,f,(history[i]->pts+f*unit-outputPts)/unit});
+        }
+        frames.reserve(entries.size());
+        signatures.reserve(entries.size());timestamps.reserve(entries.size());
+        for(const auto& entry:entries) {
+            const size_t i=entry.index;const int f=entry.field;
+            if(cue&&history[i].get()!=cue&&
+                !CompatiblePresentation(*cue,*history[i],source.crop))continue;
+            if(nativeMode&&!PrepareNativeField(i,f)){Clear();return false;}
+            pl_frame frame=nativeMode?history[i]->prepared[f].frame:history[i]->frame;
+            frame.crop={0,0,float(surface.w),float(surface.h)};
+            frame.rotation=PL_ROTATION_0; // Apply source rotation once in the final pass.
+            if(interlaced&&!nativeMode) {
+                frame.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
+                frame.field=f?pl_field_other(frame.first_field):frame.first_field;
+                frame.prev=i&&(!cue||CompatiblePresentation(*cue,*history[i-1],source.crop)) ?&history[i-1]->frame:nullptr;
+                frame.next=i+1<history.size()&&(!cue||CompatiblePresentation(*cue,*history[i+1],source.crop)) ?&history[i+1]->frame:nullptr;
+            }
+            frames.push_back(frame);
+            signatures.push_back(nativeMode?history[i]->prepared[f].signature:
+                ((history[i]->signature<<1)|f));
+            timestamps.push_back(static_cast<Timestamp>(entry.offset));
+        }
+        for(auto& frame:frames)pointers.push_back(&frame);
+
+        pl_overlay overlay{};
+        pl_overlay_part part{};
+        pl_tex layer=selectedLayer;
+        if(layer) {
+            const auto& bounds=selectedBounds;
+            part.src={0,0,float(layer->params.w),float(layer->params.h)};
+            part.dst={float(bounds.x0),float(bounds.y0),float(bounds.x1),float(bounds.y1)};
+            overlay.tex=layer;
+            overlay.mode=PL_OVERLAY_NORMAL;
+            overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
+            overlay.repr=pl_color_repr_rgb;
+            overlay.repr.levels=PL_COLOR_LEVELS_FULL;
+            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;
+            overlay.color=nativeMode?cue->prepared[cueField].frame.color:cue->frame.color;
+            overlay.parts=&part;overlay.num_parts=1;
+        }
+
+        pl_frame mixed{};
+        mixed.num_planes=1;mixed.planes[0].texture=compositionSurface;
+        mixed.planes[0].components=4;
+        for(int c=0;c<4;++c)mixed.planes[0].component_mapping[c]=c;
+        mixed.repr=pl_color_repr_rgb;
+        mixed.repr.levels=PL_COLOR_LEVELS_FULL;
+        mixed.repr.alpha=PL_ALPHA_NONE;
+        mixed.color=nativeMode?cue->prepared[cueField].frame.color:reference->frame.color;
+        mixed.color.transfer=PL_COLOR_TRC_LINEAR;
+        mixed.crop={0,0,float(surface.w),float(surface.h)};
+        if(layer){mixed.overlays=&overlay;mixed.num_overlays=1;}
+        auto preparation=pl_render_fast_params;
+        preparation.deinterlace_params=interlaced&&!nativeMode?&deinterlace:nullptr;
+        bool prepared=false;
+        if(mixing) {
+            preparation.frame_mixer=mixer;
+            pl_frame_mix mix{};
+            mix.num_frames=static_cast<int>(frames.size());
+            mix.frames=pointers.data();mix.signatures=signatures.data();
+            mix.timestamps=timestamps.data();
+            mix.vsync_duration=static_cast<float>(displayDuration/unit);
+            prepared=pl_render_image_mix(renderer,&mix,&mixed,&preparation);
+        } else {
+            size_t selected=0;
+            for(size_t i=0;i<frames.size();++i)
+                if(timestamps[i]<=1e-6f)selected=i;
+            lastSubmittedField=nativeMode&&interlaced?
+                (entries[selected].field?pl_field_other(topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM):
+                    (topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM)):frames[selected].field;
+            if(interlaced&&!nativeMode&&(!frames[selected].prev||!frames[selected].next)) {
+                auto bob=deinterlace;bob.algo=PL_DEINTERLACE_BOB;
+                preparation.deinterlace_params=&bob;
+                prepared=pl_render_image(renderer,&frames[selected],&mixed,&preparation);
+            } else {
+                prepared=pl_render_image(renderer,&frames[selected],&mixed,&preparation);
+            }
+        }
+        if(!prepared)return false;
+        pl_frame final=mixed;
+        final.crop=source.crop;
+        final.rotation=source.rotation;
+        final.overlays=nullptr;final.num_overlays=0;
+        pl_render_params output=params;
+        output.deinterlace_params=nullptr;
+        output.frame_mixer=nullptr;
+        // Source planes were debanded during full-raster normalization.
+        output.deband_params=nullptr;
+        const bool rendered=pl_render_image(renderer,&final,&target,&output);
+        if(nativeMode) {
+            // Raw packets remain available as deinterlacing references; only
+            // prepared RGBA field pictures outside the current support window
+            // are released to keep 4K GPU memory bounded.
+            for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f) {
+                bool keep=cue&&history[i].get()==cue&&f==cueField;
+                for(const auto& entry:entries)
+                    if(entry.index==i&&entry.field==f){keep=true;break;}
+                if(!keep) {
+                    auto& cached=history[i]->prepared[f];
+                    pl_tex_destroy(gpu,&cached.texture);
+                    pl_tex_destroy(gpu,&cached.subtitle);
+                    cached.valid=false;
+                }
+            }
+        }
+        return rendered;
+    }
     bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,pl_render_params& params) {
         lastSubmittedField=PL_FIELD_NONE;
+        if(composition&&Active())return RenderComposition(renderer,source,target,params);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
         std::vector<pl_frame> frames;std::vector<const pl_frame*> pointers;
         using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
@@ -144,12 +700,17 @@ public:
         frames.reserve(history.size()*2);signatures.reserve(history.size()*2);timestamps.reserve(history.size()*2);
         const bool fields=interlaced&&settings.cadence=="field";
         const double unit=sourceDuration/(fields?2.0:1.0);
+        const Stored* selectedPacket=nullptr;
+        for(const auto& packet:history)
+            if(packet->pts<=outputPts+1e-8)selectedPacket=packet.get();
         for(size_t i=0;i<history.size();++i){
+            if(selectedPacket&&history[i].get()!=selectedPacket&&
+                !CompatiblePresentation(*selectedPacket,*history[i],source.crop))continue;
             for(int f=0;f<(fields?2:1);++f){
                 pl_frame frame=history[i]->frame;
                 if(interlaced){frame.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;frame.field=f?pl_field_other(frame.first_field):frame.first_field;
-                    frame.prev=i?&history[i-1]->frame:nullptr;
-                    frame.next=i+1<history.size()?&history[i+1]->frame:nullptr;
+                    frame.prev=i&&(!selectedPacket||CompatiblePresentation(*selectedPacket,*history[i-1],source.crop)) ?&history[i-1]->frame:nullptr;
+                    frame.next=i+1<history.size()&&(!selectedPacket||CompatiblePresentation(*selectedPacket,*history[i+1],source.crop)) ?&history[i+1]->frame:nullptr;
                 }
                 // Geometry is committed by the current presentation pass; never
                 // blend unrelated source rectangles across aspect transitions.

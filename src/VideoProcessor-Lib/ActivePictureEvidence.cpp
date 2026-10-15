@@ -19,6 +19,9 @@ constexpr int kEdgeDepthSamples = 6;
 constexpr int kGlobalGridWidth = 16;
 constexpr int kGlobalGridHeight = 16;
 constexpr int kGlobalNearBlackP90 = 96;
+// Limited Y black is code 64, leaving 32 codes to the legacy cutoff.
+// Full-range Y has black at zero; scale that signal interval to 0..1023.
+constexpr double kFullRangeNearBlackP90 = 32.0 * 1023.0 / 876.0;
 constexpr int kVisibleExtentLineSamples = 256;
 constexpr int kVisibleExtentDepthSamples = 64;
 
@@ -810,6 +813,133 @@ ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidenc
 	return observation;
 }
 
+// A clean outer bar can be shorter than an over-detected opposite bar when
+// encoded dark picture values fall below the ordinary black threshold. This
+// secondary route keeps the threshold shared by every format: it recovers only
+// a current, symmetric boundary whose excluded pixels match the measured bar
+// and whose picture side has a coherent low-code edge. No history is borrowed.
+static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
+    ActivePictureEvidence& evidence)
+{
+    const auto& raw=evidence.proposedBounds;
+    auto& axes=evidence.axisEvidence;
+    if(evidence.classification!=ActivePictureClassification::PROVISIONAL ||
+        axes.vertical.reason!=ActivePictureAxisReason::BAR_ASYMMETRY ||
+        !axes.vertical.scanComplete || !evidence.top.trusted || !evidence.bottom.trusted ||
+        !axes.horizontal.scanComplete || axes.horizontal.barCandidate ||
+        axes.horizontal.FailedBar() || raw.left!=0 || raw.right!=source.width ||
+        source.width<320 || source.height<180)return false;
+    const int step=std::max(2,source.height/540);
+    const int topBar=raw.top,bottomBar=source.height-raw.bottom;
+    const int shorter=std::min(topBar,bottomBar),longer=std::max(topBar,bottomBar);
+    // The existing opposing-boundary rule requires stronger contrast for
+    // bars shorter than 1/20 of the raster. Low-code recovery must not
+    // replace that small-bar requirement.
+    if(shorter<=step*2 || shorter<source.height/20 || shorter>=source.height/4 ||
+        longer-shorter<=step*2 || longer-shorter>source.height/8)return false;
+    const bool anchorTop=topBar<bottomBar;
+    const auto& anchor=anchorTop?evidence.top:evidence.bottom;
+    if(!std::isfinite(anchor.lumaFloor) || anchor.lumaFloor<0.0 ||
+        anchor.lumaFloor>80.0 || anchor.lumaP90>anchor.lumaFloor+4.0 ||
+        anchor.lumaDispersion>4.0 || anchor.texture>2.0 ||
+        anchor.blackFraction<0.99 || anchor.neutralChromaFraction<0.98 ||
+        anchor.continuity<0.99 || anchor.innerBoundaryContrast<24.0 ||
+        evidence.top.lumaFloor!=evidence.bottom.lumaFloor)return false;
+    const int anchorFloor=static_cast<int>(anchor.lumaFloor);
+    const int nominalTop=shorter,nominalBottom=source.height-shorter;
+    // Fixed outward uncertainty is source resolution scaled and chroma aligned.
+    // The same nomination always produces the same rectangle.
+    const int guardedTop=(nominalTop-step)&~1;
+    const int guardedBottom=std::min(source.height,(nominalBottom+step+1)&~1);
+    if(guardedTop<=0 || guardedBottom>=source.height ||
+        guardedBottom-guardedTop<source.height/3 ||
+        (anchorTop && nominalBottom<=raw.bottom+step) ||
+        (!anchorTop && nominalTop>=raw.top-step))return false;
+    SampleContext samples{source};
+    struct SampleCountGuard {
+        ActivePictureEvidence& evidence;
+        SampleContext& samples;
+        ~SampleCountGuard() {
+            evidence.lumaSamples+=samples.lumaSamples;
+            evidence.chromaSamples+=samples.chromaSamples;
+        }
+    } countGuard{evidence,samples};
+    auto profile=InspectVerticalCropBarProfile(samples,guardedTop,guardedBottom);
+    if(!profile.completed || !profile.clean)return false;
+    const int boundary=anchorTop?nominalBottom:nominalTop;
+    const int insideDirection=anchorTop?-1:1;
+    const int outsideDirection=-insideDirection;
+    const int nearRequired=std::max(4,profile.maxLumaDelta+2);
+    const int deepRequired=std::max(8,2*profile.maxLumaDelta+4);
+    const int chromaRequired=std::max(8,2*profile.maxChromaDelta+2);
+    // 48 columns, four zones, four inner depths and two immediately exterior
+    // rows. A zero-code bar, isolated bright pixel, or smooth low-slope fade
+    // cannot manufacture a full-width picture transition.
+    for(int zone=0;zone<4;++zone) {
+        int nearSupport=0,deepSupport[3]={},abruptSupport=0;
+        int nearSum=0,outsideSum=0;
+        for(int index=zone*12;index<(zone+1)*12;++index) {
+            const int x=((index*2+1)*source.width)/96;
+            AnalysisLumaSample outside[2]{},inside[4]{};
+            for(int d=0;d<2;++d) {
+                const int y=boundary+outsideDirection*(2+d*4);
+                if(y<0 || y>=source.height || !source.Sample(x,y,outside[d]))return false;
+                ++samples.lumaSamples;++samples.chromaSamples;
+                if(std::abs(int(outside[d].luma)-profile.referenceY)>4 ||
+                    std::abs(int(outside[d].chromaU)-profile.referenceU)>4 ||
+                    std::abs(int(outside[d].chromaV)-profile.referenceV)>4)return false;
+            }
+            for(int d=0;d<4;++d) {
+                const int y=boundary+insideDirection*(3+d*4);
+                if(y<0 || y>=source.height || !source.Sample(x,y,inside[d]))return false;
+                ++samples.lumaSamples;++samples.chromaSamples;
+                const int luma=int(inside[d].luma)-profile.referenceY;
+                const int chroma=std::max(std::abs(int(inside[d].chromaU)-profile.referenceU),
+                    std::abs(int(inside[d].chromaV)-profile.referenceV));
+                const bool supported=luma>=(d==0?nearRequired:deepRequired) ||
+                    chroma>=chromaRequired;
+                if(d==0)nearSupport+=supported;
+                else deepSupport[d-1]+=supported;
+            }
+            nearSum+=inside[0].luma;
+            outsideSum+=outside[0].luma;
+            int previous=-1,maximumDrop=0;
+            for(int offset=-5;offset<=2;++offset) {
+                AnalysisLumaSample adjacent{};
+                const int y=boundary+outsideDirection*offset;
+                if(y<0 || y>=source.height || !source.Sample(x,y,adjacent))return false;
+                ++samples.lumaSamples;++samples.chromaSamples;
+                if(previous>=0)maximumDrop=std::max(maximumDrop,previous-int(adjacent.luma));
+                previous=adjacent.luma;
+            }
+            abruptSupport+=maximumDrop>=std::max(4,profile.maxLumaDelta+3);
+        }
+        if(nearSupport<8 || deepSupport[0]<9 || deepSupport[1]<9 ||
+            deepSupport[2]<9 || abruptSupport<8 ||
+            nearSum-outsideSum<12*nearRequired)return false;
+    }
+    evidence.verticalBarGuardProfile=profile;
+    evidence.top=InspectHorizontalEdge(samples,true,guardedTop,guardedTop,
+        anchorFloor,
+        std::min(104,anchorFloor+24));
+    evidence.bottom=InspectHorizontalEdge(samples,false,source.height-guardedBottom,
+        guardedBottom,anchorFloor,
+        std::min(104,anchorFloor+24));
+    // The guarded edge contrast is intentionally weaker; the entire outer band
+    // and the actual nominal transition above supplied its independent proof.
+    evidence.top.trusted=evidence.bottom.trusted=true;
+    evidence.trustedBounds={0,guardedTop,source.width,guardedBottom,
+        source.width,source.height,
+        double(source.width)/(guardedBottom-guardedTop),
+        ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    axes.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+    axes.vertical.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+    evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+    evidence.reason="measured low-code opposing boundary and excluded bands match current bars";
+    return true;
+}
+
+
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source)
 {
@@ -1112,6 +1242,7 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 		"candidate lacks coherent opposing black-bar evidence";
 	result.lumaSamples = samples.lumaSamples;
 	result.chromaSamples = samples.chromaSamples;
+	RecoverLowContrastOpposingBoundary(source,result);
 	return result;
 }
 
@@ -1576,8 +1707,11 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
         horizontal.reason==ActivePictureAxisReason::FULL_EXTENT_SUPPORTED &&
         horizontal.scanComplete && !horizontal.barCandidate &&
         observedNative.proposedBounds.left==0 && observedNative.proposedBounds.right==source.width;
-    const bool uncertainSides=horizontal.FailedBar() && horizontal.scanComplete &&
-        horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED;
+    const bool uncertainSides=horizontal.scanComplete &&
+        ((horizontal.FailedBar() && horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED) ||
+         (horizontal.reason==ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT &&
+          !horizontal.barCandidate && observedNative.proposedBounds.left==0 &&
+          observedNative.proposedBounds.right==source.width));
 
     if (!source.IsValid() || !source.generation ||
         source.generation != currentIdentity.transportGeneration ||
@@ -1819,7 +1953,9 @@ ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 		}
 	}
 	result.lumaP90 = Percentile(globalLuma, 0.90);
-	result.nearBlack = result.lumaP90 <= kGlobalNearBlackP90;
+	result.lumaCutoff = source.range == AnalysisLumaRange::Full ?
+		kFullRangeNearBlackP90 : kGlobalNearBlackP90;
+	result.nearBlack = result.lumaP90 <= result.lumaCutoff;
 	result.lumaSamples = samples.lumaSamples;
 	return result;
 }
@@ -2217,6 +2353,57 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 
 
 
+bool ResampleActivePictureExpansionStrips(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation,
+	const ActivePictureBounds& candidate,
+	ActivePicturePresentationRetentionEvidence& currentRetention)
+{
+	if (!source.IsValid() || source.width < 16 || source.height < 16 ||
+		!IsValidBoundsForSource(trustedPresentation, source) ||
+		!IsValidBoundsForSource(candidate, source) ||
+		trustedPresentation.trustedBarAxes == ActivePictureBounds::BarAxes::NONE ||
+		!currentRetention.analysisValid || !currentRetention.presentationValid ||
+		!currentRetention.expansionStripsAvailable ||
+		!IsValidBoundsForSource(currentRetention.expansionBase, source) ||
+		currentRetention.expansionBase.left != trustedPresentation.left ||
+		currentRetention.expansionBase.top != trustedPresentation.top ||
+		currentRetention.expansionBase.right != trustedPresentation.right ||
+		currentRetention.expansionBase.bottom != trustedPresentation.bottom ||
+		currentRetention.presentationBlackFloor < 0 ||
+		currentRetention.presentationBlackFloor > 80 ||
+		currentRetention.presentationBlackThreshold < currentRetention.presentationBlackFloor ||
+		currentRetention.presentationBlackThreshold > 104)
+		return false;
+
+	SampleContext samples{source};
+	const int blackFloor = currentRetention.presentationBlackFloor;
+	const int blackThreshold = currentRetention.presentationBlackThreshold;
+	const auto top = InspectHorizontalEdge(samples, true,
+		std::max(0, trustedPresentation.top - candidate.top),
+		trustedPresentation.top, blackFloor, blackThreshold, candidate.top);
+	const auto bottom = InspectHorizontalEdge(samples, false,
+		std::max(0, candidate.bottom - trustedPresentation.bottom),
+		trustedPresentation.bottom, blackFloor, blackThreshold,
+		source.height - candidate.bottom);
+	const auto left = InspectVerticalEdge(samples, true,
+		std::max(0, trustedPresentation.left - candidate.left),
+		trustedPresentation.left, blackFloor, blackThreshold, candidate.left);
+	const auto right = InspectVerticalEdge(samples, false,
+		std::max(0, candidate.right - trustedPresentation.right),
+		trustedPresentation.right, blackFloor, blackThreshold,
+		source.width - candidate.right);
+	currentRetention.expansionStripsAvailable = true;
+	currentRetention.expansionBase = trustedPresentation;
+	currentRetention.expansionCandidate = candidate;
+	currentRetention.expandingTop = top;
+	currentRetention.expandingBottom = bottom;
+	currentRetention.expandingLeft = left;
+	currentRetention.expandingRight = right;
+	currentRetention.lumaSamples += samples.lumaSamples;
+	currentRetention.chromaSamples += samples.chromaSamples;
+	return true;
+}
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation,

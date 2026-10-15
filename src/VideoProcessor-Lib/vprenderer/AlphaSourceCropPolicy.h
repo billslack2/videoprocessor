@@ -499,6 +499,7 @@ namespace AlphaSourceCrop
 		float Resolve(float targetTranslationPixels, uint64_t currentTick,
 			uint64_t durationMs);
 		bool IsActive() const { return driftActive; }
+        uint64_t ActiveStartTick() const { return driftActive ? driftStartTick : 0; }
 		bool TryGetActiveInterval(float& start, float& target, float& applied) const
 		{
 			if (!driftActive) return false;
@@ -1030,6 +1031,16 @@ namespace AlphaSourceCrop
 		bool boundedPresentationFailed = false;
 		ActivePictureBounds boundedPresentation;
 		uint64_t boundedPresentationSequence = 0;
+		uint64_t boundedPresentationPresentedSequence = 0;
+        // Actual selected translated pose, never inferred from a held cue target.
+        bool presentedTranslationAvailable = false;
+        ActivePictureBounds presentedTranslationBounds;
+        int presentedTranslationPixels = 0;
+        uint64_t presentedTranslationSourceSequence = 0;
+		// A candidate base is released only after distinct clean source samples.
+		ActivePictureBounds captionCleanBase;
+		uint64_t captionCleanLastSourceSequence = 0;
+		uint32_t captionCleanSamples = 0;
 		uint64_t weakFringeFillSourceSequence = 0;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
@@ -1041,6 +1052,7 @@ namespace AlphaSourceCrop
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
 		uint32_t revalidationSamples = 0;
+        bool revalidationNativeDarkRun = false;
 		bool bootstrapCandidateAvailable = false;
 		ActivePictureBounds bootstrapCandidate;
 		ActivePictureAuthorityOrigin bootstrapCandidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
@@ -1069,10 +1081,22 @@ namespace AlphaSourceCrop
 		bool trustedCropAvailable = false;
 		ActivePictureBounds trustedCrop;
 		ActivePictureAuthorityOrigin trustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		// The last native crop successfully submitted in this source generation
+		// and viewport epoch. It may anchor presentation retention but never
+		// creates new crop authority.
+		bool previouslyAdmittedCropAvailable = false;
+		ActivePictureBounds previouslyAdmittedCrop;
+		ActivePictureAuthorityOrigin previouslyAdmittedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		uint64_t previouslyAdmittedCropSourceGeneration = 0;
+		uint64_t previouslyAdmittedCropPresentationEpoch = 0;
 		// Positive read-only model check of the raw current native observation.
 		// Current retention provenance and all episode safety gates still apply.
 		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
+		bool currentVisibleBoundsAvailable = false;
+		ActivePictureBounds currentVisibleBounds;
+		uint64_t currentVisibleSourceGeneration = 0;
+		uint64_t currentVisibleSourceSequence = 0;
         bool weakFringeFillRetained = false;
         // Set only by CanRetainEstablishedScopeForSubtitle, using current pixels.
         bool establishedScopeSubtitleRetained = false;
@@ -1087,6 +1111,10 @@ namespace AlphaSourceCrop
 		ActivePictureAuthorityOrigin currentObservationOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		bool currentNativeObservationAvailable = false;
 		ActivePictureBounds currentNativeObservation;
+        // Raw native proposed bars on this exact retention sample. A provisional
+        // observation's trustedBounds is intentionally full raster.
+        bool currentNativeProposedAvailable = false;
+        ActivePictureBounds currentNativeProposedBounds;
 		// Fresh native outward proof can retire the episode entry; it cannot publish a crop.
 		OutwardPictureConfirmationState currentNativeOutwardProof;
 		uint64_t currentNativeOutwardProofPresentationEpoch = 0;
@@ -1125,6 +1153,7 @@ namespace AlphaSourceCrop
 		NearBlackPresentationEpisodeState state;
 		bool started = false;
 		bool changedToFullRaster = false;
+		bool restoredSubmittedScope = false;
 		bool releasedToTrustedCrop = false;
 		bool bootstrapReleased = false;
 		bool outwardEntryReleased = false;
@@ -1157,8 +1186,17 @@ namespace AlphaSourceCrop
 	// Ordinary acquisition must still admit any new crop on current pixels.
 	bool QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(
 		const NearBlackPresentationEpisodeInput& input);
-	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
-		const NearBlackPresentationEpisodeInput& input);
+	struct NearBlackEpisodeDarkness
+    {
+        bool evaluated = false;
+        bool nearBlack = false;
+    };
+    // Episode entry/exit follows the raw frame's stable darkness measurement.
+    // Frame-local caption masking remains a separate geometry witness.
+    NearBlackEpisodeDarkness SelectNearBlackEpisodeDarkness(
+        bool rawEvaluated, bool rawNearBlack, bool arEffectiveNearBlack);
+    NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
+        const NearBlackPresentationEpisodeInput& input);
     // Preserve validated ownership through the release frame and retire old inspection.
     inline bool NearBlackEpisodeOwnsCropThisFrame(const NearBlackPresentationEpisodeDecision& decision)
     { return decision.state.mode == NearBlackPresentationMode::RETAIN_CROP || decision.releasedToTrustedCrop; }
@@ -1166,10 +1204,20 @@ namespace AlphaSourceCrop
     { return decision.releasedToTrustedCrop; }
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
 	// Current strict caption/native-bar proof may establish logical picture bars
-	// during an episode. Global dark still blocks; presentation remains
+	// during an episode, including global darkness. Presentation remains
 	// owned by the episode until its independent release conditions pass.
 	bool NearBlackBlocksCaptionBackedLogicalAcquisition(bool globalDark,
 		NearBlackPresentationMode episodeMode, bool currentStrictProof);
+	// Source analysis may establish physical bars and a caption-safe envelope
+	// while all subtitle drawing modes are disabled. Drawing remains mode controlled.
+	bool ColdCaptionArAnalysisEligible(bool automaticCrop, bool configuredScreenActive,
+		bool nlsRequested, bool fixedCropAspectConfigured,
+		NearBlackPresentationMode episodeMode);
+	// Automatic Scope subtitle fitting needs current caption/bar measurement
+	// even in Classic mode. Episode bootstrap remains available without fit.
+	bool ScopeCaptionArAnalysisEligible(bool automaticCrop, bool configuredScreenActive,
+		bool nlsRequested, bool fixedCropAspectConfigured,
+		NearBlackPresentationMode episodeMode, bool scopeSubtitleFit);
 	// Bounded bridge from native caption bootstrap to the first exact current
 	// subtitle-worker observation. A missing worker never causes a steady
 	// per-frame standalone scan. All frame counters are accepted sequences.
@@ -1208,6 +1256,10 @@ namespace AlphaSourceCrop
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
 		bool nearBlackEpisodeFullRaster = false;
+		// A last-submitted native Scope may retain presentation through a current
+		// ambiguous frame only when exact-frame edge pixels still prove its excluded
+		// bands safe. This is presentation continuity, never new crop authority.
+		bool submittedScopeContinuityRetention = false;
 		bool fullRasterPresentationAuthoritative = false;
 		bool sharedGeometryAvailable = false;
 		bool latestObservationSupportsCrop = false;
@@ -1282,6 +1334,7 @@ namespace AlphaSourceCrop
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
 			ActivePictureClassification::UNAVAILABLE;
+		ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		ActivePictureBounds geometry;
 		ActivePictureBounds outwardExpansion;
 		uint64_t geometrySourceGeneration = 0;
@@ -1313,6 +1366,7 @@ namespace AlphaSourceCrop
 		OUTWARD_FIT,
 		VERTICAL_TRANSLATION,
         MOVING_PICTURE_HOLD,
+		SUBMITTED_SCOPE_RETENTION,
 	};
 
 	enum class WithdrawalCause
@@ -1352,9 +1406,67 @@ namespace AlphaSourceCrop
 		uint64_t presentationSourceSequence = 0;
 		bool available = false;
 		ActivePictureBounds trustedCrop;
+		ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
 	};
+
+	// A native Scope that is safe to use as a temporal presentation anchor only
+	// after a frame using that geometry was successfully submitted. Admission
+	// alone is not evidence that the viewer actually saw the crop.
+	struct SubmittedNativeScopeAnchor
+	{
+		bool available = false;
+		ActivePictureBounds crop;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t lastSubmittedSourceSequence = 0;
+	};
+	struct SubmittedNativeScopeAnchorUpdateInput
+	{
+		SubmittedNativeScopeAnchor previous;
+        CropPresentationAdmissionState selectedAdmission;
+		ActivePictureBounds nativeCrop;
+		ActivePictureBounds submittedBounds;
+		ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		DecisionOwner selectedOwner = DecisionOwner::FULL_RASTER;
+		bool nativeCropAvailable = false;
+		bool frameSubmitted = false;
+		bool fullRasterAuthority = false;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+	};
+	struct SubmittedScopeContinuityEvidence
+	{
+		SubmittedNativeScopeAnchor anchor;
+		ActivePictureBounds retentionBounds;
+		ActivePictureClassification currentClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t retentionSourceGeneration = 0;
+		uint64_t retentionSourceSequence = 0;
+		int rasterWidth = 0;
+		int rasterHeight = 0;
+		bool cadenceRepeat = false;
+		bool measurementCurrent = false;
+		bool retentionEvaluated = false;
+		bool retentionSafe = false;
+		bool excludedBandsPixelSafe = false;
+		bool outwardVisibleBoundsAvailable = false;
+		bool fullRasterAuthority = false;
+		bool presentationFailOpen = false;
+				bool verticalTranslationActive = false;
+	};
+	bool IsCurrentSubmittedNativeScopeAnchor(const SubmittedNativeScopeAnchor& anchor,
+		uint64_t sourceGeneration, uint64_t sourceSequence,
+		uint64_t presentationEpoch, int rasterWidth, int rasterHeight);
+	bool CanRetainSubmittedScopeContinuity(
+		const SubmittedScopeContinuityEvidence& evidence);
+	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
+		const SubmittedNativeScopeAnchorUpdateInput& input);
 
     struct EstablishedSubtitleTranslationInput
     {
@@ -1373,7 +1485,25 @@ namespace AlphaSourceCrop
         float engageTargetTranslationPixels = 0.0f;
         float engageAppliedTranslationPixels = 0.0f;
         bool competingPresentation = false;
+        // An actually admitted translation may finish its existing release
+        // animation after the cue hold expires. This never grants new outward
+        // content authority or renews the original subtitle owner.
+        VerticalBarPresentationState releaseOwner;
+        ActivePictureBounds releaseOwnerBase;
+        uint64_t releaseSourceGeneration = 0;
+        uint64_t releasePresentationEpoch = 0;
+        bool releaseIntervalAvailable = false;
+        float releaseStartTranslationPixels = 0.0f;
+        float releaseTargetTranslationPixels = 0.0f;
+        float releaseAppliedTranslationPixels = 0.0f;
+        uint64_t releaseStartedTick = 0;
+        uint64_t releaseDurationMs = 0;
     };
+
+    // NLS mapping inherits an admitted viewport crop when its own source crop
+    // is disabled. Any other crop setting remains a competing owner.
+    bool NlsCompetesWithEstablishedSubtitleTranslation(bool nlsRequested,
+        double maximumCropPercent);
 
     // Retains an already admitted scope presentation through darkness only when
     // its live shared translation covers all current outward evidence.
@@ -1413,6 +1543,90 @@ namespace AlphaSourceCrop
 	CaptionBoundedFitAcquisitionDecision BuildCaptionBoundedFitAcquisition(
 		const CaptionBoundedFitAcquisitionInput& input);
 
+    // A dark full-raster episode may expose only a current guarded native picture
+    // together with the complete current caption extent. This is a presentation
+    // proposal, never picture authority or an admission by itself.
+    struct ColdMaskedCaptionPresentationInput
+    {
+        const Input* crop = nullptr;
+        NearBlackPresentationEpisodeState episode;
+        CropPresentationAdmissionState previousAdmission;
+        bool strictProofCurrent = false;
+        ActivePictureBounds strictPicture;
+        uint64_t proofSourceGeneration = 0, proofSourceSequence = 0;
+        uint64_t proofPresentationEpoch = 0;
+        bool captionConfirmed = false;
+        ActivePictureBounds captionBounds;
+        uint64_t captionSourceGeneration = 0, captionSourceSequence = 0;
+        bool currentObservationAvailable = false;
+        ActivePictureBounds currentObservation;
+        uint64_t observationSourceGeneration = 0, observationSourceSequence = 0;
+        bool currentRetentionEvaluated = false, currentRetentionSafe = false;
+        bool currentExcludedBandsPixelSafe = false, currentOutwardVisible = false;
+        bool currentNativeTrusted = false;
+        ActivePictureBounds currentNativeBounds;
+        bool captionMeasured = false;
+        uint64_t retentionSourceGeneration = 0, retentionSourceSequence = 0;
+        ActivePictureBounds retentionBase;
+        bool captionAbsenceConfirmed = false;
+        bool sceneBoundary = false, cadenceRepeat = false;
+        double framesPerSecond = 60.0;
+    };
+    struct ColdMaskedCaptionPresentationDecision
+    {
+        bool available = false;
+        bool held = false;
+        bool releasedToBase = false;
+        bool nativeCleanBase = false;
+        bool rebasedFromRetainedCrop = false;
+        NearBlackPresentationEpisodeState episodeState;
+        Decision presentation;
+        const char* reason = "cold masked caption proof unavailable";
+    };
+    ColdMaskedCaptionPresentationDecision BuildColdMaskedCaptionPresentation(
+        const ColdMaskedCaptionPresentationInput& input);
+    // May retain the last submitted translated pose across one exact current
+    // worker gap. The ordinary owner, native-bar and drift certificates still
+    // govern; otherwise the bounded fit remains the safe fallback.
+    Decision RetainColdTranslatedPresentation(
+        const ColdMaskedCaptionPresentationDecision& bounded,
+        const NearBlackPresentationEpisodeInput& episode,
+        const CropPresentationAdmissionState& previousAdmission,
+        const EstablishedSubtitleTranslationInput& translation,
+        const Input& translatedCrop);
+    enum class ColdMaskedCaptionCommitAction { NONE, BOUNDED, TRANSLATED, CLEAN_BASE };
+    struct ColdMaskedCaptionCommitInput
+    {
+        NearBlackPresentationEpisodeState currentEpisode;
+        CropPresentationAdmissionState currentAdmission;
+        // Immutable witness carried by the selected source, after optional fill.
+        CropPresentationAdmissionState selectedAdmission;
+        ColdMaskedCaptionCommitAction action = ColdMaskedCaptionCommitAction::NONE;
+        NearBlackPresentationMode proposalMode = NearBlackPresentationMode::INACTIVE;
+        ActivePictureBounds proposalEntryCrop;
+        bool proposalEntryCropAvailable = false;
+        uint64_t proposalStartSequence = 0;
+        uint64_t sourceGeneration = 0, presentationEpoch = 0;
+        uint64_t currentSourceSequence = 0, selectedSourceSequence = 0;
+        uint64_t proofSourceSequence = 0;
+        ActivePictureBounds selectedBase, selectedEnvelope;
+        // Final selected raster crop and owner after every source arbitration.
+        DecisionOwner selectedActualOwner = DecisionOwner::FULL_RASTER;
+        ActivePictureBounds selectedActualBounds;
+        ActivePictureBounds selectedTranslatedBounds;
+        int selectedTranslationPixels = 0;
+        bool renderedAndSubmitted = false;
+        double framesPerSecond = 60.0;
+    };
+    struct ColdMaskedCaptionCommitDecision
+    {
+        NearBlackPresentationEpisodeState state;
+        bool committed = false;
+        const char* reason = "selected output did not commit a cold caption owner";
+    };
+    // Called only after the selected output actually rendered and submitted.
+    ColdMaskedCaptionCommitDecision CommitColdMaskedCaptionPresentation(
+        const ColdMaskedCaptionCommitInput& input);
     struct CaptionConfirmationPresentationAnchor
     {
         bool available = false; // Set only after successful rendering/submission.
@@ -1526,6 +1740,7 @@ namespace AlphaSourceCrop
 	{
 		PresentationRecoveryState previous;
 		CropPresentationAdmissionState previousAdmission;
+		SubmittedNativeScopeAnchor submittedScopeAnchor;
 		Input crop;
 		Decision candidate;
 		bool cadenceRepeat = false;
@@ -1575,9 +1790,46 @@ namespace AlphaSourceCrop
 		NearBlackPresentationEpisodeState state;
 		Decision presentation;
 		bool boundedPresentation = false;
+		bool retainedScopeFallback = false;
+		// Evaluation proposes a source envelope. It becomes reusable temporal
+		// state only after the selected packet with this exact crop is submitted.
+		bool proposalAvailable = false;
+		bool failOpenProposal = false;
+		ActivePictureBounds proposalBase;
+		ActivePictureBounds proposalBounds;
+		NearBlackPresentationMode proposalMode = NearBlackPresentationMode::INACTIVE;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t episodeStartSequence = 0;
 	};
 	NearBlackBoundedPresentationDecision EvaluateNearBlackBoundedPresentation(
 		const NearBlackPresentationEpisodeState& previous, const PresentationRecoveryInput& input);
+
+	struct NearBlackBoundedPresentationCommitInput
+	{
+		NearBlackPresentationEpisodeState currentEpisode;
+		CropPresentationAdmissionState currentAdmission;
+		NearBlackPresentationMode proposalMode = NearBlackPresentationMode::INACTIVE;
+		ActivePictureBounds proposalBase, proposalBounds;
+		bool failOpenProposal = false;
+		uint64_t sourceGeneration = 0, presentationEpoch = 0;
+		uint64_t currentSourceSequence = 0, selectedSourceSequence = 0;
+		uint64_t proposalSourceSequence = 0;
+		uint64_t episodeStartSequence = 0;
+		DecisionOwner selectedActualOwner = DecisionOwner::FULL_RASTER;
+		ActivePictureBounds selectedActualBounds;
+		bool sceneBoundary = false;
+		bool renderedAndSubmitted = false;
+	};
+	struct NearBlackBoundedPresentationCommitDecision
+	{
+		NearBlackPresentationEpisodeState state;
+		bool committed = false;
+		const char* reason = "selected near-black envelope did not commit";
+	};
+	NearBlackBoundedPresentationCommitDecision CommitNearBlackBoundedPresentation(
+		const NearBlackBoundedPresentationCommitInput& input);
 
 	enum class ScenePresentationAction
 	{

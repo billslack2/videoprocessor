@@ -128,6 +128,8 @@ bool IsExactInwardActivePictureAssociationGeometry(
 	ActivePictureClassification classification);
 
 
+enum class ActivePictureDiscardReason : uint8_t { Unknown, BacklogRecovery };
+
 // Bounded source-order association layer for active-picture decisions. It
 // owns no video frames and changes neither queue depth nor dequeue timing.
 // Callers submit only observations selected by the existing detector cadence.
@@ -141,7 +143,15 @@ public:
 	bool TrackAcceptedFrame(const ActivePictureFrameIdentity& identity);
 	void MarkConsumed(const ActivePictureFrameIdentity& identity);
 	void MarkDiscarded(const ActivePictureFrameIdentity& identity,
-		uint64_t detectorFrameNumber);
+		uint64_t detectorFrameNumber,
+		ActivePictureDiscardReason reason = ActivePictureDiscardReason::Unknown);
+	// Presentation may reconnect an acquired current-source cue only when
+	// every intermediate accepted source was explicitly dequeued or retired
+	// and every continuity break came from backlog recovery.
+	// This never restores AR lookahead evidence or its continuity generation.
+	bool OnlyBacklogRetirementBetween(const ActivePictureFrameIdentity& previousTemplate,
+		const ActivePictureFrameIdentity& current, uint64_t beforeContinuity,
+		uint64_t afterContinuity) const;
 	void BreakContinuity(uint64_t detectorFrameNumber);
 	void InvalidateLookaheadPolicy(bool resetPartialEvidence = false);
 	// Withdraw obsolete crop authority without discarding queued source frames.
@@ -195,11 +205,17 @@ private:
 		ActivePictureFrameIdentity identity;
 		uint64_t continuityGeneration = 0;
 	};
+	struct ConsumedIdentity
+	{
+		ActivePictureFrameIdentity identity;
+	};
 	struct ContinuityBoundary
 	{
 		uint64_t beforeGeneration = 0;
 		uint64_t afterGeneration = 0;
 		uint64_t acceptedSequence = 0;
+		ActivePictureDiscardReason discardReason = ActivePictureDiscardReason::Unknown;
+		ActivePictureFrameIdentity discardedIdentity;
 	};
 
 	void RetainIdentity(const ActivePictureFrameIdentity& identity,
@@ -219,14 +235,19 @@ private:
 		uint64_t requiredLead,
 		uint8_t effectiveLookahead,
 		uint8_t& proofFrameCount) const;
-	void BreakContinuityAtSequence(uint64_t acceptedSequence);
-	void RecordContinuityBoundary(uint64_t acceptedSequence);
+	void BreakContinuityAtSequence(uint64_t acceptedSequence,
+		ActivePictureDiscardReason reason = ActivePictureDiscardReason::Unknown,
+		const ActivePictureFrameIdentity* discarded = nullptr);
+	void RecordContinuityBoundary(uint64_t acceptedSequence,
+		ActivePictureDiscardReason reason = ActivePictureDiscardReason::Unknown,
+		const ActivePictureFrameIdentity* discarded = nullptr);
 	void AdvanceContinuityGeneration();
 
 	ActivePictureTransitionModel m_transition;
 	std::deque<ObservedIdentity> m_observed;
 	std::deque<LookaheadEvidence> m_lookaheadEvidence;
 	std::deque<AcceptedIdentity> m_accepted;
+	std::deque<ConsumedIdentity> m_consumed;
 	std::deque<ContinuityBoundary> m_continuityBoundaries;
 	uint64_t m_transportGeneration = 0;
     uint64_t m_lastAnalysisDomainKey = 0;

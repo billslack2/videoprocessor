@@ -38,6 +38,12 @@ namespace Tests
 					model.Observe({HandoffScope(),seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
 				input.trustedGeometry=input.presentationBeforeObservation=HandoffScope();
 				input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
+                // Native bar measurements carry a completed trusted vertical
+                // scan; the position-only continuity guard must see that contract.
+                input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                input.evidence.axisEvidence.vertical.scanComplete=true;
+                input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+                input.evidence.top.trusted=input.evidence.bottom.trusted=true;
 				input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=7;
 				input.sourceSequence=100; input.framesPerSecond=24;
 				SetTarget(HandoffTaller());

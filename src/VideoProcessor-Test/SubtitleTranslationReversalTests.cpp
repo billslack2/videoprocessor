@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/SubtitleAspectRetention.h>
 #include <cmath>
 #include <limits>
 
@@ -51,7 +52,17 @@ namespace Tests
             void Resolve(VerticalTranslationDrift& drift, float target, uint64_t tick)
             {
                 episode.currentTick = tick;
-                translation.resolvedTranslationPixels = static_cast<int>(drift.Resolve(target, tick, 500));
+                const float applied = drift.Resolve(target, tick, 500);
+                VerticalBarPresentationResolutionInput resolution;
+                resolution.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+                resolution.translationPixels = applied;
+                resolution.zeroTranslationRetainsTrustedBase = drift.IsActive();
+                resolution.authoritativeTop = episode.trustedCrop.top;
+                resolution.authoritativeBottom = episode.trustedCrop.bottom;
+                resolution.rasterHeight = episode.trustedCrop.rasterHeight;
+                const auto routed = ResolveVerticalBarRendererRouting(
+                    ResolveVerticalBarPresentation(resolution));
+                translation.resolvedTranslationPixels = routed.translationPixels;
                 translation.engagingTranslation = drift.IsActive();
                 translation.engageIntervalAvailable = translation.engagingTranslation &&
                     drift.TryGetActiveInterval(translation.engageStartTranslationPixels,
@@ -115,6 +126,136 @@ namespace Tests
             Assert::IsTrue(zero.Certificate());
         }
 
+        TEST_METHOD(AdvancedModesKeepPhysicalPicturePoseAcrossCueEvidenceStates)
+        {
+            AlphaSourceCrop::Decision shared;
+            shared.applyCrop = true;
+            shared.verticallyTranslated = true;
+            shared.verticalTranslationPixels = -166;
+            shared.sourceBounds = {26,108,3814,1720,3840,2160};
+            struct Evidence { bool replacement; bool blank; bool clearStrip; };
+            const Evidence states[] = {
+                {false,true,false},   // completed no-bright-ink
+                {false,false,false},  // ambiguous or pending measurement
+                {false,false,true},   // exact current clear strip
+                {true,false,false},   // generated replacement prepared
+            };
+            for(const auto& state : states) {
+                for(const auto mode : {SubtitlePreviewMode::BlackBackground,
+                    SubtitlePreviewMode::GeneratedGrayBackground}) {
+                    const auto display = SubtitlePresentationBounds(shared,mode,
+                        state.replacement,state.blank,state.clearStrip);
+                    Assert::AreEqual(274,display.top);
+                    Assert::AreEqual(1886,display.bottom);
+                    Assert::IsFalse(SubtitlePresentationKeepsClassicTranslation(shared,display));
+                }
+                const auto classic = SubtitlePresentationBounds(shared,
+                    SubtitlePreviewMode::None,state.replacement,state.blank,state.clearStrip);
+                Assert::AreEqual(108,classic.top);
+                Assert::AreEqual(1720,classic.bottom);
+                Assert::IsTrue(SubtitlePresentationKeepsClassicTranslation(shared,classic));
+            }
+        }
+
+        TEST_METHOD(AdvancedMovingHoldIgnoresOnlyClassicTranslationFlags)
+        {
+            Input base;
+            base.automaticCropEnabled = base.sharedGeometryAvailable = true;
+            base.classification = base.latestObservationClassification =
+                ActivePictureClassification::BAR_CROP_TRUSTED;
+            base.geometry = {0,276,3840,1884,3840,2160,3840.0/1608.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            base.geometrySourceGeneration = base.frameSourceGeneration = 7;
+            base.frameSourceSequence = 101;
+            base.framePresentationEpoch = 9;
+            base.rasterWidth = 3840;
+            base.rasterHeight = 2160;
+            base.movingPictureTransition = true;
+            base.movingPictureHold = {false,base.geometry,7,101,9};
+            base.verticalTranslationPixels = -166;
+            base.verticalTranslationBase = base.geometry;
+            base.verticalTranslationSourceGeneration = 7;
+            base.verticalTranslationActive = true;
+            base.verticalTranslationConfirmationPending = true;
+            base.verticalTranslationBaseRetentionActive = true;
+            base.verticalTranslationEngageBaseRetentionActive = true;
+            Assert::IsFalse(HasCurrentMovingPictureHold(base));
+
+            for (const auto mode : {SubtitlePreviewMode::BlackBackground,
+                SubtitlePreviewMode::GeneratedGrayBackground})
+            {
+                auto routed = base;
+                Assert::IsTrue(RouteAdvancedMovingPictureHold(routed,mode));
+                Assert::IsFalse(routed.verticalTranslationActive);
+                Assert::IsFalse(routed.verticalTranslationConfirmationPending);
+                Assert::IsFalse(routed.verticalTranslationBaseRetentionActive);
+                Assert::IsFalse(routed.verticalTranslationEngageBaseRetentionActive);
+                Assert::IsFalse(routed.verticalFitConfirmationPending);
+                Assert::AreEqual(-166,routed.verticalTranslationPixels);
+                Assert::IsTrue(HasCurrentMovingPictureHold(routed));
+                const auto candidate = Evaluate(routed);
+                Assert::IsTrue(candidate.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+                Assert::AreEqual(276,candidate.sourceBounds.top);
+                Assert::AreEqual(1884,candidate.sourceBounds.bottom);
+                const auto unseen = AdmitCropPresentation({},routed,candidate,9);
+                Assert::IsTrue(unseen.blocked);
+                Assert::IsFalse(unseen.presentation.applyCrop);
+            }
+
+            auto classic = base;
+            Assert::IsFalse(RouteAdvancedMovingPictureHold(classic,SubtitlePreviewMode::None));
+            Assert::IsTrue(classic.verticalTranslationActive);
+            Assert::IsTrue(classic.verticalTranslationConfirmationPending);
+            Assert::IsTrue(classic.verticalTranslationBaseRetentionActive);
+            Assert::IsTrue(classic.verticalTranslationEngageBaseRetentionActive);
+        }
+
+        TEST_METHOD(AdvancedMovingHoldRejectsStaleUnsafeAndCompetingOwners)
+        {
+            Input base;
+            base.automaticCropEnabled = base.sharedGeometryAvailable = true;
+            base.classification = base.latestObservationClassification =
+                ActivePictureClassification::BAR_CROP_TRUSTED;
+            base.geometry = {0,276,3840,1884,3840,2160,3840.0/1608.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            base.geometrySourceGeneration = base.frameSourceGeneration = 7;
+            base.frameSourceSequence = 101;
+            base.framePresentationEpoch = 9;
+            base.rasterWidth = 3840;
+            base.rasterHeight = 2160;
+            base.movingPictureTransition = true;
+            base.movingPictureHold = {false,base.geometry,7,101,9};
+            base.verticalTranslationActive = true;
+
+            for (int fault = 0; fault < 16; ++fault)
+            {
+                auto input = base;
+                switch (fault)
+                {
+                case 0: ++input.frameSourceSequence; break;
+                case 1: ++input.frameSourceGeneration; break;
+                case 2: ++input.framePresentationEpoch; break;
+                case 3: ++input.geometrySourceGeneration; break;
+                case 4: input.movingPictureHold.base.top += 2; break;
+                case 5: input.geometry.left = 2; break;
+                case 6: input.geometry.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH; break;
+                case 7: input.verticalFitConfirmationPending = true; break;
+                case 8: input.movingPictureHold.competingPresentation = true; break;
+                case 9: input.presentationFailOpen = true; break;
+                case 10: input.fullRasterPresentationAuthoritative = true; break;
+                case 11: input.nearBlackEpisodeFullRaster = true; break;
+                case 12: input.barCropRefinementHorizontalConflict = true; break;
+                case 13: input.classification = ActivePictureClassification::PROVISIONAL; break;
+                case 14: input.latestObservationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 15: input.sharedGeometryAvailable = false; break;
+                }
+                Assert::IsFalse(RouteAdvancedMovingPictureHold(
+                    input,SubtitlePreviewMode::BlackBackground));
+                Assert::IsTrue(input.verticalTranslationActive);
+                if (fault == 7) Assert::IsTrue(input.verticalFitConfirmationPending);
+                if (fault == 8) Assert::IsTrue(input.movingPictureHold.competingPresentation);
+            }
+        }
         TEST_METHOD(ReversalRejectsMissingMismatchedOrUnboundedDriftCertificate)
         {
             for (int variant = 0; variant < 9; ++variant)

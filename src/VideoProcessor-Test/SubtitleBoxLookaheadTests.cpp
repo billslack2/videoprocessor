@@ -1,11 +1,13 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleBoxLookahead.h>
+#include <ActivePictureDecisionTimeline.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleMeasurementWorker.h>
 #include <future>
 #include <atomic>
 #include <vector>
+#include <string>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests {
@@ -493,6 +495,75 @@ public:
             Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentPicture(unsafe,published));
         }
     }
+    TEST_METHOD(IndependentCurrentBlankScanIgnoresUnconsumedWorkerPredecessor) {
+        auto pixels=Pixels();
+        auto key=Cue(151);
+        key.policyGeneration=2;key.continuityGeneration=4;
+        key.sharedPicture.required=true;
+        key.sharedPicture.identity=key.identity;
+        key.sharedPicture.bounds={0,45,640,315,640,360};
+        SubtitleBarTrackingReference workerPrior;
+        workerPrior.identity=Identity(150);
+        workerPrior.width=640;workerPrior.height=360;
+        workerPrior.pictureTop=45;workerPrior.pictureBottom=315;
+        workerPrior.policyGeneration=2;workerPrior.continuityGeneration=4;
+        workerPrior.scriptHint=key.scriptHint;workerPrior.valid=true;
+        SubtitleMeasurementSampler sampler;
+        const auto observation=sampler.Measure(Source(pixels),key,workerPrior,60);
+        Assert::IsTrue(observation.analyzed);
+        Assert::IsTrue(observation.barAuthority);
+        Assert::IsTrue(observation.independentBarAnalysis);
+        Assert::IsFalse(observation.text.detected);
+        Assert::IsFalse(observation.text.workLimit);
+        Assert::IsTrue(observation.text.diagnosticReason &&
+            std::strcmp(observation.text.diagnosticReason,"no-bright-ink")==0);
+        Assert::IsTrue(observation.incomingBarTrackingReference.valid);
+        Assert::IsFalse(observation.hasBarTrackingReference);
+        Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,2,4,false,{},key.scriptHint),
+            L"The complete current blank scan used current bars, not the worker predecessor.");
+        auto differentPrior=workerPrior;
+        differentPrior.identity=Identity(149);
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,2,4,false,differentPrior,key.scriptHint),
+            L"A newly supplied valid predecessor may change the bar hypothesis and requires a rescan.");
+
+        auto otherFrame=key.identity;++otherFrame.acceptedSequence;
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            otherFrame,640,360,2,4,false,{},key.scriptHint));
+        otherFrame=key.identity;++otherFrame.analysisDomainKey;
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            otherFrame,640,360,2,4,false,{},key.scriptHint));
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,3,4,false,{},key.scriptHint));
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,2,5,false,{},key.scriptHint));
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,2,4,true,{},key.scriptHint));
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,
+            key.identity,640,360,2,4,false,{},SubtitleScriptHint::Arabic));
+
+        for(int unsafe=0;unsafe<14;++unsafe) {
+            auto changed=observation;
+            if(unsafe==0)changed.independentBarAnalysis=false;
+            if(unsafe==1)changed.barAuthority=false;
+            if(unsafe==2)changed.barTrackingAuthority=true;
+            if(unsafe==3)changed.hasBarTrackingReference=true;
+            if(unsafe==4)changed.currentAnchorUsesTrackedEdge=true;
+            if(unsafe==5)changed.analysisRefresh=true;
+            if(unsafe==6)changed.pendingRefresh=true;
+            if(unsafe==7)changed.barEvidence.topRevalidatedAtReference=true;
+            if(unsafe==8)changed.barEvidence.captionBackedBottom=true;
+            if(unsafe==9)changed.text.workLimit=true;
+            if(unsafe==10)changed.text.diagnosticReason="no-centered-text-line";
+            if(unsafe==11)++changed.pictureBottom;
+            if(unsafe==12)changed.text.held=true;
+            if(unsafe==13)changed.discontinuity=true;
+            Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(changed,
+                key.identity,640,360,2,4,changed.discontinuity,{},key.scriptHint),
+                L"Only a complete independent current-bar no-ink scan may ignore the predecessor.");
+        }
+    }
     TEST_METHOD(CurrentNegativeScanCanRebindBetweenUnavailablePictureSnapshots) {
         const auto identity=Identity(37);
         for(int scenario=0;scenario<2;++scenario) {
@@ -753,6 +824,139 @@ public:
             L"matching caption pixels and retained Classic identity cannot reuse a cue after both current bars move");
     }
 
+    TEST_METHOD(ActualBacklogDropPendingThenCurrentScanRetainsAcquiredCue) {
+        ActivePictureDecisionTimeline timeline;
+        timeline.Reset(1);
+        auto first=CompleteBackedCue(4497);
+        first.identity.analysisDomainKey=7;
+        first.independentBarAnalysis=true;
+        first.barEvidence.available=true;first.barEvidence.top=45;first.barEvidence.bottom=315;
+        auto dropped=first.identity;dropped.acceptedSequence=4498;
+        dropped.sourceFrameNumber=4498;dropped.captureTimestamp=4498000;
+        auto pendingIdentity=first.identity;pendingIdentity.acceptedSequence=4499;
+        pendingIdentity.sourceFrameNumber=4499;pendingIdentity.captureTimestamp=4499000;
+        auto current=first;current.identity.acceptedSequence=4500;
+        current.identity.sourceFrameNumber=4500;current.identity.captureTimestamp=4500000;
+        for(const auto& id : {first.identity,dropped,pendingIdentity,current.identity})
+            Assert::IsTrue(timeline.TrackAcceptedFrame(id));
+        const auto before=timeline.ContinuityGeneration();
+        SubtitleBoxPresentation tracker;
+        auto initial=Resolve({first});initial.continuityGeneration=before;
+        const auto acquired=tracker.Consume(initial);
+        Assert::IsTrue(acquired.detected);
+        Assert::IsTrue(tracker.HasAcceptedSourceTemplate());
+        Assert::IsTrue(tracker.AcceptedTemplateIdentity().acceptedSequence==4497);
+        // The submitted output may still select source 4496 here; the current
+        // source tracker and future immutable output packet have distinct clocks.
+        timeline.MarkConsumed(first.identity);
+        timeline.MarkDiscarded(dropped,4498,ActivePictureDiscardReason::BacklogRecovery);
+        const auto after=timeline.ContinuityGeneration();
+        Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(
+            tracker.AcceptedTemplateIdentity(),pendingIdentity,
+            tracker.AcceptedTemplateContinuity(),after));
+        auto pending=SubtitleBoxPreview{};pending.current=current;
+        pending.current.identity=pendingIdentity;
+        pending.policyGeneration=initial.policyGeneration;
+        pending.continuityGeneration=after;
+        Assert::IsFalse(tracker.Consume(pending,250,1000.0/24.0,
+            &first.identity,true).detected);
+        timeline.MarkConsumed(pendingIdentity);
+        Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(
+            tracker.AcceptedTemplateIdentity(),current.identity,
+            tracker.AcceptedTemplateContinuity(),after),
+            L"A processed but unproven intervening source is known, not a cue vote.");
+        current.continuityGeneration=after;
+        auto completed=Resolve({current});completed.continuityGeneration=after;
+        const auto resumed=tracker.Consume(completed,250,1000.0/24.0,
+            &first.identity,true);
+        Assert::IsTrue(resumed.detected);
+        Assert::IsFalse(resumed.held);
+        Assert::AreEqual(acquired.cue,resumed.cue);
+        Assert::IsTrue(tracker.AcceptedTemplateIdentity().acceptedSequence==4500);
+    }
+    TEST_METHOD(BacklogOnlyCurrentScanReassociatesSubmittedCueWithoutFutureVote) {
+        auto first=CompleteBackedCue(1);
+        first.independentBarAnalysis=true;
+        first.barEvidence.available=true;first.barEvidence.top=45;first.barEvidence.bottom=315;
+        auto initial=Resolve({first});
+        SubtitleBoxPresentation tracker;
+        const auto accepted=tracker.Consume(initial);
+        Assert::IsTrue(accepted.detected);
+        auto pending=SubtitleBoxPreview{};
+        pending.current=first;pending.current.identity=Identity(4);
+        pending.continuityGeneration=9;pending.policyGeneration=initial.policyGeneration;
+        Assert::IsFalse(tracker.Consume(pending,250,1000.0/24.0,
+            &first.identity,true).detected,
+            L"A missing worker result must not emit remembered cue pixels.");
+        auto current=first;current.identity=Identity(5);
+        current.continuityGeneration=9;
+        auto live=Resolve({current});live.continuityGeneration=9;
+        const auto resumed=tracker.Consume(live,250,1000.0/24.0,
+            &first.identity,true);
+        Assert::IsTrue(resumed.detected);
+        Assert::IsFalse(resumed.held);
+        Assert::AreEqual(accepted.cue,resumed.cue);
+        Assert::IsTrue(std::string(tracker.DecisionReason())=="backlog-current-cue-reassociated");
+    }
+    TEST_METHOD(BacklogReassociationAllowsOfferedButUnusedBarReference) {
+        auto first=CompleteBackedCue(1);
+        first.independentBarAnalysis=true;
+        first.barEvidence.available=true;
+        first.barEvidence.top=45;first.barEvidence.bottom=315;
+        SubtitleBoxPresentation tracker;
+        const auto acquired=tracker.Consume(Resolve({first}));
+        Assert::IsTrue(acquired.detected);
+        auto current=first;
+        current.identity=Identity(5);
+        current.continuityGeneration=9;
+        current.hasBarTrackingReference=true; // Offered; neither edge consumed it.
+        current.barTrackingAuthority=false;
+        current.currentAnchorUsesTrackedEdge=false;
+        current.barEvidence.topRevalidatedAtReference=false;
+        current.barEvidence.bottomRevalidatedAtReference=false;
+        auto live=Resolve({current});
+        live.continuityGeneration=9;
+        const auto resumed=tracker.Consume(live,250,1000.0/24.0,
+            &first.identity,true);
+        Assert::IsTrue(resumed.detected);
+        Assert::IsFalse(resumed.held);
+        Assert::AreEqual(acquired.cue,resumed.cue);
+        Assert::IsTrue(std::string(tracker.DecisionReason())==
+            "backlog-current-cue-reassociated");
+    }
+    TEST_METHOD(BacklogOnlyReassociationRejectsNewOwnedInkAndChangedGlyphs) {
+        auto first=CompleteBackedCue(1);
+        first.independentBarAnalysis=true;
+        first.barEvidence.available=true;first.barEvidence.top=45;first.barEvidence.bottom=315;
+        for(int scenario=0;scenario<3;++scenario) {
+            SubtitleBoxPresentation tracker;
+            const auto acquired=tracker.Consume(Resolve({first}));
+            Assert::IsTrue(acquired.detected);
+            auto current=first;current.identity=Identity(5);
+            current.continuityGeneration=9;
+            if(scenario==0) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);
+                const size_t pixel=size_t(340)*ink->width+480;
+                ink->rawInk[pixel/64]|=uint64_t(1)<<(pixel%64);
+                ink->ownedInk[pixel/64]|=uint64_t(1)<<(pixel%64);
+                current.ink=ink;
+            }
+            if(scenario==1) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);
+                for(int y=318;y<332;++y)for(int x=200;x<440;++x) {
+                    const size_t pixel=size_t(y)*ink->width+x;
+                    ink->rawInk[pixel/64]&=~(uint64_t(1)<<(pixel%64));
+                }
+                current.ink=ink;
+            }
+            if(scenario==2)current.identity.analysisDomainKey++;
+            auto preview=Resolve({current});preview.continuityGeneration=9;
+            const auto result=tracker.Consume(preview,250,1000.0/24.0,
+                &first.identity,true);
+            Assert::IsFalse(result.detected && result.cue==acquired.cue,
+                L"New ink, changed glyphs, or a changed domain cannot borrow the submitted cue.");
+        }
+    }
     TEST_METHOD(BackedMinorCoverageVariationRetainsCueBeyondGrace) {
         const auto initial=CompleteBackedCue(1);
         SubtitleBoxPresentation tracker;const auto acquired=tracker.Consume(Resolve({initial}));
@@ -2647,11 +2851,15 @@ public:
         }
         release.set_value();
         const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
-        auto latest=first;latest.identity=Identity(20);bool gotLatest=false;
-        while(std::chrono::steady_clock::now()<until && !(gotLatest=worker.TryTake(latest,out)))std::this_thread::yield();
+        // Keep the next eight accepted sources, not the farthest speculative
+        // frame. Dropping near frames here made their exact display scans late.
+        auto nearestTail=first;nearestTail.identity=Identity(9);bool gotNearestTail=false;
+        while(std::chrono::steady_clock::now()<until && !(gotNearestTail=worker.TryTake(nearestTail,out)))std::this_thread::yield();
         worker.Stop();
+        auto latest=first;latest.identity=Identity(20);
+        Assert::IsFalse(worker.TryTake(latest,out),L"Far future work must not displace the imminent sources.");
         Assert::IsFalse(wasReady);Assert::IsFalse(wrongThread.load());
-        Assert::IsTrue(gotLatest);Assert::AreEqual(9,runs.load());
+        Assert::IsTrue(gotNearestTail);Assert::AreEqual(9,runs.load());
         const auto diagnostics=worker.TakeDiagnostics();
         Assert::AreEqual(uint64_t(9),diagnostics.fullScans);
         Assert::AreEqual(uint64_t(11),diagnostics.dropped);

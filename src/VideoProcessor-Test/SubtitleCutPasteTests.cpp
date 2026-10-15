@@ -1,6 +1,14 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleCutPaste.h>
+#include <SubtitleCutPasteShader.h>
+#include <libplacebo/d3d11.h>
+#include <libplacebo/gpu.h>
+#include <cstdint>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <vector>
 #include <SubtitlePreviewMode.h>
 #include <climits>
 #include <ConfigFile.h>
@@ -1113,4 +1121,335 @@ public:
         const auto original=MapSubtitleCutPastePixel({},210,320);
         Assert::IsFalse(original.clear);Assert::AreEqual(210,original.x);Assert::AreEqual(320,original.y);
     }
-}; }
+};
+namespace {
+struct SubtitleShaderGpuFixture {
+    pl_d3d11 device=nullptr;
+    pl_renderer renderer=nullptr;
+    const pl_hook* hook=nullptr;
+    pl_tex inputTexture=nullptr,chromaTexture=nullptr,allTexture=nullptr,cleanTexture=nullptr,layerTexture=nullptr;
+    pl_tex allOutput=nullptr,splitOutput=nullptr;
+    pl_frame input{};
+    SubtitleShaderGpuFixture(pl_color_transfer transfer=PL_COLOR_TRC_LINEAR,int yuvFormat=0) {
+        pl_d3d11_params d{};d.allow_software=true;
+        device=pl_d3d11_create(nullptr,&d);
+        Assert::IsTrue(device!=nullptr,L"Subtitle shader D3D11 fixture unavailable");
+        renderer=pl_renderer_create(nullptr,device->gpu);
+        Assert::IsTrue(renderer!=nullptr);
+        hook=CreateSubtitleCutPasteHook(device->gpu);
+        Assert::IsTrue(hook!=nullptr,L"Subtitle shader could not be parsed");
+        pl_tex_params p{};p.w=p.h=64;p.format=pl_find_named_fmt(device->gpu,"rgba8");
+        Assert::IsTrue(p.format!=nullptr);
+        p.sampleable=true;p.renderable=true;p.blit_src=true;p.blit_dst=true;
+        p.host_readable=true;p.host_writable=true;
+        inputTexture=pl_tex_create(device->gpu,&p);
+        Assert::IsTrue(inputTexture!=nullptr);
+        p.format=pl_find_fmt(device->gpu,PL_FMT_FLOAT,4,16,0,
+            static_cast<pl_fmt_caps>(PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_BLENDABLE));
+        Assert::IsTrue(p.format!=nullptr,L"Linear float target format unavailable");
+        p.sampleable=false;p.blit_src=false;p.blit_dst=false;p.host_writable=false;
+        allOutput=pl_tex_create(device->gpu,&p);
+        splitOutput=pl_tex_create(device->gpu,&p);
+        Assert::IsTrue(allOutput&&splitOutput);
+        input.num_planes=1;input.planes[0].texture=inputTexture;input.planes[0].components=4;
+        for(int c=0;c<4;++c)input.planes[0].component_mapping[c]=c;
+        input.repr=pl_color_repr_rgb;input.repr.alpha=PL_ALPHA_NONE;
+        input.color=pl_color_space_srgb;input.color.transfer=PL_COLOR_TRC_LINEAR;
+        input.crop={0,0,64,64};
+        std::vector<uint8_t> pixels(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t i=(y*64+x)*4;
+            const bool card=x>=20&&x<44&&y>=48&&y<60;
+            const bool glyph=x>=26&&x<38&&y>=51&&y<57;
+            const uint8_t value=glyph?250:card?100:40;
+            pixels[i]=pixels[i+1]=pixels[i+2]=value;
+        }
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+        input.color.transfer=transfer;
+        if(transfer==PL_COLOR_TRC_PQ || transfer==PL_COLOR_TRC_HLG) {
+            input.color.primaries=PL_COLOR_PRIM_BT_2020;
+            input.color.hdr.min_luma=0.005f;
+            input.color.hdr.max_luma=1000.0f;
+        }
+        if(yuvFormat)UseYuv(yuvFormat==2);
+    }
+    ~SubtitleShaderGpuFixture() {
+        if(!device)return;
+        pl_tex_destroy(device->gpu,&inputTexture);
+        pl_tex_destroy(device->gpu,&chromaTexture);
+        pl_tex_destroy(device->gpu,&allTexture);
+        pl_tex_destroy(device->gpu,&cleanTexture);
+        pl_tex_destroy(device->gpu,&layerTexture);
+        pl_tex_destroy(device->gpu,&allOutput);
+        pl_tex_destroy(device->gpu,&splitOutput);
+        pl_mpv_user_shader_destroy(&hook);
+        pl_renderer_destroy(&renderer);pl_d3d11_destroy(&device);
+    }
+    void UseYuv(bool tenBit) {
+        const int lumaStride=tenBit?2:1;
+        const int chromaStride=tenBit?4:2;
+        std::vector<uint8_t> y(64*64*lumaStride),uv(32*32*chromaStride);
+        if(tenBit) {
+            auto* luma=reinterpret_cast<uint16_t*>(y.data());
+            auto* chroma=reinterpret_cast<uint16_t*>(uv.data());
+            for(int row=0;row<64;++row)for(int col=0;col<64;++col) {
+                const bool card=col>=20&&col<44&&row>=48&&row<60;
+                const bool glyph=col>=26&&col<38&&row>=51&&row<57;
+                const int value=glyph?250:card?100:40;
+                luma[row*64+col]=uint16_t((64+value*876/255)<<6);
+            }
+            for(int i=0;i<32*32*2;++i)chroma[i]=uint16_t(512<<6);
+        } else {
+            for(int row=0;row<64;++row)for(int col=0;col<64;++col) {
+                const bool card=col>=20&&col<44&&row>=48&&row<60;
+                const bool glyph=col>=26&&col<38&&row>=51&&row<57;
+                const int value=glyph?250:card?100:40;
+                y[row*64+col]=uint8_t(16+value*219/255);
+            }
+            std::fill(uv.begin(),uv.end(),uint8_t(128));
+        }
+        pl_tex_params p{};p.w=p.h=64;p.sampleable=true;
+        p.format=pl_find_fmt(device->gpu,PL_FMT_UNORM,1,tenBit?16:8,tenBit?16:8,PL_FMT_CAP_SAMPLEABLE);
+        Assert::IsTrue(p.format!=nullptr,L"YUV luma format unavailable");
+        p.initial_data=y.data();
+        pl_tex luma=pl_tex_create(device->gpu,&p);
+        Assert::IsTrue(luma!=nullptr);
+        p.w=p.h=32;p.format=pl_find_fmt(device->gpu,PL_FMT_UNORM,2,tenBit?16:8,tenBit?16:8,PL_FMT_CAP_SAMPLEABLE);
+        Assert::IsTrue(p.format!=nullptr,L"YUV chroma format unavailable");
+        p.initial_data=uv.data();
+        chromaTexture=pl_tex_create(device->gpu,&p);
+        Assert::IsTrue(chromaTexture!=nullptr);
+        pl_tex_destroy(device->gpu,&inputTexture);inputTexture=luma;
+        input.num_planes=2;input.planes[0].texture=inputTexture;input.planes[0].components=1;
+        input.planes[0].component_mapping[0]=0;
+        input.planes[1].texture=chromaTexture;input.planes[1].components=2;
+        input.planes[1].component_mapping[0]=1;input.planes[1].component_mapping[1]=2;
+        input.repr.sys=input.color.primaries==PL_COLOR_PRIM_BT_2020?
+            PL_COLOR_SYSTEM_BT_2020_NC:PL_COLOR_SYSTEM_BT_709;
+        input.repr.levels=PL_COLOR_LEVELS_LIMITED;
+        input.repr.alpha=PL_ALPHA_NONE;
+        if(tenBit) {
+            input.repr.bits.sample_depth=16;input.repr.bits.color_depth=10;
+            input.repr.bits.bit_shift=6;
+        }
+    }
+    static SubtitleCutPasteGeometry Geometry(bool overlap=false) {
+        SubtitleCutPasteGeometry g;
+        g.valid=true;g.source={20,48,44,60};g.content={24,50,40,58};
+        g.destination=overlap?SubtitleBoxRect{20,43,44,55}:SubtitleBoxRect{20,32,44,44};
+        g.generatedCleanup=g.source;
+        g.pictureCapture=g.source;g.glyphLines[0]=g.content;
+        g.pictureTop=8;g.pictureBottom=62;
+        g.roundedCorners=true;g.extendToBar=false;
+        return g;
+    }
+    static std::array<float,4> Pixel(const std::vector<float>& pixels,int x,int y) {
+        const size_t i=(y*64+x)*4;
+        return {pixels[i],pixels[i+1],pixels[i+2],pixels[i+3]};
+    }
+    static float FloatChannel(const uint8_t* bytes,int hostBits) {
+        if(hostBits==32) {
+            float value=0;std::memcpy(&value,bytes,sizeof(value));return value;
+        }
+        uint16_t half=0;std::memcpy(&half,bytes,sizeof(half));
+        const int exponent=(half>>10)&31,significand=half&1023;
+        return exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
+            std::ldexp(float(significand),-24);
+    }
+    std::vector<float> ReadLinear(pl_tex texture) {
+        const pl_fmt format=texture->params.format;
+        Assert::IsTrue(format->num_components==4 &&
+            (format->host_bits[0]==16 || format->host_bits[0]==32),
+            L"Unexpected float target host format");
+        std::vector<uint8_t> bytes(64*64*format->texel_size);
+        pl_tex_transfer_params transfer{};transfer.tex=texture;transfer.ptr=bytes.data();
+        Assert::IsTrue(pl_tex_download(device->gpu,&transfer));
+        std::vector<float> pixels(64*64*4);
+        const size_t channelBytes=format->host_bits[0]/8;
+        for(size_t pixel=0;pixel<64*64;++pixel)
+            for(int channel=0;channel<4;++channel)
+                pixels[pixel*4+channel]=FloatChannel(
+                    bytes.data()+pixel*format->texel_size+channel*channelBytes,
+                    format->host_bits[channel]);
+        return pixels;
+    }
+    void Run(int backgroundMode,bool overlap=false) {
+        const auto geometry=Geometry(overlap);
+        SubtitleGeneratedGrayStyle style;
+        style.blurPixels=backgroundMode==5?4.0f:0.0f;
+        style.borderWidth=2.0f;style.borderOpacity=0.65f;
+        pl_frame all{},clean{},layer{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
+            style,false,SubtitleCompositionPhase::All));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&allTexture,all));
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
+            style,false,SubtitleCompositionPhase::CleanupOnly));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
+            style,false,SubtitleCompositionPhase::LayerOnly));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        Assert::IsTrue(layer.repr.alpha==PL_ALPHA_INDEPENDENT,L"Layer alpha metadata was lost");
+        pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
+        stagingParams.format=layerTexture->params.format;
+        stagingParams.blit_dst=true;stagingParams.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&stagingParams);
+        Assert::IsTrue(staging!=nullptr,L"Layer readback staging allocation failed");
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const pl_fmt layerFormat=staging->params.format;
+        Assert::IsTrue(layerFormat->num_components==4 &&
+            layerFormat->sample_order[3]==3 &&
+            (layerFormat->host_bits[3]==16 || layerFormat->host_bits[3]==32),
+            L"Unexpected RGBA float host format");
+        std::vector<uint8_t> layerBytes(64*64*layerFormat->texel_size);
+        pl_tex_transfer_params readLayer{};readLayer.tex=staging;readLayer.ptr=layerBytes.data();
+        const bool downloaded=pl_tex_download(device->gpu,&readLayer);
+        pl_tex_destroy(device->gpu,&staging);
+        Assert::IsTrue(downloaded,L"Layer readback failed");
+        const auto alphaAt=[&](size_t pixel) {
+            const uint8_t* const channel=layerBytes.data()+pixel*layerFormat->texel_size+
+                3*(layerFormat->host_bits[3]/8);
+            if(layerFormat->host_bits[3]==32) {
+                float value=0;std::memcpy(&value,channel,sizeof(value));return value;
+            }
+            uint16_t half=0;std::memcpy(&half,channel,sizeof(half));
+            const int exponent=(half>>10)&31,significand=half&1023;
+            return exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
+                std::ldexp(float(significand),-24);
+        };
+        const float outsideAlpha=alphaAt(3*64+3);
+        const int interiorX=(geometry.destination.left+geometry.destination.right)/2;
+        const int interiorY=(geometry.destination.top+geometry.destination.bottom)/2;
+        const float insideAlpha=alphaAt(interiorY*64+interiorX);
+        int alphaCount=0,minAlphaX=64,minAlphaY=64,maxAlphaX=-1,maxAlphaY=-1;
+        float maxAlpha=0.0f;
+        for(int row=0;row<64;++row)for(int col=0;col<64;++col) {
+            const float a=alphaAt(row*64+col);
+            if(a>0.001f) {
+                ++alphaCount;minAlphaX=std::min(minAlphaX,col);minAlphaY=std::min(minAlphaY,row);
+                maxAlphaX=std::max(maxAlphaX,col);maxAlphaY=std::max(maxAlphaY,row);
+                maxAlpha=std::max(maxAlpha,a);
+            }
+        }
+        Assert::IsTrue(outsideAlpha<0.001f,L"Layer is opaque outside its destination");
+        Assert::IsTrue(insideAlpha>0.5f,(std::wstring(L"Layer lost its interior alpha; inside=")+std::to_wstring(insideAlpha)+L" count="+std::to_wstring(alphaCount)+L" max="+std::to_wstring(maxAlpha)+L" bbox="+std::to_wstring(minAlphaX)+L","+std::to_wstring(minAlphaY)+L".."+std::to_wstring(maxAlphaX)+L","+std::to_wstring(maxAlphaY)+L" mode="+std::to_wstring(backgroundMode)+L" transfer="+std::to_wstring(int(input.color.transfer))+L" overlap="+std::to_wstring(overlap)+L" texel="+std::to_wstring(layerFormat->texel_size)+L" host="+std::to_wstring(layerFormat->host_bits[3])).c_str());
+        bool partialAlpha=false;
+        for(size_t pixel=0;pixel<64*64;++pixel) {
+            const float alpha=alphaAt(pixel);
+            partialAlpha|=alpha>0.001f && alpha<0.999f;
+        }
+        Assert::IsTrue(partialAlpha,L"Rounded panel/border has no partially transparent edge");
+        pl_frame allTarget{};allTarget.num_planes=1;
+        allTarget.planes[0].texture=allOutput;allTarget.planes[0].components=4;
+        for(int c=0;c<4;++c)allTarget.planes[0].component_mapping[c]=c;
+        allTarget.repr=pl_color_repr_rgb;allTarget.repr.alpha=PL_ALPHA_NONE;
+        allTarget.color=input.color;allTarget.color.transfer=PL_COLOR_TRC_LINEAR;
+        allTarget.crop={0,0,64,64};
+        pl_frame splitTarget=allTarget;splitTarget.planes[0].texture=splitOutput;
+        pl_overlay overlay{};pl_overlay_part part{};
+        overlay.tex=layerTexture;overlay.mode=PL_OVERLAY_NORMAL;
+        overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
+        overlay.repr=layer.repr;overlay.color=layer.color;
+        part.src={0,0,64,64};part.dst={0,0,64,64};
+        overlay.parts=&part;overlay.num_parts=1;
+        splitTarget.overlays=&overlay;splitTarget.num_overlays=1;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        pl_frame cleanTarget=splitTarget;cleanTarget.overlays=nullptr;cleanTarget.num_overlays=0;
+        Assert::IsTrue(pl_render_image(renderer,&input,&allTarget,&params));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&cleanTarget,&params));
+        const auto originalSource=ReadLinear(allOutput),cleanedSource=ReadLinear(splitOutput);
+        const auto outsideBefore=Pixel(originalSource,3,3),outsideAfter=Pixel(cleanedSource,3,3);
+        for(int c=0;c<3;++c)
+            Assert::IsTrue(std::abs(outsideBefore[c]-outsideAfter[c])<=0.005f,
+                L"Cleanup changed pixels outside the subtitle footprint");
+        const auto glyphBefore=Pixel(originalSource,30,53),glyphAfter=Pixel(cleanedSource,30,53);
+        Assert::IsTrue(glyphBefore[0]-glyphAfter[0]>0.03f,
+            L"Cleanup failed to remove the original glyph");
+        Assert::IsTrue(pl_render_image(renderer,&all,&allTarget,&params));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&splitTarget,&params));
+        const auto original=ReadLinear(allOutput),split=ReadLinear(splitOutput);
+        float worst=0.0f,worstAllowed=0.0f;
+        int worstX=0,worstY=0,worstChannel=0;
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const auto a=Pixel(original,x,y),b=Pixel(split,x,y);
+            for(int c=0;c<3;++c) {
+                const float difference=std::abs(a[c]-b[c]);
+                const float allowed=(std::max)(0.008f,
+                    0.005f*(std::max)(std::abs(a[c]),std::abs(b[c])));
+                if(difference/allowed>worst/(std::max)(worstAllowed,0.000001f)) {
+                    worst=difference;worstAllowed=allowed;
+                    worstX=x;worstY=y;worstChannel=c;
+                }
+            }
+        }
+        const std::wstring mismatch=L"Split composition mismatch at ("+
+            std::to_wstring(worstX)+L","+std::to_wstring(worstY)+L") channel "+
+            std::to_wstring(worstChannel)+L" difference "+std::to_wstring(worst)+
+            L" allowed "+std::to_wstring(worstAllowed);
+        Assert::IsTrue(worst<=worstAllowed,mismatch.c_str());
+        if(backgroundMode==3 && !overlap) {
+            auto disabled=geometry;disabled.valid=false;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,disabled,backgroundMode,
+                input.color.transfer,style,false,SubtitleCompositionPhase::LayerOnly));
+            pl_frame emptyLayer{};
+            Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,
+                hook,&layerTexture,emptyLayer));
+            pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
+            stagingParams.format=layerTexture->params.format;
+            stagingParams.blit_dst=true;stagingParams.host_readable=true;
+            pl_tex staging=pl_tex_create(device->gpu,&stagingParams);
+            Assert::IsTrue(staging!=nullptr);
+            pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;
+            pl_tex_blit(device->gpu,&copy);
+            const pl_fmt format=staging->params.format;
+            std::vector<uint8_t> bytes(64*64*format->texel_size);
+            pl_tex_transfer_params read{};read.tex=staging;read.ptr=bytes.data();
+            const bool downloaded=pl_tex_download(device->gpu,&read);
+            pl_tex_destroy(device->gpu,&staging);
+            Assert::IsTrue(downloaded);
+            for(size_t pixel=0;pixel<64*64;++pixel) {
+                const float alpha=FloatChannel(bytes.data()+pixel*format->texel_size+
+                    3*(format->host_bits[3]/8),format->host_bits[3]);
+                Assert::IsTrue(alpha<0.001f,L"Disabled layer left opaque pixels");
+            }
+        }
+    }
+};
+}
+TEST_CLASS(SubtitleCutPasteShaderTests) {
+public:
+    TEST_METHOD(SourceProcessingSnapshotOwnsDebandValues) {
+        pl_render_params settings=pl_render_fast_params;
+        pl_deband_params deband=pl_deband_default_params;
+        deband.iterations=3;deband.threshold=7.0f;
+        settings.plane_upscaler=&pl_filter_bicubic;
+        settings.plane_downscaler=&pl_filter_bilinear;
+        settings.antiringing_strength=0.25f;
+        settings.deband_params=&deband;
+        const auto snapshot=CaptureSubtitleSourceProcessingOptions(settings);
+        deband.iterations=1;deband.threshold=2.0f;
+        settings.plane_upscaler=nullptr;settings.deband_params=nullptr;
+        Assert::IsTrue(snapshot.planeUpscaler==&pl_filter_bicubic);
+        Assert::IsTrue(snapshot.planeDownscaler==&pl_filter_bilinear);
+        Assert::IsTrue(snapshot.antiringingStrength==0.25f);
+        Assert::IsTrue(snapshot.debandEnabled);
+        Assert::AreEqual(3,snapshot.debandParams.iterations);
+        Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
+    }
+    TEST_METHOD(BlackAndReconstructionLayersPreserveAlphaAndComposition) {
+        for(const auto transfer:{PL_COLOR_TRC_LINEAR,PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_HLG}) {
+            SubtitleShaderGpuFixture rgb(transfer);
+            rgb.Run(3);rgb.Run(5);
+            if(transfer==PL_COLOR_TRC_LINEAR) {
+                rgb.Run(3,true);rgb.Run(5,true);
+            }
+        }
+        SubtitleShaderGpuFixture nv12(PL_COLOR_TRC_SRGB,1);
+        nv12.Run(3);nv12.Run(5);
+        SubtitleShaderGpuFixture p010(PL_COLOR_TRC_PQ,2);
+        p010.Run(3);p010.Run(5);
+        p010.Run(3,true);p010.Run(5,true);
+    }
+};
+}

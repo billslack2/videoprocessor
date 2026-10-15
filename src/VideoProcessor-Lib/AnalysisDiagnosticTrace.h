@@ -112,7 +112,7 @@ struct AnalysisDiagnosticFramePacketV1
 	uint32_t discontinuity = 0;
 	uint32_t cadenceRepeat = 0;
 	uint32_t rgbBitAlignment = 0;
-	uint32_t reserved1 = 0;
+	uint32_t analysisSampleRange = 0; // AnalysisLumaRange; replaces reserved ABI word.
 	const uint8_t* data = nullptr;
 	uint64_t dataBytes = 0;
 	const void* ownerContext = nullptr;

@@ -2,6 +2,7 @@
 
 #include <IRenderer.h>
 #include <AnalysisFrame.h>
+#include <vprenderer/OptionalAnalysisWorker.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <ActivePictureDecisionTimeline.h>
@@ -9,9 +10,11 @@
 #include <CropDiagnosticThrottle.h>
 #include <RememberedEdgeReturn.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/AsyncOutwardWindow.h>
 #include <vprenderer/AlphaConversionTimingWindow.h>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -146,8 +149,23 @@ private:
 			double conversionCpuMs = 0.0;
 			int64_t completedQpc = 0;
 		};
+        struct LookaheadMeasurement {
+            uint64_t domainKey=0;
+            ActivePictureEvidence evidence;
+            ActivePictureArDarknessEvidence darkness;
+        };
+        using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
+        struct OutwardWindowResult {
+            AlphaSourceCrop::AsyncOutwardWindowContext context;
+            AlphaSourceCrop::BufferedPictureExpansionProof proof;
+        };
+        using OutwardWindowWorker = OptionalAnalysisWorker<OutwardWindowResult, 4>;
         struct AnalysisPayload
         {
+            std::shared_ptr<LookaheadWorker::Slot> lookahead = std::make_shared<LookaheadWorker::Slot>();
+            std::shared_ptr<OutwardWindowWorker::Slot> outwardWindow;
+            AlphaSourceCrop::AsyncOutwardWindowContext outwardContext;
+            bool outwardRequested=false;
             std::mutex mutex;
             std::shared_ptr<const void> nativeOwner;
             PreparedAnalysisFrame live;
@@ -191,11 +209,17 @@ private:
 	bool HasConversionWorkLocked() const;
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
-	void AnalyzeActivePictureLookahead(
+    void PrimeSubtitleMeasurements(const std::vector<QueuedFrame>& frames,
+        uint64_t policyGeneration, uint64_t continuityGeneration);
+    void PrimeActivePictureMeasurements(const std::vector<QueuedFrame>& frames,
+        uint64_t policyGeneration, uint64_t continuityGeneration);
+    void PrimeBufferedOutwardWindow(const std::vector<QueuedFrame>& futureFrames,
+        uint64_t policyGeneration, uint64_t continuityGeneration);
+	bool AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
 		size_t queuedFutureFrames,
 		uint64_t lookaheadPolicyGeneration,
-		uint64_t continuityGeneration);
+		uint64_t continuityGeneration, int64_t deadlineQpc);
 	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
 	void ClearQueueLocked(const char* reason);

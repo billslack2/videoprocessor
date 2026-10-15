@@ -22,7 +22,7 @@ namespace
     uint64_t DomainKey(const PreparedAnalysisFrame& result)
     {
         uint64_t hash = 14695981039346656037ull;
-        hash = Mix(hash, 1); // evidence sampling contract version
+        hash = Mix(hash, 2); // range-aware evidence sampling contract version
         hash = Mix(hash, static_cast<uint64_t>(result.domain));
         hash = Mix(hash, static_cast<uint64_t>(result.source.width));
         hash = Mix(hash, static_cast<uint64_t>(result.source.height));
@@ -187,6 +187,18 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
     if (!result.sourceOwner || !backing.IsValid())
         return {};
     backing.backingOwner = result.sourceOwner;
+    switch (result.sampleRange)
+    {
+    case VideoFrameSampleRange::LIMITED:
+        backing.range = AnalysisLumaRange::Limited;
+        break;
+    case VideoFrameSampleRange::FULL:
+        backing.range = AnalysisLumaRange::Full;
+        break;
+    default:
+        backing.range = AnalysisLumaRange::Unknown;
+        break;
+    }
     result.source = std::move(backing);
     if (!result.source.IsValid())
         return {};

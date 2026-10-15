@@ -38,6 +38,9 @@ struct AlphaPreRenderTimings
 	double previewWaitMs = 0.0;
 	double dequeueWaitMs = 0.0;
 	double lookaheadMs = 0.0;
+    double lookaheadBudgetMs = 0.0;
+    bool lookaheadPhaseKnown = false;
+    bool lookaheadCompleted = false;
 	double renderLockWaitMs = 0.0;
 	double activeMs = 0.0;
 };
@@ -47,6 +50,11 @@ struct AlphaPresentationRecord
 	uint64_t generation = 0;
 	uint64_t sourceSequence = 0;
 	uint64_t sourceFrameNumber = 0;
+    // Incoming sequence remains the cadence/debt key. These identify pixels
+    // selected from temporal history and correlate them with this present ID.
+    uint64_t selectedSourceSequence = 0, subtitleSourceSequence = 0, presentationEpoch = 0;
+    double selectedSourcePts = 0.0, outputPts = 0.0;
+    bool temporalActive = false;
 	int64_t captureTimestamp = 0;
 	int64_t callbackQpc = 0;
 	int64_t enqueueQpc = 0;

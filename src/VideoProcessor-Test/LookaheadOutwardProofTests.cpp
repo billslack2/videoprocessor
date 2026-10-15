@@ -5,6 +5,10 @@
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/AlphaQueuePolicy.h>
+#include <vprenderer/AsyncOutwardWindow.h>
+#include <vprenderer/GradualPictureBoundaryRetention.h>
+#include <vprenderer/PresentationAnalysisBudget.h>
+#include <vprenderer/OptionalAnalysisWorker.h>
 #include <deque>
 #include <array>
 #include <vector>
@@ -1408,4 +1412,283 @@ namespace Tests
 			}
 		}
 	};
+
+    TEST_CLASS(AsyncOutwardWindowSafetyTests)
+    {
+        static AsyncOutwardWindowContext Context()
+        {
+            AsyncOutwardWindowContext context;
+            context.base=context.subtitleBase=BufferedScope();
+            context.policyGeneration=23; context.continuityGeneration=19;
+            context.subtitleEvidenceSourceGeneration=7;
+            for(size_t i=0;i<context.contributors.size();++i) {
+                context.contributors[i]=BufferedIdentity(100+i);
+                context.contributors[i].analysisDomainKey=101;
+            }
+            return context;
+        }
+        static bool Current(const AsyncOutwardWindowContext& proof,
+            const AsyncOutwardWindowContext& live)
+        {
+            return AsyncOutwardContextCurrent(proof,live.contributors[0],live.base,
+                live.subtitleBase,live.owner,live.subtitleEvidenceSourceGeneration,
+                live.policyGeneration,live.continuityGeneration);
+        }
+    public:
+        TEST_METHOD(ImmutableWindowRejectsEveryContributorIdentityAndContextMutation)
+        {
+            const auto original=Context();
+            Assert::IsTrue(SameAsyncOutwardContext(original,original));
+            for(size_t contributor=0;contributor<3;++contributor)
+                for(int field=0;field<8;++field) {
+                    auto changed=original;
+                    auto& id=changed.contributors[contributor];
+                    switch(field) {
+                    case 0: ++id.transportGeneration; break;
+                    case 1: ++id.acceptedSequence; break;
+                    case 2: ++id.sourceFrameNumber; break;
+                    case 3: ++id.captureTimestamp; break;
+                    case 4: ++id.sourceFormatGeneration; break;
+                    case 5: ++id.viewportGeneration; break;
+                    case 6: ++id.rendererGeneration; break;
+                    case 7: ++id.analysisDomainKey; break;
+                    }
+                    Assert::IsFalse(SameAsyncOutwardContext(original,changed));
+                }
+            for(int field=0;field<8;++field) {
+                auto changed=original;
+                switch(field) {
+                case 0: ++changed.base.top; break;
+                case 1: ++changed.base.rasterWidth; break;
+                case 2: changed.base.trustedBarAxes=ActivePictureBounds::BarAxes::NONE; break;
+                case 3: ++changed.subtitleBase.bottom; break;
+                case 4: ++changed.policyGeneration; break;
+                case 5: ++changed.continuityGeneration; break;
+                case 6: ++changed.subtitleEvidenceSourceGeneration; break;
+                case 7: changed.owner=VerticalBarPresentationAction::TRANSLATE; break;
+                }
+                Assert::IsFalse(SameAsyncOutwardContext(original,changed));
+            }
+        }
+
+        TEST_METHOD(CurrentContextRejectsStaleBasePolicyContinuityAndOwner)
+        {
+            const auto original=Context();
+            Assert::IsTrue(Current(original,original));
+            for(int field=0;field<7;++field) {
+                auto live=original;
+                switch(field) {
+                case 0: ++live.base.top; break;
+                case 1: ++live.policyGeneration; break;
+                case 2: ++live.continuityGeneration; break;
+                case 3: ++live.contributors[0].acceptedSequence; break;
+                case 4: ++live.contributors[0].viewportGeneration; break;
+                case 5: live.owner=VerticalBarPresentationAction::FIT; break;
+                case 6: live.owner=VerticalBarPresentationAction::TRANSLATE; break;
+                }
+                Assert::IsFalse(Current(original,live));
+            }
+            auto invalid=original; invalid.policyGeneration=0;
+            Assert::IsFalse(Current(invalid,invalid));
+            invalid=original; invalid.continuityGeneration=0;
+            Assert::IsFalse(Current(invalid,invalid));
+        }
+
+        TEST_METHOD(TranslatedOwnerRequiresSameSourceAndPhysicalSubtitleBase)
+        {
+            auto proof=Context(); proof.owner=VerticalBarPresentationAction::TRANSLATE;
+            Assert::IsTrue(Current(proof,proof));
+            auto live=proof; ++live.subtitleBase.top;
+            Assert::IsFalse(Current(proof,live));
+            live=proof; ++live.subtitleEvidenceSourceGeneration;
+            Assert::IsFalse(Current(proof,live));
+            proof.subtitleEvidenceSourceGeneration=0;
+            Assert::IsFalse(Current(proof,proof));
+            proof=Context(); proof.owner=VerticalBarPresentationAction::FIT;
+            Assert::IsFalse(Current(proof,proof));
+        }
+
+        TEST_METHOD(TransportMatchStillRequiresExactPreparedAnalysisDomain)
+        {
+            const auto context=Context();
+            auto queued=context.contributors[0];queued.analysisDomainKey=0;
+            Assert::IsTrue(AsyncOutwardContextCurrent(context,queued,context.base,
+                context.subtitleBase,context.owner,context.subtitleEvidenceSourceGeneration,23,19));
+            Assert::IsTrue(AsyncOutwardAnalysisCurrent(context,queued,101));
+            Assert::IsFalse(AsyncOutwardAnalysisCurrent(context,queued,102));
+            Assert::IsFalse(AsyncOutwardAnalysisCurrent(context,queued,0));
+            ++queued.sourceFormatGeneration;
+            Assert::IsFalse(AsyncOutwardAnalysisCurrent(context,queued,101));
+        }
+        TEST_METHOD(CompletedProofCanValidateAtZeroSixtyHzOptionalAllowance)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            using Worker=OptionalAnalysisWorker<BufferedPictureExpansionProof>;
+            auto slot=std::make_shared<Worker::Slot>();
+            Assert::IsTrue(Worker::Ready(slot)==nullptr);
+            slot->pending.store(true);
+            Assert::IsTrue(Worker::Ready(slot)==nullptr,L"Pending work is unavailable; presentation cannot wait.");
+            std::shared_ptr<const BufferedPictureExpansionProof> immutable=std::make_shared<BufferedPictureExpansionProof>(proof);
+            std::atomic_store(&slot->ready,immutable);
+            slot->pending.store(false);
+            PresentationAnalysisBudget budget;
+            budget.Observe(7,1000000,1001000,1000000,60,true,20);
+            const auto ticket=budget.Begin(7,1001000,1000000,false,false);
+            Assert::AreEqual(int64_t(0),ticket.deadlineQpc);
+            const auto ready=Worker::Ready(slot);
+            Assert::IsTrue(ready!=nullptr);
+            const auto current=BufferedLiveInput(frames[0]);
+            Assert::IsTrue(ValidateBufferedPictureExpansion(*ready,BufferedIdentity(100),current,true),
+                L"Completed exact-source proof needs no optional pixel work and must remain usable.");
+            Assert::IsFalse(ValidateBufferedPictureExpansion(*ready,BufferedIdentity(101),current,true),
+                L"Late readiness cannot transfer authority to a later source frame.");
+            Assert::IsFalse(ValidateBufferedPictureExpansion(*ready,BufferedIdentity(99),current,true),
+                L"An output repeat cannot advance the next source frame's crop early.");
+        }
+
+        TEST_METHOD(ReadyCertificateNeverBypassesCurrentPixelsOrCaptionOwner)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            auto current=BufferedLiveInput(frames[0]);
+            Assert::IsTrue(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            current.retention.expansionStripsAvailable=false;
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            current=BufferedLiveInput(frames[0]); current.retention.analysisValid=false;
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            current=BufferedLiveInput(frames[0]); current.presentation.action=VerticalBarPresentationAction::FIT;
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            Assert::IsFalse(ValidateBufferedTranslatedPictureExpansion(proof,BufferedIdentity(100),current,true,BufferedScope()));
+            current.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            Assert::IsTrue(ValidateBufferedTranslatedPictureExpansion(proof,BufferedIdentity(100),current,true,BufferedScope()));
+            current.retention.expansionStripsAvailable=false;
+            Assert::IsFalse(ValidateBufferedTranslatedPictureExpansion(proof,BufferedIdentity(100),current,true,BufferedScope()));
+        }
+    };
+}
+
+namespace Tests
+{
+    TEST_CLASS(GradualPictureBoundaryRetentionTests)
+    {
+        static SceneDetectorResult ActualDarkEntry()
+        {
+            SceneDetector detector;
+            BufferedPixelSample before(164,1996), after(160,2000);
+            const auto level=[](BufferedPixelSample& frame,int top,int bottom,int value) {
+                for(int y=0;y<2160;++y)
+                    std::fill(frame.pixels.begin()+size_t(y)*3840,
+                        frame.pixels.begin()+size_t(y+1)*3840,
+                        static_cast<uint16_t>((y>=top && y<bottom ? value : 0)<<6));
+            };
+            level(before,164,1996,116); level(after,160,2000,108);
+            auto a=before.Source(), b=after.Source();
+            a.range=b.range=AnalysisLumaRange::Full;
+            SceneDetectorInput input;
+            input.width=3840; input.height=2160; input.strideBytes=7680;
+            input.enabled=true; input.generation=7; input.frameDuration=417083;
+            input.sourceSequence=100; input.timestamp=100*417083; input.analysisSource=&a;
+            detector.Analyze(input);
+            input.sourceSequence=101; input.timestamp+=417083; input.analysisSource=&b;
+            return detector.Analyze(input);
+        }
+        static MovingPictureTransitionState Prior()
+        {
+            MovingPictureTransitionState state;
+            state.active=true; state.identity=BufferedIdentity(100); state.base=BufferedScope();
+            state.anchor=state.last=state.quietAnchor=state.base;
+            state.last.top=164; state.last.bottom=1996;
+            state.observedNative=state.last;
+            state.observedNativeSourceSequence=state.identity.acceptedSequence;
+            state.directionalChanges=5; state.quietSamples=3;
+            return state;
+        }
+        static TransitionAdmissionInput Current(const BufferedPixelSample& frame)
+        {
+            auto current=BufferedLiveInput(frame); current.sourceSequence=101; return current;
+        }
+    public:
+        TEST_METHOD(ActualSceneDarknessEventRetainsProvedMotionWithoutEndpointVotes)
+        {
+            const auto event=ActualDarkEntry();
+            Assert::IsTrue(event.safeBoundary && event.nearBlackEntry && event.differenceEvaluated);
+            Assert::IsFalse(event.hardCutCandidate || event.hardCutConfirmed);
+            BufferedPixelSample frame(160,2000);
+            auto current=Current(frame);
+            Assert::IsTrue(current.evidence.proposedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::NONE,
+                L"Real extractor proposals carry geometry but no trusted-axis authority.");
+            Assert::IsTrue(current.evidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM);
+            const auto prior=Prior();
+            const auto retained=RetainMovingPictureAtDarknessBoundary(prior,event,BufferedIdentity(101),current);
+            Assert::IsTrue(retained.active);
+            Assert::IsFalse(retained.awaitingPublication);
+            Assert::AreEqual(0u,retained.quietSamples);
+            Assert::AreEqual(0u,retained.directionalChanges);
+            Assert::AreEqual(prior.identity.acceptedSequence,retained.identity.acceptedSequence);
+            const auto observed=ObserveMovingPictureTransition(retained,BufferedIdentity(101),current);
+            Assert::IsTrue(observed.active);
+            auto admission=EvaluateTransitionAdmission(current);
+            ConstrainMovingPictureTransition(observed,admission);
+            Assert::IsTrue(admission.deferOutward && admission.observation.transitionDeferred);
+            Assert::AreEqual(276,observed.base.top);
+        }
+        TEST_METHOD(DarkDistributedNativeEvidenceCanContinueWithoutBrightBroadStrips)
+        {
+            BufferedPixelSample frame(160,2000);
+            auto current=Current(frame);
+            for(auto* edge : {&current.retention.expandingTop,&current.retention.expandingBottom}) {
+                edge->blackFraction=.04; edge->continuity=0; edge->lumaP90=36; edge->texture=7.1;
+                edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+            }
+            current.retention.activePicture=current.evidence;
+            const auto proof=ConfirmOutwardPictureTransition({},current.trustedGeometry,current.outwardCandidate,
+                current.retention,7,101);
+            Assert::IsFalse(proof.broadOpposingPicture);
+            Assert::IsTrue(proof.nativeDistributedPicture);
+            const auto event=ActualDarkEntry();
+            Assert::IsTrue(RetainMovingPictureAtDarknessBoundary(Prior(),event,BufferedIdentity(101),current).active);
+            current.retention.expandingTop.distributedSupportDepthRowsByQuartile.fill(0);
+            Assert::IsFalse(RetainMovingPictureAtDarknessBoundary(Prior(),event,BufferedIdentity(101),current).active);
+        }
+        TEST_METHOD(CutsStaleContextsUnknownPixelsAndStationaryEdgesNeverBorrowMotion)
+        {
+            const auto event=ActualDarkEntry();
+            BufferedPixelSample frame(160,2000);
+            for(int variant=0;variant<24;++variant) {
+                auto boundary=event; auto prior=Prior(); auto id=BufferedIdentity(101); auto current=Current(frame);
+                switch(variant) {
+                case 0: boundary.hardCutCandidate=true; break;
+                case 1: boundary.hardCutConfirmed=true; break;
+                case 2: boundary.nearBlackEntry=false; break;
+                case 3: boundary.differenceEvaluated=false; break;
+                case 4: prior.active=false; break;
+                case 5: prior.awaitingPublication=true; break;
+                case 6: ++id.transportGeneration; break;
+                case 7: ++id.sourceFormatGeneration; break;
+                case 8: ++id.analysisDomainKey; break;
+                case 9: ++id.viewportGeneration; break;
+                case 10: ++id.rendererGeneration; break;
+                case 11: ++id.acceptedSequence; break;
+                case 12: ++id.sourceFrameNumber; break;
+                case 13: id.captureTimestamp=prior.identity.captureTimestamp; break;
+                case 14: current.retention.globalNearBlack=true; current.retention.distributedDarkPicture=false; break;
+                case 15: current.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 16: current.evidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+                case 17: current.retention.analysisValid=false; break;
+                case 18: prior.base.top+=2; break;
+                case 19: prior.observedNative=current.outwardCandidate; break;
+                case 20: prior.observedNative.top+=20; break;
+                case 21: current.retention.expansionCandidate.top+=2; break;
+                case 22: current.retention.expansionStripsAvailable=false; break;
+                case 23: current.evidence.proposedBounds.top+=2; break;
+                }
+                Assert::IsFalse(RetainMovingPictureAtDarknessBoundary(prior,boundary,id,current).active);
+            }
+        }
+    };
 }

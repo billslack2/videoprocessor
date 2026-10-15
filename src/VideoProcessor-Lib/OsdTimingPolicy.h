@@ -21,6 +21,16 @@ inline double FrameBudgetRate(double measuredHz, double nominalHz)
     return valid(measuredHz) ? measuredHz : (valid(nominalHz) ? nominalHz : 0.0);
 }
 
+// Reporting only: temporal processing can submit more GPU renders than new
+// source frames. Its scheduled rate already accounts for mixing, field/frame
+// deinterlacing and display caps; a fast monitor alone does not change capacity.
+inline double RenderBudgetRate(double measuredHz, double nominalHz,
+    double scheduledOutputHz)
+{
+    return FrameBudgetRate(scheduledOutputHz, 0.0) > 0.0
+        ? scheduledOutputHz : FrameBudgetRate(measuredHz, nominalHz);
+}
+
 inline double DisplayRate(DisplayRefreshRateInput input,
     bool warmingEnabled = WarmingEnabled)
 {

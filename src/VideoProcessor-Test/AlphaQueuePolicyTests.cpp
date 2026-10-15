@@ -217,6 +217,45 @@ namespace Tests
 				8, 2, 140.0, 20.0, 23.976));
 		}
 
+        TEST_METHOD(MotionOutputGroupingDoesNotRetireHealthyReserve)
+        {
+            const double sourceHz = 24000.0 / 1001.0;
+            const double sourcePeriod = 1000.0 / sourceHz;
+            const double displayPeriod = 1000.0 / (60000.0 / 1001.0);
+            // Long/short display groups alternate. The long group can have a
+            // transient sixth source; the next short group consumes the excess.
+            for (int cycle = 0; cycle < 60; ++cycle) {
+                const bool longGroup = (cycle % 2) == 0;
+                Assert::IsFalse(AlphaQueuePolicy::ShouldRecoverBacklog(
+                    longGroup ? 6 : 5, 5,
+                    (longGroup ? 5.1 : 4.9) * sourcePeriod,
+                    (longGroup ? 3 : 2) * displayPeriod, sourceHz));
+            }
+        }
+
+        TEST_METHOD(ReserveAwareRecoveryStillBoundsSustainedAgeAndRealStalls)
+        {
+            const double hz = 24000.0 / 1001.0;
+            const double limit = AlphaQueuePolicy::StaleBacklogAgeThresholdMs(hz, 5);
+            Assert::AreEqual(250.25, limit, 0.001);
+            Assert::IsFalse(AlphaQueuePolicy::ShouldRecoverBacklog(6, 5, limit-0.01, 50.05, hz));
+            Assert::IsTrue(AlphaQueuePolicy::ShouldRecoverBacklog(6, 5, limit, 50.05, hz));
+            Assert::IsTrue(AlphaQueuePolicy::ShouldRecoverBacklog(6, 5, 210.0,
+                AlphaQueuePolicy::RenderStallThresholdMs(hz), hz));
+            Assert::IsFalse(AlphaQueuePolicy::ShouldRecoverBacklog(5, 5, 1000.0, 1000.0, hz));
+        }
+
+        TEST_METHOD(StaleAgeAccountsForReserveAtAllSourceRates)
+        {
+            Assert::AreEqual(125.125, AlphaQueuePolicy::StaleBacklogAgeThresholdMs(24000.0/1001.0, 2), 0.001);
+            Assert::AreEqual(100.0, AlphaQueuePolicy::StaleBacklogAgeThresholdMs(60.0, 5), 0.001);
+            Assert::AreEqual(180.0, AlphaQueuePolicy::StaleBacklogAgeThresholdMs(50.0, 8), 0.001);
+            Assert::AreEqual(150.0, AlphaQueuePolicy::StaleBacklogAgeThresholdMs(0.0, 8), 0.001);
+            Assert::AreEqual(100.0, AlphaQueuePolicy::StaleBacklogAgeThresholdMs(60.0, 0), 0.001);
+            Assert::AreEqual<size_t>(6, AlphaQueuePolicy::HardCapacity(6));
+            Assert::AreEqual<size_t>(5, AlphaQueuePolicy::ResolveDesiredDepth(5));
+        }
+
 		TEST_METHOD(ConfigValueRequiresPositiveDecimalInteger)
 		{
 			size_t value = 0;
