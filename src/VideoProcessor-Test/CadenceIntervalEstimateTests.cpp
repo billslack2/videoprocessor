@@ -141,6 +141,17 @@ namespace Tests
             Assert::AreEqual(0.0, OsdTimingPolicy::FrameBudgetRate(0.0, 0.0));
             Assert::AreEqual(0.0, OsdTimingPolicy::FrameBudgetRate(600.0, 1.0));
         }
+        TEST_METHOD(RenderLoadUsesActualTemporalCadenceNotMonitorOrSourceAlone)
+        {
+            Assert::AreEqual(60.0, OsdTimingPolicy::RenderBudgetRate(24.0, 24.0, 60.0));
+            Assert::AreEqual(48.0, OsdTimingPolicy::RenderBudgetRate(24.0, 24.0, 48.0));
+            Assert::AreEqual(30.0, OsdTimingPolicy::RenderBudgetRate(30.0, 30.0, 30.0));
+            Assert::AreEqual(24.0, OsdTimingPolicy::RenderBudgetRate(24.0, 24.0, 0.0));
+            Assert::AreEqual(23.976, OsdTimingPolicy::RenderBudgetRate(0.0, 23.976,
+                std::numeric_limits<double>::quiet_NaN()));
+            Assert::AreEqual(24.0, OsdTimingPolicy::RenderBudgetRate(24.0, 24.0, 600.0));
+            Assert::AreEqual(0.0, OsdTimingPolicy::RenderBudgetRate(0.0, 0.0, 0.0));
+        }
         TEST_METHOD(FormatsRequestedIntervalsAndRoundingBoundaries)
         {
             Assert::AreEqual(L"1h5m30s", Estimate::FormatInterval(3930.0).c_str());

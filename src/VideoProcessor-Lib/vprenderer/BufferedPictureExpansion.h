@@ -29,6 +29,10 @@ namespace AlphaSourceCrop
         uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
         uint64_t liveViewportGeneration, uint64_t capturedShaderGeneration,
         uint64_t currentShaderGeneration);
+    enum class MovingPictureTransitionChange : uint8_t
+    {
+        NONE, ACQUIRED, QUIET_ENDPOINT, DIFFERENT_CROP, ABRUPT_NATIVE, OWNER_OR_CONTEXT
+    };
     // A presentation-only hold. It never grants crop or full-raster authority.
     // Only consecutive current source samples may establish or settle motion.
     struct MovingPictureTransitionState
@@ -38,10 +42,25 @@ namespace AlphaSourceCrop
         // accepts the new crop; this flag never delays the model or queued proof.
         bool awaitingPublication = false;
         ActivePictureBounds base, anchor, last, quietAnchor;
+        // Current native edge position only. It is not motion or quiet proof.
+        // Invalidated by a source gap or missing native vertical bars.
+        ActivePictureBounds observedNative;
+        uint64_t observedNativeSourceSequence = 0;
         ActivePictureFrameIdentity identity;
         uint32_t directionalChanges = 0;
         uint32_t quietSamples = 0;
+        MovingPictureTransitionChange change = MovingPictureTransitionChange::NONE;
     };
+
+    // Advanced subtitle modes keep the picture at its physical native crop.
+    // Classic translation state may still be pending for the subtitle route,
+    // but it is not a competing picture owner for motion observation. This
+    // copy is for ObserveMovingPictureTransition only; admission still uses
+    // the original input and its current-pixel checks. FIT and FAIL_OPEN
+    // remain competing picture owners in either mode.
+    TransitionAdmissionInput PictureMotionTrackingInput(
+        const TransitionAdmissionInput& current,
+        bool classicPicturePresentationAllowed);
 
     MovingPictureTransitionState ObserveMovingPictureTransition(
         const MovingPictureTransitionState& previous,

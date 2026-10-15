@@ -2,13 +2,16 @@
 #include "CppUnitTest.h"
 
 #include <ActivePictureEvidence.h>
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include <AnalysisDiagnosticTrace.h>
 #include <SubtitleMeasurementWorker.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -43,11 +46,15 @@ namespace Tests
         {
             ActivePictureTransitionDecision decision;
             ActivePictureClassification rawClass = ActivePictureClassification::UNAVAILABLE;
-            ActivePictureBounds rawBounds;
+            ActivePictureClassification logicalClass = ActivePictureClassification::UNAVAILABLE;
+            ActivePictureBounds rawBounds, logicalBounds;
             uint64_t sequence = 0;
             int lines = 0;
+            unsigned captionObservations = 0;
+            bool captionConfirmed = false;
+            ActivePictureBounds captionBounds;
             bool rawDark = false, arDark = false, subtitleProof = false;
-            bool reset = false, repeated = false;
+            bool reset = false, repeated = false, arOnlyGate = false;
         };
 
         bool SameReplayContext(const ReplayFrame& a, const ReplayFrame& b)
@@ -64,6 +71,7 @@ namespace Tests
                 a.source.format == b.source.format && a.source.encoding == b.source.encoding &&
                 a.source.colorspace == b.source.colorspace &&
                 a.source.rgbBitAlignment == b.source.rgbBitAlignment &&
+                a.source.range == b.source.range &&
                 a.policy == b.policy && a.continuity == b.continuity &&
                 a.script == b.script && a.nearBarDistance == b.nearBarDistance &&
                 a.optimizationMode == b.optimizationMode &&
@@ -73,6 +81,7 @@ namespace Tests
         class FreshReplay
         {
         public:
+            explicit FreshReplay(bool requireArOnly = false) : m_requireArOnly(requireArOnly) {}
             ReplayResult Observe(const ReplayFrame& frame)
             {
                 Assert::IsTrue(frame.source.IsValid());
@@ -102,6 +111,7 @@ namespace Tests
                     m_model.Reset();
                     m_prior = {};
                     m_sampler = std::make_unique<SubtitleMeasurementSampler>();
+                    m_captionPresentation.Reset();
                     m_last = {};
                 }
                 // A repeat without its original frame in this bounded capture
@@ -118,6 +128,14 @@ namespace Tests
                 const auto raw = ExtractActivePictureEvidence(frame.source);
                 result.rawClass = raw.classification;
                 result.rawBounds = raw.trustedBounds;
+                if (m_requireArOnly)
+                {
+                    result.arOnlyGate = AlphaSourceCrop::ColdCaptionArAnalysisEligible(
+                        true, true, false, false,
+                        AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER);
+                    Assert::IsTrue(result.arOnlyGate,
+                        L"Off-mode Scope AR must enqueue the current worker before measuring this source.");
+                }
                 SubtitleBoxObservation key;
                 key.identity = frame.identity;
                 key.width = frame.source.width; key.height = frame.source.height;
@@ -135,13 +153,60 @@ namespace Tests
                 const auto measured = m_sampler->Measure(frame.source, key, m_prior, fps, raw);
                 m_prior = SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);
                 result.lines = measured.text.lineCount;
+                auto preview = SubtitleBoxLookahead::Resolve(&measured, 1,
+                    frame.policy, frame.continuity);
+                m_captionPresentation.RefreshReferencePixels(preview, frame.source);
+                const auto caption = m_captionPresentation.Consume(preview, 250,
+                    double(frame.frameDuration100ns) / 10000.0);
+                result.captionObservations = caption.observations;
+                result.captionConfirmed = measured.barAuthority &&
+                    SameAnalysisFrameIdentity(measured.identity, frame.identity) &&
+                    measured.analyzed && !measured.pendingRefresh &&
+                    measured.text.detected && !measured.text.workLimit &&
+                    measured.text.nearBarEligibilityMeasured &&
+                    measured.text.nearBarEligible && caption.detected && !caption.held &&
+                    caption.observations >= 2 && caption.bounds.Valid() &&
+                    measured.text.bounds.Valid();
+                if (result.captionConfirmed)
+                {
+                    result.captionBounds = {
+                        std::min(caption.bounds.left, measured.text.bounds.left),
+                        std::min(caption.bounds.top, measured.text.bounds.top),
+                        std::max(caption.bounds.right, measured.text.bounds.right),
+                        std::max(caption.bounds.bottom, measured.text.bounds.bottom),
+                        frame.source.width, frame.source.height, 1.0,
+                        ActivePictureBounds::BarAxes::NONE };
+                    if (measured.text.provenSourcePanel.Valid())
+                    {
+                        result.captionBounds.left = std::min(result.captionBounds.left,
+                            measured.text.provenSourcePanel.left);
+                        result.captionBounds.top = std::min(result.captionBounds.top,
+                            measured.text.provenSourcePanel.top);
+                        result.captionBounds.right = std::max(result.captionBounds.right,
+                            measured.text.provenSourcePanel.right);
+                        result.captionBounds.bottom = std::max(result.captionBounds.bottom,
+                            measured.text.provenSourcePanel.bottom);
+                    }
+                    result.captionBounds.aspectRatio =
+                        double(result.captionBounds.right - result.captionBounds.left) /
+                        std::max(1, result.captionBounds.bottom - result.captionBounds.top);
+                }
                 result.subtitleProof = measured.subtitleArProof.IsCurrentFor(frame.source,
                     frame.identity, frame.policy, frame.continuity, frame.script);
                 const auto evidence = result.subtitleProof ? measured.subtitleArProof.evidence : raw;
                 const auto darkness = EvaluateActivePictureArDarkness(frame.source, evidence);
                 result.rawDark = darkness.global.nearBlack;
                 result.arDark = darkness.EffectiveNearBlack();
-                const auto admitted = ConstrainNearBlackCropAcquisition(evidence, result.arDark);
+                const auto episodeMode = result.arDark
+                    ? AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER
+                    : AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+                const bool logicalAcquisitionBlocked =
+                    AlphaSourceCrop::NearBlackBlocksCaptionBackedLogicalAcquisition(
+                        result.arDark, episodeMode, result.subtitleProof);
+                const auto admitted = ConstrainNearBlackCropAcquisition(
+                    evidence, logicalAcquisitionBlocked);
+                result.logicalClass = admitted.classification;
+                result.logicalBounds = admitted.trustedBounds;
                 result.decision = m_model.Observe(MakeActivePictureObservation(admitted,
                     frame.identity.acceptedSequence, fps));
                 SavePrevious(frame, result);
@@ -161,10 +226,12 @@ namespace Tests
             }
             ActivePictureTransitionModel m_model;
             std::unique_ptr<SubtitleMeasurementSampler> m_sampler;
+            SubtitleBoxPresentation m_captionPresentation;
             SubtitleBarTrackingReference m_prior;
             ReplayFrame m_previous;
             ReplayResult m_last;
             bool m_hasPrevious = false;
+            bool m_requireArOnly = false;
         };
 
         ReplayFrame ReadFrame(const std::filesystem::path& path)
@@ -174,9 +241,18 @@ namespace Tests
             sidecar.replace_extension(L".txt");
             std::ifstream metadata(sidecar);
             int format = 0, encoding = 0, colorspace = 0, top = 0, bottom = 0, script = 0;
-            metadata >> result.source.width >> result.source.height >> result.source.rowBytes >>
+            std::string headerLine;
+            std::getline(metadata, headerLine);
+            std::istringstream header(headerLine);
+            header >> result.source.width >> result.source.height >> result.source.rowBytes >>
                 result.source.chromaRowBytes >> format >> encoding >> colorspace >> top >> bottom >> script;
-            Assert::IsTrue(bool(metadata), L"The native frame sidecar is missing or malformed.");
+            Assert::IsTrue(bool(header), L"The native frame sidecar is missing or malformed.");
+            int range = 0;
+            if (header >> range)
+            {
+                Assert::IsTrue(range >= 0 && range <= 2);
+                result.source.range = static_cast<AnalysisLumaRange>(range);
+            }
             std::string identityVersion;
             int discontinuity = 0, repeat = 0, alignment = 0;
             metadata >> identityVersion >> result.identity.transportGeneration >>
@@ -226,11 +302,19 @@ namespace Tests
         {
             std::ostringstream text;
             text << "Fresh component replay sequence=" << result.sequence << " reset=" << result.reset <<
-                " repeat=" << result.repeated << " raw_class=" << int(result.rawClass) <<
+                " repeat=" << result.repeated << " ar_only_gate=" << result.arOnlyGate <<
+                " raw_class=" << int(result.rawClass) <<
                 " native=" << result.rawBounds.left << ',' << result.rawBounds.top << '-' <<
                 result.rawBounds.right << ',' << result.rawBounds.bottom <<
+                " logical_class=" << int(result.logicalClass) << " logical=" <<
+                result.logicalBounds.left << "," << result.logicalBounds.top << "-" <<
+                result.logicalBounds.right << "," << result.logicalBounds.bottom <<
                 " raw_dark=" << result.rawDark << " ar_dark=" << result.arDark <<
-                " lines=" << result.lines << " subtitle_ar=" << result.subtitleProof <<
+                " lines=" << result.lines << " caption_obs=" << result.captionObservations <<
+                " caption_confirmed=" << result.captionConfirmed <<
+                " caption=" << result.captionBounds.left << "," << result.captionBounds.top << "-" <<
+                result.captionBounds.right << "," << result.captionBounds.bottom <<
+                " subtitle_ar=" << result.subtitleProof <<
                 " publish=" << result.decision.publish << " stable=" << result.decision.stable <<
                 " bounds=" << result.decision.bounds.left << ',' << result.decision.bounds.top << '-' <<
                 result.decision.bounds.right << ',' << result.decision.bounds.bottom <<
@@ -320,6 +404,7 @@ namespace Tests
             for (uint64_t index = 1; index <= 4; ++index)
             {
                 auto frame = SyntheticFrame(100 + index, true);
+                frame.source.range = AnalysisLumaRange::Limited;
                 expected = expectedReplay.Observe(frame);
                 ReplayPacketOwner owner;
                 owner.owner = frame.pixels;
@@ -329,6 +414,7 @@ namespace Tests
                 packet.format = uint32_t(frame.source.format);
                 packet.encoding = uint32_t(frame.source.encoding);
                 packet.colorspace = uint32_t(frame.source.colorspace);
+                packet.analysisSampleRange = uint32_t(frame.source.range);
                 packet.top = 44; packet.bottom = 316; packet.scriptHint = int(frame.script);
                 packet.transportGeneration = frame.identity.transportGeneration;
                 packet.acceptedSequence = frame.identity.acceptedSequence;
@@ -376,7 +462,9 @@ namespace Tests
                 std::ostringstream filename;
                 filename << "frame-00000" << index << ".bin";
                 const auto loaded = ReadFrame(directory / filename.str());
-                const auto original = SyntheticFrame(100 + index, true);
+                Assert::AreEqual(int(AnalysisLumaRange::Limited), int(loaded.source.range));
+                auto original = SyntheticFrame(100 + index, true);
+                original.source.range = AnalysisLumaRange::Limited;
                 Assert::IsTrue(SameAnalysisFrameIdentity(original.identity, loaded.identity));
                 Assert::IsTrue(SameReplayContext(original, loaded));
                 Assert::IsTrue(*original.pixels == *loaded.pixels);
@@ -467,6 +555,428 @@ namespace Tests
             Assert::AreEqual(1u, unsigned(domain.decision.matchingCandidates));
         }
 
+        TEST_METHOD(OptionalColdNativeSubtitleVerticalProofDiagnostic)
+        {
+            wchar_t* value = nullptr;
+            size_t length = 0;
+            _wdupenv_s(&value, &length, L"VP_ANALYSIS_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value ? value : L"");
+            std::free(value);
+            if (directory.empty())
+            {
+                Logger::WriteMessage("Cold native subtitle proof diagnostic was not requested.");
+                return;
+            }
+            const auto frame = ReadFrame(directory / L"frame-000001.bin");
+            const auto raw = ExtractActivePictureEvidence(frame.source);
+            SubtitleBoxObservation key;
+            key.identity = frame.identity;
+            key.width = frame.source.width;
+            key.height = frame.source.height;
+            key.policyGeneration = frame.policy;
+            key.continuityGeneration = frame.continuity;
+            key.nearBarDistance = frame.nearBarDistance;
+            key.optimizationMode = frame.optimizationMode;
+            key.scriptHint = frame.script;
+            key.discontinuity = frame.discontinuity;
+            key.sharedPicture.required = true;
+            key.sharedPicture.identity = frame.identity;
+            SubtitleMeasurementSampler sampler;
+            const auto measured = sampler.Measure(frame.source, key, {},
+                10000000.0 / double(frame.frameDuration100ns), raw);
+            const auto proof = EvaluateSubtitleAssistedVerticalBarProof(frame.source, raw,
+                measured, frame.identity, frame.policy, frame.continuity, frame.script);
+            const auto& profile = proof.evidence.verticalBarGuardProfile;
+            AnalysisLumaSample mismatchSample;
+            const bool sampledMismatch = profile.firstMismatchX >= 0 && profile.firstMismatchY >= 0 &&
+                frame.source.Sample(profile.firstMismatchX, profile.firstMismatchY, mismatchSample);
+            int inkColumn = -1, inkRow = -1, nearestSourceRow = -1;
+            int ownedNeighbors = 0, rawNeighbors = 0;
+            bool mismatchOwned = false, mismatchRawInk = false, mismatchRowCaptured = false;
+            if (measured.ink && sampledMismatch && measured.ink->step > 0)
+            {
+                const auto& ink = *measured.ink;
+                inkColumn = profile.firstMismatchX / ink.step;
+                auto row = std::lower_bound(ink.sourceRows.begin(), ink.sourceRows.end(),
+                    profile.firstMismatchY);
+                if (row != ink.sourceRows.end()) inkRow = int(row - ink.sourceRows.begin());
+                if (row != ink.sourceRows.begin() &&
+                    (inkRow < 0 || std::abs(*(row - 1) - profile.firstMismatchY) <
+                        std::abs(ink.sourceRows[size_t(inkRow)] - profile.firstMismatchY)))
+                    inkRow = int(row - ink.sourceRows.begin()) - 1;
+                if (inkRow >= 0)
+                {
+                    nearestSourceRow = ink.sourceRows[size_t(inkRow)];
+                    mismatchRowCaptured = nearestSourceRow == profile.firstMismatchY;
+                    mismatchOwned = ink.Get(inkColumn, inkRow, true);
+                    mismatchRawInk = ink.Get(inkColumn, inkRow, false);
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx)
+                        {
+                            ownedNeighbors += ink.Get(inkColumn + dx, inkRow + dy, true);
+                            rawNeighbors += ink.Get(inkColumn + dx, inkRow + dy, false);
+                        }
+                }
+            }
+            size_t ownedWords = 0;
+            if (measured.ink)
+                for (uint64_t bits : measured.ink->ownedInk)
+                    ownedWords += bits != 0;
+            std::ostringstream report;
+            report << "cold-native-proof seq=" << frame.identity.acceptedSequence <<
+                " raw_class=" << int(raw.classification) <<
+                " raw=" << raw.proposedBounds.left << ',' << raw.proposedBounds.top << '-' <<
+                raw.proposedBounds.right << ',' << raw.proposedBounds.bottom <<
+                " h_state=" << int(raw.axisEvidence.horizontal.state) <<
+                " h_reason=" << int(raw.axisEvidence.horizontal.reason) <<
+                " v_reason=" << int(raw.axisEvidence.vertical.reason) <<
+                " analysis_ms=" << measured.analysisMs <<
+                " independent=" << measured.independentBarAnalysis <<
+                " bar_authority=" << measured.barAuthority <<
+                " bars=" << measured.barEvidence.available << ':' << measured.barEvidence.top << '-' <<
+                measured.barEvidence.bottom <<
+                " support=" << measured.barEvidence.topSupport << ',' <<
+                measured.barEvidence.bottomSupport << ',' <<
+                measured.barEvidence.topBoundarySupport << ',' <<
+                measured.barEvidence.bottomBoundarySupport <<
+                " text=" << measured.text.detected << ':' << measured.text.lineCount <<
+                " anchor=" << measured.text.anchor.left << ',' << measured.text.anchor.top << '-' <<
+                measured.text.anchor.right << ',' << measured.text.anchor.bottom <<
+                " text_bounds=" << measured.text.bounds.left << ',' << measured.text.bounds.top << '-' <<
+                    measured.text.bounds.right << ',' << measured.text.bounds.bottom <<
+                " line0=" << measured.text.lineBounds[0].left << ',' << measured.text.lineBounds[0].top << '-' <<
+                    measured.text.lineBounds[0].right << ',' << measured.text.lineBounds[0].bottom <<
+                " source_panel=" << measured.text.sourcePanel.left << ',' << measured.text.sourcePanel.top << '-' <<
+                    measured.text.sourcePanel.right << ',' << measured.text.sourcePanel.bottom <<
+                " capture_panel=" << measured.text.capturePanel.left << ',' << measured.text.capturePanel.top << '-' <<
+                    measured.text.capturePanel.right << ',' << measured.text.capturePanel.bottom <<
+                " proven_panel=" << measured.text.provenSourcePanel.left << ',' << measured.text.provenSourcePanel.top << '-' <<
+                    measured.text.provenSourcePanel.right << ',' << measured.text.provenSourcePanel.bottom <<
+                " ink_step=" << (measured.ink ? measured.ink->step : 0) <<
+                " owned_words=" << ownedWords <<
+                " raw_ink_complete=" << (measured.ink && measured.ink->rawEvidenceComplete) <<
+                " proof=" << proof.accepted << " candidate=" <<
+                proof.candidate.left << ',' << proof.candidate.top << '-' <<
+                proof.candidate.right << ',' << proof.candidate.bottom <<
+                " reason=" << proof.reason <<
+                " profile=" << proof.evidence.verticalBarGuardProfile.completed << ':' <<
+                proof.evidence.verticalBarGuardProfile.clean << ':' <<
+                proof.evidence.verticalBarGuardProfile.reason <<
+                " aperture=" << proof.evidence.verticalBarGuardProfile.apertureTop << ':' <<
+                proof.evidence.verticalBarGuardProfile.apertureBottom <<
+                " first_mismatch=" << proof.evidence.verticalBarGuardProfile.firstMismatchX << ':' <<
+                proof.evidence.verticalBarGuardProfile.firstMismatchY <<
+                " mismatches=" << proof.evidence.verticalBarGuardProfile.mismatchSamples << ':' <<
+                proof.evidence.verticalBarGuardProfile.boundaryMismatchSamples << ':' <<
+                proof.evidence.verticalBarGuardProfile.deepMismatchSamples <<
+                " mismatch_sample=" << sampledMismatch << ':' <<
+                (sampledMismatch ? mismatchSample.luma : 0) << ':' <<
+                (sampledMismatch ? mismatchSample.chromaU : 0) << ':' <<
+                (sampledMismatch ? mismatchSample.chromaV : 0) <<
+                " ink=" << mismatchOwned << ':' << mismatchRawInk << ':' << mismatchRowCaptured <<
+                " ink_grid=" << inkColumn << ':' << inkRow << ':' << nearestSourceRow <<
+                " ink_neighbors=" << ownedNeighbors << ':' << rawNeighbors <<
+                " reference=" << profile.referenceY << ':' << profile.referenceU << ':' << profile.referenceV <<
+                " max_delta=" << proof.evidence.verticalBarGuardProfile.maxLumaDelta << ':' <<
+                proof.evidence.verticalBarGuardProfile.maxChromaDelta;
+            if (measured.ink && !proof.accepted &&
+                std::string(proof.reason) == "subtitle-excluded-band-profile-failed")
+            {
+                const auto& ink = *measured.ink;
+                const auto gridRow = [&](int y) {
+                    auto row = std::lower_bound(ink.sourceRows.begin(), ink.sourceRows.end(), y);
+                    int nearest = row == ink.sourceRows.end() ? -1 :
+                        int(row - ink.sourceRows.begin());
+                    if (row != ink.sourceRows.begin() &&
+                        (nearest < 0 || std::abs(*(row - 1) - y) <
+                            std::abs(ink.sourceRows[size_t(nearest)] - y)))
+                        nearest = int(row - ink.sourceRows.begin()) - 1;
+                    return nearest;
+                };
+                const auto ownedNear = [&](int x, int y) {
+                    const int row = gridRow(y), col = x / ink.step;
+                    if (row < 0 || std::abs(ink.sourceRows[size_t(row)] - y) >
+                        std::max(1, ink.step)) return false;
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx)
+                            if (ink.Get(col + dx, row + dy, true)) return true;
+                    return false;
+                };
+                std::vector<int> rows;
+                for (int d = 0; d < 8; ++d)
+                {
+                    rows.push_back(profile.apertureBottom + d);
+                    rows.push_back(frame.source.height - 1 - d);
+                }
+                for (int y = profile.apertureBottom; y < frame.source.height;
+                    y += std::max(1, frame.source.height / 540)) rows.push_back(y);
+                std::sort(rows.begin(), rows.end());
+                rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+                int mismatchIndex = 0;
+                for (int y : rows)
+                    for (int i = 0; i < 96; ++i)
+                    {
+                        const int x = i * (frame.source.width - 1) / 95;
+                        AnalysisLumaSample sample;
+                        if (!frame.source.Sample(x, y, sample) || ownedNear(x, y) ||
+                            (std::abs(double(sample.luma) - profile.referenceY) <= 4 &&
+                             std::abs(double(sample.chromaU) - profile.referenceU) <= 4 &&
+                             std::abs(double(sample.chromaV) - profile.referenceV) <= 4)) continue;
+                        if (++mismatchIndex > 12) continue;
+                        const int col = x / ink.step, row = gridRow(y);
+                        int nearestCells = INT_MAX, nearestPixels = INT_MAX;
+                        for (int rr = 0; rr < ink.height; ++rr)
+                        {
+                            if (ink.sourceRows[size_t(rr)] < measured.text.anchor.top - ink.step ||
+                                ink.sourceRows[size_t(rr)] > measured.text.anchor.bottom + ink.step) continue;
+                            for (int cc = 0; cc < ink.width; ++cc)
+                            {
+                                if (cc * ink.step < measured.text.anchor.left - ink.step ||
+                                    cc * ink.step > measured.text.anchor.right + ink.step ||
+                                    !ink.Get(cc, rr, true)) continue;
+                                nearestCells = std::min(nearestCells,
+                                    std::max(std::abs(cc - col), std::abs(rr - row)));
+                                nearestPixels = std::min(nearestPixels,
+                                    std::max(std::abs(cc * ink.step - x),
+                                        std::abs(ink.sourceRows[size_t(rr)] - y)));
+                            }
+                        }
+                        bool connected = false;
+                        if (row >= 0 && ink.Get(col, row, false))
+                        {
+                            std::vector<uint8_t> seen(size_t(ink.width) * ink.height);
+                            std::deque<std::pair<int, int>> queue;
+                            queue.emplace_back(col, row);
+                            seen[size_t(row) * ink.width + col] = 1;
+                            while (!queue.empty() && !connected)
+                            {
+                                const auto cell = queue.front(); queue.pop_front();
+                                if (ink.Get(cell.first, cell.second, true))
+                                {
+                                    connected = true; break;
+                                }
+                                for (int dy = -1; dy <= 1; ++dy)
+                                    for (int dx = -1; dx <= 1; ++dx)
+                                    {
+                                        const int cc = cell.first + dx, rr = cell.second + dy;
+                                        if (cc < 0 || rr < 0 || cc >= ink.width || rr >= ink.height ||
+                                            cc * ink.step < measured.text.anchor.left ||
+                                            cc * ink.step >= measured.text.anchor.right ||
+                                            ink.sourceRows[size_t(rr)] < measured.text.anchor.top ||
+                                            ink.sourceRows[size_t(rr)] >= measured.text.anchor.bottom ||
+                                            !ink.Get(cc, rr, false)) continue;
+                                        auto& visited = seen[size_t(rr) * ink.width + cc];
+                                        if (!visited) { visited = 1; queue.emplace_back(cc, rr); }
+                                    }
+                            }
+                        }
+                        std::ostringstream mismatch;
+                        mismatch << "cold-profile-mismatch " << mismatchIndex <<
+                            " source=" << x << ',' << y << " grid=" << col << ',' << row <<
+                            " raw=" << ink.Get(col, row, false) <<
+                            " owned=" << ink.Get(col, row, true) <<
+                            " nearest_cells=" << nearestCells <<
+                            " nearest_pixels=" << nearestPixels <<
+                            " connected8=" << connected <<
+                            " inside_anchor=" << (x >= measured.text.anchor.left &&
+                                x < measured.text.anchor.right && y >= measured.text.anchor.top &&
+                                y < measured.text.anchor.bottom) <<
+                            " inside_capture=" << (x >= measured.text.capturePanel.left &&
+                                x < measured.text.capturePanel.right &&
+                                y >= measured.text.capturePanel.top &&
+                                y < measured.text.capturePanel.bottom);
+                        Logger::WriteMessage(mismatch.str().c_str());
+                    }
+            }            Logger::WriteMessage(report.str().c_str());
+            Assert::IsTrue(proof.accepted,
+                L"The cold current subtitle and native bars must prove physical scope before presentation.");
+            const auto retention = EvaluateActivePicturePresentationRetention(
+                frame.source, proof.candidate);
+            std::ostringstream retentionReport;
+            retentionReport << "cold-native-retention valid=" << retention.analysisValid
+                << " presentation=" << retention.presentationValid
+                << " safe=" << retention.CanRetainPresentation()
+                << " bands_safe=" << retention.excludedBandsPixelSafe
+                << " outward=" << retention.outwardVisibleBoundsAvailable
+                << " outward_bounds=" << retention.outwardVisibleBounds.left << ','
+                << retention.outwardVisibleBounds.top << '-'
+                << retention.outwardVisibleBounds.right << ','
+                << retention.outwardVisibleBounds.bottom
+                << " observed_class=" << int(retention.activePicture.classification)
+                << " observed=" << retention.activePicture.proposedBounds.left << ','
+                << retention.activePicture.proposedBounds.top << '-'
+                << retention.activePicture.proposedBounds.right << ','
+                << retention.activePicture.proposedBounds.bottom;
+            Logger::WriteMessage(retentionReport.str().c_str());
+        }
+        TEST_METHOD(OptionalColdNativeSubtitleOwnershipNegatives)
+        {
+            wchar_t* value = nullptr;
+            size_t length = 0;
+            _wdupenv_s(&value, &length, L"VP_ANALYSIS_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value ? value : L"");
+            std::free(value);
+            if (directory.empty()) return;
+            const auto original = ReadFrame(directory / L"frame-000001.bin");
+            Assert::AreEqual(int(AnalysisLumaFormat::DecodedDolbyVision422),
+                int(original.source.format));
+            const auto encode = [](uint8_t* lane, int code) {
+                const uint16_t packed = static_cast<uint16_t>(code << 6);
+                lane[0] = static_cast<uint8_t>(packed);
+                lane[1] = static_cast<uint8_t>(packed >> 8);
+            };
+            const auto patch = [&](int left, int top, int right, int bottom, int yCode, int uCode, int vCode) {
+                ReplayFrame copy = original;
+                copy.pixels = std::make_shared<std::vector<uint8_t>>(*original.pixels);
+                copy.source.data = copy.pixels->data();
+                copy.source.backingOwner = copy.pixels;
+                const size_t chromaStart = copy.source.rowBytes * size_t(copy.source.height);
+                for (int y = top; y < bottom; ++y)
+                    for (int x = left; x < right; ++x)
+                    {
+                        encode(copy.pixels->data() + size_t(y) * copy.source.rowBytes + size_t(x) * 2,
+                            yCode);
+                        uint8_t* uv = copy.pixels->data() + chromaStart +
+                            size_t(y) * copy.source.chromaRowBytes + size_t(x / 2) * 4;
+                        encode(uv, uCode);
+                        encode(uv + 2, vCode);
+                    }
+                return copy;
+            };
+            struct Case {
+                const char* label;
+                int left, top, right, bottom, yCode, uCode, vCode;
+                bool requireRawInk;
+            };
+            const Case cases[] = {
+                // Existing detector logic may own a glyph-like interior patch.
+                // Its final bounded presentation must include the added pixels.
+                {"in-seed-glyph-like-gap", 2160, 1950, 2176, 1970, 568, 512, 512, true},
+                // A broader interior patch also tests the final bounded display, independent of semantic ownership.
+                {"in-seed-broad-picture", 2160, 1950, 2220, 1962, 568, 512, 512, true},
+                {"endpoint-solid-non-glyph", 2420, 2010, 2460, 2025, 568, 512, 512, true},
+                {"endpoint-wrong-palette", 2420, 2000, 2450, 2010, 568, 700, 300, false},
+                {"outside-line-picture", 2500, 1950, 2560, 1970, 568, 512, 512, true},
+                {"outside-envelope-sampled-patch", 2498, 2060, 2514, 2080, 568, 512, 512, true},
+                {"outside-envelope-between-columns", 2520, 2060, 2536, 2080, 568, 512, 512, false},
+            };
+            bool allSafe = true;
+            for (const auto& item : cases)
+            {
+                AnalysisLumaSample originalPixel;
+                Assert::IsTrue(original.source.Sample(item.left, item.top, originalPixel));
+                const bool originalPixelWasBlack = originalPixel.luma <= 24;
+                const auto frame = patch(item.left, item.top, item.right, item.bottom,
+                    item.yCode, item.uCode, item.vCode);
+                const auto raw = ExtractActivePictureEvidence(frame.source);
+                SubtitleBoxObservation key;
+                key.identity = frame.identity;
+                key.width = frame.source.width;
+                key.height = frame.source.height;
+                key.policyGeneration = frame.policy;
+                key.continuityGeneration = frame.continuity;
+                key.nearBarDistance = frame.nearBarDistance;
+                key.optimizationMode = frame.optimizationMode;
+                key.scriptHint = frame.script;
+                key.sharedPicture.required = true;
+                key.sharedPicture.identity = frame.identity;
+                SubtitleMeasurementSampler sampler;
+                const auto measured = sampler.Measure(frame.source, key, {},
+                    10000000.0 / double(frame.frameDuration100ns), raw);
+                const auto proof = EvaluateSubtitleAssistedVerticalBarProof(frame.source, raw,
+                    measured, frame.identity, frame.policy, frame.continuity, frame.script);
+                int ownedCells = 0, rawCells = 0;
+                if (measured.ink && measured.ink->step > 0)
+                {
+                    const auto& ink = *measured.ink;
+                    for (int row = 0; row < ink.height; ++row)
+                    {
+                        const int sourceY = ink.sourceRows[size_t(row)];
+                        if (sourceY < item.top || sourceY >= item.bottom) continue;
+                        for (int col = item.left / ink.step;
+                            col <= item.right / ink.step && col < ink.width; ++col)
+                        {
+                            ownedCells += ink.Get(col, row, true);
+                            rawCells += ink.Get(col, row, false);
+                        }
+                    }
+                }
+                AlphaSourceCrop::ColdMaskedCaptionPresentationDecision envelope;
+                if (proof.accepted && measured.text.bounds.Valid())
+                {
+                    const auto retention = EvaluateActivePicturePresentationRetention(
+                        frame.source, proof.candidate);
+                    AlphaSourceCrop::Input crop;
+                    crop.automaticCropEnabled = true;
+                    crop.nearBlackEpisodeFullRaster = true;
+                    crop.sharedGeometryAvailable = true;
+                    crop.latestObservationSupportsCrop = true;
+                    crop.latestObservationClassification =
+                        ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.geometry = proof.candidate;
+                    crop.geometrySourceGeneration = crop.frameSourceGeneration =
+                        frame.identity.transportGeneration;
+                    crop.frameSourceSequence = frame.identity.acceptedSequence;
+                    crop.framePresentationEpoch = frame.identity.viewportGeneration;
+                    crop.rasterWidth = frame.source.width;
+                    crop.rasterHeight = frame.source.height;
+                    crop.currentVisibleBoundsAvailable =
+                        retention.analysisValid && retention.presentationValid &&
+                        retention.outwardVisibleBoundsAvailable;
+                    crop.currentVisibleBase = proof.candidate;
+                    crop.currentVisibleBounds = retention.outwardVisibleBounds;
+                    crop.currentVisibleSourceGeneration = frame.identity.transportGeneration;
+                    crop.currentVisibleSourceSequence = frame.identity.acceptedSequence;
+                    AlphaSourceCrop::ColdMaskedCaptionPresentationInput cold;
+                    cold.crop = &crop;
+                    cold.episode.mode = AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
+                    cold.episode.sourceGeneration = frame.identity.transportGeneration;
+                    cold.episode.presentationEpoch = frame.identity.viewportGeneration;
+                    cold.strictProofCurrent = true;
+                    cold.strictPicture = proof.candidate;
+                    cold.proofSourceGeneration = frame.identity.transportGeneration;
+                    cold.proofSourceSequence = frame.identity.acceptedSequence;
+                    cold.proofPresentationEpoch = frame.identity.viewportGeneration;
+                    // Repeated equivalent source samples have confirmed this
+                    // measured cue; this probe isolates final pixel containment.
+                    cold.captionConfirmed = true;
+                    cold.captionBounds = { measured.text.bounds.left,
+                        measured.text.bounds.top, measured.text.bounds.right,
+                        measured.text.bounds.bottom, frame.source.width,
+                        frame.source.height, 1.0, ActivePictureBounds::BarAxes::NONE };
+                    cold.captionSourceGeneration = frame.identity.transportGeneration;
+                    cold.captionSourceSequence = frame.identity.acceptedSequence;
+                    cold.currentObservationAvailable = retention.activePicture.available;
+                    cold.currentObservation = retention.activePicture.proposedBounds;
+                    cold.observationSourceGeneration = frame.identity.transportGeneration;
+                    cold.observationSourceSequence = frame.identity.acceptedSequence;
+                    cold.currentRetentionEvaluated =
+                        retention.analysisValid && retention.presentationValid;
+                    cold.retentionSourceGeneration = frame.identity.transportGeneration;
+                    cold.retentionSourceSequence = frame.identity.acceptedSequence;
+                    cold.retentionBase = proof.candidate;
+                    envelope = AlphaSourceCrop::BuildColdMaskedCaptionPresentation(cold);
+                }
+                const bool patchVisible = !envelope.available ||
+                    (envelope.presentation.sourceBounds.left <= item.left &&
+                     envelope.presentation.sourceBounds.top <= item.top &&
+                     envelope.presentation.sourceBounds.right >= item.right &&
+                     envelope.presentation.sourceBounds.bottom >= item.bottom);
+                std::ostringstream report;
+                report << "cold-negative=" << item.label << " original_y=" << originalPixel.luma << " original_black=" << originalPixelWasBlack << " raw_class=" <<
+                    int(raw.classification) << " text=" << measured.text.detected <<
+                    " lines=" << measured.text.lineCount << " raw_cells=" << rawCells <<
+                    " owned_cells=" << ownedCells << " raw_bounds=" << raw.proposedBounds.left << "," << raw.proposedBounds.top << "," << raw.proposedBounds.right << "," << raw.proposedBounds.bottom << " caption_bounds=" << measured.text.bounds.left << "," << measured.text.bounds.top << "," << measured.text.bounds.right << "," << measured.text.bounds.bottom << " proof=" << proof.accepted <<
+                    " reason=" << proof.reason << " proposal=" << envelope.available <<
+                    " proposal_bottom=" << envelope.presentation.sourceBounds.bottom <<
+                    " patch_visible=" << patchVisible;
+                Logger::WriteMessage(report.str().c_str());
+                allSafe = allSafe && (!item.requireRawInk || rawCells > 0) && patchVisible;
+            }
+            Assert::IsTrue(allSafe,
+                L"Every admitted crop must contain all current adversarial pixels, including caption-like ink.");
+        }
         TEST_METHOD(OptionalOrderedNativeAnalysisCaptureReportsFreshAcquisition)
         {
             wchar_t* value = nullptr;
@@ -489,12 +999,257 @@ namespace Tests
                 L"Capture must contain a bounded ordered frame-*.bin sequence.");
             std::sort(frames.begin(), frames.end());
             Logger::WriteMessage("Fresh production-component replay: gaps reset confirmation. Compare these identities with live JSONL decisions; prior renderer/history/presentation/worker timing is not reconstructed.");
-            FreshReplay replay;
+
+            wchar_t* expectedValue = nullptr;
+            size_t expectedLength = 0;
+            _wdupenv_s(&expectedValue, &expectedLength, L"VP_ANALYSIS_REPLAY_EXPECTED_CROP");
+            const std::wstring expectedText(expectedValue ? expectedValue : L"");
+            std::free(expectedValue);
+            const bool assertExpectedCrop = !expectedText.empty();
+            int expectedLeft = 0, expectedTop = 0, expectedRight = 0, expectedBottom = 0;
+            if (assertExpectedCrop)
+            {
+                std::wistringstream parser(expectedText);
+                wchar_t a = 0, b = 0, c = 0;
+                parser >> expectedLeft >> a >> expectedTop >> b >>
+                    expectedRight >> c >> expectedBottom;
+                const bool parsed = bool(parser);
+                wchar_t extra = 0;
+                const bool hasExtra = bool(parser >> extra);
+                Assert::IsTrue(parsed && !hasExtra &&
+                    a == L',' && b == L',' && c == L',' &&
+                    expectedLeft >= 0 && expectedTop >= 0 &&
+                    expectedRight > expectedLeft && expectedBottom > expectedTop,
+                    L"Expected crop must be left,top,right,bottom.");
+            }
+            wchar_t* envelopeValue = nullptr;
+            size_t envelopeLength = 0;
+            _wdupenv_s(&envelopeValue, &envelopeLength,
+                L"VP_ANALYSIS_REPLAY_EXPECTED_CAPTION_BOTTOM");
+            const std::wstring envelopeText(envelopeValue ? envelopeValue : L"");
+            std::free(envelopeValue);
+            const bool assertExpectedEnvelope = !envelopeText.empty();
+            int expectedEnvelopeBottom = 0;
+            if (assertExpectedEnvelope)
+            {
+                std::wistringstream parser(envelopeText);
+                parser >> expectedEnvelopeBottom;
+                const bool parsed = bool(parser);
+                wchar_t extra = 0;
+                Assert::IsTrue(parsed && !bool(parser >> extra) &&
+                    expectedEnvelopeBottom > expectedBottom,
+                    L"Expected caption bottom must be a single integer below the physical picture edge.");
+            }
+            wchar_t* arOnlyValue = nullptr;
+            size_t arOnlyLength = 0;
+            _wdupenv_s(&arOnlyValue, &arOnlyLength,
+                L"VP_ANALYSIS_REPLAY_REQUIRE_AR_ONLY");
+            const std::wstring arOnlyText(arOnlyValue ? arOnlyValue : L"");
+            std::free(arOnlyValue);
+            Assert::IsTrue(arOnlyText.empty() || arOnlyText == L"1",
+                L"AR-only replay switch must be unset or 1.");
+            const bool requireArOnly = arOnlyText == L"1";
+            bool admittedExpectedEnvelope = false;
+            bool publishedExpectedCrop = false;
+            bool admittedExpectedCrop = false;
+            bool benchmarkedNativeExtraction = false;
+            AlphaSourceCrop::CropPresentationAdmissionState admission;
+            FreshReplay replay(requireArOnly);
             for (const auto& path : frames)
             {
                 const auto frame = ReadFrame(path);
+                if (assertExpectedCrop && !benchmarkedNativeExtraction)
+                {
+                    constexpr int trials = 5;
+                    double totalMs = 0.0, peakMs = 0.0;
+                    size_t lumaSamples = 0, chromaSamples = 0;
+                    for (int trial = 0; trial < trials; ++trial)
+                    {
+                        const auto begin = std::chrono::steady_clock::now();
+                        const auto evidence = ExtractActivePictureEvidence(frame.source);
+                        const double elapsedMs = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - begin).count();
+                        totalMs += elapsedMs;
+                        peakMs = std::max(peakMs, elapsedMs);
+                        lumaSamples = evidence.lumaSamples;
+                        chromaSamples = evidence.chromaSamples;
+                    }
+                    std::ostringstream timing;
+                    timing << "Native cached-frame extraction: sequence="
+                        << frame.identity.acceptedSequence << " trials=" << trials
+                        << " mean_ms=" << totalMs / trials << " peak_ms=" << peakMs
+                        << " luma_samples=" << lumaSamples
+                        << " chroma_samples=" << chromaSamples;
+                    Logger::WriteMessage(timing.str().c_str());
+                    benchmarkedNativeExtraction = true;
+                }
                 const auto result = replay.Observe(frame);
                 Logger::WriteMessage(Describe(result).c_str());
+                if (assertExpectedCrop && !result.repeated)
+                {
+                    Assert::IsTrue(expectedRight <= frame.source.width &&
+                        expectedBottom <= frame.source.height);
+                    Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+                        int(result.logicalClass), L"Captured sample lacks current native or subtitle-assisted crop authority.");
+                    Assert::AreEqual(expectedLeft, result.logicalBounds.left);
+                    Assert::AreEqual(expectedTop, result.logicalBounds.top);
+                    Assert::AreEqual(expectedRight, result.logicalBounds.right);
+                    Assert::AreEqual(expectedBottom, result.logicalBounds.bottom);
+                    if (result.reset) admission = {};
+                    if (result.decision.publish && result.decision.stable)
+                    {
+                        publishedExpectedCrop = true;
+                        Assert::AreEqual(expectedLeft, result.decision.bounds.left);
+                        Assert::AreEqual(expectedTop, result.decision.bounds.top);
+                        Assert::AreEqual(expectedRight, result.decision.bounds.right);
+                        Assert::AreEqual(expectedBottom, result.decision.bounds.bottom);
+                        Assert::IsTrue((unsigned(result.decision.bounds.trustedBarAxes) &
+                            unsigned(ActivePictureBounds::BarAxes::TOP_BOTTOM)) != 0,
+                            L"Newly published bounds must carry vertical crop authority.");
+                        AlphaSourceCrop::Input crop;
+                        crop.automaticCropEnabled = true;
+                        crop.sharedGeometryAvailable = true;
+                        crop.latestObservationSupportsCrop = true;
+                        crop.latestObservationClassification = result.logicalClass;
+                        crop.classification = result.decision.authoritativeClassification;
+                        crop.geometry = result.decision.bounds;
+                        crop.geometrySourceGeneration = crop.frameSourceGeneration =
+                            frame.identity.transportGeneration;
+                        crop.frameSourceSequence = frame.identity.acceptedSequence;
+                        crop.rasterWidth = frame.source.width;
+                        crop.rasterHeight = frame.source.height;
+                        const auto selected = AlphaSourceCrop::Evaluate(crop);
+
+                        const auto accepted = AlphaSourceCrop::AdmitCropPresentation(
+                            admission, crop, selected,
+                            frame.identity.viewportGeneration);
+                        std::ostringstream admissionTrace;
+                        admissionTrace << "Native expected admission sequence=" << result.sequence
+                            << " selected=" << selected.applyCrop << "/" << int(selected.owner)
+                            << " bounds=" << selected.sourceBounds.left << "," << selected.sourceBounds.top
+                            << "-" << selected.sourceBounds.right << "," << selected.sourceBounds.bottom
+                            << " reason=" << selected.reason << " accepted=" << accepted.presentation.applyCrop
+                            << " blocked=" << accepted.blocked << " bounds="
+                            << accepted.presentation.sourceBounds.left << "," << accepted.presentation.sourceBounds.top
+                            << "-" << accepted.presentation.sourceBounds.right << "," << accepted.presentation.sourceBounds.bottom
+                            << " reason=" << accepted.presentation.reason;
+                        Logger::WriteMessage(admissionTrace.str().c_str());
+                        Assert::IsFalse(accepted.blocked);
+                        Assert::IsTrue(accepted.presentation.applyCrop);
+                        Assert::AreEqual(expectedLeft, accepted.presentation.sourceBounds.left);
+                        Assert::AreEqual(expectedTop, accepted.presentation.sourceBounds.top);
+                        Assert::AreEqual(expectedRight, accepted.presentation.sourceBounds.right);
+                        Assert::AreEqual(expectedBottom, accepted.presentation.sourceBounds.bottom);
+                        if (assertExpectedEnvelope && result.subtitleProof &&
+                            result.captionConfirmed)
+                        {
+                            const auto retention = EvaluateActivePicturePresentationRetention(
+                                frame.source, result.decision.bounds);
+                            crop.nearBlackEpisodeFullRaster = true;
+                            crop.framePresentationEpoch = frame.identity.viewportGeneration;
+                            crop.currentVisibleBoundsAvailable =
+                                retention.analysisValid && retention.presentationValid &&
+                                retention.outwardVisibleBoundsAvailable;
+                            crop.currentVisibleBase = result.decision.bounds;
+                            crop.currentVisibleSourceGeneration = frame.identity.transportGeneration;
+                            crop.currentVisibleSourceSequence = frame.identity.acceptedSequence;
+                            crop.currentVisibleBounds = retention.outwardVisibleBounds;
+                            if (crop.currentVisibleBoundsAvailable)
+                            {
+                                auto& visible = crop.currentVisibleBounds;
+                                visible.left = std::min(visible.left, result.decision.bounds.left);
+                                visible.top = std::min(visible.top, result.decision.bounds.top);
+                                visible.right = std::max(visible.right, result.decision.bounds.right);
+                                visible.bottom = std::max(visible.bottom, result.decision.bounds.bottom);
+                                visible.aspectRatio = double(visible.right - visible.left) /
+                                    std::max(1, visible.bottom - visible.top);
+                            }
+                            AlphaSourceCrop::ColdMaskedCaptionPresentationInput cold;
+                            cold.crop = &crop;
+                            cold.episode.mode = AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
+                            cold.episode.sourceGeneration = frame.identity.transportGeneration;
+                            cold.episode.presentationEpoch = frame.identity.viewportGeneration;
+                            cold.previousAdmission = admission;
+                            cold.strictProofCurrent = result.subtitleProof;
+                            cold.strictPicture = result.decision.bounds;
+                            cold.proofSourceGeneration = frame.identity.transportGeneration;
+                            cold.proofSourceSequence = frame.identity.acceptedSequence;
+                            cold.proofPresentationEpoch = frame.identity.viewportGeneration;
+                            cold.captionConfirmed = result.captionConfirmed;
+                            cold.captionBounds = result.captionBounds;
+                            cold.captionSourceGeneration = frame.identity.transportGeneration;
+                            cold.captionSourceSequence = frame.identity.acceptedSequence;
+                            cold.currentObservationAvailable = retention.activePicture.available;
+                            cold.currentObservation = retention.activePicture.proposedBounds;
+                            cold.observationSourceGeneration = frame.identity.transportGeneration;
+                            cold.observationSourceSequence = frame.identity.acceptedSequence;
+                            cold.currentRetentionEvaluated =
+                                retention.analysisValid && retention.presentationValid;
+                            cold.currentRetentionSafe = retention.CanRetainPresentation();
+                            cold.currentExcludedBandsPixelSafe = retention.excludedBandsPixelSafe;
+                            cold.currentOutwardVisible = retention.outwardVisibleBoundsAvailable;
+                            cold.currentNativeTrusted =
+                                retention.activePicture.classification ==
+                                    ActivePictureClassification::BAR_CROP_TRUSTED &&
+                                retention.activePicture.authorityOrigin ==
+                                    ActivePictureAuthorityOrigin::NATIVE;
+                            cold.currentNativeBounds = retention.activePicture.trustedBounds;
+                            cold.captionMeasured = result.captionConfirmed;
+                            cold.retentionSourceGeneration = frame.identity.transportGeneration;
+                            cold.retentionSourceSequence = frame.identity.acceptedSequence;
+                            cold.retentionBase = result.decision.bounds;
+                            const auto envelope =
+                                AlphaSourceCrop::BuildColdMaskedCaptionPresentation(cold);
+                            std::ostringstream envelopeTrace;
+                            envelopeTrace << "Native caption envelope sequence=" << result.sequence
+                                << " caption_obs=" << result.captionObservations
+                                << " caption=" << result.captionBounds.left << ','
+                                << result.captionBounds.top << '-'
+                                << result.captionBounds.right << ','
+                                << result.captionBounds.bottom
+                                << " retention=" << retention.analysisValid << '/'
+                                << retention.presentationValid << '/'
+                                << retention.outwardVisibleBoundsAvailable
+                                << " visible=" << crop.currentVisibleBounds.left << ','
+                                << crop.currentVisibleBounds.top << '-'
+                                << crop.currentVisibleBounds.right << ','
+                                << crop.currentVisibleBounds.bottom
+                                << " available=" << envelope.available
+                                << " reason=" << envelope.reason;
+                            Logger::WriteMessage(envelopeTrace.str().c_str());
+                            Assert::IsTrue(envelope.available,
+                                L"Current native bars, confirmed caption, and current visible pixels must form a bounded envelope.");
+                            const auto final = AlphaSourceCrop::AdmitCropPresentation(
+                                admission, crop, envelope.presentation,
+                                frame.identity.viewportGeneration);
+                            Assert::IsFalse(final.blocked);
+                            Assert::IsTrue(final.presentation.applyCrop);
+                            Assert::AreEqual(expectedLeft, final.presentation.sourceBounds.left);
+                            Assert::AreEqual(expectedTop, final.presentation.sourceBounds.top);
+                            Assert::AreEqual(expectedRight, final.presentation.sourceBounds.right);
+                            Assert::AreEqual(expectedEnvelopeBottom,
+                                final.presentation.sourceBounds.bottom);
+                            Assert::IsTrue(final.presentation.sourceBounds.bottom >=
+                                result.captionBounds.bottom,
+                                L"Final presentation must include every measured caption pixel.");
+                            Assert::AreEqual(expectedBottom, final.state.trustedCrop.bottom,
+                                L"Caption pixels must not replace physical picture authority.");
+                            admittedExpectedEnvelope = true;
+                        }
+                        admission = accepted.state;
+                        admittedExpectedCrop = true;
+                    }
+                }
+            }
+            if (assertExpectedCrop)
+            {
+                Assert::IsTrue(publishedExpectedCrop,
+                    L"Native capture never published a stable trusted expected crop.");
+                Assert::IsTrue(admittedExpectedCrop,
+                    L"Native capture never admitted the expected crop for presentation.");
+                if (assertExpectedEnvelope)
+                    Assert::IsTrue(admittedExpectedEnvelope,
+                        L"Native capture never admitted the guarded picture with its complete caption envelope.");
             }
         }
     };

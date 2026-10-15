@@ -2054,6 +2054,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // Keep row seeds immutable until every row has finished recovery.
     std::vector<uint8_t> recoveredOwners(area,0);
     std::array<bool,3> recoveredRows{};
+    std::array<bool,3> strongRecoveredRows{};
+    std::array<SubtitleBoxRect,3> certifiedTerminalCapture{};
     size_t nativeSamples=0;
     constexpr size_t NativeSampleLimit=65536;
     // Finish ordinary recovery for every row first. Strong recovery consumes
@@ -2206,6 +2208,80 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             // The extra pass authorizes only detached, strongly proved ink.
             // Its wider search must not enlarge the legacy attached path or
             // fall back to ordinary punctuation rules on ambiguous evidence.
+            // A native component that extends one terminal edge of a measured
+            // line can be part of its last glyph. The ordinary attached path
+            // includes its bounds, but not its sampled pixels in ownedInk.
+            // Require independent finite glyph shape, palette, backing and
+            // unambiguous line ownership before publishing those pixels.
+            const bool extendsLeft=component.left<seed.left && component.right>seed.left &&
+                component.right<=seed.right;
+            const bool extendsRight=component.right>seed.right && component.left<seed.right &&
+                component.left>=seed.left;
+            const int terminalExtension=extendsLeft ? seed.left-component.left :
+                extendsRight ? component.right-seed.right : 0;
+            const bool terminalInMeasuredBar =
+                (seed.bottom<=pictureTop && component.bottom<=pictureTop) ||
+                (seed.top>=pictureBottom && component.top>=pictureBottom);
+            bool terminalAttachedGlyph=!strongSearch && attached && terminalInMeasuredBar &&
+                (extendsLeft!=extendsRight) && terminalExtension>0 &&
+                terminalExtension<=(std::max)(2*step,seedHeight/4) &&
+                component.top>=seed.top && component.bottom<=seed.bottom &&
+                cw<=seedHeight && ch<=seedHeight && rowOverlap>=ch/2 &&
+                m_flood.size()>=size_t((std::max)(3,ch/2)) &&
+                m_flood.size()*100>=size_t(cw)*ch*2 &&
+                m_flood.size()*100<=size_t(cw)*ch*75;
+            unsigned ringSamples=0,ringBlack=0,matchingColor=0;
+            if(terminalAttachedGlyph) {
+                for(int index:m_flood) {
+                    const auto& value=m_nativeCardSamples[index];
+                    matchingColor+=std::abs(int(value.chromaU)-inkU)<=32 &&
+                        std::abs(int(value.chromaV)-inkV)<=32;
+                    const int sx=roi.left+index%rw,sy=roi.top+index/rw;
+                    if(sx%step)continue;
+                    const auto row=std::lower_bound(evidence.sourceRows.begin(),evidence.sourceRows.end(),sy);
+                    if(row==evidence.sourceRows.end() || *row!=sy)continue;
+                    const size_t pixel=size_t(row-evidence.sourceRows.begin())*w+sx/step;
+                    const auto label=m_labels[pixel];
+                    if(recoveredOwners[pixel] && recoveredOwners[pixel]!=selected+1) {
+                        terminalAttachedGlyph=false;
+                    }
+                    // Provisional component groups are not accepted caption
+                    // rows. Refuse a mark owned by another accepted row, while
+                    // allowing this independently certified terminal glyph to
+                    // join the sole selected line.
+                    for(int other=0;other<lineCount;++other)if(other!=selected &&
+                        label && componentOwners[label]==lineIndices[other]+1)
+                        terminalAttachedGlyph=false;
+                }
+                terminalAttachedGlyph=terminalAttachedGlyph &&
+                    matchingColor*100>=m_flood.size()*90;
+                constexpr int halo=2;
+                for(int yy=component.top-halo;yy<component.bottom+halo && terminalAttachedGlyph;++yy)
+                    for(int xx=component.left-halo;xx<component.right+halo;++xx) {
+                        if(xx>component.left-halo && xx<component.right+halo-1 &&
+                            yy>component.top-halo && yy<component.bottom+halo-1)continue;
+                        const int index=read(xx,yy);
+                        if(index<0){terminalAttachedGlyph=false;break;}
+                        ++ringSamples;ringBlack+=m_nativeCardSamples[index].luma<=componentCardLimit;
+                    }
+                terminalAttachedGlyph=terminalAttachedGlyph && ringSamples &&
+                    ringBlack*100>=ringSamples*85;
+                // A terminal mark must belong uniquely to this measured line.
+                for(int other=0;other<lineCount && terminalAttachedGlyph;++other)if(other!=selected) {
+                    const auto& row=lineBoxes[other];
+                    const int overlap=(std::min)(component.bottom,row.bottom*step)-
+                        (std::max)(component.top,row.top*step);
+                    const int otherHorizontalGap=(std::max)({0,row.left*step-component.right,
+                        component.left-row.right*step});
+                    const int otherVerticalGap=(std::max)({0,row.top*step-component.bottom,
+                        component.top-row.bottom*step});
+                    const int distance=verticalGap*2+horizontalGap;
+                    const int otherDistance=otherVerticalGap*2+otherHorizontalGap;
+                    if(otherDistance<=distance+(std::max)(2,step) ||
+                        (overlap>0 && overlap*3>=(std::min)(ch,Height(row)*step)))
+                        terminalAttachedGlyph=false;
+                }
+            }
             if(strongSearch && !strongGlyph)return;
             // Standalone marks need surrounding black and a bounded footprint.
             // Strong local evidence may override the usual 1.5x height / 2x
@@ -2227,8 +2303,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 if(!count || black*100<count*85)return;
             }
             nativeCapture[selected]=Union(nativeCapture[selected],component);
-            if(strongGlyph) {
+            if(strongGlyph || terminalAttachedGlyph) {
                 recoveredRows[selected]=true;
+                if(strongGlyph) strongRecoveredRows[selected]=true;
+                if(terminalAttachedGlyph) certifiedTerminalCapture[selected]=
+                    certifiedTerminalCapture[selected].Valid() ?
+                    Union(certifiedTerminalCapture[selected],component) : component;
                 // Earlier shape filtering may have cleared these grid pixels.
                 // Restore only actual native ink, never a rectangular fill.
                 for(int index:m_flood) {
@@ -2266,7 +2346,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // bounds as well as native capture. Otherwise a later mask can clip a
     // component that this pass has already accepted.
     for(int i=0;i<lineCount;++i)if(recoveredRows[i]) {
-        const auto& r=nativeCapture[i];
+        // Terminal ownership certifies its own sampled component, not every
+        // ordinary attached fragment accumulated while exploring this row.
+        // Keep the legacy strong-card extent when that independent route won.
+        const auto& r=strongRecoveredRows[i] ? nativeCapture[i] : certifiedTerminalCapture[i];
         lineBoxes[i]=Union(lineBoxes[i],{r.left/step,r.top/step,
             (r.right+step-1)/step,(r.bottom+step-1)/step});
         box=Union(box,lineBoxes[i]);

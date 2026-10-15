@@ -1,8 +1,11 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/GradualPictureBoundaryRetention.h>
+#include <vprenderer/SubtitleAspectRetention.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace AlphaSourceCrop;
@@ -26,6 +29,10 @@ namespace Tests
                 input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=7;
                 input.framesPerSecond=fps;
                 input.evidence.available=true;
+                input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                input.evidence.axisEvidence.vertical.scanComplete=true;
+                input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+                input.evidence.top.trusted=input.evidence.bottom.trusted=true;
                 input.retention.analysisValid=input.retention.presentationValid=true;
                 input.retention.expansionStripsAvailable=true;
                 input.retention.expansionBase=input.trustedGeometry;
@@ -42,10 +49,11 @@ namespace Tests
                 input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=b;
                 input.retention.expansionCandidate=b;
             }
-            void Step()
+            void Step(bool classicPicturePresentationAllowed=true)
             {
                 input.sourceSequence=identity.acceptedSequence;
-                motion=ObserveMovingPictureTransition(motion,identity,input);
+                const auto tracking=PictureMotionTrackingInput(input,classicPicturePresentationAllowed);
+                motion=ObserveMovingPictureTransition(motion,identity,tracking);
                 ++identity.acceptedSequence; ++identity.sourceFrameNumber;
                 identity.captureTimestamp+=uint64_t(std::llround(10000000.0/input.framesPerSecond));
             }
@@ -240,12 +248,703 @@ namespace Tests
                 }
             }
         }
+        TEST_METHOD(AdvancedSubtitleModeTracksOnlyNativeMotionAcrossClassicFlags)
+        {
+            MotionSequence advanced;
+            advanced.input.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            advanced.input.translationDriftActive=true;
+            advanced.input.previousOutward.verticalPresentationSeen=true;
+            for(int i=0;i<12;++i)
+            {
+                advanced.Target(264-i*4);
+                advanced.Step(false);
+            }
+            Assert::IsTrue(advanced.motion.active);
+            Assert::IsTrue(advanced.input.presentation.action==VerticalBarPresentationAction::TRANSLATE);
+            Assert::IsTrue(advanced.input.translationDriftActive);
+            Assert::IsTrue(advanced.input.previousOutward.verticalPresentationSeen);
+
+            MotionSequence classic;
+            classic.input.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            classic.input.translationDriftActive=true;
+            classic.input.previousOutward.verticalPresentationSeen=true;
+            for(int i=0;i<12;++i)
+            {
+                classic.Target(264-i*4);
+                classic.Step(true);
+                Assert::IsFalse(classic.motion.active);
+            }
+        }
+        TEST_METHOD(AdvancedModeDoesNotClearFitOrFailOpenPictureOwners)
+        {
+            for(auto action : {VerticalBarPresentationAction::FIT,
+                VerticalBarPresentationAction::FAIL_OPEN})
+            {
+                MotionSequence s;
+                s.input.presentation.action=action;
+                s.input.translationDriftActive=true;
+                s.input.previousOutward.verticalPresentationSeen=true;
+                for(int i=0;i<12;++i)
+                {
+                    s.Target(264-i*4);
+                    const auto tracking=PictureMotionTrackingInput(s.input,false);
+                    Assert::IsTrue(tracking.presentation.action==action);
+                    Assert::IsTrue(tracking.translationDriftActive);
+                    Assert::IsTrue(tracking.previousOutward.verticalPresentationSeen);
+                    s.Step(false);
+                    Assert::IsFalse(s.motion.active);
+                }
+            }
+        }
+        TEST_METHOD(ActiveNativeDistributedRampSettlesOnlyAfterFreshQuietProof)
+        {
+            MotionSequence s;
+            s.Ramp(12,4);
+            Assert::IsTrue(s.motion.active);
+            const auto broadTop=s.input.retention.expandingTop;
+            const auto broadBottom=s.input.retention.expandingBottom;
+            const auto distributed=[&](int top) {
+                s.Target(top);
+                s.input.evidence.axisEvidence.vertical.scanComplete=true;
+                s.input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+                s.input.evidence.top.trusted=s.input.evidence.bottom.trusted=true;
+                s.input.retention.activePicture=s.input.evidence;
+                for(auto* edge : {&s.input.retention.expandingTop,
+                                  &s.input.retention.expandingBottom})
+                {
+                    edge->blackFraction=.04;
+                    edge->continuity=0;
+                    edge->lumaP90=36;
+                    edge->texture=7.1;
+                    edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+                }
+                const auto proof=ConfirmOutwardPictureTransition({},s.input.trustedGeometry,
+                    s.input.outwardCandidate,s.input.retention,7,s.identity.acceptedSequence);
+                Assert::IsFalse(proof.broadOpposingPicture);
+                Assert::IsTrue(proof.nativeDistributedPicture);
+            };
+            for(int i=0;i<8;++i)
+            {
+                const uint64_t current=s.identity.acceptedSequence;
+                distributed(s.input.outwardCandidate.top-4);
+                s.Step();
+                Assert::IsTrue(HasCurrentMovingPictureTransition(s.motion,7,current));
+                Assert::IsTrue(s.motion.active);
+                Assert::IsTrue(s.motion.quietSamples<7);
+            }
+            // The next ordinary broad sample must compare with the latest
+            // native-distributed edge, not the pre-darkness edge.
+            s.input.retention.expandingTop=broadTop;
+            s.input.retention.expandingBottom=broadBottom;
+            s.Target(s.input.outwardCandidate.top-4);
+            s.Step();
+            Assert::IsTrue(s.motion.active);
+            Assert::AreEqual(s.input.outwardCandidate.top,s.motion.last.top);
+
+            // An unknown current strip interrupts quiet proof. Only seven new
+            // distinct, stationary native-distributed sources can settle it.
+            distributed(s.input.outwardCandidate.top);
+            for(int i=0;i<3;++i) { s.Step(); Assert::IsTrue(s.motion.active); }
+            s.input.retention.expandingTop.distributedSupportDepthRowsByQuartile.fill(0);
+            s.Step();
+            Assert::IsTrue(s.motion.active);
+            Assert::AreEqual(0u,s.motion.quietSamples);
+            constexpr int required=7; // ceil(24 fps * 250 ms) + 1
+            for(int i=0;i<required;++i)
+            {
+                distributed(s.input.outwardCandidate.top);
+                s.Step();
+                if(i+1<required) Assert::IsTrue(s.motion.active);
+            }
+            Assert::IsFalse(s.motion.active);
+            Assert::IsTrue(s.motion.awaitingPublication);
+            ActivePictureTransitionDecision published;
+            published.publish=published.stable=true;
+            CompleteMovingPictureTransition(s.motion,s.input,published);
+            Assert::IsFalse(s.motion.awaitingPublication);
+        }
+        TEST_METHOD(DistributedMotionCannotStartJumpGapsOrUnknownPixelProof)
+        {
+            MotionSequence s;
+            s.Ramp(12,4);
+            Assert::IsTrue(s.motion.active);
+            const auto prior=s.motion;
+            s.Target(prior.last.top-4);
+            s.input.sourceSequence=s.identity.acceptedSequence;
+            s.input.evidence.axisEvidence.vertical.scanComplete=true;
+            s.input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            s.input.evidence.top.trusted=s.input.evidence.bottom.trusted=true;
+            s.input.retention.activePicture=s.input.evidence;
+            for(auto* edge : {&s.input.retention.expandingTop,
+                              &s.input.retention.expandingBottom})
+            {
+                edge->blackFraction=.04;
+                edge->continuity=0;
+                edge->lumaP90=36;
+                edge->texture=7.1;
+                edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+            }
+            Assert::IsFalse(ObserveMovingPictureTransition({},s.identity,s.input).active);
+            auto unknown=s.input;
+            unknown.retention.expandingTop.distributedSupportDepthRowsByQuartile.fill(0);
+            const auto held=ObserveMovingPictureTransition(prior,s.identity,unknown);
+            Assert::IsTrue(held.active);
+            Assert::AreEqual(prior.last.top,held.last.top);
+            auto gap=s.identity;
+            gap.acceptedSequence+=2;
+            gap.sourceFrameNumber+=2;
+            gap.captureTimestamp+=834166;
+            auto gapInput=s.input;
+            gapInput.sourceSequence=gap.acceptedSequence;
+            const auto afterGap=ObserveMovingPictureTransition(prior,gap,gapInput);
+            Assert::IsTrue(afterGap.active);
+            Assert::AreEqual(prior.last.top,afterGap.last.top);
+            auto jumped=s.input;
+            jumped.evidence.trustedBounds.top-=24;
+            jumped.evidence.trustedBounds.bottom+=24;
+            jumped.evidence.trustedBounds.aspectRatio=double(jumped.evidence.trustedBounds.rasterWidth)/
+                (jumped.evidence.trustedBounds.bottom-jumped.evidence.trustedBounds.top);
+            jumped.evidence.proposedBounds=jumped.outwardCandidate=jumped.evidence.trustedBounds;
+            jumped.retention.expansionCandidate=jumped.evidence.trustedBounds;
+            jumped.retention.activePicture=jumped.evidence;
+            const auto abrupt=ObserveMovingPictureTransition(prior,s.identity,jumped);
+            Assert::IsFalse(abrupt.active);
+            Assert::IsTrue(abrupt.awaitingPublication);
+        }
+        TEST_METHOD(NearBlackSceneNoticeKeepsOneAdmittedScopeThroughMovingPicture)
+        {
+            MotionSequence s;
+            const auto scope=s.input.trustedGeometry;
+            s.Ramp(12,4);
+            Assert::IsTrue(s.motion.active);
+
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+            crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.latestObservationSupportsCrop=true;
+            crop.geometry=scope;
+            crop.rasterWidth=scope.rasterWidth;
+            crop.rasterHeight=scope.rasterHeight;
+            crop.geometrySourceGeneration=crop.frameSourceGeneration=7;
+            crop.framePresentationEpoch=17;
+            crop.frameSourceSequence=s.motion.identity.acceptedSequence;
+            auto admitted=AdmitCropPresentation({},crop,Evaluate(crop),17);
+            Assert::IsFalse(admitted.blocked);
+            auto admission=admitted.state;
+            AspectLimitFillInput fill;
+            fill.trustedContentAuthorityAccepted=true;
+            fill.cropNarrowerContentToFillScreen=fill.cropWiderContentToFillScreen=true;
+            fill.narrowerLimitConfigured=fill.widerLimitConfigured=true;
+            fill.narrowerAspectLimit=2.32;
+            fill.widerAspectLimit=2.42;
+            fill.screenAspect=2.35;
+            fill.contentReferenceAvailable=true;
+            fill.contentReferenceBounds=scope;
+            fill.sourceBounds=scope;
+            const auto originalFill=EvaluateAspectLimitFill(fill);
+            Assert::IsTrue(originalFill.applied);
+
+            // Produce the actual SceneDetector event type seen mid-ramp:
+            // near-black entry with a measured difference, no hard-cut cause.
+            SceneDetector detector;
+            const uint64_t boundarySequence=s.identity.acceptedSequence;
+            const auto level=[&](uint16_t luma,uint64_t sequence) {
+                const std::vector<uint16_t> pixels(64*36,uint16_t(luma<<6));
+                const SceneDetectorInput scene={pixels.data(),64,36,64*sizeof(uint16_t),
+                    sequence,int64_t(sequence*417083),7,417083,true};
+                return detector.Analyze(scene);
+            };
+            level(120,boundarySequence-3);
+            level(108,boundarySequence-2);
+            level(100,boundarySequence-1);
+            const auto boundary=level(96,boundarySequence);
+            Assert::IsTrue(boundary.safeBoundary);
+            Assert::IsTrue(boundary.nearBlackEntry);
+            Assert::IsFalse(boundary.hardCutCandidate);
+            Assert::IsFalse(boundary.hardCutConfirmed);
+
+            // Renderer clears scene candidates first, then exact current native
+            // proof may restore only this already active moving episode.
+            const auto beforeBoundary=s.motion;
+            s.Target(beforeBoundary.last.top-4);
+            s.input.sourceSequence=boundarySequence;
+            s.input.evidence.axisEvidence.vertical.scanComplete=true;
+            s.input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            s.input.evidence.axisEvidence.vertical.barCandidate=true;
+            s.motion={};
+            s.motion=RetainMovingPictureAtDarknessBoundary(beforeBoundary,boundary,
+                s.identity,s.input);
+            Assert::IsTrue(s.motion.active);
+            s.motion=ObserveMovingPictureTransition(s.motion,s.identity,s.input);
+            Assert::IsTrue(HasCurrentMovingPictureTransition(s.motion,7,boundarySequence));
+            ++s.identity.acceptedSequence;
+            ++s.identity.sourceFrameNumber;
+            s.identity.captureTimestamp+=417083;
+
+            const auto presentHeldScope=[&](uint64_t sequence) {
+                crop.frameSourceSequence=sequence;
+                crop.currentVisibleBoundsAvailable=true;
+                crop.currentVisibleBounds=scope;
+                crop.currentVisibleBounds.bottom=scope.bottom+150;
+                crop.currentVisibleBase=scope;
+                crop.currentVisibleSourceGeneration=7;
+                crop.currentVisibleSourceSequence=sequence;
+                crop.movingPictureTransition=HasCurrentMovingPictureTransition(s.motion,7,sequence);
+                crop.movingPictureHold.base=scope;
+                crop.movingPictureHold.sourceGeneration=7;
+                crop.movingPictureHold.sourceSequence=sequence;
+                crop.movingPictureHold.presentationEpoch=17;
+                Assert::IsTrue(crop.movingPictureTransition);
+                // UpdateScopeSubtitleShift uses this exact-source predicate to
+                // clear old FIT evidence and skip scanning moving picture edges.
+                VerticalBarPresentationState subtitleFit;
+                subtitleFit.action=VerticalBarPresentationAction::FIT;
+                if (crop.movingPictureTransition) subtitleFit={};
+                Assert::IsTrue(subtitleFit.action==VerticalBarPresentationAction::NONE);
+                Assert::IsTrue(Evaluate(crop).owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                auto shown=AdmitCropPresentation(admission,crop,Evaluate(crop),17);
+                Assert::IsFalse(shown.blocked);
+                Assert::IsTrue(shown.presentation.applyCrop);
+                Assert::AreEqual(scope.top,shown.presentation.sourceBounds.top);
+                Assert::AreEqual(scope.bottom,shown.presentation.sourceBounds.bottom);
+                fill.sourceBounds=shown.presentation.sourceBounds;
+                const auto visible=EvaluateAspectLimitFill(fill);
+                Assert::IsTrue(visible.applied);
+                Assert::AreEqual(originalFill.sourceBounds.left,visible.sourceBounds.left);
+                Assert::AreEqual(originalFill.sourceBounds.top,visible.sourceBounds.top);
+                Assert::AreEqual(originalFill.sourceBounds.right,visible.sourceBounds.right);
+                Assert::AreEqual(originalFill.sourceBounds.bottom,visible.sourceBounds.bottom);
+                admission=shown.state;
+            };
+            presentHeldScope(boundarySequence);
+            for(int i=0;i<8;++i)
+            {
+                const uint64_t current=s.identity.acceptedSequence;
+                s.Target(s.motion.last.top-4);
+                s.Step();
+                presentHeldScope(current);
+            }
+
+            // A genuinely trusted full-raster frame terminates motion now;
+            // it must never borrow the near-black exception or stale FIT state.
+            const uint64_t endpointSequence=s.identity.acceptedSequence;
+            s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            s.Step();
+            Assert::IsFalse(s.motion.active);
+            Assert::IsFalse(HasCurrentMovingPictureTransition(s.motion,7,endpointSequence));
+            crop.frameSourceSequence=endpointSequence;
+            crop.currentVisibleBoundsAvailable=false;
+            crop.movingPictureTransition=false;
+            crop.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            crop.latestObservationClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            crop.fullRasterPresentationAuthoritative=true;
+            const auto full=AdmitCropPresentation(admission,crop,Evaluate(crop),17);
+            Assert::IsFalse(full.blocked);
+            Assert::IsFalse(full.presentation.applyCrop);
+            // Once the motion owner is gone, an independently established FIT
+            // is eligible for normal subtitle arbitration on a later source.
+            s.input.presentation.action=VerticalBarPresentationAction::FIT;
+            Assert::IsTrue(PictureMotionTrackingInput(s.input,true).presentation.action==
+                VerticalBarPresentationAction::FIT);
+        }
+        TEST_METHOD(AdvancedPictureHoldsAdmittedScopeAndFillUntilMovingEndpointPublishes)
+        {
+            MotionSequence s;
+            const auto established=s.input.trustedGeometry;
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+            crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.latestObservationSupportsCrop=true;
+            crop.geometry=established;
+            crop.rasterWidth=established.rasterWidth;
+            crop.rasterHeight=established.rasterHeight;
+            crop.geometrySourceGeneration=crop.frameSourceGeneration=7;
+            crop.framePresentationEpoch=17;
+            crop.frameSourceSequence=99;
+            auto admitted=AdmitCropPresentation({},crop,Evaluate(crop),17);
+            Assert::IsFalse(admitted.blocked);
+            Assert::IsTrue(admitted.presentation.applyCrop);
+            Assert::AreEqual(established.top,admitted.presentation.sourceBounds.top);
+            auto admission=admitted.state;
+            AspectLimitFillInput fill;
+            fill.trustedContentAuthorityAccepted=true;
+            fill.cropNarrowerContentToFillScreen=fill.cropWiderContentToFillScreen=true;
+            fill.narrowerLimitConfigured=fill.widerLimitConfigured=true;
+            fill.narrowerAspectLimit=2.32;
+            fill.widerAspectLimit=2.42;
+            fill.screenAspect=2.35;
+            fill.contentReferenceAvailable=true;
+            fill.contentReferenceBounds=established;
+            fill.sourceBounds=established;
+            const auto originalFill=EvaluateAspectLimitFill(fill);
+            Assert::IsTrue(originalFill.applied);
+            uint32_t holdFrames=0;
+            uint32_t translatedBeforeHold=0;
+            for(int i=0;i<18;++i)
+            {
+                s.Target(264-i*4);
+                const uint64_t current=s.identity.acceptedSequence;
+                s.input.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+                s.input.translationDriftActive=true;
+                s.input.previousOutward.verticalPresentationSeen=true;
+                s.Step(false);
+                crop.frameSourceSequence=current;
+                crop.currentVisibleBoundsAvailable=true;
+                crop.currentVisibleBounds=established;
+                crop.currentVisibleBounds.bottom=established.bottom+150;
+                crop.currentVisibleBase=established;
+                crop.currentVisibleSourceGeneration=7;
+                crop.currentVisibleSourceSequence=current;
+                crop.verticalTranslationActive=true;
+                crop.verticalTranslationPixels=20;
+                crop.verticalTranslationBase=established;
+                crop.verticalTranslationSourceGeneration=7;
+                crop.verticalTranslationConfirmationPending=true;
+                crop.movingPictureTransition=HasCurrentMovingPictureTransition(s.motion,7,current);
+                crop.movingPictureHold.base=established;
+                crop.movingPictureHold.sourceGeneration=7;
+                crop.movingPictureHold.sourceSequence=current;
+                crop.movingPictureHold.presentationEpoch=17;
+                const bool routed=RouteAdvancedMovingPictureHold(
+                    crop,SubtitlePreviewMode::GeneratedGrayBackground);
+                if(crop.movingPictureTransition)
+                {
+                    Assert::IsTrue(routed);
+                    ++holdFrames;
+                }
+                auto decision=Evaluate(crop);
+                if(crop.movingPictureTransition)
+                    Assert::IsTrue(decision.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                else if(decision.owner==DecisionOwner::VERTICAL_TRANSLATION)
+                    ++translatedBeforeHold;
+                admitted=AdmitCropPresentation(admission,crop,decision,17);
+                Assert::IsFalse(admitted.blocked);
+                Assert::IsTrue(admitted.presentation.applyCrop);
+                admission=admitted.state;
+                auto physical=SubtitlePresentationBounds(admitted.presentation,
+                    SubtitlePreviewMode::GeneratedGrayBackground,(i%2)==0,false);
+                Assert::AreEqual(established.top,physical.top);
+                Assert::AreEqual(established.bottom,physical.bottom);
+                fill.sourceBounds=physical;
+                const auto shown=EvaluateAspectLimitFill(fill);
+                Assert::IsTrue(shown.applied);
+                Assert::AreEqual(originalFill.sourceBounds.left,shown.sourceBounds.left);
+                Assert::AreEqual(originalFill.sourceBounds.right,shown.sourceBounds.right);
+                Assert::AreEqual(originalFill.sourceBounds.top,shown.sourceBounds.top);
+                Assert::AreEqual(originalFill.sourceBounds.bottom,shown.sourceBounds.bottom);
+            }
+            Assert::IsTrue(holdFrames>0);
+            Assert::IsTrue(translatedBeforeHold>0);
+            for(int i=0;i<8 && s.motion.active;++i)
+            {
+                const uint64_t current=s.identity.acceptedSequence;
+                s.Step(false);
+                crop.frameSourceSequence=current;
+                crop.currentVisibleSourceSequence=current;
+                crop.movingPictureHold.sourceSequence=current;
+                crop.movingPictureTransition=HasCurrentMovingPictureTransition(s.motion,7,current);
+                RouteAdvancedMovingPictureHold(crop,SubtitlePreviewMode::GeneratedGrayBackground);
+                const auto held=AdmitCropPresentation(admission,crop,Evaluate(crop),17);
+                Assert::IsFalse(held.blocked);
+                Assert::AreEqual(established.top,held.presentation.sourceBounds.top);
+                admission=held.state;
+            }
+            Assert::IsFalse(s.motion.active);
+            Assert::IsTrue(s.motion.awaitingPublication);
+            ActivePictureTransitionDecision published;
+            published.publish=published.stable=true;
+            CompleteMovingPictureTransition(s.motion,s.input,published);
+            Assert::IsFalse(s.motion.awaitingPublication);
+            const auto endpoint=s.input.outwardCandidate;
+            crop.geometry=endpoint;
+            crop.frameSourceSequence=s.input.sourceSequence;
+            crop.movingPictureTransition=false;
+            crop.verticalTranslationActive=false;
+            crop.verticalTranslationConfirmationPending=false;
+            crop.latestObservationSupportsCrop=true;
+            crop.currentVisibleBase=endpoint;
+            crop.currentVisibleBounds=endpoint;
+            crop.currentVisibleBounds.bottom=endpoint.bottom+80;
+            crop.currentVisibleSourceSequence=crop.frameSourceSequence;
+            const auto blockedEndpoint=AdmitCropPresentation(admission,crop,Evaluate(crop),17);
+            Assert::IsTrue(blockedEndpoint.blocked);
+            // Only a new current-source witness within the endpoint permits the final cut.
+            crop.currentVisibleBounds=endpoint;
+            fill.contentReferenceBounds=endpoint;
+            admitted=AdmitCropPresentation(admission,crop,Evaluate(crop),17);
+            Assert::IsFalse(admitted.blocked);
+            Assert::IsTrue(admitted.presentation.applyCrop);
+            Assert::AreEqual(endpoint.top,admitted.presentation.sourceBounds.top);
+            Assert::IsTrue(established.top != admitted.presentation.sourceBounds.top);
+        }
+        TEST_METHOD(AdvancedPictureTrackingPreservesNativeEvidenceAndIdentityVetoes)
+        {
+            for(int fault=0;fault<7;++fault)
+            {
+                MotionSequence s;
+                s.input.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+                s.input.translationDriftActive=true;
+                s.input.previousOutward.verticalPresentationSeen=true;
+                for(int i=0;i<12;++i)
+                {
+                    s.Target(264-i*4);
+                    switch(fault)
+                    {
+                    case 0: s.input.retention.expansionStripsAvailable=false; break;
+                    case 1: s.input.retention.analysisValid=false; break;
+                    case 2: s.input.evidence.available=false; break;
+                    case 3: s.input.retention.globalNearBlack=true; break;
+                    case 4: s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                    case 5: s.input.compatiblePresentation=false; break;
+                    case 6: s.input.trustedGeneration=99; break;
+                    }
+                    const auto native=s.input.evidence.trustedBounds;
+                    const auto base=s.input.trustedGeometry;
+                    s.Step(false);
+                    Assert::IsFalse(s.motion.active);
+                    Assert::AreEqual(native.top,s.input.evidence.trustedBounds.top);
+                    Assert::AreEqual(base.top,s.input.trustedGeometry.top);
+                }
+            }
+        }
         TEST_METHOD(ReversalAndBriefPauseKeepOnePresentationHold)
         {
             MotionSequence s; s.Ramp(20,4); Assert::IsTrue(s.motion.active);
             for (int i=0;i<3;++i) { s.Step(); Assert::IsTrue(s.motion.active); }
             const int top=s.input.outwardCandidate.top;
             for (int i=1;i<12;++i) { s.Target(top+i*4); s.Step(); Assert::IsTrue(s.motion.active); }
+        }
+    };
+}
+
+namespace Tests
+{
+    TEST_CLASS(MovingPictureNativePositionTests)
+    {
+        static void Native(MotionSequence& s)
+        {
+            s.input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            s.input.evidence.axisEvidence.vertical.scanComplete=true;
+            s.input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            s.input.evidence.top.trusted=s.input.evidence.bottom.trusted=true;
+            s.input.retention.activePicture=s.input.evidence;
+        }
+        static void UnknownStrips(MotionSequence& s)
+        {
+            Native(s);
+            for(auto* edge : {&s.input.retention.expandingTop,&s.input.retention.expandingBottom}) {
+                edge->blackFraction=.4; edge->continuity=1; edge->lumaP90=60;
+                edge->distributedSupportDepthRowsByQuartile.fill(0);
+            }
+            const auto proof=ConfirmOutwardPictureTransition({},s.input.trustedGeometry,
+                s.input.outwardCandidate,s.input.retention,7,s.identity.acceptedSequence);
+            Assert::IsFalse(proof.broadOpposingPicture || proof.nativeDistributedPicture,
+                L"This interval must lack both pixel certificates; native distributed coverage alone missed the real regression.");
+        }
+        static void AssertHeldOutput(const MotionSequence& s)
+        {
+            Assert::IsTrue(s.motion.active);
+            Assert::IsFalse(s.motion.awaitingPublication);
+            auto admissionInput=s.input;
+            auto transition=EvaluateTransitionAdmission(admissionInput);
+            ConstrainMovingPictureTransition(s.motion,transition);
+            Assert::IsTrue(transition.deferOutward && transition.observation.transitionDeferred);
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+            crop.geometry=s.input.trustedGeometry;
+            crop.rasterWidth=crop.geometry.rasterWidth; crop.rasterHeight=crop.geometry.rasterHeight;
+            crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.frameSourceGeneration=crop.geometrySourceGeneration=7;
+            crop.frameSourceSequence=s.input.sourceSequence;
+            crop.framePresentationEpoch=13;
+            crop.movingPictureTransition=HasCurrentMovingPictureTransition(s.motion,7,s.input.sourceSequence);
+            crop.movingPictureHold={false,s.motion.base,7,s.input.sourceSequence,13};
+            crop.currentVisibleBoundsAvailable=true;
+            crop.currentVisibleBounds=s.input.outwardCandidate;
+            crop.currentVisibleBase=crop.geometry;
+            crop.currentVisibleSourceGeneration=7; crop.currentVisibleSourceSequence=s.input.sourceSequence;
+            CropPresentationAdmissionState prior;
+            prior.available=true; prior.sourceGeneration=7; prior.presentationEpoch=13;
+            prior.trustedCrop=crop.geometry; prior.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            const auto shown=AdmitCropPresentation(prior,crop,Evaluate(crop),13);
+            Assert::IsFalse(shown.blocked);
+            Assert::IsTrue(shown.presentation.applyCrop && shown.presentation.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+            Assert::AreEqual(crop.geometry.top,shown.presentation.sourceBounds.top);
+            Assert::AreEqual(crop.geometry.bottom,shown.presentation.sourceBounds.bottom);
+            AspectLimitFillInput fill;
+            fill.sourceBounds=shown.presentation.sourceBounds;
+            fill.trustedContentAuthorityAccepted=true;
+            fill.cropWiderContentToFillScreen=fill.widerLimitConfigured=true;
+            fill.widerAspectLimit=2.42; fill.screenAspect=2.35;
+            const auto filled=EvaluateAspectLimitFill(fill);
+            Assert::IsTrue(filled.applied);
+            Assert::AreEqual(crop.geometry.top,filled.sourceBounds.top);
+            Assert::AreEqual(crop.geometry.bottom,filled.sourceBounds.bottom);
+        }
+    public:
+        TEST_METHOD(LongUncertifiedNativeRampAndProofResumeKeepOriginalScopeOutput)
+        {
+            for(int step : {2,4}) {
+                MotionSequence s; Native(s); s.Ramp(12,4); AssertHeldOutput(s);
+                const auto certified=s.motion.last;
+                const auto broadTop=s.input.retention.expandingTop, broadBottom=s.input.retention.expandingBottom;
+                for(int i=0;i<16;++i) {
+                    s.Target(s.input.outwardCandidate.top-step); UnknownStrips(s); s.Step();
+                    AssertHeldOutput(s);
+                    Assert::AreEqual(0u,s.motion.quietSamples);
+                    Assert::AreEqual(certified.top,s.motion.last.top,
+                        L"Uncertified position tracking must not overwrite certified geometry.");
+                }
+                s.input.retention.expandingTop=broadTop; s.input.retention.expandingBottom=broadBottom;
+                s.Target(s.input.outwardCandidate.top-step); Native(s); s.Step();
+                AssertHeldOutput(s);
+                Assert::AreEqual(s.input.outwardCandidate.top,s.motion.last.top);
+            }
+        }
+        TEST_METHOD(UncertifiedNativePositionsNeverAcquireOrSettleMotion)
+        {
+            MotionSequence startup;
+            for(int i=0;i<16;++i) {
+                startup.Target(264-i*4); UnknownStrips(startup); startup.Step();
+                Assert::IsFalse(startup.motion.active || startup.motion.awaitingPublication);
+            }
+            MotionSequence active; Native(active); active.Ramp(12,4);
+            const auto top=active.input.retention.expandingTop, bottom=active.input.retention.expandingBottom;
+            for(int i=0;i<16;++i) {
+                active.Target(active.input.outwardCandidate.top-2); UnknownStrips(active); active.Step();
+                AssertHeldOutput(active);
+            }
+            for(int i=0;i<30;++i) { UnknownStrips(active); active.Step(); AssertHeldOutput(active); Assert::AreEqual(0u,active.motion.quietSamples); }
+            active.input.retention.expandingTop=top; active.input.retention.expandingBottom=bottom;
+            for(int i=0;i<7;++i) {
+                Native(active); active.Step();
+                if(i<6) Assert::IsTrue(active.motion.active,L"Only fresh certified quiet samples may settle the episode.");
+            }
+            Assert::IsFalse(active.motion.active);
+            Assert::IsTrue(active.motion.awaitingPublication);
+        }
+        TEST_METHOD(ActualAbruptJumpInsideUncertifiedIntervalStillExitsMotion)
+        {
+            MotionSequence s; Native(s); s.Ramp(12,4);
+            for(int i=0;i<4;++i) { s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); AssertHeldOutput(s); }
+            s.Target(s.input.outwardCandidate.top-40); UnknownStrips(s); s.Step();
+            Assert::IsFalse(s.motion.active);
+            Assert::IsTrue(s.motion.awaitingPublication);
+            auto decision=EvaluateTransitionAdmission(s.input); ConstrainMovingPictureTransition(s.motion,decision);
+            // Waiting for actual publication is allowed; the motion-specific
+            // veto must not mistake this genuine abrupt edge change for a ramp.
+            Assert::IsFalse(s.motion.active);
+        }
+        TEST_METHOD(RepeatsGapsAndChangedContextsCannotBorrowPositionEvidence)
+        {
+            MotionSequence s; Native(s); s.Ramp(12,4);
+            for(int i=0;i<14;++i) { s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); AssertHeldOutput(s); }
+            const auto previous=s.motion;
+            auto replay=s.input; replay.sourceSequence=previous.identity.acceptedSequence;
+            replay.evidence.trustedBounds.top-=40; replay.outwardCandidate=replay.evidence.trustedBounds;
+            const auto repeated=ObserveMovingPictureTransition(previous,previous.identity,replay);
+            Assert::IsTrue(repeated.active);
+            Assert::AreEqual(previous.identity.acceptedSequence,repeated.identity.acceptedSequence);
+            Assert::AreEqual(previous.last.top,repeated.last.top);
+            ++s.identity.acceptedSequence; ++s.identity.sourceFrameNumber; s.identity.captureTimestamp+=417083;
+            s.Target(s.input.outwardCandidate.top-4); UnknownStrips(s); s.Step();
+            AssertHeldOutput(s); Assert::AreEqual(0u,s.motion.quietSamples);
+            for(int context=0;context<5;++context) {
+                auto id=s.identity; auto input=s.input; input.sourceSequence=id.acceptedSequence;
+                if(context==0) ++id.transportGeneration;
+                if(context==1) ++id.sourceFormatGeneration;
+                if(context==2) ++id.analysisDomainKey;
+                if(context==3) ++id.viewportGeneration;
+                if(context==4) ++id.rendererGeneration;
+                const auto reset=ObserveMovingPictureTransition(s.motion,id,input);
+                Assert::IsFalse(reset.active || reset.awaitingPublication);
+            }
+        }
+        TEST_METHOD(MissingNativeScanOrSourceGapInvalidatesPositionWithoutInventingAbruptEvidence)
+        {
+            for(int fault=0;fault<3;++fault) {
+                MotionSequence s; s.Ramp(12,4);
+                for(int i=0;i<14;++i) {
+                    s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); AssertHeldOutput(s);
+                }
+                s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s);
+                if(fault==0) s.input.evidence.axisEvidence.vertical.scanComplete=false;
+                if(fault==1) s.input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+                if(fault==2) {
+                    ++s.identity.acceptedSequence; ++s.identity.sourceFrameNumber;
+                    s.identity.captureTimestamp+=417083;
+                }
+                s.Step(); AssertHeldOutput(s);
+                Assert::AreEqual(uint64_t(0),s.motion.observedNativeSourceSequence);
+                // A large delta over the missing measurement is not proof of a
+                // one-source jump. The next valid sample only re-establishes position.
+                s.Target(s.input.outwardCandidate.top-40); UnknownStrips(s); s.Step();
+                AssertHeldOutput(s);
+                Assert::AreEqual(s.motion.identity.acceptedSequence,s.motion.observedNativeSourceSequence);
+                Assert::AreEqual(0u,s.motion.quietSamples);
+                // Once adjacent native measurements resume, a real abrupt jump
+                // is detected using that fresh pair and exits the episode.
+                s.Target(s.input.outwardCandidate.top-40); UnknownStrips(s); s.Step();
+                Assert::IsFalse(s.motion.active);
+                Assert::IsTrue(s.motion.awaitingPublication);
+            }
+        }
+        TEST_METHOD(RealDarknessBoundaryAfterUncertifiedRampRequiresFreshNativePredecessor)
+        {
+            MotionSequence s; s.Ramp(12,4);
+            const auto broadTop=s.input.retention.expandingTop, broadBottom=s.input.retention.expandingBottom;
+            const auto certified=s.motion.last;
+            for(int i=0;i<16;++i) {
+                s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); AssertHeldOutput(s);
+            }
+            Assert::AreEqual(certified.top,s.motion.last.top);
+            Assert::IsTrue(certified.top-s.motion.observedNative.top>21);
+            const auto prior=s.motion;
+            const uint64_t seq=s.identity.acceptedSequence;
+            SceneDetector detector;
+            const auto level=[&](uint16_t luma,uint64_t sequence) {
+                const std::vector<uint16_t> pixels(64*36,uint16_t(luma<<6));
+                const SceneDetectorInput scene={pixels.data(),64,36,64*sizeof(uint16_t),
+                    sequence,int64_t(sequence*417083),7,417083,true};
+                return detector.Analyze(scene);
+            };
+            level(120,seq-3); level(108,seq-2); level(100,seq-1);
+            const auto boundary=level(96,seq);
+            Assert::IsTrue(boundary.safeBoundary && boundary.nearBlackEntry && boundary.differenceEvaluated);
+            Assert::IsFalse(boundary.hardCutCandidate || boundary.hardCutConfirmed);
+            s.Target(prior.observedNative.top-2); Native(s);
+            s.input.retention.expandingTop=broadTop; s.input.retention.expandingBottom=broadBottom;
+            s.input.sourceSequence=seq;
+            s.motion=RetainMovingPictureAtDarknessBoundary(prior,boundary,s.identity,s.input);
+            Assert::IsTrue(s.motion.active);
+            s.Step(); AssertHeldOutput(s);
+            Assert::AreEqual(s.input.outwardCandidate.top,s.motion.last.top);
+            for(int fault=0;fault<4;++fault) {
+                auto bad=prior; auto input=s.input;
+                if(fault==0) bad.observedNativeSourceSequence=0;
+                if(fault==1) --bad.observedNativeSourceSequence;
+                if(fault==2) bad.observedNative={};
+                if(fault==3) {
+                    input.evidence.trustedBounds.top-=40; input.evidence.trustedBounds.bottom+=40;
+                    input.evidence.proposedBounds=input.outwardCandidate=input.evidence.trustedBounds;
+                    input.retention.expansionCandidate=input.outwardCandidate;
+                    input.retention.activePicture=input.evidence;
+                }
+                const auto rejected=RetainMovingPictureAtDarknessBoundary(bad,boundary,s.motion.identity,input);
+                Assert::IsFalse(rejected.active,L"A missing predecessor or real jump cannot borrow the old gradual episode.");
+            }
+        }
+        TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
+        {
+            for(bool full : {false,true}) {
+                MotionSequence s; Native(s); s.Ramp(12,4);
+                for(int i=0;i<8;++i) { s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); }
+                if(full) s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                else s.input.retention.globalNearBlack=true;
+                s.Step(); Assert::IsFalse(s.motion.active || s.motion.awaitingPublication);
+            }
         }
     };
 }

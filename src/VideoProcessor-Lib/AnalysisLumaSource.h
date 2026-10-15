@@ -20,6 +20,15 @@ enum class AnalysisLumaFormat
 	SdrTunnelRgb,
 };
 
+// Encoded sample levels, independent of the format-specific 10-bit sampler.
+// Unknown preserves the historical interpretation of manually built sources.
+enum class AnalysisLumaRange : uint8_t
+{
+	Unknown,
+	Limited,
+	Full,
+};
+
 struct AnalysisLumaSample
 {
 	uint16_t luma = 0;
@@ -41,9 +50,16 @@ struct AnalysisLumaSource
 	uint64_t generation = 0;
 	uint8_t rgbBitAlignment = 0; // SDR tunnel: 1 high, 2 low eight bits
 	std::shared_ptr<const void> backingOwner;
+	AnalysisLumaRange range = AnalysisLumaRange::Unknown;
 
 	bool IsValid() const;
 	bool Sample(int x, int y, AnalysisLumaSample& result) const;
+
+    // Checks every native pixel in a row using Sample's exact code domain.
+    // False means invalid input/read failure; a valid foreground hit returns
+    // true with withinLimits=false and counts the first rejected pixel.
+    bool RowWithinLimits(int y, uint16_t lumaMax, uint16_t chromaDeviation,
+        bool& withinLimits, size_t& samplesChecked) const;
 };
 
 const char* AnalysisLumaFormatName(const AnalysisLumaSource& source);

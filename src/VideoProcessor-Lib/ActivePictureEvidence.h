@@ -153,6 +153,8 @@ struct ActivePictureGlobalNearBlackEvidence
 {
 	bool evaluated = false;
 	double lumaP90 = 0.0;
+	// Raw ten-bit code cutoff used for this source range.
+	double lumaCutoff = 96.0;
 	bool nearBlack = false;
 	size_t lumaSamples = 0;
 };
@@ -385,6 +387,17 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation);
+
+// Remeasure only the expansion strips for a corrected, exact candidate on the
+// same decoded source that produced currentRetention. This keeps the raw
+// active-picture result, excluded-band safety and visible extents unchanged.
+// Retention evidence has no frame identity; the caller must pair it with the
+// exact current source frame. On failure currentRetention is unchanged.
+bool ResampleActivePictureExpansionStrips(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation,
+	const ActivePictureBounds& candidate,
+	ActivePicturePresentationRetentionEvidence& currentRetention);
 
 ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(

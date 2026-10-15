@@ -1,9 +1,12 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
 #include <AnalysisDiagnosticHooks.h>
+#include <algorithm>
+#include <cstdint>
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <iterator>
 #include <fstream>
 #include <cstdlib>
 #include <mutex>
@@ -63,7 +66,7 @@ public:
             metadata<<source.width<<' '<<source.height<<' '<<source.rowBytes<<' '<<source.chromaRowBytes<<' '
                 <<static_cast<int>(source.format)<<' '<<static_cast<int>(source.encoding)<<' '
                 <<static_cast<int>(source.colorspace)<<' '<<result.pictureTop<<' '<<result.pictureBottom<<' '
-                <<static_cast<int>(key.scriptHint)<<'\n';
+                <<static_cast<int>(key.scriptHint)<<' '<<static_cast<int>(source.range)<<'\n';
         }
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
@@ -80,6 +83,7 @@ class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
+        uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0;
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
         size_t pending=0,ready=0;bool active=false;
     };
@@ -124,29 +128,33 @@ public:
                     a.sharedPicture.required && b.sharedPicture.required)) &&
             a.discontinuity==b.discontinuity && (samePicture || sameUnavailablePictureScan);
     }
-    bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
+    // The head has advanced; queued scans for older transport frames cannot
+    // become current. The active worker is left alone and remains nonblocking.
+    void BeginSourceWindow(const ActivePictureFrameIdentity& head) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        uint64_t mismatches=0;
-        for(auto i=m_ready.begin();i!=m_ready.end();++i) {
-            auto candidate=*i;
-            if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture) ||
-                !SameKey(candidate,key)) {
-                mismatches|=(!SameActivePictureFrameIdentity(candidate.identity,key.identity)?1ull:0ull)|
-                    (candidate.identity.analysisDomainKey!=key.identity.analysisDomainKey?2ull:0ull)|
-                    (candidate.policyGeneration!=key.policyGeneration?4ull:0ull)|
-                    (candidate.continuityGeneration!=key.continuityGeneration?8ull:0ull)|
-                    (!candidate.sharedPicture.Matches(key.sharedPicture)?16ull:0ull)|
-                    (candidate.scriptHint!=key.scriptHint?32ull:0ull)|
-                    (candidate.discontinuity!=key.discontinuity?64ull:0ull)|
-                    (candidate.nearBarDistance!=key.nearBarDistance || candidate.optimizationMode!=key.optimizationMode?128ull:0ull)|
-                    (candidate.width!=key.width || candidate.height!=key.height?256ull:0ull);
-                continue;
-            }
-            if(!SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
-            Trace(candidate,"worker-consumed","exact-key-accepted");out=std::move(candidate);m_ready.erase(i);return true;
+        if(m_windowHead.transportGeneration>head.transportGeneration ||
+            (m_windowHead.transportGeneration==head.transportGeneration &&
+                m_windowHead.acceptedSequence>=head.acceptedSequence))return;
+        m_windowHead=head;
+        for(auto i=m_pending.begin();i!=m_pending.end();) {
+            const auto& identity=i->key.identity;
+            if(identity.transportGeneration<head.transportGeneration ||
+                (identity.transportGeneration==head.transportGeneration &&
+                    identity.acceptedSequence<head.acceptedSequence)) {
+                Trace(i->key,"worker-drop","source-window-expired");
+                i=m_pending.erase(i);
+                ++m_diagnostics.expired;
+            } else ++i;
         }
-        Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
-        ++m_diagnostics.requestMisses;return false;
+    }
+    // Lookahead and presentation can inspect the same exact-frame result.
+    // Rebinding modifies only this copy; the cached observation is immutable.
+    bool TryRead(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,
+        bool backlogRetirementOnly=false) {
+        return ReadReady(key,out,false,backlogRetirementOnly);
+    }
+    bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
+        return ReadReady(key,out,true,false);
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
         auto requestKey=key;
@@ -159,12 +167,54 @@ public:
                 requestKey.identity,requestKey.width,requestKey.height);
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return;
-        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");return;}
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");return;}
-        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");return;}
-        if(m_pending.size()>=8){Trace(m_pending.front().key,"worker-drop","pending-capacity");m_pending.pop_front();++m_diagnostics.dropped;}
+        if(requestKey.identity.transportGeneration<m_windowHead.transportGeneration ||
+            (requestKey.identity.transportGeneration==m_windowHead.transportGeneration &&
+                requestKey.identity.acceptedSequence<m_windowHead.acceptedSequence)) {
+            Trace(requestKey,"worker-drop","source-window-expired");
+            ++m_diagnostics.expired;return;
+        }
+        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;}
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
+        if(m_pending.size()>=8) {
+            // Keep the nearest accepted source. A new current-frame request may
+            // replace the farthest future; a later future cannot evict the head.
+            auto leastUseful=m_pending.begin();
+            for(auto i=std::next(m_pending.begin());i!=m_pending.end();++i) {
+                const auto& x=i->key.identity;
+                const auto& worst=leastUseful->key.identity;
+                if(x.transportGeneration<worst.transportGeneration ||
+                    (x.transportGeneration==worst.transportGeneration &&
+                        x.acceptedSequence>worst.acceptedSequence))
+                    leastUseful=i;
+            }
+            const auto& worst=leastUseful->key.identity;
+            const auto& incoming=requestKey.identity;
+            if(incoming.transportGeneration>worst.transportGeneration ||
+                (incoming.transportGeneration==worst.transportGeneration &&
+                    incoming.acceptedSequence<worst.acceptedSequence)) {
+                Trace(leastUseful->key,"worker-drop","lower-priority-replaced");
+                m_pending.erase(leastUseful);
+            } else {
+                Trace(requestKey,"worker-drop","future-capacity");
+                ++m_diagnostics.dropped;
+                return;
+            }
+            ++m_diagnostics.dropped;
+        }
         Trace(requestKey,"worker-submit");
-        m_pending.push_back({requestKey,std::move(work)});
+        // Execute newer transport generations first, then the nearest source
+        // sequence. Equal-frame contexts keep submission order.
+        const auto place=std::find_if(m_pending.begin(),m_pending.end(),
+            [&requestKey](const Job& queued) {
+                const auto& incoming=requestKey.identity;
+                const auto& existing=queued.key.identity;
+                return incoming.transportGeneration>existing.transportGeneration ||
+                    (incoming.transportGeneration==existing.transportGeneration &&
+                        incoming.acceptedSequence<existing.acceptedSequence);
+            });
+        m_pending.insert(place,{requestKey,std::move(work)});
+        ++m_diagnostics.submitted;
         if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
         m_changed.notify_one();
     }
@@ -174,6 +224,55 @@ public:
         if(m_thread.joinable())m_thread.join();
     }
 private:
+    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        uint64_t mismatches=0;
+        for(auto i=m_ready.begin();i!=m_ready.end();++i) {
+            auto candidate=*i;
+            if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture)) {
+                mismatches|=16ull;continue;
+            }
+            bool reboundFromBacklog=false;
+            if(candidate.continuityGeneration!=key.continuityGeneration &&
+                backlogRetirementOnly) {
+                // Preserve all immutable key fields. Only exact-source, fully
+                // independent glyph/bar scans can carry across this drop.
+                const bool sameSource=SameAnalysisFrameIdentity(candidate.identity,key.identity) &&
+                    candidate.policyGeneration==key.policyGeneration &&
+                    candidate.scriptHint==key.scriptHint &&
+                    candidate.nearBarDistance==key.nearBarDistance &&
+                    candidate.optimizationMode==key.optimizationMode &&
+                    candidate.width==key.width && candidate.height==key.height &&
+                    candidate.discontinuity==key.discontinuity &&
+                    candidate.sharedPicture.Matches(key.sharedPicture);
+                reboundFromBacklog=sameSource &&
+                    SubtitleBoxLookahead::RebindCompletedIndependentScanAfterBacklog(
+                        candidate,key.continuityGeneration,true);
+            }
+            if (!SameKey(candidate,key)) {
+                mismatches|=(!SameActivePictureFrameIdentity(candidate.identity,key.identity)?1ull:0ull)|
+                    (candidate.identity.analysisDomainKey!=key.identity.analysisDomainKey?2ull:0ull)|
+                    (candidate.policyGeneration!=key.policyGeneration?4ull:0ull)|
+                    (candidate.continuityGeneration!=key.continuityGeneration?8ull:0ull)|
+                    (!candidate.sharedPicture.Matches(key.sharedPicture)?16ull:0ull)|
+                    (candidate.scriptHint!=key.scriptHint?32ull:0ull)|
+                    (candidate.discontinuity!=key.discontinuity?64ull:0ull)|
+                    (candidate.nearBarDistance!=key.nearBarDistance || candidate.optimizationMode!=key.optimizationMode?128ull:0ull)|
+                    (candidate.width!=key.width || candidate.height!=key.height?256ull:0ull);
+                continue;
+            }
+            if(!reboundFromBacklog &&
+                !SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
+            Trace(candidate,consume?"worker-consumed":"worker-read",
+                reboundFromBacklog?"backlog-current-scan-rebound":"exact-key-accepted");
+            out=std::move(candidate);
+            if(consume)m_ready.erase(i);
+            else ++m_diagnostics.exactReads;
+            return true;
+        }
+        Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
+        ++m_diagnostics.requestMisses;return false;
+    }
     struct Job {SubtitleBoxObservation key;Work work;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
     void Run() {
         SubtitleMeasurementSampler scanner;
@@ -212,6 +311,7 @@ private:
     std::thread m_thread;
     std::deque<Job> m_pending;
     std::deque<SubtitleBoxObservation> m_ready;
+    ActivePictureFrameIdentity m_windowHead;
     SubtitleBoxObservation m_activeKey;
     bool m_active=false,m_stopping=false;
 };
@@ -222,8 +322,25 @@ private:
 // accepted glyph rectangle. No OCR, spatial search, wait or GPU readback here.
 class SubtitlePendingMeasurementGuard {
 public:
-    void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={}; }
+    enum ContextMismatch : uint32_t {
+        ContextDiscontinuity=1u<<0, ContextSource=1u<<1,
+        ContextDimensions=1u<<2, ContextTransport=1u<<3,
+        ContextFormat=1u<<4, ContextDomain=1u<<5,
+        ContextViewport=1u<<6, ContextRenderer=1u<<7,
+        ContextNearBar=1u<<8, ContextScript=1u<<9,
+        ContextPolicy=1u<<10, ContextContinuity=1u<<11
+    };
+    struct Diagnostics {
+        uint32_t contextMismatch=0;
+        size_t glyphSamplesChecked=0;
+        int glyphMismatchX=-1, glyphMismatchY=-1;
+        bool sharedPictureMatches=false, sharedPictureCurrent=false;
+        bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
+        int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
+    };
+    void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={}; }
     const char* DecisionReason() const { return m_reason; }
+    const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
@@ -257,6 +374,7 @@ public:
     }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs) {
+        m_diagnostics={};
         const auto key=preview.current;
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
@@ -286,24 +404,42 @@ public:
         if(b.acceptedSequence<=a.acceptedSequence)return Reject("non-forward-source");
         const double elapsedMs=frameMs*double(b.acceptedSequence-a.acceptedSequence);
         if(m_elapsed+elapsedMs>(std::max)(0,(std::min)(1000,holdMs)))return Reject("pending-budget-expired");
-        if(key.discontinuity || !source.IsValid() ||
-            source.width!=key.width || source.height!=key.height || a.transportGeneration!=b.transportGeneration ||
-            a.sourceFormatGeneration!=b.sourceFormatGeneration || a.analysisDomainKey!=b.analysisDomainKey ||
-            a.viewportGeneration!=b.viewportGeneration ||
-            a.rendererGeneration!=b.rendererGeneration || key.width!=old.width || key.height!=old.height ||
-            key.nearBarDistance!=old.nearBarDistance || key.scriptHint!=old.scriptHint || key.policyGeneration!=old.policyGeneration ||
-            key.continuityGeneration!=old.continuityGeneration) return Reject("pending-context-changed");
+        uint32_t context=0;
+        if(key.discontinuity)context|=ContextDiscontinuity;
+        if(!source.IsValid())context|=ContextSource;
+        if(source.width!=key.width || source.height!=key.height ||
+            key.width!=old.width || key.height!=old.height)context|=ContextDimensions;
+        if(a.transportGeneration!=b.transportGeneration)context|=ContextTransport;
+        if(a.sourceFormatGeneration!=b.sourceFormatGeneration)context|=ContextFormat;
+        if(a.analysisDomainKey!=b.analysisDomainKey)context|=ContextDomain;
+        if(a.viewportGeneration!=b.viewportGeneration)context|=ContextViewport;
+        if(a.rendererGeneration!=b.rendererGeneration)context|=ContextRenderer;
+        if(key.nearBarDistance!=old.nearBarDistance)context|=ContextNearBar;
+        if(key.scriptHint!=old.scriptHint)context|=ContextScript;
+        if(key.policyGeneration!=old.policyGeneration)context|=ContextPolicy;
+        if(key.continuityGeneration!=old.continuityGeneration)context|=ContextContinuity;
+        m_diagnostics.contextMismatch=context;
+        if(context)return Reject("pending-context-changed");
         for(const auto& sample:m_samples) {
             AnalysisLumaSample now;
+            ++m_diagnostics.glyphSamplesChecked;
             if(!source.Sample(sample.x,sample.y,now) ||
                 std::abs(int(now.luma)-sample.value.luma)>8 ||
                 std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-sample.value.chromaV)>8) return Reject("current-pixels-changed");
+                std::abs(int(now.chromaV)-sample.value.chromaV)>8) {
+                m_diagnostics.glyphMismatchX=sample.x;
+                m_diagnostics.glyphMismatchY=sample.y;
+                return Reject("current-pixels-changed");
+            }
         }
         SubtitleBarEvidence bars;
+        m_diagnostics.expectedTop=old.pictureTop;
+        m_diagnostics.expectedBottom=old.pictureBottom;
         if(key.sharedPicture.required) {
-            if(!key.sharedPicture.Matches(old.sharedPicture) ||
-                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height))
+            m_diagnostics.sharedPictureMatches=key.sharedPicture.Matches(old.sharedPicture);
+            m_diagnostics.sharedPictureCurrent=
+                key.sharedPicture.AvailableFor(key.identity,source.width,source.height);
+            if(!m_diagnostics.sharedPictureMatches || !m_diagnostics.sharedPictureCurrent)
                 return Reject("shared-picture-changed");
             // Matching retained Classic geometry does not prove that its bar
             // planes still exist on this frame. Pending reuse needs the same
@@ -311,6 +447,11 @@ public:
             // effective analysis planes must equal the accepted cue's planes.
             bars=ResolveCurrentSubtitleAnalysisBars(source,ExtractSubtitleBarEvidence(source),
                 key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom);
+            m_diagnostics.barsAvailable=bars.available;
+            m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
+            m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
+            m_diagnostics.measuredTop=bars.top;
+            m_diagnostics.measuredBottom=bars.bottom;
             // No fresh detector ink exists on a pending frame. A fixed-plane
             // revalidation could otherwise mistake the old glyphs themselves
             // for an encoded edge after the physical bar disappears.
@@ -320,6 +461,11 @@ public:
                 return Reject("current-bars-changed");
         } else {
             bars=ExtractSubtitleBarEvidence(source);
+            m_diagnostics.barsAvailable=bars.available;
+            m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
+            m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
+            m_diagnostics.measuredTop=bars.top;
+            m_diagnostics.measuredBottom=bars.bottom;
             if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) return Reject("current-bars-changed");
         }
         m_elapsed+=elapsedMs;m_last=b;
@@ -334,8 +480,15 @@ public:
         return true;
     }
 private:
-    bool Reject(const char* reason) { Reset();m_reason=reason;return false; }
+    bool Reject(const char* reason) {
+        const auto diagnostics=m_diagnostics;
+        Reset();
+        m_diagnostics=diagnostics;
+        m_reason=reason;
+        return false;
+    }
     const char* m_reason="reset";
+    Diagnostics m_diagnostics;
     struct Sample { int x,y;AnalysisLumaSample value; };
     SubtitleBoxPreview m_reference;
     ActivePictureFrameIdentity m_last;

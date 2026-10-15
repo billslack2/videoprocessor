@@ -1368,6 +1368,102 @@ namespace VideoProcessorTest
 			Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 3));
 		}
 
+        TEST_METHOD(BacklogRetirementProvesOnlyTheExactMissingSourceRange)
+        {
+            ActivePictureDecisionTimeline timeline;
+            timeline.Reset(81);
+            auto identity=[](uint64_t sequence) {
+                auto value=Identity(81,sequence,sequence);
+                value.sourceFormatGeneration=3;
+                value.viewportGeneration=5;
+                value.rendererGeneration=81;
+                value.analysisDomainKey=7;
+                return value;
+            };
+            const auto previous=identity(100), first=identity(101);
+            const auto second=identity(102), current=identity(103);
+            for(const auto& item : {previous,first,second,current})
+                Assert::IsTrue(timeline.TrackAcceptedFrame(item));
+            const auto before=timeline.ContinuityGeneration();
+            timeline.MarkDiscarded(first,101,ActivePictureDiscardReason::BacklogRecovery);
+            timeline.MarkDiscarded(second,102,ActivePictureDiscardReason::BacklogRecovery);
+            const auto after=timeline.ContinuityGeneration();
+            Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(
+                previous,current,before,after));
+            Assert::IsFalse(timeline.CanProveBufferedFrames(&first,1));
+            Assert::IsFalse(timeline.OnlyBacklogRetirementBetween(
+                previous,current,before,before));
+            auto changed=current;changed.analysisDomainKey=8;
+            Assert::IsFalse(timeline.OnlyBacklogRetirementBetween(
+                previous,changed,before,after));
+            changed=current;changed.sourceFrameNumber+=1;
+            Assert::IsFalse(timeline.OnlyBacklogRetirementBetween(
+                previous,changed,before,after));
+            changed=current;changed.viewportGeneration+=1;
+            Assert::IsFalse(timeline.OnlyBacklogRetirementBetween(
+                previous,changed,before,after));
+        }
+
+        TEST_METHOD(BacklogRetirementCanCrossKnownDequeuedPendingSource)
+        {
+            for(int path=0;path<3;++path) {
+                ActivePictureDecisionTimeline timeline;
+                timeline.Reset(83);
+                auto identity=[](uint64_t sequence) {
+                    auto value=Identity(83,sequence,sequence);
+                    value.sourceFormatGeneration=3;
+                    value.viewportGeneration=5;
+                    value.rendererGeneration=83;
+                    value.analysisDomainKey=7;
+                    return value;
+                };
+                const auto templateFrame=identity(4497);
+                const auto dropped=identity(4498);
+                const auto pending=identity(4499);
+                const auto completed=identity(4500);
+                for(const auto& item : {templateFrame,dropped,pending,completed})
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(item));
+                timeline.MarkConsumed(templateFrame);
+                const auto before=timeline.ContinuityGeneration();
+                timeline.MarkDiscarded(dropped,4498,
+                    ActivePictureDiscardReason::BacklogRecovery);
+                if(path!=1)timeline.MarkConsumed(pending);
+                if(path==2)timeline.BreakContinuity(4500);
+                timeline.MarkConsumed(completed);
+                const auto after=timeline.ContinuityGeneration();
+                Assert::AreEqual(path==0,timeline.OnlyBacklogRetirementBetween(
+                    templateFrame,completed,before,after));
+            }
+        }
+
+        TEST_METHOD(BacklogRetirementRejectsUnknownOrMixedContinuity)
+        {
+            for(int path=0;path<4;++path) {
+                ActivePictureDecisionTimeline timeline;
+                timeline.Reset(82);
+                auto previous=Identity(82,200,200);
+                auto first=Identity(82,201,201);
+                auto second=Identity(82,202,202);
+                auto current=Identity(82,203,203);
+                for(auto* item : {&previous,&first,&second,&current}) {
+                    item->sourceFormatGeneration=3;
+                    item->analysisDomainKey=7;
+                }
+                for(const auto& item : {previous,first,second,current})
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(item));
+                const auto before=timeline.ContinuityGeneration();
+                if(path!=2)timeline.MarkDiscarded(first,201,
+                    path==0 ? ActivePictureDiscardReason::Unknown :
+                        ActivePictureDiscardReason::BacklogRecovery);
+                if(path==1)timeline.BreakContinuity(202);
+                if(path!=3)timeline.MarkDiscarded(second,202,
+                    ActivePictureDiscardReason::BacklogRecovery);
+                const auto after=timeline.ContinuityGeneration();
+                Assert::IsFalse(timeline.OnlyBacklogRetirementBetween(
+                    previous,current,before,after));
+            }
+        }
+
 		TEST_METHOD(BufferedProofInvalidatedByDiscardOrLaterContinuityReset)
 		{
 			for (int mutation = 0; mutation < 3; ++mutation)

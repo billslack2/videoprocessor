@@ -44,6 +44,29 @@ namespace AlphaSourceCrop
                 target.top < base.top && target.bottom > base.bottom;
         }
 
+        // A measured position can guard continuity of an already active hold,
+        // but cannot acquire crop authority, prove moving picture pixels or
+        // contribute a quiet endpoint sample.
+        bool CurrentNativeEdgePosition(const TransitionAdmissionInput& current,
+            const ActivePictureBounds& candidate)
+        {
+            const auto& vertical = current.evidence.axisEvidence.vertical;
+            return current.evidence.available &&
+                current.evidence.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                vertical.scanComplete && vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+                current.retention.analysisValid && current.retention.presentationValid &&
+                !current.retention.EffectiveArNearBlack() &&
+                ValidVerticalBarPicture(candidate) &&
+                candidate.left == current.evidence.proposedBounds.left &&
+                candidate.top == current.evidence.proposedBounds.top &&
+                candidate.right == current.evidence.proposedBounds.right &&
+                candidate.bottom == current.evidence.proposedBounds.bottom &&
+                candidate.rasterWidth == current.evidence.proposedBounds.rasterWidth &&
+                candidate.rasterHeight == current.evidence.proposedBounds.rasterHeight &&
+                SameBounds(candidate, current.outwardCandidate);
+        }
+
         bool SameContext(const ActivePictureFrameIdentity& a,
             const ActivePictureFrameIdentity& b)
         {
@@ -123,6 +146,24 @@ namespace AlphaSourceCrop
         }
     }
 
+    TransitionAdmissionInput PictureMotionTrackingInput(
+        const TransitionAdmissionInput& current,
+        bool classicPicturePresentationAllowed)
+    {
+        auto tracking = current;
+        if (!classicPicturePresentationAllowed &&
+            (tracking.presentation.action == VerticalBarPresentationAction::NONE ||
+             tracking.presentation.action == VerticalBarPresentationAction::TRANSLATE))
+        {
+            // Advanced subtitle composition does not move the source picture.
+            // Keep all native geometry, pixel, identity and scene evidence intact.
+            tracking.presentation.action = VerticalBarPresentationAction::NONE;
+            tracking.translationDriftActive = false;
+            tracking.previousOutward.verticalPresentationSeen = false;
+        }
+        return tracking;
+    }
+
     MovingPictureTransitionState ObserveMovingPictureTransition(
         const MovingPictureTransitionState& previous,
         const ActivePictureFrameIdentity& identity,
@@ -145,7 +186,11 @@ namespace AlphaSourceCrop
             current.presentation.action != VerticalBarPresentationAction::NONE ||
             current.translationDriftActive || current.previousOutward.verticalPresentationSeen ||
             current.evidence.classification == ActivePictureClassification::FULL_RASTER_TRUSTED)
-            return {};
+        {
+            MovingPictureTransitionState reset;
+            reset.change = MovingPictureTransitionChange::OWNER_OR_CONTEXT;
+            return reset;
+        }
         const bool adjacent = context && previous.identity.acceptedSequence != UINT64_MAX &&
             identity.acceptedSequence == previous.identity.acceptedSequence + 1 &&
             ((identity.sourceFrameNumber == 0 && previous.identity.sourceFrameNumber == 0) ||
@@ -158,24 +203,55 @@ namespace AlphaSourceCrop
         auto state = context && (adjacent || previous.active || previous.awaitingPublication)
             ? previous : MovingPictureTransitionState{};
         if (!adjacent) { state.directionalChanges = 0; state.quietSamples = 0; }
+        state.change = MovingPictureTransitionChange::NONE;
         state.base = current.trustedGeometry;
         state.identity = identity;
+        const bool nativePosition = CurrentNativeEdgePosition(current, candidate);
+        const bool priorNativePosition = previous.active && adjacent &&
+            previous.observedNativeSourceSequence != 0 &&
+            previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
+            ValidVerticalBarPicture(previous.observedNative);
+        // An unknown source or sequence gap cannot bridge a stale edge location.
+        state.observedNative = {};
+        state.observedNativeSourceSequence = 0;
+        if (previous.active && adjacent && nativePosition)
+        {
+            state.observedNative = candidate;
+            state.observedNativeSourceSequence = identity.acceptedSequence;
+        }
         const auto observation = MakeActivePictureObservation(current.evidence,
             current.sourceSequence, current.framesPerSecond);
-        const bool certified = SameBounds(candidate, current.outwardCandidate) &&
+        const bool broadCertified = SameBounds(candidate, current.outwardCandidate) &&
             CurrentBroadEvidence(state.base, observation, current.retention,
                 current.sourceGeneration, current.sourceSequence);
+        // Strict native distributed support may continue and settle an already
+        // active ramp. It cannot start an episode or bypass the ordinary quiet
+        // interval before endpoint publication.
+        const bool nativeDistributedContinuation = !broadCertified && previous.active && adjacent &&
+            current.evidence.available &&
+            current.evidence.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            !current.evidence.axisEvidence.HasFailedBar() &&
+            SameBounds(candidate, current.outwardCandidate) &&
+            BothEdgesExpand(state.base, candidate) &&
+            ConfirmOutwardPictureTransition({}, state.base, candidate, current.retention,
+                current.sourceGeneration, current.sourceSequence).nativeDistributedPicture;
+        const bool certified = broadCertified || nativeDistributedContinuation;
         // A trusted different crop (including a cut back to the old scope)
         // leaves this outward episode immediately, even without expansion strips.
         if (current.evidence.available &&
             current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
             (!BothEdgesExpand(state.base, candidate) ||
-             (adjacent && previous.last.rasterHeight != 0 &&
-              (std::abs(previous.last.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
-               std::abs(previous.last.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
+             (nativePosition && priorNativePosition &&
+              (std::abs(previous.observedNative.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
+               std::abs(previous.observedNative.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
         {
             const bool keepPresentationHold = state.active || state.awaitingPublication;
+            const auto reason = !BothEdgesExpand(state.base, candidate)
+                ? MovingPictureTransitionChange::DIFFERENT_CROP
+                : MovingPictureTransitionChange::ABRUPT_NATIVE;
             state = {};
+            state.change = reason;
             state.awaitingPublication = keepPresentationHold;
             state.base = current.trustedGeometry;
             state.identity = identity;
@@ -216,6 +292,9 @@ namespace AlphaSourceCrop
             {
                 state.active = true;
                 state.awaitingPublication = false;
+                state.change = MovingPictureTransitionChange::ACQUIRED;
+                state.observedNative = nativePosition ? candidate : ActivePictureBounds{};
+                state.observedNativeSourceSequence = nativePosition ? identity.acceptedSequence : 0;
                 state.quietAnchor = candidate;
                 state.quietSamples = 1;
             }
@@ -237,6 +316,7 @@ namespace AlphaSourceCrop
         {
             state.active = false;
             state.awaitingPublication = true;
+            state.change = MovingPictureTransitionChange::QUIET_ENDPOINT;
             state.quietSamples = 0;
             // A stationary endpoint must not reuse the finished ramp's motion
             // count on the next frame while local publication is confirming.
