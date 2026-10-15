@@ -16459,11 +16459,23 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.sceneTimingElapsedSeconds = sceneTimingElapsedSeconds;
 		stats.sceneTimingReady = sceneTimingReady;
 
-		// EOTF
-		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
+		// EOTF and colorspace as handed to the renderer (DV tunnel, LLDV and a
+		// container override rewrite them), with the wire value when it differs.
+		const bool builtStateValid =
+			m_builtVideoState && m_builtVideoState->valid;
+		const EOTF wireEotf = m_captureDeviceVideoState->eotf;
+		const EOTF eotf = builtStateValid ? m_builtVideoState->eotf : wireEotf;
+		stats.eotf = ToString(eotf);
+		if (eotf != wireEotf)
+			stats.eotf.AppendFormat(TEXT(" (wire %s)"), ToString(wireEotf));
 
-		// Colorspace
-		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
+		const ColorSpace wireColorspace = m_captureDeviceVideoState->colorspace;
+		const ColorSpace colorspace = builtStateValid ?
+			m_builtVideoState->colorspace : wireColorspace;
+		stats.colorspace = ToString(colorspace);
+		if (colorspace != wireColorspace)
+			stats.colorspace.AppendFormat(TEXT(" (wire %s)"),
+				ToString(wireColorspace));
 
 		// Pixel Format
 		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
