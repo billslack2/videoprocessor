@@ -3879,6 +3879,14 @@ struct LibplaceboVideoRenderer::Impl
 	// infer a render budget from DXGI frame-statistics counters alone: drivers
 	// can silently switch those counters to another output.
 	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
+	// Stats OSD copy of the rendered frame's HDR luminance and libplacebo's
+	// peak-detection result; written by the render thread at most every
+	// 250 ms, read by the host's OSD timer.
+	mutable std::mutex hdrStatusMutex;
+	RendererHdrStatus hdrStatus;
+	bool hdrStatusPublished = false;
+	uint64_t hdrStatusNextTick = 0;
+	uint64_t hdrStatusNextLogTick = 0;
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -5499,6 +5507,72 @@ struct LibplaceboVideoRenderer::Impl
 				decision.reason);
 		}
 		return decision;
+	}
+
+	// Render thread only: pl_renderer_get_hdr_metadata polls the peak buffer.
+	// `image` is the frame just handed to pl_render_image, so its colour
+	// metadata is exactly what libplacebo tone mapped from.
+	void PublishHdrStatus(const pl_frame& image, bool rendered)
+	{
+		if (!rendered)
+			return;
+		const uint64_t now = GetTickCount64();
+		if (now < hdrStatusNextTick)
+			return;
+		hdrStatusNextTick = now + 250;
+
+		RendererHdrStatus next;
+		const pl_hdr_metadata& hdr = image.color.hdr;
+		next.hdr = pl_color_transfer_is_hdr(image.color.transfer);
+		next.dolbyVision = image.repr.dovi != nullptr;
+		next.maxCll = hdr.max_cll;
+		next.maxFall = hdr.max_fall;
+		next.masteringMin = hdr.min_luma;
+		next.masteringMax = hdr.max_luma;
+		next.sceneValid = pl_hdr_metadata_contains(&hdr, PL_HDR_METADATA_CIE_Y);
+		if (next.sceneValid)
+		{
+			next.scenePeakNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, hdr.max_pq_y);
+			next.sceneAvgNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, hdr.avg_pq_y);
+		}
+		next.peakDetectionEnabled = renderParams.peak_detect_params != nullptr;
+		pl_hdr_metadata detected{};
+		if (next.peakDetectionEnabled &&
+			pl_renderer_get_hdr_metadata(renderer, &detected))
+		{
+			next.detectedValid = true;
+			next.detectedPeakNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, detected.max_pq_y);
+			next.detectedAvgNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, detected.avg_pq_y);
+			next.detectedLinearAvgNits = detected.scene_avg;
+		}
+		if (next.hdr && (next.detectedValid || next.sceneValid) &&
+			now >= hdrStatusNextLogTick)
+		{
+			hdrStatusNextLogTick = now + 5000;
+			DebugLog::Log(
+				"HDR luminance: dv=%d detection=%s detected_peak_nits=%.2f detected_avg_pq_nits=%.4f detected_avg_linear_nits=%.4f scene=%s scene_peak_nits=%.2f scene_avg_nits=%.4f",
+				next.dolbyVision ? 1 : 0,
+				!next.peakDetectionEnabled ? "off" :
+					next.detectedValid ? "valid" : "pending",
+				next.detectedPeakNits, next.detectedAvgNits,
+				next.detectedLinearAvgNits,
+				!next.sceneValid ? "none" : next.dolbyVision ? "L1" : "frame",
+				next.scenePeakNits, next.sceneAvgNits);
+		}
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		hdrStatus = next;
+		hdrStatusPublished = true;
+	}
+
+	bool HdrStatusSnapshot(RendererHdrStatus& status) const
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		status = hdrStatus;
+		return hdrStatusPublished;
 	}
 
 	void LogHdrPeakAnalysisMetrics(
@@ -15764,6 +15838,7 @@ struct LibplaceboVideoRenderer::Impl
 		preparing.Complete();
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);
+		PublishHdrStatus(renderImage, rendered);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
         if (!rendered && targetLutApplied)
@@ -18387,6 +18462,15 @@ bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 	// reads `settling` and `gpuValid` to decide what to print; whether a
 	// sample happens to be in the window is not the caller's question.
 	return load.supported;
+}
+
+
+bool LibplaceboVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
+{
+	status = {};
+	if (!m_impl)
+		return false;
+	return m_impl->HdrStatusSnapshot(status);
 }
 
 

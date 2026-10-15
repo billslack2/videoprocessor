@@ -40,3 +40,12 @@ static constexpr const char* VP_LIBPLACEBO_DIAGNOSTIC_EXPORT = "VideoProcessorLi
 using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
     AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
     AnalysisDiagnosticTrace::FrameCaptureActiveCallback);
+
+// Optional, outside the API version: the executable looks it up by name and
+// shows no renderer HDR status when a plugin lacks it. The status checks its
+// own layout through RendererHdrStatus::size.
+static constexpr const char* VP_LIBPLACEBO_HDR_STATUS_EXPORT =
+	"VideoProcessorLibplaceboGetHdrStatus";
+using VideoProcessorLibplaceboGetHdrStatusFn = bool (__cdecl *)(
+	const IVideoRenderer* renderer,
+	RendererHdrStatus* status);

@@ -66,6 +66,17 @@ VideoProcessorLibplaceboDestroyRenderer(IVideoRenderer* renderer)
 	delete renderer;
 }
 
+// Every renderer this plugin creates is a LibplaceboVideoRenderer.
+extern "C" __declspec(dllexport) bool __cdecl
+VideoProcessorLibplaceboGetHdrStatus(
+	const IVideoRenderer* renderer,
+	RendererHdrStatus* status)
+{
+	if (!renderer || !status || status->size != sizeof(RendererHdrStatus))
+		return false;
+	return static_cast<const LibplaceboVideoRenderer*>(renderer)->GetHdrStatus(*status);
+}
+
 extern "C" __declspec(dllexport) bool __cdecl VideoProcessorLibplaceboIsBeta()
 {
 #if defined(VP_LIBPLACEBO_BETA)

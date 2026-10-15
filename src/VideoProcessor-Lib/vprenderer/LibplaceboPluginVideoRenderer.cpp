@@ -20,6 +20,7 @@ namespace
 		HMODULE module = nullptr;
 		VideoProcessorLibplaceboCreateRendererFn createRenderer = nullptr;
 		VideoProcessorLibplaceboDestroyRendererFn destroyRenderer = nullptr;
+		VideoProcessorLibplaceboGetHdrStatusFn getHdrStatus = nullptr; // optional
 	};
 
     void __cdecl ForwardAnalysisRecord(void* context,const AnalysisDiagnosticRecordV1* record) {
@@ -127,6 +128,8 @@ namespace
 			FreeLibrary(result.module);
 			return PluginExports{};
 		}
+		result.getHdrStatus = reinterpret_cast<VideoProcessorLibplaceboGetHdrStatusFn>(
+			GetProcAddress(result.module, VP_LIBPLACEBO_HDR_STATUS_EXPORT));
 
         const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
             GetProcAddress(result.module,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
@@ -198,6 +201,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	if (!m_renderer)
 		throw std::runtime_error("optional libplacebo renderer plugin failed to create a renderer");
 	m_destroyRenderer = plugin.destroyRenderer;
+	m_getHdrStatus = plugin.getHdrStatus;
     activeDiagnosticProducers.fetch_add(1, std::memory_order_relaxed);
     AnalysisDiagnosticTrace::Instance().SetProducerAvailable(true,true);
 }
@@ -550,6 +554,13 @@ uint64_t LibplaceboPluginVideoRenderer::DroppedFrameCount() const
 bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 {
 	return m_renderer->GetRenderLoad(load);
+}
+
+
+bool LibplaceboPluginVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
+{
+	status = {};
+	return m_getHdrStatus && m_getHdrStatus(m_renderer, &status);
 }
 
 

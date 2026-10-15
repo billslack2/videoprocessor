@@ -99,6 +99,34 @@ CString FormatHdrLuminance(double value)
 	return text;
 }
 
+// Stats OSD: whole nits from 100, two decimals from 1, five below, trailing
+// zeros dropped. A Dolby Vision range is 12-bit PQ codes, so its lowest codes
+// sit near 0.00001 nits and its peak is rarely a round number.
+CString FormatOsdNits(double value)
+{
+	CString text;
+	text.Format(value >= 100.0 ? _T("%.0f") :
+		value >= 1.0 ? _T("%.2f") : _T("%.5f"), value);
+	if (text.Find(_T('.')) >= 0)
+	{
+		text.TrimRight(_T('0'));
+		text.TrimRight(_T('.'));
+	}
+	return text;
+}
+
+CString FormatOsdHdr10(double maxCll, double maxFall,
+	double masteringMin, double masteringMax)
+{
+	CString text;
+	text.Format(_T("CLL %s FALL %s | M %s-%s"),
+		FormatOsdNits(maxCll).GetString(),
+		FormatOsdNits(maxFall).GetString(),
+		FormatOsdNits(masteringMin).GetString(),
+		FormatOsdNits(masteringMax).GetString());
+	return text;
+}
+
 void LogRendererResourceCensus(uint32_t generation, const CString& renderer,
 	uint64_t token)
 {
@@ -16465,8 +16493,39 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// Colorspace
 		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
 
+		// Static HDR10 metadata as handed to the renderer (after any LLDV
+		// substitution). A renderer that reports its rendered frame replaces
+		// this below.
+		if (m_builtVideoState && m_builtVideoState->valid &&
+			m_builtVideoState->hdrData)
+		{
+			const HDRData& hdr = *m_builtVideoState->hdrData;
+			stats.hdr10 = FormatOsdHdr10(hdr.maxCll, hdr.maxFall,
+				hdr.masteringDisplayMinLuminance,
+				hdr.masteringDisplayMaxLuminance);
+		}
+
 		// Pixel Format
 		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
+	}
+
+	// Active Rendering / DTM profile ("display" group, [vprenderer.<name>]),
+	// shown by its configured label when it has one, as the profile overlay does.
+	if (const auto snapshot = m_profileRuntime.GetSnapshot())
+	{
+		const auto display = snapshot->effectiveSelections.find("display");
+		if (display != snapshot->effectiveSelections.end() &&
+			!display->second.empty())
+		{
+			std::string name = RendererProfileConfig::FormatSelection(display->second);
+			std::string label;
+			if (snapshot->configuration &&
+				snapshot->configuration->TryGetString(
+					"vprenderer." + name, "label", label) &&
+				!ConfigFile::Trim(label).empty())
+				name = ConfigFile::Trim(label);
+			stats.dtmProfile = CString(name.c_str());
+		}
 	}
 
 	// Renderer settings and capture metrics
@@ -16583,6 +16642,52 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 					stats.captureToPresentationTargetMs);
 			m_videoRenderer->GetPresentationTimingStatus(
 				stats.presentationTimingStatus);
+		}
+		// HDR10 and Measured from the frame libplacebo last tone mapped. A
+		// frame with Dolby Vision metadata has no CLL/FALL; its scene values
+		// (L1) are appended to libplacebo's own detection, which may still
+		// run beside them.
+		RendererHdrStatus hdrStatus;
+		const auto* libplaceboRenderer =
+			dynamic_cast<const LibplaceboPluginVideoRenderer*>(m_videoRenderer.get());
+		if (libplaceboRenderer && libplaceboRenderer->GetHdrStatus(hdrStatus))
+		{
+			if (!hdrStatus.hdr)
+				stats.hdr10.Empty();
+			else if (hdrStatus.dolbyVision)
+				stats.hdr10.Format(_T("DV | M %s-%s"),
+					FormatOsdNits(hdrStatus.masteringMin).GetString(),
+					FormatOsdNits(hdrStatus.masteringMax).GetString());
+			else
+				stats.hdr10 = FormatOsdHdr10(hdrStatus.maxCll,
+					hdrStatus.maxFall, hdrStatus.masteringMin,
+					hdrStatus.masteringMax);
+
+			CString detected = _T("---");
+			if (!hdrStatus.peakDetectionEnabled)
+				detected = _T("off");
+			else if (hdrStatus.detectedValid)
+			{
+				// avg is the linear (FALL-style) average; a renderer whose
+				// libplacebo does not report it shows the peak alone.
+				detected.Format(_T("peak %s"),
+					FormatOsdNits(hdrStatus.detectedPeakNits).GetString());
+				if (hdrStatus.detectedLinearAvgNits > 0.0)
+					detected.AppendFormat(_T(" / avg %s"),
+						FormatOsdNits(hdrStatus.detectedLinearAvgNits).GetString());
+			}
+			// The combined form drops "nits" to fit the panel's fixed width.
+			// The scene average stays as authored (L1 is a PQ average).
+			if (hdrStatus.sceneValid)
+				stats.measuredHdr.Format(_T("%s | %s %s / %s"),
+					detected.GetString(),
+					hdrStatus.dolbyVision ? _T("L1") : _T("frame"),
+					FormatOsdNits(hdrStatus.scenePeakNits).GetString(),
+					FormatOsdNits(hdrStatus.sceneAvgNits).GetString());
+			else if (hdrStatus.detectedValid)
+				stats.measuredHdr = detected + _T(" nits");
+			else if (!hdrStatus.peakDetectionEnabled)
+				stats.measuredHdr = detected;
 		}
 		RendererRenderLoad renderLoad;
 		if (m_videoRenderer->GetRenderLoad(renderLoad))
