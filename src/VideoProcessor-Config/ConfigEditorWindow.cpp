@@ -1539,8 +1539,11 @@ void ConfigEditorWindow::finishLocalTargetSwitch(const Target& target,
 	preparedLocalSwitch_->devices = devices;
 	preparedLocalSwitch_->connections = connections;
 	preparedLocalSwitch_->monitors = monitors;
-	preparedLocalSwitch_->filteredRenderers = filteredRenderers;
-	preparedLocalSwitch_->allRenderers = allRenderers;
+	// Test mode keeps the renderer lists it was given (as at construction):
+	// real discovery would make a test's outcome depend on which renderers
+	// happen to be installed (the deployed fixture names madVR).
+	preparedLocalSwitch_->filteredRenderers = testMode_ ? filteredRenderers_ : filteredRenderers;
+	preparedLocalSwitch_->allRenderers = testMode_ ? allRenderers_ : allRenderers;
 	selectAnotherTarget(target);
 	preparedLocalSwitch_.reset();
 }
