@@ -2,7 +2,9 @@
 
 ## Status
 
-Done (2026-08-22). The developer accepted the deployed x64 Release build at
+In Progress (reopened 2026-10-16). NLS activation can still compile on the live presentation thread, leaving a preparation notice over stalled/black output. Implement isolated NLS preparation with ordinary-fit presentation until ready. Source: E:\codex\videoprocessor\nls-live-preparation-20261016, branch codex/nls-live-preparation-20261016; remote v1.4.02-beta at 51b211dc plus the latest local rational-clock/analysis/subtitle improvements. No deployment authorized yet.
+
+Historical acceptance (2026-08-22). The developer accepted the deployed x64 Release build at
 source commit `7b72265` after live windowed/fullscreen, Rec.709/BT.2020,
 renderer-switch, resize, cache-clear, NLS, and NLS+ testing. Source worktree:
 `C:\\Videoprocessor\\vp\\vprenderer\\.codex-worktrees\\vp-0140`, branch
