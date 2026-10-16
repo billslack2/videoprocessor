@@ -3036,8 +3036,10 @@ void testRendererProfileSectionsCollapseAndPersist()
         "Debanding choices are not ordered Standard, Light, Off after Auto");
     QComboBox* sigmoid = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.sigmoid"));
-    require(sigmoid->accessibleName() == QStringLiteral("Anti-ringing"),
-        "Sigmoid scaling does not expose the Anti-ringing accessible name");
+    // The control was renamed "Sigmoid upscaling" (32bb858a); its accessible
+    // name follows the visible label.
+    require(sigmoid->accessibleName() == QStringLiteral("Sigmoid upscaling"),
+        "Sigmoid scaling does not expose its accessible name");
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
     require(peakDetection->itemData(1).toString() == QStringLiteral("AUTO") &&
