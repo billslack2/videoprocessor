@@ -2,7 +2,7 @@
 
 ## Status
 
-Review — implemented and merged into beta and DV2; requested build/configuration checks passed. Awaiting user review of controls.
+In Progress (2026-10-16). Correcting the invalid cubic mixer selection and auditing exposed libplacebo choices against stable and beta runtimes. Continuing in E:\codex\videoprocessor\nls-live-preparation-20261016 on current v1.4.02-beta at 51b211dc plus the latest local rendering and shader-preparation fixes. Previous implementation was merged into beta and DV2; this corrective change is not deployed.
 
 ## User story
 
