@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-16). Extending isolated preparation to subtitle composition and adopting a shared Preparing shaders notice. The validated NLS activation fix is implemented and built in
+Review (2026-10-16). NLS and subtitle activation fixes are implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
@@ -19,24 +19,41 @@ Snapshots follow the actual temporal/composition input contract, including
 real mixer spacing and duration. Background retirement joins preparation before
 destroying the shared cache or unloading its library.
 
+Subtitle activation now uses its own isolated preparation worker for full-raster
+normalization, cleanup, generated blur, and independent-alpha subtitle layers.
+The requested mode is promoted only before TemporalRenderer.Begin at a capture
+boundary, and every output in that capture uses the same mode. During pending
+or failed preparation, full-raster video with original subtitles continues.
+The key includes source identity, settings, actual mixing/deinterlacing contract,
+and field order. A failed request can retry after disabling and re-enabling the
+feature. Cue/blur geometry uses dynamic constants to avoid recompiling for each
+caption size. Both NLS and subtitle preparation show **Preparing shaders...**;
+subtitle preparation failures show a separate notice rather than claiming work
+is still underway.
+
 Validation: x64 Release host, stable renderer, beta renderer, and native test
-builds succeeded. All **2,792 native regression tests passed** (zero failures),
-including five new tests covering ten seconds of continued GPU video drawing
+builds succeeded. All **2,793 native regression tests passed** (zero failures),
+including six preparation tests covering ten seconds of continued GPU video drawing
 during preparation, latest-request activation, failure/retry, composition input
-metadata, and cache reuse. Separate stable/beta HDR bicubic GPU smoke tests
+metadata, and cache reuse. The added subtitle GPU test covers SDR, temporal RGB,
+and HDR native YUV/deinterlacing; varying cue sizes, blur radii, backgrounds, and
+all/cleanup/layer phases produced no new shader-cache entries after preparation.
+Separate stable/beta HDR bicubic GPU smoke tests
 passed; subsequent live direct and 1/2/4/8-frame mixtures added no cache keys.
 Three Luna reviewers reviewed the design; their concrete composition and mixer
 coverage concerns were addressed. `git diff --check` passed.
 
 Reproducible evidence and source/binary hashes are recorded in
-`nls-test-results/validation.json` in that source worktree, alongside
-`nls-preparation-qualified.trx` and `nls-regression.trx`. The baseline local-source
+`nls-test-results/subtitle-validation.json` in that source worktree, alongside
+`subtitle-preparation.trx` and `subtitle-regression.trx`. Earlier NLS-only evidence
+remains in `validation.json`, `nls-preparation-qualified.trx`, and `nls-regression.trx`.
+The baseline local-source
 fingerprint is `6e14aeca2ecea10d1a9ce0a45ee6e8bc92fd0b30773055e5fd341a5885b590df`.
 
-Remaining acceptance: real-capture cold-cache NLS/NLS+ switching at the user's
+Remaining acceptance: real-capture cold-cache NLS/NLS+ and subtitle switching at the user's
 resolution/refresh rate, rapid selection changes, and renderer retirement.
 Preparation still consumes some GPU resources; automated small-frame tests do
-not establish full-resolution presentation latency. General non-NLS cold
+not establish full-resolution presentation latency. Other cold
 rendering paths remain outside this scoped fix. Proposed next step is review
 and requested live validation before merging or releasing; this does not renew
 the broad historical acceptance below.
