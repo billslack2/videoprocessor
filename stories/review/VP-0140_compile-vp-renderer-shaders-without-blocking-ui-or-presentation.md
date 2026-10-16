@@ -2,7 +2,44 @@
 
 ## Status
 
-In Progress (reopened 2026-10-16). NLS activation can still compile on the live presentation thread, leaving a preparation notice over stalled/black output. Implement isolated NLS preparation with ordinary-fit presentation until ready. Source: E:\codex\videoprocessor\nls-live-preparation-20261016, branch codex/nls-live-preparation-20261016; remote v1.4.02-beta at 51b211dc plus the latest local rational-clock/analysis/subtitle improvements. No deployment authorized yet.
+Review (2026-10-16). The scoped NLS activation fix is implemented and built in
+`E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
+`codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
+`51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
+analysis-performance, and subtitle/gradual-AR improvements. Source changes are
+local and uncommitted; no merge or deployment has been performed.
+
+NLS/NLS+ preparation now runs on a separate same-adapter D3D11 device with its
+own renderer, hooks, and textures. Only the thread-safe libplacebo cache is
+shared. Ordinary-fit video continues until the matching preparation succeeds;
+the selected NLS effect then activates at a frame boundary. One active request
+and the newest pending request bound work, stale completions cannot activate a
+different selection, and preparation failure retains safe-fit rendering.
+Snapshots follow the actual temporal/composition input contract, including
+real mixer spacing and duration. Background retirement joins preparation before
+destroying the shared cache or unloading its library.
+
+Validation: x64 Release host, stable renderer, beta renderer, and native test
+builds succeeded. All **2,792 native regression tests passed** (zero failures),
+including five new tests covering ten seconds of continued GPU video drawing
+during preparation, latest-request activation, failure/retry, composition input
+metadata, and cache reuse. Separate stable/beta HDR bicubic GPU smoke tests
+passed; subsequent live direct and 1/2/4/8-frame mixtures added no cache keys.
+Three Luna reviewers reviewed the design; their concrete composition and mixer
+coverage concerns were addressed. `git diff --check` passed.
+
+Reproducible evidence and source/binary hashes are recorded in
+`nls-test-results/validation.json` in that source worktree, alongside
+`nls-preparation-qualified.trx` and `nls-regression.trx`. The baseline local-source
+fingerprint is `6e14aeca2ecea10d1a9ce0a45ee6e8bc92fd0b30773055e5fd341a5885b590df`.
+
+Remaining acceptance: real-capture cold-cache NLS/NLS+ switching at the user's
+resolution/refresh rate, rapid selection changes, and renderer retirement.
+Preparation still consumes some GPU resources; automated small-frame tests do
+not establish full-resolution presentation latency. General non-NLS cold
+rendering paths remain outside this scoped fix. Proposed next step is review
+and requested live validation before merging or releasing; this does not renew
+the broad historical acceptance below.
 
 Historical acceptance (2026-08-22). The developer accepted the deployed x64 Release build at
 source commit `7b72265` after live windowed/fullscreen, Rec.709/BT.2020,
