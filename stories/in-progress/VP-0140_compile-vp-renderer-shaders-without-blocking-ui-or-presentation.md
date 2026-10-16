@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-16). The scoped NLS activation fix is implemented and built in
+In Progress (2026-10-16). Extending isolated preparation to subtitle composition and adopting a shared Preparing shaders notice. The validated NLS activation fix is implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
