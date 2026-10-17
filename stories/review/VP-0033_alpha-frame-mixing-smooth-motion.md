@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-16). Correcting the invalid cubic mixer selection and auditing exposed libplacebo choices against stable and beta runtimes. Continuing in E:\codex\videoprocessor\nls-live-preparation-20261016 on current v1.4.02-beta at 51b211dc plus the latest local rendering and shader-preparation fixes. Previous implementation was merged into beta and DV2; this corrective change is not deployed.
+Review (2026-10-16). Invalid cubic mixer corrected to mitchell_clamp with legacy cubic compatibility. All exposed renderer choices audited against stable and beta libplacebo; no additional invalid mappings found. Clean x64 Release build and beta renderer build passed, plus 113 targeted native tests and 3 config-editor tests. Changes remain local in E:\codex\videoprocessor\nls-live-preparation-20261016 on v1.4.02-beta 51b211dc with the latest local rendering fixes. Not deployed; live visual review remains.
 
 ## User story
 
@@ -101,3 +101,11 @@ Focused x64 Release Qt checks passed on both branches for grouping, all seven Mo
 The exact merged DV2 commit `2a2b4242dfc950381fbdc15c4125ca4ead910f82` subsequently completed its clean x64 Release solution build. Production Config opened successfully against a disposable copy of the active config and displayed the corrected grouping. [Build log](../assets/VP-0032-0033/motion-help-20261014/dv2-release-build.txt) and [native preview](../assets/VP-0032-0033/motion-help-20261014/native-motion.png) are saved. Replacement deployment remains pending closure of VP and Config, requested from the user; the prior `4c080e8d5f2d` deployment remains installed.
 
 User authorized and completed replacement deployment of DV2 `2a2b4242dfc950381fbdc15c4125ca4ead910f82` at 2026-10-14 14:01 EDT. Host, both renderer plugins, Config and matching runtime records were backed up at `C:\Videoprocessor\vp\deployment-backups\dv2-2a2b4242dfc9-20261014-140116` and replaced with hash-verified x64 Release outputs. Configuration and saved state remained byte-identical. Deployed Config opened the corrected Motion page against a disposable config copy and exited successfully. Playback was not launched. [Deployment receipt](../assets/VP-0032-0033/motion-help-20261014/deployment.json) and [deployed screenshot](../assets/VP-0032-0033/motion-help-20261014/deployed-motion.png). This supersedes the pending deployment note above; Review status remains unchanged.
+
+## 2026-10-16 mixer correction validation
+
+- The real stable/beta pl_frame_mixers tables contain mitchell_clamp, not cubic. UI and documentation now expose the valid name; legacy files map safely without being rewritten on open.
+- Runtime refuses to report mixing active when its selected filter is unavailable. Invalid motion strings preserve inherited valid settings.
+- Tests require every offered mixer to resolve to a non-null native filter in both bundled runtimes, exercise GPU rendering, and cover chroma mappings and comment-preserving config round trips.
+- All 40 data exports used by the render-parameter mapper exist in both bundled libraries.
+- Evidence: E:\codex\videoprocessor\nls-live-preparation-20261016\nls-test-results\mixer-validation.json and mixer-validation.trx; runtime audit in renderer-choice-export-audit.json.
