@@ -97,3 +97,12 @@ may change, desktop raster does not.
   `SetDisplayConfig` mode-info ownership on the current beta integration base.
 - The DCI bench case requires the target driver to enumerate the requested DCI
   timing; VP must not create it.
+
+## Related configuration story
+
+2026-10-18: [VP-0200](VP-0200_profile-based-resolution-refresh-configuration.md)
+owns the dedicated Display modes page, profiles, Auto/Advanced choices, migration,
+and saved mockups. VP-0172 retains the underlying mode-selection and transition
+contract. Coordinate one configuration model and one runtime controller; the UI
+work is tracked separately rather than implemented twice. Auto explicitly selects
+existing refresh-only behavior; an empty Advanced list is invalid in the new UI.
