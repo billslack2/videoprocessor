@@ -4498,12 +4498,15 @@ struct LibplaceboVideoRenderer::Impl
 	// can silently switch those counters to another output.
 	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
 	// Copy of the rendered frame's HDR luminance and libplacebo's
-	// peak-detection result; written by the render thread at most every
-	// 250 ms, read by the host.
+	// peak-detection result; written by the render thread every 250 ms and
+	// on each Dolby Vision L1 change, read by the host.
 	mutable std::mutex hdrStatusMutex;
 	RendererHdrStatus hdrStatus;
 	bool hdrStatusPublished = false;
 	uint64_t hdrStatusNextTick = 0;
+	uint64_t hdrStatusNextLogTick = 0;
+	// The L1 minimum, maximum and average last seen; a change logs at once.
+	float hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -6156,8 +6159,14 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		if (!rendered)
 			return;
+		// A change of Dolby Vision L1 is published and logged on its own frame.
+		const bool l1 = image.repr.dovi != nullptr && dvLuminance.sceneAvailable;
+		const bool l1Changed = l1 &&
+			(dvLuminance.sceneMin != hdrStatusLoggedL1[0] ||
+				dvLuminance.sceneMax != hdrStatusLoggedL1[1] ||
+				dvLuminance.sceneAvg != hdrStatusLoggedL1[2]);
 		const uint64_t now = GetTickCount64();
-		if (now < hdrStatusNextTick)
+		if (now < hdrStatusNextTick && !l1Changed)
 			return;
 		hdrStatusNextTick = now + 250;
 
@@ -6192,6 +6201,41 @@ struct LibplaceboVideoRenderer::Impl
 				PL_HDR_PQ, PL_HDR_NITS, detected.avg_pq_y);
 			next.detectedLinearAvgNits = detected.scene_avg;
 			next.detectedSceneMaxNits = detected.scene_max[0];
+		}
+		const bool interval = now >= hdrStatusNextLogTick;
+		if (next.hdr && (next.detectedValid || next.sceneValid) &&
+			(interval || l1Changed))
+		{
+			if (interval)
+				hdrStatusNextLogTick = now + 2500;
+			// The line's own prefix has whole seconds only.
+			SYSTEMTIME local{};
+			GetLocalTime(&local);
+			DebugLog::Log(
+				"HDR luminance: dv=%d detection=%s detected_peak_nits=%.2f detected_avg_pq_nits=%.4f detected_avg_linear_nits=%.4f scene=%s scene_peak_nits=%.2f scene_avg_nits=%.4f"
+				" scene_min_nits=%.6f detected_scene_max_nits=%.2f"
+				" reason=%s time=%04u-%02u-%02uT%02u:%02u:%02u.%03u source_frame=%llu",
+				next.dolbyVision ? 1 : 0,
+				!next.peakDetectionEnabled ? "off" :
+					next.detectedValid ? "valid" : "pending",
+				next.detectedPeakNits, next.detectedAvgNits,
+				next.detectedLinearAvgNits,
+				!next.sceneValid ? "none" : next.dolbyVision ? "L1" : "frame",
+				next.scenePeakNits, next.sceneAvgNits,
+				next.sceneMinNits,
+				next.detectedSceneMaxNits,
+				l1Changed ? "L1" : "interval",
+				local.wYear, local.wMonth, local.wDay,
+				local.wHour, local.wMinute, local.wSecond, local.wMilliseconds,
+				static_cast<unsigned long long>(next.sourceSequence));
+		}
+		// Remembered even when not logged, so one change never bypasses the
+		// 250 ms publish interval on later frames.
+		if (l1Changed)
+		{
+			hdrStatusLoggedL1[0] = dvLuminance.sceneMin;
+			hdrStatusLoggedL1[1] = dvLuminance.sceneMax;
+			hdrStatusLoggedL1[2] = dvLuminance.sceneAvg;
 		}
 		std::lock_guard<std::mutex> lock(hdrStatusMutex);
 		hdrStatus = next;
