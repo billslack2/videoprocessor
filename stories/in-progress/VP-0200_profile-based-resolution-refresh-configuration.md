@@ -5,7 +5,7 @@
 In Progress (2026-10-20; deployed for operator validation). Implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the current beta
 branch tip `72bcc9ad1fc29142fb91928461e567f5725dcd0b` (`v1.4.02-beta`).
-The deployed feature commit is `4dae9701fb935b371df8119160446e554133e68b`. The top-level Display page is directly
+The deployed feature commit is `36219ec53f255e8ac3323171bb60bfcd7271f7ce`. The top-level Display page is directly
 below General and outside VP Renderer. The existing refresh-switch setting is
 shown on Display while retaining its existing `general.switch_refresh_rate`
 key and options. The new `output_display` profile family supports Auto and
@@ -79,6 +79,60 @@ Local evidence is under
 build log, `test-results\vp0200-rebased-regressions.trx`, and
 `vp0200-deployed-display.png`. Hardware mode switching, rollback, restoration,
 and playback of the reported scene remain operator/bench acceptance work.
+## Monitor selection and local availability fix (2026-10-20)
+
+The operator confirmed **one monitor per Display profile**. The Monitor control
+now lives on Display and persists as `output_display.<profile>.monitor`; `auto`
+means the Windows primary monitor. Named variants inherit the baseline monitor
+until overridden. The editor preserves a legacy `fullscreen_monitor_name` in
+the baseline profile, removes only the migrated legacy keys on Apply/OK, and
+uses the existing migration backup. Deployment itself made no configuration edits.
+
+The local failure was real: discovery used QueryDisplayConfig friendly names,
+while availability tried to resolve them through EnumDisplayDevices strings.
+Availability also stopped after the first GPU adapter and was explicitly disabled
+for RPC connections, including loopback. A shared Win32 inventory now resolves
+friendly/GDI/disambiguated names consistently for discovery, Config, playback,
+and optional target-only topology selection. DXGI and progressive 32-bit GDI
+modes are enumerated on the selected output, across adapters.
+
+A bounded read-only GetDisplayModes RPC supplies inventory from the VP machine.
+Config refreshes asynchronously on profile/monitor/topology changes or Refresh,
+coalesces requests, and rejects results for stale profiles/targets. Missing or
+ambiguous monitors and query failures produce explicit explanations. The runtime
+snapshot carries the selected monitor, places an existing fullscreen window
+without taking focus, and prevents mode changes when the playback window is on
+a different output or the configured monitor is unavailable.
+
+Source commits `1d3b6ebf` and `36219ec5` are pushed on the existing feature branch.
+The beta integration tip remains `72bcc9ad1fc29142fb91928461e567f5725dcd0b`;
+the prepared subtitle-erasure fix is still included. A full x64 Release Rebuild
+and the final pinned Release Build succeeded. Host and renderer identities
+show `36219ec53f255e8ac3323171bb60bfcd7271f7ce`, dirty=false.
+No automated suites were rerun for this follow-up; the earlier 360-test and
+four-UI-check results above belong to the previous deployed commit.
+
+The actual installed native Config UI, using scratch settings and read-only
+hardware enumeration, reports **72 progressive modes for EPSON PJ** and
+**106 for the Windows primary monitor**. Both example Epson entries
+1920x1080p60 and 3840x2160p23.976 are available; preview selects the latter
+for 23.976 input. The examples were not applied to the active configuration.
+
+- [Installed real UI with Epson availability](../assets/VP-0200/installed-epson-monitor-20261020.png)
+- Local evidence: `E:\codex\videoprocessor\vp-0200-display-tab\artifacts`,
+  `vp0200-monitor-pinned-release.log`, `vp0200-deployed-epson-monitor.png`.
+- Deployment backup/receipt:
+  `C:\Videoprocessor\vp\backups\deploy-20261020-112200-vp0200-36219ec5`.
+  All 11 replaced software/document/runtime-record hashes match build inputs.
+  Matching player, both renderers, Config and discovery DLL were deployed.
+  Every replaced file, `VideoProcessor.cfg` and `VideoProcessor.state` was backed
+  up. Active cfg/state remain byte-identical; configuration edits: **none**.
+  Background Config was restarted; playback was stopped and remains stopped.
+
+Live mode application, monitor transitions during playback, remote VP RPC,
+rollback, and restoration still need operator/bench qualification. Keep this
+story In Progress.
+
 ## User story
 
 As a VP Renderer user, I want display-mode profiles with an obvious Auto default
@@ -98,9 +152,10 @@ to the existing display transaction. Do not add a second mode selector.
 ## Configuration and UI contract
 
 - Add **Config > Display** as a top-level page directly below General in the
-  left navigation, outside VP Renderer. Keep the monitor selector and other
-  existing General settings in General; move the existing refresh-switch
-  control to Display, with one owner for that setting.
+  left navigation, outside VP Renderer. Move Monitor into each Display profile,
+  with one selector controlling fullscreen playback, availability, and preview.
+  Keep the other General settings in General. The refresh-switch control remains
+  on Display, with its existing shared general key and one owner.
 - Reuse the existing profile framework: profile list, add/remove/reorder, name,
   shortcuts, cycle shortcuts, and supported capture-input selection rules.
   The first ordered profile is the default; exactly one profile is effective.
