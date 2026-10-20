@@ -133,6 +133,61 @@ Live mode application, monitor transitions during playback, remote VP RPC,
 rollback, and restoration still need operator/bench qualification. Keep this
 story In Progress.
 
+## Fixed output and recommended mode picker (2026-10-20)
+
+Source `5101c22a638316628c0cea878744bcb85e7b9b25` is committed and pushed on
+`codex/vp-0200-display-tab`, still based on beta `72bcc9ad1fc29142fb91928461e567f5725dcd0b`.
+The full clean x64 Release Rebuild succeeded with zero errors; host/renderer
+identities show this commit with dirty=false. Automated suites were not run
+for this follow-up; one existing interlaced expectation was updated for the
+new explicit allowed-mode fallback.
+
+The operator's single available 2560x1440p60 entry was previously rejected by
+the preview's independent cadence filter for 24 fps. Advanced now ranks cadence
+matches first, followed by remaining available allowed entries in configured
+order. One available entry therefore means fixed output for any valid source
+cadence. Preview and renderer share this selector and explicitly identify a
+configured fallback. Auto retains its existing refresh-only ranking. Missing
+allowed timings still leave the current display mode unchanged.
+
+The Add mode catalog is grouped by descending raster size and descending
+refresh. Whole-number labels (p60, p59, p24, p23) retain exact rational timing
+in item data and saved configuration; accepting an existing choice never
+reparses its shortened label. Near-identical driver timings share a label,
+with integer/broadcast timings preferred. Saved list order remains playback
+fallback priority.
+
+Windows DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE supplies the
+preferred resolution for the selected physical output, including through
+inventory RPC version 2 (new clients also read v1 inventories). This is a
+recommendation rather than proof of panel-native pixels. The picker defaults
+to that resolution plus reported HD/UHD video resolutions related by integer
+scaling, with Show all supported resolutions available. The filter only
+changes the catalog view; saved modes and runtime inventory are preserved.
+If the API does not report a preferred resolution, all resolutions are shown.
+[Microsoft API reference](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_target_preferred_mode).
+
+Actual native UI captures on scratch settings show:
+
+- LG preferred resolution 2560x1440: **4** recommended whole-number choices,
+  in order 75, 74, 60, 59 Hz labels.
+- Epson preferred resolution 3840x2160: **12** recommended choices, grouped
+  3840x2160 then 1920x1080; each group is ordered 60, 59, 50, 25, 24, 23.
+- The exact screenshot case, source cadence **24** with only 2560x1440p60,
+  now previews that entry as fixed output.
+- [Real fixed-output preview](../assets/VP-0200/fixed-output-preview-20261020.png)
+- [Real LG picker](../assets/VP-0200/lg-mode-picker-20261020.png)
+- [Real Epson picker](../assets/VP-0200/epson-mode-picker-20261020.png)
+
+Deployment is prepared but pending preservation of unsaved editor changes.
+The installed version remains `36219ec5`. The running Config editor contains
+an entered mode not present in the active saved file, so the operator was asked
+to Apply/close Config before any deployment restart. No active configuration
+or display mode was changed during implementation or capture. Live mode
+application and remote RPC remain operator/bench qualification work.
+Local evidence: `artifacts/vp0200-picker-release.log`,
+`vp0200-picker-preview.png`, and `vp0200-picker-*-catalog.png[.choices.png]`.
+
 ## User story
 
 As a VP Renderer user, I want display-mode profiles with an obvious Auto default
@@ -183,8 +238,9 @@ to the existing display transaction. Do not add a second mode selector.
   input-format changes. Capture pixel format is not a subtitle/AR policy.
 - Preserve suitable existing custom timings and avoid repeated switching for
   small device clock drift. Coalesce requests and reject stale generations.
-- With no eligible permitted mode, retain the current mode and continue playback
-  with a clear diagnostic. Apply and verify full modes through VP-0172; restore
+- With no available permitted mode, retain the current mode and continue playback
+  with a clear diagnostic. Advanced profiles fall back to available allowed modes
+  in configured order after cadence matches; one available entry is fixed output. Apply and verify full modes through VP-0172; restore
   prior full mode only while VP still owns the display change.
 
 ## Mockups
@@ -205,7 +261,8 @@ interactive prototypes, not shipping controls or implementation evidence.
 3. Auto/Advanced round trips preserve inactive Advanced values. Empty Advanced
    lists and malformed rates are rejected with actionable messages.
 4. Exact and fractional rates, UHD versus DCI, unavailable modes, duplicates,
-   ordering, and no-match fallback are covered by focused tests and UI checks.
+   ordering, fixed-output fallback, compact-label round trips, preferred-resolution
+   filtering and Show all are covered by focused tests and UI checks.
 5. Preview and runtime use the same selector. Tests prove AR/subtitle/NLS changes
    and smooth-motion output cadence do not cause display switches.
 6. Existing refresh-only behavior and fullscreen gating remain intact. Profile
