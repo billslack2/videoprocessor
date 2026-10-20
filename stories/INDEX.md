@@ -259,7 +259,7 @@ they must not contain requirements that are absent from this file.
 | VP-0198 | Done | Add a symbolic substring operator (~=) to shared rule expressions |
 | VP-0199 | Backlog | Remove residual subtitle backing at the picture boundary for small fonts |
 
-| VP-0200 | Backlog | Profile-based resolution and refresh-rate configuration |
+| VP-0200 | In Progress | Profile-based resolution and refresh-rate configuration |
 
 ## Codex story workflow
 

@@ -2,9 +2,13 @@
 
 ## Status
 
-Backlog (2026-10-18). User requested that the resolution/refresh configuration
-and mockup discussion become a separate new story. Design captured; no source
-implementation, build, or deployment is part of this tracker change.
+In Progress (2026-10-19). Implementation underway on `codex/vp-0200-display-tab`
+in `E:\codex\videoprocessor\vp-0200-display-tab`, based on current beta tip
+`d988e54` (`v1.4.02-beta`). The requested Display page is top-level, directly
+below General and outside VP Renderer; the existing refresh-switch control
+moves there while other current General settings stay in General. Reviewing
+the VP-0172 ownership boundary and current profile/configuration APIs before
+coding. No build, validation, or deployment yet.
 
 ## User story
 
@@ -22,10 +26,10 @@ mode selector. Resolve the integration boundary with VP-0172 before coding.
 
 ## Configuration and UI contract
 
-- Add **Config > VP Renderer > Display modes**, after Color / Output and before
-  Scaling. Keep a Configure display modes link beside the playback-monitor
-  selector in General. Move the existing refresh-switch control into this page
-  without leaving two independently editable owners of the same setting.
+- Add **Config > Display** as a top-level page directly below General in the
+  left navigation, outside VP Renderer. Keep the monitor selector and other
+  existing General settings in General; move the existing refresh-switch
+  control to Display, with one owner for that setting.
 - Reuse the existing profile framework: profile list, add/remove/reorder, name,
   shortcuts, cycle shortcuts, and supported capture-input selection rules.
   The first ordered profile is the default; exactly one profile is effective.
