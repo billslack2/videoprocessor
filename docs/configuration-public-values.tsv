@@ -342,3 +342,7 @@ vprenderer.motion.deinterlace_cadence	field
 vprenderer.motion.deinterlace_cadence	frame
 vprenderer.motion.deinterlace_skip_spatial	false
 vprenderer.motion.deinterlace_skip_spatial	true
+output_display.mode_policy	auto
+output_display.mode_policy	advanced
+output_display.restore_previous_mode	true
+output_display.restore_previous_mode	false
