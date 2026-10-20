@@ -12,8 +12,8 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 10;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v10";
+    constexpr uint32_t Version = 11;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v11";
     constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
@@ -29,6 +29,7 @@ namespace ActiveProfileStatus
         char viewport[96]{};
         char zoom[96]{};
         char subtitles[96]{};
+        char outputDisplay[96]{};
         uint64_t rendererGeneration = 0;
         uint64_t shaderGeneration = 0;
         uint32_t shaderAvailable = 0;
@@ -98,6 +99,7 @@ namespace ActiveProfileStatus
         const auto viewport = selections.find("viewport");
         const auto zoom = selections.find("zoom");
         const auto subtitles = selections.find("subtitles");
+        const auto outputDisplay = selections.find("output_display");
         // Queue profiles use the first (root) profile whenever no conditional
         // selection overrides it. Publish that resolved default explicitly so
         // the editor can mark it active just like an explicitly selected one.
@@ -117,6 +119,8 @@ namespace ActiveProfileStatus
             std::string() : SectionFor("vprenderer.zoom", zoom->second, configuration));
         Copy(next.subtitles, sizeof(next.subtitles), subtitles == selections.end() ?
             std::string() : SectionFor("vprenderer.subtitles", subtitles->second, configuration));
+        Copy(next.outputDisplay, sizeof(next.outputDisplay), outputDisplay == selections.end() ?
+            std::string() : SectionFor("output_display", outputDisplay->second, configuration));
         next.rendererGeneration = rendererGeneration;
         next.shaderAvailable = shaderAvailable ? 1u : 0u;
         next.shaderGeneration = shaderAvailable ? rendererGeneration : 0;

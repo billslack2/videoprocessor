@@ -48,6 +48,50 @@ namespace VideoProcessorTest
 	{
 	public:
 
+        TEST_METHOD(OutputDisplayProfilesRoundTripAndRejectInvalidAdvancedModes)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpd");
+            WriteBytes(path, "[output_display.Default]\nmode_policy: auto\n"
+                "restore_previous_mode: true\nallowed_modes: 1920x1080p60\n"
+                "[output_display.Film]\nmode_policy: advanced\n"
+                "allowed_modes: 3840x2160p23.976,1920x1080p24\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            ConfigEditorCore::SaveResult saved;
+            Assert::IsTrue(ConfigEditorCore::SaveSafely(document, saved, error), error.c_str());
+            ConfigEditorCore::ConfigDocument reloaded;
+            Assert::IsTrue(reloaded.Load(path, error), error.c_str());
+            Assert::AreEqual(std::string("auto"), reloaded.Get("output_display.Default", "mode_policy"));
+            Assert::AreEqual(std::string("1920x1080p60"), reloaded.Get("output_display.Default", "allowed_modes"));
+            Assert::AreEqual(std::string("3840x2160p23.976,1920x1080p24"),
+                reloaded.Get("output_display.Film", "allowed_modes"));
+            reloaded.SetKnown("output_display.Film", "allowed_modes", "");
+            Assert::IsFalse(ConfigEditorCore::ValidateCandidate(reloaded, error));
+            reloaded.SetKnown("output_display.Film", "mode_policy", "auto");
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error), error.c_str());
+            reloaded.SetKnown("output_display.Film", "allowed_modes",
+                "1920x1080p59.94,1920x1080p60000/1001");
+            Assert::IsFalse(ConfigEditorCore::ValidateCandidate(reloaded, error));
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(ConfigurationApplyPolicyAppliesOutputDisplayEditsAndReordersLive)
+        {
+            using ConfigurationApplyPolicy::Action;
+            using ConfigurationApplyPolicy::ClassifyChanges;
+            Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+                static_cast<int>(ClassifyChanges({{"output_display.Film", "allowed_modes"}})));
+            Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+                static_cast<int>(ClassifyChanges({{"output_display.Default", "mode_policy"}})));
+            Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+                static_cast<int>(ClassifyChanges({{"output_display.Film", "profile_section_order"}})));
+            Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+                static_cast<int>(ClassifyChanges({{"output_display.Film", "shortcut"}})));
+            Assert::AreEqual(std::string("output_display"),
+                ConfigurationApplyPolicy::OrderedProfileGroup("output_display.Film"));
+        }
         TEST_METHOD(SubstringRuleConfigRoundTripAndValidation)
         {
             const std::wstring path = MakeTemporaryConfigPath(L"vps");

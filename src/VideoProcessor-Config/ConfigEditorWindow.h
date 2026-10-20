@@ -72,7 +72,8 @@ public:
         const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable = true,
         const QString& zoom = {}, const QString& scaling = {},
-        const QString& output = {}, const QString& subtitles = {});
+        const QString& output = {}, const QString& subtitles = {},
+        const QString& outputDisplay = {});
     void setCalibrationStatusForTesting(bool available, bool attached,
         quint64 configIdentity, const QString& configPath,
         const QString& renderer, const QString& color, bool hdrSource = false);
@@ -91,6 +92,7 @@ protected:
 private:
     QWidget* createShell();
     QWidget* createStartupPage();
+    QWidget* createDisplayPage();
     QWidget* createQueuePage();
     QWidget* createRendererPage();
 	QWidget* createScalingPage();
@@ -152,6 +154,7 @@ private:
     void migrateLldvInputPolicy();
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
+    void migrateOutputDisplayProfiles();
     void migrateSeparatedRendererProfiles();
     void migrateUnifiedColorOutputProfiles();
     void migrateCalibrationProfiles();
@@ -192,7 +195,8 @@ private:
         const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable,
         const QString& zoom = {}, const QString& scaling = {},
-        const QString& output = {}, const QString& subtitles = {});
+        const QString& output = {}, const QString& subtitles = {},
+        const QString& outputDisplay = {});
     void refreshRendererAutoStatus();
     void refreshCalibrationControls();
     void seedCalibratedProfile(const QString& root, const QString& section);

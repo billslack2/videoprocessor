@@ -904,8 +904,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 22,
-        "Renderer, Scaling, Color, Output, Screen, Zoom, Processing, shader, and shortcut pages were not added as dedicated settings pages");
+    require(pages->count() == 23,
+        "The top-level Display page and all existing dedicated settings pages were not added");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -3010,9 +3010,11 @@ void testRendererProfileSectionsCollapseAndPersist()
 		downscaler->findData(QStringLiteral("none")) < 0 &&
 		downscaler->findData(QStringLiteral("ewa_lanczos")) < 0,
 		"Downscaler choices include a removed or pathologically expensive mode");
-    QComboBox* refreshRateSwitch = pages->widget(0)->findChild<QComboBox*>(
+    QComboBox* refreshRateSwitch = pages->widget(22)->findChild<QComboBox*>(
         QStringLiteral("config.general.switch_refresh_rate"));
     require(refreshRateSwitch != nullptr &&
+        pages->widget(0)->findChild<QComboBox*>(
+            QStringLiteral("config.general.switch_refresh_rate")) == nullptr &&
         refreshRateSwitch->itemData(0).toString() == QStringLiteral("never") &&
         refreshRateSwitch->itemText(0) == QStringLiteral("Never") &&
         refreshRateSwitch->itemData(1).toString() == QStringLiteral("fullscreen_only") &&
@@ -3021,7 +3023,7 @@ void testRendererProfileSectionsCollapseAndPersist()
         refreshRateSwitch->itemText(2) == QStringLiteral("Always") &&
         pages->widget(2)->findChild<QComboBox*>(
         QStringLiteral("config.general.switch_refresh_rate")) == nullptr,
-        "Switch refresh rate selector was not moved from Renderer Basic to General Display");
+        "Switch refresh rate selector was not moved to the top-level Display page");
     QComboBox* debanding = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.deband_strength"));
     require(debanding->findData(QStringLiteral("AUTO")) >= 0 &&
@@ -4527,6 +4529,10 @@ void testApplyOkCancelContract()
             apply->click();
             QCoreApplication::processEvents();
         }
+        require(requireControl<QLabel>(window, QStringLiteral("configurationEffectSummary"))->text() ==
+            QStringLiteral("No pending changes"),
+            (std::string("Initial migration save did not succeed: ") +
+                requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
         require(!apply->isEnabled(), "Apply was enabled for a clean document");
 
         QCheckBox* fullscreen = requireControl<QCheckBox>(window,
@@ -4537,7 +4543,7 @@ void testApplyOkCancelContract()
             QStringLiteral("configurationEffectSummary"));
         require(effect->text() == QStringLiteral(
             "Takes effect next start: Startup / input"),
-            "The pending effect summary did not honestly classify the edit");
+            (std::string("The pending effect summary did not honestly classify the edit: ") + effect->text().toStdString() + " Status: " + requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
 
         apply->click();
         QCoreApplication::processEvents();

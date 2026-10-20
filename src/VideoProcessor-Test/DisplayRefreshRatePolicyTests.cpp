@@ -381,5 +381,71 @@ namespace Tests
 			Assert::IsTrue(ShouldSwitchRefreshRateForPresentationTarget(true,
 				RefreshRateSwitchMode::Always));
 		}
+		TEST_METHOD(OutputModesReduceDecimalsAndPreserveFractionalFamilies)
+		{
+			DisplayOutputMode mode;
+			std::string error;
+			Assert::IsTrue(ParseDisplayOutputMode("3840x2160p23.976", mode, error));
+			Assert::AreEqual(3840u, mode.width);
+			Assert::IsTrue(DisplayRefreshRatesExactlyEqual({24000,1001}, mode.refreshRate));
+			Assert::IsTrue(ParseDisplayOutputMode("1920x1080p59.5", mode, error));
+			Assert::AreEqual(119u, mode.refreshRate.numerator);
+			Assert::AreEqual(2u, mode.refreshRate.denominator);
+			Assert::IsTrue(ParseDisplayOutputMode("1280x720p60000/1001", mode, error));
+			Assert::IsTrue(DisplayRefreshRatesExactlyEqual({60000,1001}, mode.refreshRate));
+		}
+
+		TEST_METHOD(OutputModesRejectInvalidAndEquivalentDuplicateEntries)
+		{
+			DisplayOutputMode mode;
+			std::string error;
+			for (const char* text : {"3840x2160i60", "0x1080p60", "1920x1080p60/0", "1920x1080p59.5000"})
+				Assert::IsFalse(ParseDisplayOutputMode(text, mode, error));
+			std::vector<DisplayOutputMode> modes;
+			Assert::IsFalse(ParseDisplayOutputModeList(
+				"1920x1080p59.94,1920x1080p60000/1001", modes, error));
+			Assert::IsTrue(ParseDisplayOutputModeList(
+				"3840x2160p23.976,1920x1080p60", modes, error));
+			Assert::AreEqual(size_t(2), modes.size());
+		}
+
+		TEST_METHOD(OutputModesKeepConfiguredResolutionOrder)
+		{
+			const std::vector<DisplayOutputMode> configured = {
+				{1920,1080,{24,1}}, {3840,2160,{24,1}}};
+			const auto ranked = RankDisplayOutputModesForInput({24,1}, false,
+				configured, {configured[1], configured[0]});
+			Assert::AreEqual(size_t(2), ranked.size());
+			Assert::AreEqual(1920u, ranked[0].mode.width);
+			Assert::AreEqual(3840u, ranked[1].mode.width);
+		}
+
+		TEST_METHOD(OutputModesSkipUnavailableAndRequireExactInventoryMatches)
+		{
+			const std::vector<DisplayOutputMode> configured = {
+				{3840,2160,{24,1}}, {1920,1080,{24,1}}};
+			const auto ranked = RankDisplayOutputModesForInput({24,1}, false,
+				configured, {configured[1]});
+			Assert::AreEqual(size_t(1), ranked.size());
+			Assert::AreEqual(1920u, ranked[0].mode.width);
+			Assert::IsTrue(RankDisplayOutputModesForInput({24000,1001}, false,
+				{{3840,2160,{24000,1001}}}, {{3840,2160,{24,1}}}).empty());
+		}
+
+		TEST_METHOD(OutputModesPreferNativeCadenceAndDoubleInterlacedInput)
+		{
+			const std::vector<DisplayOutputMode> configured = {
+				{3840,2160,{60,1}}, {1920,1080,{30,1}}};
+			const auto progressive = RankDisplayOutputModesForInput({30,1}, false,
+				configured, configured);
+			Assert::AreEqual(size_t(2), progressive.size());
+			Assert::AreEqual(1920u, progressive[0].mode.width);
+			Assert::IsFalse(progressive[0].doubledRate);
+			const auto interlaced = RankDisplayOutputModesForInput({30,1}, true,
+				configured, configured);
+			Assert::AreEqual(size_t(1), interlaced.size());
+			Assert::AreEqual(3840u, interlaced[0].mode.width);
+			Assert::IsTrue(interlaced[0].doubledRate);
+		}
 	};
 }
