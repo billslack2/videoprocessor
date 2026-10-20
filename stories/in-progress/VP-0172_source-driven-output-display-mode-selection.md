@@ -2,24 +2,24 @@
 
 ## Status
 
-In Progress (2026-10-19). Implementation is underway with VP-0200 on
+In Progress (2026-10-19). Implementation is integrated with VP-0200 on
 `codex/vp-0200-display-tab` in
 `E:\codex\videoprocessor\vp-0200-display-tab`, based on beta tip `d988e54`
-(`v1.4.02-beta`).
+(`v1.4.02-beta`). The platform-independent mode parser and selector compose
+with VP-0167 ranking. Advanced mode intersects the ordered configured list with
+a deduplicated DXGI/GDI progressive 32-bpp inventory, logs source raster,
+cadence, inventory origins, unavailable entries, eligible candidates, and DCI
+fallback context, then applies and verifies raster plus refresh. Failed
+transitions roll back to the immediately prior mode; renderer retirement can
+restore the baseline mode according to profile policy. Auto continues using
+the existing refresh-only path.
 
-Readiness review (2026-10-19): VP-0167 is Done and its shared rational ranking
-helper already provides exact/tight matching followed by bounded fallback.
-The current Windows refresh transaction enumerates rates at the current raster,
-invalidates only the target timing index, verifies only refresh, and restores
-only the original refresh. It therefore needs a full-mode extension for width,
-height, refresh, verification, and rollback. The topology session API owns
-full topology recovery and target-only transitions; VP-0172 will retain the
-current active target topology and extend the renderer's display transaction
-without changing target-only topology policy. The renderer profile model already
-supports ordered profile selection, rule expressions, shortcuts, and saved
-selection; a distinct output-display group can reuse it without colliding with
-VP Renderer display-calibration profiles. No unknown remains that blocks the
-planned parser, profile-editor, and runtime integration work.
+Validation: the config editor build target compiled and linked in x64 Release.
+The modified beta renderer translation unit compiled in an isolated project
+check; that broader check then stopped on missing generated `version.h`. The
+full solution build is blocked because the official Magewell SDK is not
+installed. No test executable was run and no binaries were deployed. Focused
+acceptance checks and physical-display bench validation remain outstanding.
 
 ## User story
 

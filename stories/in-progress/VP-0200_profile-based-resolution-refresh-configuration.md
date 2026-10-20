@@ -2,14 +2,25 @@
 
 ## Status
 
-In Progress (2026-10-19). Implementation continues on `codex/vp-0200-display-tab`
-in `E:\codex\videoprocessor\vp-0200-display-tab`, based on beta tip
-`d988e54` (`v1.4.02-beta`). The existing refresh-rate setting now lives on a
-top-level Display page directly below General; the setting key and options are
-unchanged. The user's follow-up expands this work to the complete Auto/Advanced
-profile design, including ordered allowed modes, availability and selection
-preview, config migration, and runtime integration with VP-0172. No build or
-tests have been run.
+In Progress (2026-10-19). Implementation is in `codex/vp-0200-display-tab`
+in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the current beta
+branch tip `d988e54` (`v1.4.02-beta`). The top-level Display page is directly
+below General and outside VP Renderer. The existing refresh-switch setting is
+shown on Display while retaining its existing `general.switch_refresh_rate`
+key and options. The new `output_display` profile family supports Auto and
+Advanced, ordered exact-rational modes, add/remove/reorder, DXGI/GDI availability,
+and a cadence preview that does not change the display. Profile status is
+carried through the live-status RPC. Configuration help and migration are
+implemented. VP-0172 supplies the single shared mode parser/ranker and runtime
+mode transaction; Auto retains the existing refresh-only path.
+
+Validation: the config editor build target compiled and linked in x64 Release.
+The modified renderer translation unit compiled in an isolated beta project
+check; that broader check then stopped on missing generated `version.h`. The
+full solution build is blocked because the official Magewell SDK is not
+installed. No test executable was run and no binaries were deployed. Keep this
+story In Progress until focused acceptance checks and display-bench validation
+are complete.
 
 ## User story
 
@@ -20,10 +31,12 @@ permitted output resolutions and refresh rates for my display.
 ## Scope and ownership
 
 This story owns the configuration model, editor, migration, documentation, and
-profile integration for the design discussed in chat. VP-0172 owns the underlying
-complete display-mode selection, application, verification, and restoration.
-Implement one shared policy/controller; this story must not introduce a second
-mode selector. Resolve the integration boundary with VP-0172 before coding.
+profile integration for the design discussed in chat. VP-0172 owns the shared
+complete-mode selector and display transaction. Integration is resolved: the
+`output_display` profile feeds one renderer settings path, the editor preview
+uses the same VP-0167 rational ranking helper as runtime, Auto retains the
+existing refresh-only behavior, and Advanced passes its ordered allowed modes
+to the existing display transaction. Do not add a second mode selector.
 
 ## Configuration and UI contract
 
@@ -104,5 +117,7 @@ interactive prototypes, not shipping controls or implementation evidence.
 
 ## Next step
 
-Review current configuration/profile APIs and the VP-0172 ownership boundary,
-then implement and validate this story independently of unrelated playback fixes.
+Complete focused parser/profile/UI acceptance checks and bench validation for
+mode application, rollback, restoration ownership, DCI selection, and source
+changes. Re-run the full x64 Release solution build when the official Magewell
+SDK and generated renderer `version.h` are available.
