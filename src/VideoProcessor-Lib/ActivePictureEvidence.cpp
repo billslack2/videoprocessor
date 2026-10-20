@@ -1185,19 +1185,22 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 		{
 			result.verticalBarProfile = InspectVerticalCropBarProfile(samples, top, bottom);
 			axes.verticalCropProfileEvaluated = result.verticalBarProfile.evaluated;
-			// A coarse scan coordinate can exclude a few actual picture rows. Keep
-			// one whole native scan step instead of relaxing the black profile.
-			// Always use this envelope on the new route so tiny profile changes do
-			// not alternate between padded and unpadded targets across the queue.
+			// Filtering can leave visible boundary rows outside the coarse scan's
+			// first nonblack line. Retain two whole native scan steps; never relax
+			// the black profile or accept mismatches deeper in the excluded bars.
+			// Use the same envelope even when the raw profile is already clean so
+			// small fringe changes cannot alternate the crop across queued frames.
 			const auto& profile = result.verticalBarProfile;
+			const int guardRows = 2 * yStep;
 			const bool boundaryOnly = profile.completed && profile.mismatchSamples > 0 &&
-				profile.deepMismatchSamples == 0 && profile.boundaryMismatchSamples == profile.mismatchSamples;
+				(profile.topFirstMismatchY < 0 || profile.topFirstMismatchY >= top - guardRows) &&
+				(profile.bottomLastMismatchY < 0 || profile.bottomLastMismatchY < bottom + guardRows);
 			if (profile.clean || boundaryOnly)
 			{
-				// Round within the one-step limit to retain even source coordinates,
+				// Round within the two-step limit to retain even source coordinates,
 				// matching the renderer's chroma-safe crop contract on all formats.
-				const int guardedTop = ((top - yStep + 1) / 2) * 2;
-				const int guardedBottom = ((bottom + yStep) / 2) * 2;
+				const int guardedTop = ((top - guardRows + 1) / 2) * 2;
+				const int guardedBottom = ((bottom + guardRows) / 2) * 2;
 				if (guardedTop > 0 && guardedTop <= top && guardedBottom >= bottom &&
 					guardedBottom < source.height && (guardedTop < top || guardedBottom > bottom))
 				{
@@ -2630,8 +2633,8 @@ ActivePictureSideDiagnostics MeasureActivePictureSideDiagnostics(
         axes.vertical.state != ActivePictureAxisState::TRUSTED_BARS || !axes.vertical.scanComplete ||
         !axes.horizontal.FailedBar() || !axes.horizontal.scanComplete ||
         axes.sidePictureWidth != source.width || axes.sidePictureHeight != source.height ||
-        axes.verticalCropGuardTop < 0 || axes.verticalCropGuardTop > std::max(2, source.height / 540) ||
-        axes.verticalCropGuardBottom < 0 || axes.verticalCropGuardBottom > std::max(2, source.height / 540) ||
+        axes.verticalCropGuardTop < 0 || axes.verticalCropGuardTop > 2 * std::max(2, source.height / 540) ||
+        axes.verticalCropGuardBottom < 0 || axes.verticalCropGuardBottom > 2 * std::max(2, source.height / 540) ||
         axes.sidePictureTop < bounds.top || axes.sidePictureTop >= axes.sidePictureBottom ||
         axes.sidePictureBottom > bounds.bottom ||
         axes.sidePictureTop - bounds.top != axes.verticalCropGuardTop ||
