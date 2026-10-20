@@ -3732,7 +3732,8 @@ namespace
 				const DisplayOutputModeChoice& candidate = rankedModes[attempt];
 				DebugLog::Log("libplacebo output-mode candidate: input=%.6f Hz mode=%s rate_path=%s attempt=%zu/%zu available=%zu",
 					contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
-					candidate.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
+					candidate.configuredFallback ? "configured-order-fallback" :
+                    candidate.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
 						"exact-or-close" : "closest-in-range",
 					attempt + 1, rankedModes.size(), availableModes.size());
 				if (currentMode.sourceWidth == candidate.mode.width &&

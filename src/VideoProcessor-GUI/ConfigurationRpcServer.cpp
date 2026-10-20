@@ -79,6 +79,8 @@ Frame DisplayModesResponse(const Frame& request)
     DisplayModes value;
     value.known = inventory.known;
     value.diagnostic = inventory.diagnostic;
+    value.preferredWidth = inventory.preferredWidth;
+    value.preferredHeight = inventory.preferredHeight;
     const int bytes = WideCharToMultiByte(CP_UTF8, 0, inventory.monitor.data(), static_cast<int>(inventory.monitor.size()), nullptr, 0, nullptr, nullptr);
     value.monitor.resize(bytes);
     if (bytes) WideCharToMultiByte(CP_UTF8, 0, inventory.monitor.data(), static_cast<int>(inventory.monitor.size()), &value.monitor[0], bytes, nullptr, nullptr);
