@@ -160,14 +160,17 @@ namespace ConfigurationRpcProtocol
         std::string monitor;
         std::string diagnostic;
         std::vector<DisplayMode> modes;
+        uint32_t preferredWidth = 0, preferredHeight = 0;
     };
     constexpr size_t MaximumDisplayModes = 16384;
     inline bool BuildDisplayModes(const DisplayModes& value, std::vector<uint8_t>& payload)
     {
         if (value.monitor.size() > 1024 || value.diagnostic.size() > 4096 ||
             value.modes.size() > MaximumDisplayModes) return false;
-        payload = {1, static_cast<uint8_t>(value.known ? 1 : 0)};
+        payload = {2, static_cast<uint8_t>(value.known ? 1 : 0)};
         if (!WriteString(payload, value.monitor) || !WriteString(payload, value.diagnostic)) return false;
+        Write32(payload, value.preferredWidth);
+        Write32(payload, value.preferredHeight);
         Write32(payload, static_cast<uint32_t>(value.modes.size()));
         for (const auto& mode : value.modes)
         {
@@ -179,13 +182,22 @@ namespace ConfigurationRpcProtocol
     }
     inline bool ParseDisplayModes(const std::vector<uint8_t>& payload, DisplayModes& value)
     {
-        if (payload.size() < 2 || payload[0] != 1 || payload[1] > 1) return false;
+        if (payload.size() < 2 || (payload[0] != 1 && payload[0] != 2) || payload[1] > 1) return false;
         DisplayModes parsed;
         parsed.known = payload[1] != 0;
         size_t cursor = 2;
         if (!ReadString(payload, cursor, parsed.monitor) || parsed.monitor.size() > 1024 ||
             !ReadString(payload, cursor, parsed.diagnostic) || parsed.diagnostic.size() > 4096 ||
             payload.size() - cursor < 4) return false;
+        if (payload[0] >= 2)
+        {
+            if (payload.size() - cursor < 12) return false;
+            parsed.preferredWidth = Read32(payload.data() + cursor);
+            parsed.preferredHeight = Read32(payload.data() + cursor + 4);
+            cursor += 8;
+            if ((parsed.preferredWidth == 0) != (parsed.preferredHeight == 0) ||
+                (parsed.preferredWidth && (parsed.preferredWidth < 100 || parsed.preferredHeight < 100))) return false;
+        }
         const uint32_t count = Read32(payload.data() + cursor);
         cursor += 4;
         if (count > MaximumDisplayModes || payload.size() - cursor != size_t(count) * 16) return false;
