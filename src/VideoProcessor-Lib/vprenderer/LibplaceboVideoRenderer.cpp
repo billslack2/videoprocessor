@@ -3833,7 +3833,7 @@ struct LibplaceboVideoRenderer::Impl
         uint64_t ownershipPolicy=0,ownershipContinuity=0;
         bool pendingPixelsVerified=false,ownershipEvaluated=false;
         ActivePictureBounds ownershipBase;
-        QualifiedSubtitlePresentationEvidence ownershipEvidence;
+        QualifiedSubtitlePresentationEvidence ownershipEvidence,preparedErasureEvidence;
         double ownershipMilliseconds=0;
         bool unknownHoldEvaluated=false;
         uint64_t unknownHoldProofSequence=0;
@@ -13895,6 +13895,10 @@ struct LibplaceboVideoRenderer::Impl
                 const auto ownershipStarted=SteadyClock::now();
                 subtitleSourcePreparation.ownershipEvidence=EvaluateQualifiedSubtitlePresentationEvidence(
                     analysisSource,latestCropRetentionEvidence,ownershipInput);
+                subtitleSourcePreparation.preparedErasureEvidence={};
+                if(!subtitleSourcePreparation.ownershipEvidence.qualified)
+                    subtitleSourcePreparation.preparedErasureEvidence=EvaluatePreparedSubtitlePresentationEvidence(
+                        analysisSource,latestCropRetentionEvidence,ownershipInput);
                 subtitleSourcePreparation.ownershipMilliseconds=std::chrono::duration<double,std::milli>(
                     SteadyClock::now()-ownershipStarted).count();
                 subtitleSourcePreparation.ownershipBase=effectiveGeometry;
@@ -13902,8 +13906,11 @@ struct LibplaceboVideoRenderer::Impl
             }
             const auto ownershipProof=ownershipInput.sourcePrepared ?
                 subtitleSourcePreparation.ownershipEvidence : QualifiedSubtitlePresentationEvidence{};
+            // Only native owned-glyph proof can renew the submitted-caption lease.
             temporalPolicyCaptionProof=ownershipProof;
-            auto presentationView=ProjectQualifiedSubtitlePresentationEvidence(ownershipProof,
+            const auto& displayCaptionProof=ownershipInput.sourcePrepared && !ownershipProof.qualified ?
+                subtitleSourcePreparation.preparedErasureEvidence : ownershipProof;
+            auto presentationView=ProjectQualifiedSubtitlePresentationEvidence(displayCaptionProof,
                 scopePresentationHistory,scopePresentationCurrentBounds,effectiveGeometry,subtitleIdentity,
                 latestCropRetentionEvidence);
             const bool relocatedCaptionQualified=presentationView.qualified;
@@ -13912,16 +13919,18 @@ struct LibplaceboVideoRenderer::Impl
                 const auto proofLogNow=GetTickCount64();
                 if(subtitleOwnershipLogReason!=ownershipProof.reason || proofLogNow-subtitleOwnershipLogTick>=2000) {
                     subtitleOwnershipLogTick=proofLogNow;subtitleOwnershipLogReason=ownershipProof.reason;
-                    DebugLog::Log("Alpha relocated caption evidence: generation=%llu sequence=%llu cue=%llu status=%d qualified=%d reason=%s cached=%d samples=%zu cpu_ms=%.3f base=%d,%d-%d,%d raw_visible=%d:%d,%d-%d,%d erased=%d,%d-%d,%d",
+                    DebugLog::Log("Alpha relocated caption evidence: generation=%llu sequence=%llu cue=%llu status=%d qualified=%d reason=%s cached=%d presentation_qualified=%d prepared_erasure=%d erasure_reason=%s samples=%zu cpu_ms=%.3f base=%d,%d-%d,%d raw_visible=%d:%d,%d-%d,%d erased=%d,%d-%d,%d",
                         frameGeneration,sourceSequence,subtitleSourcePreparation.ownershipAccepted.cue,
-                        static_cast<int>(ownershipProof.status),relocatedCaptionQualified?1:0,ownershipProof.reason,
-                        cachedOwnership?1:0,ownershipProof.ownershipSamples,subtitleSourcePreparation.ownershipMilliseconds,
+                        static_cast<int>(ownershipProof.status),ownershipProof.qualified?1:0,ownershipProof.reason,
+                        cachedOwnership?1:0,relocatedCaptionQualified?1:0,
+                        displayCaptionProof.preparedErasureOnly?1:0,displayCaptionProof.reason,
+                        ownershipProof.ownershipSamples,subtitleSourcePreparation.ownershipMilliseconds,
                         effectiveGeometry.left,effectiveGeometry.top,effectiveGeometry.right,effectiveGeometry.bottom,
                         latestCropRetentionEvidence.outwardVisibleBoundsAvailable?1:0,
                         latestCropRetentionEvidence.outwardVisibleBounds.left,latestCropRetentionEvidence.outwardVisibleBounds.top,
                         latestCropRetentionEvidence.outwardVisibleBounds.right,latestCropRetentionEvidence.outwardVisibleBounds.bottom,
-                        ownershipProof.erasedSourceBounds.left,ownershipProof.erasedSourceBounds.top,
-                        ownershipProof.erasedSourceBounds.right,ownershipProof.erasedSourceBounds.bottom);
+                        displayCaptionProof.erasedSourceBounds.left,displayCaptionProof.erasedSourceBounds.top,
+                        displayCaptionProof.erasedSourceBounds.right,displayCaptionProof.erasedSourceBounds.bottom);
                     const auto& observed=subtitleSourcePreparation.ownershipObservation;
                     const auto& capture=relocatedSubtitle;
                     DebugLog::Log("Alpha relocated caption geometry: generation=%llu sequence=%llu prepared=%d observed_box=%d,%d-%d,%d capture=%d,%d-%d,%d source=%d,%d-%d,%d destination=%d,%d-%d,%d observed_picture=%d-%d composed_picture=%d-%d lines=%d",
