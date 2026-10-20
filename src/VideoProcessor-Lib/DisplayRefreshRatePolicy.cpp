@@ -1,9 +1,11 @@
-#include "pch.h"
-
 #include "DisplayRefreshRatePolicy.h"
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <cctype>
+#include <sstream>
+#include <string>
 #include <limits>
 
 namespace
@@ -199,6 +201,316 @@ bool DisplayRefreshRatesEquivalentForRestore(
 			RESTORE_EQUIVALENCE_TOLERANCE_HZ);
 }
 
+namespace
+{
+std::string TrimModeWhitespace(const std::string& text)
+{
+	size_t first = 0;
+	while (first < text.size() && std::isspace(static_cast<unsigned char>(text[first])))
+		++first;
+	size_t last = text.size();
+	while (last > first && std::isspace(static_cast<unsigned char>(text[last - 1])))
+		--last;
+	return text.substr(first, last - first);
+}
+
+bool ParseUnsignedModeComponent(const std::string& text, uint32_t& value)
+{
+	if (text.empty() || !std::all_of(text.begin(), text.end(),
+		[](unsigned char c) { return std::isdigit(c) != 0; }))
+		return false;
+	try
+	{
+		size_t consumed = 0;
+		const unsigned long long parsed = std::stoull(text, &consumed);
+		if (consumed != text.size() || parsed > UINT32_MAX) return false;
+		value = static_cast<uint32_t>(parsed);
+		return true;
+	}
+	catch (const std::exception&) { return false; }
+}
+
+uint32_t WidthForShortDisplayMode(uint32_t height)
+{
+	switch (height)
+	{
+	case 240: return 426;
+	case 360: return 640;
+	case 480: return 854;
+	case 576: return 1024;
+	case 720: return 1280;
+	case 1080: return 1920;
+	case 1440: return 2560;
+	case 2160: return 3840;
+	case 4320: return 7680;
+	default: return 0;
+	}
+}
+
+bool ParseModeRate(const std::string& text, DisplayRefreshRational& rate)
+{
+	const size_t slash = text.find('/');
+	if (slash != std::string::npos)
+	{
+		if (text.find('/', slash + 1) != std::string::npos ||
+			!ParseUnsignedModeComponent(text.substr(0, slash), rate.numerator) ||
+			!ParseUnsignedModeComponent(text.substr(slash + 1), rate.denominator) ||
+			rate.denominator == 0)
+			return false;
+	}
+	else if (text == "23.976") rate = { 24000, 1001 };
+	else if (text == "29.97") rate = { 30000, 1001 };
+	else if (text == "59.94") rate = { 60000, 1001 };
+	else if (text.find('.') != std::string::npos)
+	{
+		try
+		{
+			size_t consumed = 0;
+			const double parsed = std::stod(text, &consumed);
+			if (consumed != text.size() || !std::isfinite(parsed) || parsed < 20.0 || parsed > 240.0)
+				return false;
+			const std::string fraction = text.substr(text.find('.') + 1);
+			if (fraction.empty() || fraction.size() > 3 ||
+				!std::all_of(fraction.begin(), fraction.end(),
+					[](unsigned char c) { return std::isdigit(c) != 0; }))
+				return false;
+			uint32_t denominator = fraction.size() == 1 ? 10 :
+				(fraction.size() == 2 ? 100 : 1000);
+			uint32_t numerator = static_cast<uint32_t>(std::llround(parsed * denominator));
+			uint32_t divisor = numerator;
+			uint32_t remainder = denominator;
+			while (remainder != 0)
+			{
+				const uint32_t next = divisor % remainder;
+				divisor = remainder;
+				remainder = next;
+			}
+			rate = { numerator / divisor, denominator / divisor };
+		}
+		catch (const std::exception&) { return false; }
+	}
+	else
+	{
+		uint32_t integer = 0;
+		if (!ParseUnsignedModeComponent(text, integer)) return false;
+		if (integer == 23) rate = { 24000, 1001 };
+		else if (integer == 29) rate = { 30000, 1001 };
+		else if (integer == 59) rate = { 60000, 1001 };
+		else rate = { integer, 1 };
+	}
+	const double hz = DisplayRefreshRateHz(rate);
+	return std::isfinite(hz) && hz >= 20.0 && hz <= 240.0;
+}
+
+bool IsDisplayModeAvailable(const DisplayOutputMode& requested,
+	const std::vector<DisplayOutputMode>& available)
+{
+	return std::any_of(available.begin(), available.end(),
+		[&requested](const DisplayOutputMode& candidate)
+			{ return DisplayOutputModesExactlyEqual(requested, candidate); });
+}
+}
+
+bool ParseDisplayOutputMode(const std::string& text,
+	DisplayOutputMode& mode, std::string& error)
+{
+	error.clear();
+	mode = {};
+	const std::string token = TrimModeWhitespace(text);
+	const size_t progressive = token.find_first_of("pP");
+	if (progressive == std::string::npos || progressive == 0 ||
+		progressive + 1 >= token.size())
+	{
+		error = "mode must use progressive WIDTHxHEIGHTpRATE or HEIGHTpRATE form";
+		return false;
+	}
+	const size_t raster = token.find_first_of("xX");
+	if (raster == std::string::npos || raster > progressive)
+	{
+		if (!ParseUnsignedModeComponent(token.substr(0, progressive), mode.height))
+		{
+			error = "short-form mode height must be a whole number";
+			return false;
+		}
+		mode.width = WidthForShortDisplayMode(mode.height);
+		if (mode.width == 0)
+		{
+			error = "short-form height has no documented 16:9 width; use WIDTHxHEIGHTpRATE";
+			return false;
+		}
+	}
+	else
+	{
+		if (!ParseUnsignedModeComponent(token.substr(0, raster), mode.width) ||
+			!ParseUnsignedModeComponent(token.substr(raster + 1,
+				progressive - raster - 1), mode.height))
+		{
+			error = "mode width and height must be whole numbers";
+			return false;
+		}
+	}
+	if (mode.width < 100 || mode.width > 10000 ||
+		mode.height < 100 || mode.height > 10000)
+	{
+		error = "mode width and height must be from 100 through 10000 pixels";
+		return false;
+	}
+	if (!ParseModeRate(token.substr(progressive + 1), mode.refreshRate))
+	{
+		error = "mode rate must be a supported decimal, integer, or exact rational from 20 through 240 Hz";
+		return false;
+	}
+	return true;
+}
+
+bool ParseDisplayOutputModeList(const std::string& text,
+	std::vector<DisplayOutputMode>& modes, std::string& error)
+{
+	modes.clear();
+	error.clear();
+	std::string normalized = text;
+	std::replace(normalized.begin(), normalized.end(), ',', ' ');
+	std::istringstream input(normalized);
+	std::string token;
+	while (input >> token)
+	{
+		DisplayOutputMode mode;
+		std::string detail;
+		if (!ParseDisplayOutputMode(token, mode, detail))
+		{
+			error = "invalid display mode '" + token + "': " + detail;
+			modes.clear();
+			return false;
+		}
+		if (std::any_of(modes.begin(), modes.end(),
+			[&mode](const DisplayOutputMode& existing)
+				{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+		{
+			error = "duplicate display mode '" + FormatDisplayOutputMode(mode) + "'";
+			modes.clear();
+			return false;
+		}
+		modes.push_back(mode);
+	}
+	return true;
+}
+
+std::string FormatDisplayOutputMode(const DisplayOutputMode& mode)
+{
+	std::string rate;
+	if (DisplayRefreshRatesExactlyEqual(mode.refreshRate, { 24000, 1001 }))
+		rate = "23.976";
+	else if (DisplayRefreshRatesExactlyEqual(mode.refreshRate, { 30000, 1001 }))
+		rate = "29.97";
+	else if (DisplayRefreshRatesExactlyEqual(mode.refreshRate, { 60000, 1001 }))
+		rate = "59.94";
+	else if (mode.refreshRate.denominator == 1)
+		rate = std::to_string(mode.refreshRate.numerator);
+	else
+		rate = std::to_string(mode.refreshRate.numerator) + "/" +
+			std::to_string(mode.refreshRate.denominator);
+	return std::to_string(mode.width) + "x" + std::to_string(mode.height) +
+		"p" + rate;
+}
+
+std::string FormatDisplayOutputModeLabel(const DisplayOutputMode& mode)
+{
+    return std::to_string(mode.width) + "x" + std::to_string(mode.height) + "p" +
+        std::to_string(mode.refreshRate.denominator ?
+            mode.refreshRate.numerator / mode.refreshRate.denominator : 0);
+}
+
+std::vector<DisplayOutputMode> DisplayOutputModePickerChoices(
+    const std::vector<DisplayOutputMode>& available, uint32_t preferredWidth,
+    uint32_t preferredHeight, bool recommendedOnly)
+{
+    std::vector<DisplayOutputMode> modes;
+    for (const auto& mode : available)
+    {
+        if (!mode.refreshRate.numerator || !mode.refreshRate.denominator || !mode.width || !mode.height) continue;
+        const bool preferred = mode.width == preferredWidth && mode.height == preferredHeight;
+        // This is a UI recommendation, not a claim that scaled video modes are
+        // panel-native. Only timings actually reported by Windows are offered.
+        const bool hdFamily = preferredWidth && preferredHeight && preferredWidth % 1920 == 0 &&
+            preferredHeight % 1080 == 0 && preferredWidth / 1920 == preferredHeight / 1080;
+        const bool videoResolution = (mode.width == 1920 && mode.height == 1080) ||
+            (mode.width == 3840 && mode.height == 2160);
+        const bool video = hdFamily && videoResolution &&
+            ((preferredWidth % mode.width == 0 && preferredHeight % mode.height == 0) ||
+             (mode.width % preferredWidth == 0 && mode.height % preferredHeight == 0));
+        if (!recommendedOnly || !preferredWidth || !preferredHeight || preferred || video) modes.push_back(mode);
+    }
+    const auto standardTiming = [](const DisplayRefreshRational& rate)
+    {
+        if (rate.numerator % rate.denominator == 0) return true;
+        for (const uint32_t nominal : {24u, 30u, 48u, 60u, 120u, 144u, 240u, 480u})
+            if (DisplayRefreshRatesExactlyEqual(rate, {nominal * 1000, 1001})) return true;
+        return false;
+    };
+    std::stable_sort(modes.begin(), modes.end(), [&](const DisplayOutputMode& a, const DisplayOutputMode& b)
+    {
+        const uint64_t aa = uint64_t(a.width) * a.height, ba = uint64_t(b.width) * b.height;
+        if (aa != ba) return aa > ba;
+        if (a.width != b.width) return a.width > b.width;
+        if (a.height != b.height) return a.height > b.height;
+        const uint32_t ar = a.refreshRate.numerator / a.refreshRate.denominator;
+        const uint32_t br = b.refreshRate.numerator / b.refreshRate.denominator;
+        if (ar != br) return ar > br;
+        const bool as = standardTiming(a.refreshRate), bs = standardTiming(b.refreshRate);
+        if (as != bs) return as;
+        return uint64_t(a.refreshRate.numerator) * b.refreshRate.denominator >
+            uint64_t(b.refreshRate.numerator) * a.refreshRate.denominator;
+    });
+    // Near-identical driver timings share a compact label. Prefer exact integer
+    // and broadcast timings; preserve the selected rational in item data.
+    modes.erase(std::unique(modes.begin(), modes.end(), [](const DisplayOutputMode& a, const DisplayOutputMode& b)
+    {
+        return a.width == b.width && a.height == b.height &&
+            a.refreshRate.numerator / a.refreshRate.denominator == b.refreshRate.numerator / b.refreshRate.denominator;
+    }), modes.end());
+    return modes;
+}
+
+bool DisplayOutputModesExactlyEqual(const DisplayOutputMode& first,
+	const DisplayOutputMode& second)
+{
+	return first.width == second.width && first.height == second.height &&
+		DisplayRefreshRatesExactlyEqual(first.refreshRate, second.refreshRate);
+}
+
+std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
+	const DisplayRefreshRational& input, bool interlaced,
+	const std::vector<DisplayOutputMode>& configured,
+	const std::vector<DisplayOutputMode>& available)
+{
+    if (!input.numerator || !input.denominator) return {};
+	std::vector<DisplayRefreshRational> rates;
+	for (const DisplayOutputMode& mode : configured)
+	{
+		if (!IsDisplayModeAvailable(mode, available)) continue;
+		if (std::none_of(rates.begin(), rates.end(),
+			[&mode](const DisplayRefreshRational& rate)
+				{ return DisplayRefreshRatesExactlyEqual(rate, mode.refreshRate); }))
+			rates.push_back(mode.refreshRate);
+	}
+	const std::vector<DisplayRefreshModeSelection> rankedRates =
+		RankDisplayRefreshModesForInput(input, interlaced, rates);
+	std::vector<DisplayOutputModeChoice> result;
+	for (const DisplayRefreshModeSelection& rate : rankedRates)
+		for (const DisplayOutputMode& mode : configured)
+			if (DisplayRefreshRatesExactlyEqual(mode.refreshRate, rate.selected) &&
+				IsDisplayModeAvailable(mode, available) &&
+				std::none_of(result.begin(), result.end(),
+					[&mode](const DisplayOutputModeChoice& existing)
+						{ return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
+				result.push_back({ mode, rate.path, rate.doubledRate });
+    for (const auto& mode : configured)
+        if (IsDisplayModeAvailable(mode, available) &&
+            std::none_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
+                { return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
+            result.push_back({mode, DisplayRefreshModeSelectionPath::None, false, true});
+	return result;
+}
 bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow,
 	RefreshRateSwitchMode mode)
 {
