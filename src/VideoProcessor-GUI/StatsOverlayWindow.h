@@ -259,9 +259,10 @@ private:
 	StatsData m_stats;
 
 	// Bitmap constants - shared 20px native OSD typography.
-	// Fit compact output-contract diagnostics: 62 Consolas columns after the
-	// left padding (9 px each), with at least that padding clear on the right.
-	static const int WINDOW_WIDTH = 586;
+	// Fit compact output-contract diagnostics: the left padding, then 63
+	// Consolas columns (9 px each) - the longest row (62, Measured with
+	// 10000-nit peaks) and one column clear on the right.
+	static const int WINDOW_WIDTH = 577;
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 20;
 	static const int ALPHA_LINE_HEIGHT = 20;

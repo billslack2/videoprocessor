@@ -718,9 +718,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	if (!m_stats.displayLut.IsEmpty())
 	{
 		// The overlay is intentionally narrow. Keep even a long configured
-		// filename on one line rather than allowing it to run off screen.
+		// filename on one line rather than allowing it to run off screen:
+		// 44 characters end at the 62nd column, the longest row's.
 		CString lut = m_stats.displayLut;
-		constexpr int LUT_OSD_MAX_CHARS = 34;
+		constexpr int LUT_OSD_MAX_CHARS = 44;
 		if (lut.GetLength() > LUT_OSD_MAX_CHARS)
 			lut = lut.Left(LUT_OSD_MAX_CHARS - 3) + TEXT("...");
 		line.Format(TEXT("LUT:              %s"), static_cast<LPCTSTR>(lut));

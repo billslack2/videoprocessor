@@ -102,12 +102,17 @@ CString FormatHdrLuminance(double value)
 
 // Stats OSD: whole nits from 100, two decimals from 1, five below, trailing
 // zeros dropped. A Dolby Vision range is 12-bit PQ codes, so its lowest codes
-// sit near 0.00001 nits and its peak is rarely a round number.
-CString FormatOsdNits(double value)
+// sit near 0.00001 nits and its peak is rarely a round number. The Measured
+// row passes 3 so its longest form fits the panel; the log keeps full precision.
+CString FormatOsdNits(double value, int subNitDecimals = 5)
 {
 	CString text;
-	text.Format(value >= 100.0 ? _T("%.0f") :
-		value >= 1.0 ? _T("%.2f") : _T("%.5f"), value);
+	if (value >= 100.0)
+		text.Format(_T("%.0f"), value);
+	else if (value >= 1.0)
+		text.Format(_T("%.2f"), value);
+	else
+		text.Format(_T("%.*f"), subNitDecimals, value);
 	if (text.Find(_T('.')) >= 0)
 	{
 		text.TrimRight(_T('0'));
@@ -16567,10 +16572,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				// avg is the linear (FALL-style) average; a renderer whose
 				// libplacebo does not report it shows the peak alone.
 				detected.Format(_T("peak %s"),
-					FormatOsdNits(hdrStatus.detectedPeakNits).GetString());
+					FormatOsdNits(hdrStatus.detectedPeakNits, 3).GetString());
 				if (hdrStatus.detectedLinearAvgNits > 0.0)
 					detected.AppendFormat(_T(" / avg %s"),
-						FormatOsdNits(hdrStatus.detectedLinearAvgNits).GetString());
+						FormatOsdNits(hdrStatus.detectedLinearAvgNits, 3).GetString());
 			}
 			// The combined form drops "nits" to fit the panel's fixed width.
 			// The scene average stays as authored (L1 is a PQ average).
@@ -16578,8 +16583,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.measuredHdr.Format(_T("%s | %s %s / %s"),
 					detected.GetString(),
 					hdrStatus.dolbyVision ? _T("L1") : _T("frame"),
-					FormatOsdNits(hdrStatus.scenePeakNits).GetString(),
-					FormatOsdNits(hdrStatus.sceneAvgNits).GetString());
+					FormatOsdNits(hdrStatus.scenePeakNits, 3).GetString(),
+					FormatOsdNits(hdrStatus.sceneAvgNits, 3).GetString());
 			else if (hdrStatus.detectedValid)
 				stats.measuredHdr = detected + _T(" nits");
 			else if (!hdrStatus.peakDetectionEnabled)
