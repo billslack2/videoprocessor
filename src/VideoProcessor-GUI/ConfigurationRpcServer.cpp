@@ -4,6 +4,7 @@
 
 #include "ConfigurationRpcServer.h"
 #include "ActiveProfileStatus.h"
+#include "DisplayMonitorInventory.h"
 
 #include <algorithm>
 #include <array>
@@ -61,6 +62,32 @@ Frame ActiveProfileResponse(const Frame& request)
 	if (!BuildLiveProfileStatus(status, response.payload))
 		return ErrorResponse(request.operation, "Active-profile status is invalid.");
 	return response;
+}
+
+Frame DisplayModesResponse(const Frame& request)
+{
+    std::string name;
+    size_t cursor = 2;
+    if (request.payload.size() < 2 || Read16(request.payload.data()) != ConfigurationCompatibilityVersion ||
+        !ReadString(request.payload, cursor, name) || cursor != request.payload.size() || name.size() > 1024)
+        return ErrorResponse(request.operation, "Invalid display-mode request.");
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name.data(), static_cast<int>(name.size()), nullptr, 0);
+    if (!name.empty() && !length) return ErrorResponse(request.operation, "Invalid monitor name.");
+    std::wstring wide(length, L'\0');
+    if (length) MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name.data(), static_cast<int>(name.size()), &wide[0], length);
+    const auto inventory = DisplayMonitorInventory::Query(wide);
+    DisplayModes value;
+    value.known = inventory.known;
+    value.diagnostic = inventory.diagnostic;
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, inventory.monitor.data(), static_cast<int>(inventory.monitor.size()), nullptr, 0, nullptr, nullptr);
+    value.monitor.resize(bytes);
+    if (bytes) WideCharToMultiByte(CP_UTF8, 0, inventory.monitor.data(), static_cast<int>(inventory.monitor.size()), &value.monitor[0], bytes, nullptr, nullptr);
+    for (const auto& mode : inventory.modes)
+        value.modes.push_back({mode.width, mode.height, mode.refreshRate.numerator, mode.refreshRate.denominator});
+    Frame response;
+    response.operation = static_cast<uint16_t>(request.operation | ResponseFlag);
+    if (!BuildDisplayModes(value, response.payload)) return ErrorResponse(request.operation, "Display-mode inventory exceeds the supported limit.");
+    return response;
 }
 
 bool PrivatePeer(const sockaddr_in& peer)
@@ -356,7 +383,8 @@ void ConfigurationRpcServer::HandleClient(uintptr_t rawSocket)
 		(operation > static_cast<uint16_t>(Operation::ApplyConfig) &&
 		 operation != static_cast<uint16_t>(Operation::GetActiveProfileStatus) &&
 		 operation != static_cast<uint16_t>(Operation::SelectProfile) &&
-		 operation != static_cast<uint16_t>(Operation::RunAction)))
+		 operation != static_cast<uint16_t>(Operation::RunAction) &&
+         operation != static_cast<uint16_t>(Operation::GetDisplayModes)))
 		return;
 	std::vector<uint8_t> wire(header.begin(), header.end());
 	wire.resize(HeaderBytes + payloadBytes);
@@ -365,7 +393,8 @@ void ConfigurationRpcServer::HandleClient(uintptr_t rawSocket)
 	Frame request;
 	if (!Decode(wire.data(), wire.size(), request)) return;
 	Frame response = operation == static_cast<uint16_t>(Operation::GetActiveProfileStatus) ?
-		ActiveProfileResponse(request) : Dispatch(request);
+		ActiveProfileResponse(request) : operation == static_cast<uint16_t>(Operation::GetDisplayModes) ?
+        DisplayModesResponse(request) : Dispatch(request);
 	std::vector<uint8_t> encoded;
 	if (Encode(response, encoded)) SendExact(client, encoded.data(), encoded.size());
 }

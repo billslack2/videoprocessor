@@ -29,7 +29,8 @@ namespace ConfigurationRpcProtocol
 		DiscoveryReply = 5,
 		GetActiveProfileStatus = 6,
 		SelectProfile = 7,
-		RunAction = 8
+		RunAction = 8,
+        GetDisplayModes = 9
 	};
 
 	struct Frame
@@ -77,6 +78,7 @@ namespace ConfigurationRpcProtocol
 		case static_cast<uint16_t>(Operation::GetActiveProfileStatus):
 		case static_cast<uint16_t>(Operation::SelectProfile):
 		case static_cast<uint16_t>(Operation::RunAction):
+        case static_cast<uint16_t>(Operation::GetDisplayModes):
 			return true;
 		default:
 			return false;
@@ -147,6 +149,60 @@ namespace ConfigurationRpcProtocol
 		cursor += length;
 		return true;
 	}
+
+    struct DisplayMode
+    {
+        uint32_t width = 0, height = 0, numerator = 0, denominator = 0;
+    };
+    struct DisplayModes
+    {
+        bool known = false;
+        std::string monitor;
+        std::string diagnostic;
+        std::vector<DisplayMode> modes;
+    };
+    constexpr size_t MaximumDisplayModes = 16384;
+    inline bool BuildDisplayModes(const DisplayModes& value, std::vector<uint8_t>& payload)
+    {
+        if (value.monitor.size() > 1024 || value.diagnostic.size() > 4096 ||
+            value.modes.size() > MaximumDisplayModes) return false;
+        payload = {1, static_cast<uint8_t>(value.known ? 1 : 0)};
+        if (!WriteString(payload, value.monitor) || !WriteString(payload, value.diagnostic)) return false;
+        Write32(payload, static_cast<uint32_t>(value.modes.size()));
+        for (const auto& mode : value.modes)
+        {
+            if (mode.width < 100 || mode.height < 100 || !mode.numerator || !mode.denominator) return false;
+            Write32(payload, mode.width); Write32(payload, mode.height);
+            Write32(payload, mode.numerator); Write32(payload, mode.denominator);
+        }
+        return true;
+    }
+    inline bool ParseDisplayModes(const std::vector<uint8_t>& payload, DisplayModes& value)
+    {
+        if (payload.size() < 2 || payload[0] != 1 || payload[1] > 1) return false;
+        DisplayModes parsed;
+        parsed.known = payload[1] != 0;
+        size_t cursor = 2;
+        if (!ReadString(payload, cursor, parsed.monitor) || parsed.monitor.size() > 1024 ||
+            !ReadString(payload, cursor, parsed.diagnostic) || parsed.diagnostic.size() > 4096 ||
+            payload.size() - cursor < 4) return false;
+        const uint32_t count = Read32(payload.data() + cursor);
+        cursor += 4;
+        if (count > MaximumDisplayModes || payload.size() - cursor != size_t(count) * 16) return false;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            DisplayMode mode;
+            mode.width = Read32(payload.data() + cursor);
+            mode.height = Read32(payload.data() + cursor + 4);
+            mode.numerator = Read32(payload.data() + cursor + 8);
+            mode.denominator = Read32(payload.data() + cursor + 12);
+            cursor += 16;
+            if (mode.width < 100 || mode.height < 100 || !mode.numerator || !mode.denominator) return false;
+            parsed.modes.push_back(mode);
+        }
+        value = std::move(parsed);
+        return true;
+    }
 
 	// A bounded, read-only snapshot of VP's already-published active selections.
 	// The editor requests it only while visible; no configuration or renderer

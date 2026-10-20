@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "ConfigurationDiscovery.h"
+#include "DisplayMonitorInventory.h"
 
 #include "RendererId.h"
 #include "microsoft_directshow/video_renderers/DirectShowVideoRenderers.h"
@@ -10,61 +11,6 @@
 #include "magewell/MagewellBackend.h"
 
 #include <algorithm>
-
-namespace
-{
-	struct MonitorCandidate
-	{
-		std::wstring source;
-		std::wstring friendly;
-	};
-
-	BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
-	{
-		auto* candidates = reinterpret_cast<std::vector<MonitorCandidate>*>(parameter);
-		MONITORINFOEXW info = {};
-		info.cbSize = sizeof(info);
-		if (GetMonitorInfoW(monitor, &info))
-			candidates->push_back({ info.szDevice, {} });
-		return TRUE;
-	}
-
-	void PopulateFriendlyMonitorNames(std::vector<MonitorCandidate>& candidates)
-	{
-		UINT32 pathCount = 0;
-		UINT32 modeCount = 0;
-		if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS,
-			&pathCount, &modeCount) != ERROR_SUCCESS)
-			return;
-		std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
-		std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-		LONG result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount,
-			paths.data(), &modeCount, modes.data(), nullptr);
-		if (result != ERROR_SUCCESS) return;
-		paths.resize(pathCount);
-		for (const DISPLAYCONFIG_PATH_INFO& path : paths)
-		{
-			DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
-			source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
-			source.header.size = sizeof(source);
-			source.header.adapterId = path.sourceInfo.adapterId;
-			source.header.id = path.sourceInfo.id;
-			if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS) continue;
-			DISPLAYCONFIG_TARGET_DEVICE_NAME target = {};
-			target.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
-			target.header.size = sizeof(target);
-			target.header.adapterId = path.targetInfo.adapterId;
-			target.header.id = path.targetInfo.id;
-			if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS) continue;
-			for (MonitorCandidate& candidate : candidates)
-				if (_wcsicmp(candidate.source.c_str(), source.viewGdiDeviceName) == 0)
-				{
-					candidate.friendly = target.monitorFriendlyDeviceName;
-					break;
-				}
-		}
-	}
-}
 
 std::vector<std::wstring> ConfigurationDiscovery::RendererNames(bool hideLegacyRenderers)
 {
@@ -159,17 +105,7 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 
 std::vector<std::wstring> ConfigurationDiscovery::ActiveMonitorNames()
 {
-	std::vector<MonitorCandidate> candidates;
-	EnumDisplayMonitors(nullptr, nullptr, CollectMonitor,
-		reinterpret_cast<LPARAM>(&candidates));
-	PopulateFriendlyMonitorNames(candidates);
-	std::vector<std::wstring> names;
-	for (const MonitorCandidate& candidate : candidates)
-	{
-		const std::wstring& value = candidate.friendly.empty() ?
-			candidate.source : candidate.friendly;
-		if (!value.empty() && std::find(names.begin(), names.end(), value) == names.end())
-			names.push_back(value);
-	}
-	return names;
+    std::vector<std::wstring> names;
+    for (const auto& monitor : DisplayMonitorInventory::Enumerate()) names.push_back(monitor.label);
+    return names;
 }

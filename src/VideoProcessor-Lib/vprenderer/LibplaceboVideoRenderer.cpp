@@ -10,6 +10,7 @@
 
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
+#include <DisplayMonitorInventory.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -817,6 +818,7 @@ namespace
 		bool restorePreviousDisplayMode = true;
 		std::vector<DisplayOutputMode> allowedDisplayModes;
 		std::string outputDisplayProfile;
+        std::string outputDisplayMonitor;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -955,7 +957,7 @@ namespace
             << settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|'
 			<< settings.outputDisplayAdvanced << '|'
-			<< settings.restorePreviousDisplayMode << '|';
+			<< settings.restorePreviousDisplayMode << '|' << settings.outputDisplayMonitor << '|';
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
 				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
@@ -1270,6 +1272,7 @@ namespace
 						ConfigFile::NormalizeName(restore->second) == "on" ||
 						ConfigFile::NormalizeName(restore->second) == "1";
 					settings.outputDisplayProfile = profileName;
+                    settings.outputDisplayMonitor = RendererProfileConfig::ResolveOutputDisplayMonitor(model, profileName);
 					if (!activeProfiles.empty()) activeProfiles += ", ";
 					activeProfiles += group.name + "/" + profileName;
 					if (manual) activeProfiles += " (manual)";
@@ -3439,6 +3442,17 @@ namespace
 		{
 			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
+            if (!settings.outputDisplayMonitor.empty())
+            {
+                const CString target(settings.outputDisplayMonitor.c_str());
+                const auto monitors = DisplayMonitorInventory::Enumerate();
+                const auto* selected = DisplayMonitorInventory::Resolve(monitors, target.GetString());
+                if (!selected || MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) != selected->handle)
+                {
+                    DebugLog::Log("libplacebo display mode switch skipped: profile monitor unavailable or playback target does not match");
+                    return;
+                }
+            }
 			m_refreshCommandSettings = settings;
 
 			m_displayDeviceName = DisplayDeviceNameForWindow(hwnd);
