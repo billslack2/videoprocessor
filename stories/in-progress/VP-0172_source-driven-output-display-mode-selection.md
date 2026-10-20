@@ -2,10 +2,24 @@
 
 ## Status
 
-Backlog (2026-09-07). Derived from the operator's documented output-link
-failure and true-4K presentation requirements. This is a deliberate extension
-of VP-0167: VP-0167 selects a refresh rate at the current desktop raster;
-VP-0172 selects an operator-permitted complete display mode (raster and rate).
+In Progress (2026-10-19). Implementation is underway with VP-0200 on
+`codex/vp-0200-display-tab` in
+`E:\codex\videoprocessor\vp-0200-display-tab`, based on beta tip `d988e54`
+(`v1.4.02-beta`).
+
+Readiness review (2026-10-19): VP-0167 is Done and its shared rational ranking
+helper already provides exact/tight matching followed by bounded fallback.
+The current Windows refresh transaction enumerates rates at the current raster,
+invalidates only the target timing index, verifies only refresh, and restores
+only the original refresh. It therefore needs a full-mode extension for width,
+height, refresh, verification, and rollback. The topology session API owns
+full topology recovery and target-only transitions; VP-0172 will retain the
+current active target topology and extend the renderer's display transaction
+without changing target-only topology policy. The renderer profile model already
+supports ordered profile selection, rule expressions, shortcuts, and saved
+selection; a distinct output-display group can reuse it without colliding with
+VP Renderer display-calibration profiles. No unknown remains that blocks the
+planned parser, profile-editor, and runtime integration work.
 
 ## User story
 

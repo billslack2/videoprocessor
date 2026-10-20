@@ -207,7 +207,7 @@ they must not contain requirements that are absent from this file.
 | VP-0169 | Done | Persist GUI edits into missing configuration sections |
 | VP-0170 | In Progress | Stabilize DirectShow/madVR EOTF transitions |
 | VP-0171 | Backlog | Opt-in ICC/ICM display-calibration profiles for VP Renderer |
-| VP-0172 | Backlog | Source-driven output display-mode selection |
+| VP-0172 | In Progress | Source-driven output display-mode selection |
 | VP-0173 | Done | Decouple SDR target luminance from HDR classification |
 | VP-0174 | Done | Calibrated display settings contract and Color/Output UI |
 | VP-0176 | Done | Standard LLDV profiles |

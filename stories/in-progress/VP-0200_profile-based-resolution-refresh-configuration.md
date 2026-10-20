@@ -2,17 +2,14 @@
 
 ## Status
 
-In Progress (2026-10-19). Implementation underway on `codex/vp-0200-display-tab`
-in `E:\codex\videoprocessor\vp-0200-display-tab`, based on current beta tip
-`d988e54` (`v1.4.02-beta`). The requested Display page is top-level, directly
-below General and outside VP Renderer; the existing refresh-switch control
-moves there while other current General settings stay in General. Implemented the requested UI slice on `codex/vp-0200-display-tab` in
-`E:\codex\videoprocessor\vp-0200-display-tab`. A top-level Display page now
-sits directly below General and owns the existing `general.switch_refresh_rate`
-selector; its stored key and options are unchanged. Other General controls
-remain there. `git diff --check` passed; no build or tests were run. VP-0172
-remains Backlog, so Auto/Advanced full-mode profiles and runtime integration
-remain outstanding.
+In Progress (2026-10-19). Implementation continues on `codex/vp-0200-display-tab`
+in `E:\codex\videoprocessor\vp-0200-display-tab`, based on beta tip
+`d988e54` (`v1.4.02-beta`). The existing refresh-rate setting now lives on a
+top-level Display page directly below General; the setting key and options are
+unchanged. The user's follow-up expands this work to the complete Auto/Advanced
+profile design, including ordered allowed modes, availability and selection
+preview, config migration, and runtime integration with VP-0172. No build or
+tests have been run.
 
 ## User story
 
