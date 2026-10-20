@@ -1879,6 +1879,221 @@ namespace VideoProcessorTest
             }
             }
         }
+        TEST_METHOD(PreparedErasureKeepsLoggedCaptionAtScopeDespiteNativeSamplingPhase)
+        {
+            using namespace AlphaSourceCrop;
+            for(bool p210:{false,true})
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int nativeShape=0;nativeShape<3;++nativeShape) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                // These current native pixels are inside the exact composed
+                // erasure, but were not owned by the worker's four-pixel grid.
+                // The strict semantic proof must continue rejecting them.
+                if(nativeShape==0) f.frame.FillRectangle(1750,1942,1751,1943,700);
+                if(nativeShape==1) for(int d=0;d<6;++d)
+                    f.frame.FillRectangle(1750+d,1941+d,1751+d,1942+d,150+d*50);
+                if(nativeShape==2) f.frame.FillRectangle(1741,1936,1754,1942,300,650,512);
+                Input crop;crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.geometry=f.base;crop.frameSourceGeneration=crop.geometrySourceGeneration=1;
+                crop.rasterWidth=3840;crop.rasterHeight=2160;crop.frameSourceSequence=1560;
+                auto previous=AdmitCropPresentation({},crop,Evaluate(crop),0);
+                Assert::IsFalse(previous.blocked);
+                for(uint64_t sequence:{1561ULL,1563ULL,1566ULL,1572ULL}) {
+                    f.frame.FillRectangle(0,274,3840,1743,sequence==1561 || sequence==1566?70:150);
+                    f.observation.identity.acceptedSequence=f.observation.identity.sourceFrameNumber=sequence;
+                    f.observation.identity.captureTimestamp=sequence*417000;
+                    const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                    auto input=f.Input();input.mode=mode;
+                    const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                    std::ostringstream detail;detail<<"Prepared native shape="<<nativeShape<<" P210="<<p210
+                        <<" mode="<<int(mode)<<" sequence="<<sequence<<" strict_reason="<<semantic.reason;
+                    Logger::WriteMessage(detail.str().c_str());
+                    const auto diagnostic=detail.str();const std::wstring wide(diagnostic.begin(),diagnostic.end());
+                    Assert::IsFalse(semantic.qualified,wide.c_str());
+                    const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                    Assert::IsTrue(prepared.qualified,L"Exact already-prepared erasure must keep this packet's picture stable.");
+                    Assert::IsFalse(prepared.renewsHold,L"Prepared erasure is never authority for a future frame.");
+                    Assert::AreEqual(int(raw.activePicture.classification),int(prepared.retention.activePicture.classification));
+                    Assert::AreEqual(raw.activePicture.reason,prepared.retention.activePicture.reason);
+                    Assert::IsFalse(raw.excludedBandsPixelSafe,L"The raw source still contains the subtitle pixels.");
+                    auto visible=f.base;visible.top=266;visible.bottom=2024;
+                    PresentationEnvelopeExtentState history;history.available=true;history.base=f.base;history.bounds=visible;
+                    history.sourceGeneration=1;history.sourceSequence=sequence;
+                    const auto view=ProjectQualifiedSubtitlePresentationEvidence(prepared,history,visible,f.base,f.observation.identity,raw);
+                    Assert::IsTrue(view.qualified);
+                    Assert::AreEqual(2024,history.bounds.bottom,L"Presentation projection must not edit raw envelope history.");
+                    crop.frameSourceSequence=sequence;
+                    crop.frameLocalPresentationRetentionEvaluated=view.retention.analysisValid;
+                    crop.frameLocalPresentationRetentionSafe=view.retention.excludedBandsPixelSafe;
+                    crop.currentVisibleBoundsAvailable=view.retention.outwardVisibleBoundsAvailable;
+                    crop.currentVisibleBounds=view.currentBounds;crop.currentVisibleBase=f.base;
+                    crop.currentVisibleSourceGeneration=1;crop.currentVisibleSourceSequence=sequence;
+                    const auto admitted=AdmitCropPresentation(previous.state,crop,Evaluate(crop),0);
+                    Assert::IsFalse(admitted.blocked);previous=admitted;
+                    FinalAspectLimitFillInput fill;fill.crop=crop;fill.presentation=admitted.presentation;
+                    fill.configuredScreenActive=true;fill.configured.screenAspect=2.35;
+                    fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                    fill.configured.widerAspectLimit=2.42;
+                    fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                    fill.configured.narrowerAspectLimit=2.32;
+                    const auto actual=EvaluateFinalAspectLimitFill(fill);
+                    Assert::IsTrue(actual.applied);
+                    Assert::AreEqual(28,actual.sourceBounds.left);Assert::AreEqual(3810,actual.sourceBounds.right);
+                    Assert::AreEqual(274,actual.sourceBounds.top);Assert::AreEqual(1884,actual.sourceBounds.bottom);
+                    const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                        mode,0,0,1000,true,false,10000000);
+                    Assert::IsFalse(hold.available,L"Prepared source cleanup cannot seed a semantic continuity lease.");
+                }
+            }
+        }
+        TEST_METHOD(PreparedErasureRequiresExactCurrentCompositionAndIndependentPictureSafety)
+        {
+            for(bool p210:{false,true})for(int scenario=0;scenario<18;++scenario) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                auto input=f.Input();
+                if(scenario==0)input.sourcePrepared=false;
+                if(scenario==1)++input.currentIdentity.acceptedSequence;
+                if(scenario==2)++input.policyGeneration;
+                if(scenario==3)++input.continuityGeneration;
+                if(scenario==4)f.composition.source.bottom=f.composition.content.bottom-1;
+                if(scenario==5)f.composition.destination.bottom=f.base.bottom+1;
+                if(scenario==6)++f.composition.pictureBottom;
+                if(scenario==7)f.composition.glyphLines[0].bottom-=10;
+                if(scenario==8)f.frame.FillRectangle(300,1930,600,2012,300);
+                if(scenario==9)f.frame.FillRectangle(1362,1900,1423,2010,300,700,512);
+                if(scenario==10)f.composition.valid=false;
+                if(scenario==11)input.mode=SubtitlePreviewMode::None;
+                if(scenario==14)f.composition.generatedCleanup.top=f.base.top-1;
+                if(scenario==15)f.composition.generatedCleanup.bottom=f.base.bottom+1;
+                if(scenario==16 || scenario==17) {
+                    f.composition.extendToBar=true;
+                    f.composition.displayPictureLeft=f.base.left;f.composition.displayPictureRight=f.base.right;
+                    f.composition.displayPictureTop=f.base.top;f.composition.displayPictureBottom=f.base.bottom;
+                    if(scenario==16)++f.composition.displayPictureBottom;
+                    else --f.composition.displayPictureTop;
+                }
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                if(scenario==12 || scenario==13) {
+                    raw.activePicture.available=true;raw.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                    raw.activePicture.classification=scenario==12?ActivePictureClassification::FULL_RASTER_TRUSTED:
+                        ActivePictureClassification::BAR_CROP_TRUSTED;
+                    raw.activePicture.trustedBounds=f.base;
+                    if(scenario==12)raw.activePicture.trustedBounds={0,0,3840,2160,3840,2160};
+                    else raw.activePicture.trustedBounds.bottom+=4;
+                }
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                std::ostringstream detail;detail<<"Prepared erasure negative scenario="<<scenario<<" reason="<<prepared.reason;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                Assert::IsFalse(prepared.qualified,wide.c_str());
+                Assert::IsFalse(prepared.renewsHold);
+                Assert::AreEqual(raw.excludedBandsPixelSafe,prepared.retention.excludedBandsPixelSafe);
+                Assert::AreEqual(raw.outwardVisibleBounds.bottom,prepared.retention.outwardVisibleBounds.bottom);
+            }
+        }
+        TEST_METHOD(PreparedErasureDoesNotRenewAnEarlierSemanticCaptionLease)
+        {
+            LoggedRelocatedCaptionFixture f(false,true);
+            auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsTrue(semantic.qualified && semantic.renewsHold);
+            const auto prior=CommitQualifiedSubtitlePresentationHold({},semantic,f.observation.identity,f.base,
+                SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
+            Assert::IsTrue(prior.available);
+            ++f.observation.identity.acceptedSequence;++f.observation.identity.sourceFrameNumber;
+            f.observation.identity.captureTimestamp+=417000;
+            f.frame.FillRectangle(1750,1942,1751,1943,700);
+            raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsTrue(prepared.qualified);Assert::IsFalse(prepared.renewsHold);
+            const auto unchanged=CommitQualifiedSubtitlePresentationHold(prior,prepared,f.observation.identity,f.base,
+                SubtitlePreviewMode::GeneratedGrayBackground,0,0,1200,true,false,10000000);
+            Assert::IsTrue(unchanged.available);
+            Assert::AreEqual(prior.verifiedTick,unchanged.verifiedTick);
+            Assert::AreEqual(prior.proof.identity.acceptedSequence,unchanged.proof.identity.acceptedSequence);
+            auto malformed=prepared;malformed.renewsHold=true;
+            Assert::IsTrue(malformed.preparedErasureOnly);
+            const auto forbidden=CommitQualifiedSubtitlePresentationHold({},malformed,f.observation.identity,f.base,
+                SubtitlePreviewMode::GeneratedGrayBackground,0,0,1200,true,false,10000000);
+            Assert::IsFalse(forbidden.available,L"Prepared-erasure type must block lease creation even if renewsHold is set.");
+        }
+
+        TEST_METHOD(PreparedGlyphLocalErasureUsesFreshClippedSupportWithoutSemanticAuthority)
+        {
+            for(bool p210:{false,true})
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int scenario=-1;scenario<9;++scenario) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                f.observation.glyphLocalBottom=true;
+                f.observation.glyphLocalVerifiedBounds=f.composition.content;
+                f.composition.cleanupLimit=f.composition.content;
+                f.composition.generatedCleanup=f.composition.pictureCapture={
+                    f.composition.content.left,f.composition.content.top,f.composition.content.right,f.base.bottom};
+                auto input=f.Input();input.mode=mode;
+                if(scenario==0)f.observation.glyphLocalVerifiedBounds={};
+                if(scenario==1)f.composition.cleanupLimit={};
+                if(scenario==2)--f.composition.cleanupLimit.left;
+                if(scenario==3)f.composition.cleanupLimit={100,1900,200,2000};
+                if(scenario==4) {
+                    --f.observation.glyphLocalVerifiedBounds.right;
+                    --f.composition.cleanupLimit.right;
+                }
+                if(scenario==5)f.observation.glyphLocalTop=true;
+                if(scenario==6) {
+                    f.observation.pendingRefresh=true;
+                    input.pendingCurrentPixelsVerified=true;
+                }
+                if(scenario==7)f.observation.analysisRefresh=true;
+                if(scenario==8)f.observation.text.held=true;
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(semantic.qualified,L"Local support cannot become native glyph or AR authority.");
+                Assert::IsTrue(std::strcmp(semantic.reason,"glyph-local-evidence-is-not-ar-proof")==0);
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                std::ostringstream detail;detail<<"Local prepared erasure scenario="<<scenario<<" P210="<<p210
+                    <<" mode="<<int(mode)<<" reason="<<prepared.reason;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                Assert::AreEqual(scenario<0,prepared.qualified,wide.c_str());
+                Assert::IsFalse(prepared.renewsHold);
+                if(scenario<0) {
+                    Assert::IsTrue(prepared.preparedErasureOnly);
+                    Assert::IsTrue(prepared.retention.excludedBandsPixelSafe);
+                    Assert::IsFalse(raw.excludedBandsPixelSafe);
+                    const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                        mode,0,0,1000,true,false,10000000);
+                    Assert::IsFalse(hold.available,L"Fresh local cleanup cannot create a semantic continuity lease.");
+                }
+            }
+        }
+        TEST_METHOD(PreparedLargeErasureChargesOnlyNativeRowsActuallyInspected)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                f.composition.content.bottom=2159;
+                f.composition.source.bottom=2159;
+                const size_t erasedNativeArea=size_t(f.composition.content.right-f.composition.content.left)*
+                    size_t(f.composition.content.bottom-f.base.bottom);
+                Assert::IsTrue(erasedNativeArea>262144,L"Fixture must exceed the former native ownership budget.");
+                auto input=f.Input();input.maxOwnershipSamples=100;
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(semantic.qualified);
+                Assert::IsTrue(std::strcmp(semantic.reason,"ownership-budget")==0);
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(prepared.qualified,L"Already-erased pixels consume no native ownership scan budget.");
+                Assert::IsFalse(prepared.renewsHold);
+                Assert::IsTrue(prepared.ownershipSamples==0,L"This geometry needs no reconciled native rows.");
+                f.observation.pictureTop=f.base.top-3;
+                raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto capped=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(capped.qualified,L"Actual native reconciliation work must retain its budget guard.");
+                Assert::IsTrue(std::strcmp(capped.reason,"ownership-budget")==0);
+                Assert::IsTrue(capped.ownershipSamples==0,L"Insufficient budget must reject before native sampling.");
+            }
+        }
+
         TEST_METHOD(RealSubtitleBuilderOneRowObservationFringeUsesVerifiedPhysicalBase)
         {
             for(int observedTop:{271,273,275,277}) {

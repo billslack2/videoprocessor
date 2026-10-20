@@ -1762,6 +1762,61 @@ struct SubtitleShaderGpuFixture {
                     L"viewport-clipped panel edge must cover all repaired pixels including antialiasing");
         Assert::IsTrue(Pixel(pixels,3,32)[3]<0.001f,L"squaring cannot paint outside the bounded panel");
     }
+    void VerifyPreparedBarContentErasure(int mode,bool top) {
+        auto geometry=Geometry();
+        geometry.fromTopBar=top;geometry.pictureTop=16;geometry.pictureBottom=48;
+        geometry.source=top?SubtitleBoxRect{20,4,44,18}:SubtitleBoxRect{20,46,44,60};
+        geometry.content=top?SubtitleBoxRect{24,6,40,16}:SubtitleBoxRect{24,48,40,58};
+        geometry.glyphLines[0]=geometry.content;
+        geometry.generatedCleanup=geometry.pictureCapture=top?
+            SubtitleBoxRect{20,16,44,18}:SubtitleBoxRect{20,46,44,48};
+        geometry.destination={20,24,44,38};
+        geometry.extendToBar=false;
+        std::vector<uint8_t> pixels(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t i=(y*64+x)*4;
+            pixels[i]=pixels[i+1]=pixels[i+2]=40;
+            if(x>=geometry.content.left && x<geometry.content.right &&
+               y>=geometry.content.top && y<geometry.content.bottom) {
+                // Thin, antialiased, bright and colored native detail all lie
+                // in the exact prepared erasure, independently of worker seeds.
+                pixels[i]=uint8_t((x+y)%3==0?250:100);
+                pixels[i+1]=uint8_t((x+y)%3==1?180:100);
+                pixels[i+2]=uint8_t((x+y)%3==2?220:100);
+            }
+        }
+        const int outsideY=top?10:53;
+        const size_t outside=(outsideY*64+22)*4;
+        pixels[outside]=240;pixels[outside+1]=120;pixels[outside+2]=80;
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+        pl_frame clean{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
+            {},false,SubtitleCompositionPhase::CleanupOnly));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        pl_frame beforeTarget{};beforeTarget.num_planes=1;
+        beforeTarget.planes[0].texture=allOutput;beforeTarget.planes[0].components=4;
+        for(int c=0;c<4;++c)beforeTarget.planes[0].component_mapping[c]=c;
+        beforeTarget.repr=pl_color_repr_rgb;beforeTarget.repr.alpha=PL_ALPHA_NONE;
+        beforeTarget.color=input.color;beforeTarget.color.transfer=PL_COLOR_TRC_LINEAR;
+        beforeTarget.crop={0,0,64,64};
+        auto afterTarget=beforeTarget;afterTarget.planes[0].texture=splitOutput;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
+        const auto before=ReadLinear(allOutput),after=ReadLinear(splitOutput);
+        for(int y=geometry.content.top;y<geometry.content.bottom;++y)
+            for(int x=geometry.content.left;x<geometry.content.right;++x)
+                for(int c=0;c<3;++c)
+                    Assert::IsTrue(Pixel(after,x,y)[c]<0.001f,
+                        L"every native pixel in certified bar content must actually be erased by CleanupOnly");
+        for(int c=0;c<3;++c) {
+            Assert::IsTrue(std::abs(Pixel(before,22,outsideY)[c]-Pixel(after,22,outsideY)[c])<0.005f,
+                L"source padding outside exact content cannot be treated as erased bar pixels");
+            Assert::IsTrue(std::abs(Pixel(before,3,32)[c]-Pixel(after,3,32)[c])<0.005f,
+                L"prepared cleanup must preserve unrelated picture");
+        }
+    }
     void Run(int backgroundMode,bool overlap=false,bool narrow=false,bool cover=false) {
         auto geometry=Geometry(overlap,narrow);
         if(cover) {
@@ -1958,6 +2013,11 @@ public:
         Assert::IsTrue(snapshot.debandEnabled);
         Assert::AreEqual(3,snapshot.debandParams.iterations);
         Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
+    }
+    TEST_METHOD(PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        for(int mode:{3,5})for(bool top:{false,true})
+            rgb.VerifyPreparedBarContentErasure(mode,top);
     }
     TEST_METHOD(ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars) {
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);

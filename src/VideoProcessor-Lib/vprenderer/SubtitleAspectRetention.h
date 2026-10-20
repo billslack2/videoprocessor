@@ -132,6 +132,8 @@ struct QualifiedSubtitlePresentationEvidence
     QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown;
     bool qualified = false;
     bool renewsHold=false;
+    // Current compositor output only; never native ownership or a renewable lease.
+    bool preparedErasureOnly=false;
     size_t ownershipSamples = 0;
     const char* reason = "not-qualified";
 };
@@ -156,9 +158,9 @@ inline bool CurrentPictureRejectsSubtitleContinuation(const ActivePictureEvidenc
         (observed.top<base.top-SubtitlePhysicalEdgeReconciliationTolerance ||
          observed.bottom>base.bottom+SubtitlePhysicalEdgeReconciliationTolerance);
 }
-inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentationEvidence(
+inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidence(
     const AnalysisLumaSource& source, const ActivePicturePresentationRetentionEvidence& raw,
-    const QualifiedSubtitlePresentationInput& input)
+    const QualifiedSubtitlePresentationInput& input, bool preparedErasureOnly)
 {
     QualifiedSubtitlePresentationEvidence result;
     result.retention=raw;result.identity=input.currentIdentity;result.physicalBase=input.physicalBase;
@@ -170,7 +172,8 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
     if(!input.sourcePrepared || !input.observation || !input.accepted || !input.composition)
         return reject("source-not-prepared");
     const auto& observation=*input.observation;
-    if(observation.glyphLocalTop || observation.glyphLocalBottom)
+    const bool glyphLocal=observation.glyphLocalTop || observation.glyphLocalBottom;
+    if(glyphLocal && !preparedErasureOnly)
         return reject("glyph-local-evidence-is-not-ar-proof");
     const auto& accepted=*input.accepted;
     const auto& move=*input.composition;
@@ -179,7 +182,8 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
     if(continuation && !continuation->Matches(input.currentIdentity,input.policyGeneration,
         input.continuityGeneration,accepted,base))
         return reject("continuation-context-mismatch");
-    if(continuation && CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
+    if((continuation || preparedErasureOnly) &&
+        CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
         return reject("independent-picture-expansion",QualifiedSubtitlePresentationStatus::Conflict);
     // A verified existing cue supplies only current local glyph ownership. The
     // worker observation and raw picture evidence remain the measurement of this
@@ -233,11 +237,28 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
         return reject("subtitle-observation-edge-mismatch");
     const SubtitleBoxRect baseRect{base.left,base.top,base.right,base.bottom};
     if(!contains(baseRect,move.destination))return reject("destination-outside-picture");
+    if(preparedErasureOnly) {
+        // A temporal donor may overwrite generatedCleanup after the shader.
+        // Keep that region and attached output strictly inside the physical
+        // picture, so neither can overwrite the certified black source bars.
+        if(move.generatedCleanup.Valid() && !contains(baseRect,move.generatedCleanup))
+            return reject("prepared-cleanup-outside-picture");
+        const bool displayPicture=move.displayPictureRight>move.displayPictureLeft &&
+            move.displayPictureBottom>move.displayPictureTop;
+        if(move.extendToBar && displayPicture &&
+            (move.displayPictureTop<base.top || move.displayPictureBottom>base.bottom))
+            return reject("prepared-panel-outside-picture");
+    }
     const auto& box=move.content;
     if(!box.Valid() || box.left<base.left || box.right>base.right || box.top<0 || box.bottom>source.height)
         return reject("invalid-erasure-footprint");
     if(box.top>=base.top && box.bottom<=base.bottom)
         return reject("no-erased-bar-overlap",QualifiedSubtitlePresentationStatus::NotApplicable);
+    if(glyphLocal && (observation.glyphLocalTop==observation.glyphLocalBottom ||
+        observation.pendingRefresh || observation.analysisRefresh || text.held ||
+        !contains(observation.glyphLocalVerifiedBounds,move.cleanupLimit) ||
+        !contains(move.cleanupLimit,box)))
+        return reject("prepared-local-erasure-unverified");
     // Continuation grids cover a bounded region, not the detector's full search
     // bands. Every capture cell used below must lie in that freshly sampled ROI.
     if(continuation && !contains(continuation->sampledBounds,box))
@@ -259,7 +280,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
     };
     const size_t extraSamples=reconciliationSamples(reconciledTop,base.top)+
         reconciliationSamples(base.bottom,reconciledBottom);
-    if(outsideRows*size_t(bw)+extraSamples>input.maxOwnershipSamples)
+    // Prepared erasure does not inspect inside the cleared rectangle. Charge
+    // only native rows actually read; its size cannot consume an unused budget.
+    const size_t nativeSamples=extraSamples+(preparedErasureOnly?0:outsideRows*size_t(bw));
+    if(nativeSamples>input.maxOwnershipSamples)
         return reject("ownership-budget");
     // Native validation is limited to the actual erased bar rectangle. A sample
     // grid cell is not ownership: every nonblack native component must connect
@@ -342,12 +366,14 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
     if(reconciliationFailure)return reject(reconciliationFailure,
         std::strcmp(reconciliationFailure,"ownership-sample-unavailable")==0 ?
         QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
-    if(const char* reason=inspect(box.top,(std::min)(box.bottom,base.top)))
-        return reject(reason,std::strcmp(reason,"ownership-sample-unavailable")==0 ?
-            QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
-    if(const char* reason=inspect((std::max)(box.top,base.bottom),box.bottom))
-        return reject(reason,std::strcmp(reason,"ownership-sample-unavailable")==0 ?
-            QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
+    if(!preparedErasureOnly) {
+        if(const char* reason=inspect(box.top,(std::min)(box.bottom,base.top)))
+            return reject(reason,std::strcmp(reason,"ownership-sample-unavailable")==0 ?
+                QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
+        if(const char* reason=inspect((std::max)(box.top,base.bottom),box.bottom))
+            return reject(reason,std::strcmp(reason,"ownership-sample-unavailable")==0 ?
+                QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
+    }
     const ActivePictureBounds erased{box.left,box.top,box.right,box.bottom,source.width,source.height,
         double(bw)/(box.bottom-box.top),ActivePictureBounds::BarAxes::NONE};
     const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(source,base,raw,erased,0);
@@ -357,12 +383,31 @@ inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentati
     result.retention=projected;result.erasedSourceBounds=erased;
     // Native picture classification remains raw. Exact owned erasure plus clear
     // remaining bands proves only that this physical presentation can be kept.
-    result.retention.currentlyPixelSafe=true;
+    if(!preparedErasureOnly)result.retention.currentlyPixelSafe=true;
     result.status=QualifiedSubtitlePresentationStatus::Qualified;
     result.qualified=true;
-    result.renewsHold=!observation.pendingRefresh && !continuation;
-    result.reason=continuation ? "current-owned-continuing-caption" : "current-owned-relocated-caption";
+    result.preparedErasureOnly=preparedErasureOnly;
+    result.renewsHold=!preparedErasureOnly && !observation.pendingRefresh && !continuation;
+    result.reason=preparedErasureOnly ? "current-prepared-caption-erasure" :
+        continuation ? "current-owned-continuing-caption" : "current-owned-relocated-caption";
     return result;
+}
+inline QualifiedSubtitlePresentationEvidence EvaluateQualifiedSubtitlePresentationEvidence(
+    const AnalysisLumaSource& source,const ActivePicturePresentationRetentionEvidence& raw,
+    const QualifiedSubtitlePresentationInput& input)
+{
+    return EvaluateSubtitlePresentationEvidence(source,raw,input,false);
+}
+// Black and Reconstruction clear content outside their composed physical picture
+// to black in All/CleanupOnly. Once that exact source packet was prepared, pixels
+// inside the cleared rectangle cannot request Classic picture movement. Inspect
+// the remaining native bands normally; never convert this output fact into glyph
+// ownership, native AR evidence, or a renewable submitted-caption lease.
+inline QualifiedSubtitlePresentationEvidence EvaluatePreparedSubtitlePresentationEvidence(
+    const AnalysisLumaSource& source,const ActivePicturePresentationRetentionEvidence& raw,
+    const QualifiedSubtitlePresentationInput& input)
+{
+    return EvaluateSubtitlePresentationEvidence(source,raw,input,true);
 }
 struct QualifiedSubtitlePresentationView
 {
@@ -414,7 +459,8 @@ inline QualifiedSubtitlePresentationHoldState CommitQualifiedSubtitlePresentatio
         proof.status==QualifiedSubtitlePresentationStatus::Conflict)return {};
     const bool sameContext=previous.available && previous.mode==mode && previous.policyGeneration==policy &&
         previous.continuityGeneration==continuity && previous.captureClockFrequency==captureClockFrequency && SameSubtitlePresentationContext(previous.proof.identity,selectedIdentity);
-    if(!proof.qualified || !proof.renewsHold || !SameAnalysisFrameIdentity(proof.identity,selectedIdentity))
+    if(!proof.qualified || !proof.renewsHold || proof.preparedErasureOnly ||
+        !SameAnalysisFrameIdentity(proof.identity,selectedIdentity))
         return sameContext && SameSubtitlePresentationBounds(previous.displayedBounds,displayedBounds)
             ? previous:QualifiedSubtitlePresentationHoldState{};
     const auto& base=proof.physicalBase;
