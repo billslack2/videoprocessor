@@ -14,14 +14,34 @@ carried through the live-status RPC. Configuration help and migration are
 implemented. VP-0172 supplies the single shared mode parser/ranker and runtime
 mode transaction; Auto retains the existing refresh-only path.
 
-Validation: the config editor build target compiled and linked in x64 Release.
-The modified renderer translation unit compiled in an isolated beta project
-check; that broader check then stopped on missing generated `version.h`. The
-full solution build is blocked because the official Magewell SDK is not
-installed. No test executable was run and no binaries were deployed. Keep this
-story In Progress until focused acceptance checks and display-bench validation
-are complete.
+Validation update (2026-10-19): the full x64 Release solution build succeeds,
+including the player, Config, and both renderer variants. The official Magewell
+SDK was already installed at
+`E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`; isolated worktree builds
+require the documented `MagewellSdkRoot` property. The earlier missing-SDK
+report was incorrect. Fetching GitHub again confirmed that this worktree's
+base `d988e54b883381ad13371f593593773a5e681c51` still equals the current
+`v1.4.02-beta` tip and includes the merged subtitle fixes.
 
+All 75 focused backend/config-core tests pass: 31 refresh-policy tests and 44
+config-core tests, including seven new regressions for mode parsing, exact
+availability, ordered resolution selection, interlaced cadence, profile
+persistence, and live apply/reordering. Full-build validation exposed and fixed
+a C++ compatibility issue in rational reduction, a runtime whitelist rejecting
+`output_display.*`, missing live-apply/profile-order classification, and an
+unrelated second-pass migration of newly seeded Motion defaults. Display also
+no longer falls through into unrelated HDR metadata controls.
+
+Focused Config checks pass for Apply/OK/Cancel, display-warning precedence,
+target refresh, and remote target responsiveness. The broader renderer-profile
+UI check verifies Display navigation and the moved refresh selector, then stops
+at an inherited scaling accessibility assertion: the test expects `Anti-ringing`
+while both the unchanged beta source and current UI use `Sigmoid upscaling`.
+That mismatch remains outside this implementation's backend validation.
+
+No VP-0200 binaries were deployed and no active configuration was edited.
+Actual display switching, rollback, restore ownership, and scene-dependent
+hardware behavior still require bench validation. Keep this story In Progress.
 ## User story
 
 As a VP Renderer user, I want display-mode profiles with an obvious Auto default
@@ -119,5 +139,4 @@ interactive prototypes, not shipping controls or implementation evidence.
 
 Complete focused parser/profile/UI acceptance checks and bench validation for
 mode application, rollback, restoration ownership, DCI selection, and source
-changes. Re-run the full x64 Release solution build when the official Magewell
-SDK and generated renderer `version.h` are available.
+changes. Resolve the inherited scaling-label UI test mismatch separately.
