@@ -6166,7 +6166,16 @@ struct LibplaceboVideoRenderer::Impl
 				dvLuminance.sceneMax != hdrStatusLoggedL1[1] ||
 				dvLuminance.sceneAvg != hdrStatusLoggedL1[2]);
 		const uint64_t now = GetTickCount64();
-		if (now < hdrStatusNextTick && !l1Changed)
+		// The interval line keeps its own 2.5 s grid: neither the 250 ms
+		// publish gate nor an L1 line moves it.
+		const bool interval = now >= hdrStatusNextLogTick;
+		if (interval)
+		{
+			hdrStatusNextLogTick += 2500;
+			if (hdrStatusNextLogTick <= now)
+				hdrStatusNextLogTick = now + 2500;
+		}
+		if (now < hdrStatusNextTick && !l1Changed && !interval)
 			return;
 		hdrStatusNextTick = now + 250;
 
@@ -6202,12 +6211,9 @@ struct LibplaceboVideoRenderer::Impl
 			next.detectedLinearAvgNits = detected.scene_avg;
 			next.detectedSceneMaxNits = detected.scene_max[0];
 		}
-		const bool interval = now >= hdrStatusNextLogTick;
 		if (next.hdr && (next.detectedValid || next.sceneValid) &&
 			(interval || l1Changed))
 		{
-			if (interval)
-				hdrStatusNextLogTick = now + 2500;
 			// The line's own prefix has whole seconds only.
 			SYSTEMTIME local{};
 			GetLocalTime(&local);
@@ -6224,7 +6230,7 @@ struct LibplaceboVideoRenderer::Impl
 				next.scenePeakNits, next.sceneAvgNits,
 				next.sceneMinNits,
 				next.detectedSceneMaxNits,
-				l1Changed ? "L1" : "interval",
+				!l1Changed ? "interval" : interval ? "interval,L1" : "L1",
 				local.wYear, local.wMonth, local.wDay,
 				local.wHour, local.wMinute, local.wSecond, local.wMilliseconds,
 				static_cast<unsigned long long>(next.sourceSequence));
