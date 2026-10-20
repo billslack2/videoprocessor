@@ -13966,6 +13966,9 @@ struct LibplaceboVideoRenderer::Impl
             ownershipInput.accepted=&subtitleSourcePreparation.ownershipAccepted;
             ownershipInput.composition=&relocatedSubtitle;
             ownershipInput.physicalBase=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.required=true;
+            ownershipInput.currentDisplayPicture.bounds=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.identity=subtitleIdentity;
             ownershipInput.policyGeneration=localBoundaryPolicyGeneration;
             ownershipInput.continuityGeneration=localBoundaryContinuityGeneration;
             ownershipInput.pendingCurrentPixelsVerified=subtitleSourcePreparation.pendingPixelsVerified;
