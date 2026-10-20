@@ -2,9 +2,10 @@
 
 ## Status
 
-In Progress (2026-10-19). Implementation is in `codex/vp-0200-display-tab`
+In Progress (2026-10-20; deployed for operator validation). Implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the current beta
-branch tip `d988e54` (`v1.4.02-beta`). The top-level Display page is directly
+branch tip `72bcc9ad1fc29142fb91928461e567f5725dcd0b` (`v1.4.02-beta`).
+The deployed feature commit is `4dae9701fb935b371df8119160446e554133e68b`. The top-level Display page is directly
 below General and outside VP Renderer. The existing refresh-switch setting is
 shown on Display while retaining its existing `general.switch_refresh_rate`
 key and options. The new `output_display` profile family supports Auto and
@@ -14,7 +15,7 @@ carried through the live-status RPC. Configuration help and migration are
 implemented. VP-0172 supplies the single shared mode parser/ranker and runtime
 mode transaction; Auto retains the existing refresh-only path.
 
-Validation update (2026-10-19): the full x64 Release solution build succeeds,
+Previous validation (2026-10-19): the full x64 Release solution build succeeds,
 including the player, Config, and both renderer variants. The official Magewell
 SDK was already installed at
 `E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3`; isolated worktree builds
@@ -39,9 +40,45 @@ at an inherited scaling accessibility assertion: the test expects `Anti-ringing`
 while both the unchanged beta source and current UI use `Sigmoid upscaling`.
 That mismatch remains outside this implementation's backend validation.
 
-No VP-0200 binaries were deployed and no active configuration was edited.
+At that point, no VP-0200 binaries had been deployed and no active configuration had been edited.
 Actual display switching, rollback, restore ownership, and scene-dependent
 hardware behavior still require bench validation. Keep this story In Progress.
+## Rebase and deployment (2026-10-20)
+
+The user authorized rebasing onto the latest beta and deployment. GitHub's
+default and current beta were both `v1.4.02-beta`, fetched at
+`72bcc9ad1fc29142fb91928461e567f5725dcd0b`. The feature rebased cleanly to
+`4dae9701fb935b371df8119160446e554133e68b` and is pushed on
+`codex/vp-0200-display-tab`. The incoming subtitle fix `f0a416ed` (PR #170)
+remains intact: prepared subtitle erasure cannot change picture placement.
+
+A fresh full x64 Release Rebuild succeeded from the clean feature commit.
+Generated host and renderer identities both show that commit with dirty=false.
+All 360 selected native regressions passed (zero failed/skipped), covering
+Display refresh policy, config core, ActivePictureEvidence, and both subtitle
+cut/paste suites, including all six new prepared-erasure regressions. All four
+focused Config checks passed: Apply/OK/Cancel, display-warning precedence,
+inline target refresh, and remote target responsiveness.
+
+Deployed the matching player, both renderer variants, Config, discovery DLL,
+their genuine Release runtime records, and updated configuration help to
+`C:\Videoprocessor\vp`. All 11 installed file hashes were verified against
+build/source inputs. Private Qt and renderer dependencies already matched.
+The installed Config executable passed a native Display-page screenshot smoke
+check on a scratch copy of the active settings.
+
+Backup and verified receipt:
+`C:\Videoprocessor\vp\backups\deploy-20261020-104733-vp0200-4dae9701`.
+The backup includes every replaced file plus `VideoProcessor.cfg` and
+`VideoProcessor.state`. Both active user-data files remain byte-identical;
+configuration edits: none. The background Config process was restarted. The
+player was stopped before deployment and remains stopped.
+
+Local evidence is under
+`E:\codex\videoprocessor\vp-0200-display-tab\artifacts`: the rebased Release
+build log, `test-results\vp0200-rebased-regressions.trx`, and
+`vp0200-deployed-display.png`. Hardware mode switching, rollback, restoration,
+and playback of the reported scene remain operator/bench acceptance work.
 ## User story
 
 As a VP Renderer user, I want display-mode profiles with an obvious Auto default
