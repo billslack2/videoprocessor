@@ -10,6 +10,9 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DisplayMonitorInventory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
