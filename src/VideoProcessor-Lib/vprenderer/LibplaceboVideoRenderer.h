@@ -289,6 +289,7 @@ private:
 	std::atomic<double> m_presentationTargetLeadMs{0.0};
 	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic<uint64_t> m_queueCapacityDrops{0};
 	std::atomic<uint64_t> m_conversionFailures{0};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;

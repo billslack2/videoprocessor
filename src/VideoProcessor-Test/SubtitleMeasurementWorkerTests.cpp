@@ -81,7 +81,66 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         }
         return false;
     }
+
+    // Overload fallback keeps these regressions compilable and red before the
+    // production queue bridge is present. It is test-only compatibility.
+    template<class Guard>
+    static auto ResolvePendingQueue(Guard& guard,SubtitleBoxPreview& preview,
+        const AnalysisLumaSource& source,double frameMs,int holdMs,
+        const ActivePictureFrameIdentity* identity,bool queueOnly,int)
+        -> decltype(guard.Resolve(preview,source,frameMs,holdMs,identity,queueOnly)) {
+        return guard.Resolve(preview,source,frameMs,holdMs,identity,queueOnly);
+    }
+    template<class Guard>
+    static bool ResolvePendingQueue(Guard& guard,SubtitleBoxPreview& preview,
+        const AnalysisLumaSource& source,double frameMs,int holdMs,
+        const ActivePictureFrameIdentity*,bool,long) {
+        return guard.Resolve(preview,source,frameMs,holdMs);
+    }
 public:
+    TEST_METHOD(FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource) {
+        auto pixels=Pixels();
+        auto source=Source(pixels);
+        auto key=Ready(17).current;
+        auto result=key;
+        result.text={};
+        result.pictureBottom=source.height;
+        result.sharedProbeAttempted=result.sharedProbeDetected=true;
+        Assert::IsTrue(IsSubtitleProofFailureCaptureCandidate(source,key,result));
+        auto changed=result;changed.sharedProbeDetected=false;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.sharedProbeAttempted=false;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.sharedProbeWorkLimit=true;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.text.workLimit=true;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.text.detected=true;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.pictureBottom=key.sharedPicture.bounds.bottom;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.identity.acceptedSequence++;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        changed=result;changed.pendingRefresh=true;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,key,changed));
+        auto unavailable=key;unavailable.sharedPicture.required=false;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(source,unavailable,result));
+        auto invalid=source;invalid.data=nullptr;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(invalid,key,result));
+        auto oversized=source;oversized.dataBytes=64u*1024u*1024u+1u;
+        Assert::IsFalse(IsSubtitleProofFailureCaptureCandidate(oversized,key,result));
+    }
+    TEST_METHOD(FaultCaptureModeWaitsForFailureAndPreservesLegacyStartupRules) {
+        Assert::IsFalse(ShouldCaptureSubtitleDiagnosticFrame(false,true,true,false,17,false,true));
+        Assert::IsFalse(ShouldCaptureSubtitleDiagnosticFrame(true,false,true,false,17,false,true));
+        Assert::IsFalse(ShouldCaptureSubtitleDiagnosticFrame(true,true,true,false,17,false,false));
+        Assert::IsTrue(ShouldCaptureSubtitleDiagnosticFrame(true,true,true,false,17,true,true));
+        Assert::IsTrue(ShouldCaptureSubtitleDiagnosticFrame(true,true,false,false,17,false,false));
+        Assert::IsFalse(ShouldCaptureSubtitleDiagnosticFrame(true,true,false,false,17,true,true));
+        Assert::IsFalse(ShouldCaptureSubtitleDiagnosticFrame(true,true,false,true,239,true,true));
+        Assert::IsTrue(ShouldCaptureSubtitleDiagnosticFrame(true,true,false,true,240,true,false));
+    }
+
     TEST_METHOD(CompletedWorkerResultIsAvailableToTheExactQueuedFrameRequest) {
         SubtitleMeasurementWorker worker;
         const auto key=WorkerKey(17,0xA11CE);
@@ -519,6 +578,137 @@ public:
         Assert::AreEqual(static_cast<uint32_t>(SubtitlePendingMeasurementGuard::ContextDomain),
             guard.DecisionDiagnostics().contextMismatch);
         Assert::IsFalse(pending.available);
+    }
+
+    TEST_METHOD(PendingQueueBridgeRequiresCurrentNativePixelsAndClearsNonSubtitleAuthority) {
+        auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+        ready.current.subtitleArProof.accepted=true;
+        ready.current.subtitleArDarkness.global.nearBlack=true;
+        ready.futureAvailable=true;ready.followingCount=1;
+        ready.following[0]=ready.current;ready.matchingFrames=3;
+        ready.currentLinesConfirmed=true;ready.newScanFrames=2;ready.newScanMs=17;
+        Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+        auto pending=Pending(3);pending.current.continuityGeneration=22;pending.continuityGeneration=22;
+        const auto token=ready.current.identity;
+        Assert::IsTrue(ResolvePendingQueue(guard,pending,Source(pixels),40,250,&token,true,0));
+        Assert::IsTrue(pending.available && pending.current.pendingRefresh);
+        Assert::IsTrue(SameAnalysisFrameIdentity(Identity(3),pending.current.identity));
+        Assert::AreEqual(uint64_t(22),pending.continuityGeneration);
+        Assert::AreEqual(uint64_t(22),pending.current.continuityGeneration);
+        Assert::AreEqual(ready.text.cue,pending.text.cue);
+        Assert::AreEqual(3,pending.text.lineCount);
+        Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked>0);
+        Assert::IsTrue(guard.DecisionDiagnostics().barsAvailable);
+        Assert::IsFalse(pending.current.subtitleArProof.accepted);
+        Assert::IsFalse(pending.current.subtitleArDarkness.global.nearBlack);
+        Assert::IsFalse(pending.current.barTrackingAuthority);
+        Assert::IsFalse(pending.current.currentAnchorUsesTrackedEdge);
+        Assert::IsFalse(pending.futureAvailable || pending.currentLinesConfirmed);
+        Assert::AreEqual(0u,pending.followingCount);
+        Assert::AreEqual(uint64_t(0),pending.following[0].identity.acceptedSequence);
+        Assert::AreEqual(1u,pending.matchingFrames);
+        Assert::AreEqual(0u,pending.newScanFrames);
+        Assert::AreEqual(0.0,pending.newScanMs);
+    }
+    TEST_METHOD(PendingQueueBridgeNeverRelaxesOtherContextOrTokenRequirements) {
+        for(int scenario=0;scenario<22;++scenario) {
+            auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+            auto pending=Pending(3);pending.current.continuityGeneration=22;pending.continuityGeneration=22;
+            auto token=ready.current.identity;const ActivePictureFrameIdentity* tokenPointer=&token;
+            bool queueOnly=true;auto source=Source(pixels);
+            switch(scenario) {
+            case 0: pending.current.discontinuity=true;break;
+            case 1: ++pending.current.identity.transportGeneration;break;
+            case 2: ++pending.current.identity.sourceFormatGeneration;break;
+            case 3: ++pending.current.identity.analysisDomainKey;break;
+            case 4: ++pending.current.identity.viewportGeneration;break;
+            case 5: ++pending.current.identity.rendererGeneration;break;
+            case 6: ++pending.current.policyGeneration;++pending.policyGeneration;break;
+            case 7: ++pending.current.nearBarDistance;break;
+            case 8: pending.current.scriptHint=SubtitleScriptHint::Arabic;break;
+            case 9: --pending.current.width;break;
+            case 10: source.data=nullptr;break;
+            case 11: queueOnly=false;break;
+            case 12: tokenPointer=nullptr;break;
+            case 13: --token.acceptedSequence;break;
+            case 14: ++token.analysisDomainKey;break;
+            case 15: ++pending.policyGeneration;break;
+            case 16: ++pending.continuityGeneration;break;
+            case 17: pending.current.continuityGeneration=pending.continuityGeneration=20;break;
+            case 18: pending.current.continuityGeneration=pending.continuityGeneration=0;break;
+            case 19: ++pending.current.optimizationMode;break;
+            case 20: pending.current.identity.captureTimestamp=token.captureTimestamp;break;
+            case 21: ++pending.current.identity.sourceFrameNumber;break;
+            }
+            Assert::IsFalse(ResolvePendingQueue(guard,pending,source,40,250,tokenPointer,queueOnly,0));
+            Assert::IsFalse(pending.available);
+            Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked==0);
+        }
+    }
+    TEST_METHOD(PendingQueueBridgeStillRejectsChangedGlyphChromaAndPhysicalBars) {
+        for(int scenario=0;scenario<3;++scenario) {
+            auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            ready.current.sharedPicture.required=false;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+            if(scenario==0)pixels[50*160+50]=uint16_t(1000<<6);
+            if(scenario==1)pixels[160*90+25*160+50]=uint16_t(700<<6);
+            if(scenario==2)for(int y=0;y<12;++y)for(int x=0;x<160;++x)
+                pixels[y*160+x]=uint16_t(300<<6);
+            auto pending=Pending(3);pending.current.sharedPicture.required=false;
+            pending.current.continuityGeneration=pending.continuityGeneration=22;
+            const auto token=ready.current.identity;
+            Assert::IsFalse(ResolvePendingQueue(guard,pending,Source(pixels),40,250,&token,true,0));
+            Assert::IsFalse(pending.available);
+            Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked>0,
+                L"Queue reassociation must reach current native proof, not bypass it.");
+            Assert::AreEqual(scenario==2?"current-bars-changed":"current-pixels-changed",guard.DecisionReason());
+        }
+    }
+    TEST_METHOD(PendingQueueBridgeRequiresSeedAndStrictlyForwardSource) {
+        for(int scenario=0;scenario<3;++scenario) {
+            auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            if(scenario!=0)Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+            auto pending=Pending(scenario==0?3:scenario==1?1:0);
+            pending.current.continuityGeneration=pending.continuityGeneration=22;
+            const auto token=ready.current.identity;
+            Assert::IsFalse(ResolvePendingQueue(guard,pending,Source(pixels),40,250,&token,true,0));
+            Assert::IsFalse(pending.available);
+            Assert::AreEqual(scenario==0?"no-accepted-seed":"non-forward-source",guard.DecisionReason());
+        }
+    }
+    TEST_METHOD(PendingQueueBridgeTokenMustNameLastValidatedPendingFrameNotOriginalSeed) {
+        auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+        Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+        const auto original=ready.current.identity;
+        auto first=Pending(3);first.current.continuityGeneration=first.continuityGeneration=22;
+        Assert::IsTrue(ResolvePendingQueue(guard,first,Source(pixels),40,250,&original,true,0));
+        auto next=Pending(5);next.current.continuityGeneration=next.continuityGeneration=23;
+        Assert::IsFalse(ResolvePendingQueue(guard,next,Source(pixels),40,250,&original,true,0));
+        Assert::IsFalse(next.available);
+        Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked==0);
+    }
+    TEST_METHOD(PendingQueueBridgePreservesEntireLeaseAcrossSuccessiveRetirements) {
+        auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+        Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),50,250));
+        auto token=ready.current.identity;
+        auto first=Pending(3);first.current.continuityGeneration=first.continuityGeneration=22;
+        Assert::IsTrue(ResolvePendingQueue(guard,first,Source(pixels),50,250,&token,true,0)); // 100ms
+        // Re-presenting recovered output cannot reseed or refresh its lease.
+        Assert::IsFalse(ResolvePendingQueue(guard,first,Source(pixels),50,250,&token,true,0));
+        auto middle=Pending(4);middle.current.continuityGeneration=middle.continuityGeneration=22;
+        Assert::IsTrue(ResolvePendingQueue(guard,middle,Source(pixels),50,250,nullptr,false,0)); // 150ms
+        token=middle.current.identity;
+        auto last=Pending(6);last.current.continuityGeneration=last.continuityGeneration=23;
+        Assert::IsTrue(ResolvePendingQueue(guard,last,Source(pixels),50,250,&token,true,0)); // 250ms
+        Assert::AreEqual(uint64_t(23),last.current.continuityGeneration);
+        auto expired=Pending(7);expired.current.continuityGeneration=expired.continuityGeneration=23;
+        Assert::IsFalse(ResolvePendingQueue(guard,expired,Source(pixels),50,250,nullptr,false,0));
+        Assert::AreEqual("pending-budget-expired",guard.DecisionReason());
+        token=last.current.identity;
+        auto after=Pending(9);after.current.continuityGeneration=after.continuityGeneration=24;
+        Assert::IsFalse(ResolvePendingQueue(guard,after,Source(pixels),50,250,&token,true,0));
+        Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
     }
     TEST_METHOD(PendingGuardReportsQueueContinuityWithoutRelaxingIt) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);

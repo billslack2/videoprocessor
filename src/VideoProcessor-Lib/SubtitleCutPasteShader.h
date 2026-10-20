@@ -16,9 +16,13 @@ inline SubtitleGaussianRegion ComputeSubtitleGaussianRegion(const SubtitleCutPas
     SubtitleGaussianRegion r;
     if(!g.valid || mode!=5 || !std::isfinite(radius) || radius<=0)return r;
     radius=(std::min)(radius,30.0f);r.active=true;r.step=radius>=4?2.0f:1.0f;
+    const bool selectedPicture=g.displayPictureRight>g.displayPictureLeft &&
+        g.displayPictureBottom>g.displayPictureTop;
+    const int displayTop=selectedPicture?g.displayPictureTop:g.pictureTop;
+    const int displayBottom=selectedPicture?g.displayPictureBottom:g.pictureBottom;
     float left=float(g.destination.left)-6,right=float(g.destination.right)+6;
-    float top=float(g.extendToBar && g.fromTopBar ? (std::min)(g.destination.top,g.pictureTop) : g.destination.top);
-    float bottom=float(g.extendToBar && !g.fromTopBar ? (std::max)(g.destination.bottom,g.pictureBottom) : g.destination.bottom);
+    float top=float(g.extendToBar && g.fromTopBar ? (std::min)(g.destination.top,displayTop) : g.destination.top);
+    float bottom=float(g.extendToBar && !g.fromTopBar ? (std::max)(g.destination.bottom,displayBottom) : g.destination.bottom);
     if(g.generatedCleanup.Valid()) {
         left=(std::min)(left,float(g.generatedCleanup.left));right=(std::max)(right,float(g.generatedCleanup.right));
         top=(std::min)(top,float(g.generatedCleanup.top));bottom=(std::max)(bottom,float(g.generatedCleanup.bottom));
@@ -29,6 +33,25 @@ inline SubtitleGaussianRegion ComputeSubtitleGaussianRegion(const SubtitleCutPas
     return r;
 }
 
+inline pl_rect2d ComputeSubtitleLayerBounds(const SubtitleCutPasteGeometry& g,
+    int width,int height)
+{
+    pl_rect2d bounds{};
+    if(!g.valid || !g.destination.Valid() || width<=0 || height<=0)return bounds;
+    const bool selectedPicture=g.displayPictureRight>g.displayPictureLeft &&
+        g.displayPictureBottom>g.displayPictureTop;
+    const int displayTop=selectedPicture?g.displayPictureTop:g.pictureTop;
+    const int displayBottom=selectedPicture?g.displayPictureBottom:g.pictureBottom;
+    // The shader extends six pixels horizontally and antialiases the panel.
+    // Include two pixels at each vertical edge, including its selected bar edge.
+    bounds.x0=(std::max)(0,g.destination.left-8);
+    bounds.x1=(std::min)(width,g.destination.right+8);
+    bounds.y0=(std::max)(0,(g.extendToBar && g.fromTopBar?
+        (std::min)(g.destination.top,displayTop):g.destination.top)-2);
+    bounds.y1=(std::min)(height,(g.extendToBar && !g.fromTopBar?
+        (std::max)(g.destination.bottom,displayBottom):g.destination.bottom)+2);
+    return bounds;
+}
 // MAIN is libplacebo's combined RGB stage, before scaling and output color
 // management. Relocation reads the complete raster before restoring the viewport crop.
 // The caller owns this parsed hook and destroys it with pl_mpv_user_shader_destroy.
@@ -126,6 +149,16 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MAXIMUM 65536.0
 0.0
 //!PARAM picture_bottom
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
+//!PARAM display_picture_top
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
+//!PARAM display_picture_bottom
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
 //!MAXIMUM 65536.0
@@ -551,21 +584,28 @@ float subtitlePanelSideExtension() {
 float subtitlePanelTop() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && fromTop ? min(destination_top,picture_top) : destination_top;
+    return attached && fromTop ? min(destination_top,display_picture_top) : destination_top;
 }
 float subtitlePanelBottom() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && !fromTop ? max(destination_bottom,picture_bottom) : destination_bottom;
+    return attached && !fromTop ? max(destination_bottom,display_picture_bottom) : destination_bottom;
 }
 float subtitleRoundedPanelDistance(vec2 p) {
     float radius=mod(panel_flags,2.0)>0.5 ? min(28.0,min(destination_right-destination_left,
         destination_bottom-destination_top)*0.18) : 0.0;
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5;
-    // Square the bar-facing corners; round only the picture-facing corners.
+    // Square bar-facing corners and any picture-facing edge clipped by the
+    // selected viewport. Keep inPanel bounded; this only makes the visible edge
+    // opaque instead of exposing cleanup through a clipped rounded/AA corner.
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    vec2 lo=vec2(destination_left-subtitlePanelSideExtension(),subtitlePanelTop()-(attached && fromTop ? 2.0*radius : 0.0));
-    vec2 hi=vec2(destination_right+subtitlePanelSideExtension(),subtitlePanelBottom()+(attached && !fromTop ? 2.0*radius : 0.0));
+    bool clippedTop=!fromTop && destination_top<=display_picture_top;
+    bool clippedBottom=fromTop && destination_bottom>=display_picture_bottom;
+    float squareExtension=max(2.0*radius,2.0);
+    vec2 lo=vec2(destination_left-subtitlePanelSideExtension(),subtitlePanelTop()-
+        ((attached && fromTop) || clippedTop ? squareExtension : 0.0));
+    vec2 hi=vec2(destination_right+subtitlePanelSideExtension(),subtitlePanelBottom()+
+        ((attached && !fromTop) || clippedBottom ? squareExtension : 0.0));
     vec2 halfSize=(hi-lo)*0.5;
     vec2 center=(lo+hi)*0.5;
     vec2 q=abs(p-center)-(halfSize-vec2(radius));
@@ -655,6 +695,10 @@ vec4 hook() {
         vec3 generatedBackdrop=vec3(0.0);
         if(background_mode>4.5 && (inPanel || inCleanup))
             generatedBackdrop=subtitleGeneratedFill(p);
+        // Black-panel mode repairs only the freshly authorized old card.
+        // The moved destination remains black, independent of this raw fill.
+        if(background_mode>2.5 && background_mode<3.5 && inCleanup && !layerOnly)
+            generatedBackdrop=subtitleGeneratedRawFill(p);
         if(layerOnly && !inPanel)return vec4(0.0);
         if(inPanel && !cleanupOnly) {
             vec2 sourcePos=HOOKED_pos+vec2(source_left-destination_left,
@@ -668,13 +712,11 @@ vec4 hook() {
             if(!filterGlyph || background_mode<0.5)source=HOOKED_tex(sourcePos);
             if(background_mode<0.5) return source;
             vec3 original=subtitleLinear(HOOKED_tex(HOOKED_pos).rgb);
-            if(background_mode>4.5 && subtitleInGeneratedCleanup(p)) {
+            if(inCleanup && (background_mode>4.5 ||
+                (background_mode>2.5 && background_mode<3.5 && !layerOnly)))
                 original=generatedBackdrop;
-            }
-            // Source removal precedes rounded destination composition. Its
-            // antialiased corners must not reveal an old glyph underneath.
-            if(background_mode>2.5 && background_mode<3.5 && subtitleInGeneratedCleanup(p))
-                original=vec3(0.0);
+            // Cleanup precedes rounded destination composition, so its
+            // antialiased corners reveal only the repaired current picture.
             vec3 backing=original;
             // Use the same smooth current-frame cleanup in overlap and vacated
             // source pixels, avoiding a black seam through the moved line.
@@ -745,8 +787,8 @@ vec4 hook() {
         if(background_mode>4.5 && subtitleInGeneratedCleanup(p)) {
             return vec4(subtitleSignal(generatedBackdrop),1.0);
         }
-        if(background_mode>2.5 && background_mode<3.5 && subtitleInGeneratedCleanup(p))
-            return vec4(0.0,0.0,0.0,1.0);
+        if(background_mode>2.5 && background_mode<3.5 && inCleanup)
+            return vec4(subtitleSignal(generatedBackdrop),1.0);
         if(p.x>=source_left && p.x<source_right && p.y>=source_top && p.y<source_bottom) {
             // Measured-card modes already handled every authorized picture
             // cleanup above. Glyph-envelope fringe must keep its live picture.
@@ -868,7 +910,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     const char* names[]={"enabled","composition_phase","source_left","source_top","source_right","source_bottom",
         "destination_left","destination_top","destination_right","destination_bottom","background_mode",
         "glyph_scale","glyph_translate_x","glyph_translate_y","panel_flags",
-        "transfer_mode","picture_top","picture_bottom","transfer_gamma",
+        "transfer_mode","picture_top","picture_bottom","display_picture_top","display_picture_bottom","transfer_gamma",
         "content_left","content_top","content_right","content_bottom",
         "cleanup_fill_mode","generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
         "text_color_r","text_color_g","text_color_b",
@@ -884,12 +926,16 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         transfer==PL_COLOR_TRC_GAMMA22?2.2f:transfer==PL_COLOR_TRC_GAMMA26?2.6f:
         transfer==PL_COLOR_TRC_GAMMA28?2.8f:2.4f;
     const auto& s=geometry.source;const auto& d=geometry.destination;
+    const bool selectedPicture=geometry.displayPictureRight>geometry.displayPictureLeft &&
+        geometry.displayPictureBottom>geometry.displayPictureTop;
+    const int displayTop=selectedPicture?geometry.displayPictureTop:geometry.pictureTop;
+    const int displayBottom=selectedPicture?geometry.displayPictureBottom:geometry.pictureBottom;
     const auto roi=ComputeSubtitleGaussianRegion(geometry,backgroundMode,generated.blurPixels);
     const float values[]={geometry.valid?1.0f:0.0f,float(static_cast<int>(phase)),float(s.left),float(s.top),float(s.right),float(s.bottom),
         float(d.left),float(d.top),float(d.right),float(d.bottom),float(backgroundMode),
         geometry.glyphScale,geometry.glyphTranslateX,geometry.glyphTranslateY,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
-        float(geometry.pictureTop),float(geometry.pictureBottom),gamma,
+        float(geometry.pictureTop),float(geometry.pictureBottom),float(displayTop),float(displayBottom),gamma,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
         stretchFill?1.0f:0.0f,float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),

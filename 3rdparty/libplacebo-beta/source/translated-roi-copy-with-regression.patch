@@ -1,0 +1,201 @@
+diff --git a/src/d3d11/gpu_tex.c b/src/d3d11/gpu_tex.c
+--- a/src/d3d11/gpu_tex.c
++++ b/src/d3d11/gpu_tex.c
+@@ -582,16 +582,40 @@
+     struct pl_tex_d3d11 *dst_p = PL_PRIV(params->dst);
+     DXGI_FORMAT dst_fmt = fmt_to_dxgi(params->dst->params.format);
+ 
+-    // If the blit operation doesn't require flipping, scaling or format
+-    // conversion, we can use CopySubresourceRegion
++    // Cropping a normal 2D texture into a separate ROI texture is a copy,
++    // even when the source and destination origins differ. The compute blit
++    // embeds ROI coordinates in GLSL, causing a new shader for each geometry.
+     pl_rect3d src_rc = params->src_rc, dst_rc = params->dst_rc;
+-    if (pl_rect3d_eq(src_rc, dst_rc) && src_fmt == dst_fmt) {
+-        pl_rect3d rc = params->src_rc;
+-        pl_rect3d_normalize(&rc);
++    bool translated_copy = false;
++    if (!pl_rect3d_eq(src_rc, dst_rc) && src_fmt == dst_fmt && src_p->tex2d && dst_p->tex2d &&
++        src_p->res != dst_p->res &&
++        src_p->array_slice < 0 && dst_p->array_slice < 0 &&
++        !params->src->params.format->emulated &&
++        !params->dst->params.format->emulated &&
++        src_rc.z0 == 0 && dst_rc.z0 == 0 && src_rc.z1 == 1 && dst_rc.z1 == 1 &&
++        pl_rect_w(src_rc) > 0 && pl_rect_h(src_rc) > 0 &&
++        pl_rect_w(src_rc) == pl_rect_w(dst_rc) &&
++        pl_rect_h(src_rc) == pl_rect_h(dst_rc)) {
++        D3D11_TEXTURE2D_DESC src_desc, dst_desc;
++        ID3D11Texture2D_GetDesc(src_p->tex2d, &src_desc);
++        ID3D11Texture2D_GetDesc(dst_p->tex2d, &dst_desc);
++        // Keep reinterpreted/planar views and unusual resources on the old
++        // path. Public pl_tex_blit has already validated both rectangle bounds.
++        translated_copy = src_desc.Format == src_fmt && dst_desc.Format == dst_fmt &&
++            src_desc.SampleDesc.Count == 1 && dst_desc.SampleDesc.Count == 1 &&
++            src_desc.Width == params->src->params.w &&
++            src_desc.Height == params->src->params.h &&
++            dst_desc.Width == params->dst->params.w &&
++            dst_desc.Height == params->dst->params.h &&
++            dst_desc.Usage == D3D11_USAGE_DEFAULT;
++    }
++    if ((pl_rect3d_eq(src_rc, dst_rc) || translated_copy) && src_fmt == dst_fmt) {
++        pl_rect3d_normalize(&src_rc);
++        pl_rect3d_normalize(&dst_rc);
+ 
+         ID3D11DeviceContext_CopySubresourceRegion(p->imm, dst_p->res,
+-            tex_subresource(params->dst), rc.x0, rc.y0, rc.z0, src_p->res,
+-            tex_subresource(params->src), &pl_rect3d_to_box(rc));
++            tex_subresource(params->dst), dst_rc.x0, dst_rc.y0, dst_rc.z0, src_p->res,
++            tex_subresource(params->src), &pl_rect3d_to_box(src_rc));
+     } else if (p->fl >= D3D_FEATURE_LEVEL_11_0) {
+         if (!pl_tex_blit_compute(gpu, params))
+             PL_ERR(gpu, "Failed compute shader fallback blit");
+diff --git a/src/tests/d3d11.c b/src/tests/d3d11.c
+--- a/src/tests/d3d11.c
++++ b/src/tests/d3d11.c
+@@ -3,6 +3,7 @@
+ #include <dxgi1_2.h>
+ 
+ #include <libplacebo/d3d11.h>
++#include "subtitle_roi_copy.h"
+ 
+ int main()
+ {
+@@ -67,7 +68,9 @@
+         REQUIRE(!pl_timer_create(d3d11->gpu));
+         REQUIRE(pl_d3d11_set_timer_queries_enabled(d3d11, true));
+ 
+-        gpu_shader_tests(d3d11->gpu);
++        subtitle_roi_copy_tests(d3d11->gpu);
++        if (!getenv("PL_TEST_SUBTITLE_ROI_COPY_ONLY"))
++            gpu_shader_tests(d3d11->gpu);
+ 
+         pl_d3d11_destroy(&d3d11);
+     }
+diff --git a/src/tests/subtitle_roi_copy.h b/src/tests/subtitle_roi_copy.h
+new file mode 100644
+--- /dev/null
++++ b/src/tests/subtitle_roi_copy.h
+@@ -0,0 +1,123 @@
++#pragma once
++#include <libplacebo/cache.h>
++#include "gpu.h"
++
++struct subtitle_roi_case {
++    const char *name;
++    pl_rect3d src, dst;
++    int width, height;
++};
++
++static uint16_t subtitle_roi_value(int x, int y, int c)
++{
++    switch (c) {
++    case 0: return 0x3000 | (x & 0x3ff);
++    case 1: return 0x3800 | (y & 0x3ff);
++    case 2: return 0x2800 | ((x + 3*y) & 0x3ff);
++    default: return 0x3c00;
++    }
++}
++
++static void subtitle_roi_copy_tests(pl_gpu gpu)
++{
++    const int sw=3840, sh=2160;
++    const uint16_t sentinel=0x2400;
++    const bool expect_shader=getenv("PL_TEST_ROI_EXPECT_SHADER_COPY") != NULL;
++    pl_fmt fmt=pl_find_fmt(gpu, PL_FMT_FLOAT, 4, 16, 16,
++        PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_BLITTABLE | PL_FMT_CAP_HOST_READABLE);
++    REQUIRE(fmt && !fmt->emulated && fmt->texel_size == 8);
++    uint16_t *pixels=malloc((size_t)sw*sh*8);
++    REQUIRE(pixels);
++    for(int y=0;y<sh;y++) for(int x=0;x<sw;x++) for(int c=0;c<4;c++)
++        pixels[((size_t)y*sw+x)*4+c]=subtitle_roi_value(x,y,c);
++    pl_tex source=pl_tex_create(gpu, pl_tex_params(
++        .w=sw, .h=sh, .format=fmt, .sampleable=true, .blit_src=true,
++        .initial_data=pixels));
++    REQUIRE(source);
++    free(pixels);
++    pl_cache cache=pl_cache_create(pl_cache_params(.log=gpu->log));
++    REQUIRE(cache);
++    pl_gpu_set_cache(gpu,cache);
++    printf("ROI_PROBE version=%s api=%d format=%s source=%dx%d expected=%s\n",
++        pl_version(),PL_API_VER,fmt->name,sw,sh,expect_shader?"shader-copy-baseline":"direct-copy");
++    const struct subtitle_roi_case cases[]={
++        {"logged-before", {1457,1603,0,2378,1864,1}, {0,0,0,921,261,1},921,261},
++        {"logged-after", {1440,1603,0,2395,1864,1}, {0,0,0,955,261,1},955,261},
++        {"source-origin", {1441,1603,0,2396,1864,1}, {0,0,0,955,261,1},955,261},
++        {"destination-origin", {1440,1603,0,2395,1864,1}, {7,5,0,962,266,1},969,273},
++        {"small-partial-groups", {2,3,0,35,20,1}, {3,4,0,36,21,1},40,28},
++    };
++    for(int i=0;i<PL_ARRAY_SIZE(cases);i++) {
++        const struct subtitle_roi_case *t=&cases[i];
++        const size_t words=(size_t)t->width*t->height*4;
++        uint16_t *initial=malloc(words*sizeof(*initial));
++        uint16_t *actual=malloc(words*sizeof(*actual));
++        REQUIRE(initial && actual);
++        for(size_t j=0;j<words;j++)initial[j]=sentinel;
++        pl_tex target=pl_tex_create(gpu,pl_tex_params(
++            .w=t->width,.h=t->height,.format=fmt,.blit_dst=true,.host_readable=true,
++            .initial_data=initial));
++        REQUIRE(target);
++        const int before=pl_cache_objects(cache);
++        const uint64_t signature_before=pl_cache_signature(cache);
++        const pl_clock_t started=pl_clock_now();
++        pl_tex_blit(gpu,pl_tex_blit_params(.src=source,.dst=target,
++            .src_rc=t->src,.dst_rc=t->dst,.sample_mode=PL_TEX_SAMPLE_NEAREST));
++        const double elapsed_ms=1000.0*pl_clock_diff(pl_clock_now(),started);
++        const int after=pl_cache_objects(cache);
++        const uint64_t signature_after=pl_cache_signature(cache);
++        REQUIRE(pl_tex_download(gpu,pl_tex_transfer_params(.tex=target,.ptr=actual)));
++        size_t mismatches=0;
++        for(int y=0;y<t->height;y++) for(int x=0;x<t->width;x++) for(int c=0;c<4;c++) {
++            const bool inside=x>=t->dst.x0 && x<t->dst.x1 && y>=t->dst.y0 && y<t->dst.y1;
++            const uint16_t expected=inside?subtitle_roi_value(
++                x-t->dst.x0+t->src.x0,y-t->dst.y0+t->src.y0,c):sentinel;
++            mismatches+=actual[((size_t)y*t->width+x)*4+c]!=expected;
++        }
++        printf("ROI_CASE name=%s bytes=%zu mismatches=%zu cache=%d->%d signature=%"PRIx64"->%"PRIx64" cpu_ms=%.3f\n",
++            t->name,words*sizeof(*actual),mismatches,before,after,signature_before,signature_after,elapsed_ms);
++        REQUIRE(mismatches==0);
++        if(expect_shader) REQUIRE(after>before && signature_after!=signature_before);
++        else REQUIRE(after==before && signature_after==signature_before);
++        pl_tex_destroy(gpu,&target);
++        free(initial);free(actual);
++    }
++    // The fast path must not take over scaling or either flip. Compare with
++    // the existing compute implementation, preserving its current behavior.
++    const struct subtitle_roi_case fallback[]={
++        {"scale",{10,20,0,26,36,1},{0,0,0,32,32,1},32,32},
++        {"flip-x",{26,20,0,10,36,1},{0,0,0,16,16,1},16,16},
++        {"flip-y",{10,36,0,26,20,1},{0,0,0,16,16,1},16,16},
++    };
++    for(int i=0;i<PL_ARRAY_SIZE(fallback);i++) {
++        const struct subtitle_roi_case *t=&fallback[i];
++        pl_tex target=pl_tex_create(gpu,pl_tex_params(.w=t->width,.h=t->height,
++            .format=fmt,.blit_dst=true,.storable=true,.host_readable=true));
++        pl_tex reference=pl_tex_create(gpu,pl_tex_params(.w=t->width,.h=t->height,
++            .format=fmt,.blit_dst=true,.storable=true,.host_readable=true));
++        REQUIRE(target && reference);
++        struct pl_tex_blit_params copy={.src=source,.dst=target,
++            .src_rc=t->src,.dst_rc=t->dst,.sample_mode=PL_TEX_SAMPLE_NEAREST};
++        const int before=pl_cache_objects(cache);
++        pl_tex_blit(gpu,&copy);
++        const int after=pl_cache_objects(cache);
++        copy.dst=reference;
++        REQUIRE(pl_tex_blit_compute(gpu,&copy));
++        const size_t bytes=(size_t)t->width*t->height*8;
++        uint16_t *actual=malloc(bytes),*expected=malloc(bytes);
++        REQUIRE(actual && expected);
++        REQUIRE(pl_tex_download(gpu,pl_tex_transfer_params(.tex=target,.ptr=actual)));
++        REQUIRE(pl_tex_download(gpu,pl_tex_transfer_params(.tex=reference,.ptr=expected)));
++        const bool identical=memcmp(actual,expected,bytes)==0;
++        printf("ROI_FALLBACK name=%s bytes=%zu reference_identical=%d cache=%d->%d\n",
++            t->name,bytes,identical,before,after);
++        REQUIRE(identical && after>before);
++        free(actual);free(expected);
++        pl_tex_destroy(gpu,&target);pl_tex_destroy(gpu,&reference);
++    }
++    printf("ROI_PROBE PASS cases=%zu fallback=%zu cache_objects=%d\n",
++        PL_ARRAY_SIZE(cases),PL_ARRAY_SIZE(fallback),pl_cache_objects(cache));
++    pl_gpu_set_cache(gpu,NULL);
++    pl_cache_destroy(&cache);
++    pl_tex_destroy(gpu,&source);
++}

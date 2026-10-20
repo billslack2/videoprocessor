@@ -81,6 +81,9 @@ struct SubtitleBoxResult
     // Detector-owned admission; measured means callers must not substitute
     // cleanup/display padding for the original backing's proximity evidence.
     bool nearBarEligibilityMeasured = false, nearBarEligible = false;
+    // True only when this source frame completed the configured search on
+    // that physical bar side. A missing side is not a complete empty search.
+    bool topSearchComplete = false, bottomSearchComplete = false;
     const char* diagnosticReason = "not-analyzed";
     unsigned diagnosticComponentCount = 0;
     int diagnosticNearBarGap = -1;
@@ -156,6 +159,7 @@ private:
     int m_width = 0, m_height = 0, m_top = 0, m_bottom = 0, m_misses = 0;
     int m_nearBarDistance=0;
     bool m_workLimit = false, m_hasSequence = false;
+    bool m_topSearchComplete=false,m_bottomSearchComplete=false;
     bool m_nearBarEligibilityMeasured=false,m_nearBarEligible=false;
     const char* m_diagnosticReason="not-analyzed";
     unsigned m_diagnosticComponentCount=0;

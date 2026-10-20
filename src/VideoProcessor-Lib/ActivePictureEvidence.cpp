@@ -1745,7 +1745,9 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
         current.barEvidence.captionBackedTop ||
         current.barEvidence.captionBackedBottom ||
         current.barEvidence.topRevalidatedAtReference ||
+        current.barEvidence.topRevalidatedNearby ||
         current.barEvidence.bottomRevalidatedAtReference ||
+        current.barEvidence.bottomRevalidatedNearby ||
         current.barEvidence.topSupport < 16 ||
         current.barEvidence.bottomSupport < 16 ||
         current.barEvidence.topBoundarySupport < 8 ||

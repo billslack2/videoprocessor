@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleCutPaste.h>
+#include <SubtitleTemporalFill.h>
 #include <SubtitleCutPasteShader.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/gpu.h>
@@ -26,10 +27,62 @@ TEST_CLASS(SubtitleCutPasteTests) {
         p.current.width=640;p.current.height=360;p.current.pictureTop=45;p.current.pictureBottom=315;
         p.current.identity={1,1,1,1000,2,3,4};return p;
     }
+    static SubtitleBoxRect MirrorSubtitleRect(SubtitleBoxRect r) {
+        return {r.left,360-r.bottom,r.right,360-r.top};
+    }
+    static void ConfigureProofFrame(SubtitleBoxPreview& p,const SubtitleBoxResult& text,
+        bool top,bool local,uint64_t sequence,const SubtitleBoxRect& localBounds={},
+        int measuredPlane=-1,int selectedPlane=-1) {
+        p.available=true;p.policyGeneration=7;p.continuityGeneration=8;
+        p.current.identity.acceptedSequence=sequence;
+        p.current.analyzed=p.current.barAuthority=true;
+        p.current.width=640;p.current.height=360;
+        const int measured=measuredPlane>=0?measuredPlane:(top?45:315);
+        const int selected=selectedPlane>=0?selectedPlane:(top?45:315);
+        p.current.pictureTop=top?measured:45;p.current.pictureBottom=top?315:measured;
+        p.current.nearBarDistance=20;
+        p.current.policyGeneration=p.policyGeneration;p.current.continuityGeneration=p.continuityGeneration;
+        p.current.text=text;
+        p.current.sharedPicture.required=true;
+        p.current.sharedPicture.bounds=top?
+            ActivePictureBounds{0,selected,640,315,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM}:
+            ActivePictureBounds{0,45,640,selected,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        p.current.sharedPicture.identity=p.current.identity;
+        p.current.barEvidence.available=true;
+        p.current.barEvidence.top=local&&top?0:(top?measured:45);
+        p.current.barEvidence.bottom=local&&!top?360:(top?315:measured);
+        p.current.barEvidence.captionBackedTop=local&&top;
+        p.current.barEvidence.captionBackedBottom=local&&!top;
+        p.current.glyphLocalTop=local&&top;
+        p.current.glyphLocalBottom=local&&!top;
+        p.current.glyphLocalVerifiedBounds=local?localBounds:SubtitleBoxRect{};
+    }
     static SubtitleBoxResult Text() {
         SubtitleBoxResult r;r.detected=true;r.cue=1;r.bounds={200,295,400,330};return r;
     }
 public:
+    TEST_METHOD(TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames) {
+        unsigned count=0;
+        for(int i=0;i<7;++i)count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
+        Assert::AreEqual(7u,count);
+        count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,false);
+        Assert::AreEqual(0u,count,L"Unknown current or future source must break the clean run.");
+        count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
+        Assert::AreEqual(1u,count);
+        for(int i=0;i<30;++i)count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
+        Assert::AreEqual(8u,count,L"Saturate once the donor capture threshold is met.");
+        Assert::AreEqual(0u,SubtitleTemporalFill::AdvanceCleanRun(count,false,false,true));
+    }
+    TEST_METHOD(TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity) {
+        for(bool clean:{false,true}) {
+            Assert::AreEqual(7u,SubtitleTemporalFill::AdvanceCleanRun(7,true,true,clean));
+            Assert::AreEqual(0u,SubtitleTemporalFill::AdvanceCleanRun(7,false,true,clean),
+                L"A disabled or discontinuous source clears the run even on repeat.");
+        }
+        auto count=SubtitleTemporalFill::AdvanceCleanRun(7,true,true,true);
+        count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
+        Assert::AreEqual(8u,count,L"Only a new certified source reaches the threshold.");
+    }
     TEST_METHOD(VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption) {
         // Sequence modeled on the reported UHD playback: its glyphs matched 100%,
         // but changing blank margins repeatedly grew the display to 1719 px.
@@ -93,8 +146,13 @@ public:
             const auto corrected=compose();Assert::IsTrue(corrected.valid);
             Assert::IsTrue(corrected.generatedCleanup.left<=text.sourcePanel.left && corrected.generatedCleanup.right>=text.sourcePanel.right &&
                 corrected.generatedCleanup.top<=text.sourcePanel.top && corrected.generatedCleanup.bottom>=text.sourcePanel.bottom);
-            Assert::IsTrue(corrected.destination.left<=corrected.generatedCleanup.left && corrected.destination.right>=corrected.generatedCleanup.right &&
-                (top?corrected.destination.bottom>=corrected.generatedCleanup.bottom:corrected.destination.top<=corrected.generatedCleanup.top));
+            const float glyphLeft=corrected.glyphScale*corrected.content.left+corrected.glyphTranslateX;
+            const float glyphRight=corrected.glyphScale*corrected.content.right+corrected.glyphTranslateX;
+            const float glyphTop=corrected.glyphScale*corrected.content.top+corrected.glyphTranslateY;
+            const float glyphBottom=corrected.glyphScale*corrected.content.bottom+corrected.glyphTranslateY;
+            Assert::IsTrue(corrected.destination.left<=glyphLeft && corrected.destination.right>=glyphRight &&
+                corrected.destination.top<=glyphTop && corrected.destination.bottom>=glyphBottom,
+                L"the display envelope contains the current glyphs independently of cleanup authority");
             Assert::IsTrue(corrected.extendToBar,L"recovered picture-side backing must meet the physical bar");
             text.revised=false;text.sourcePanel={};text.capturePanel={};
             const auto weak=compose();Assert::IsTrue(weak.valid && !weak.pictureCapture.Valid());
@@ -153,10 +211,11 @@ public:
                 Assert::AreEqual(fresh.source.right,result.source.right,L"capture must not freeze with placement");
                 Assert::AreEqual(fresh.pictureCapture.right,result.pictureCapture.right);
                 Assert::AreEqual(fresh.generatedCleanup.right,result.generatedCleanup.right);
-                Assert::IsTrue(result.destination.left<=result.generatedCleanup.left &&
-                    result.destination.right>=result.generatedCleanup.right &&
-                    (top && result.extendToBar ? result.placementLimits.top : result.destination.top)<=result.generatedCleanup.top &&
-                    (!top && result.extendToBar ? result.placementLimits.bottom : result.destination.bottom)>=result.generatedCleanup.bottom);
+                Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,result.destination,0),
+                    L"same glyphs keep a glyph-sized display envelope as backing measurements vary");
+                Assert::IsTrue(result.generatedCleanup.Valid() &&
+                    result.generatedCleanup.right==fresh.generatedCleanup.right,
+                    L"cleanup remains authorized by the current measured card independently of display placement");
             }
         }
     }
@@ -196,7 +255,98 @@ public:
         const auto held=anchor.Consume(candidate,text,p,{},15,true);
         Assert::IsTrue(held.extendToBar);
         Assert::AreEqual(acquired.glyphTranslateX,held.glyphTranslateX);
-        Assert::IsTrue(held.destination.right>=440);
+        Assert::IsTrue(held.destination.right>=452,
+            L"confirmed cleanup intrusion expands the background with a margin, without moving glyphs");
+        Assert::AreEqual(440,held.generatedCleanup.right,
+            L"intrusion proof still grants the exact wider cleanup footprint");
+    }
+    TEST_METHOD(MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction) {
+        // Paused UHD regression: cleanup=1229,1495-2614,1884, but the
+        // displayed panel was only 1394,1503-2442,1870 after 25% reduction.
+        for(bool top:{false,true})for(int percent:{0,25,50,75})for(bool rounded:{false,true}) {
+            const auto mirror=[](SubtitleBoxRect r){return SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top};};
+            const SubtitleBoxRect card=top?mirror({1229,1495,2614,1884}):SubtitleBoxRect{1229,1495,2614,1884};
+            const SubtitleBoxRect ink=top?mirror({1250,1520,2580,1950}):SubtitleBoxRect{1250,1520,2580,1950};
+            const SubtitleBoxRect visible=top?mirror({0,268,3840,1892}):SubtitleBoxRect{0,268,3840,1892};
+            auto base=ComputeSubtitleCutPaste(ink,3840,2160,276,1884,{20,30,20},22,&card,0,&card);
+            base=FitSubtitleToVisiblePicture(base,visible,22);Assert::IsTrue(base.valid);
+            auto fallback=base;fallback.cleanupLimit=card;
+            const auto glyphOnly=ApplySubtitleTextReduction(fallback,percent,{20,30,20},rounded,true);
+            const auto out=ApplySubtitleTextReduction(base,percent,{20,30,20},rounded,true);
+            const int margin=rounded?12:2;
+            Assert::IsTrue(out.valid && out.extendToBar);
+            Assert::IsTrue(out.destination.left<=card.left-margin && out.destination.right>=card.right+margin);
+            Assert::IsTrue(top?out.destination.bottom>=card.bottom+margin:out.destination.top<=card.top-margin);
+            Assert::AreEqual(glyphOnly.glyphTranslateX,out.glyphTranslateX);
+            Assert::AreEqual(glyphOnly.glyphTranslateY,out.glyphTranslateY);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(base.generatedCleanup,out.generatedCleanup,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(base.pictureCapture,out.pictureCapture,0));
+            if(percent==75)Assert::IsTrue(glyphOnly.destination.right-glyphOnly.destination.left<out.destination.right-out.destination.left,
+                L"ambiguous local proof uses glyph padding; measured cards retain full native coverage");
+        }
+    }
+    TEST_METHOD(FreshCardCoverageCanGrowWithoutMovingAnchoredGlyphs) {
+        for(bool top:{false,true}) {
+            auto p=Preview();auto text=Text();text.lineCount=1;text.lineBounds[0]=text.bounds;
+            auto g=ComputeSubtitleCutPaste(text.bounds,640,360,45,315,10,15);
+            if(top) {
+                text.bounds=text.lineBounds[0]=MirrorSubtitleRect(text.bounds);
+                g=ComputeSubtitleCutPaste(text.bounds,640,360,45,315,10,15);
+            }
+            g.layoutCoverage={};g.generatedCleanup={};
+            g=ApplySubtitleTextReduction(g,50,10,true,false);
+            SubtitleLayoutAnchor anchor;
+            const auto first=anchor.Consume(g,text,p,10,15,false);
+            auto fresh=g;fresh.layoutCoverage=fresh.generatedCleanup=top?SubtitleBoxRect{160,45,460,90}:SubtitleBoxRect{160,270,460,315};
+            fresh.glyphTranslateX+=5;fresh.glyphTranslateY+=3;
+            const auto covered=anchor.Consume(fresh,text,p,10,15,false);
+            Assert::AreEqual(first.glyphTranslateX,covered.glyphTranslateX);
+            Assert::AreEqual(first.glyphTranslateY,covered.glyphTranslateY);
+            Assert::IsTrue(covered.destination.left<=148 && covered.destination.right>=472);
+            Assert::IsTrue(top?covered.destination.bottom>=102:covered.destination.top<=258);
+            auto local=fresh;local.cleanupLimit=local.generatedCleanup;
+            local.layoutCoverage={0,45,640,315};
+            const auto held=anchor.Consume(local,text,p,10,15,false);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(covered.destination,held.destination,0),
+                L"unknown outer boundaries must neither grow nor shrink the established panel");
+            Assert::AreEqual(first.glyphTranslateY,held.glyphTranslateY);
+        }
+    }
+    TEST_METHOD(CoverageMarginProtectsMaximumRadiusAtViewportSides) {
+        for(bool top:{false,true})for(bool right:{false,true}) {
+            SubtitleCutPasteGeometry g;g.valid=true;g.fromTopBar=top;
+            g.pictureTop=100;g.pictureBottom=2060;g.placementLimits={0,100,1920,2060};
+            g.destination=top?SubtitleBoxRect{300,130,700,420}:SubtitleBoxRect{300,1740,700,2030};
+            g.layoutCoverage=top?SubtitleBoxRect{0,100,1000,460}:SubtitleBoxRect{0,1700,1000,2060};
+            if(right) {
+                g.layoutCoverage={920,g.layoutCoverage.top,1920,g.layoutCoverage.bottom};
+                g.destination={1220,g.destination.top,1620,g.destination.bottom};
+            }
+            const auto out=CoverMeasuredSubtitleBacking(g);
+            const float radius=(std::min)(28.0f,0.18f*(std::min)(
+                out.destination.right-out.destination.left,out.destination.bottom-out.destination.top));
+            Assert::AreEqual(28.0f,radius,L"exercise the maximum native shader corner radius");
+            // Exact opaque-mask condition at the outermost visible card corner;
+            // use the continuous edge (stricter than the first pixel center).
+            const float sideDistance=right?out.destination.right+6.0f-g.layoutCoverage.right:
+                g.layoutCoverage.left-(out.destination.left-6.0f);
+            const float verticalDistance=top?out.destination.bottom-g.layoutCoverage.bottom:
+                g.layoutCoverage.top-out.destination.top;
+            const float dx=(std::max)(0.0f,radius-sideDistance);
+            const float dy=(std::max)(0.0f,radius-verticalDistance);
+            Assert::IsTrue(std::sqrt(dx*dx+dy*dy)-radius<=-0.75f,
+                L"selected-viewport clipping must not expose repaired card through rounded antialiasing");
+        }
+    }
+    TEST_METHOD(MeasuredCoverageClipsOnlyDisplayAtVisibleViewport) {
+        auto g=ComputeSubtitleCutPaste({200,300,440,335},640,360,45,315,10,0);
+        g=FitSubtitleToVisiblePicture(g,{220,70,620,290});
+        g.layoutCoverage=g.generatedCleanup={180,260,640,315};
+        const auto out=ApplySubtitleTextReduction(g,75,10,true,false);
+        Assert::IsTrue(out.valid && out.destination.left==220 && out.destination.right==620);
+        Assert::AreEqual(248,out.destination.top);
+        Assert::IsTrue(SubtitleBoxLookahead::SameLine(g.generatedCleanup,out.generatedCleanup,0),
+            L"covering only the visible portion cannot rewrite source cleanup authority");
     }
     TEST_METHOD(TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge) {
         const SubtitleBoxPadding padding{12,18,10};
@@ -237,16 +387,21 @@ public:
                     scaled.destination.top>=47 && scaled.destination.bottom<=313);
                 if(card.Valid()) {
                     const auto& cleanup=scaled.generatedCleanup;
-                    Assert::IsTrue(scaled.destination.left<=cleanup.left && scaled.destination.right>=cleanup.right &&
-                        (top?scaled.destination.bottom>=cleanup.bottom:scaled.destination.top<=cleanup.top) && scaled.extendToBar,
-                        L"smaller glyphs cannot expose any original picture intrusion");
+                    Assert::IsTrue(cleanup.Valid() && scaled.extendToBar,
+                        L"original picture cleanup remains independently authorized after glyph reduction");
                 }
-                Assert::AreEqual(top?base.destination.top:base.destination.bottom,
-                    top?scaled.destination.top:scaled.destination.bottom,
-                    L"offset places the whole box, before extension");
-                Assert::IsTrue(std::abs((left+right)-(scaled.destination.left+scaled.destination.right))<0.01f &&
-                    std::abs((above+below)-(scaled.destination.top+scaled.destination.bottom))<0.01f,
-                    L"glyph envelope is centered inside the padded box");
+                Assert::IsTrue(sameRect(base.generatedCleanup,scaled.generatedCleanup),
+                    L"glyph-size changes preserve the exact source cleanup authority");
+                if(!card.Valid()) {
+                    Assert::IsTrue(std::abs((left+right)-(scaled.destination.left+scaled.destination.right))<0.01f &&
+                        std::abs((above+below)-(scaled.destination.top+scaled.destination.bottom))<0.01f,
+                        L"bar-only glyphs remain centered inside the padded box");
+                } else {
+                    Assert::IsTrue(scaled.destination.left<=card.left-12 && scaled.destination.right>=card.right+12,
+                        L"reduced glyphs must not shrink the overlay inside the accepted native card");
+                    Assert::IsTrue(top?scaled.destination.bottom>=card.bottom+12:scaled.destination.top<=card.top-12,
+                        L"picture-facing overlay covers the original cleanup with a margin");
+                }
             }
         }
     }
@@ -1121,6 +1276,300 @@ public:
         const auto original=MapSubtitleCutPastePixel({},210,320);
         Assert::IsFalse(original.clear);Assert::AreEqual(210,original.x);Assert::AreEqual(320,original.y);
     }
+    TEST_METHOD(LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback) {
+        SubtitleCutPasteGeometry bottom;
+        bottom.valid=true;bottom.destination={100,250,300,300};
+        bottom.pictureTop=40;bottom.pictureBottom=280;bottom.extendToBar=true;bottom.fromTopBar=false;
+        bottom.displayPictureLeft=0;bottom.displayPictureRight=640;
+        bottom.displayPictureTop=40;bottom.displayPictureBottom=320;
+        const auto selectedBottom=ComputeSubtitleLayerBounds(bottom,640,360);
+        Assert::AreEqual(92,selectedBottom.x0);Assert::AreEqual(308,selectedBottom.x1);
+        Assert::AreEqual(248,selectedBottom.y0);
+        Assert::AreEqual(322,selectedBottom.y1,
+            L"bottom layer includes the selected display plane even when it is over two pixels beyond source bounds");
+
+        SubtitleCutPasteGeometry top=bottom;
+        top.destination={100,60,300,110};top.pictureTop=80;top.pictureBottom=320;
+        top.displayPictureTop=40;top.displayPictureBottom=320;top.fromTopBar=true;
+        const auto selectedTop=ComputeSubtitleLayerBounds(top,640,360);
+        Assert::AreEqual(92,selectedTop.x0);Assert::AreEqual(308,selectedTop.x1);
+        Assert::AreEqual(38,selectedTop.y0,
+            L"top layer mirrors selected-plane expansion beyond the measured source edge");
+        Assert::AreEqual(112,selectedTop.y1);
+
+        bottom.displayPictureLeft=bottom.displayPictureTop=0;
+        bottom.displayPictureRight=bottom.displayPictureBottom=0;
+        const auto physicalBottom=ComputeSubtitleLayerBounds(bottom,640,360);
+        Assert::AreEqual(302,physicalBottom.y1,
+            L"an absent selected display rectangle falls back to the physical source edge");
+        top.displayPictureLeft=top.displayPictureTop=0;
+        top.displayPictureRight=top.displayPictureBottom=0;
+        const auto physicalTop=ComputeSubtitleLayerBounds(top,640,360);
+        Assert::AreEqual(58,physicalTop.y0,
+            L"top fallback uses the physical source edge when no display rectangle is available");
+    }
+    TEST_METHOD(GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars) {
+        const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+            return outer.Valid() && inner.Valid() && inner.left>=outer.left && inner.top>=outer.top &&
+                inner.right<=outer.right && inner.bottom<=outer.bottom;
+        };
+        const auto mirror=[](SubtitleBoxRect r) {
+            return SubtitleBoxRect{r.left,360-r.bottom,r.right,360-r.top};
+        };
+        for(bool top:{false,true}) {
+            auto p=Preview();p.current.nearBarDistance=20;
+            auto text=Text();text.sourcePanel={150,265,450,340};
+            if(top) {text.bounds=mirror(text.bounds);text.sourcePanel=mirror(text.sourcePanel);}
+            SubtitleCutPastePresentation placement;
+            const auto earlier=placement.Consume(text,p,SubtitleBoxPadding(5));
+            Assert::IsTrue(earlier.valid && earlier.generatedCleanup.Valid(),
+                L"establish a broad prior card before fresh local proof");
+
+            const SubtitleBoxRect local=top?SubtitleBoxRect{180,50,420,70}:
+                SubtitleBoxRect{180,290,420,310};
+            text.bounds=top?SubtitleBoxRect{210,55,390,65}:
+                SubtitleBoxRect{210,295,390,305};
+            text.lineCount=1;text.lineBounds[0]=text.bounds;
+            text.sourcePanel=top?SubtitleBoxRect{150,20,450,95}:
+                SubtitleBoxRect{150,265,450,340};
+            text.capturePanel=text.sourcePanel;text.capturePanelMeasured=true;
+            text.nearBarEligibilityMeasured=true;text.nearBarEligible=true;
+            p.current.text.detected=true;p.current.glyphLocalVerifiedBounds=local;
+            p.current.glyphLocalTop=top;p.current.glyphLocalBottom=!top;
+            const auto fresh=placement.Consume(text,p,SubtitleBoxPadding(5));
+            Assert::IsTrue(fresh.valid,L"fresh local glyphs should remain presentable");
+            Assert::IsTrue(contains(local,fresh.content),L"glyph capture must fit current support");
+            Assert::IsTrue(contains(local,fresh.pictureCapture),L"picture capture must fit current support");
+            Assert::IsTrue(contains(local,fresh.generatedCleanup),L"cleanup cannot extend to the retained bar edge or old card");
+            Assert::IsTrue(contains(local,fresh.layoutCoverage),L"reduced layout cannot reuse pre-clamp card coverage");
+            Assert::IsTrue(fresh.generatedCleanup.left>earlier.generatedCleanup.left &&
+                fresh.generatedCleanup.right<earlier.generatedCleanup.right,
+                L"fresh local support must not borrow the previous broad card");
+        }
+    }
+    TEST_METHOD(GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation) {
+        for(bool top:{false,true}) {
+            const SubtitleBoxRect glyphs=top?SubtitleBoxRect{200,55,400,65}:
+                SubtitleBoxRect{200,295,400,305};
+            const SubtitleBoxRect local=top?SubtitleBoxRect{180,45,420,70}:
+                SubtitleBoxRect{180,290,420,315};
+            auto geometry=ComputeSubtitleCutPaste(glyphs,640,360,45,315,
+                SubtitleBoxPadding(5),0,&local,20,&local,true);
+            Assert::IsTrue(geometry.valid && geometry.generatedCleanup.Valid());
+            geometry.cleanupLimit=local;
+            LimitSubtitleCleanupToLocalProof(geometry);
+            const SubtitleBoxRect visible=top?SubtitleBoxRect{0,43,640,315}:
+                SubtitleBoxRect{0,45,640,317};
+            const auto fitted=FitSubtitleToVisiblePicture(geometry,visible);
+            Assert::IsTrue(fitted.valid);
+            Assert::AreEqual(local.top,fitted.generatedCleanup.top);
+            Assert::AreEqual(local.bottom,fitted.generatedCleanup.bottom);
+            Assert::AreEqual(local.top,fitted.layoutCoverage.top);
+            Assert::AreEqual(local.bottom,fitted.layoutCoverage.bottom);
+            Assert::AreEqual(local.top,fitted.pictureCapture.top);
+            Assert::AreEqual(local.bottom,fitted.pictureCapture.bottom);
+            Assert::IsTrue(fitted.generatedCleanup.top>=local.top &&
+                fitted.generatedCleanup.bottom<=local.bottom,
+                L"physical edge reconciliation cannot extend erasure beyond local proof");
+        }
+    }
+    TEST_METHOD(ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture) {
+        const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        };
+        for(bool top:{false,true}) {
+            auto p=Preview();auto text=Text();
+            if(top)text.bounds=MirrorSubtitleRect(text.bounds);
+            text.lineCount=1;text.lineBounds[0]=text.bounds;text.lineSignatures[0].fill(0x41);
+            text.signature.fill(0x41);text.anchorSignature.fill(0x41);
+            text.nearBarEligibilityMeasured=true;text.nearBarEligible=true;
+            const SubtitleBoxRect panel=top?SubtitleBoxRect{170,45,430,85}:SubtitleBoxRect{170,275,430,315};
+            const SubtitleBoxRect capture=top?SubtitleBoxRect{180,45,420,78}:SubtitleBoxRect{180,282,420,315};
+            const SubtitleBoxRect local=top?SubtitleBoxRect{185,20,415,80}:SubtitleBoxRect{185,280,415,340};
+            text.sourcePanel=panel;text.capturePanel=capture;text.capturePanelMeasured=true;
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{10,12,8};
+            auto compose=[&]() {
+                auto g=presentation.Consume(text,p,padding,0);
+                Assert::IsTrue(g.valid,(L"current proof mode invalid top="+std::to_wstring(top)+
+                    L" sequence="+std::to_wstring(p.current.identity.acceptedSequence)).c_str());
+                const SubtitleBoxRect visible=top?SubtitleBoxRect{0,p.current.sharedPicture.bounds.top,640,315}:
+                    SubtitleBoxRect{0,45,640,p.current.sharedPicture.bounds.bottom};
+                g=FitSubtitleToVisiblePicture(g,visible,0);
+                g=ApplySubtitleTextReduction(g,25,padding,true,false);
+                return anchor.Consume(g,text,p,padding,0,false);
+            };
+            ConfigureProofFrame(p,text,top,false,1,{},top?45:315,top?43:317);
+            const auto physical=compose();Assert::IsTrue(physical.generatedCleanup.Valid());
+            const auto selectedPlane=top?physical.pictureTop:physical.pictureBottom;
+            const float transformX=physical.glyphTranslateX,transformY=physical.glyphTranslateY;
+
+            text.sourcePanel=panel;text.capturePanel=capture;text.capturePanelMeasured=false;
+            ConfigureProofFrame(p,text,top,true,2,local,top?43:317,top?43:317);
+            const auto localFrame=compose();
+            Assert::AreEqual(selectedPlane,top?localFrame.pictureTop:localFrame.pictureBottom);
+            Assert::AreEqual(top?0:45,p.current.barEvidence.top);
+            Assert::AreEqual(top?315:360,p.current.barEvidence.bottom);
+            Assert::IsFalse(p.current.independentBarAnalysis);
+            Assert::IsFalse(p.current.subtitleArProof.accepted);
+            Assert::IsTrue(sameRect(physical.destination,localFrame.destination),
+                L"full/local proof changes must not move the unchanged glyphs");
+            Assert::AreEqual(transformX,localFrame.glyphTranslateX);
+            Assert::AreEqual(transformY,localFrame.glyphTranslateY);
+            Assert::IsFalse(sameRect(physical.generatedCleanup,localFrame.generatedCleanup),
+                L"cleanup follows current local support rather than the old complete card");
+            Assert::IsTrue(localFrame.generatedCleanup.left>=local.left &&
+                localFrame.generatedCleanup.right<=local.right &&
+                localFrame.generatedCleanup.top>=local.top && localFrame.generatedCleanup.bottom<=local.bottom);
+            Assert::IsTrue(localFrame.pictureCapture.left>=local.left &&
+                localFrame.pictureCapture.right<=local.right &&
+                localFrame.pictureCapture.top>=local.top && localFrame.pictureCapture.bottom<=local.bottom);
+
+            const SubtitleBoxRect recovered=top?SubtitleBoxRect{50,43,590,85}:SubtitleBoxRect{50,275,590,317};
+            text.sourcePanel=recovered;text.capturePanel=recovered;text.capturePanelMeasured=true;
+            ConfigureProofFrame(p,text,top,false,3,{},top?45:315,top?43:317);
+            const auto physicalAgain=compose();
+            Assert::IsTrue(physicalAgain.generatedCleanup.left>=170 && physicalAgain.generatedCleanup.right<=430,
+                L"same-glyph full recovery cleanup is limited to current support intersected with prior full card");
+            Assert::IsTrue(physicalAgain.pictureCapture.left>=recovered.left && physicalAgain.pictureCapture.right<=recovered.right,
+                L"recovered picture capture remains current even when cleanup is capped");
+            Assert::IsTrue(physicalAgain.pictureCapture.left>=170 && physicalAgain.pictureCapture.right<=430,
+                L"current capture is restricted to current support intersected with the retained safe footprint");
+
+            ++text.cue;text.capturePanelMeasured=true;text.capturePanel=capture;
+            text.sourcePanel=panel;
+            ConfigureProofFrame(p,text,top,false,4,{},top?45:315,top?43:317);
+            const auto cueIdChurn=compose();
+            Assert::IsTrue(sameRect(localFrame.destination,cueIdChurn.destination),
+                L"cue-id churn with identical glyph signature retains placement");
+            Assert::AreEqual(localFrame.glyphTranslateX,cueIdChurn.glyphTranslateX);
+            Assert::AreEqual(localFrame.glyphTranslateY,cueIdChurn.glyphTranslateY);
+
+            ++text.cue;text.bounds=top?MirrorSubtitleRect({250,295,300,330}):SubtitleBoxRect{250,295,300,330};
+            text.lineBounds[0]=text.bounds;text.lineSignatures[0].fill(0x59);
+            text.signature.fill(0x59);text.anchorSignature.fill(0x59);
+            text.capturePanelMeasured=false;text.capturePanel=capture;
+            const SubtitleBoxRect youLocal=top?SubtitleBoxRect{232,20,318,75}:SubtitleBoxRect{232,285,318,340};
+            ConfigureProofFrame(p,text,top,true,5,youLocal,top?43:317,top?43:317);
+            const auto newCue=compose();
+            Assert::IsTrue(newCue.destination.right-newCue.destination.left<
+                cueIdChurn.destination.right-cueIdChurn.destination.left,
+                L"a true glyph change gets its own output box");
+            Assert::IsTrue(newCue.glyphTranslateX!=cueIdChurn.glyphTranslateX ||
+                newCue.destination.left!=cueIdChurn.destination.left,
+                L"a changed cue must not inherit the prior glyph pivot");
+            Assert::IsTrue(newCue.pictureCapture.left>=youLocal.left &&
+                newCue.pictureCapture.right<=youLocal.right &&
+                newCue.generatedCleanup.left>=youLocal.left &&
+                newCue.generatedCleanup.right<=youLocal.right &&
+                newCue.generatedCleanup.top>=youLocal.top && newCue.generatedCleanup.bottom<=youLocal.bottom);
+
+            const SubtitleBoxRect freshRecovery=top?SubtitleBoxRect{238,45,312,72}:SubtitleBoxRect{238,293,312,315};
+            text.sourcePanel=freshRecovery;text.capturePanel=freshRecovery;text.capturePanelMeasured=true;
+            ConfigureProofFrame(p,text,top,false,6,{},top?43:317,top?43:317);
+            const auto newCueFull=compose();
+            Assert::AreEqual(selectedPlane,top?newCueFull.pictureTop:newCueFull.pictureBottom);
+            Assert::AreEqual(freshRecovery.left,newCueFull.generatedCleanup.left,
+                L"a genuinely new glyph signature does not inherit the previous cue cleanup cap");
+            ConfigureProofFrame(p,text,top,false,7,{},top?45:315,top?43:317);
+            const auto jittered=compose();
+            Assert::IsTrue(sameRect(newCueFull.destination,jittered.destination),
+                L"physical measurement jitter does not alter stable selected AR geometry");
+            text.sourcePanel=text.capturePanel=top?SubtitleBoxRect{238,39,312,72}:
+                SubtitleBoxRect{238,293,312,321};
+            text.capturePanelMeasured=true;
+            ConfigureProofFrame(p,text,top,false,8,{},top?39:321,top?39:321);
+            const auto moved=compose();
+            Assert::AreEqual(top?39:321,top?moved.pictureTop:moved.pictureBottom);
+            Assert::IsTrue(moved.generatedCleanup.Valid() &&
+                moved.generatedCleanup.left<=text.sourcePanel.left && moved.generatedCleanup.right>=text.sourcePanel.right &&
+                moved.generatedCleanup.top<=text.sourcePanel.top && moved.generatedCleanup.bottom>=text.sourcePanel.bottom,
+                L"fresh physical proof reacquires its current cleanup panel after a real plane change");
+            Assert::IsTrue(moved.destination.top!=jittered.destination.top || moved.destination.bottom!=jittered.destination.bottom,
+                L"a genuine four-row selected-plane move redocks without a context reset");
+            text.sourcePanel=text.capturePanel=freshRecovery;
+            text.capturePanelMeasured=true;
+            ConfigureProofFrame(p,text,top,false,9,{},top?45:315,top?37:323);
+            const auto farPhysical=compose();
+            ConfigureProofFrame(p,text,top,true,10,top?SubtitleBoxRect{185,20,415,80}:
+                SubtitleBoxRect{185,280,415,340},top?37:323,top?37:323);
+            const auto farLocal=compose();
+            Assert::AreEqual(top?37:323,top?farLocal.pictureTop:farLocal.pictureBottom);
+            Assert::IsTrue(sameRect(farPhysical.destination,farLocal.destination),
+                L"full-to-local proof preserves the selected plane even when physical measurement differs by eight rows");
+        }
+    }
+    TEST_METHOD(DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup) {
+        const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        };
+        for(bool top:{false,true}) {
+            auto p=Preview();auto text=Text();
+            if(top)text.bounds=MirrorSubtitleRect(text.bounds);
+            text.lineCount=1;text.lineBounds[0]=text.bounds;text.lineSignatures[0].fill(0x31);
+            text.signature.fill(0x31);text.anchorSignature.fill(0x31);
+            text.nearBarEligibilityMeasured=true;text.nearBarEligible=true;text.capturePanelMeasured=false;
+            const SubtitleBoxRect compact=top?SubtitleBoxRect{185,20,415,80}:SubtitleBoxRect{185,280,415,340};
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            auto compose=[&](const SubtitleBoxPadding& padding) {
+                auto g=presentation.Consume(text,p,padding,0);Assert::IsTrue(g.valid);
+                const SubtitleBoxRect visible=top?SubtitleBoxRect{0,p.current.sharedPicture.bounds.top,640,315}:
+                    SubtitleBoxRect{0,45,640,p.current.sharedPicture.bounds.bottom};
+                g=FitSubtitleToVisiblePicture(g,visible,0);
+                g=ApplySubtitleTextReduction(g,20,padding,true,false);
+                return anchor.Consume(g,text,p,padding,0,false);
+            };
+            ConfigureProofFrame(p,text,top,true,1,compact);
+            const SubtitleBoxPadding base{5,6,4};
+            const auto first=compose(base);
+            const SubtitleBoxRect expanded=top?SubtitleBoxRect{170,15,430,85}:SubtitleBoxRect{170,275,430,345};
+            ConfigureProofFrame(p,text,top,true,2,expanded);
+            const auto backingGrowth=compose(base);
+            Assert::IsTrue(sameRect(first.destination,backingGrowth.destination),
+                L"cleanup growth cannot resize or move the output box");
+            Assert::AreEqual(first.glyphTranslateX,backingGrowth.glyphTranslateX);
+            Assert::AreEqual(first.glyphTranslateY,backingGrowth.glyphTranslateY);
+            Assert::IsFalse(sameRect(first.generatedCleanup,backingGrowth.generatedCleanup));
+            const SubtitleBoxPadding larger{18,16,12};
+            const auto padded=compose(larger);
+            Assert::IsTrue(padded.destination.right-padded.destination.left>
+                backingGrowth.destination.right-backingGrowth.destination.left ||
+                padded.destination.bottom-padded.destination.top>
+                backingGrowth.destination.bottom-backingGrowth.destination.top,
+                L"display padding changes the output envelope independently");
+            Assert::IsTrue(sameRect(backingGrowth.generatedCleanup,padded.generatedCleanup));
+            Assert::IsTrue(sameRect(backingGrowth.pictureCapture,padded.pictureCapture));
+
+            ++p.policyGeneration;++p.continuityGeneration;
+            p.current.policyGeneration=p.policyGeneration;p.current.continuityGeneration=p.continuityGeneration;
+            p.current.pictureTop=top?60:45;p.current.pictureBottom=top?315:300;
+            p.current.sharedPicture.bounds={0,p.current.pictureTop,640,p.current.pictureBottom,640,360};
+            ++p.current.identity.acceptedSequence;
+            p.current.sharedPicture.identity=p.current.identity;
+            const auto reset=compose(larger);
+            Assert::IsTrue(reset.valid);
+            Assert::AreEqual(top?60:300,top?reset.pictureTop:reset.pictureBottom);
+            Assert::IsTrue(reset.glyphTranslateY!=padded.glyphTranslateY ||
+                !sameRect(reset.destination,padded.destination),
+                L"context and selected-plane changes discard the old anchor");
+        }
+    }
+    TEST_METHOD(GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport) {
+        for(bool top:{false,true}) {
+            auto p=Preview();p.current.nearBarDistance=20;
+            p.current.glyphLocalVerifiedBounds=top?SubtitleBoxRect{180,50,420,70}:
+                SubtitleBoxRect{180,290,420,310};
+            p.current.glyphLocalTop=top;p.current.glyphLocalBottom=!top;
+            p.current.text.detected=true;
+            auto text=Text();text.bounds=top?SubtitleBoxRect{200,20,400,40}:
+                SubtitleBoxRect{200,320,400,340};
+            text.lineCount=1;text.lineBounds[0]=text.bounds;
+            text.nearBarEligibilityMeasured=true;text.nearBarEligible=true;
+            SubtitleCutPastePresentation placement;
+            const auto stale=placement.Consume(text,p,SubtitleBoxPadding(5));
+            Assert::IsFalse(stale.valid,L"a prior accepted cue cannot project glyphs outside current local proof");
+        }
+    }
 };
 namespace {
 struct SubtitleShaderGpuFixture {
@@ -1234,10 +1683,15 @@ struct SubtitleShaderGpuFixture {
             input.repr.bits.bit_shift=6;
         }
     }
-    static SubtitleCutPasteGeometry Geometry(bool overlap=false) {
+    static SubtitleCutPasteGeometry Geometry(bool overlap=false,bool narrow=false) {
         SubtitleCutPasteGeometry g;
         g.valid=true;g.source={20,48,44,60};g.content={24,50,40,58};
-        g.destination=overlap?SubtitleBoxRect{20,43,44,55}:SubtitleBoxRect{20,32,44,44};
+        g.destination=narrow?SubtitleBoxRect{24,32,40,44}:
+            overlap?SubtitleBoxRect{20,43,44,55}:SubtitleBoxRect{20,32,44,44};
+        if(narrow) {
+            g.centeredGlyphMapping=true;g.glyphScale=0.5f;
+            g.glyphTranslateX=16.0f;g.glyphTranslateY=11.0f;
+        }
         g.generatedCleanup=g.source;
         g.pictureCapture=g.source;g.glyphLines[0]=g.content;
         g.pictureTop=8;g.pictureBottom=62;
@@ -1274,8 +1728,47 @@ struct SubtitleShaderGpuFixture {
                     format->host_bits[channel]);
         return pixels;
     }
-    void Run(int backgroundMode,bool overlap=false) {
-        const auto geometry=Geometry(overlap);
+    void VerifyViewportClippedCoverage(int mode,bool top,bool rounded) {
+        auto geometry=Geometry(false,true);
+        geometry.fromTopBar=top;geometry.roundedCorners=rounded;
+        geometry.pictureTop=8;geometry.pictureBottom=56;
+        geometry.source=geometry.content=geometry.generatedCleanup=geometry.pictureCapture=
+            top?SubtitleBoxRect{20,4,44,16}:SubtitleBoxRect{20,48,44,60};
+        geometry.glyphLines[0]=geometry.content;
+        geometry.placementLimits=top?SubtitleBoxRect{0,2,64,16}:SubtitleBoxRect{0,48,64,62};
+        geometry.destination=top?SubtitleBoxRect{24,4,40,16}:SubtitleBoxRect{24,48,40,60};
+        geometry.displayPictureLeft=0;geometry.displayPictureRight=64;
+        geometry.displayPictureTop=geometry.placementLimits.top;
+        geometry.displayPictureBottom=geometry.placementLimits.bottom;
+        geometry.layoutCoverage=geometry.generatedCleanup;
+        geometry=CoverMeasuredSubtitleBacking(geometry);
+        Assert::AreEqual(top?geometry.placementLimits.bottom:geometry.placementLimits.top,
+            top?geometry.destination.bottom:geometry.destination.top,
+            L"fixture must clip the picture-facing rounded edge");
+        pl_frame layer{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
+            {},false,SubtitleCompositionPhase::LayerOnly));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        pl_tex_params params{};params.w=params.h=64;params.format=layerTexture->params.format;
+        params.blit_dst=true;params.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&params);Assert::IsNotNull(staging);
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const auto pixels=ReadLinear(staging);
+        pl_tex_destroy(device->gpu,&staging);
+        for(int y=geometry.generatedCleanup.top;y<geometry.generatedCleanup.bottom;++y)
+            for(int x=geometry.generatedCleanup.left;x<geometry.generatedCleanup.right;++x)
+                Assert::IsTrue(Pixel(pixels,x,y)[3]>0.999f,
+                    L"viewport-clipped panel edge must cover all repaired pixels including antialiasing");
+        Assert::IsTrue(Pixel(pixels,3,32)[3]<0.001f,L"squaring cannot paint outside the bounded panel");
+    }
+    void Run(int backgroundMode,bool overlap=false,bool narrow=false,bool cover=false) {
+        auto geometry=Geometry(overlap,narrow);
+        if(cover) {
+            geometry.placementLimits={0,8,64,62};
+            geometry.layoutCoverage=geometry.generatedCleanup;
+            geometry=CoverMeasuredSubtitleBacking(geometry);
+        }
         SubtitleGeneratedGrayStyle style;
         style.blurPixels=backgroundMode==5?4.0f:0.0f;
         style.borderWidth=2.0f;style.borderOpacity=0.65f;
@@ -1318,11 +1811,18 @@ struct SubtitleShaderGpuFixture {
             return exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
                 std::ldexp(float(significand),-24);
         };
+        if(cover) {
+            for(int y=geometry.generatedCleanup.top;y<geometry.generatedCleanup.bottom;++y)
+                for(int x=geometry.generatedCleanup.left;x<geometry.generatedCleanup.right;++x)
+                    Assert::IsTrue(alphaAt(y*64+x)>0.999f,
+                        L"every repaired card pixel, including rounded corners and bar edge, must have overlay coverage");
+        }
         const float outsideAlpha=alphaAt(3*64+3);
         const int interiorX=(geometry.destination.left+geometry.destination.right)/2;
         const int interiorY=(geometry.destination.top+geometry.destination.bottom)/2;
         const float insideAlpha=alphaAt(interiorY*64+interiorX);
         int alphaCount=0,minAlphaX=64,minAlphaY=64,maxAlphaX=-1,maxAlphaY=-1;
+        int partialAlphaX=-1,partialAlphaY=-1;
         float maxAlpha=0.0f;
         for(int row=0;row<64;++row)for(int col=0;col<64;++col) {
             const float a=alphaAt(row*64+col);
@@ -1337,6 +1837,9 @@ struct SubtitleShaderGpuFixture {
         bool partialAlpha=false;
         for(size_t pixel=0;pixel<64*64;++pixel) {
             const float alpha=alphaAt(pixel);
+            if(alpha>0.001f && alpha<0.999f && partialAlphaX<0) {
+                partialAlphaX=int(pixel%64);partialAlphaY=int(pixel/64);
+            }
             partialAlpha|=alpha>0.001f && alpha<0.999f;
         }
         Assert::IsTrue(partialAlpha,L"Rounded panel/border has no partially transparent edge");
@@ -1388,7 +1891,26 @@ struct SubtitleShaderGpuFixture {
             std::to_wstring(worstChannel)+L" difference "+std::to_wstring(worst)+
             L" allowed "+std::to_wstring(worstAllowed);
         Assert::IsTrue(worst<=worstAllowed,mismatch.c_str());
-        if(backgroundMode==3 && !overlap) {
+        if(partialAlphaX>=0) {
+            const auto cornerAll=Pixel(original,partialAlphaX,partialAlphaY);
+            const auto cornerSplit=Pixel(split,partialAlphaX,partialAlphaY);
+            for(int c=0;c<3;++c)
+                Assert::IsTrue(std::abs(cornerAll[c]-cornerSplit[c])<=0.008f,
+                    L"rounded partial-alpha pixels compose as CleanupOnly plus LayerOnly");
+        }
+        if(backgroundMode==3 && narrow) {
+            const auto repaired=Pixel(cleanedSource,21,53);
+            const auto untouched=Pixel(cleanedSource,10,53);
+            Assert::IsTrue(repaired[0]>0.005f && std::abs(repaired[0]-untouched[0])<0.02f,
+                L"vacated black-panel cleanup uses the current nonblack donor instead of zero");
+            const auto blackPanel=Pixel(original,25,40);
+            const auto preservedGlyph=Pixel(original,30,38);
+            Assert::IsTrue(blackPanel[0]<0.01f && blackPanel[1]<0.01f && blackPanel[2]<0.01f,
+                L"Black mode keeps the displayed panel black");
+            Assert::IsTrue(preservedGlyph[0]>0.5f,
+                L"Black mode preserves the relocated glyph over the repaired source");
+        }
+        if(backgroundMode==3 && !overlap && !narrow) {
             auto disabled=geometry;disabled.valid=false;
             Assert::IsTrue(BindSubtitleCutPasteHook(hook,disabled,backgroundMode,
                 input.color.transfer,style,false,SubtitleCompositionPhase::LayerOnly));
@@ -1437,12 +1959,22 @@ public:
         Assert::AreEqual(3,snapshot.debandParams.iterations);
         Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
     }
+    TEST_METHOD(ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        for(int mode:{3,5})for(bool top:{false,true})for(bool rounded:{false,true})
+            rgb.VerifyViewportClippedCoverage(mode,top,rounded);
+    }
+    TEST_METHOD(MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        rgb.Run(3,false,true,true);rgb.Run(5,false,true,true);
+    }
     TEST_METHOD(BlackAndReconstructionLayersPreserveAlphaAndComposition) {
         for(const auto transfer:{PL_COLOR_TRC_LINEAR,PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_HLG}) {
             SubtitleShaderGpuFixture rgb(transfer);
             rgb.Run(3);rgb.Run(5);
             if(transfer==PL_COLOR_TRC_LINEAR) {
                 rgb.Run(3,true);rgb.Run(5,true);
+                rgb.Run(3,false,true);rgb.Run(5,false,true);
             }
         }
         SubtitleShaderGpuFixture nv12(PL_COLOR_TRC_SRGB,1);
