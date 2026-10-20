@@ -50,6 +50,7 @@ Frame ActiveProfileResponse(const Frame& request)
 		status.viewport = bounded(snapshot.viewport);
 		status.zoom = bounded(snapshot.zoom);
         status.subtitles = bounded(snapshot.subtitles);
+        status.outputDisplay = bounded(snapshot.outputDisplay);
 		status.shaderAvailable = ActiveProfileStatus::ShaderSetIsCurrent(snapshot);
 		if (status.shaderAvailable)
 			for (uint32_t index = 0; index < snapshot.shaderCount; ++index)
