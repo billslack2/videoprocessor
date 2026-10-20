@@ -5,7 +5,7 @@
 In Progress (2026-10-20; deployed for operator validation). Implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the current beta
 branch tip `72bcc9ad1fc29142fb91928461e567f5725dcd0b` (`v1.4.02-beta`).
-The deployed feature commit is `36219ec53f255e8ac3323171bb60bfcd7271f7ce`. The top-level Display page is directly
+The deployed feature commit is `5101c22a638316628c0cea878744bcb85e7b9b25`. The top-level Display page is directly
 below General and outside VP Renderer. The existing refresh-switch setting is
 shown on Display while retaining its existing `general.switch_refresh_rate`
 key and options. The new `output_display` profile family supports Auto and
@@ -179,12 +179,21 @@ Actual native UI captures on scratch settings show:
 - [Real LG picker](../assets/VP-0200/lg-mode-picker-20261020.png)
 - [Real Epson picker](../assets/VP-0200/epson-mode-picker-20261020.png)
 
-Deployment is prepared but pending preservation of unsaved editor changes.
-The installed version remains `36219ec5`. The running Config editor contains
-an entered mode not present in the active saved file, so the operator was asked
-to Apply/close Config before any deployment restart. No active configuration
-or display mode was changed during implementation or capture. Live mode
-application and remote RPC remain operator/bench qualification work.
+Deployment was initially held to preserve unsaved editor changes. The operator
+then explicitly requested deployment, and neither Config nor playback was running
+at the deployment check. Deployed `5101c22a638316628c0cea878744bcb85e7b9b25`
+on 2026-10-20 at 15:07 America/New_York. The GitHub default/current beta remained
+`v1.4.02-beta` at `72bcc9ad1fc29142fb91928461e567f5725dcd0b`.
+
+Backup and verified receipt:
+`C:\Videoprocessor\vp\backups\deploy-20261020-150743-vp0200-5101c22a`.
+All 11 deployed player/Config/discovery/renderer/help/runtime-record file hashes
+match the clean x64 Release build inputs. Both renderer variants and the player
+are from the same commit. Each replaced file plus active `VideoProcessor.cfg`
+and `VideoProcessor.state` was backed up. Both user-data files remain
+byte-identical; configuration edits: **none**. Neither application was restarted;
+playback remains stopped. Live mode application and remote RPC remain
+operator/bench qualification work.
 Local evidence: `artifacts/vp0200-picker-release.log`,
 `vp0200-picker-preview.png`, and `vp0200-picker-*-catalog.png[.choices.png]`.
 
