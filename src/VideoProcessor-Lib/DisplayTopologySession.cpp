@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "DisplayTopologySession.h"
+#include "DisplayMonitorInventory.h"
 
 #include <DebugLog.h>
 
@@ -740,6 +741,8 @@ namespace DisplayTopologySession
 			error = "target-only display session requires fullscreen_monitor_name";
 			return false;
 		}
+        const auto monitors = DisplayMonitorInventory::Enumerate();
+        const auto* monitor = DisplayMonitorInventory::Resolve(monitors, friendlyName);
 		Topology current;
 		LONG result = QueryTopology(QDC_ONLY_ACTIVE_PATHS, current);
 		if (result != ERROR_SUCCESS || current.paths.empty())
@@ -765,8 +768,14 @@ namespace DisplayTopologySession
 			if (!path.targetInfo.targetAvailable)
 				continue;
 			std::wstring name;
-			if (!TargetName(path, name) || _wcsicmp(name.c_str(), friendlyName.c_str()) != 0)
-				continue;
+            if (monitor && monitor->hasTarget)
+            {
+                if (path.targetInfo.adapterId.HighPart != monitor->targetAdapter.HighPart ||
+                    path.targetInfo.adapterId.LowPart != monitor->targetAdapter.LowPart ||
+                    path.targetInfo.id != monitor->targetId) continue;
+            }
+            else if (!TargetName(path, name) || _wcsicmp(name.c_str(), friendlyName.c_str()) != 0)
+                continue;
 			TargetIdentity identity;
 			identity.adapter = path.targetInfo.adapterId;
 			identity.id = path.targetInfo.id;

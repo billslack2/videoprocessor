@@ -36,6 +36,8 @@ public:
 		std::string& error) const;
 	bool SelectProfile(const std::string& group, const std::string& profile,
 		bool enabled, std::string& error) const;
+    bool GetDisplayModes(const std::string& monitor,
+        ConfigurationRpcProtocol::DisplayModes& modes, std::string& error) const;
 	bool RunAction(const std::string& action, std::string& error) const;
 	bool ApplyConfig(const std::string& baseline,
 		const std::string& candidate, ApplyResult& result,

@@ -315,6 +315,18 @@ bool ConfigurationRpcClient::SelectProfile(const std::string& group,
 	return true;
 }
 
+bool ConfigurationRpcClient::GetDisplayModes(const std::string& monitor,
+    DisplayModes& modes, std::string& error) const
+{
+    std::vector<uint8_t> payload, response;
+    if (monitor.size() > 1024 || !WriteString(payload, monitor))
+    { error = "The monitor name is too long."; return false; }
+    if (!Request(static_cast<uint16_t>(Operation::GetDisplayModes), payload, response, error)) return false;
+    if (!ParseDisplayModes(response, modes))
+    { error = "The VP returned an invalid display-mode inventory. Update VP and Config together."; return false; }
+    return true;
+}
+
 bool ConfigurationRpcClient::RunAction(const std::string& action,
 	std::string& error) const
 {

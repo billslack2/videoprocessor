@@ -7,6 +7,7 @@
 #include <dxgi1_2.h>
 
 #include "ConfigEditorWindow.h"
+#include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
 #include "ProfileListController.h"
@@ -125,129 +126,6 @@ protected:
 // OUTOFCONTEXT events arrive on the Qt thread that installed the hook.
 // No window ownership changes, cross-process SendMessage or recurring polling.
 std::map<HWINEVENTHOOK, std::function<void()>> configForegroundHandlers;
-
-std::wstring FindGdiDisplayName(const QString& friendlyName)
-{
-	const QString wanted = friendlyName.trimmed();
-	std::wstring fallback;
-	for (DWORD index = 0;; ++index)
-	{
-		DISPLAY_DEVICEW device{};
-		device.cb = sizeof(device);
-		if (!EnumDisplayDevicesW(nullptr, index, &device, 0)) break;
-		if ((device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) == 0) continue;
-		if ((device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0)
-			fallback = device.DeviceName;
-		if (wanted.isEmpty()) continue;
-		QStringList labels{ QString::fromWCharArray(device.DeviceString),
-			QString::fromWCharArray(device.DeviceName) };
-		DISPLAY_DEVICEW monitor{};
-		monitor.cb = sizeof(monitor);
-		if (EnumDisplayDevicesW(device.DeviceName, 0, &monitor, 0))
-			labels.push_back(QString::fromWCharArray(monitor.DeviceString));
-		for (const QString& label : labels)
-			if (label.compare(wanted, Qt::CaseInsensitive) == 0 ||
-				(!label.isEmpty() && wanted.contains(label, Qt::CaseInsensitive)) ||
-				(!label.isEmpty() && label.contains(wanted, Qt::CaseInsensitive)))
-				return device.DeviceName;
-	}
-	return wanted.isEmpty() ? fallback : std::wstring();
-}
-
-DisplayRefreshRational GdiRefreshRate(DWORD rate)
-{
-	if (rate == 23) return { 24000, 1001 };
-	if (rate == 29) return { 30000, 1001 };
-	if (rate == 59) return { 60000, 1001 };
-	return { rate, 1 };
-}
-
-void AppendUniqueDisplayMode(std::vector<DisplayOutputMode>& modes,
-	const DisplayOutputMode& candidate)
-{
-	if (std::none_of(modes.begin(), modes.end(), [&candidate](const DisplayOutputMode& mode)
-		{ return DisplayOutputModesExactlyEqual(mode, candidate); }))
-		modes.push_back(candidate);
-}
-
-void AppendGdiDisplayModes(const std::wstring& gdiName,
-	std::vector<DisplayOutputMode>& modes)
-{
-	for (DWORD index = 0;; ++index)
-	{
-		DEVMODEW candidate{};
-		candidate.dmSize = sizeof(candidate);
-		if (!EnumDisplaySettingsW(gdiName.c_str(), index, &candidate)) break;
-		if (candidate.dmBitsPerPel != 32 || candidate.dmPelsWidth < 100 ||
-			candidate.dmPelsHeight < 100 || candidate.dmDisplayFrequency == 0 ||
-			(candidate.dmDisplayFlags & DM_INTERLACED) != 0) continue;
-		AppendUniqueDisplayMode(modes, { candidate.dmPelsWidth,
-			candidate.dmPelsHeight, GdiRefreshRate(candidate.dmDisplayFrequency) });
-	}
-}
-
-std::vector<DisplayOutputMode> QueryConfigDisplayModes(
-	const QString& friendlyName, bool& available)
-{
-	available = false;
-	std::vector<DisplayOutputMode> result;
-	const std::wstring gdiName = FindGdiDisplayName(friendlyName);
-	if (gdiName.empty()) return result;
-	available = true;
-	AppendGdiDisplayModes(gdiName, result);
-	const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-	CComPtr<IDXGIFactory1> factory;
-	if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) && factory)
-	{
-		const DXGI_FORMAT formats[] = {
-			DXGI_FORMAT_R8G8B8A8_UNORM,
-			DXGI_FORMAT_R10G10B10A2_UNORM };
-		for (UINT adapterIndex = 0;; ++adapterIndex)
-		{
-			CComPtr<IDXGIAdapter1> adapter;
-			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND) break;
-			if (!adapter) continue;
-			for (UINT outputIndex = 0;; ++outputIndex)
-			{
-				CComPtr<IDXGIOutput> output;
-				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND) break;
-				if (!output) continue;
-				DXGI_OUTPUT_DESC description{};
-				if (FAILED(output->GetDesc(&description)) ||
-					_wcsicmp(description.DeviceName, gdiName.c_str()) != 0) continue;
-				available = true;
-				CComQIPtr<IDXGIOutput1> output1(output);
-				if (!output1) break;
-				for (const DXGI_FORMAT format : formats)
-				{
-					UINT modeCount = 0;
-					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, nullptr)) || modeCount == 0) continue;
-					std::vector<DXGI_MODE_DESC1> modes(modeCount);
-					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, modes.data()))) continue;
-					for (const DXGI_MODE_DESC1& candidate : modes)
-					{
-						if (candidate.Width < 100 || candidate.Height < 100 ||
-							candidate.RefreshRate.Numerator == 0 ||
-							candidate.RefreshRate.Denominator == 0 ||
-							(candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_UPPER_FIELD_FIRST ||
-								candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_LOWER_FIELD_FIRST))
-							continue;
-						DisplayOutputMode mode{ candidate.Width, candidate.Height,
-							{ candidate.RefreshRate.Numerator,
-							  candidate.RefreshRate.Denominator } };
-						AppendUniqueDisplayMode(result, mode);
-					}
-				}
-				break;
-			}
-			if (available) break;
-		}
-	}
-	if (SUCCEEDED(initialized)) CoUninitialize();
-	return result;
-}
 
 QIcon targetRefreshIcon()
 {
@@ -2460,17 +2338,40 @@ void ConfigEditorWindow::migrateRefreshRateSwitchMode()
 
 void ConfigEditorWindow::migrateOutputDisplayProfiles()
 {
-    if (!configurationLoaded_ || !document_ ||
-        !profileSections(QStringLiteral("output_display")).isEmpty())
-        return;
-
-    const std::string section = "output_display.Default";
-    if (!document_->AddSection(section)) return;
-    document_->SetKnown(section, "mode_policy", "auto");
-    document_->SetKnown(section, "restore_previous_mode", "true");
-    document_->requiresMigrationBackup = document_->existedAtLoad;
-    dirty_ = true;
-    hasPendingMigrations_ = true;
+    if (!configurationLoaded_ || !document_) return;
+    auto sections = profileSections(QStringLiteral("output_display"));
+    bool changed = false;
+    if (sections.isEmpty())
+    {
+        const std::string section = "output_display.Default";
+        if (!document_->AddSection(section)) return;
+        document_->SetKnown(section, "mode_policy", "auto");
+        document_->SetKnown(section, "restore_previous_mode", "true");
+        sections.push_back(QString::fromStdString(section));
+        changed = true;
+    }
+    // Preserve the existing playback target in the first profile; subsequent
+    // profiles inherit it until the operator chooses another monitor.
+    const auto first = sections.front().toStdString();
+    if (value(sections.front(), QStringLiteral("monitor")).isEmpty())
+    {
+        QString monitor = value(QStringLiteral("general"), QStringLiteral("fullscreen_monitor_name"));
+        if (monitor.isEmpty()) monitor = value(QStringLiteral("command_line"), QStringLiteral("fullscreen_monitor_name"));
+        document_->SetKnown(first, "monitor", monitor.isEmpty() ? "auto" : monitor.toLocal8Bit().toStdString());
+        changed = true;
+    }
+    for (const auto* legacySection : {"general", "command_line"})
+        if (!document_->Get(legacySection, "fullscreen_monitor_name").empty())
+        {
+            document_->RemoveKnown(legacySection, "fullscreen_monitor_name");
+            changed = true;
+        }
+    if (changed)
+    {
+        document_->requiresMigrationBackup = document_->existedAtLoad;
+        dirty_ = true;
+        hasPendingMigrations_ = true;
+    }
 }
 
 void ConfigEditorWindow::installProfileContextMenu(QListWidget* list,
@@ -2832,13 +2733,11 @@ void ConfigEditorWindow::applyMonitorDiscovery(const QStringList& discovered)
             monitorChoice_->itemText(current))
             selected = monitorChoice_->currentText().trimmed();
     }
-    if (selected.isEmpty())
-        selected = value(QStringLiteral("general"),
-            QStringLiteral("fullscreen_monitor_name"));
+    if (selected.isEmpty()) selected = QStringLiteral("auto");
 
     const QSignalBlocker blocker(monitorChoice_);
     monitorChoice_->clear();
-    monitorChoice_->addItem(QStringLiteral("Default monitor"), QString());
+    monitorChoice_->addItem(QStringLiteral("Windows primary monitor"), QStringLiteral("auto"));
     for (const QString& monitor : monitors_)
         monitorChoice_->addItem(monitor, monitor);
 
@@ -2856,6 +2755,8 @@ void ConfigEditorWindow::applyMonitorDiscovery(const QStringList& discovered)
     if (monitorChoice_->isEditable())
         monitorChoice_->setEditText(monitorChoice_->itemText(
             monitorChoice_->currentIndex()));
+    if (auto* refresh = findChild<QPushButton*>(QStringLiteral("config.output_display.refresh_availability")))
+        QTimer::singleShot(0, refresh, &QPushButton::click);
 }
 
 QString ConfigEditorWindow::value(const QString& section, const QString& key, const QString& fallback) const
@@ -3641,9 +3542,8 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
 
 QString ConfigEditorWindow::displayWarning() const
 {
-    const QString display = value(QStringLiteral("general"),
-        QStringLiteral("fullscreen_monitor_name")).trimmed();
-    if (display.isEmpty()) return {};
+    const QString display = monitorChoice_ ? monitorChoice_->currentData().toString().trimmed() : QString();
+    if (display.isEmpty() || display.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0) return {};
     for (const QString& discovered : monitors_)
         if (discovered.trimmed().compare(display, Qt::CaseInsensitive) == 0)
             return {};
@@ -4721,10 +4621,6 @@ QWidget* ConfigEditorWindow::createStartupPage()
     auto* sourceForm = new QFormLayout(source);
     sourceForm->setContentsMargins(0, 0, 0, 0);
     sourceForm->setVerticalSpacing(8);
-    monitorChoice_ = bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("fullscreen_monitor_name"), withDefaultChoice(monitors_),
-        { QStringLiteral("Default monitor") });
-    sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
 	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
 		QStringLiteral("hide_legacy_renderers")), true);
 	const QStringList visibleRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
@@ -4819,8 +4715,8 @@ QWidget* ConfigEditorWindow::createStartupPage()
         QStringLiteral("Capture selection used when VP starts."), hardware));
     cards->addCard(createCard(QStringLiteral("General behavior"),
         QStringLiteral("How VideoProcessor opens and prepares a source."), behavior));
-    cards->addCard(createCard(QStringLiteral("Monitor and renderer"),
-        QStringLiteral("Choose the fullscreen monitor and output renderer."), source));
+    cards->addCard(createCard(QStringLiteral("Renderer"),
+        QStringLiteral("Choose the output renderer and profile notifications."), source));
     cards->addCard(createCard(QStringLiteral("Input processing"),
         QStringLiteral("Shared source conversion and metadata defaults. Apply restarts the renderer; renderer pages may override each value."), input));
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
@@ -4829,7 +4725,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
 QWidget* ConfigEditorWindow::createDisplayPage()
 {
     return createProfilePage(QStringLiteral("Display"),
-        QStringLiteral("Choose refresh-rate behavior and, when needed, an ordered set of complete output display modes."),
+        QStringLiteral("Choose a playback monitor for each profile, with refresh-rate behavior and optional complete output modes."),
         QStringLiteral("output_display"));
 }
 
@@ -5197,6 +5093,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		std::make_shared<std::vector<DisplayOutputMode>>();
 	auto outputDisplayAvailabilityKnown = std::make_shared<bool>(false);
 	std::function<void()> refreshOutputDisplayPresentation = [] {};
+    std::function<void()> requestOutputDisplayAvailability = [] {};
+    auto outputDisplayAvailabilityMessage = std::make_shared<QString>();
+    auto outputDisplayRequestGeneration = std::make_shared<quint64>(0);
+    auto outputDisplayQueryInFlight = std::make_shared<bool>(false);
+    auto outputDisplayQueryPending = std::make_shared<bool>(false);
 
 
 
@@ -5458,6 +5359,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
     if (sectionPrefix == QStringLiteral("output_display"))
     {
+        monitorChoice_ = new QComboBox;
+        monitorChoice_->setEditable(true);
+        monitorChoice_->setInsertPolicy(QComboBox::NoInsert);
+        monitorChoice_->setObjectName(QStringLiteral("config.output_display.monitor"));
+        monitorChoice_->setAccessibleName(QStringLiteral("Monitor"));
+        monitorChoice_->addItem(QStringLiteral("Windows primary monitor"), QStringLiteral("auto"));
+        for (const auto& monitor : monitors_) monitorChoice_->addItem(monitor, monitor);
+        form->addRow(QStringLiteral("Monitor"), monitorChoice_);
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "This profile uses the selected monitor for playback, available modes, and selection preview. "
+            "A monitor can remain configured while disconnected.")));
         auto* switchRate = bindChoiceField(QStringLiteral("general"),
             QStringLiteral("switch_refresh_rate"),
             { QStringLiteral("never"), QStringLiteral("fullscreen_only"),
@@ -5506,7 +5418,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         advancedLayout->addWidget(helpLabel(QStringLiteral(
             "Add complete progressive modes such as 3840x2160p23.976 or "
             "1920x1080p60. Entries stay listed when unavailable; only exact "
-            "exact progressive DXGI or 32-bit GDI mode matches can be selected during playback.")));
+            "progressive DXGI or 32-bit GDI mode matches can be selected during playback.")));
         advancedLayout->addWidget(outputDisplayModesList);
         auto* modeButtons = new QHBoxLayout;
         auto* addMode = new QPushButton(QStringLiteral("Add mode"));
@@ -5566,21 +5478,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         advancedLayout->addWidget(previewBox);
         form->addRow(QString(), outputDisplayAdvancedFields);
 
-        const auto selectedDisplayName = [this]()
+        const auto selectedDisplayName = [monitor = monitorChoice_]()
         {
-            QString selected;
-            if (monitorChoice_)
-            {
-                selected = monitorChoice_->currentData().toString();
-                if (selected.isEmpty() && monitorChoice_->currentIndex() >= 0 &&
-                    monitorChoice_->currentText() !=
-                        monitorChoice_->itemText(monitorChoice_->currentIndex()))
-                    selected = monitorChoice_->currentText().trimmed();
-            }
-            if (selected.isEmpty())
-                selected = value(QStringLiteral("general"),
-                    QStringLiteral("fullscreen_monitor_name"));
-            return selected;
+            const int index = monitor->currentIndex();
+            if (index < 0 || monitor->currentText() != monitor->itemText(index))
+                return monitor->currentText().trimmed();
+            return monitor->currentData().toString();
         };
         const auto saveAllowedModes = [this, state, outputDisplayModesList]
         {
@@ -5607,7 +5510,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
             outputDisplayAvailability, outputDisplayPreviewRate,
             outputDisplayPreviewInterlaced, outputDisplayPreview,
-            outputDisplayAdvancedFields, outputDisplayAdvanced]
+            outputDisplayAdvancedFields, outputDisplayAdvanced, outputDisplayAvailabilityMessage]
         {
             std::vector<DisplayOutputMode> configured;
             QStringList rawModes;
@@ -5639,15 +5542,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     QBrush(QColor(155, 165, 175)));
             }
             if (!*outputDisplayAvailabilityKnown)
-                outputDisplayAvailability->setText(QStringLiteral(
-                    "Mode availability is unknown for this target. Refresh on the local VP computer."));
+                outputDisplayAvailability->setText(outputDisplayAvailabilityMessage->isEmpty() ?
+                    QStringLiteral("Refresh availability to query this monitor.") : *outputDisplayAvailabilityMessage);
             else if (outputDisplayAvailableModes->empty())
                 outputDisplayAvailability->setText(QStringLiteral(
                     "No progressive DXGI or 32-bit GDI modes are currently available for the selected display."));
             else
                 outputDisplayAvailability->setText(QStringLiteral(
-                    "%1 of %2 allowed modes are currently available on this display.")
-                    .arg(availableCount).arg(outputDisplayModesList->count()));
+                    "%1 progressive modes reported. %2 of %3 allowed modes are available.")
+                    .arg(outputDisplayAvailableModes->size()).arg(availableCount).arg(outputDisplayModesList->count()));
             outputDisplayAdvancedFields->setVisible(outputDisplayAdvanced->isChecked());
 
             DisplayRefreshRational input{ 24000, 1001 };
@@ -5794,35 +5697,99 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             this, [refreshOutputDisplayPresentation](int) { refreshOutputDisplayPresentation(); });
         connect(outputDisplayPreviewInterlaced, &QCheckBox::toggled, this,
             [refreshOutputDisplayPresentation](bool) { refreshOutputDisplayPresentation(); });
-        connect(outputDisplayRefreshAvailability, &QPushButton::clicked, this,
-            [this, selectedDisplayName, outputDisplayAvailableModes,
-                outputDisplayAvailabilityKnown, refreshOutputDisplayPresentation]
+        requestOutputDisplayAvailability = [this, state, selectedDisplayName,
+            outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
+            outputDisplayAvailabilityMessage, outputDisplayRequestGeneration,
+            refreshOutputDisplayPresentation, outputDisplayRefreshAvailability,
+            outputDisplayQueryInFlight, outputDisplayQueryPending]
         {
-            if (remoteClient_)
-            {
-                *outputDisplayAvailabilityKnown = false;
-                outputDisplayAvailableModes->clear();
-            }
-            else
-            {
-                const QString selected = selectedDisplayName();
-                *outputDisplayAvailableModes = QueryConfigDisplayModes(selected,
-                    *outputDisplayAvailabilityKnown);
-            }
+            const auto generation = ++*outputDisplayRequestGeneration;
+            *outputDisplayAvailabilityKnown = false;
+            outputDisplayAvailableModes->clear();
+            *outputDisplayAvailabilityMessage = QStringLiteral("Reading modes from the selected VP computer...");
             refreshOutputDisplayPresentation();
-        });
-        if (remoteClient_) outputDisplayRefreshAvailability->setEnabled(false);
-        if (monitorChoice_)
-            connect(monitorChoice_, qOverload<int>(&QComboBox::currentIndexChanged),
-                outputDisplayRefreshAvailability, [outputDisplayRefreshAvailability](int)
-                { outputDisplayRefreshAvailability->click(); });
-        // Display inventory is tied to the monitor selected on General.
-        if (!testMode_ && !remoteClient_)
+            if (testMode_) return;
+            if (*outputDisplayQueryInFlight) { *outputDisplayQueryPending = true; return; }
+            *outputDisplayQueryInFlight = true;
+            const QString monitor = selectedDisplayName();
+            const QString section = state->section;
+            const QString host = remoteClient_ ? remoteHost_ : QString();
+            const quint16 port = remotePort_;
+            const QString instance = currentInstanceId_;
+            struct Result { DisplayMonitorInventory::Inventory inventory; };
+            const auto result = std::make_shared<Result>();
+            QThread* worker = QThread::create([result, host, port, monitor]
+            {
+                if (host.isEmpty()) result->inventory = DisplayMonitorInventory::Query(monitor.toStdWString());
+                else
+                {
+                    ConfigurationRpcClient client(host.toStdString(), port);
+                    ConfigurationRpcProtocol::DisplayModes modes;
+                    std::string error;
+                    if (!client.GetDisplayModes(monitor.toUtf8().toStdString(), modes, error))
+                        result->inventory.diagnostic = "Could not read monitor modes from VP: " + error;
+                    else
+                    {
+                        result->inventory.known = modes.known;
+                        result->inventory.monitor = QString::fromUtf8(modes.monitor.c_str()).toStdWString();
+                        result->inventory.diagnostic = modes.diagnostic;
+                        for (const auto& mode : modes.modes)
+                            result->inventory.modes.push_back({mode.width, mode.height, {mode.numerator, mode.denominator}});
+                    }
+                }
+            });
+            // The worker owns no widgets. A page/target rebuild disconnects the
+            // completion handler; its result cannot update another target/profile.
+            connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+            connect(worker, &QThread::finished, outputDisplayRefreshAvailability,
+                [this, state, result, generation, section, host, port, instance, monitor,
+                 selectedDisplayName, outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
+                 outputDisplayAvailabilityMessage, outputDisplayRequestGeneration,
+                 refreshOutputDisplayPresentation, outputDisplayRefreshAvailability,
+                 outputDisplayQueryInFlight, outputDisplayQueryPending]
+            {
+                *outputDisplayQueryInFlight = false;
+                if (*outputDisplayQueryPending)
+                {
+                    *outputDisplayQueryPending = false;
+                    QTimer::singleShot(0, outputDisplayRefreshAvailability, &QPushButton::click);
+                    return;
+                }
+                if (generation != *outputDisplayRequestGeneration || state->section != section ||
+                    selectedDisplayName() != monitor || (remoteClient_ ? remoteHost_ : QString()) != host ||
+                    remotePort_ != port || currentInstanceId_ != instance) return;
+                *outputDisplayAvailabilityKnown = result->inventory.known;
+                *outputDisplayAvailableModes = result->inventory.modes;
+                *outputDisplayAvailabilityMessage = QString::fromStdString(result->inventory.diagnostic);
+                refreshOutputDisplayPresentation();
+            });
+            worker->start();
+        };
+        connect(outputDisplayRefreshAvailability, &QPushButton::clicked,
+            outputDisplayRefreshAvailability, requestOutputDisplayAvailability);
+        auto* monitorDebounce = new QTimer(monitorChoice_);
+        monitorDebounce->setSingleShot(true);
+        monitorDebounce->setInterval(250);
+        connect(monitorDebounce, &QTimer::timeout, outputDisplayRefreshAvailability,
+            requestOutputDisplayAvailability);
+        connect(monitorChoice_, &QComboBox::currentTextChanged, this,
+            [this, state, monitor = monitorChoice_, selectedDisplayName, monitorDebounce,
+             outputDisplayAvailabilityKnown, outputDisplayAvailableModes,
+             outputDisplayAvailabilityMessage, outputDisplayRequestGeneration,
+             refreshOutputDisplayPresentation](const QString&)
         {
+            if (state->loading || state->section.isEmpty() || !document_) return;
             const QString selected = selectedDisplayName();
-            *outputDisplayAvailableModes = QueryConfigDisplayModes(selected,
-                *outputDisplayAvailabilityKnown);
-        }
+            document_->SetKnown(state->section.toStdString(), "monitor",
+                selected.isEmpty() ? "auto" : selected.toLocal8Bit().toStdString());
+            ++*outputDisplayRequestGeneration;
+            *outputDisplayAvailabilityKnown = false;
+            outputDisplayAvailableModes->clear();
+            *outputDisplayAvailabilityMessage = QStringLiteral("Waiting to read modes for this monitor...");
+            refreshOutputDisplayPresentation();
+            markDirty();
+            monitorDebounce->start();
+        });
         refreshOutputDisplayPresentation();
         updateModeButtons();
     }
@@ -7183,7 +7150,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
         deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility, updateToneControls, dvModeControls, dvLldvMode, updateDvModeControls,
         outputDisplayAuto, outputDisplayAdvanced, outputDisplayAdvancedFields,
-        outputDisplayModesList, outputDisplayRestore, refreshOutputDisplayPresentation](QListWidgetItem* current)
+        outputDisplayModesList, outputDisplayRestore, refreshOutputDisplayPresentation, requestOutputDisplayAvailability](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -7246,6 +7213,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     configured = value(defaultSection, key);
                 return configured.isEmpty() ? defaultValue : configured;
             };
+            {
+                const QSignalBlocker blocker(monitorChoice_);
+                const QString monitor = displayProfileValue(QStringLiteral("monitor"), QStringLiteral("auto"));
+                int index = monitorChoice_->findData(monitor, Qt::UserRole, Qt::MatchFixedString);
+                if (index < 0) { monitorChoice_->addItem(monitor, monitor); index = monitorChoice_->count() - 1; }
+                monitorChoice_->setCurrentIndex(index);
+            }
             const QString modePolicy = displayProfileValue(
                 QStringLiteral("mode_policy"), QStringLiteral("auto"));
             {
@@ -7709,6 +7683,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 }
             }
         state->loading = false;
+        if (sectionPrefix == QStringLiteral("output_display")) requestOutputDisplayAvailability();
         updateToneControls();
         updateDvModeControls();
 		if (sectionPrefix == QStringLiteral("vprenderer.viewport"))

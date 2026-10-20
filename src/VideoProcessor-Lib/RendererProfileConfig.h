@@ -709,6 +709,8 @@ namespace RendererProfileConfig
 		}
 		if (group == "output_display")
 		{
+            if (key == "monitor") return !ConfigFile::Trim(value).empty() && value.size() <= 1024 &&
+                std::none_of(value.begin(), value.end(), [](unsigned char c) { return c < 32; });
 			if (key == "mode_policy") return IsChoice(value, { "auto", "advanced" });
 			if (key == "restore_previous_mode") return IsBoolean(value);
 			if (key == "allowed_modes")
@@ -719,7 +721,7 @@ namespace RendererProfileConfig
 				expected = valid ? "an ordered list of complete display modes" : detail;
 				return valid;
 			}
-			expected = "mode_policy, allowed_modes, or restore_previous_mode";
+			expected = "monitor, mode_policy, allowed_modes, or restore_previous_mode";
 			return false;
 		}
 		if (group == "output")
@@ -2906,6 +2908,16 @@ namespace RendererProfileConfig
 			return false;
 		return true;
 	}
+
+    // Profiles already contain inherited settings after Read. An absent key
+    // preserves the legacy global target until Config migrates it on Save.
+    inline std::string ResolveOutputDisplayMonitor(const Model& model, const std::string& profileName)
+    {
+        const auto profile = model.profiles.find("output_display." + ConfigFile::NormalizeName(profileName));
+        if (profile == model.profiles.end()) return {};
+        const auto monitor = profile->second.settings.find("monitor");
+        return monitor == profile->second.settings.end() ? std::string() : ConfigFile::Trim(monitor->second);
+    }
 
 	inline bool ResolveLldv(const Model& model, const std::string& profileName,
 		ResolvedLldv& lldv, std::string& error)

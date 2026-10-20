@@ -197,6 +197,7 @@
     <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
+    <ClInclude Include="DisplayMonitorInventory.h" />
 	<ClInclude Include="DisplayRefreshRateEstimator.h" />
 	<ClInclude Include="DisplayRefreshRateWindow.h" />
 	<ClInclude Include="CadenceIntervalEstimate.h" />
