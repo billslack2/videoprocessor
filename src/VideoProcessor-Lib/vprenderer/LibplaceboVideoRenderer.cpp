@@ -4497,6 +4497,13 @@ struct LibplaceboVideoRenderer::Impl
 	// infer a render budget from DXGI frame-statistics counters alone: drivers
 	// can silently switch those counters to another output.
 	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
+	// Copy of the rendered frame's HDR luminance and libplacebo's
+	// peak-detection result; written by the render thread at most every
+	// 250 ms, read by the host.
+	mutable std::mutex hdrStatusMutex;
+	RendererHdrStatus hdrStatus;
+	bool hdrStatusPublished = false;
+	uint64_t hdrStatusNextTick = 0;
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -6137,6 +6144,65 @@ struct LibplaceboVideoRenderer::Impl
 				decision.reason);
 		}
 		return decision;
+	}
+
+	// Render thread only, after the frame's render call. `image` is the frame
+	// just handed to pl_render_image, so its colour metadata is exactly what
+	// libplacebo tone mapped from. With allow_delayed off, libplacebo has
+	// already read this frame's detection result while tone mapping it, so
+	// pl_renderer_get_hdr_metadata only copies the values it used.
+	void PublishHdrStatus(const pl_frame& image, bool rendered,
+		const DolbyVisionLuminanceStatus& dvLuminance, uint64_t sourceSequence)
+	{
+		if (!rendered)
+			return;
+		const uint64_t now = GetTickCount64();
+		if (now < hdrStatusNextTick)
+			return;
+		hdrStatusNextTick = now + 250;
+
+		RendererHdrStatus next;
+		next.sourceSequence = sourceSequence;
+		const pl_hdr_metadata& hdr = image.color.hdr;
+		next.hdr = pl_color_transfer_is_hdr(image.color.transfer);
+		next.dolbyVision = image.repr.dovi != nullptr;
+		next.maxCll = hdr.max_cll;
+		next.maxFall = hdr.max_fall;
+		next.masteringMin = hdr.min_luma;
+		next.masteringMax = hdr.max_luma;
+		next.sceneValid = pl_hdr_metadata_contains(&hdr, PL_HDR_METADATA_CIE_Y);
+		if (next.sceneValid)
+		{
+			next.scenePeakNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, hdr.max_pq_y);
+			next.sceneAvgNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, hdr.avg_pq_y);
+			if (next.dolbyVision && dvLuminance.sceneAvailable)
+				next.sceneMinNits = dvLuminance.sceneMin;
+		}
+		next.peakDetectionEnabled = renderParams.peak_detect_params != nullptr;
+		pl_hdr_metadata detected{};
+		if (next.peakDetectionEnabled &&
+			pl_renderer_get_hdr_metadata(renderer, &detected))
+		{
+			next.detectedValid = true;
+			next.detectedPeakNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, detected.max_pq_y);
+			next.detectedAvgNits = pl_hdr_rescale(
+				PL_HDR_PQ, PL_HDR_NITS, detected.avg_pq_y);
+			next.detectedLinearAvgNits = detected.scene_avg;
+			next.detectedSceneMaxNits = detected.scene_max[0];
+		}
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		hdrStatus = next;
+		hdrStatusPublished = true;
+	}
+
+	bool HdrStatusSnapshot(RendererHdrStatus& status) const
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		status = hdrStatus;
+		return hdrStatusPublished;
 	}
 
 	void LogHdrPeakAnalysisMetrics(
@@ -18090,6 +18156,7 @@ releaseDriftBaseRetention =
 		preparing.Complete();
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);
+		PublishHdrStatus(renderImage, rendered, frameDvLuminance, sourceSequence);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
         if (!rendered && targetLutApplied)
