@@ -5101,6 +5101,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 	std::function<void()> refreshOutputDisplayPresentation = [] {};
     std::function<void()> requestOutputDisplayAvailability = [] {};
     auto outputDisplayAvailabilityMessage = std::make_shared<QString>();
+    auto outputDisplayPreferredResolution = std::make_shared<QSize>();
     auto outputDisplayRequestGeneration = std::make_shared<quint64>(0);
     auto outputDisplayQueryInFlight = std::make_shared<bool>(false);
     auto outputDisplayQueryPending = std::make_shared<bool>(false);
@@ -5408,7 +5409,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Auto keeps the current desktop resolution and selects a safe "
             "refresh rate. Advanced chooses the first available mode from "
-            "your ordered list that matches the source cadence.")));
+            "your ordered list that matches the source cadence. If none matches, "
+            "the first available allowed mode is used. One entry means fixed output.")));
 
         outputDisplayAdvancedFields = new QWidget;
         auto* advancedLayout = new QVBoxLayout(outputDisplayAdvancedFields);
@@ -5516,7 +5518,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
             outputDisplayAvailability, outputDisplayPreviewRate,
             outputDisplayPreviewInterlaced, outputDisplayPreview,
-            outputDisplayAdvancedFields, outputDisplayAdvanced, outputDisplayAvailabilityMessage]
+            outputDisplayAdvancedFields, outputDisplayAdvanced, outputDisplayAvailabilityMessage,
+            outputDisplayPreferredResolution]
         {
             std::vector<DisplayOutputMode> configured;
             QStringList rawModes;
@@ -5542,8 +5545,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     QStringLiteral("Availability unknown") :
                     modeAvailable ? QStringLiteral("Available") : QStringLiteral("Unavailable");
                 item->setText(valid ? QStringLiteral("%1  ·  %2")
-                    .arg(QString::fromStdString(FormatDisplayOutputMode(mode)), stateText) :
+                    .arg(QString::fromStdString(FormatDisplayOutputModeLabel(mode)), stateText) :
                     QStringLiteral("Invalid mode: %1").arg(raw));
+                item->setToolTip(valid ? QStringLiteral("Exact refresh: %1 Hz")
+                    .arg(DisplayRefreshRateHz(mode.refreshRate), 0, 'g', 9) : QString::fromStdString(error));
                 item->setForeground(modeAvailable ? QBrush() :
                     QBrush(QColor(155, 165, 175)));
             }
@@ -5557,6 +5562,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 outputDisplayAvailability->setText(QStringLiteral(
                     "%1 progressive modes reported. %2 of %3 allowed modes are available.")
                     .arg(outputDisplayAvailableModes->size()).arg(availableCount).arg(outputDisplayModesList->count()));
+            if (*outputDisplayAvailabilityKnown && outputDisplayPreferredResolution->isValid())
+                outputDisplayAvailability->setText(outputDisplayAvailability->text() +
+                    QStringLiteral(" Windows preferred: %1x%2.")
+                        .arg(outputDisplayPreferredResolution->width()).arg(outputDisplayPreferredResolution->height()));
             outputDisplayAdvancedFields->setVisible(outputDisplayAdvanced->isChecked());
 
             DisplayRefreshRational input{ 24000, 1001 };
@@ -5573,18 +5582,22 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (!parsed)
                 outputDisplayPreview->setText(QStringLiteral("Fix the mode list: %1")
                     .arg(QString::fromStdString(parseError)));
+            else if (!*outputDisplayAvailabilityKnown)
+                outputDisplayPreview->setText(QStringLiteral("Waiting for monitor availability. Preview does not change the display."));
             else if (choices.empty())
                 outputDisplayPreview->setText(QStringLiteral(
-                    "No allowed mode is currently available for this cadence. Preview does not change the display."));
+                    "None of the allowed modes is available on this monitor. The current display mode will be kept."));
             else
             {
                 const auto& choice = choices.front();
-                const QString reason = choice.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
+                const QString reason = configured.size() == 1 ? QStringLiteral("fixed output; only allowed mode") :
+                    choice.configuredFallback ? QStringLiteral("first available allowed mode; source cadence differs") :
+                    choice.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
                     QStringLiteral("exact or tight cadence match") :
                     choice.doubledRate ? QStringLiteral("bounded doubled-rate fallback") :
                         QStringLiteral("bounded cadence fallback");
                 outputDisplayPreview->setText(QStringLiteral("%1 (%2). Preview only; the real display is unchanged.")
-                    .arg(QString::fromStdString(FormatDisplayOutputMode(choice.mode)), reason));
+                    .arg(QString::fromStdString(FormatDisplayOutputModeLabel(choice.mode)), reason));
             }
         };
 
@@ -5615,23 +5628,81 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
         connect(addMode, &QPushButton::clicked, this,
             [this, state, addMode, outputDisplayModesList, outputDisplayAvailableModes,
-                saveAllowedModes, refreshOutputDisplayPresentation, updateModeButtons]
+                outputDisplayPreferredResolution, saveAllowedModes, refreshOutputDisplayPresentation, updateModeButtons]
         {
             if (state->section.isEmpty()) return;
             QDialog dialog(this);
             dialog.setWindowTitle(QStringLiteral("Add display mode"));
+            dialog.setMinimumWidth(480);
             auto* layout = new QVBoxLayout(&dialog);
-            layout->addWidget(new QLabel(QStringLiteral(
-                "Choose a mode currently reported by DXGI, or enter one manually.")));
+            auto* guidance = new QLabel(QStringLiteral(
+                "Choose a reported mode or enter one manually. Whole-number labels retain the exact refresh timing."));
+            guidance->setWordWrap(true);
+            layout->addWidget(guidance);
+            auto* showAll = new QCheckBox(QStringLiteral("Show all supported resolutions"), &dialog);
+            showAll->setObjectName(QStringLiteral("config.output_display.show_all_modes"));
+            const auto preferred = *outputDisplayPreferredResolution;
+            const bool recommendedAvailable = preferred.isValid() &&
+                !DisplayOutputModePickerChoices(*outputDisplayAvailableModes,
+                    preferred.width(), preferred.height(), true).empty();
+            showAll->setChecked(!recommendedAvailable);
+            showAll->setEnabled(recommendedAvailable);
+            layout->addWidget(showAll);
+            auto* catalogSummary = new QLabel(&dialog);
+            catalogSummary->setWordWrap(true);
+            catalogSummary->setObjectName(QStringLiteral("config.output_display.catalog_summary"));
+            layout->addWidget(catalogSummary);
             auto* entry = new QComboBox(&dialog);
             entry->setEditable(true);
             entry->setInsertPolicy(QComboBox::NoInsert);
+            entry->setMaxVisibleItems(18);
             entry->setObjectName(QStringLiteral("config.output_display.mode_entry"));
-            entry->lineEdit()->setPlaceholderText(QStringLiteral("3840x2160p23.976"));
-            for (const DisplayOutputMode& mode : *outputDisplayAvailableModes)
-                entry->addItem(QString::fromStdString(FormatDisplayOutputMode(mode)));
-            if (entry->count() > 0) entry->setCurrentIndex(0);
+            entry->lineEdit()->setPlaceholderText(QStringLiteral("3840x2160p59"));
             layout->addWidget(entry);
+            const auto populate = [entry, showAll, catalogSummary, outputDisplayAvailableModes, preferred]
+            {
+                const QString previous = entry->currentData().toString();
+                const QString typed = entry->currentIndex() < 0 || entry->currentText() != entry->itemText(entry->currentIndex()) ?
+                    entry->currentText() : QString();
+                entry->clear();
+                const auto choices = DisplayOutputModePickerChoices(*outputDisplayAvailableModes,
+                    preferred.isValid() ? preferred.width() : 0,
+                    preferred.isValid() ? preferred.height() : 0, !showAll->isChecked());
+                uint32_t width = 0, height = 0;
+                int firstMode = -1;
+                for (const auto& mode : choices)
+                {
+                    if (mode.width != width || mode.height != height)
+                    {
+                        width = mode.width; height = mode.height;
+                        entry->addItem(QStringLiteral("%1x%2%3").arg(width).arg(height).arg(
+                            preferred.isValid() && width == uint32_t(preferred.width()) && height == uint32_t(preferred.height()) ?
+                                QStringLiteral(" (preferred)") : QString()));
+                        if (auto* model = qobject_cast<QStandardItemModel*>(entry->model()))
+                        {
+                            auto* heading = model->item(entry->count() - 1);
+                            heading->setFlags(Qt::NoItemFlags);
+                            auto font = heading->font(); font.setBold(true); heading->setFont(font);
+                        }
+                    }
+                    if (firstMode < 0) firstMode = entry->count();
+                    entry->addItem(QString::fromStdString(FormatDisplayOutputModeLabel(mode)),
+                        QString::fromStdString(FormatDisplayOutputMode(mode)));
+                    entry->setItemData(entry->count() - 1, QStringLiteral("Exact refresh: %1 Hz")
+                        .arg(DisplayRefreshRateHz(mode.refreshRate), 0, 'g', 9), Qt::ToolTipRole);
+                }
+                const int previousIndex = previous.isEmpty() ? -1 : entry->findData(previous);
+                entry->setCurrentIndex(previousIndex >= 0 ? previousIndex : firstMode);
+                if (!typed.isEmpty()) entry->setEditText(typed);
+                catalogSummary->setText(preferred.isValid() ?
+                    QStringLiteral("Windows preferred: %1x%2. %3 mode choices shown.%4")
+                        .arg(preferred.width()).arg(preferred.height()).arg(choices.size()).arg(
+                            showAll->isChecked() ? QString() : QStringLiteral(
+                                " Includes supported HD/UHD video resolutions related by integer scaling.")) :
+                    QStringLiteral("Windows did not report a preferred resolution. Showing all %1 mode choices.").arg(choices.size()));
+            };
+            connect(showAll, &QCheckBox::toggled, &dialog, [populate](bool) { populate(); });
+            populate();
             auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
             buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Add"));
             layout->addWidget(buttons);
@@ -5640,7 +5711,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (dialog.exec() != QDialog::Accepted) return;
             DisplayOutputMode mode;
             std::string error;
-            if (!ParseDisplayOutputMode(entry->currentText().toStdString(), mode, error))
+            const int selectedIndex = entry->currentIndex();
+            const QString selectedMode = selectedIndex >= 0 && entry->currentText() == entry->itemText(selectedIndex) ?
+                entry->currentData().toString() : entry->currentText();
+            if (!ParseDisplayOutputMode(selectedMode.toStdString(), mode, error))
             {
                 QMessageBox::warning(this, QStringLiteral("Display mode"),
                     QString::fromStdString(error));
@@ -5707,9 +5781,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
             outputDisplayAvailabilityMessage, outputDisplayRequestGeneration,
             refreshOutputDisplayPresentation, outputDisplayRefreshAvailability,
-            outputDisplayQueryInFlight, outputDisplayQueryPending]
+            outputDisplayQueryInFlight, outputDisplayQueryPending, outputDisplayPreferredResolution]
         {
             const auto generation = ++*outputDisplayRequestGeneration;
+            *outputDisplayPreferredResolution = QSize();
             *outputDisplayAvailabilityKnown = false;
             outputDisplayAvailableModes->clear();
             *outputDisplayAvailabilityMessage = QStringLiteral("Reading modes from the selected VP computer...");
@@ -5737,6 +5812,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     else
                     {
                         result->inventory.known = modes.known;
+                        result->inventory.preferredWidth = modes.preferredWidth;
+                        result->inventory.preferredHeight = modes.preferredHeight;
                         result->inventory.monitor = QString::fromUtf8(modes.monitor.c_str()).toStdWString();
                         result->inventory.diagnostic = modes.diagnostic;
                         for (const auto& mode : modes.modes)
@@ -5752,7 +5829,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                  selectedDisplayName, outputDisplayAvailableModes, outputDisplayAvailabilityKnown,
                  outputDisplayAvailabilityMessage, outputDisplayRequestGeneration,
                  refreshOutputDisplayPresentation, outputDisplayRefreshAvailability,
-                 outputDisplayQueryInFlight, outputDisplayQueryPending]
+                 outputDisplayQueryInFlight, outputDisplayQueryPending, outputDisplayPreferredResolution]
             {
                 *outputDisplayQueryInFlight = false;
                 if (*outputDisplayQueryPending)
@@ -5766,6 +5843,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     remotePort_ != port || currentInstanceId_ != instance) return;
                 *outputDisplayAvailabilityKnown = result->inventory.known;
                 *outputDisplayAvailableModes = result->inventory.modes;
+                *outputDisplayPreferredResolution = result->inventory.preferredWidth && result->inventory.preferredHeight ?
+                    QSize(result->inventory.preferredWidth, result->inventory.preferredHeight) : QSize();
                 *outputDisplayAvailabilityMessage = QString::fromStdString(result->inventory.diagnostic);
                 refreshOutputDisplayPresentation();
             });

@@ -443,7 +443,7 @@ namespace Tests
 			Assert::IsFalse(progressive[0].doubledRate);
 			const auto interlaced = RankDisplayOutputModesForInput({30,1}, true,
 				configured, configured);
-			Assert::AreEqual(size_t(1), interlaced.size());
+			Assert::AreEqual(size_t(2), interlaced.size());
 			Assert::AreEqual(3840u, interlaced[0].mode.width);
 			Assert::IsTrue(interlaced[0].doubledRate);
 		}

@@ -112,6 +112,7 @@ namespace DisplayMonitorInventory
         std::wstring monitor;
         std::string diagnostic;
         std::vector<DisplayOutputMode> modes;
+        uint32_t preferredWidth = 0, preferredHeight = 0;
     };
     inline void Append(std::vector<DisplayOutputMode>& modes, const DisplayOutputMode& candidate)
     {
@@ -134,6 +135,20 @@ namespace DisplayMonitorInventory
             return result;
         }
         result.monitor = monitor->label;
+        if (monitor->hasTarget)
+        {
+            DISPLAYCONFIG_TARGET_PREFERRED_MODE preferred{};
+            preferred.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE;
+            preferred.header.size = sizeof(preferred);
+            preferred.header.adapterId = monitor->targetAdapter;
+            preferred.header.id = monitor->targetId;
+            if (DisplayConfigGetDeviceInfo(&preferred.header) == ERROR_SUCCESS &&
+                preferred.width >= 100 && preferred.height >= 100)
+            {
+                result.preferredWidth = preferred.width;
+                result.preferredHeight = preferred.height;
+            }
+        }
         bool queried = false;
         const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         {

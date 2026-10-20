@@ -413,6 +413,64 @@ std::string FormatDisplayOutputMode(const DisplayOutputMode& mode)
 		"p" + rate;
 }
 
+std::string FormatDisplayOutputModeLabel(const DisplayOutputMode& mode)
+{
+    return std::to_string(mode.width) + "x" + std::to_string(mode.height) + "p" +
+        std::to_string(mode.refreshRate.denominator ?
+            mode.refreshRate.numerator / mode.refreshRate.denominator : 0);
+}
+
+std::vector<DisplayOutputMode> DisplayOutputModePickerChoices(
+    const std::vector<DisplayOutputMode>& available, uint32_t preferredWidth,
+    uint32_t preferredHeight, bool recommendedOnly)
+{
+    std::vector<DisplayOutputMode> modes;
+    for (const auto& mode : available)
+    {
+        if (!mode.refreshRate.numerator || !mode.refreshRate.denominator || !mode.width || !mode.height) continue;
+        const bool preferred = mode.width == preferredWidth && mode.height == preferredHeight;
+        // This is a UI recommendation, not a claim that scaled video modes are
+        // panel-native. Only timings actually reported by Windows are offered.
+        const bool hdFamily = preferredWidth && preferredHeight && preferredWidth % 1920 == 0 &&
+            preferredHeight % 1080 == 0 && preferredWidth / 1920 == preferredHeight / 1080;
+        const bool videoResolution = (mode.width == 1920 && mode.height == 1080) ||
+            (mode.width == 3840 && mode.height == 2160);
+        const bool video = hdFamily && videoResolution &&
+            ((preferredWidth % mode.width == 0 && preferredHeight % mode.height == 0) ||
+             (mode.width % preferredWidth == 0 && mode.height % preferredHeight == 0));
+        if (!recommendedOnly || !preferredWidth || !preferredHeight || preferred || video) modes.push_back(mode);
+    }
+    const auto standardTiming = [](const DisplayRefreshRational& rate)
+    {
+        if (rate.numerator % rate.denominator == 0) return true;
+        for (const uint32_t nominal : {24u, 30u, 48u, 60u, 120u, 144u, 240u, 480u})
+            if (DisplayRefreshRatesExactlyEqual(rate, {nominal * 1000, 1001})) return true;
+        return false;
+    };
+    std::stable_sort(modes.begin(), modes.end(), [&](const DisplayOutputMode& a, const DisplayOutputMode& b)
+    {
+        const uint64_t aa = uint64_t(a.width) * a.height, ba = uint64_t(b.width) * b.height;
+        if (aa != ba) return aa > ba;
+        if (a.width != b.width) return a.width > b.width;
+        if (a.height != b.height) return a.height > b.height;
+        const uint32_t ar = a.refreshRate.numerator / a.refreshRate.denominator;
+        const uint32_t br = b.refreshRate.numerator / b.refreshRate.denominator;
+        if (ar != br) return ar > br;
+        const bool as = standardTiming(a.refreshRate), bs = standardTiming(b.refreshRate);
+        if (as != bs) return as;
+        return uint64_t(a.refreshRate.numerator) * b.refreshRate.denominator >
+            uint64_t(b.refreshRate.numerator) * a.refreshRate.denominator;
+    });
+    // Near-identical driver timings share a compact label. Prefer exact integer
+    // and broadcast timings; preserve the selected rational in item data.
+    modes.erase(std::unique(modes.begin(), modes.end(), [](const DisplayOutputMode& a, const DisplayOutputMode& b)
+    {
+        return a.width == b.width && a.height == b.height &&
+            a.refreshRate.numerator / a.refreshRate.denominator == b.refreshRate.numerator / b.refreshRate.denominator;
+    }), modes.end());
+    return modes;
+}
+
 bool DisplayOutputModesExactlyEqual(const DisplayOutputMode& first,
 	const DisplayOutputMode& second)
 {
@@ -425,6 +483,7 @@ std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
 	const std::vector<DisplayOutputMode>& configured,
 	const std::vector<DisplayOutputMode>& available)
 {
+    if (!input.numerator || !input.denominator) return {};
 	std::vector<DisplayRefreshRational> rates;
 	for (const DisplayOutputMode& mode : configured)
 	{
@@ -445,6 +504,11 @@ std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
 					[&mode](const DisplayOutputModeChoice& existing)
 						{ return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
 				result.push_back({ mode, rate.path, rate.doubledRate });
+    for (const auto& mode : configured)
+        if (IsDisplayModeAvailable(mode, available) &&
+            std::none_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
+                { return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
+            result.push_back({mode, DisplayRefreshModeSelectionPath::None, false, true});
 	return result;
 }
 bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow,
