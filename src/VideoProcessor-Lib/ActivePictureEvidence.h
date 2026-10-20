@@ -78,6 +78,9 @@ struct ActivePictureVerticalBarProfile
 	double referenceY = 0.0, referenceU = 0.0, referenceV = 0.0;
 	int firstMismatchX = -1, firstMismatchY = -1;
 	int maxLumaDelta = 0, maxChromaDelta = 0;
+	// Boundary/deep counts retain the original one-step diagnostic split.
+	// Per-edge extrema bound any additional rows retained by a guarded crop;
+	// the guarded profile must independently prove the remaining bars clean.
 	int mismatchSamples = 0, boundaryMismatchSamples = 0, deepMismatchSamples = 0;
 	int topFirstMismatchY = -1, topLastMismatchY = -1;
 	int bottomFirstMismatchY = -1, bottomLastMismatchY = -1;
