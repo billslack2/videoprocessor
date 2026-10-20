@@ -178,3 +178,31 @@ specific failure or measure end-to-end render performance.
 - Rolling metadata submission microbenchmark: 20,000 calls in 1,040.7 microseconds (0.052 microseconds/call), with 11 allowed contention drops. This is not a disk-throughput or full-render-pipeline benchmark.
 - No deployment, renderer restart, or live capture was performed for this change. The delayed live AR transition still needs a capture from the instrumented build.
 - Build log: `rebuild-analysis-trace.log`; test result: `TestResults/analysis-trace-final.trx`.
+
+
+## One-shot subtitle proof-failure capture
+
+For a subtitle candidate that disappears when an encoded edge cannot be proved,
+set both child-process environment variables before starting a diagnostic VP run:
+
+- `VP_SUBTITLE_CAPTURE_PATH`: absolute output filename in an existing scratch directory.
+- `VP_SUBTITLE_CAPTURE_ON_PROOF_FAILURE=1`: wait for a completed shared-picture
+  scan that found candidate text but lost a required edge and did not accept text.
+
+This mode overrides the older startup/dark-frame capture trigger. It saves the
+actual worker input at the fault, without restarting at the failure. It requires
+valid current input and matching shared context, rejects work-limited scans, and
+caps input at 64 MiB. It attempts one capture per loaded module, including across
+worker recreation. Ordinary runs with no capture path do not save pixels.
+
+The native `.bin` path and existing `.txt` layout remain compatible with the
+single-frame replay loader. A separate `.diagnostic.txt` records full frame
+identity, runtime analysis settings, shared geometry, prior and measured edges,
+search coverage, candidate bounds, and edge-proof metrics. The log records file
+write success. Failed writes are not retried automatically.
+
+The explicitly requested capture performs file I/O on the subtitle worker, not
+the render thread. It can delay that diagnostic worker result; use the saved
+pre-write measurements to diagnose the original failure, not capture-period
+latency as an ordinary performance measurement. Clear these variables after the
+diagnostic run. Captured video pixels must remain local and uncommitted.

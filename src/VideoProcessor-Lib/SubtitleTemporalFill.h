@@ -6,6 +6,13 @@
 #include <cstdlib>
 namespace SubtitleTemporalFill {
 using Signature=std::array<AnalysisLumaSample,32*18>;
+// Count consecutive certified source frames, not display refreshes. Unknown
+// new input breaks the run; a repeated output neither advances nor breaks it.
+inline unsigned AdvanceCleanRun(unsigned count,bool enabled,bool repeated,bool confirmedClean) {
+ if(!enabled)return 0;
+ if(repeated)return count;
+ return confirmedClean?(std::min)(count,7u)+1u:0u;
+}
 inline bool Capture(const AnalysisLumaSource& source,Signature& out) {
  if(!source.IsValid())return false;
  for(int y=0;y<18;++y)for(int x=0;x<32;++x)

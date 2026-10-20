@@ -111,6 +111,7 @@ void SubtitleBoxDetector::Reset()
     m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
     m_hasSequence = m_workLimit = false;
+    m_topSearchComplete=m_bottomSearchComplete=false;
 }
 
 bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTop,
@@ -120,6 +121,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // Inspect every source frame. Spatial sampling bounds cost without an idle
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
+    m_topSearchComplete=m_bottomSearchComplete=false;
     m_diagnosticReason="no-backed-anchor";m_diagnosticComponentCount=0;
     m_diagnosticNearBarGap=-1;m_diagnosticNearBarGapInferred=false;
     m_nearBarEligibilityMeasured=false;m_nearBarEligible=false;
@@ -197,6 +199,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
     }
     if(share)for(int y=0;y<h;++y)if(y<topEnd || y>=bottomStart)m_sampledRows[y]=1;
+    // The raw luma/chroma loop above sampled every row in each configured
+    // edge band. Publish completion only for sides that physically exist.
+    m_topSearchComplete=pictureTop>0;
+    m_bottomSearchComplete=pictureBottom<source.height;
     if(!barSamples) return false;
     uint32_t cumulative=0; int bar=0;
     for(;bar<1023;++bar) { cumulative+=barHistogram[bar]; if(cumulative>=barSamples/2) break; }
@@ -2473,8 +2479,15 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     // Preserve the established overlap detector. Only widen nomination when
     // that detector finds no valid cue; near-picture noise cannot displace it.
     bool detected=Detect(source,top,bottom,box,lines,signature,0);
-    if(!detected && m_nearBarDistance>0)
+    bool topSearchComplete=!m_workLimit && m_topSearchComplete;
+    bool bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
+    if(!detected && m_nearBarDistance>0) {
         detected=Detect(source,top,bottom,box,lines,signature,m_nearBarDistance);
+        // The widened pass is the final configured search result. Do not let
+        // a complete narrower attempt mask an incomplete widened scan.
+        topSearchComplete=!m_workLimit && m_topSearchComplete;
+        bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
+    }
     auto diagnostics=[&]() {
         m_result.diagnosticReason=detected?"detected":m_diagnosticReason;
         m_result.diagnosticComponentCount=m_diagnosticComponentCount;
@@ -2482,6 +2495,8 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         m_result.diagnosticNearBarGapInferred=m_diagnosticNearBarGapInferred;
         m_result.nearBarEligibilityMeasured=m_nearBarEligibilityMeasured;
         m_result.nearBarEligible=m_nearBarEligible;
+        m_result.topSearchComplete=!m_workLimit && topSearchComplete;
+        m_result.bottomSearchComplete=!m_workLimit && bottomSearchComplete;
     };
     if(!detected)
     {

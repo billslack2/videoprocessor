@@ -24,6 +24,12 @@ struct SubtitleBarEvidence
     // The caller owns the lifetime and identity of a previously strong plane.
     bool topRevalidatedAtReference = false, bottomRevalidatedAtReference = false;
     int referenceTop = 0, referenceBottom = 0;
+    // A small retained-crop rounding offset can hide the physical edge from
+    // the exact-plane probe. Nearby proof reports its OWN sampled plane; it
+    // never certifies the retained crop or independent AR acquisition.
+    bool topRevalidatedNearby = false, bottomRevalidatedNearby = false;
+    int topReferenceDelta = 0, bottomReferenceDelta = 0;
+    unsigned nearbyProbes = 0;
     int topReferenceBoundarySupport = 0, bottomReferenceBoundarySupport = 0;
     int topReferenceMaxIntrusion = 0, bottomReferenceMaxIntrusion = 0;
     double topReferenceBlackFraction = 0.0, bottomReferenceBlackFraction = 0.0;
@@ -399,7 +405,7 @@ inline SubtitleBarEvidence RevalidateSubtitleBarEvidence(const AnalysisLumaSourc
 inline SubtitleBarEvidence ResolveCurrentSubtitleAnalysisBars(const AnalysisLumaSource& source,
     const SubtitleBarEvidence& current, int referenceTop, int referenceBottom,
     const SubtitleInkSnapshot* candidateInk = nullptr,
-    const SubtitleBoxRect* candidateAnchor = nullptr)
+    const SubtitleBoxRect* candidateAnchor = nullptr, bool allowNearby = true)
 {
     SubtitleBarEvidence result=current;
     if(!source.IsValid() || referenceTop<0 || referenceBottom>source.height ||
@@ -439,12 +445,53 @@ inline SubtitleBarEvidence ResolveCurrentSubtitleAnalysisBars(const AnalysisLuma
             result.bottom=referenceBottom;result.bottomRevalidatedAtReference=true;
         }
     }
+    // Retained AR estimates can differ from the currently visible encoded
+    // edge by a few rows. On an unproved side, try at
+    // most four nearby planes, shallowest bar first. Every candidate must
+    // pass the unchanged current-pixel sharp-edge and full-bar proof. This
+    // is a subtitle analysis aperture only: neither history nor symmetry is
+    // allowed to supply pixels or override an independently measured edge.
+    const int step=(std::max)(1,source.height/540);
+    auto nearby=[&](bool bottom) {
+        const int reference=bottom?referenceBottom:referenceTop;
+        for(int depthOffset=-2*step;depthOffset<=2*step;depthOffset+=step) {
+            if(depthOffset==0)continue; // Exact plane was already checked.
+            const int plane=reference+(bottom?-depthOffset:depthOffset);
+            if(plane<=0 || plane>=source.height ||
+                (bottom?plane<=result.top:plane>=result.bottom))continue;
+            SubtitleBarEvidence neutral;neutral.bottom=source.height;
+            ++result.nearbyProbes;
+            const auto proved=RevalidateSubtitleBarEvidence(source,neutral,
+                bottom?0:plane,bottom?plane:source.height,candidateInk,candidateAnchor);
+            result.samples+=proved.samples;
+            if(bottom?proved.bottomRevalidatedAtReference:proved.topRevalidatedAtReference) {
+                if(bottom) {
+                    result.bottom=plane;result.bottomRevalidatedNearby=true;
+                    result.bottomReferenceDelta=plane-reference;
+                    result.bottomReferenceBoundarySupport=proved.bottomReferenceBoundarySupport;
+                    result.bottomReferenceBlackFraction=proved.bottomReferenceBlackFraction;
+                    result.bottomReferenceMaxIntrusion=proved.bottomReferenceMaxIntrusion;
+                } else {
+                    result.top=plane;result.topRevalidatedNearby=true;
+                    result.topReferenceDelta=plane-reference;
+                    result.topReferenceBoundarySupport=proved.topReferenceBoundarySupport;
+                    result.topReferenceBlackFraction=proved.topReferenceBlackFraction;
+                    result.topReferenceMaxIntrusion=proved.topReferenceMaxIntrusion;
+                }
+                return;
+            }
+        }
+    };
+    if(allowNearby && !currentTop && result.top==0 && referenceTop>0)nearby(false);
+    if(allowNearby && !currentBottom && result.bottom==source.height && referenceBottom<source.height)nearby(true);
     result.referenceTop=referenceTop;result.referenceBottom=referenceBottom;
     result.available=result.top>0 || result.bottom<source.height;
     if(result.top>=result.bottom) {
         result.available=false;result.top=0;result.bottom=source.height;
         result.reason="conflicting-subtitle-analysis-bars";
-    } else if(result.topRevalidatedAtReference || result.bottomRevalidatedAtReference)
+    } else if(result.topRevalidatedNearby || result.bottomRevalidatedNearby)
+        result.reason="current-pixel-nearby-subtitle-bar";
+    else if(result.topRevalidatedAtReference || result.bottomRevalidatedAtReference)
         result.reason="current-pixel-revalidated-shared-bar";
     else if(result.available)
         result.reason="current-independent-subtitle-bars";

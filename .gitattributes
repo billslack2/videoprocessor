@@ -1,3 +1,4 @@
 *.bmp binary
 *.pdf binary
 *.png binary
+3rdparty/libplacebo-beta/source/translated-roi-copy-with-regression.patch text eol=lf

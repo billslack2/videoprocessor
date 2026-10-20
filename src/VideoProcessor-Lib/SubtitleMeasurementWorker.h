@@ -1,7 +1,9 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
 #include <AnalysisDiagnosticHooks.h>
+#include <DebugLog.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <condition_variable>
 #include <deque>
@@ -11,6 +13,42 @@
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+// The optional fault capture stays diagnostic: a current worker observation and
+// a current shared picture are both required. This never grants crop authority.
+inline bool IsSubtitleProofFailureCaptureCandidate(const AnalysisLumaSource& source,
+    const SubtitleBoxObservation& key,const SubtitleBoxObservation& result)
+{
+    constexpr size_t MaxFaultCaptureBytes=64u*1024u*1024u;
+    if(!source.IsValid() || source.dataBytes>MaxFaultCaptureBytes ||
+        !key.sharedPicture.required ||
+        !key.sharedPicture.AvailableFor(key.identity,source.width,source.height) ||
+        !SameAnalysisFrameIdentity(key.identity,result.identity) ||
+        !result.sharedPicture.Matches(key.sharedPicture) || !result.analyzed ||
+        !result.sharedProbeAttempted || !result.sharedProbeDetected ||
+        result.sharedProbeWorkLimit || result.text.workLimit ||
+        result.text.detected || result.pendingRefresh || result.discontinuity)
+        return false;
+    const auto& shared=key.sharedPicture.bounds;
+    return (shared.top>0 && result.pictureTop==0) ||
+        (shared.bottom<source.height && result.pictureBottom==source.height);
+}
+
+inline bool ShouldCaptureSubtitleDiagnosticFrame(bool pathConfigured,bool sourceValid,
+    bool proofFailureMode,bool allowDarkStartupCapture,uint64_t acceptedSequence,
+    bool globalNearBlack,bool proofFailureCandidate)
+{
+    if(!pathConfigured || !sourceValid)return false;
+    return proofFailureMode ? proofFailureCandidate :
+        (allowDarkStartupCapture ? acceptedSequence>=240 : !globalNearBlack);
+}
+
+// One claim per linked module. The renderer DLL owns this sampler in normal use.
+inline std::atomic_bool& SubtitleDiagnosticCaptureClaimed()
+{
+    static std::atomic_bool claimed{false};
+    return claimed;
+}
 
 // Every source frame gets independent geometry and raw ink. Rechecking only
 // old glyph rectangles cannot discover a new word/companion outside them, and
@@ -54,11 +92,22 @@ public:
             const bool enabled=value && std::string(value)=="1";
             std::free(value);return enabled;
         }();
+        static const bool captureOnProofFailure=[] {
+            char* value=nullptr;size_t size=0;
+            _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_ON_PROOF_FAILURE");
+            const bool enabled=value && std::string(value)=="1";
+            std::free(value);return enabled;
+        }();
         // Dark-scene diagnostics must not be vetoed by the classification being
-        // investigated. Wait through startup before this explicit capture.
+        // investigated. Fault mode waits for the exact current worker failure.
+        if(captureOnProofFailure && SubtitleDiagnosticCaptureClaimed().load())
+            m_capturedDiagnostic=true;
         if(!m_capturedDiagnostic && !capturePath.empty() && source.IsValid() &&
-            (captureDark ? key.identity.acceptedSequence>=240 :
-                !EvaluateActivePictureGlobalNearBlack(source).nearBlack)) {
+            ShouldCaptureSubtitleDiagnosticFrame(true,true,captureOnProofFailure,captureDark,
+                key.identity.acceptedSequence,
+                captureOnProofFailure ? false : EvaluateActivePictureGlobalNearBlack(source).nearBlack,
+                captureOnProofFailure && IsSubtitleProofFailureCaptureCandidate(source,key,result)) &&
+            (!captureOnProofFailure || !SubtitleDiagnosticCaptureClaimed().exchange(true))) {
             m_capturedDiagnostic=true;
             std::ofstream pixels(capturePath,std::ios::binary);
             pixels.write(reinterpret_cast<const char*>(source.data),source.dataBytes);
@@ -67,6 +116,70 @@ public:
                 <<static_cast<int>(source.format)<<' '<<static_cast<int>(source.encoding)<<' '
                 <<static_cast<int>(source.colorspace)<<' '<<result.pictureTop<<' '<<result.pictureBottom<<' '
                 <<static_cast<int>(key.scriptHint)<<' '<<static_cast<int>(source.range)<<'\n';
+            if(captureOnProofFailure) {
+                const auto& id=key.identity;
+                const auto& shared=key.sharedPicture.bounds;
+                const auto& prior=result.incomingBarTrackingReference;
+                const auto& bars=result.barEvidence;
+                std::ofstream diagnostic(std::string(capturePath)+".diagnostic.txt");
+                diagnostic<<"capture_mode=proof_failure\n"
+                    <<"identity transport="<<id.transportGeneration
+                    <<" sequence="<<id.acceptedSequence
+                    <<" source_frame="<<id.sourceFrameNumber
+                    <<" capture_timestamp="<<id.captureTimestamp
+                    <<" format="<<id.sourceFormatGeneration
+                    <<" domain="<<id.analysisDomainKey
+                    <<" viewport="<<id.viewportGeneration
+                    <<" renderer="<<id.rendererGeneration<<'\n'
+                    <<"policy="<<key.policyGeneration
+                    <<" continuity="<<key.continuityGeneration
+                    <<" near_bar="<<key.nearBarDistance
+                    <<" optimization="<<key.optimizationMode
+                    <<" script="<<static_cast<int>(key.scriptHint)<<'\n'
+                    <<"shared_sequence="<<key.sharedPicture.identity.acceptedSequence
+                    <<" shared_bounds="<<shared.left<<','<<shared.top<<','<<shared.right<<','<<shared.bottom<<'\n'
+                    <<"prior valid="<<prior.valid
+                    <<" sequence="<<prior.identity.acceptedSequence
+                    <<" edges="<<prior.pictureTop<<','<<prior.pictureBottom<<'\n'
+                    <<"result analyzed="<<result.analyzed
+                    <<" bar_authority="<<result.barAuthority
+                    <<" independent="<<result.independentBarAnalysis
+                    <<" picture="<<result.pictureTop<<','<<result.pictureBottom
+                    <<" text_detected="<<result.text.detected
+                    <<" text_work_limit="<<result.text.workLimit
+                    <<" text_reason="<<(result.text.diagnosticReason?result.text.diagnosticReason:"")
+                    <<" components="<<result.text.diagnosticComponentCount
+                    <<" near_bar_gap="<<result.text.diagnosticNearBarGap
+                    <<" top_search_complete="<<result.text.topSearchComplete
+                    <<" bottom_search_complete="<<result.text.bottomSearchComplete<<'\n'
+                    <<"probe attempted="<<result.sharedProbeAttempted
+                    <<" detected="<<result.sharedProbeDetected
+                    <<" work_limit="<<result.sharedProbeWorkLimit
+                    <<" reason="<<(result.sharedProbeReason?result.sharedProbeReason:"")
+                    <<" anchor="<<result.sharedProbeAnchor.left<<','<<result.sharedProbeAnchor.top<<','
+                    <<result.sharedProbeAnchor.right<<','<<result.sharedProbeAnchor.bottom<<'\n'
+                    <<"bars reason="<<(bars.reason?bars.reason:"")
+                    <<" available="<<bars.available
+                    <<" edges="<<bars.top<<','<<bars.bottom
+                    <<" support="<<bars.topSupport<<','<<bars.bottomSupport
+                    <<" boundary_support="<<bars.topBoundarySupport<<','<<bars.bottomBoundarySupport
+                    <<" black_fraction="<<bars.topBlackFraction<<','<<bars.bottomBlackFraction
+                    <<" max_intrusion="<<bars.topMaxIntrusion<<','<<bars.bottomMaxIntrusion
+                    <<" reference_support="<<bars.topReferenceBoundarySupport<<','<<bars.bottomReferenceBoundarySupport
+                    <<" reference_fraction="<<bars.topReferenceBlackFraction<<','<<bars.bottomReferenceBlackFraction
+                    <<" reference_intrusion="<<bars.topReferenceMaxIntrusion<<','<<bars.bottomReferenceMaxIntrusion
+                    <<" reference_exact="<<bars.topRevalidatedAtReference<<','<<bars.bottomRevalidatedAtReference
+                    <<" reference_nearby="<<bars.topRevalidatedNearby<<','<<bars.bottomRevalidatedNearby
+                    <<" nearby_delta="<<bars.topReferenceDelta<<','<<bars.bottomReferenceDelta
+                    <<" nearby_probes="<<bars.nearbyProbes
+                    <<" samples="<<bars.samples<<'\n';
+                pixels.flush();metadata.flush();diagnostic.flush();
+                DebugLog::Log("Subtitle fault capture: success=%d bytes=%zu sequence=%llu domain=%llu",
+                    pixels.good() && metadata.good() && diagnostic.good() ? 1 : 0,
+                    source.dataBytes,
+                    static_cast<unsigned long long>(key.identity.acceptedSequence),
+                    static_cast<unsigned long long>(key.identity.analysisDomainKey));
+            }
         }
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
@@ -328,7 +441,7 @@ public:
         ContextFormat=1u<<4, ContextDomain=1u<<5,
         ContextViewport=1u<<6, ContextRenderer=1u<<7,
         ContextNearBar=1u<<8, ContextScript=1u<<9,
-        ContextPolicy=1u<<10, ContextContinuity=1u<<11
+        ContextPolicy=1u<<10, ContextContinuity=1u<<11, ContextOptimization=1u<<12
     };
     struct Diagnostics {
         uint32_t contextMismatch=0;
@@ -336,6 +449,7 @@ public:
         int glyphMismatchX=-1, glyphMismatchY=-1;
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
+        bool backlogReassociated=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
     };
     void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={}; }
@@ -364,7 +478,8 @@ public:
             return !oldCard.Valid() || contains(newCard,oldCard);
         };
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
-            preview.current.discontinuity || !preview.current.barAuthority ||
+            preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
+            !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
             !covers(preview.current.text) || !covers(preview.text)) { return Reject("accepted-seed-incomplete"); }
@@ -373,12 +488,15 @@ public:
         return !m_samples.empty();
     }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
-        double frameMs,int holdMs) {
+        double frameMs,int holdMs,
+        const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
+        bool backlogRetirementOnly=false) {
         m_diagnostics={};
         const auto key=preview.current;
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
-            if(key.analyzed && key.text.detected && key.barAuthority && !key.text.workLimit) {
+            if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&
+                key.text.detected && key.barAuthority && !key.text.workLimit) {
                 m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
                 const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
                 for(int line=0;line<key.text.lineCount && line<3;++line) {
@@ -416,10 +534,27 @@ public:
         if(a.rendererGeneration!=b.rendererGeneration)context|=ContextRenderer;
         if(key.nearBarDistance!=old.nearBarDistance)context|=ContextNearBar;
         if(key.scriptHint!=old.scriptHint)context|=ContextScript;
-        if(key.policyGeneration!=old.policyGeneration)context|=ContextPolicy;
-        if(key.continuityGeneration!=old.continuityGeneration)context|=ContextContinuity;
+        if(key.optimizationMode!=old.optimizationMode)context|=ContextOptimization;
+        if(key.policyGeneration!=old.policyGeneration ||
+            preview.policyGeneration!=key.policyGeneration)context|=ContextPolicy;
+        if(key.continuityGeneration!=old.continuityGeneration ||
+            preview.continuityGeneration!=key.continuityGeneration)context|=ContextContinuity;
         m_diagnostics.contextMismatch=context;
-        if(context)return Reject("pending-context-changed");
+        // The timeline witness authorizes only this queue-only continuity
+        // change. It is tied to the last pixel-validated source, which advances
+        // on pending frames; the original seed and its lease age do not renew.
+        const uint64_t sourceGap=b.acceptedSequence-a.acceptedSequence;
+        const bool backlogReassociation=context==ContextContinuity &&
+            backlogRetirementOnly && backlogTemplateIdentity &&
+            SameAnalysisFrameIdentity(a,*backlogTemplateIdentity) &&
+            old.continuityGeneration && key.continuityGeneration &&
+            preview.continuityGeneration==key.continuityGeneration &&
+            key.continuityGeneration>old.continuityGeneration &&
+            b.captureTimestamp>a.captureTimestamp &&
+            (!(a.sourceFrameNumber || b.sourceFrameNumber) ||
+                (a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
+                 b.sourceFrameNumber-a.sourceFrameNumber==sourceGap));
+        if(context && !backlogReassociation)return Reject("pending-context-changed");
         for(const auto& sample:m_samples) {
             AnalysisLumaSample now;
             ++m_diagnostics.glyphSamplesChecked;
@@ -445,8 +580,10 @@ public:
             // planes still exist on this frame. Pending reuse needs the same
             // current-pixel proof as a complete shared measurement, and the
             // effective analysis planes must equal the accepted cue's planes.
+            // Pending render-thread reuse cannot admit nearby/reference proof;
+            // leave the extra search to the asynchronous full measurement.
             bars=ResolveCurrentSubtitleAnalysisBars(source,ExtractSubtitleBarEvidence(source),
-                key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom);
+                key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom,nullptr,nullptr,false);
             m_diagnostics.barsAvailable=bars.available;
             m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
             m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
@@ -455,8 +592,9 @@ public:
             // No fresh detector ink exists on a pending frame. A fixed-plane
             // revalidation could otherwise mistake the old glyphs themselves
             // for an encoded edge after the physical bar disappears.
-            if(!bars.available || bars.topRevalidatedAtReference ||
+            if(!bars.available || bars.topRevalidatedAtReference || bars.topRevalidatedNearby ||
                 bars.bottomRevalidatedAtReference ||
+                bars.bottomRevalidatedNearby ||
                 bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom)
                 return Reject("current-bars-changed");
         } else {
@@ -469,14 +607,26 @@ public:
             if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) return Reject("current-bars-changed");
         }
         m_elapsed+=elapsedMs;m_last=b;
+        // Rebase only a validated backlog continuity change after unchanged
+        // CURRENT glyphs and physical bars pass. Ordinary pending refreshes
+        // preserve the accepted wrapper metadata, samples and elapsed time.
+        if(backlogReassociation) {
+            m_reference.current.continuityGeneration=key.continuityGeneration;
+            m_reference.continuityGeneration=key.continuityGeneration;
+        }
         preview=m_reference;preview.current.identity=b;preview.current.discontinuity=false;
         preview.current.sharedPicture=key.sharedPicture;
         preview.current.barEvidence=bars;preview.current.barTrackingAuthority=false;
         preview.current.currentAnchorUsesTrackedEdge=false;preview.current.hasBarTrackingReference=false;
-        preview.current.analysisMs=0;preview.current.pendingRefresh=true;
-        preview.futureAvailable=false;preview.followingCount=0;preview.matchingFrames=1;
+        preview.current.analysisMs=0;preview.current.analysisRefresh=false;
+        preview.current.pendingRefresh=true;
+        preview.current.incomingBarTrackingReference={};
+        preview.current.subtitleArProof={};preview.current.subtitleArDarkness={};
+        preview.current.barStripClearance={};
+        preview.futureAvailable=false;preview.following={};preview.followingCount=0;preview.matchingFrames=1;
         preview.currentLinesConfirmed=false;preview.newScanMs=0;preview.newScanFrames=0;
-        m_reason="verified-current-pixels";
+        m_diagnostics.backlogReassociated=backlogReassociation;
+        m_reason=backlogReassociation ? "backlog-verified-current-pixels" : "verified-current-pixels";
         return true;
     }
 private:

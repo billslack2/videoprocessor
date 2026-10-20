@@ -3051,7 +3051,33 @@ namespace AlphaSourceCrop
 				"unconfirmed full-raster fallback restored the last submitted native Scope";
 		}
 
-        if (input.establishedScopeSubtitleRetained &&
+        // Confirmation proves a possible replacement owner, not that its pose
+        // has been displayed. Retiring an already submitted outward envelope
+        // here contracts the picture to native scope for one frame; the next
+        // dark sample expands it again. Keep the existing envelope through
+        // pending confirmation, including samples just above the dark threshold.
+        // Unsubmitted proposals and native-only holds retain their old behavior.
+        const auto& pendingSubtitle = input.subtitleTranslationConfirmation;
+        const auto& shownEnvelope = decision.state;
+        const bool pendingSubmittedEnvelope =
+            shownEnvelope.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            shownEnvelope.sourceGeneration == input.sourceGeneration &&
+            shownEnvelope.presentationEpoch == input.presentationEpoch &&
+            shownEnvelope.entryTrustedCropAvailable &&
+            SameTrustedCropContract(shownEnvelope.entryTrustedCrop, input.trustedCrop) &&
+            shownEnvelope.boundedPresentationAvailable &&
+            shownEnvelope.boundedPresentationSequence != 0 &&
+            shownEnvelope.boundedPresentationPresentedSequence == shownEnvelope.boundedPresentationSequence &&
+            shownEnvelope.boundedPresentationSequence <= input.sourceSequence &&
+            ValidBounds(shownEnvelope.boundedPresentation,
+                input.trustedCrop.rasterWidth, input.trustedCrop.rasterHeight) &&
+            ContainedBounds(shownEnvelope.boundedPresentation, input.trustedCrop) &&
+            !SameBounds(shownEnvelope.boundedPresentation, input.trustedCrop) &&
+            input.subtitlePresentation.action == VerticalBarPresentationAction::NONE &&
+            pendingSubtitle.lastObservedSourceSequence == input.sourceSequence &&
+            pendingSubtitle.confirmations > 0 &&
+            pendingSubtitle.confirmations < VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED;
+        if (input.establishedScopeSubtitleRetained && !pendingSubmittedEnvelope &&
             (!input.globalNearBlack || decision.state.mode == NearBlackPresentationMode::INACTIVE))
         {
             decision.ended = decision.state.mode != NearBlackPresentationMode::INACTIVE;
@@ -3102,7 +3128,7 @@ namespace AlphaSourceCrop
             std::isfinite(confirmation.candidateTranslationPixels) &&
             std::abs(confirmation.candidateTranslationPixels) > 0.5f &&
             input.subtitlePresentation.action != VerticalBarPresentationAction::FIT;
-        if (currentSubtitleTranslation || currentScopeConfirmation)
+        if (currentSubtitleTranslation || (currentScopeConfirmation && !pendingSubmittedEnvelope))
         {
             decision.ended = decision.state.mode != NearBlackPresentationMode::INACTIVE;
             decision.state = {};
@@ -3111,6 +3137,9 @@ namespace AlphaSourceCrop
                 : "fresh physical bars and confirmed subtitle translation resumed shared presentation";
             return decision;
         }
+
+        if (pendingSubmittedEnvelope)
+            decision.reason = "submitted overlay envelope retained while subtitle target confirms";
 
 		if (input.measurementCurrent && input.nearBlackEvaluated &&
 			input.globalNearBlack &&
@@ -5357,6 +5386,9 @@ namespace AlphaSourceCrop
 			anchor.presentationEpoch == presentationEpoch &&
 			anchor.lastSubmittedSourceSequence != 0 &&
 			sourceSequence >= anchor.lastSubmittedSourceSequence &&
+            sourceSequence >= anchor.lastSubmittedPresentationSourceSequence &&
+            (!anchor.submittedEnvelopeAvailable ||
+             sourceSequence >= anchor.submittedEnvelopeSourceSequence) &&
 			ValidBounds(anchor.crop, rasterWidth, rasterHeight) &&
 			anchor.crop.trustedBarAxes != ActivePictureBounds::BarAxes::NONE &&
 			CropEdgesAreChromaAligned(anchor.crop, rasterWidth, rasterHeight) &&
@@ -5393,12 +5425,49 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(evidence.retentionBounds, anchor.crop);
 	}
 
+    static bool HasSelectedSamplingEnvelopeFill(const SubmittedNativeScopeAnchorUpdateInput& input)
+    {
+        const auto& selected = input.selectedAdmission;
+        const auto& native = input.nativeCrop;
+        const auto& envelope = selected.samplingEnvelopeSourceBounds;
+        const auto& actual = input.submittedBounds;
+        const int step = std::max(2, native.rasterHeight / 540);
+        if (!selected.available || !selected.samplingEnvelopeFillApplied ||
+            input.selectedOwner != DecisionOwner::OUTWARD_FIT ||
+            selected.sourceGeneration != input.sourceGeneration ||
+            selected.presentationEpoch != input.presentationEpoch ||
+            selected.samplingEnvelopeFillSourceSequence != input.sourceSequence ||
+            selected.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            !SameTrustedCropContract(selected.trustedCrop, native) ||
+            !ValidBounds(envelope,native.rasterWidth,native.rasterHeight) ||
+            !CropEdgesAreChromaAligned(envelope,native.rasterWidth,native.rasterHeight) ||
+            !SameBounds(actual,selected.samplingEnvelopeFillSourceBounds) ||
+            envelope.left != native.left || envelope.right != native.right ||
+            !ContainedBounds(envelope,native) || SameBounds(envelope,native) ||
+            envelope.top < native.top-step || envelope.bottom > native.bottom+step ||
+            actual.top != envelope.top || actual.bottom != envelope.bottom)
+            return false;
+        AspectLimitFillInput fill;
+        fill.trustedContentAuthorityAccepted = true;
+        fill.cropWiderContentToFillScreen = true;
+        fill.screenAspect = selected.samplingEnvelopeFillScreenAspect;
+        fill.contentReferenceAvailable = true;
+        fill.contentReferenceBounds = native;
+        fill.sourceBounds = envelope;
+        const auto expected = EvaluateAspectLimitFill(fill);
+        return expected.applied && SameBounds(expected.sourceBounds,actual);
+    }
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
 		const SubmittedNativeScopeAnchorUpdateInput& input)
 	{
 		auto result = input.previous;
 		if (!input.frameSubmitted)
 			return result;
+        if (result.available && result.sourceGeneration == input.sourceGeneration &&
+            result.presentationEpoch == input.presentationEpoch &&
+            input.sourceSequence < std::max(std::max(result.lastSubmittedSourceSequence, result.lastSubmittedPresentationSourceSequence),
+                result.submittedEnvelopeSourceSequence))
+            return result;
 		if (input.fullRasterAuthority)
 			return {};
 		const bool previousSameContext = result.available &&
@@ -5415,6 +5484,22 @@ namespace AlphaSourceCrop
 			result = {};
 		else if (input.sourceSequence < result.lastSubmittedSourceSequence)
 			return result;
+        if (previousSameContext && input.nativeCropAvailable &&
+            input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            SameTrustedCropContract(input.nativeCrop, result.crop) &&
+            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE) &&
+            ValidBounds(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
+            CropEdgesAreChromaAligned(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
+            ContainedBounds(input.submittedBounds, result.crop) &&
+            !SameBounds(input.submittedBounds, result.crop) &&
+            input.sourceSequence >= result.submittedEnvelopeSourceSequence)
+        {
+            result.submittedEnvelopeAvailable = true;
+            result.submittedEnvelope = input.submittedBounds;
+            result.submittedEnvelopeSourceSequence = input.sourceSequence;
+            result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+            return result;
+        }
 		if (!input.nativeCropAvailable || !input.sourceGeneration ||
 			!input.sourceSequence || input.selectedOwner == DecisionOwner::FULL_RASTER ||
 			input.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
@@ -5428,6 +5513,34 @@ namespace AlphaSourceCrop
 				input.nativeCrop.rasterHeight))
 			return result;
 
+        if (previousSameContext && SameTrustedCropContract(input.nativeCrop,result.crop) &&
+            HasSelectedSamplingEnvelopeFill(input))
+        {
+            // Actual output proves the vertical extent. The selected optional
+            // fill explains the intentionally removed sides; preserve its native
+            // width reference without publishing a new AR or reacquiring Scope.
+            result.submittedEnvelopeAvailable = true;
+            result.submittedEnvelope = input.selectedAdmission.samplingEnvelopeSourceBounds;
+            result.submittedEnvelopeSourceSequence = input.sourceSequence;
+            result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+            return result;
+        }
+        // A selected confirmed translation supersedes the old FIT envelope only
+        // after submission. Keep an ordering watermark without renewing native AR.
+        // Optional side fill may narrow the width, but translation preserves height.
+        if (previousSameContext && SameTrustedCropContract(input.nativeCrop, result.crop) &&
+            input.selectedOwner == DecisionOwner::VERTICAL_TRANSLATION &&
+            input.submittedBounds.left >= input.nativeCrop.left &&
+            input.submittedBounds.right <= input.nativeCrop.right &&
+            input.submittedBounds.bottom - input.submittedBounds.top ==
+                input.nativeCrop.bottom - input.nativeCrop.top)
+        {
+            result.submittedEnvelopeAvailable = false;
+            result.submittedEnvelope = {};
+            result.submittedEnvelopeSourceSequence = 0;
+            result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+            return result;
+        }
         // Similar aspect ratios do not prove that the physical picture was
         // displayed: a shifted crop can have exactly the same aspect. Retain
         // only the exact base, or its selected, explicitly approved side fill.
@@ -5445,8 +5558,262 @@ namespace AlphaSourceCrop
 		result.sourceGeneration = input.sourceGeneration;
 		result.presentationEpoch = input.presentationEpoch;
 		result.lastSubmittedSourceSequence = input.sourceSequence;
+        result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+        result.submittedEnvelopeAvailable = false;
+        result.submittedEnvelope = {};
+        result.submittedEnvelopeSourceSequence = 0;
 		return result;
 	}
+
+    UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
+        const PresentationRecoveryInput& input, const Decision& proposed)
+    {
+        UncertainPicturePresentationDecision result;
+        result.presentation = proposed;
+        const auto& crop = input.crop;
+        const auto& anchor = input.submittedScopeAnchor;
+        const auto raster = FullRaster(crop.rasterWidth, crop.rasterHeight);
+        const bool committedFull = crop.sharedGeometryAvailable &&
+            crop.geometrySourceGeneration == crop.frameSourceGeneration &&
+            crop.frameSourceGeneration != 0 &&
+            crop.classification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            SameBounds(crop.geometry, raster);
+        if (!crop.automaticCropEnabled || crop.fullRasterPresentationAuthoritative ||
+            committedFull || !IsCurrentSubmittedNativeScopeAnchor(anchor, crop.frameSourceGeneration,
+                crop.frameSourceSequence, input.presentationEpoch,
+                crop.rasterWidth, crop.rasterHeight))
+            return result;
+
+        const bool submittedEnvelope = anchor.submittedEnvelopeAvailable &&
+            anchor.submittedEnvelopeSourceSequence >= anchor.lastSubmittedSourceSequence &&
+            anchor.submittedEnvelopeSourceSequence <= crop.frameSourceSequence &&
+            ValidBounds(anchor.submittedEnvelope, crop.rasterWidth, crop.rasterHeight) &&
+            ContainedBounds(anchor.submittedEnvelope, anchor.crop) &&
+            !SameBounds(anchor.submittedEnvelope, anchor.crop);
+        const bool unresolvedInspection = !input.measurementCurrent || !input.observationAvailable ||
+            crop.latestObservationIsUnavailable || crop.verticalTranslationConfirmationPending ||
+            crop.verticalFitConfirmationPending || crop.verticalInspectionPending ||
+            (input.observationClassification == ActivePictureClassification::PROVISIONAL &&
+             !crop.frameLocalPresentationRetentionSafe);
+        // Recovery may already have proposed a valid native crop even though it
+        // could not inspect this frame. That is not proof that a displayed overlay
+        // disappeared. Preserve its submitted extent before the cropped fast path.
+        const bool retainSubmittedEnvelope = submittedEnvelope && unresolvedInspection &&
+            crop.sharedGeometryAvailable && crop.geometrySourceGeneration == crop.frameSourceGeneration &&
+            SameTrustedCropContract(crop.geometry, anchor.crop) &&
+            !crop.latestObservationSupportsCrop && !crop.verticalTranslationActive &&
+            !crop.verticalTranslationBaseRetentionActive && !crop.verticalTranslationEngageBaseRetentionActive &&
+            !crop.movingPictureTransition && !crop.pictureTransitionHandoff.active &&
+            !crop.movingPictureHold.competingPresentation &&
+            proposed.owner != DecisionOwner::VERTICAL_TRANSLATION &&
+            proposed.owner != DecisionOwner::ENGAGE_BASE && proposed.owner != DecisionOwner::RELEASE_BASE &&
+            proposed.owner != DecisionOwner::MOVING_PICTURE_HOLD && !proposed.verticallyTranslated &&
+            SameBounds(anchor.crop, proposed.sourceBounds);
+        if (proposed.applyCrop && ValidBounds(proposed.sourceBounds, crop.rasterWidth, crop.rasterHeight) &&
+            !SameBounds(proposed.sourceBounds, raster) && !retainSubmittedEnvelope)
+            return result;
+        auto bounds = anchor.crop;
+        auto include = [&](const ActivePictureBounds& extent) {
+            bounds.left = std::min(bounds.left, extent.left) & ~1;
+            bounds.top = std::min(bounds.top, extent.top) & ~1;
+            bounds.right = std::min(crop.rasterWidth,
+                (std::max(bounds.right, extent.right) + 1) & ~1);
+            bounds.bottom = std::min(crop.rasterHeight,
+                (std::max(bounds.bottom, extent.bottom) + 1) & ~1);
+        };
+        // Retain only an envelope that actually reached the display. A late or
+        // repeated analysis result cannot replace it or narrow it speculatively.
+        if (anchor.submittedEnvelopeAvailable &&
+            anchor.submittedEnvelopeSourceSequence >= anchor.lastSubmittedSourceSequence &&
+            anchor.submittedEnvelopeSourceSequence <= crop.frameSourceSequence &&
+            ValidBounds(anchor.submittedEnvelope, crop.rasterWidth, crop.rasterHeight) &&
+            ContainedBounds(anchor.submittedEnvelope, anchor.crop))
+            include(anchor.submittedEnvelope);
+
+        const bool currentVisibleBase = SameTrustedCropContract(crop.currentVisibleBase, anchor.crop) ||
+            (crop.sharedGeometryAvailable && crop.geometrySourceGeneration == crop.frameSourceGeneration &&
+             crop.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+             SameTrustedCropContract(crop.currentVisibleBase, crop.geometry));
+        if (crop.currentVisibleBoundsAvailable && currentVisibleBase &&
+            crop.currentVisibleSourceGeneration == crop.frameSourceGeneration &&
+            crop.currentVisibleSourceSequence == crop.frameSourceSequence &&
+            ValidBounds(crop.currentVisibleBounds, crop.rasterWidth, crop.rasterHeight) &&
+            ContainedBounds(crop.currentVisibleBounds, crop.currentVisibleBase))
+        {
+            include(crop.currentVisibleBounds);
+            result.currentPixelExtent = true;
+        }
+        // A safe outer-band scan can still find actual edge pixels one sampling
+        // step outside the old crop. Include those pixels; never relabel them black.
+        const bool currentSampling = input.measurementCurrent && input.retentionEvaluated &&
+            input.excludedBandsPixelSafe && input.observationAvailable &&
+            input.retentionSourceGeneration == crop.frameSourceGeneration &&
+            input.retentionSourceSequence == crop.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds, anchor.crop) &&
+            input.observationClassification == ActivePictureClassification::PROVISIONAL &&
+            ValidBounds(input.observation, crop.rasterWidth, crop.rasterHeight);
+        const int step = std::max(2, crop.rasterHeight / 540);
+        if (currentSampling && input.observation.left >= anchor.crop.left &&
+            input.observation.right <= anchor.crop.right &&
+            input.observation.top >= anchor.crop.top - step &&
+            input.observation.bottom <= anchor.crop.bottom + step)
+        {
+            include(input.observation);
+            result.currentPixelExtent = true;
+        }
+        result.retained = true;
+        result.nativeCrop = anchor.crop;
+        result.expanded = !SameBounds(bounds, anchor.crop);
+        bounds.aspectRatio = double(bounds.right - bounds.left) /
+            std::max(1, bounds.bottom - bounds.top);
+        if (result.expanded) bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+        result.presentation = {};
+        result.presentation.sourceBounds = bounds;
+        result.presentation.applyCrop = !SameBounds(bounds, raster);
+        result.presentation.outwardExpanded = result.expanded;
+        result.presentation.owner = result.expanded ? DecisionOwner::OUTWARD_FIT :
+            DecisionOwner::SUBMITTED_SCOPE_RETENTION;
+        result.presentation.reason = result.expanded
+            ? "uncertain picture preserves submitted AR and measured outward pixels"
+            : "uncertain picture retains last submitted native AR; full raster unproven";
+        return result;
+    }
+
+    static bool TryFillBoundedVerticalSamplingEnvelope(
+        const FinalAspectLimitFillInput& input, AspectLimitFillDecision& result)
+    {
+        const auto& evidence = input.evidence;
+        const auto& crop = input.crop;
+        const auto& anchor = evidence.submittedScopeAnchor;
+        const auto& actual = input.presentation.sourceBounds;
+        // A current safe-band scan may preserve horizontal fill while recovery
+        // holds an already selected vertical sampling envelope. Overlay owners
+        // retain the existing veto; neither native authority nor rows are changed.
+        if (input.samplingCompetingPresentation || !input.presentation.applyCrop ||
+            input.presentation.verticallyTranslated || !crop.automaticCropEnabled ||
+            crop.fullRasterPresentationAuthoritative || crop.movingPictureTransition ||
+            HasCurrentPictureTransitionHandoff(crop) ||
+            crop.nearBlackEpisodeRetainCrop || crop.nearBlackEpisodeFullRaster ||
+            crop.verticalTranslationActive || crop.verticalTranslationConfirmationPending ||
+            crop.verticalFitConfirmationPending || crop.verticalTranslationBaseRetentionActive ||
+            crop.verticalTranslationEngageBaseRetentionActive ||
+            crop.barCropRefinementHorizontalConflict || crop.currentVisibleBoundsAvailable ||
+            evidence.crop.currentVisibleBoundsAvailable ||
+            input.nearBlackBoundedPresentation || input.nearBlackRetainedScopeFallback ||
+            input.nearBlackFailOpenProposal ||
+            !evidence.nearBlackEvaluated || evidence.globalNearBlack ||
+            evidence.crop.frameSourceGeneration != crop.frameSourceGeneration ||
+            evidence.crop.frameSourceSequence != crop.frameSourceSequence ||
+            evidence.presentationEpoch != crop.framePresentationEpoch ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor, crop.frameSourceGeneration,
+                crop.frameSourceSequence, evidence.presentationEpoch,
+                crop.rasterWidth, crop.rasterHeight) ||
+            crop.geometrySourceGeneration != crop.frameSourceGeneration ||
+            crop.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            crop.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+            !SameTrustedCropContract(crop.geometry, anchor.crop) ||
+            !ValidBounds(actual, crop.rasterWidth, crop.rasterHeight) ||
+            !CropEdgesAreChromaAligned(actual, crop.rasterWidth, crop.rasterHeight))
+            return false;
+
+        // Use the existing detector-step bound with a current exact-native
+        // sampling contract. The observation may now be contained by the held
+        // envelope; it need not recreate the same outward rows on each frame.
+        // Generic frame-local retention may be false because rows are preserved.
+        if (!evidence.measurementCurrent || !evidence.retentionEvaluated ||
+            !evidence.excludedBandsPixelSafe || !evidence.observationAvailable ||
+            evidence.retentionSourceGeneration != crop.frameSourceGeneration ||
+            evidence.retentionSourceSequence != crop.frameSourceSequence ||
+            !SameTrustedCropContract(evidence.retentionBounds, anchor.crop) ||
+            evidence.observationClassification != ActivePictureClassification::PROVISIONAL ||
+            !ValidBounds(evidence.observation, crop.rasterWidth, crop.rasterHeight))
+            return false;
+        const auto& observed = evidence.observation;
+        const int step = std::max(2, crop.rasterHeight / 540);
+        if (actual.left != anchor.crop.left || actual.right != anchor.crop.right ||
+            actual.top > anchor.crop.top || actual.bottom < anchor.crop.bottom ||
+            actual.top < anchor.crop.top - step || actual.bottom > anchor.crop.bottom + step ||
+            SameBounds(actual, anchor.crop) ||
+            observed.left < actual.left || observed.right > actual.right ||
+            observed.top < actual.top || observed.bottom > actual.bottom)
+            return false;
+
+        // Both the independently submitted native content and the actual
+        // presentation must pass the current user limits. Only horizontal fill
+        // is permitted here; a vertical expansion cannot switch fill direction.
+        auto fill = input.configured;
+        fill.trustedContentAuthorityAccepted = true;
+        fill.contentReferenceAvailable = true;
+        fill.contentReferenceBounds = anchor.crop;
+        fill.sourceBounds = anchor.crop;
+        const auto nativeFill = EvaluateAspectLimitFill(fill);
+        if (!nativeFill.applied || nativeFill.sourceBounds.top != anchor.crop.top ||
+            nativeFill.sourceBounds.bottom != anchor.crop.bottom)
+            return false;
+        fill.sourceBounds = actual;
+        auto expandedFill = EvaluateAspectLimitFill(fill);
+        if (!expandedFill.applied || expandedFill.sourceBounds.top != actual.top ||
+            expandedFill.sourceBounds.bottom != actual.bottom ||
+            expandedFill.sourceBounds.left > nativeFill.sourceBounds.left ||
+            expandedFill.sourceBounds.right < nativeFill.sourceBounds.right)
+            return false;
+        expandedFill.samplingEnvelopeFilled = true;
+        expandedFill.reason =
+            "current safe sampling preserves the vertical envelope and eligible horizontal fill";
+        result = expandedFill;
+        return true;
+    }
+
+    AspectLimitFillDecision EvaluateFinalAspectLimitFill(const FinalAspectLimitFillInput& input)
+    {
+        AspectLimitFillDecision result;
+        result.sourceBounds = input.presentation.sourceBounds;
+        if (input.fixedCropAspectConfigured)
+        {
+            FixedAspectCropInput fixed;
+            fixed.fixedAspect = input.fixedCropAspect;
+            fixed.sourceBounds = input.presentation.sourceBounds;
+            return EvaluateFixedAspectCrop(fixed);
+        }
+        if (input.protectedCaptionFit || input.nlsPresentationFailOpen ||
+            input.uncertainPicture.expanded ||
+            (!input.uncertainPicture.retained && (input.recoveryBoundedPresentation ||
+             input.nearBlackBoundedPresentation || input.nearBlackRetainedScopeFallback ||
+             input.nearBlackFailOpenProposal)))
+        {
+            if (!input.protectedCaptionFit && !input.nlsPresentationFailOpen &&
+                !input.nlsOwnsPresentationGeometry && input.configuredScreenActive &&
+                TryFillBoundedVerticalSamplingEnvelope(input, result))
+                return result;
+            result.reason = input.protectedCaptionFit
+                ? "known inward caption return preserves picture and caption; aspect-limit fill withheld"
+                : "recovery preserves the complete visible envelope; aspect-limit fill withheld";
+            return result;
+        }
+        if (input.nlsOwnsPresentationGeometry)
+        {
+            const int width = result.sourceBounds.right - result.sourceBounds.left;
+            const int height = result.sourceBounds.bottom - result.sourceBounds.top;
+            result.contentAspect = height > 0 ? static_cast<double>(width) / height : 0.0;
+            result.reason = "NLS owns final source geometry; aspect-limit fill withheld";
+            return result;
+        }
+        if (!input.configuredScreenActive)
+        {
+            result.reason = "configured physical screen is not active";
+            return result;
+        }
+        auto fill = input.configured;
+        fill.trustedContentAuthorityAccepted = input.presentation.applyCrop ||
+            input.crop.fullRasterPresentationAuthoritative;
+        fill.sourceBounds = input.presentation.sourceBounds;
+        fill.contentReferenceAvailable = true;
+        if (input.crop.fullRasterPresentationAuthoritative)
+            fill.contentReferenceBounds = FullRaster(input.crop.rasterWidth, input.crop.rasterHeight);
+        else if (input.crop.geometrySourceGeneration == input.crop.frameSourceGeneration)
+            fill.contentReferenceBounds = input.crop.geometry;
+        return EvaluateAspectLimitFill(fill);
+    }
 
 	Decision Evaluate(const Input& input)
 	{

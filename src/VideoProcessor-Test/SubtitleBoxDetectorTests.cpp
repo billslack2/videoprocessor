@@ -1617,6 +1617,42 @@ public:
         SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
         Assert::IsFalse(r.detected);Assert::IsFalse(r.bounds.Valid());
     }
+    TEST_METHOD(EmptySearchCertificateRequiresBothPhysicalBarSidesScanned) {
+        {
+            auto f=Frame();Text(f,200,H-40,20);
+            SubtitleBoxDetector detector;
+            auto result=detector.Analyze(Source(f),45,H,1,1);
+            Assert::IsFalse(result.detected);
+            Assert::AreEqual(std::string("no-bright-ink"),std::string(result.diagnosticReason));
+            Assert::IsTrue(result.topSearchComplete);
+            Assert::IsFalse(result.bottomSearchComplete,
+                L"A full-raster bottom edge has no bottom-bar search coverage");
+            const auto repeated=detector.Analyze(Source(f),45,H,1,1);
+            Assert::IsTrue(repeated.topSearchComplete);
+            Assert::IsFalse(repeated.bottomSearchComplete,
+                L"Repeated source identities preserve the original coverage metadata");
+        }
+        {
+            auto f=Frame();Text(f,200,5,20);
+            SubtitleBoxDetector detector;
+            const auto result=detector.Analyze(Source(f),0,315,1,1);
+            Assert::IsFalse(result.detected);
+            Assert::AreEqual(std::string("no-bright-ink"),std::string(result.diagnosticReason));
+            Assert::IsFalse(result.topSearchComplete,
+                L"A full-raster top edge has no top-bar search coverage");
+            Assert::IsTrue(result.bottomSearchComplete);
+        }
+        {
+            auto f=Frame();
+            SubtitleBoxDetector detector;
+            const auto result=detector.Analyze(Source(f),45,315,1,1);
+            Assert::IsFalse(result.detected);
+            Assert::AreEqual(std::string("no-bright-ink"),std::string(result.diagnosticReason));
+            Assert::IsTrue(result.topSearchComplete);
+            Assert::IsTrue(result.bottomSearchComplete,
+                L"Both configured blank bar searches completed");
+        }
+    }
     TEST_METHOD(PartialSampledTopBarRowQualifiesOnFirstFrame) {
         const int w=1920,h=1080,top=137,bottom=945;
         std::vector<uint16_t> f(static_cast<size_t>(w)*h*3/2,512<<6);

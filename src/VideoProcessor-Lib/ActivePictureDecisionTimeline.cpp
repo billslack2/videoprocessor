@@ -324,7 +324,8 @@ void ActivePictureDecisionTimeline::MarkDiscarded(
 	if (identity.transportGeneration != m_transportGeneration)
 		return;
 	BreakContinuityAtSequence(identity.acceptedSequence, reason,
-		reason == ActivePictureDiscardReason::BacklogRecovery ? &identity : nullptr);
+        (reason == ActivePictureDiscardReason::BacklogRecovery ||
+            reason == ActivePictureDiscardReason::QueueCapacityOverflow) ? &identity : nullptr);
 	MarkConsumed(identity);
 }
 
@@ -336,8 +337,9 @@ bool ActivePictureDecisionTimeline::OnlyBacklogRetirementBetween(
 {
     // The origin is the last acquired CURRENT-source cue template, not a
     // delayed selected output. Every intervening accepted source must be
-    // explicitly dequeued or retired. Only backlog retirements may have
+    // explicitly dequeued or retired. Only known queue retirements may have
     // broken AR continuity; neither fact grants subtitle pixel authority.
+    // This witness does not restore AR continuity or any lookahead proof.
     if (!beforeContinuity || !afterContinuity ||
         beforeContinuity == afterContinuity ||
         previousTemplate.transportGeneration != m_transportGeneration ||
@@ -380,7 +382,8 @@ bool ActivePictureDecisionTimeline::OnlyBacklogRetirementBetween(
     bool sawBacklog=false;
     for (const auto& boundary : m_continuityBoundaries) {
         if (boundary.beforeGeneration != expectedGeneration) continue;
-        if (boundary.discardReason != ActivePictureDiscardReason::BacklogRecovery ||
+        if ((boundary.discardReason != ActivePictureDiscardReason::BacklogRecovery &&
+             boundary.discardReason != ActivePictureDiscardReason::QueueCapacityOverflow) ||
             boundary.acceptedSequence <= previousTemplate.acceptedSequence ||
             boundary.acceptedSequence >= current.acceptedSequence ||
             !SameTransportDecisionContext(boundary.discardedIdentity,current) ||

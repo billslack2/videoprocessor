@@ -1,6 +1,7 @@
 Fork: https://github.com/billslack2/libplacebo
 Branch: codex/vp-master-beta
-Commit: 8bccd6578c9e845f77205cec9e85fdb97bf36ed7
+Base commit: 8bccd6578c9e845f77205cec9e85fdb97bf36ed7
+Source state: uncommitted translated-ROI-copy patch; see source/VP-SOURCE-MANIFEST.txt.
 Upstream: 1dd022687b9ac1dd996855b51433bf770ae76aab
 API: 377
  74d8a6cb930c68ef617b202c3ff3c59d919e086b 3rdparty/Vulkan-Headers (v1.4.345)
@@ -14,11 +15,19 @@ Build: MSYS2 mingw64 GCC 16.1.0; Meson 1.11.2; clean x64 Release.
 D3D11, shaderc, lcms2 and libdovi enabled; Vulkan/OpenGL backends disabled.
 All 13 library tests passed. See VP-FORK.md in the complete source archive.
 
-Binary SHA256: 19023e283d1ff21a3b5a13e2754e091cc34231dc06c8a0818c5b75953dcb3722
-Source archive SHA256: fa3acffa6266091520cbdb9becc18e672b109cd5a3b13a85f8984130489a68f4
+Binary SHA256: 8189e9d8c156c28dd6752a34d9a26946b46a0eeb9dc66ac246a396dd9b13d2df
+Source archive SHA256: 928d5abf853b7ed466a33efd16554914e19a13ecdc8c5004edf6f62f57a23ced
 
 All eight transitive DLLs remain byte-identical to the stable 7.360.1 bundle.
 Stable and Beta have distinct DLL names, import libraries, headers and shader caches.
 Gamut overflow correction (Experimental) defaults Off. It follows the original
 gamut mapper and replaces the old fixed-Y/IPT LUT experiment. It may reduce
 brightness or saturation. Uses the existing bool API and no environment switch.
+
+Translated subtitle ROI copy (2026-10-19)
+Patch SHA256: 8351e94d6dd32a11585d3bbcbe6ff7054d8972bf61bd83595addc06c6f99756f
+Runtime: v7.377.0 (v7.360.0-159-g8bccd657-dirty)
+Same-format, unscaled, unflipped normal 2D translated copies now use D3D11 CopySubresourceRegion.
+Logged subtitle ROI shapes copy exact pixels without generating per-ROI shader variants.
+All 13 native tests passed; RTX3080 and WARP covered. No public API/header/import-library change.
+Other render passes may still compile new shaders. Live player/HDMI qualification remains open.

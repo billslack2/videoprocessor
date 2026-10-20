@@ -931,6 +931,7 @@ namespace AlphaSourceCrop
 	{
 		ActivePictureBounds sourceBounds;
 		bool applied = false;
+        bool samplingEnvelopeFilled = false;
         bool contentEligible = false;
 		double contentAspect = 0.0;
         double referenceAspect = 0.0;
@@ -1395,6 +1396,13 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+        // A separate presentation-only certificate for an approved side fill of
+        // a small vertical sampling envelope. Never certifies native acquisition.
+        bool samplingEnvelopeFillApplied = false;
+        ActivePictureBounds samplingEnvelopeSourceBounds;
+        ActivePictureBounds samplingEnvelopeFillSourceBounds;
+        uint64_t samplingEnvelopeFillSourceSequence = 0;
+        double samplingEnvelopeFillScreenAspect = 0.0;
         // Actual optional fill from the immediately preceding presentation.
         bool optionalFillApplied = false;
         ActivePictureBounds optionalFillSourceBounds;
@@ -1421,6 +1429,13 @@ namespace AlphaSourceCrop
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
 		uint64_t lastSubmittedSourceSequence = 0;
+        // Includes submitted presentation handoffs without renewing native AR.
+        uint64_t lastSubmittedPresentationSourceSequence = 0;
+        // A submitted outward envelope preserves real visible content while
+        // subsequent analysis is unavailable. It is not new picture authority.
+        bool submittedEnvelopeAvailable = false;
+        ActivePictureBounds submittedEnvelope;
+        uint64_t submittedEnvelopeSourceSequence = 0;
 	};
 	struct SubmittedNativeScopeAnchorUpdateInput
 	{
@@ -1912,6 +1927,46 @@ namespace AlphaSourceCrop
 	// geometry, but only a generation-current shared BAR_CROP_TRUSTED snapshot
 	// reaffirmed by the latest symmetric observation can contract the source
 	// rectangle. The user-visible Off state always returns the complete raster.
+    struct UncertainPicturePresentationDecision
+    {
+        bool retained = false;
+        bool expanded = false;
+        bool currentPixelExtent = false;
+        ActivePictureBounds nativeCrop;
+        Decision presentation;
+    };
+
+    // Final automatic-picture policy, after recovery and admission. Uncertainty
+    // cannot invent full-raster authority or acquire an unsubmitted crop.
+    UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
+        const PresentationRecoveryInput& input, const Decision& proposed);
+
+    // Final optional-fill routing shared by the renderer and policy tests.
+    // This is presentation only; it cannot publish native geometry or renew authority.
+    struct FinalAspectLimitFillInput
+    {
+        AspectLimitFillInput configured;
+        Input crop;
+        Decision presentation;
+        PresentationRecoveryInput evidence;
+        UncertainPicturePresentationDecision uncertainPicture;
+        bool fixedCropAspectConfigured = false;
+        double fixedCropAspect = 0.0;
+        bool protectedCaptionFit = false;
+        bool nlsPresentationFailOpen = false;
+        bool recoveryBoundedPresentation = false;
+        bool nearBlackBoundedPresentation = false;
+        bool nearBlackRetainedScopeFallback = false;
+        bool nearBlackFailOpenProposal = false;
+        bool nlsOwnsPresentationGeometry = false;
+        bool configuredScreenActive = false;
+        // Fail closed unless the renderer excludes current/held Classic or
+        // advanced captions/icons, side content, pending confirmation and drift.
+        bool samplingCompetingPresentation = true;
+    };
+    AspectLimitFillDecision EvaluateFinalAspectLimitFill(
+        const FinalAspectLimitFillInput& input);
+
 	Decision Evaluate(const Input& input);
 
 	// A scene boundary resets candidate proof, but presentation is atomic:

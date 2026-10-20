@@ -254,9 +254,12 @@
     <ClInclude Include="SubtitleBoxDetector.h" />
     <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
     <ClInclude Include="SubtitleBoxLookahead.h" />
+    <ClInclude Include="SubtitleCueContinuation.h" />
+    <ClInclude Include="SubtitleCueContinuationProof.h" />
     <ClInclude Include="SubtitleCutPaste.h" />
     <ClInclude Include="SubtitleCutPasteShader.h" />
     <ClInclude Include="SubtitleBarEvidence.h" />
+    <ClInclude Include="SubtitleLocalGlyphProof.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
     <ClInclude Include="LocalBoundaryDiagnostics.h" />

@@ -128,7 +128,9 @@ bool IsExactInwardActivePictureAssociationGeometry(
 	ActivePictureClassification classification);
 
 
-enum class ActivePictureDiscardReason : uint8_t { Unknown, BacklogRecovery };
+enum class ActivePictureDiscardReason : uint8_t {
+    Unknown, BacklogRecovery, QueueCapacityOverflow
+};
 
 // Bounded source-order association layer for active-picture decisions. It
 // owns no video frames and changes neither queue depth nor dequeue timing.
@@ -147,7 +149,7 @@ public:
 		ActivePictureDiscardReason reason = ActivePictureDiscardReason::Unknown);
 	// Presentation may reconnect an acquired current-source cue only when
 	// every intermediate accepted source was explicitly dequeued or retired
-	// and every continuity break came from backlog recovery.
+	// and every continuity break came from explicit backlog or capacity retirement.
 	// This never restores AR lookahead evidence or its continuity generation.
 	bool OnlyBacklogRetirementBetween(const ActivePictureFrameIdentity& previousTemplate,
 		const ActivePictureFrameIdentity& current, uint64_t beforeContinuity,
