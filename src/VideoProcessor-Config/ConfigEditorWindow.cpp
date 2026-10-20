@@ -3542,7 +3542,13 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
 
 QString ConfigEditorWindow::displayWarning() const
 {
-    const QString display = monitorChoice_ ? monitorChoice_->currentData().toString().trimmed() : QString();
+    QString display;
+    if (monitorChoice_)
+    {
+        const int index = monitorChoice_->currentIndex();
+        display = (index < 0 || monitorChoice_->currentText() != monitorChoice_->itemText(index)) ?
+            monitorChoice_->currentText().trimmed() : monitorChoice_->currentData().toString().trimmed();
+    }
     if (display.isEmpty() || display.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0) return {};
     for (const QString& discovered : monitors_)
         if (discovered.trimmed().compare(display, Qt::CaseInsensitive) == 0)
