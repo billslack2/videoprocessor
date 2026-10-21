@@ -259,7 +259,9 @@ private:
 	StatsData m_stats;
 
 	// Bitmap constants - shared 20px native OSD typography.
-	static const int WINDOW_WIDTH = 540;     // Fit compact output-contract diagnostics
+	// Fit compact output-contract diagnostics: 62 Consolas columns after the
+	// left padding (9 px each), with at least that padding clear on the right.
+	static const int WINDOW_WIDTH = 586;
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 20;
 	static const int ALPHA_LINE_HEIGHT = 20;

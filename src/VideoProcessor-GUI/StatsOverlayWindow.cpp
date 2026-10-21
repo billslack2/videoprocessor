@@ -500,7 +500,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	if (m_stats.isAlphaRenderer)
 	{
-		line.Format(TEXT("Aspect Ratio: %s (%s)"),
+		line.Format(TEXT("Aspect Ratio:     %s (%s)"),
 			m_stats.aspectRatio.IsEmpty() ? TEXT("---") :
 			static_cast<LPCTSTR>(m_stats.aspectRatio),
 			m_stats.aspectName.IsEmpty() ? TEXT("Unknown") :
@@ -723,7 +723,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		constexpr int LUT_OSD_MAX_CHARS = 34;
 		if (lut.GetLength() > LUT_OSD_MAX_CHARS)
 			lut = lut.Left(LUT_OSD_MAX_CHARS - 3) + TEXT("...");
-		line.Format(TEXT("LUT: %s"), static_cast<LPCTSTR>(lut));
+		line.Format(TEXT("LUT:              %s"), static_cast<LPCTSTR>(lut));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 	}
@@ -807,45 +807,45 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		// capture to the forecast display target, so it is comparable with the
 		// audio extraction boundary without changing Alpha's scheduling.
 		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
+			line.Format(TEXT("%-18s%.0f ms"), TEXT("Delay:"),
 				m_stats.captureToPresentationTargetMs);
 		else
-			line.Format(TEXT("%-15s---"), TEXT("Delay:"));
+			line.Format(TEXT("%-18s---"), TEXT("Delay:"));
 	}
 	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
+		line.Format(TEXT("%-18s%.0f ms"), TEXT("Delay:"),
 			m_stats.scheduledLatencyMs);
 	else
-		line.Format(TEXT("%-15s---"), TEXT("Delay:"));
+		line.Format(TEXT("%-18s---"), TEXT("Delay:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
 	// by DirectShow and Alpha, despite their different presentation owners.
 	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Renderer:"),
+		line.Format(TEXT("%-18s%.0f ms"), TEXT("- Renderer:"),
 			m_stats.vpInternalLatencyMs);
 	else
-		line.Format(TEXT("%-15s---"), TEXT("- Renderer:"));
+		line.Format(TEXT("%-18s---"), TEXT("- Renderer:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	if (m_stats.isAlphaRenderer)
 	{
 		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+			line.Format(TEXT("%-18s%.0f ms"), TEXT("- Present:"),
 				m_stats.presentationTargetLeadMs);
 		else if (!m_stats.presentationTimingStatus.IsEmpty())
-			line.Format(TEXT("%-15s--- (%s)"), TEXT("- Present:"),
+			line.Format(TEXT("%-18s--- (%s)"), TEXT("- Present:"),
 				OsdTimingPolicy::Status(m_stats.presentationTimingStatus.GetString()).c_str());
 		else
-			line.Format(TEXT("%-15s---"), TEXT("- Present:"));
+			line.Format(TEXT("%-18s---"), TEXT("- Present:"));
 	}
 	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+		line.Format(TEXT("%-18s%.0f ms"), TEXT("- Present:"),
 			m_stats.dsScheduleLeadMs);
 	else
-		line.Format(TEXT("%-15s---"), TEXT("- Present:"));
+		line.Format(TEXT("%-18s---"), TEXT("- Present:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -873,11 +873,11 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	if (m_stats.renderLoadKnown)
 	{
 		if (OsdTimingPolicy::WarmingEnabled && m_stats.renderLoadSettling)
-			line.Format(TEXT("GPU frame:       settling..."));
+			line.Format(TEXT("GPU frame:        settling..."));
 		else if (!m_stats.renderLoadGpuValid)
-			line.Format(TEXT("GPU frame:       measuring..."));
+			line.Format(TEXT("GPU frame:        measuring..."));
 		else
-			line.Format(TEXT("GPU frame:       avg %.2f, max %.2f ms (10 s)"),
+			line.Format(TEXT("GPU frame:        avg %.2f, max %.2f ms (10 s)"),
 				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs);
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
@@ -890,7 +890,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		if (m_stats.renderLoadGpuPercentValid)
 			gpuLoad.Format(TEXT("%.0f/%.0f%%"),
 				m_stats.renderLoadGpuAvgPercent, m_stats.renderLoadGpuPercent);
-		line.Format(TEXT("10s avg/max: CPU %s, GPU output load %s"),
+		line.Format(TEXT("10s avg/max:      CPU %s, GPU output load %s"),
 			static_cast<LPCTSTR>(cpuLoad), static_cast<LPCTSTR>(gpuLoad));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
@@ -900,23 +900,23 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		const double sourceRateHz = OsdTimingPolicy::FrameBudgetRate(
 			m_stats.measuredRefreshRate, m_stats.theoreticalRefreshRate);
 		if (sourceRateHz > 0.0)
-			line.Format(TEXT("Source interval: %.2f ms @ %.3f fps"),
+			line.Format(TEXT("Source interval:  %.2f ms @ %.3f fps"),
 				1000.0 / sourceRateHz, sourceRateHz);
 		else
-			line.Format(TEXT("Source interval: unavailable"));
+			line.Format(TEXT("Source interval:  unavailable"));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
 		// The scheduled output interval is also the GPU-budget denominator.
 		if (m_stats.renderLoadFramePeriodMs > 0.0 &&
 			m_stats.renderLoadFramePeriodFromRenderCadence)
-			line.Format(TEXT("Output interval: %.2f ms @ %.3f fps"),
+			line.Format(TEXT("Output interval:  %.2f ms @ %.3f fps"),
 				m_stats.renderLoadFramePeriodMs,
 				1000.0 / m_stats.renderLoadFramePeriodMs);
 		else if (m_stats.renderLoadFramePeriodMs > 0.0)
-			line.Format(TEXT("Output interval: cadence unavailable"));
+			line.Format(TEXT("Output interval:  cadence unavailable"));
 		else
-			line.Format(TEXT("Output interval: measuring..."));
+			line.Format(TEXT("Output interval:  measuring..."));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
@@ -980,7 +980,7 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// VP Renderer omits two DirectShow-only rows, but adds one aspect row.
 	// The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
+	size_t lineCount = stats.isAlphaRenderer ? 21 : 22;
 	++lineCount; // Surface mode is always shown.
 	lineCount += 3; // DTM Profile, HDR10 and Measured are always shown.
 	if (stats.renderLoadKnown)
