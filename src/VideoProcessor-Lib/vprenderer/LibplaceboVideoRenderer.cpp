@@ -17986,7 +17986,7 @@ releaseDriftBaseRetention =
         const pl_hook* submittedNls = nullptr;
         for(int i=0;i<renderParams.num_hooks;++i)
             if(renderParams.hooks[i]==nlsHook)submittedNls=nlsHook;
-        const auto hookRender = NlsHookRecovery::Render(renderer, d3d11->gpu,
+        const auto hookRender = NlsHookRecovery::Render(temporalRenderer.ProcessingRenderer(renderer), d3d11->gpu,
             renderImage, target, baseTarget, renderParams, submittedNls, [&]()
             {
                 runtimeRejectedNlsHookSignature = nlsHookSignature;
