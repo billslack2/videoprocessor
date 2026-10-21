@@ -1,0 +1,68 @@
+{
+  "beta": "0a6cdc2dbbb68a14c3b687d8e2dbcdad4878cd2b",
+  "tests": "letterbox clear/readback/error-free GPU/cache reuse: both APIs, three mixers, composition on/off",
+  "localSnapshot": "e534ff3cadfe020268f24cd47f1a3803667b2d13",
+  "commit": "30a7f941ee2e4dfe5c5d28718841de7519920b11",
+  "configuration": "Release",
+  "architecture": "x64",
+  "parentTargetedTestsPassed": 872,
+  "configEdits": [],
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\source-rate-clear-30a7f941-20261021-100230",
+  "testsPassed": 12,
+  "time": "2026-10-21T10:02:31.1424055-04:00",
+  "stoppedProcesses": [],
+  "configSHA256": "A6C3A63D7FF7C566D3FE7C6FC9EDD13DDFE6B50F6E9CABA224F8B60BE0C8D7CC",
+  "files": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "A1FDCE351103EAF014F6A263F925F9514EB252C2F742AA980A242709E57D318E"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "FE54ED5F873411A52E91147C2EBE5241FE3002A2AF7F802E1F0B870D2444ED73"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "07A0AFF7497E8232C25DB0E567A92982A502116B88F71F4F608DF1D58DA14506"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "sha256": "2E53F0B74D2B141AB354FD59B6F645DE7FD4DBE414A8CD831EDA6B6EEB58DDB0"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "F03CC3D469C04027398CEB30A82EF7BB3C1FEA55D63EAC779194B728CB3E7F22"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessorOutputProbe.exe",
+      "sha256": "56406D63A400B9CA6A84A9C0EFC37818D4A177CF63B2AA53596D8613B5164278"
+    }
+  ],
+  "startup": {
+    "configSHA256AtVerification": "A1CAA8982D9D0E0C4D174BDB403056CD65C530DC54AB25F590ACF48889AC6012",
+    "rendererModules": [
+      "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    ],
+    "configEditedByDeployment": false,
+    "validationErrorsAfterDeploy": 0,
+    "configUpdatedExternallyAfterStartup": "2026-10-21 10:02:57",
+    "hostIdentity": "30a7f941; clean",
+    "profileRuntime": "initialized",
+    "responding": true,
+    "pid": 57656
+  },
+  "liveValidation": {
+    "gpuPeriodMs": 16.68,
+    "backlogDropEvents": 0,
+    "renderAverageMs": 0.3,
+    "from": "2026-10-21 10:04:29 -04:00",
+    "notes": "Live input/output GPU checks do not establish general visual acceptance; isolated Off-mode stall at 10:03:41 remains separate.",
+    "gpuLoadAveragePercent": 29.8,
+    "gpuFramePeakMs": 7.608,
+    "through": "2026-10-21T10:06:07.0614846-04:00",
+    "smoothMotion": "oversample, 23.976 -> 59.951; subtitles synchronized",
+    "validationErrors": 0,
+    "gpuFrameAverageMs": 4.97
+  }
+}
