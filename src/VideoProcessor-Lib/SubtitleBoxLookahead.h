@@ -73,6 +73,8 @@ struct SubtitleBoxObservation
     SubtitlePictureAuthority sharedPicture;
     int nearBarDistance=0;
     int optimizationMode=0;
+    unsigned analysisStride=1;
+    bool cadenceSkipped=false;
     SubtitleScriptHint scriptHint=SubtitleScriptHint::Latin;
     ActivePictureFrameIdentity identity;
     SubtitleBoxResult text;
@@ -1359,6 +1361,16 @@ namespace SubtitleBoxLookahead
         return StableBlackBacking(reference,sampled) && SameInkAtReference(reference,sampled);
     }
 
+    // Consecutive independent analyses may be two input frames apart. They
+    // still count as two observations; a skipped frame never adds a vote.
+    inline bool NextIndependentAnalysis(const SubtitleBoxObservation& previous,
+        const SubtitleBoxObservation& next) {
+        return (previous.analysisStride==1 || previous.analysisStride==2) &&
+            previous.analysisStride==next.analysisStride &&
+            next.identity.acceptedSequence>previous.identity.acceptedSequence &&
+            next.identity.acceptedSequence-previous.identity.acceptedSequence==previous.analysisStride;
+    }
+
     inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames, size_t count,
         uint64_t policy, uint64_t continuity)
     {
@@ -1375,7 +1387,7 @@ namespace SubtitleBoxLookahead
             const auto& previous=frames[readyCount-1];const auto& next=frames[readyCount];
             const auto& a=previous.identity;const auto& b=next.identity;
             if(!next.analyzed || next.pendingRefresh || next.analysisRefresh || next.text.workLimit || next.discontinuity ||
-                b.acceptedSequence!=a.acceptedSequence+1 ||
+                !NextIndependentAnalysis(previous,next) ||
                 a.transportGeneration!=b.transportGeneration || a.sourceFormatGeneration!=b.sourceFormatGeneration ||
                 a.analysisDomainKey!=b.analysisDomainKey ||
                 a.viewportGeneration!=b.viewportGeneration || a.rendererGeneration!=b.rendererGeneration ||
@@ -1400,7 +1412,7 @@ namespace SubtitleBoxLookahead
             // original all-lines SameCue rule.
             if(!cueMatches && frames[0].text.lineCount>=3 && next.text.lineCount>=2 &&
                 next.analyzed && !next.discontinuity &&
-                next.identity.acceptedSequence==frames[i-1].identity.acceptedSequence+1 &&
+                NextIndependentAnalysis(frames[i-1],next) &&
                 SameContext(frames[0],next) && next.text.detected && HasBarEvidence(next)) {
                 const int currentAnchor=BarAnchorLine(frames[0]);
                 const int nextAnchor=BarAnchorLine(next);
@@ -1420,7 +1432,7 @@ namespace SubtitleBoxLookahead
                 }
             }
             if (!next.analyzed || next.discontinuity ||
-                next.identity.acceptedSequence != frames[i-1].identity.acceptedSequence + 1 ||
+                !NextIndependentAnalysis(frames[i-1],next) ||
                 !cueMatches) break;
             ++result.matchingFrames;
         }
@@ -1432,7 +1444,7 @@ namespace SubtitleBoxLookahead
                 const auto& prev=frames[i-1];const auto& next=frames[i];
                 if(!next.analyzed || next.discontinuity || !next.text.detected || !HasBarEvidence(next) ||
                     !SameContext(frames[0],next) ||
-                    next.identity.acceptedSequence!=prev.identity.acceptedSequence+1) break;
+                    !NextIndependentAnalysis(prev,next)) break;
                 bool anchorVisible=false;
                 for(int line=0;line<next.text.lineCount;++line)
                     if((next.text.lineBounds[line].top<next.pictureTop ||
@@ -1641,14 +1653,28 @@ namespace SubtitleBoxLookahead
         uint64_t policy,uint64_t continuity)
     {
         if(!frames || !ownedIdentities || !count)return {};
+        std::array<SubtitleBoxObservation,MaxFrames> independent;
         size_t ready=0;
-        for(;ready<(std::min)(count,MaxFrames);++ready) {
-            const auto& current=frames[ready];
-            if(!current.analyzed || current.pendingRefresh || current.analysisRefresh ||
-                !SameAnalysisFrameIdentity(current.identity,ownedIdentities[ready]) ||
+        for(size_t i=0;i<(std::min)(count,MaxFrames);++i) {
+            const auto& current=frames[i];
+            if(!SameAnalysisFrameIdentity(current.identity,ownedIdentities[i]) ||
                 current.policyGeneration!=policy || current.continuityGeneration!=continuity)break;
+            if(current.cadenceSkipped && current.analysisStride==2 && ready &&
+                !current.analyzed && !current.discontinuity &&
+                independent[ready-1].analysisStride==2 &&
+                current.identity.transportGeneration==independent[ready-1].identity.transportGeneration &&
+                current.identity.sourceFormatGeneration==independent[ready-1].identity.sourceFormatGeneration &&
+                current.identity.analysisDomainKey==independent[ready-1].identity.analysisDomainKey &&
+                current.identity.viewportGeneration==independent[ready-1].identity.viewportGeneration &&
+                current.identity.rendererGeneration==independent[ready-1].identity.rendererGeneration &&
+                current.width==independent[ready-1].width && current.height==independent[ready-1].height &&
+                current.nearBarDistance==independent[ready-1].nearBarDistance &&
+                current.scriptHint==independent[ready-1].scriptHint &&
+                current.identity.acceptedSequence==independent[ready-1].identity.acceptedSequence+1)continue;
+            if(!current.analyzed || current.pendingRefresh || current.analysisRefresh)break;
+            independent[ready++]=current;
         }
-        return ready?Resolve(frames,ready,policy,continuity):SubtitleBoxPreview{};
+        return ready?Resolve(independent.data(),ready,policy,continuity):SubtitleBoxPreview{};
     }
 
     // Before conversion completes, the render queue has only immutable
@@ -2457,7 +2483,7 @@ private:
         if(!preview.futureAvailable || !preview.followingCount) return false;
         const auto& next=preview.following[0];
         return next.analyzed && !next.discontinuity && !next.text.workLimit && next.ink &&
-            next.identity.acceptedSequence==preview.current.identity.acceptedSequence+1 &&
+            SubtitleBoxLookahead::NextIndependentAnalysis(preview.current,next) &&
             SubtitleBoxLookahead::SameContext(m_reference,next) &&
             SameExtensionInk(evidence.ink,next.ink,evidence.bounds);
     }
@@ -2494,7 +2520,7 @@ private:
             !preview.current.ink || !now.Valid()) return false;
         const auto& next=preview.following[0];
         if(!next.analyzed || next.discontinuity || next.text.workLimit || !next.ink ||
-            next.identity.acceptedSequence!=preview.current.identity.acceptedSequence+1 ||
+            !SubtitleBoxLookahead::NextIndependentAnalysis(preview.current,next) ||
             !SubtitleBoxLookahead::SameContext(m_reference,next) ||
             !SubtitleBoxLookahead::SameInkAtReference(m_inkReference,next)) return false;
         SubtitleBoxRect later;
@@ -2518,7 +2544,8 @@ private:
             for(unsigned i=0;i<3;++i) {
                 const auto& observed=preview.following[i];
                 if(!observed.analyzed || observed.discontinuity || observed.text.workLimit || !observed.ink ||
-                    observed.identity.acceptedSequence!=preview.current.identity.acceptedSequence+i+1 ||
+                    observed.analysisStride!=preview.current.analysisStride ||
+                    observed.identity.acceptedSequence!=preview.current.identity.acceptedSequence+(i+1)*preview.current.analysisStride ||
                     !SubtitleBoxLookahead::SameContext(m_reference,observed))return false;
                 for(int line=0;line<m_inkReference.text.lineCount && line<3;++line)
                     if(!SubtitleBoxLookahead::OwnedLinePixelsVisible(m_inkReference,line,observed))return false;
