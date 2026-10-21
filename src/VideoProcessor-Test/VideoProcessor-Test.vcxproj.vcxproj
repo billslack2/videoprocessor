@@ -272,6 +272,7 @@
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
     <ClCompile Include="DisplayWindowGeometryTests.cpp" />
     <ClCompile Include="DisplayRasterInfoTests.cpp" />
+    <ClCompile Include="..\VideoProcessor-GUI\StatsOverlayWindow.cpp" />
 	<ClCompile Include="DisplayRefreshRateEstimatorTests.cpp" />
 	<ClCompile Include="DisplayRefreshRateWindowTests.cpp" />
     <ClCompile Include="CadenceIntervalEstimateTests.cpp" />

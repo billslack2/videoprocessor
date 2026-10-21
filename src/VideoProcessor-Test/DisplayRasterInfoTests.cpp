@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <DisplayRasterInfo.h>
+#include "../VideoProcessor-GUI/StatsOverlayWindow.h"
 #include <atomic>
 #include <thread>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -100,6 +101,37 @@ public:
             Assert::IsTrue(GetTextExtentPoint32W(graphics.dc,text.c_str(),static_cast<int>(text.size()),&size)!=FALSE);
             Assert::IsTrue(size.cx<=520,L"Raster annotation clipped by the native 540px panel");
         }
+    }
+    TEST_METHOD(NativeBitmapHeightTracksRasterContinuationRows)
+    {
+        StatsOverlayWindow overlay;
+        StatsData stats; stats.isAlphaRenderer=true; stats.resolution=L"1920 x 1080";
+        stats.outputMode=L"Target SDR Rec.709 | Req A/A/A/A -> Flip/F/sRGB/709";
+        const auto height=[&]() {
+            overlay.UpdateStats(stats); std::vector<uint8_t> pixels; int width=0,rows=0,stride=0;
+            Assert::IsTrue(overlay.RenderBgra(pixels,width,rows,stride));
+            Assert::AreEqual(540,width); Assert::AreEqual(width*4,stride);
+            Assert::AreEqual(size_t(stride)*rows,pixels.size()); return rows;
+        };
+        const int baseline=height();
+        stats.outputMode+=L" | WIRE: 3840x2160";
+        Assert::AreEqual(baseline,height());
+        stats.outputMode+=L" | DRAWN: 3840x2160";
+        Assert::AreEqual(baseline+20,height());
+        stats.outputMode+=L" | DESKTOP: 1920x1080";
+        Assert::AreEqual(baseline+40,height());
+    }
+    TEST_METHOD(NativeBitmapDoesNotAllocateRowsForUnavailableOrMalformedRaster)
+    {
+        StatsOverlayWindow overlay;
+        StatsData stats; stats.isAlphaRenderer=true; stats.resolution=L"1920 x 1080";
+        stats.outputMode=L"Target SDR Rec.709 | Req A/A/A/A -> Flip/F/sRGB/709";
+        std::vector<uint8_t> pixels; int width=0,baseline=0,stride=0;
+        overlay.UpdateStats(stats); Assert::IsTrue(overlay.RenderBgra(pixels,width,baseline,stride));
+        stats.outputMode+=L" | WIRE: unavailable | DRAWN: 3840x2160 | DESKTOP: 1920x1080";
+        int height=0; overlay.UpdateStats(stats);
+        Assert::IsTrue(overlay.RenderBgra(pixels,width,height,stride));
+        Assert::AreEqual(baseline,height);
     }
     TEST_METHOD(ConcurrentDrawnUpdatesAreCoherentPairs)
     {

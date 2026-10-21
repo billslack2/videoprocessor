@@ -37,7 +37,7 @@ and preserves both original PR histories. The stacks can merge in order:
 - Native, GPU-scaled, windowed/drawn, interlaced and unknown OSD output; malformed
   payloads; restoration/recreation; invalidation and stale observations; coherent
   concurrent geometry pairs; no rate on the row; actual 20px Consolas width and
-  matching continuation-row counts.
+  matching continuation-row counts in the real native bitmap rasterizer.
 
 The earlier tester run qualified Windows mode read-back and geometry on a
 combined build with the projector off. Automated tests do not replace projected
