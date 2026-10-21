@@ -36,6 +36,12 @@ struct AnalysisLumaSample
 	uint16_t chromaV = 512;
 };
 
+struct AnalysisLumaRowContent
+{
+    int samples = 0;
+    int left = 0, right = 0;
+};
+
 struct AnalysisLumaSource
 {
 	const uint8_t* data = nullptr;
@@ -54,6 +60,11 @@ struct AnalysisLumaSource
 
 	bool IsValid() const;
 	bool Sample(int x, int y, AnalysisLumaSample& result) const;
+
+    // Exact Sample().luma threshold/count/span on a strided row. Validate once
+    // and avoid fetching/converting chroma when the consumer only needs luma.
+    bool MeasureLumaRowContent(int y, int x0, int x1, int step,
+        uint16_t threshold, AnalysisLumaRowContent& result) const;
 
     // Checks every native pixel in a row using Sample's exact code domain.
     // False means invalid input/read failure; a valid foreground hit returns

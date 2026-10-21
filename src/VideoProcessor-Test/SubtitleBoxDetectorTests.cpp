@@ -1,12 +1,14 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleBoxDetector.h>
+#include <SubtitleBoxLookahead.h>
 #include <SubtitleOpaqueCardRefinement.h>
 #include <vector>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <SubtitleGeneratedGrayStyle.h>
 #include <fstream>
+#include <cstring>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace Tests {
 TEST_CLASS(SubtitleBoxDetectorTests) {
@@ -45,6 +47,22 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         for(int x=left+12;x<left+width-5;x+=31)
             Fill(f,x,top,x+2,top+2,white);
     }
+    static void ThinJoinedArabicWord(std::vector<uint16_t>& f,int left,int top,
+        int width,int height,int white=800) {
+        // New native-format fixtures use thin connected strokes rather than
+        // magnifying 3px SD blocks into an 18px UHD solid. This preserves the
+        // joined word while keeping its local dark-opposition palette visible.
+        const int joinY=top+height*2/3;
+        Fill(f,left,joinY,left+width,joinY+1,white);
+        for(int x=left+7;x<left+width-5;x+=20) {
+            Fill(f,x,top+2,x+1,top+height-3,white);
+            Fill(f,x+8,top+4,x+9,top+height-1,white);
+        }
+        Fill(f,left+2,top+height/2,left+3,top+height-2,white);
+        Fill(f,left+width-5,top+3,left+width-4,top+height/2,white);
+        for(int x=left+12;x<left+width-5;x+=31)
+            Fill(f,x,top,x+2,top+2,white);
+    }
     static void UnknownAccessoryGlyph(std::vector<uint16_t>& f,int left,int top,int shape) {
         if(shape==0) {
             // Two disconnected note-like symbols; recognition must use their
@@ -66,7 +84,368 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         s.dataBytes=f.size()*2; s.width=W;s.height=H;s.rowBytes=W*2;s.chromaRowBytes=W*2;
         s.format=AnalysisLumaFormat::P010;s.generation=gen;return s;
     }
+    static std::vector<uint16_t> ScaledFixture(const std::vector<uint16_t>& original,int scale,bool p210) {
+        const int width=W*scale,height=H*scale;
+        std::vector<uint16_t> native(size_t(width)*(height+(p210?height:height/2)),uint16_t(512<<6));
+        for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+            native[size_t(y)*width+x]=original[size_t(y/scale)*W+x/scale];
+        return native;
+    }
+    static AnalysisLumaSource ScaledSource(const std::vector<uint16_t>& native,int scale,bool p210) {
+        auto source=Source(native);source.width=W*scale;source.height=H*scale;
+        source.rowBytes=source.chromaRowBytes=source.width*2;
+        source.format=p210?AnalysisLumaFormat::P210:AnalysisLumaFormat::P010;
+        source.encoding=p210?VideoFrameEncoding::V210:VideoFrameEncoding::UNKNOWN;
+        return source;
+    }
+    static std::array<SubtitleBoxRect,3> NativeTerminalDots(std::vector<uint16_t>& native,
+        int scale,bool upper,int coreRight,int baselineBottom) {
+        const int width=W*scale,height=H*scale;
+        const int step=SubtitleBoxDetector::SamplingStep(width,height);
+        std::array<SubtitleBoxRect,3> dots{};
+        for(int i=0;i<3;++i) {
+            const int left=coreRight*scale+step+i*step*3;
+            const int bottom=baselineBottom*scale,top=bottom-step*3;
+            dots[i]={left,upper?height-bottom:top,left+step*2,upper?height-top:bottom};
+            for(int y=dots[i].top;y<dots[i].bottom;++y)
+                for(int x=dots[i].left;x<dots[i].right;++x)
+                    native[size_t(y)*width+x]=uint16_t(800<<6);
+        }
+        return dots;
+    }
+    static bool OwnsEveryTerminalDot(const SubtitleInkSnapshot& ink,
+        const std::array<SubtitleBoxRect,3>& dots) {
+        for(const auto& dot:dots) {
+            bool owned=false;
+            for(int y=0;y<ink.height && !owned;++y) {
+                const int sourceY=ink.sourceRows[size_t(y)];
+                if(sourceY<dot.top || sourceY>=dot.bottom)continue;
+                for(int x=(dot.left+ink.step-1)/ink.step;x*ink.step<dot.right;++x)
+                    owned|=ink.Get(x,y,true);
+            }
+            if(!owned)return false;
+        }
+        return true;
+    }
+    static std::vector<uint16_t> TallFlareScenery(int phase,bool upper=false) {
+        auto pixels=Frame();Fill(pixels,0,230,W,315,64);
+        for(int i=0;i<4;++i) {
+            const int x=269+i*18+phase,y=271+(i%2)*7;
+            Fill(pixels,x+5,y,x+6,y+30,800);
+            Fill(pixels,x,y+12,x+15,y+13,800);
+            Fill(pixels,x+14,y+24,x+17,y+27,800);
+        }
+        if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+            std::swap(pixels[size_t(y)*W+x],pixels[size_t(H-1-y)*W+x]);
+        return pixels;
+    }
+    static std::vector<uint16_t> AmbiguousCaptionBodies(SubtitleScriptHint script,bool upper=false) {
+        auto pixels=Frame();Fill(pixels,0,230,W,315,64);
+        if(script==SubtitleScriptHint::Arabic)ThinJoinedArabicWord(pixels,280,291,80,18,800);
+        else {
+            Text(pixels,300,291,3,800);
+            if(script==SubtitleScriptHint::Thai)Fill(pixels,302,286,305,289,800);
+        }
+        if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+            std::swap(pixels[size_t(y)*W+x],pixels[size_t(H-1-y)*W+x]);
+        return pixels;
+    }
+    static SubtitleBoxObservation NativeFixtureObservation(const std::vector<uint16_t>& pixels,
+        int scale,bool p210,uint64_t sequence,SubtitleScriptHint script=SubtitleScriptHint::Latin) {
+        const auto native=ScaledFixture(pixels,scale,p210);
+        const auto source=ScaledSource(native,scale,p210);
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(script);
+        SubtitleBoxObservation observation;
+        observation.identity={1,sequence,sequence,sequence*417083,2,3,4};
+        observation.identity.analysisDomainKey=5;
+        observation.width=source.width;observation.height=source.height;
+        observation.pictureTop=45*scale;observation.pictureBottom=315*scale;
+        observation.nearBarDistance=20;observation.scriptHint=script;
+        observation.policyGeneration=41;observation.continuityGeneration=9;
+        observation.analyzed=observation.barAuthority=observation.independentBarAnalysis=true;
+        // The exact physical bar contract is a fixture assumption. Candidate
+        // grouping and all native ownership/backing samples come from Analyze.
+        observation.barEvidence.available=true;
+        observation.barEvidence.top=observation.pictureTop;observation.barEvidence.bottom=observation.pictureBottom;
+        observation.sharedPicture.required=true;observation.sharedPicture.identity=observation.identity;
+        observation.sharedPicture.bounds={0,observation.pictureTop,source.width,observation.pictureBottom,
+            source.width,source.height,double(source.width)/(observation.pictureBottom-observation.pictureTop),
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        observation.text=detector.Analyze(source,observation.pictureTop,observation.pictureBottom,sequence,3);
+        observation.ink=detector.InkSnapshot();
+        return observation;
+    }
 public:
+    TEST_METHOD(WhollyPictureStarsCannotAcquireFromDarkSceneryTouchingBar) {
+        // Native incident pixels were not captured. These mechanism fixtures
+        // model sparse point lights, diagonal dot chains, and tall star flares
+        // inside picture-side darkness that has no finite card boundary.
+        for(int scale:{1,6})for(bool p210:{false,true})for(bool upper:{false,true})
+        for(auto script:{SubtitleScriptHint::Latin,SubtitleScriptHint::Thai,SubtitleScriptHint::Arabic})
+        for(int shape=0;shape<4;++shape) {
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(script);
+            for(int sequence=1;sequence<=3;++sequence) {
+                auto pixels=Frame();Fill(pixels,0,230,W,315,64);
+                const int phase=sequence%2;
+                if(shape==0) {
+                    for(int i=0;i<13;++i) {
+                        const int x=255+i*10+phase,y=279+(i*7)%17;
+                        Fill(pixels,x,y,x+2,y+2,800);
+                    }
+                } else if(shape==1) {
+                    // No learned font height: progressively staggered square
+                    // components must not grow a plausible text baseline.
+                    for(int i=0;i<11;++i) {
+                        const int x=259+i*10+phase,y=264+i*3;
+                        Fill(pixels,x,y,x+5,y+5,800);
+                    }
+                } else if(shape==2) {
+                    for(int i=0;i<8;++i) {
+                        const int x=268+i*13+phase,y=267+(i*5)%23;
+                        Fill(pixels,x+2,y,x+4,y+8,800);
+                        Fill(pixels,x,y+3,x+7,y+5,800);
+                    }
+                } else {
+                    // A tall bright flare can receive synthetic near-bar
+                    // nomination even though every pixel is in the picture.
+                    for(int i=0;i<4;++i) {
+                        const int x=269+i*18+phase,y=271+(i%2)*7;
+                        Fill(pixels,x+5,y,x+6,y+30,800);
+                        Fill(pixels,x,y+12,x+15,y+13,800);
+                        Fill(pixels,x+14,y+24,x+17,y+27,800);
+                    }
+                }
+                if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                    std::swap(pixels[size_t(y)*W+x],pixels[size_t(H-1-y)*W+x]);
+                const auto native=ScaledFixture(pixels,scale,p210);
+                const auto result=detector.Analyze(ScaledSource(native,scale,p210),45*scale,315*scale,sequence,1);
+                const auto message=L"shape="+std::to_wstring(shape)+L" scale="+std::to_wstring(scale)+
+                    L" P210="+std::to_wstring(p210)+L" upper="+std::to_wstring(upper)+
+                    L" script="+std::to_wstring(int(script))+L" reason="+
+                    std::wstring(result.diagnosticReason,result.diagnosticReason+std::strlen(result.diagnosticReason));
+                Assert::IsFalse(result.workLimit,message.c_str());
+                if(shape<3)Assert::IsFalse(result.detected || result.held || result.bounds.Valid(),message.c_str());
+                // Tall cross flares can be spatially identical to real symbol
+                // text. Their raw nomination is allowed; source-pixel temporal
+                // proof below prevents a moving pattern from flashing on.
+
+            }
+        }
+    }
+    TEST_METHOD(MovingNativeFlareCandidatesNeverPublishOneFrameCues) {
+        for(int scale:{1,6})for(bool p210:{false,true})for(bool upper:{false,true}) {
+            // Separate trackers exercise both queue configurations; consuming
+            // the same source twice on one tracker only tests its repeat path.
+            SubtitleBoxPresentation withoutFuture,withFuture;
+            bool rawNominationSeen=false,nativeDisagreementSeen=false;
+            for(uint64_t sequence=100;sequence<110;++sequence) {
+                const auto pixels=TallFlareScenery(int(sequence%2),upper);
+                const auto followingPixels=TallFlareScenery(int((sequence+1)%2),upper);
+                const auto current=NativeFixtureObservation(pixels,scale,p210,sequence);
+                const auto next=NativeFixtureObservation(followingPixels,scale,p210,sequence+1);
+                const auto diagnostic=L"scale="+std::to_wstring(scale)+L" P210="+std::to_wstring(p210)+
+                    L" upper="+std::to_wstring(upper)+L" sequence="+std::to_wstring(sequence)+
+                    L" detected="+std::to_wstring(current.text.detected)+
+                    L" proof="+std::to_wstring(current.text.diagnosticPictureGlyphProofRequired)+
+                    L" gap="+std::to_wstring(current.text.diagnosticNearBarGap)+L" reason="+
+                    std::wstring(current.text.diagnosticReason,current.text.diagnosticReason+std::strlen(current.text.diagnosticReason));
+                Assert::IsTrue(current.text.detected && next.text.detected,diagnostic.c_str());
+                Assert::IsTrue(current.text.diagnosticPictureGlyphProofRequired && next.text.diagnosticPictureGlyphProofRequired);
+                rawNominationSeen=true;
+                nativeDisagreementSeen|=!SubtitleBoxLookahead::ConfidentSameInk(current,next);
+                for(bool future:{false,true}) {
+                    const SubtitleBoxObservation frames[]={current,next};
+                    const auto preview=SubtitleBoxLookahead::Resolve(frames,future?2:1,41,9);
+                    auto& presentation=future?withFuture:withoutFuture;
+                    const auto result=presentation.Consume(preview,250,1000.0/23.976);
+                    Assert::IsFalse(result.detected || result.held || result.bounds.Valid(),
+                        L"A changing picture-only star pattern may not flash on while its native components are already failing temporal ownership.");
+                }
+            }
+            Assert::IsTrue(rawNominationSeen && nativeDisagreementSeen,
+                L"This regression requires ambiguous raw nominations with independently measured native pixel disagreement.");
+        }
+    }
+    TEST_METHOD(StableAmbiguousBodiesConfirmWithFutureOrPreviousSourceAndThenKeepTheirCue) {
+        for(int scale:{1,6})for(bool p210:{false,true})for(bool upper:{false,true})
+        for(auto script:{SubtitleScriptHint::Latin,SubtitleScriptHint::Thai,SubtitleScriptHint::Arabic})
+        for(bool future:{false,true}) {
+            const auto pixels=AmbiguousCaptionBodies(script,upper);
+            const auto first=NativeFixtureObservation(pixels,scale,p210,100,script);
+            const auto second=NativeFixtureObservation(pixels,scale,p210,101,script);
+            const auto diagnostic=L"scale="+std::to_wstring(scale)+L" P210="+std::to_wstring(p210)+
+                L" upper="+std::to_wstring(upper)+L" script="+std::to_wstring(int(script))+
+                L" future="+std::to_wstring(future)+L" detected="+std::to_wstring(first.text.detected)+
+                L" proof="+std::to_wstring(first.text.diagnosticPictureGlyphProofRequired)+
+                L" gap="+std::to_wstring(first.text.diagnosticNearBarGap)+L" topology="+
+                std::wstring(first.text.diagnosticGlyphTopology,first.text.diagnosticGlyphTopology+std::strlen(first.text.diagnosticGlyphTopology))+
+                L" reason="+std::wstring(first.text.diagnosticReason,first.text.diagnosticReason+std::strlen(first.text.diagnosticReason));
+            Assert::IsTrue(first.text.detected && first.text.diagnosticPictureGlyphProofRequired,diagnostic.c_str());
+            Assert::IsTrue(second.text.detected && second.text.diagnosticPictureGlyphProofRequired,diagnostic.c_str());
+            Assert::IsTrue(first.ink!=second.ink && SubtitleBoxLookahead::ConfidentSameInk(first,second));
+            SubtitleBoxPresentation presentation;SubtitleBoxResult accepted;
+            if(future) {
+                const SubtitleBoxObservation frames[]={first,second};
+                accepted=presentation.Consume(SubtitleBoxLookahead::Resolve(frames,2,41,9));
+            } else {
+                const auto pending=SubtitleBoxLookahead::Resolve(&first,1,41,9);
+                Assert::IsFalse(presentation.Consume(pending).detected,
+                    L"A new ambiguous cue waits for a second real source when lookahead is disabled.");
+                Assert::IsFalse(presentation.Consume(pending).detected,
+                    L"Repeated presentation of the identical source cannot manufacture confirmation.");
+                accepted=presentation.Consume(SubtitleBoxLookahead::Resolve(&second,1,41,9));
+            }
+            Assert::IsTrue(accepted.detected && accepted.cue!=0,
+                L"Stable real body pixels may confirm from the immediate future or previous source without requiring lookahead.");
+            const auto cue=accepted.cue;
+            // Identical source content models a paused source, while capture
+            // identity keeps advancing. An established cue needs no new future vote.
+            for(uint64_t sequence=future?101:102;sequence<106;++sequence) {
+                const auto observation=NativeFixtureObservation(pixels,scale,p210,sequence,script);
+                const auto preview=SubtitleBoxLookahead::Resolve(&observation,1,41,9);
+                const auto current=presentation.Consume(preview);
+                Assert::IsTrue(current.detected);Assert::AreEqual(cue,current.cue);
+                const auto repeated=presentation.Consume(preview);
+                Assert::AreEqual(current.cue,repeated.cue);Assert::AreEqual(current.observations,repeated.observations);
+            }
+        }
+    }
+    TEST_METHOD(AmbiguousAcquisitionCannotBorrowStaleFutureOrPreviousPixels) {
+        const auto pixels=AmbiguousCaptionBodies(SubtitleScriptHint::Latin);
+        for(bool future:{false,true})for(int fault=0;fault<16;++fault) {
+            const auto first=NativeFixtureObservation(pixels,1,false,100);
+            auto next=NativeFixtureObservation(pixels,1,false,101);
+            switch(fault) {
+            case 0: next.identity.acceptedSequence=102;break;
+            case 1: next.identity.sourceFrameNumber=first.identity.sourceFrameNumber;break;
+            case 2: next.identity.captureTimestamp=first.identity.captureTimestamp;break;
+            case 3: ++next.policyGeneration;break;
+            case 4: ++next.continuityGeneration;break;
+            case 5: ++next.identity.analysisDomainKey;break;
+            case 6: next.barAuthority=next.barTrackingAuthority=false;next.barEvidence.available=false;break;
+            case 7: next.text.detected=false;break;
+            case 8: next.pendingRefresh=true;break;
+            case 9: next.analysisRefresh=true;break;
+            case 10: next.discontinuity=true;break;
+            case 11: next.text.workLimit=true;break;
+            case 12: ++next.identity.sourceFormatGeneration;break;
+            case 13: ++next.identity.viewportGeneration;break;
+            case 14: ++next.identity.transportGeneration;break;
+            case 15: ++next.identity.rendererGeneration;break;
+            }
+            SubtitleBoxPresentation presentation;SubtitleBoxResult result;
+            if(future) {
+                const SubtitleBoxObservation frames[]={first,next};
+                result=presentation.Consume(SubtitleBoxLookahead::Resolve(frames,2,41,9));
+            } else {
+                Assert::IsFalse(presentation.Consume(SubtitleBoxLookahead::Resolve(&first,1,41,9)).detected);
+                result=presentation.Consume(SubtitleBoxLookahead::Resolve(&next,1,41,9));
+            }
+            const auto diagnostic=L"future="+std::to_wstring(future)+L" fault="+std::to_wstring(fault);
+            Assert::IsFalse(result.detected || result.held,diagnostic.c_str());
+        }
+    }
+    TEST_METHOD(CrossingAndFiniteCardScriptRowsKeepShortCuesAndAnchoredDots) {
+        // Structural raster proxies exercise script grouping without OCR or a
+        // dependency on installed fonts. Thai-like detached marks remain tied
+        // to body strokes; the Arabic proxy is a joined word with diacritics.
+        for(int scale:{1,6})for(bool p210:{false,true})for(bool upper:{false,true})
+        for(auto script:{SubtitleScriptHint::Latin,SubtitleScriptHint::Thai,SubtitleScriptHint::Arabic})
+        for(bool crossing:{false,true})for(bool multiline:{false,true}) {
+            auto pixels=Frame();const int y=crossing?307:291;
+            const int cardTop=multiline?255:282;
+            Fill(pixels,180,cardTop,470,crossing?315:313,64);
+            int lastRight=0;
+            auto row=[&](int top) {
+                if(script==SubtitleScriptHint::Arabic) {
+                    const int left=multiline?200:280,width=multiline?240:80;
+                    ThinJoinedArabicWord(pixels,left,top,width,18,800);lastRight=left+width;
+                } else {
+                    const int count=multiline?12:3,left=multiline?240:300;
+                    Text(pixels,left,top,count,800);lastRight=left+(count-1)*13+8;
+                    if(script==SubtitleScriptHint::Thai)
+                        for(int glyph=0;glyph<count;glyph+=3)
+                            Fill(pixels,left+glyph*13+2,top-5,left+glyph*13+5,top-2,800);
+                }
+            };
+            row(y);if(multiline)row(y-27);
+            // Draw the terminal cluster at native resolution below. A UHD
+            // short word keeps all three marks within the same bounded glyph
+            // corridor instead of magnifying each SD gap and solid dot.
+            if(upper)for(int yy=0;yy<H/2;++yy)for(int x=0;x<W;++x)
+                std::swap(pixels[size_t(yy)*W+x],pixels[size_t(H-1-yy)*W+x]);
+            auto native=ScaledFixture(pixels,scale,p210);
+            const auto dots=NativeTerminalDots(native,scale,upper,lastRight,y+14);
+            const int dotRight=dots.back().right;
+            const auto source=ScaledSource(native,scale,p210);
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(script);
+            for(int sequence=1;sequence<=3;++sequence) {
+                const auto result=detector.Analyze(source,45*scale,315*scale,sequence,1);
+                const auto message=L"scale="+std::to_wstring(scale)+L" P210="+std::to_wstring(p210)+
+                    L" upper="+std::to_wstring(upper)+L" script="+std::to_wstring(int(script))+
+                    L" crossing="+std::to_wstring(crossing)+L" multiline="+std::to_wstring(multiline)+
+                    L" bounds_right="+std::to_wstring(result.bounds.right)+L" dots_right="+std::to_wstring(dotRight)+
+                    L" reason="+std::wstring(result.diagnosticReason,result.diagnosticReason+std::strlen(result.diagnosticReason));
+                Assert::IsTrue(result.detected && !result.held && !result.workLimit,message.c_str());
+                Assert::AreEqual(multiline?2:1,result.lineCount,message.c_str());
+                Assert::IsTrue(result.nearBarEligibilityMeasured && result.nearBarEligible,message.c_str());
+                Assert::IsTrue(result.bounds.right>=dotRight,message.c_str());
+                const auto ink=detector.InkSnapshot();Assert::IsTrue(bool(ink),message.c_str());
+                Assert::IsTrue(OwnsEveryTerminalDot(*ink,dots),message.c_str());
+                if(!crossing)Assert::IsTrue(result.provenSourcePanel.Valid() || result.sourcePanel.Valid(),message.c_str());
+            }
+        }
+    }
+    TEST_METHOD(UnboundedDarkSceneryKeepsCoherentNearBarBodiesAndAnchoredEllipsis) {
+        for(int scale:{1,6})for(bool p210:{false,true})for(bool upper:{false,true})
+        for(auto script:{SubtitleScriptHint::Latin,SubtitleScriptHint::Thai,SubtitleScriptHint::Arabic})
+        for(bool multiline:{false,true}) {
+            auto pixels=Frame();Fill(pixels,0,230,W,315,64);
+            // No finite side or lower card edge is visible. The genuine row
+            // must qualify from its own body scale, baseline and near-edge gap.
+            const int top=291;int right=0;
+            auto row=[&](int y) {
+                if(script==SubtitleScriptHint::Arabic) {
+                    const int left=multiline?200:280,width=multiline?240:80;
+                    ThinJoinedArabicWord(pixels,left,y,width,18,800);right=left+width;
+                } else {
+                    const int count=multiline?12:3,left=multiline?240:300;
+                    Text(pixels,left,y,count,800);right=left+(count-1)*13+8;
+                    if(script==SubtitleScriptHint::Thai)
+                        for(int glyph=0;glyph<count;glyph+=3)
+                            Fill(pixels,left+glyph*13+2,y-5,left+glyph*13+5,y-2,800);
+                }
+            };
+            row(top);if(multiline)row(top-27);
+            // Native 2x3-cell marks retain three distinct baseline components
+            // at either resolution without enlarging the attachment corridor.
+            if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(pixels[size_t(y)*W+x],pixels[size_t(H-1-y)*W+x]);
+            auto native=ScaledFixture(pixels,scale,p210);
+            const auto dots=NativeTerminalDots(native,scale,upper,right,top+14);
+            const int dotRight=dots.back().right;
+            const auto source=ScaledSource(native,scale,p210);
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(script);
+            for(int sequence=1;sequence<=3;++sequence) {
+                const auto result=detector.Analyze(source,45*scale,315*scale,sequence,1);
+                const auto message=L"scale="+std::to_wstring(scale)+L" P210="+std::to_wstring(p210)+
+                    L" upper="+std::to_wstring(upper)+L" script="+std::to_wstring(int(script))+
+                    L" multiline="+std::to_wstring(multiline)+L" bounds_right="+std::to_wstring(result.bounds.right)+
+                    L" dots_right="+std::to_wstring(dotRight)+L" proof="+std::to_wstring(result.diagnosticPictureGlyphProofRequired)+
+                    L" gap="+std::to_wstring(result.diagnosticNearBarGap)+L" reason="+
+                    std::wstring(result.diagnosticReason,result.diagnosticReason+std::strlen(result.diagnosticReason));
+                Assert::IsTrue(result.detected && !result.held && !result.workLimit,message.c_str());
+                Assert::AreEqual(multiline?2:1,result.lineCount,message.c_str());
+                Assert::IsTrue(result.diagnosticPictureGlyphProofRequired,message.c_str());
+                Assert::IsTrue(result.diagnosticCoreGlyphCount>0 && result.diagnosticCoreGlyphHeight>0,message.c_str());
+                Assert::IsTrue(result.diagnosticBaselineSupportBasisPoints>=7500,message.c_str());
+                Assert::IsTrue(result.nearBarEligibilityMeasured && result.nearBarEligible,message.c_str());
+                Assert::IsTrue(result.bounds.right>=dotRight,message.c_str());
+                const auto ink=detector.InkSnapshot();Assert::IsTrue(bool(ink),message.c_str());
+                Assert::IsTrue(OwnsEveryTerminalDot(*ink,dots),message.c_str());
+            }
+        }
+    }
     TEST_METHOD(CjkDisconnectedRadicalsKeepBothRowsAndRejectUnownedSceneInterior) {
         // A dense detached radical inside a U-shaped component has no shared
         // baseline and is too wide to be punctuation. The bar row establishes

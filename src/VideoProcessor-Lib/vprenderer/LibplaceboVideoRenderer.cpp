@@ -10,6 +10,7 @@
 
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
+#include <DisplayMonitorInventory.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -44,6 +45,7 @@
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
 #include <vprenderer/SubmittedOutputGeometryTrace.h>
@@ -813,6 +815,11 @@ namespace
 		bool switchRefreshRate = true;
 		RefreshRateSwitchMode refreshRateSwitchMode =
 			RefreshRateSwitchMode::FullscreenOnly;
+		bool outputDisplayAdvanced = false;
+		bool restorePreviousDisplayMode = true;
+		std::vector<DisplayOutputMode> allowedDisplayModes;
+		std::string outputDisplayProfile;
+        std::string outputDisplayMonitor;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -949,7 +956,13 @@ namespace
 		stream
 			<< settings.configurationIdentity << '|' << settings.configurationPath << '|'
             << settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
-			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
+			<< static_cast<int>(settings.refreshRateSwitchMode) << '|'
+			<< settings.outputDisplayAdvanced << '|'
+			<< settings.restorePreviousDisplayMode << '|' << settings.outputDisplayMonitor << '|';
+		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
+			stream << mode.width << 'x' << mode.height << 'p'
+				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
+		stream << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.customToneMapping << '|'
@@ -1237,6 +1250,35 @@ namespace
 				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
                 if(group.name=="subtitles") { settings.subtitleProfileSettings=profile->second.settings; settings.subtitleProfileSelected=true; continue; }
+				if (group.name == "output_display")
+				{
+					const auto& values = profile->second.settings;
+					const auto policy = values.find("mode_policy");
+					settings.outputDisplayAdvanced = policy != values.end() &&
+						ConfigFile::NormalizeName(policy->second) == "advanced";
+					const auto modes = values.find("allowed_modes");
+					settings.allowedDisplayModes.clear();
+					if (modes != values.end())
+					{
+						std::string parseError;
+						if (!ParseDisplayOutputModeList(modes->second,
+							settings.allowedDisplayModes, parseError))
+							DebugLog::Log("output display profile '%s' has invalid allowed_modes: %s",
+								profileName.c_str(), parseError.c_str());
+					}
+					const auto restore = values.find("restore_previous_mode");
+					settings.restorePreviousDisplayMode = restore == values.end() ||
+						ConfigFile::NormalizeName(restore->second) == "true" ||
+						ConfigFile::NormalizeName(restore->second) == "yes" ||
+						ConfigFile::NormalizeName(restore->second) == "on" ||
+						ConfigFile::NormalizeName(restore->second) == "1";
+					settings.outputDisplayProfile = profileName;
+                    settings.outputDisplayMonitor = RendererProfileConfig::ResolveOutputDisplayMonitor(model, profileName);
+					if (!activeProfiles.empty()) activeProfiles += ", ";
+					activeProfiles += group.name + "/" + profileName;
+					if (manual) activeProfiles += " (manual)";
+					continue;
+				}
 				std::string section = "profiles." + group.name + "." + profileName;
 				if (RendererProfileConfig::IsTargetModel(config))
 				{
@@ -3098,27 +3140,16 @@ namespace
 		bool doubledRate = false;
 	};
 
-	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
-		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	bool QueryDxgiSupportedOutputModes(const std::wstring& displayDeviceName,
+		std::vector<DisplayOutputMode>& displayModes, bool progressiveOnly = true)
 	{
-		refreshRates.clear();
-		if (displayDeviceName.empty())
-			return false;
-
-		DEVMODEW currentMode{};
-		currentMode.dmSize = sizeof(currentMode);
-		if (!EnumDisplaySettingsW(displayDeviceName.c_str(),
-			ENUM_CURRENT_SETTINGS, &currentMode))
-		{
-			return false;
-		}
+		displayModes.clear();
+		if (displayDeviceName.empty()) return false;
 
 		CComPtr<IDXGIFactory1> factory;
 		if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) || !factory)
 			return false;
-
-		const DXGI_FORMAT formats[] =
-		{
+		const DXGI_FORMAT formats[] = {
 			DXGI_FORMAT_R8G8B8A8_UNORM,
 			DXGI_FORMAT_R10G10B10A2_UNORM
 		};
@@ -3127,65 +3158,109 @@ namespace
 			CComPtr<IDXGIAdapter1> adapter;
 			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
 				break;
-			if (!adapter)
-				continue;
+			if (!adapter) continue;
 			for (UINT outputIndex = 0;; ++outputIndex)
 			{
 				CComPtr<IDXGIOutput> output;
 				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
 					break;
-				if (!output)
-					continue;
+				if (!output) continue;
 				DXGI_OUTPUT_DESC outputDesc{};
 				if (FAILED(output->GetDesc(&outputDesc)) ||
 					_wcsicmp(outputDesc.DeviceName, displayDeviceName.c_str()) != 0)
-				{
 					continue;
-				}
 				CComQIPtr<IDXGIOutput1> output1(output);
-				if (!output1)
-					return false;
+				if (!output1) return false;
 				for (const DXGI_FORMAT format : formats)
 				{
 					UINT modeCount = 0;
 					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, nullptr)) || modeCount == 0)
-					{
-						continue;
-					}
+						&modeCount, nullptr)) || modeCount == 0) continue;
 					std::vector<DXGI_MODE_DESC1> modes(modeCount);
 					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, modes.data())))
+						&modeCount, modes.data()))) continue;
+					for (const DXGI_MODE_DESC1& candidate : modes)
 					{
-						continue;
-					}
-					for (const DXGI_MODE_DESC1& mode : modes)
-					{
-						if (mode.Width != currentMode.dmPelsWidth ||
-							mode.Height != currentMode.dmPelsHeight ||
-							mode.RefreshRate.Numerator == 0 ||
-							mode.RefreshRate.Denominator == 0)
-						{
+						if (candidate.Width < 100 || candidate.Height < 100 ||
+							candidate.RefreshRate.Numerator == 0 ||
+							candidate.RefreshRate.Denominator == 0 ||
+							(progressiveOnly &&
+							 (candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_UPPER_FIELD_FIRST ||
+							  candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_LOWER_FIELD_FIRST)))
 							continue;
-						}
-						const DISPLAYCONFIG_RATIONAL candidate =
-							{ mode.RefreshRate.Numerator, mode.RefreshRate.Denominator };
-						const bool alreadyPresent = std::any_of(
-							refreshRates.begin(), refreshRates.end(),
-							[&candidate](const DISPLAYCONFIG_RATIONAL& existing)
-							{
-								return DisplayRefreshRatesExactlyEqual(
-									{ existing.Numerator, existing.Denominator },
-									{ candidate.Numerator, candidate.Denominator });
-							});
-						if (!alreadyPresent)
-							refreshRates.push_back(candidate);
+						DisplayOutputMode mode{ candidate.Width, candidate.Height,
+							{ candidate.RefreshRate.Numerator,
+							  candidate.RefreshRate.Denominator } };
+						if (std::none_of(displayModes.begin(), displayModes.end(),
+							[&mode](const DisplayOutputMode& existing)
+							{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+							displayModes.push_back(mode);
 					}
 				}
-				return !refreshRates.empty();
+				return !displayModes.empty();
 			}
 		}
 		return false;
+	}
+
+	DisplayRefreshRational GdiRefreshRate(DWORD rate)
+	{
+		if (rate == 23) return { 24000, 1001 };
+		if (rate == 29) return { 30000, 1001 };
+		if (rate == 59) return { 60000, 1001 };
+		return { rate, 1 };
+	}
+
+	bool QueryGdiSupportedOutputModes(const std::wstring& displayDeviceName,
+		std::vector<DisplayOutputMode>& displayModes)
+	{
+		displayModes.clear();
+		if (displayDeviceName.empty()) return false;
+		for (DWORD index = 0;; ++index)
+		{
+			DEVMODEW candidate{};
+			candidate.dmSize = sizeof(candidate);
+			if (!EnumDisplaySettingsW(displayDeviceName.c_str(), index, &candidate)) break;
+			if (candidate.dmBitsPerPel != 32 || candidate.dmPelsWidth < 100 ||
+				candidate.dmPelsHeight < 100 || candidate.dmDisplayFrequency == 0 ||
+				(candidate.dmDisplayFlags & DM_INTERLACED) != 0) continue;
+			DisplayOutputMode mode{ candidate.dmPelsWidth, candidate.dmPelsHeight,
+				GdiRefreshRate(candidate.dmDisplayFrequency) };
+			if (std::none_of(displayModes.begin(), displayModes.end(),
+				[&mode](const DisplayOutputMode& existing)
+				{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+				displayModes.push_back(mode);
+		}
+		return !displayModes.empty();
+	}
+
+	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
+		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	{
+		refreshRates.clear();
+		DEVMODEW currentMode{};
+		currentMode.dmSize = sizeof(currentMode);
+		if (!EnumDisplaySettingsW(displayDeviceName.c_str(),
+			ENUM_CURRENT_SETTINGS, &currentMode)) return false;
+		std::vector<DisplayOutputMode> displayModes;
+		if (!QueryDxgiSupportedOutputModes(displayDeviceName, displayModes, false))
+			return false;
+		for (const DisplayOutputMode& mode : displayModes)
+		{
+			if (mode.width != currentMode.dmPelsWidth ||
+				mode.height != currentMode.dmPelsHeight) continue;
+			const DISPLAYCONFIG_RATIONAL candidate = {
+				mode.refreshRate.numerator, mode.refreshRate.denominator };
+			if (std::none_of(refreshRates.begin(), refreshRates.end(),
+				[&candidate](const DISPLAYCONFIG_RATIONAL& existing)
+				{
+					return DisplayRefreshRatesExactlyEqual(
+						{ existing.Numerator, existing.Denominator },
+						{ candidate.Numerator, candidate.Denominator });
+				}))
+				refreshRates.push_back(candidate);
+		}
+		return !refreshRates.empty();
 	}
 
 	std::vector<RankedDisplayRefreshRate> RankDisplayRefreshRates(
@@ -3235,6 +3310,97 @@ namespace
 			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
 	}
 
+	struct CurrentDisplayMode
+	{
+		UINT32 sourceWidth = 0;
+		UINT32 sourceHeight = 0;
+		UINT32 targetWidth = 0;
+		UINT32 targetHeight = 0;
+		DISPLAYCONFIG_RATIONAL refreshRate{};
+	};
+
+	bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
+		const CurrentDisplayMode& second)
+	{
+		return first.sourceWidth == second.sourceWidth &&
+			first.sourceHeight == second.sourceHeight &&
+			first.targetWidth == second.targetWidth &&
+			first.targetHeight == second.targetHeight &&
+			DisplayRefreshRatesEquivalentForRestore(
+				{ first.refreshRate.Numerator, first.refreshRate.Denominator },
+				{ second.refreshRate.Numerator, second.refreshRate.Denominator });
+	}
+
+	UINT32 SourceModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+	{
+		return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+			path.sourceInfo.sourceModeInfoIdx : path.sourceInfo.modeInfoIdx;
+	}
+
+	UINT32 TargetModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+	{
+		return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+			path.targetInfo.targetModeInfoIdx : path.targetInfo.modeInfoIdx;
+	}
+
+	bool ReadCurrentDisplayMode(const std::wstring& displayDeviceName,
+		CurrentDisplayMode& current)
+	{
+		std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+		std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+		UINT32 pathCount = 0, modeCount = 0;
+		size_t pathIndex = 0;
+		if (!QueryDisplayPath(displayDeviceName, paths, modes,
+			pathCount, modeCount, pathIndex)) return false;
+		const DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
+		const UINT32 sourceIndex = SourceModeIndex(path);
+		if (sourceIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || sourceIndex >= modeCount ||
+			modes[sourceIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE)
+			return false;
+		current.sourceWidth = modes[sourceIndex].sourceMode.width;
+		current.sourceHeight = modes[sourceIndex].sourceMode.height;
+		const UINT32 targetIndex = TargetModeIndex(path);
+		if (targetIndex != DISPLAYCONFIG_PATH_MODE_IDX_INVALID && targetIndex < modeCount &&
+			modes[targetIndex].infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)
+		{
+			current.targetWidth = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cx;
+			current.targetHeight = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cy;
+		}
+		if (current.targetWidth == 0 || current.targetHeight == 0)
+		{
+			current.targetWidth = current.sourceWidth;
+			current.targetHeight = current.sourceHeight;
+		}
+		current.refreshRate = path.targetInfo.refreshRate;
+		return current.sourceWidth > 0 && current.sourceHeight > 0 &&
+			current.refreshRate.Numerator > 0 && current.refreshRate.Denominator > 0;
+	}
+
+	LONG ApplyDisplayOutputMode(std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
+		std::vector<DISPLAYCONFIG_MODE_INFO>& modes, UINT32 pathCount,
+		UINT32 modeCount, size_t pathIndex, UINT32 width, UINT32 height,
+		const DISPLAYCONFIG_RATIONAL& refreshRate)
+	{
+		DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
+		const UINT32 sourceIndex = SourceModeIndex(path);
+		if (sourceIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || sourceIndex >= modeCount ||
+			modes[sourceIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE)
+			return ERROR_INVALID_PARAMETER;
+		modes[sourceIndex].sourceMode.width = width;
+		modes[sourceIndex].sourceMode.height = height;
+		path.targetInfo.refreshRate = refreshRate;
+		// Keep the display topology and source path, supply the requested desktop
+		// raster, and let CCD select the matching available target timing. A stale
+		// target-mode entry would override the requested refresh just as it does
+		// for the existing refresh-only transition.
+		if ((path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
+			path.targetInfo.targetModeInfoIdx = DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID;
+		else
+			path.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+		return SetDisplayConfig(pathCount, paths.data(), modeCount, modes.data(),
+			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
+	}
+
 	class ScopedDisplayRefreshRate
 	{
 	public:
@@ -3277,6 +3443,17 @@ namespace
 		{
 			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
+            if (!settings.outputDisplayMonitor.empty())
+            {
+                const CString target(settings.outputDisplayMonitor.c_str());
+                const auto monitors = DisplayMonitorInventory::Enumerate();
+                const auto* selected = DisplayMonitorInventory::Resolve(monitors, target.GetString());
+                if (!selected || MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) != selected->handle)
+                {
+                    DebugLog::Log("libplacebo display mode switch skipped: profile monitor unavailable or playback target does not match");
+                    return;
+                }
+            }
 			m_refreshCommandSettings = settings;
 
 			m_displayDeviceName = DisplayDeviceNameForWindow(hwnd);
@@ -3311,7 +3488,8 @@ namespace
 			DebugLog::Log("libplacebo refresh-rate policy: input=%.6f Hz interlaced=%d policy=%s preferred=%.6f Hz",
 				contentRate, interlaced ? 1 : 0,
 				interlaced ? "field-rate" : "native-first", RefreshRateHz(targetRefreshRate));
-			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
+			if (!settings.outputDisplayAdvanced &&
+				RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{
 				DebugLog::Log(
 					"libplacebo refresh-rate switch: display already %.6f Hz for %.6f Hz input",
@@ -3322,6 +3500,13 @@ namespace
 					RefreshRateHz(m_originalRefreshRate),
 					RefreshRateHz(targetRefreshRate),
 					RefreshRateHz(m_originalRefreshRate));
+				return;
+			}
+
+			if (settings.outputDisplayAdvanced)
+			{
+				SwitchOutputMode(contentRate, inputRefreshRate, interlaced,
+					state.displayMode->FrameWidth(), state.displayMode->FrameHeight(), settings);
 				return;
 			}
 
@@ -3436,6 +3621,236 @@ namespace
 		}
 
 	private:
+		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
+			CurrentDisplayMode& observed) const
+		{
+			unsigned int consecutiveMatches = 0;
+			const ULONGLONG deadline = GetTickCount64() + 2500;
+			do
+			{
+				const bool queried = ReadCurrentDisplayMode(m_displayDeviceName, observed);
+				const bool matches = queried &&
+					observed.sourceWidth == expected.sourceWidth &&
+					observed.sourceHeight == expected.sourceHeight &&
+					observed.targetWidth == expected.targetWidth &&
+					observed.targetHeight == expected.targetHeight &&
+					DisplayRefreshRatesEquivalentForRestore(
+						{ observed.refreshRate.Numerator, observed.refreshRate.Denominator },
+						{ expected.refreshRate.Numerator, expected.refreshRate.Denominator });
+				consecutiveMatches = matches ? consecutiveMatches + 1 : 0;
+				if (consecutiveMatches >= 2) return true;
+				Sleep(50);
+			}
+			while (GetTickCount64() < deadline);
+			return false;
+		}
+
+		void SwitchOutputMode(double contentRate,
+			const DISPLAYCONFIG_RATIONAL& inputRefreshRate, bool interlaced,
+			uint32_t sourceWidth, uint32_t sourceHeight,
+			const RendererSettings& settings)
+		{
+			std::vector<DisplayOutputMode> dxgiModes, gdiModes, availableModes;
+			const bool dxgiAvailable = QueryDxgiSupportedOutputModes(
+				m_displayDeviceName, dxgiModes);
+			const bool gdiAvailable = QueryGdiSupportedOutputModes(
+				m_displayDeviceName, gdiModes);
+			availableModes = dxgiModes;
+			for (const DisplayOutputMode& mode : gdiModes)
+				if (std::none_of(availableModes.begin(), availableModes.end(),
+					[&mode](const DisplayOutputMode& existing)
+					{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+					availableModes.push_back(mode);
+			std::ostringstream enumerated;
+			for (size_t index = 0; index < availableModes.size(); ++index)
+			{
+				if (index) enumerated << ", ";
+				const DisplayOutputMode& mode = availableModes[index];
+				const bool inDxgi = std::any_of(dxgiModes.begin(), dxgiModes.end(),
+					[&mode](const DisplayOutputMode& candidate)
+					{ return DisplayOutputModesExactlyEqual(mode, candidate); });
+				const bool inGdi = std::any_of(gdiModes.begin(), gdiModes.end(),
+					[&mode](const DisplayOutputMode& candidate)
+					{ return DisplayOutputModesExactlyEqual(mode, candidate); });
+				enumerated << FormatDisplayOutputMode(mode) << "["
+					<< (inDxgi && inGdi ? "DXGI+GDI" : inDxgi ? "DXGI" : "GDI") << "]";
+			}
+			const std::string enumeratedText = enumerated.str().empty() ? "<none>" : enumerated.str();
+			DebugLog::Log("libplacebo output-mode inventory: source=%ux%u cadence=%.6f Hz scan=%s dxgi=%zu gdi=%zu union=%zu modes={%s}",
+				sourceWidth, sourceHeight, contentRate, interlaced ? "interlaced" : "progressive",
+				dxgiAvailable ? dxgiModes.size() : 0, gdiAvailable ? gdiModes.size() : 0,
+				availableModes.size(), enumeratedText.c_str());
+			if (availableModes.empty())
+			{
+				DebugLog::Log("libplacebo output-mode switch: DXGI and GDI progressive mode enumeration returned no modes; retaining current display mode");
+				return;
+			}
+			for (const DisplayOutputMode& configured : settings.allowedDisplayModes)
+				if (std::none_of(availableModes.begin(), availableModes.end(),
+					[&configured](const DisplayOutputMode& mode)
+					{ return DisplayOutputModesExactlyEqual(configured, mode); }))
+					DebugLog::Log("libplacebo output-mode unavailable: configured=%s enumerated={%s}",
+						FormatDisplayOutputMode(configured).c_str(), enumeratedText.c_str());
+			const bool dciSource = sourceWidth == 4096 && sourceHeight == 2160;
+			const bool dciConfigured = std::any_of(settings.allowedDisplayModes.begin(),
+				settings.allowedDisplayModes.end(), [](const DisplayOutputMode& mode)
+				{ return mode.width == 4096 && mode.height == 2160; });
+			if (dciSource && !dciConfigured)
+				DebugLog::Log("libplacebo output-mode DCI note: 4096x2160 source at %.6f Hz has no full 4096x2160 entry in the configured allowed-mode list; selection follows the remaining configured modes", contentRate);
+			const std::vector<DisplayOutputModeChoice> rankedModes =
+				RankDisplayOutputModesForInput(
+					{ inputRefreshRate.Numerator, inputRefreshRate.Denominator },
+					interlaced, settings.allowedDisplayModes, availableModes);
+			if (rankedModes.empty())
+			{
+				DebugLog::Log("libplacebo output-mode switch: no permitted mode is eligible for source=%ux%u cadence=%.6f Hz interlaced=%d configured=%zu enumerated={%s}; retaining current mode",
+					sourceWidth, sourceHeight, contentRate, interlaced ? 1 : 0,
+					settings.allowedDisplayModes.size(), enumeratedText.c_str());
+				return;
+			}
+			std::ostringstream eligible;
+			for (size_t index = 0; index < rankedModes.size(); ++index)
+			{
+				if (index) eligible << ", ";
+				eligible << FormatDisplayOutputMode(rankedModes[index].mode);
+			}
+			DebugLog::Log("libplacebo output-mode eligible: source=%ux%u cadence=%.6f Hz modes={%s}",
+				sourceWidth, sourceHeight, contentRate, eligible.str().c_str());
+			CurrentDisplayMode currentMode{};
+			if (!ReadCurrentDisplayMode(m_displayDeviceName, currentMode))
+			{
+				DebugLog::Log("libplacebo output-mode switch: current complete display mode is unavailable");
+				return;
+			}
+			if (!m_hasOriginalDisplayMode)
+			{
+				m_originalDisplayMode = currentMode;
+				m_hasOriginalDisplayMode = true;
+			}
+			m_advancedModeActive = true;
+			for (size_t attempt = 0; attempt < rankedModes.size(); ++attempt)
+			{
+				const DisplayOutputModeChoice& candidate = rankedModes[attempt];
+				DebugLog::Log("libplacebo output-mode candidate: input=%.6f Hz mode=%s rate_path=%s attempt=%zu/%zu available=%zu",
+					contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
+					candidate.configuredFallback ? "configured-order-fallback" :
+                    candidate.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
+						"exact-or-close" : "closest-in-range",
+					attempt + 1, rankedModes.size(), availableModes.size());
+				if (currentMode.sourceWidth == candidate.mode.width &&
+					currentMode.sourceHeight == candidate.mode.height &&
+					currentMode.targetWidth == candidate.mode.width &&
+					currentMode.targetHeight == candidate.mode.height &&
+					RefreshRatesEqual(currentMode.refreshRate,
+						{ candidate.mode.refreshRate.numerator,
+						  candidate.mode.refreshRate.denominator }))
+				{
+					m_changed = !DisplayModesEquivalentForRestore(
+						currentMode, m_originalDisplayMode);
+					if (!m_changed)
+					{
+						m_advancedModeActive = false;
+						m_hasOriginalDisplayMode = false;
+					}
+					m_restoreOnStop = settings.restorePreviousDisplayMode;
+					DebugLog::Log("libplacebo output-mode candidate already active: %s",
+						FormatDisplayOutputMode(candidate.mode).c_str());
+					RunRefreshRateCommand(settings,
+						RefreshRateHz(currentMode.refreshRate));
+					PublishEvent("refresh.confirmed",
+						RefreshRateHz(currentMode.refreshRate),
+						RefreshRateHz({ candidate.mode.refreshRate.numerator,
+							candidate.mode.refreshRate.denominator }),
+						RefreshRateHz(m_originalDisplayMode.refreshRate));
+					return;
+				}
+				std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+				UINT32 pathCount = 0, modeCount = 0;
+				size_t pathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, paths, modes,
+					pathCount, modeCount, pathIndex))
+				{
+					DebugLog::Log("libplacebo output-mode candidate skipped: active display path disappeared");
+					break;
+				}
+				const DISPLAYCONFIG_RATIONAL rate = {
+					candidate.mode.refreshRate.numerator,
+					candidate.mode.refreshRate.denominator };
+				const LONG result = ApplyDisplayOutputMode(paths, modes,
+					pathCount, modeCount, pathIndex, candidate.mode.width,
+					candidate.mode.height, rate);
+				if (result != ERROR_SUCCESS)
+				{
+					DebugLog::Log("libplacebo output-mode candidate rejected: mode=%s error=%ld",
+						FormatDisplayOutputMode(candidate.mode).c_str(), result);
+					continue;
+				}
+				CurrentDisplayMode expected{ candidate.mode.width,
+					candidate.mode.height, candidate.mode.width,
+					candidate.mode.height, rate };
+				CurrentDisplayMode actual{};
+				if (VerifyCurrentDisplayMode(expected, actual))
+				{
+					m_changed = !DisplayModesEquivalentForRestore(
+						actual, m_originalDisplayMode);
+					if (!m_changed)
+					{
+						m_advancedModeActive = false;
+						m_hasOriginalDisplayMode = false;
+					}
+					m_restoreOnStop = settings.restorePreviousDisplayMode;
+					DebugLog::Log("libplacebo output-mode switch verified: input=%.6f Hz mode=%s previous=%ux%u@%.6f actual=%ux%u@%.6f restore_on_stop=%d",
+						contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
+						currentMode.targetWidth,
+						currentMode.targetHeight,
+						RefreshRateHz(currentMode.refreshRate),
+						actual.targetWidth, actual.targetHeight,
+						RefreshRateHz(actual.refreshRate),
+						m_restoreOnStop ? 1 : 0);
+					RunRefreshRateCommand(settings, RefreshRateHz(actual.refreshRate));
+					PublishEvent("refresh.applied", RefreshRateHz(actual.refreshRate),
+						RefreshRateHz(rate), RefreshRateHz(m_originalDisplayMode.refreshRate));
+					return;
+				}
+				DebugLog::Log("libplacebo output-mode candidate unverified: requested=%s actual=%ux%u@%.6f; restoring previous full mode",
+					FormatDisplayOutputMode(candidate.mode).c_str(), actual.targetWidth,
+					actual.targetHeight, RefreshRateHz(actual.refreshRate));
+				std::vector<DISPLAYCONFIG_PATH_INFO> restorePaths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> restoreModes;
+				UINT32 restorePathCount = 0, restoreModeCount = 0;
+				size_t restorePathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, restorePaths,
+					restoreModes, restorePathCount, restoreModeCount,
+					restorePathIndex) ||
+					ApplyDisplayOutputMode(restorePaths, restoreModes,
+						restorePathCount, restoreModeCount, restorePathIndex,
+						currentMode.sourceWidth,
+						currentMode.sourceHeight,
+						currentMode.refreshRate) != ERROR_SUCCESS ||
+					!VerifyCurrentDisplayMode(currentMode, actual))
+				{
+					m_changed = true;
+					m_advancedModeActive = true;
+					m_restoreOnStop = true;
+					DebugLog::Log("libplacebo output-mode candidate rollback failed; previous full display mode remains unverified");
+					return;
+				}
+				m_changed = !DisplayModesEquivalentForRestore(
+					currentMode, m_originalDisplayMode);
+			}
+			m_changed = !DisplayModesEquivalentForRestore(
+				currentMode, m_originalDisplayMode);
+			if (!m_changed)
+			{
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+			}
+			DebugLog::Log("libplacebo output-mode switch: all %zu ranked modes failed verification; retaining %ux%u@%.6f",
+				rankedModes.size(), currentMode.targetWidth,
+				currentMode.targetHeight, RefreshRateHz(currentMode.refreshRate));
+		}
+
 		bool GetCurrentRefreshRate(DISPLAYCONFIG_RATIONAL& refreshRate) const
 		{
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
@@ -3476,6 +3891,14 @@ namespace
 		{
 			if (!m_changed)
 				return true;
+			if (!m_restoreOnStop)
+			{
+				DebugLog::Log("libplacebo output-mode restore skipped by profile policy; keeping current display mode");
+				m_changed = false;
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+				return true;
+			}
 
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
@@ -3491,6 +3914,42 @@ namespace
 					"during topology rebuild; attempt=%u external_state=unverified",
 					m_restoreFailureCount);
 				return false;
+			}
+
+			if (m_advancedModeActive)
+			{
+				const LONG restoreResult = ApplyDisplayOutputMode(paths, modes,
+					pathCount, modeCount, pathIndex,
+					m_originalDisplayMode.sourceWidth,
+					m_originalDisplayMode.sourceHeight,
+					m_originalDisplayMode.refreshRate);
+				CurrentDisplayMode actual{};
+				if (restoreResult != ERROR_SUCCESS ||
+					!VerifyCurrentDisplayMode(m_originalDisplayMode, actual))
+				{
+					++m_restoreFailureCount;
+					DebugLog::Log("libplacebo output-mode restore unverified: expected=%ux%u@%.6f actual=%ux%u@%.6f error=%ld attempt=%u external_state=unverified",
+						m_originalDisplayMode.targetWidth,
+						m_originalDisplayMode.targetHeight,
+						RefreshRateHz(m_originalDisplayMode.refreshRate),
+						actual.targetWidth, actual.targetHeight,
+						RefreshRateHz(actual.refreshRate), restoreResult,
+						m_restoreFailureCount);
+					return false;
+				}
+				DebugLog::Log("libplacebo output-mode restore verified: %ux%u@%.6f",
+					actual.targetWidth, actual.targetHeight,
+					RefreshRateHz(actual.refreshRate));
+				RunRefreshRateCommand(m_refreshCommandSettings,
+					RefreshRateHz(actual.refreshRate));
+				PublishEvent("refresh.restored", RefreshRateHz(actual.refreshRate),
+					RefreshRateHz(m_originalDisplayMode.refreshRate),
+					RefreshRateHz(m_originalDisplayMode.refreshRate));
+				m_restoreFailureCount = 0;
+				m_changed = false;
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+				return true;
 			}
 
 			const LONG restoreResult = ApplyDisplayRefreshRate(
@@ -3575,6 +4034,10 @@ namespace
 
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
+		CurrentDisplayMode m_originalDisplayMode{};
+		bool m_advancedModeActive = false;
+		bool m_hasOriginalDisplayMode = false;
+		bool m_restoreOnStop = true;
 		unsigned int m_restoreFailureCount = 0;
 		bool m_changed = false;
 		bool m_finalRestoreAttempted = false;
@@ -4010,6 +4473,9 @@ struct LibplaceboVideoRenderer::Impl
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
     TemporalRenderer temporalRenderer;
+    uint64_t pictureProcessingEpoch = 0;
+    TemporalRenderer::ProcessingStatistics lastPictureProcessingStatistics;
+    int subtitleAnalysisStride = 0;
     std::string lastMotionStatus;
 	CComPtr<ID3D11DeviceContext> renderTimingContext;
 	// The headline result sums tightly bounded command stages from one frame.
@@ -4252,6 +4718,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool cropAdmissionPreviouslyBlocked = false;
 	std::string cropAdmissionPreviousReason;
 	uint64_t cropAdmissionLastLogTick = 0;
+    uint64_t nearBlackBoundedLastLogTick = 0;
 	const std::string diagnosticInstanceId = CreateRendererDiagnosticInstanceId();
 	bool blackLevelTraceConfigured = false, blackLevelTraceTransitions = false;
 	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
@@ -5480,6 +5947,7 @@ struct LibplaceboVideoRenderer::Impl
 				"could not configure libplacebo render parameters: " + projectionError);
 		}
 		renderParams = projection.renderParams;
+        ++pictureProcessingEpoch;
 		colorMapParams = projection.colorMapParams;
 		peakDetectParams = projection.peakDetectParams;
 		sigmoidParams = projection.sigmoidParams;
@@ -5763,6 +6231,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool configuredScreenActive,
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
+        ActivePictureMeasurementCache& pixelMeasurements,
 		bool forceAnalysis = false,
 		bool heldBarAnalysisAuthority = false,
 		bool* analysisScheduled = nullptr,
@@ -5927,7 +6396,6 @@ struct LibplaceboVideoRenderer::Impl
 				blackSamples.begin() + median,
 				blackSamples.begin() + blackSampleCount);
 			const int blackCode = blackSamples[median];
-			const int rowStep = std::max(1, height / 1080);
 
 			// Subtitle fitting deliberately uses a simple, renderer-local rule:
 			// meaningful non-black content inside a confirmed encoded black bar
@@ -5937,86 +6405,17 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitlePictureTop > 0 &&
 				scopeSubtitlePictureBottom < height)
 			{
-				const int x0 = width / 32;
-				const int x1 = width - x0;
-				const int xStep = std::max(1, width / 1920);
-				const int contentLimit = std::min(1023, blackCode + 32);
-				const int sampledColumns = std::max(1, (x1 - x0) / xStep);
-				// A few bright pixels are normally edge noise, receiver overlays, or
-				// compression shimmer. Captions occupy a meaningful central horizontal
-				// span even when the text itself is short, so require that before a bar
-				// can move the picture.
-				const int minimumContentSamples =
-					std::max(8, sampledColumns / 192);
-				const int minimumContentSpan = std::max(24, width / 48);
-				const int minimumContentRows = 2;
-				const int barInset = std::max(1, rowStep);
-
-				auto findBarContent =
-					[&](int searchTop, int searchBottom,
-						int& detectedTop, int& detectedBottom,
-						int& maximumContentSamples)
-					{
-						detectedTop = height;
-						detectedBottom = 0;
-						maximumContentSamples = 0;
-						int contentRows = 0;
-						for (int y = searchTop; y < searchBottom; y += rowStep)
-						{
-							int contentSamples = 0;
-							int left = width;
-							int right = 0;
-							for (int x = x0; x < x1; x += xStep)
-							{
-								if (lumaCode(x, y) <= contentLimit)
-									continue;
-								++contentSamples;
-								left = std::min(left, x);
-								right = std::max(right, x);
-							}
-							if (contentSamples < minimumContentSamples ||
-								right - left < minimumContentSpan)
-							{
-								continue;
-							}
-							++contentRows;
-							maximumContentSamples = std::max(
-								maximumContentSamples, contentSamples);
-							detectedTop = std::min(detectedTop, y);
-							detectedBottom =
-								std::max(detectedBottom, y + rowStep);
-						}
-						if (contentRows < minimumContentRows)
-						{
-							detectedTop = 0;
-							detectedBottom = 0;
-							return false;
-						}
-						return true;
-					};
-
-				int upperContentTop = 0;
-				int upperContentBottom = 0;
-				int lowerContentTop = 0;
-				int lowerContentBottom = 0;
-				int upperMaximumContentSamples = 0;
-				int lowerMaximumContentSamples = 0;
-				const bool upperContent =
-					scopeSubtitlePictureTop > barInset * 2 &&
-					findBarContent(
-						barInset,
-						scopeSubtitlePictureTop - barInset,
-						upperContentTop,
-						upperContentBottom,
-						upperMaximumContentSamples);
-				const bool lowerContent =
-					scopeSubtitlePictureBottom + barInset * 2 < height &&
-					findBarContent(
-						scopeSubtitlePictureBottom + barInset,
-						height - barInset,
-						lowerContentTop,
-						lowerContentBottom,
-						lowerMaximumContentSamples);
+                const int x0 = width / 32;
+                const int x1 = width - x0;
+                const int xStep = std::max(1, width / 1920);
+                const int sampledColumns = std::max(1, (x1 - x0) / xStep);
+                const auto content = pixelMeasurements.SubtitleContent(
+                    scopeSubtitleAnalysisBounds, blackCode);
+                const bool upperContent = content.upper, lowerContent = content.lower;
+                const int upperContentTop = content.upperTop, upperContentBottom = content.upperBottom;
+                const int lowerContentTop = content.lowerTop, lowerContentBottom = content.lowerBottom;
+                const int upperMaximumContentSamples = content.upperPeak;
+                const int lowerMaximumContentSamples = content.lowerPeak;
 				// Source overlay extent is owned entirely by the trusted active
 				// picture and current bar pixels. In particular, screenAspect must
 				// never influence whether source pixels require accommodation.
@@ -8134,9 +8533,12 @@ struct LibplaceboVideoRenderer::Impl
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
-        bool backlogRetirementOnly = false)
+        bool backlogRetirementOnly = false, bool allowSubmit = true)
     {
+        const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
+        key.analysisStride=fps>30.0?2u:1u;
+        key.cadenceSkipped=!InputFrameAnalysisDue(fps,identity.acceptedSequence);
         key.identity.analysisDomainKey=prepared.domainKey;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;
         key.scriptHint=scriptHint;key.discontinuity=discontinuity;
@@ -8185,7 +8587,15 @@ struct LibplaceboVideoRenderer::Impl
                     ready.sharedProbeAnchor.right,ready.sharedProbeAnchor.bottom);
             }
         }
-        const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
+        const int stride = fps > 30.0 ? 2 : 1;
+        if (subtitleAnalysisStride != stride) {
+            subtitleAnalysisStride = stride;
+            DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
+        }
+        if (!allowSubmit || key.cadenceSkipped) {
+            key.text.diagnosticReason = "input-cadence-not-analyzed";
+            return key;
+        }
         subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
@@ -10506,11 +10916,15 @@ struct LibplaceboVideoRenderer::Impl
                 traceBoundaryEdge("bottom", movementInput.retention.expandingBottom);
             }
             const auto motionBeforeObservation = movingPictureTransition;
+            static const SubtitleAssistedVerticalBarProof noSubtitleBarProof;
             movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
-                AlphaSourceCrop::ObserveMovingPictureTransition(
-                movingPictureTransition, currentIdentity,
-                    AlphaSourceCrop::PictureMotionTrackingInput(movementInput,
-                        !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode)));
+                AlphaSourceCrop::ObserveSubtitleAssistedMovingPictureTransition(
+                    movingPictureTransition, currentIdentity, movementInput,
+                    !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode),
+                    analysisSource, currentSubtitlePreview ? currentSubtitlePreview->current.subtitleArProof :
+                        noSubtitleBarProof,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                    activeSettings.subtitleScriptHint);
             AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
             const bool nativePictureOnset = AlphaSourceCrop::HasCurrentMovingPictureOnset(
                 movingPictureTransition, analysisSource.generation, frameNumber);
@@ -10553,7 +10967,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& priorNative = motionBeforeObservation.observedNative;
                 const auto& priorCertified = motionBeforeObservation.last;
                 const auto& currentNative = movementInput.evidence.trustedBounds;
-                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u presentation_only=1",
+                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u subtitle_bar_proof=%d subtitle_motion=%d vertical_action=%d directional=%u presentation_only=1",
                     analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
                     movingPictureTransition.active ? 1 : 0,
                     movingPictureTransition.awaitingPublication ? 1 : 0, motionReason,
@@ -10563,7 +10977,9 @@ struct LibplaceboVideoRenderer::Impl
                     currentNative.left, currentNative.top, currentNative.right, currentNative.bottom,
                     movingPictureTransition.quietSamples,
                     static_cast<unsigned>((std::max)(2.0,
-                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)));
+                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)),
+                    currentWorkerBarProof ? 1 : 0, movingPictureTransition.subtitleAssistedBars ? 1 : 0,
+                    static_cast<int>(movementInput.presentation.action), movingPictureTransition.directionalChanges);
             }
             auto subtitleBase = nlsGeometry;
             subtitleBase.left = scopeSubtitlePictureLeft;
@@ -11809,7 +12225,7 @@ struct LibplaceboVideoRenderer::Impl
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
-                    shared,preparedQueued);
+                    shared,preparedQueued,{},false,!repeatedTemporalOutput);
                 earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
@@ -12280,10 +12696,20 @@ struct LibplaceboVideoRenderer::Impl
 		const auto fitBeforeAnalysis = scopeSubtitleFitConfirmation;
         // All enabled subtitle styles share raw-source bar analysis and crop
         // arbitration. Relocation changes only final presentation, never evidence.
+        // This scan also runs when NLS analysis is bypassed. Bind its immutable
+        // source explicitly rather than relying on UpdateNlsForFrame to do so.
+        auto subtitlePixelIdentity = activePictureIdentity;
+        subtitlePixelIdentity.analysisDomainKey = queuedAnalysisDomainKey;
+        subtitlePixelIdentity.transportGeneration = frameGeneration;
+        subtitlePixelIdentity.sourceFormatGeneration = AlphaSourceFormatKey(state);
+        subtitlePixelIdentity.viewportGeneration = viewportRequestSerial;
+        subtitlePixelIdentity.rendererGeneration = frameGeneration;
+        pixelMeasurements.Begin(analysisSource, subtitlePixelIdentity,
+            localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
         const float subtitleShiftSourcePixels = inwardCaptionProtected ? 0.0f :
             UpdateScopeSubtitleShift(&analysisSource,
                 width, height, configuredScreenActive, subtitleBarAuthority,
-                sourceSequence, forceSubtitleBarAnalysis,
+                sourceSequence, pixelMeasurements, forceSubtitleBarAnalysis,
                 heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
                 &subtitleBarAnalysisCompleted, retiringTranslationFitInspection);
         subtitleSharedPicture.required=true;
@@ -12796,7 +13222,7 @@ struct LibplaceboVideoRenderer::Impl
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,
-                        preparedQueued,{},subtitleBacklogRetirementOnly);
+                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;
@@ -13247,6 +13673,12 @@ struct LibplaceboVideoRenderer::Impl
                     bars.topReferenceBoundarySupport,bars.bottomReferenceBoundarySupport,
                     bars.topReferenceBlackFraction,bars.bottomReferenceBlackFraction,
                     bars.topReferenceMaxIntrusion,bars.bottomReferenceMaxIntrusion,bars.samples);
+                const auto& glyphProof=subtitlePreview->current.text;
+                DebugLog::Log("SUBTITLE GLYPH ACQUISITION: frame=%llu required=%d cores=%u core_height=%d ink_density_bp=%u baseline_support_bp=%u topology=%s",
+                    sourceSequence,glyphProof.diagnosticPictureGlyphProofRequired?1:0,
+                    glyphProof.diagnosticCoreGlyphCount,glyphProof.diagnosticCoreGlyphHeight,
+                    glyphProof.diagnosticInkDensityBasisPoints,glyphProof.diagnosticBaselineSupportBasisPoints,
+                    glyphProof.diagnosticGlyphTopology);
                 const auto& probe=subtitlePreview->current;
                 DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d measured=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d",
                     sourceSequence,probe.sharedPicture.AvailableFor(probe.identity,probe.width,probe.height)?1:0,
@@ -13959,6 +14391,9 @@ struct LibplaceboVideoRenderer::Impl
             ownershipInput.accepted=&subtitleSourcePreparation.ownershipAccepted;
             ownershipInput.composition=&relocatedSubtitle;
             ownershipInput.physicalBase=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.required=true;
+            ownershipInput.currentDisplayPicture.bounds=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.identity=subtitleIdentity;
             ownershipInput.policyGeneration=localBoundaryPolicyGeneration;
             ownershipInput.continuityGeneration=localBoundaryContinuityGeneration;
             ownershipInput.pendingCurrentPixelsVerified=subtitleSourcePreparation.pendingPixelsVerified;
@@ -15114,16 +15549,9 @@ releaseDriftBaseRetention =
 			cropInput.currentVisibleSourceGeneration = episodeInput.retentionSourceGeneration;
 			cropInput.currentVisibleSourceSequence = episodeInput.retentionSourceSequence;
 			cropInput.currentVisibleBounds = presentationRetention.outwardVisibleBounds;
-			if (cropInput.currentVisibleBoundsAvailable && latestActivePictureEvidenceAvailable)
-			{
-				// Cover pixel extents and resolved presentation bounds. Unresolved
-				// axes retain their conservative full-raster fallback.
-				auto& visible = cropInput.currentVisibleBounds;
-				visible.left = std::min(visible.left, latestActivePicturePresentationBounds.left);
-				visible.top = std::min(visible.top, latestActivePicturePresentationBounds.top);
-				visible.right = std::max(visible.right, latestActivePicturePresentationBounds.right);
-				visible.bottom = std::max(visible.bottom, latestActivePicturePresentationBounds.bottom);
-			}
+            // Keep this exact-frame pixel witness pure. Detector presentation
+            // bounds can contain full-raster placeholders on unresolved axes;
+            // merging them would stamp UNKNOWN coordinates as measured pixels.
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
 			cropInput.pictureTransitionHandoff = pictureTransitionHandoff;
@@ -15134,9 +15562,14 @@ releaseDriftBaseRetention =
             cropInput.movingPictureHold.sourceGeneration = movingPictureTransition.identity.transportGeneration;
             cropInput.movingPictureHold.sourceSequence = movingPictureTransition.identity.acceptedSequence;
             cropInput.movingPictureHold.presentationEpoch = movingPictureTransition.identity.viewportGeneration;
-            // Detector-only expansion is the moving picture itself; dense FIT
-            // and translation remain competing presentation owners.
+            // Detector expansion is the moving picture itself. Keep dense FIT
+            // competing until the mode-specific route validates a proved ramp.
             cropInput.movingPictureHold.competingPresentation = denseFitEvidenceActive;
+            cropInput.movingPictureHold.subtitleAssistedBars = movingPictureTransition.subtitleAssistedBars;
+            cropInput.movingPictureHold.verticalFitOnly =
+                (detailedVerticalFitEvidence || verticalFitConfirmationPending) &&
+                !leftBarContentActive && !rightBarContentActive &&
+                !detectorLeftExpansion && !detectorRightExpansion;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
@@ -15224,7 +15657,8 @@ releaseDriftBaseRetention =
                 automaticSourceCropRequested, scopeSubtitleFit, cropInput, configuredFillInput);
             // Advanced modes keep a physical picture pose. Their suppressed
             // Classic translation must not defeat an exact current gradual hold.
-            // FIT, recovery, authority and final prior-admission checks remain.
+            // Only proved captioned ramps may suppress vertical FIT. Horizontal FIT,
+            // recovery, authority and final prior-admission checks remain.
             RouteAdvancedMovingPictureHold(cropInput, subtitlePreviewMode);
 
             // A first crop cannot translate away real picture pixels merely to
@@ -15367,11 +15801,15 @@ releaseDriftBaseRetention =
 			nearBlackBoundedInput.candidate = cropDecision;
 			const auto nearBlackBoundedDecision = AlphaSourceCrop::EvaluateNearBlackBoundedPresentation(
 				nearBlackPresentationEpisode, nearBlackBoundedInput);
-			if (nearBlackBoundedDecision.retainedScopeFallback ||
+            const auto boundedLogTick = GetTickCount64();
+			if ((nearBlackBoundedDecision.retainedScopeFallback &&
+                 boundedLogTick - nearBlackBoundedLastLogTick >= 2000) ||
 				nearBlackBoundedDecision.state.boundedPresentationAvailable != nearBlackPresentationEpisode.boundedPresentationAvailable ||
 				nearBlackBoundedDecision.state.boundedPresentationFailed != nearBlackPresentationEpisode.boundedPresentationFailed ||
 				(nearBlackBoundedDecision.boundedPresentation &&
 				 !sameBounds(nearBlackBoundedDecision.presentation.sourceBounds, nearBlackPresentationEpisode.boundedPresentation)))
+            {
+                nearBlackBoundedLastLogTick = boundedLogTick;
 				DebugLog::Log("Alpha near-black bounded presentation: instance=%s generation=%llu sequence=%llu epoch=%llu bounded=%d hold_scope=%d failed=%d rect=%d,%d-%d,%d reason=\"%s\"",
 					diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
 					nearBlackBoundedDecision.boundedPresentation ? 1 : 0,
@@ -15380,6 +15818,7 @@ releaseDriftBaseRetention =
 					nearBlackBoundedDecision.presentation.sourceBounds.left, nearBlackBoundedDecision.presentation.sourceBounds.top,
 					nearBlackBoundedDecision.presentation.sourceBounds.right, nearBlackBoundedDecision.presentation.sourceBounds.bottom,
 					nearBlackBoundedDecision.presentation.reason.c_str());
+            }
 			nearBlackPresentationEpisode = nearBlackBoundedDecision.state;
 			cropDecision = nearBlackBoundedDecision.presentation;
             AlphaSourceCrop::ColdMaskedCaptionPresentationInput coldCaptionInput;
@@ -15600,6 +16039,19 @@ releaseDriftBaseRetention =
                 }
             }
             recoveryInput.crop = cropInput;
+            // Cold caption proof runs after generic recovery. Carry only its
+            // exact successfully admitted FIT into the final ownership check;
+            // a late raw-pixel/recovery envelope must not inherit confirmation.
+            if (coldCaptionDecision.available && !admissionDecision.blocked &&
+                admissionDecision.presentation.applyCrop &&
+                admissionDecision.presentation.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                coldCaptionDecision.presentation.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                sameBounds(admissionDecision.presentation.sourceBounds,
+                    coldCaptionDecision.presentation.sourceBounds))
+            {
+                recoveryInput.candidate = admissionDecision.presentation;
+                recoveryInput.confirmedPresentationResolved = true;
+            }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
             if (uncertainPicture.retained)
@@ -15659,6 +16111,17 @@ releaseDriftBaseRetention =
 					cropDecision.sourceBounds.left, cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right, cropDecision.sourceBounds.bottom,
 					admissionDecision.presentation.reason.c_str());
+                DebugLog::Log("Alpha crop extent provenance: generation=%llu sequence=%llu confirmed_owner=%d candidate_owner=%s raw_available=%d raw=%d,%d-%d,%d measured=%d,%d-%d,%d detector=%d,%d-%d,%d near_black=%d retained_scope=%d",
+                    frameGeneration, sourceSequence, recoveryInput.confirmedPresentationResolved ? 1 : 0,
+                    AlphaSourceCrop::DecisionOwnerName(recoveryInput.candidate.owner),
+                    presentationRetention.outwardVisibleBoundsAvailable ? 1 : 0,
+                    presentationRetention.outwardVisibleBounds.left, presentationRetention.outwardVisibleBounds.top,
+                    presentationRetention.outwardVisibleBounds.right, presentationRetention.outwardVisibleBounds.bottom,
+                    cropInput.currentVisibleBounds.left, cropInput.currentVisibleBounds.top,
+                    cropInput.currentVisibleBounds.right, cropInput.currentVisibleBounds.bottom,
+                    latestActivePicturePresentationBounds.left, latestActivePicturePresentationBounds.top,
+                    latestActivePicturePresentationBounds.right, latestActivePicturePresentationBounds.bottom,
+                    recoveryInput.globalNearBlack ? 1 : 0, uncertainPicture.retained ? 1 : 0);
 				cropAdmissionLastLogTick = admissionLogTick;
 			}
 			cropAdmissionPreviousReason = admissionDecision.presentation.reason;
@@ -17552,7 +18015,7 @@ releaseDriftBaseRetention =
         const pl_hook* submittedNls = nullptr;
         for(int i=0;i<renderParams.num_hooks;++i)
             if(renderParams.hooks[i]==nlsHook)submittedNls=nlsHook;
-        const auto hookRender = NlsHookRecovery::Render(renderer, d3d11->gpu,
+        const auto hookRender = NlsHookRecovery::Render(temporalRenderer.ProcessingRenderer(renderer), d3d11->gpu,
             renderImage, target, baseTarget, renderParams, submittedNls, [&]()
             {
                 runtimeRejectedNlsHookSignature = nlsHookSignature;
@@ -17567,7 +18030,7 @@ releaseDriftBaseRetention =
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
-                return temporalRenderer.Render(renderer,source,destination,parameters);
+                return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
             });
         bool rendered = hookRender.rendered;
         if (hookRender.retried)
@@ -18142,6 +18605,13 @@ releaseDriftBaseRetention =
                 renderMs,swapBlockMs,captureRateHz,sample.expectedDisplayHz);
             if(!analysisPerformanceLogTick)analysisPerformanceLogTick=correlationNow;
             if(correlationNow-analysisPerformanceLogTick>=2000){
+                const auto& processed=temporalRenderer.ProcessingSnapshot();
+                const auto& oldProcessing=lastPictureProcessingStatistics;
+                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet",
+                    processed.sourceRenders-oldProcessing.sourceRenders,
+                    processed.sourceReuses-oldProcessing.sourceReuses,
+                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride);
+                lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;
                 const double jobs=double(worker.completed-old.completed);
@@ -22939,10 +23409,11 @@ void LibplaceboVideoRenderer::RenderLoop()
                 if(motionDraws>1 && GetTickCount64()>=m_impl->nextSourceMeasurementCacheLogTick) {
                     m_impl->nextSourceMeasurementCacheLogTick=GetTickCount64()+2000;
                     const auto& samples=pixelMeasurements.Snapshot();
-                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu",
+                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu subtitle_requests=%zu subtitle_hits=%zu subtitle_scan_total_ms=%.3f subtitle_scan_peak_ms=%.3f",
                         static_cast<unsigned long long>(sourceSequence),motionDraws,
                         samples.globalRequests,samples.globalHits,samples.pictureRequests,samples.pictureHits,
-                        samples.retentionRequests,samples.retentionHits);
+                        samples.retentionRequests,samples.retentionHits,samples.subtitleRequests,samples.subtitleHits,
+                        samples.subtitleScanMs,samples.subtitleScanPeakMs);
                 }
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(

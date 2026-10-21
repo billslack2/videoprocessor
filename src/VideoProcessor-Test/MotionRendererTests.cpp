@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
@@ -154,6 +155,75 @@ struct GpuFixture {
 };
 }
 TEST_CLASS(MotionRendererTests){public:
+    TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
+        for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
+            unsigned analyses=0;
+            for(uint64_t sequence=1;sequence<=120;++sequence) {
+                const bool due=InputFrameAnalysisDue(hz,sequence);
+                Assert::IsTrue(due==(hz<=30.0 || (sequence&1)!=0));
+                for(int output=0;output<4;++output)
+                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence));
+                if(due)++analyses;
+            }
+            Assert::AreEqual(hz<=30.0?120u:60u,analyses);
+        }
+    }
+    TEST_METHOD(ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+        settings.deinterlace="off";g.Upload(128);
+        g.temporal.Begin(settings,24,75,false,0,1,1,0,false);
+        Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,1));
+        g.temporal.outputPts=0;g.Draw();
+        const auto first=g.temporal.ProcessingSnapshot();
+        Assert::AreEqual(uint64_t(1),first.sourceRenders);
+        g.temporal.outputPts=.005;g.Draw();g.temporal.outputPts=.010;g.Draw();
+        const auto repeated=g.temporal.ProcessingSnapshot();
+        Assert::AreEqual(first.sourceRenders,repeated.sourceRenders);
+        Assert::AreEqual(first.outputRenders+2,repeated.outputRenders);
+        auto parameters=pl_render_default_params;
+        g.input.crop={4,4,60,60};
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,parameters));
+        Assert::AreEqual(first.sourceRenders+1,g.temporal.ProcessingSnapshot().sourceRenders);
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,parameters,1));
+        Assert::AreEqual(first.sourceRenders+2,g.temporal.ProcessingSnapshot().sourceRenders);
+    }
+    TEST_METHOD(OutputOverlayStaysLiveWhileSourceProcessingIsCached) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";
+        g.Upload(128);g.UploadComposition(false,1);
+        g.temporal.Begin(settings,24,75,false,0,1,1,0,false);
+        Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,1));g.temporal.outputPts=0;
+        pl_overlay_part part{};part.src={0,0,64,64};part.dst={0,0,64,64};
+        pl_overlay overlay{};overlay.tex=g.layer;overlay.mode=PL_OVERLAY_NORMAL;
+        overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;overlay.repr=pl_color_repr_rgb;
+        overlay.repr.alpha=PL_ALPHA_INDEPENDENT;overlay.color=pl_color_space_srgb;
+        overlay.parts=&part;overlay.num_parts=1;g.output.overlays=&overlay;g.output.num_overlays=1;
+        const auto red=g.Draw();g.UploadComposition(false,2);const auto blue=g.Draw();
+        Assert::IsTrue(red[0]>200&&red[2]<20);
+        Assert::IsTrue(blue[2]>200&&blue[0]<20);
+        Assert::AreEqual(uint64_t(1),g.temporal.ProcessingSnapshot().sourceRenders);
+    }
+    TEST_METHOD(HdrToneMappedSourceIsReusedAtOutputRate) {
+        GpuFixture g;g.CreateP010AlternatingChroma();
+        MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";
+        g.temporal.Begin(settings,24,75,false,0,1,1,0,false);
+        Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.p010Input,1));
+        auto params=pl_render_default_params;
+        auto tone=pl_color_map_default_params;params.color_map_params=&tone;
+        g.temporal.outputPts=0;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.p010Input,g.output,params));
+        const auto first=g.Read(32,32);
+        for(int i=1;i<4;++i) {
+            g.temporal.outputPts=i*.005;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.p010Input,g.output,params));
+            const auto repeated=g.Read(32,32);
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(first[c]-repeated[c])<=2);
+        }
+        Assert::AreEqual(uint64_t(1),g.temporal.ProcessingSnapshot().sourceRenders);
+        Assert::AreEqual(uint64_t(4),g.temporal.ProcessingSnapshot().outputRenders);
+        g.output.color.transfer=PL_COLOR_TRC_GAMMA22;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.p010Input,g.output,params));
+        Assert::AreEqual(uint64_t(2),g.temporal.ProcessingSnapshot().sourceRenders);
+    }
     TEST_METHOD(ExplicitCadenceRepeatReusesSubmittedPixelsAndLeavesNextTickUnchanged) {
         for (bool fields : {false,true}) {
             GpuFixture g;
@@ -555,7 +625,7 @@ TEST_CLASS(MotionRendererTests){public:
         r.Begin(settings,30,60,true,1,1,2,1./30,false,false);
         Assert::IsTrue(r.Active());Assert::AreEqual(size_t(2),r.outputs.size());
     }
-    TEST_METHOD(CompositionMixesCleanPixelsButKeepsSubtitleCueDiscrete){
+    TEST_METHOD(CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle){
         GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
         settings.mixer="linear";settings.deinterlace="off";
         const pl_rect2d glyph{24,24,40,40};
@@ -575,7 +645,7 @@ TEST_CLASS(MotionRendererTests){public:
         const auto mixedBackground=g.Read(4,4);
         Assert::AreEqual(uint64_t(1),g.temporal.LastSubtitleSequence());
         Assert::IsTrue(mixedBackground[0]>20&&mixedBackground[0]<240,(L"Clean background did not mix: "+GpuFixture::PixelText(mixedBackground)+L" glyph "+GpuFixture::PixelText(held)).c_str());
-        Assert::IsTrue(held[0]>230&&held[1]<20&&held[2]<20,L"Opaque red glyph was blended with its background");
+        Assert::IsTrue(held[0]>held[1]+20&&held[1]>20,L"Subtitle did not blend with the complete processed source");
         g.temporal.outputPts=1./24;
         const auto cleared=g.Draw();
         const auto clearBackground=g.Read(4,4);

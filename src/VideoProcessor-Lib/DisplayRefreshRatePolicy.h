@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 enum class DisplayRefreshRateDecision
@@ -89,6 +90,50 @@ struct DisplayRefreshModeSelection
 	bool doubledRate = false;
 };
 
+// A complete permitted output mode. Unlike DisplayMode (which describes a
+// captured source), this is the progressive raster and exact refresh timing
+// requested from the Windows display path.
+struct DisplayOutputMode
+{
+	uint32_t width = 0;
+	uint32_t height = 0;
+	DisplayRefreshRational refreshRate{};
+};
+
+struct DisplayOutputModeChoice
+{
+	DisplayOutputMode mode{};
+	DisplayRefreshModeSelectionPath ratePath =
+		DisplayRefreshModeSelectionPath::None;
+	bool doubledRate = false;
+    bool configuredFallback = false;
+};
+
+// Accepted forms are WIDTHxHEIGHTpRATE and the documented 16:9 shorthand
+// HEIGHTpRATE. Decimal 23.976/29.97/59.94 and integer 23/29/59 spellings map
+// to the broadcast rationals 24000/1001, 30000/1001, and 60000/1001.
+bool ParseDisplayOutputMode(const std::string& text,
+	DisplayOutputMode& mode, std::string& error);
+bool ParseDisplayOutputModeList(const std::string& text,
+	std::vector<DisplayOutputMode>& modes, std::string& error);
+std::string FormatDisplayOutputMode(const DisplayOutputMode& mode);
+// Compact UI labels never replace the exact timing stored in configuration.
+std::string FormatDisplayOutputModeLabel(const DisplayOutputMode& mode);
+std::vector<DisplayOutputMode> DisplayOutputModePickerChoices(
+    const std::vector<DisplayOutputMode>& available, uint32_t preferredWidth,
+    uint32_t preferredHeight, bool recommendedOnly);
+bool DisplayOutputModesExactlyEqual(const DisplayOutputMode& first,
+	const DisplayOutputMode& second);
+
+// The preferred refresh family follows VP-0167 native-first/two-pass
+// ranking. Within one eligible rational rate, configured mode order decides
+// which complete raster is attempted first. Other available allowed modes
+// follow in configured order, so one allowed mode is fixed output for any
+// valid source cadence. Unavailable modes are ignored.
+std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
+	const DisplayRefreshRational& input, bool interlaced,
+	const std::vector<DisplayOutputMode>& configured,
+	const std::vector<DisplayOutputMode>& available);
 enum class RefreshRateSwitchMode
 {
 	Never,

@@ -1215,6 +1215,10 @@ namespace UnifiedProfileRuntime
 		next->viewport = viewport;
 		next->queue = queue;
 		next->lldv = lldv;
+        const auto selectedDisplay = effective.find("output_display");
+        if (selectedDisplay != effective.end() && !selectedDisplay->second.empty())
+            next->outputDisplayMonitor = RendererProfileConfig::ResolveOutputDisplayMonitor(
+                m_model, selectedDisplay->second.front());
 		next->variables = StateVariables::Snapshot(
 			generation, variables);
 		snapshot = next;

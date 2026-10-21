@@ -179,7 +179,7 @@ void AssertDimVerifiedVerticalPreconditions(const AnalysisLumaSource& source,
     Assert::AreEqual(int(ActivePictureAuthorityOrigin::NATIVE),int(observed.authorityOrigin));
     Assert::AreEqual(48,observed.proposedBounds.left); Assert::AreEqual(912,observed.proposedBounds.right);
     Assert::AreEqual(0,observed.trustedBounds.left); Assert::AreEqual(960,observed.trustedBounds.right);
-    Assert::AreEqual(62,observed.trustedBounds.top); Assert::AreEqual(478,observed.trustedBounds.bottom);
+    Assert::AreEqual(60,observed.trustedBounds.top); Assert::AreEqual(480,observed.trustedBounds.bottom);
     Assert::AreEqual(int(ActivePictureBounds::BarAxes::TOP_BOTTOM),int(observed.trustedBounds.trustedBarAxes));
     Assert::IsTrue(observed.top.trusted && observed.bottom.trusted);
     Assert::IsTrue(observed.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS);
@@ -253,7 +253,7 @@ public:
         Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds),
             L"Current verified blank vertical bands must not depend on a side brightness quota.");
         Assert::AreEqual(0,observed.trustedBounds.left); Assert::AreEqual(3840,observed.trustedBounds.right);
-        Assert::AreEqual(272,observed.trustedBounds.top); Assert::AreEqual(1888,observed.trustedBounds.bottom);
+        Assert::AreEqual(268,observed.trustedBounds.top); Assert::AreEqual(1892,observed.trustedBounds.bottom);
         ActivePictureTransitionModel model; uint64_t sequence=1;
         EstablishDimNative(model,base,sequence);
         for(int vote=0;vote<ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS;++vote)
@@ -288,7 +288,7 @@ public:
                 Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds),
                     L"Permit only verified vertical removal while retaining every dim side-composition pixel.");
                 Assert::AreEqual(0,observed.trustedBounds.left);Assert::AreEqual(960,observed.trustedBounds.right);
-                Assert::AreEqual(62,observed.trustedBounds.top);Assert::AreEqual(478,observed.trustedBounds.bottom);
+                Assert::AreEqual(60,observed.trustedBounds.top);Assert::AreEqual(480,observed.trustedBounds.bottom);
                 Assert::IsTrue(observed.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM);
                 ActivePictureTransitionModel model;uint64_t sequence=1;
                 EstablishDimNative(model,base,sequence);
@@ -368,8 +368,10 @@ public:
             EstablishDimNative(model,rememberedTarget,sequence);
             EstablishDimNative(model,base,sequence);
             ActivePictureBounds remembered;
-            Assert::IsTrue(model.FindRecentTrustedBarGeometry(observed.trustedBounds,remembered));
-            EqualDimBounds(rememberedTarget.trustedBounds,remembered);
+            // The fixed two-step guard is outside the exact remembered-edge
+            // tolerance at this resolution. Fresh current proof must retain its
+            // safe aperture rather than borrowing the tighter native target.
+            Assert::IsFalse(model.FindRecentTrustedBarGeometry(observed.trustedBounds,remembered));
             ConfirmDimVerticalWhilePreservingColumns(frame.Source(),observed,base.trustedBounds,model,sequence);
         }
     }
@@ -391,7 +393,7 @@ public:
                 Assert::AreEqual(12,leftPicture?axes.leftPictureNonBlackMinimum:axes.rightPictureNonBlackMinimum);
                 Assert::IsTrue(axes.verticalCropProfileEvaluated && axes.verticalCropProfileClean);
                 Assert::IsTrue(axes.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
-                Assert::AreEqual(66,observed.trustedBounds.top); Assert::AreEqual(474,observed.trustedBounds.bottom);
+                Assert::AreEqual(64,observed.trustedBounds.top); Assert::AreEqual(476,observed.trustedBounds.bottom);
                 ActivePictureTransitionModel model; uint64_t sequence=1;
                 EstablishDimNative(model,base,sequence);
                 for(int vote=0;vote<ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS;++vote)
@@ -434,7 +436,7 @@ public:
             const auto observed=ExtractActivePictureEvidence(frame.Source());
             Assert::IsTrue(observed.available && observed.top.trusted && observed.bottom.trusted);
             Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
-            Assert::AreEqual(66,observed.trustedBounds.top); Assert::AreEqual(474,observed.trustedBounds.bottom);
+            Assert::AreEqual(64,observed.trustedBounds.top); Assert::AreEqual(476,observed.trustedBounds.bottom);
             Assert::AreEqual(0,observed.trustedBounds.left);Assert::AreEqual(960,observed.trustedBounds.right);
             Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
             Assert::IsFalse(observed.axisEvidence.HasBlockingFailedBar(observed.trustedBounds));
@@ -494,7 +496,7 @@ public:
             {
                 const auto observed=ExtractActivePictureEvidence(source);
                 // Bright off-grid rows now move the proposal outward before
-                // the existing guarded profile preserves its extra scan step.
+                // the strict guarded profile preserves two extra scan steps.
                 const int expectedTop=firstTop==275 && (edges&1) ? 274 : 276;
                 const int expectedBottom=firstTop==275 && (edges&2) ? 1886 : 1884;
                 Assert::IsTrue(observed.available && observed.top.trusted && observed.bottom.trusted);
@@ -508,7 +510,7 @@ public:
                     L"Current verified bars should admit only a conservatively expanded crop that retains quantized boundary pixels.");
                 const auto& target=observed.trustedBounds;
                 Assert::AreEqual(0,target.left); Assert::AreEqual(3840,target.right);
-                Assert::AreEqual(expectedTop-4,target.top); Assert::AreEqual(expectedBottom+4,target.bottom);
+                Assert::AreEqual(expectedTop-8,target.top); Assert::AreEqual(expectedBottom+8,target.bottom);
                 if(edges&1)Assert::IsTrue(target.top<=firstTop);
                 if(edges&2)Assert::IsTrue(target.bottom>=2160-firstTop);
                 Assert::AreEqual(expectedTop,observed.axisEvidence.sidePictureTop);
@@ -546,14 +548,14 @@ public:
             Assert::AreEqual(delta==4,observed.verticalBarProfile.clean);
             Assert::IsTrue(observed.axisEvidence.verticalCropProfileClean);
             Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
-            Assert::AreEqual(66,observed.trustedBounds.top); Assert::AreEqual(474,observed.trustedBounds.bottom);
+            Assert::AreEqual(64,observed.trustedBounds.top); Assert::AreEqual(476,observed.trustedBounds.bottom);
             Assert::IsTrue(y>=observed.trustedBounds.top && y<observed.trustedBounds.bottom,
                 L"A boundary mismatch is safe only because its row remains in the displayed picture.");
         }
         DimCompositionPixels caption; ShadowedNativeSide(caption,true,3);
-        // A caption deeper than the two-row envelope must still reject the
+        // A caption deeper than the four-row envelope must still reject the
         // crop. This protects pixels that the permitted expansion cannot retain.
-        caption.Rectangle(240,65,720,66,300);
+        caption.Rectangle(240,63,720,64,300);
         const auto observed=ExtractActivePictureEvidence(caption.Source());
         Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
         Assert::IsFalse(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
@@ -583,8 +585,8 @@ public:
             // move, a larger envelope, or a different sampling aperture.
             if(fault==11){axes.verticalCropGuardTop=-2; bounds.top=axes.sidePictureTop+2;}
             if(fault==12){axes.verticalCropGuardBottom=-2; bounds.bottom=axes.sidePictureBottom-2;}
-            if(fault==13){axes.verticalCropGuardTop=4; bounds.top=axes.sidePictureTop-4;}
-            if(fault==14){axes.verticalCropGuardBottom=4; bounds.bottom=axes.sidePictureBottom+4;}
+            if(fault==13){axes.verticalCropGuardTop=6; bounds.top=axes.sidePictureTop-6;}
+            if(fault==14){axes.verticalCropGuardBottom=6; bounds.bottom=axes.sidePictureBottom+6;}
             if(fault==15){axes.verticalCropGuardTop=0; axes.verticalCropGuardBottom=0;}
             if(fault==16){axes.sidePictureTop-=2; axes.sidePictureBottom-=2;}
             if(fault==17){++bounds.top; ++bounds.bottom;}
@@ -646,8 +648,8 @@ public:
             DimCompositionPixels frame(3840,2160); FourKShadowedSide(frame);
             frame.Rectangle(0,273,3840,276,72);
             frame.Rectangle(0,1884,3840,1887,72);
-            if(pattern==0)frame.Rectangle(0,271,3840,272,69);
-            if(pattern==1)frame.Rectangle(0,1888,3840,1889,69);
+            if(pattern==0)frame.Rectangle(0,267,3840,268,69);
+            if(pattern==1)frame.Rectangle(0,1892,3840,1893,69);
             if(pattern==2)frame.Rectangle(480,267,600,276,300);
             if(pattern==3)for(int y=255;y<276;++y)frame.Rectangle(0,y,3840,y+1,64+(y-255)/2);
             const auto observed=ExtractActivePictureEvidence(frame.Source());
@@ -683,7 +685,7 @@ public:
         const auto base=ExtractActivePictureEvidence(imax.Source());
         const auto current=ExtractActivePictureEvidence(guarded.Source());
         AssertFourKShadowedRaw(current);
-        Assert::AreEqual(272,current.trustedBounds.top); Assert::AreEqual(1888,current.trustedBounds.bottom);
+        Assert::AreEqual(268,current.trustedBounds.top); Assert::AreEqual(1892,current.trustedBounds.bottom);
         Assert::IsTrue(current.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(current.trustedBounds));
         ActivePictureTransitionModel model; uint64_t sequence=1;
         EstablishDimNative(model,clean,sequence); EstablishDimNative(model,base,sequence);
@@ -711,7 +713,7 @@ public:
             if(decision.publish)EqualDimBounds(current.trustedBounds,decision.bounds);
         }
         // The old native coordinate and the conservative one are the same
-        // established program aspect, not a reason to reframe four pixels.
+        // established program aspect, not a reason to reframe eight pixels.
         for(int i=0;i<8;++i)
         {
             const auto& evidence=i%2?current:clean;
@@ -729,7 +731,7 @@ public:
         const auto clean=ExtractActivePictureEvidence(scope.Source());
         const auto base=ExtractActivePictureEvidence(imax.Source());
         const auto current=ExtractActivePictureEvidence(guarded.Source());
-        Assert::AreEqual(272,current.trustedBounds.top); Assert::AreEqual(1888,current.trustedBounds.bottom);
+        Assert::AreEqual(268,current.trustedBounds.top); Assert::AreEqual(1892,current.trustedBounds.bottom);
         ActivePictureTransitionModel model; uint64_t sequence=1;
         EstablishDimNative(model,base,sequence);
         constexpr int confirmations=ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS;
@@ -787,8 +789,8 @@ public:
         {
             FourKShadowedSide(*frame);
             // A contiguous bright area supplies six raw-grid samples in zone0.
-            // Shifting the witness grid out four rows moves its first sample
-            // from292 to288 and loses one vote, without changing any pixels.
+            // Shifting the witness grid out eight rows moves its first sample
+            // from292 to284 and loses one vote, without changing any pixels.
             frame->Rectangle(0,276,128,678,100);
             frame->Rectangle(0,292,128,461,300);
         }
@@ -804,7 +806,7 @@ public:
             Assert::IsTrue(observed.verticalBarGuardProfile.completed && observed.verticalBarGuardProfile.clean);
             Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds),
                 L"Retaining extra boundary rows cannot invalidate current picture evidence inside the unchanged original aperture.");
-            Assert::AreEqual(272,observed.trustedBounds.top); Assert::AreEqual(1888,observed.trustedBounds.bottom);
+            Assert::AreEqual(268,observed.trustedBounds.top); Assert::AreEqual(1892,observed.trustedBounds.bottom);
             Assert::AreEqual(276,observed.axisEvidence.sidePictureTop); Assert::AreEqual(1884,observed.axisEvidence.sidePictureBottom);
             Assert::AreEqual(observed.axisEvidence.sidePictureTop,observed.trustedBounds.top+observed.axisEvidence.verticalCropGuardTop);
             Assert::AreEqual(observed.axisEvidence.sidePictureBottom,observed.trustedBounds.bottom-observed.axisEvidence.verticalCropGuardBottom);

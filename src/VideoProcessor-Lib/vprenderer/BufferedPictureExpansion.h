@@ -44,6 +44,17 @@ namespace AlphaSourceCrop
         // Keep the established presentation after motion ends until ordinary publication
         // accepts the new crop; this flag never delays the model or queued proof.
         bool awaitingPublication = false;
+        // This episode has independently measured physical bars despite a caption.
+        // Only this provenance may bridge a later legacy vertical FIT proof gap.
+        bool subtitleAssistedBars = false;
+        uint64_t subtitleBarPolicyGeneration = 0, subtitleBarContinuityGeneration = 0;
+        SubtitleScriptHint subtitleBarScriptHint = static_cast<SubtitleScriptHint>(0);
+        // An uncommitted seed may bridge at most two adjacent unknown samples.
+        // It never owns presentation; last remains the last proved position.
+        uint32_t missingBarProofSamples = 0;
+        // Adjacent unknown samples since an active captioned ramp's last
+        // certified position; used only to recognize an implausible return jump.
+        uint32_t missedActiveBarSamples = 0;
         ActivePictureBounds base, anchor, last, quietAnchor;
         // Current native edge position only. It is not motion or quiet proof.
         // Invalidated by a source gap or missing native vertical bars.
@@ -69,6 +80,22 @@ namespace AlphaSourceCrop
         const MovingPictureTransitionState& previous,
         const ActivePictureFrameIdentity& identity,
         const TransitionAdmissionInput& current);
+
+    // Native motion may use exact-current independently proved subtitle-excluded
+    // bars even when the untouched raw proposal includes the caption. This does
+    // not alter AR admission, crop authority or subtitle erasure ownership.
+    // Advanced modes may suppress legacy vertical FIT for this observation;
+    // an established same-context episode can bridge missing proof without
+    // gaining directional or quiet credit. Classic and FAIL_OPEN are unchanged.
+    MovingPictureTransitionState ObserveSubtitleAssistedMovingPictureTransition(
+        const MovingPictureTransitionState& previous,
+        const ActivePictureFrameIdentity& identity,
+        const TransitionAdmissionInput& current,
+        bool classicPicturePresentationAllowed,
+        const AnalysisLumaSource& source,
+        const SubtitleAssistedVerticalBarProof& subtitleBars,
+        uint64_t policyGeneration, uint64_t continuityGeneration,
+        SubtitleScriptHint scriptHint);
 
     void CompleteMovingPictureTransition(MovingPictureTransitionState& state,
         const TransitionAdmissionInput& current,

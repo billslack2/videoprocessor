@@ -124,6 +124,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     m_topSearchComplete=m_bottomSearchComplete=false;
     m_diagnosticReason="no-backed-anchor";m_diagnosticComponentCount=0;
     m_diagnosticNearBarGap=-1;m_diagnosticNearBarGapInferred=false;
+    m_diagnosticPictureGlyphProofRequired=false;m_diagnosticCoreGlyphCount=0;
+    m_diagnosticCoreGlyphHeight=0;m_diagnosticInkDensityBasisPoints=0;
+    m_diagnosticBaselineSupportBasisPoints=0;m_diagnosticGlyphTopology="not-required";
     m_nearBarEligibilityMeasured=false;m_nearBarEligible=false;
     m_currentBarAnchor = {};
     m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {};
@@ -2360,6 +2363,136 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             (r.right+step-1)/step,(r.bottom+step-1)/step});
         box=Union(box,lineBoxes[i]);
     }
+    // A dark scene can join a picture-side candidate to the physical bar.
+    // That is backing, not a finite card edge or a glyph-row certificate.
+    // In this one ambiguous acquisition path, measure scale from the original
+    // accepted components rather than the growing line union: sparse stars
+    // can otherwise chain vertically and teach themselves a very large font.
+    bool selectedHasPhysicalBarInk=false;
+    for(const auto& component:m_components) {
+        if(!component.actualBarInk)continue;
+        for(int selected=0;selected<lineCount;++selected)
+            if(componentOwners[component.label]==lineIndices[selected]+1)
+                selectedHasPhysicalBarInk=true;
+    }
+    const bool anchorWhollyInPicture=a.box.top*step>=pictureTop &&
+        a.box.bottom*step<=pictureBottom && !selectedHasPhysicalBarInk;
+    m_diagnosticPictureGlyphProofRequired=anchorWhollyInPicture &&
+        !m_currentProvenSourcePanel.Valid();
+    if(m_diagnosticPictureGlyphProofRequired) {
+        const auto& row=a.box;
+        const unsigned rowArea=unsigned(Width(row))*unsigned(Height(row));
+        unsigned acceptedInk=0;
+        std::vector<const Line*> accepted,cores;
+        for(const auto& component:m_components) {
+            if(componentOwners[component.label]!=anchor+1 || !component.hasTextCore)continue;
+            accepted.push_back(&component);acceptedInk+=unsigned(component.ink);
+            const int cw=Width(component.box),ch=Height(component.box);
+            const unsigned area=unsigned(cw)*unsigned(ch);
+            // The same finite-stroke density range used by native glyph
+            // recovery rejects filled highlights, while keeping hollow letters
+            // and a single connected Arabic word. Marks remain attached but
+            // cannot establish the body scale on their own.
+            if(ch>=minimumHeight && component.ink>=(std::max)(6,ch) &&
+                cw<=ch*JoinedWordMaxGlyphHeights &&
+                unsigned(component.ink)*100>=area*2 &&
+                unsigned(component.ink)*100<=area*85)
+                cores.push_back(&component);
+        }
+        m_diagnosticInkDensityBasisPoints=rowArea ? unsigned(uint64_t(acceptedInk)*10000/rowArea) : 0;
+        auto rejectGlyphRow=[&](const char* topology) {
+            m_diagnosticGlyphTopology=topology;
+            m_diagnosticReason="picture-glyph-row-rejected";
+            return false;
+        };
+        // An ellipsis or another short compact punctuation cluster has no
+        // letter body. Preserve it only as a small, consistently sized row;
+        // staggered points and tall star flares cannot use this exception.
+        bool compactPunctuation=accepted.size()>=2 && accepted.size()<=6;
+        int compactHeight=0,compactMinimumHeight=(std::numeric_limits<int>::max)();
+        int compactFirstBottom=(std::numeric_limits<int>::max)(),compactLastBottom=0;
+        for(const auto* component:accepted) {
+            const int cw=Width(component->box),ch=Height(component->box);
+            compactPunctuation &= component->ink>=3 && ch>=2 &&
+                ch<=minimumHeight*2 && cw<=ch*2 && cw*2>=ch;
+            compactHeight=(std::max)(compactHeight,ch);
+            compactMinimumHeight=(std::min)(compactMinimumHeight,ch);
+            compactFirstBottom=(std::min)(compactFirstBottom,component->box.bottom);
+            compactLastBottom=(std::max)(compactLastBottom,component->box.bottom);
+        }
+        compactPunctuation &= compactHeight>0 && compactHeight<=compactMinimumHeight*2 &&
+            Width(row)<=compactHeight*12 && Height(row)<=compactHeight*3/2+1 &&
+            compactLastBottom-compactFirstBottom<=(std::max)(1,compactHeight/3);
+        if(compactPunctuation) {
+            m_diagnosticCoreGlyphCount=unsigned(accepted.size());
+            m_diagnosticCoreGlyphHeight=compactHeight*step;
+            m_diagnosticBaselineSupportBasisPoints=10000;
+            m_diagnosticGlyphTopology="compact-punctuation";
+        } else {
+            if(cores.empty())return rejectGlyphRow("no-body-core");
+            std::sort(cores.begin(),cores.end(),[](const Line* left,const Line* right) {
+                return Height(left->box)<Height(right->box);
+            });
+            unsigned bodyInk=0;for(const auto* component:cores)bodyInk+=unsigned(component->ink);
+            unsigned accumulated=0;int bodyHeight=Height(cores.back()->box);
+            for(const auto* component:cores) {
+                accumulated+=unsigned(component->ink);
+                if(accumulated*2>=bodyInk){bodyHeight=Height(component->box);break;}
+            }
+            m_diagnosticCoreGlyphHeight=bodyHeight*step;
+            if(Height(row)>bodyHeight*2+2)return rejectGlyphRow("body-scale");
+            if(m_diagnosticInkDensityBasisPoints<200)return rejectGlyphRow("sparse-ink");
+            // Detached Thai vowels and Arabic marks can sit outside the body.
+            // They do not vote on its baseline; joined words need only one
+            // coherent body and retain their existing script width allowance.
+            std::vector<const Line*> bodies;
+            for(const auto* component:cores)
+                if(Height(component->box)*3>=bodyHeight*2 &&
+                    Height(component->box)<=bodyHeight*2+1)bodies.push_back(component);
+            std::sort(bodies.begin(),bodies.end(),[](const Line* left,const Line* right) {
+                return left->box.bottom<right->box.bottom;
+            });
+            unsigned baselineInk=0;
+            for(const auto* component:bodies)baselineInk+=unsigned(component->ink);
+            accumulated=0;int baseline=bodies.back()->box.bottom;
+            for(const auto* component:bodies) {
+                accumulated+=unsigned(component->ink);
+                if(accumulated*2>=baselineInk){baseline=component->box.bottom;break;}
+            }
+            unsigned coherentInk=0;SubtitleBoxRect bodyBounds;
+            const int baselineTolerance=(std::max)(1,bodyHeight/2);
+            for(const auto* component:bodies) {
+                if(std::abs(component->box.bottom-baseline)>baselineTolerance)continue;
+                coherentInk+=unsigned(component->ink);++m_diagnosticCoreGlyphCount;
+                bodyBounds=bodyBounds.Valid()?Union(bodyBounds,component->box):component->box;
+            }
+            m_diagnosticBaselineSupportBasisPoints=baselineInk ? unsigned(uint64_t(coherentInk)*10000/baselineInk) : 0;
+            if(m_diagnosticBaselineSupportBasisPoints<7500)return rejectGlyphRow("baseline");
+            // Punctuation may extend a body by a bounded amount. A lone flare
+            // cannot lend its height/baseline to distant unrelated points.
+            if(!bodyBounds.Valid() || bodyBounds.left-row.left>bodyHeight*2 ||
+                row.right-bodyBounds.right>bodyHeight*2)return rejectGlyphRow("body-extent");
+            m_diagnosticGlyphTopology="body-row";
+        }
+        // Repair only an unwitnessed zero-gap junction with the physical
+        // bar. Finite positive edges and the established opposite-inset or
+        // verified-support inference retain their original distance contract.
+        // A dark run alone cannot lend the growing row union's full height as
+        // padding. Use the independent body scale and closest selected row.
+        if(m_diagnosticNearBarGap==0 && !m_diagnosticNearBarGapInferred) {
+            const int inferredMargin=(std::max)(step,m_diagnosticCoreGlyphHeight/2);
+            int inferredGap=(std::numeric_limits<int>::max)();
+            for(int selected=0;selected<lineCount;++selected) {
+                const auto& selectedRow=lineBoxes[selected];
+                if(pictureTop>0)inferredGap=(std::min)(inferredGap,
+                    (std::max)(0,selectedRow.top*step-pictureTop-inferredMargin));
+                if(pictureBottom<source.height)inferredGap=(std::min)(inferredGap,
+                    (std::max)(0,pictureBottom-selectedRow.bottom*step-inferredMargin));
+            }
+            m_diagnosticNearBarGap=inferredGap;
+            m_diagnosticNearBarGapInferred=true;
+        }
+    }
     const bool actuallyCrosses=box.top*step<pictureTop || box.bottom*step>pictureBottom;
     m_nearBarEligibilityMeasured=true;
     m_nearBarEligible=actuallyCrosses || (nearBarDistance>0 && m_diagnosticNearBarGap>=0 &&
@@ -2491,6 +2624,12 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     auto diagnostics=[&]() {
         m_result.diagnosticReason=detected?"detected":m_diagnosticReason;
         m_result.diagnosticComponentCount=m_diagnosticComponentCount;
+        m_result.diagnosticPictureGlyphProofRequired=m_diagnosticPictureGlyphProofRequired;
+        m_result.diagnosticCoreGlyphCount=m_diagnosticCoreGlyphCount;
+        m_result.diagnosticCoreGlyphHeight=m_diagnosticCoreGlyphHeight;
+        m_result.diagnosticInkDensityBasisPoints=m_diagnosticInkDensityBasisPoints;
+        m_result.diagnosticBaselineSupportBasisPoints=m_diagnosticBaselineSupportBasisPoints;
+        m_result.diagnosticGlyphTopology=m_diagnosticGlyphTopology;
         m_result.diagnosticNearBarGap=m_diagnosticNearBarGap;
         m_result.diagnosticNearBarGapInferred=m_diagnosticNearBarGapInferred;
         m_result.nearBarEligibilityMeasured=m_nearBarEligibilityMeasured;
