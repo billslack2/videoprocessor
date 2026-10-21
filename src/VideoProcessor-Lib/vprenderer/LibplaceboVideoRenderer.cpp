@@ -12,6 +12,7 @@
 #include <DisplayRefreshRatePolicy.h>
 #include <DisplayMonitorInventory.h>
 #include <DisplayWindowGeometry.h>
+#include <DisplayRasterInfo.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -3543,6 +3544,7 @@ namespace
 
 		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
 		{
+            InvalidateOutputRaster();
 			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
             if (!settings.outputDisplayMonitor.empty())
@@ -3722,21 +3724,25 @@ namespace
 				rankedRates.size(), RefreshRateHz(m_originalRefreshRate));
 		}
 
-		// The output mode most recently logged as verified, for the stats OSD.
-		bool LastVerifiedOutputMode(CurrentDisplayMode& mode) const
-		{
-			std::lock_guard<std::mutex> lock(m_lastVerifiedMutex);
-			mode = m_lastVerifiedMode;
-			return m_hasLastVerifiedMode;
-		}
+        DisplayRasterInfo::Snapshot OutputRaster() const { return m_outputRaster.Read(); }
+        void InvalidateOutputRaster() { m_outputRaster.Invalidate(); }
+        void ForgetDrawnRaster() { m_outputRaster.ClearDrawn(); }
+        void RecordDrawnRaster(int width, int height) { m_outputRaster.RecordDrawn(width,height); }
+        // Called only at renderer safe points, never from OSD/UI polling. Also
+        // covers Auto/Never and changes initiated outside VP's mode transaction.
+        void ObserveOutputRaster(HWND window)
+        {
+            const auto generation=m_outputRaster.Generation();
+            CurrentDisplayMode mode{};
+            const bool queried=ReadCurrentDisplayMode(DisplayDeviceNameForWindow(window),mode);
+            if(m_outputRaster.PublishObservation(generation,queried,ModeState(mode)))
+                DebugLog::Log("libplacebo output raster observation: source=%ux%u target=%ux%u@%.6f",
+                    mode.sourceWidth,mode.sourceHeight,mode.targetWidth,mode.targetHeight,RefreshRateHz(mode.refreshRate));
+        }
 
 	private:
-		void RecordVerifiedOutputMode(const CurrentDisplayMode& mode)
-		{
-			std::lock_guard<std::mutex> lock(m_lastVerifiedMutex);
-			m_lastVerifiedMode = mode;
-			m_hasLastVerifiedMode = true;
-		}
+        void RecordVerifiedOutputMode(const CurrentDisplayMode& mode)
+        { m_outputRaster.RecordMode(ModeState(mode)); }
 
 		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
 			CurrentDisplayMode& observed) const
@@ -3879,6 +3885,7 @@ namespace
                 CurrentDisplayMode expected{candidate.mode.width, candidate.mode.height,
                     candidate.mode.width, candidate.mode.height, rate};
                 const char* route = "unselected";
+                InvalidateOutputRaster();
                 const LONG result = ApplyCompleteOutputMode(m_displayDeviceName, expected, currentMode, false, route);
                 DebugLog::Log("libplacebo output-mode API: mode=%s route=%s result=%ld",
                     FormatDisplayOutputMode(candidate.mode).c_str(), route, result);
@@ -3996,6 +4003,7 @@ namespace
 				return true;
 			}
 
+            InvalidateOutputRaster();
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
 			UINT32 pathCount = 0;
@@ -4140,9 +4148,7 @@ namespace
 		RendererSettings m_refreshCommandSettings;
 		std::function<void(const std::string&, double, double, double)> m_eventSink;
 		std::set<std::string> m_publishedTransitions;
-		mutable std::mutex m_lastVerifiedMutex;
-		CurrentDisplayMode m_lastVerifiedMode{};
-		bool m_hasLastVerifiedMode = false;
+        DisplayRasterInfo::Cache m_outputRaster;
 	};
 }
 
@@ -4295,9 +4301,6 @@ struct LibplaceboVideoRenderer::Impl
 	uint32_t lastFramePacingStatsPresentRefresh = 0;
 	uint64_t nextFramePacingTraceTick = 0;
 	ScopedDisplayRefreshRate displayRefreshRate;
-	// Swapchain size from the latest geometry log line, for the stats OSD.
-	std::atomic<int> loggedSwapchainWidth{ 0 };
-	std::atomic<int> loggedSwapchainHeight{ 0 };
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
 	pl_cache cache = nullptr;
@@ -5414,6 +5417,7 @@ struct LibplaceboVideoRenderer::Impl
 			"VP Renderer retirement: external state refresh=%s nvidia=%s",
 			refreshRestored ? "restored" : "pending",
 			nvidiaRestored ? "restored" : "pending");
+        displayRefreshRate.InvalidateOutputRaster();
 		return refreshRestored && nvidiaRestored;
 	}
 
@@ -7633,6 +7637,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool suppressLimited,
 		const char* trigger)
 	{
+        displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
         pl_swapchain_destroy(&swapchain);
 		ReleaseVpOwnedSwapchain();
@@ -7710,6 +7715,7 @@ struct LibplaceboVideoRenderer::Impl
 				height);
 			return false;
 		}
+        displayRefreshRate.RecordDrawnRaster(width,height);
 		ConfigureSwapchainOutput(trigger);
 		return true;
 	}
@@ -8236,12 +8242,12 @@ struct LibplaceboVideoRenderer::Impl
                 throw std::runtime_error("Failed to resize libplacebo swapchain after display-mode selection");
             DebugLog::Log("libplacebo post-mode geometry: client=%ldx%ld swapchain=%dx%d",
                 settledClient.right - settledClient.left, settledClient.bottom - settledClient.top, width, height);
-            loggedSwapchainWidth.store(width, std::memory_order_relaxed);
-            loggedSwapchainHeight.store(height, std::memory_order_relaxed);
+            displayRefreshRate.RecordDrawnRaster(width,height);
         }
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
 		ConfigureAndFallback("initialize");
+        displayRefreshRate.ObserveOutputRaster(videoHwnd);
 
 		renderer = pl_renderer_create(log, d3d11->gpu);
 		if (!renderer)
@@ -14156,6 +14162,7 @@ struct LibplaceboVideoRenderer::Impl
             } else if (!pl_swapchain_resize(swapchain,&temporalOutputWidth,&temporalOutputHeight))
                 return true;
             if (temporalOutputWidth<=0 || temporalOutputHeight<=0) return true;
+            displayRefreshRate.RecordDrawnRaster(temporalOutputWidth,temporalOutputHeight);
             const auto foldContract=[&](uint64_t value) {
                 temporalOutputContract^=value; temporalOutputContract*=1099511628211ULL;
             };
@@ -19573,6 +19580,7 @@ releaseDriftBaseRetention =
 		if (!swapchain)
 			return;
 
+        displayRefreshRate.ForgetDrawnRaster();
 		RECT client{};
 		if (!DisplayWindowGeometry::ClientRect(videoHwnd, &client))
 			return;
@@ -19584,8 +19592,7 @@ releaseDriftBaseRetention =
 		{
             DebugLog::Log("libplacebo resize geometry: client=%ldx%ld swapchain=%dx%d",
                 client.right - client.left, client.bottom - client.top, width, height);
-            loggedSwapchainWidth.store(width, std::memory_order_relaxed);
-            loggedSwapchainHeight.store(height, std::memory_order_relaxed);
+            displayRefreshRate.RecordDrawnRaster(width,height);
 			ConfigureAndFallback("resize");
 		}
 	}
@@ -21061,6 +21068,7 @@ void LibplaceboVideoRenderer::OnDisplayChange()
 {
 	if (m_impl)
     {
+        m_impl->displayRefreshRate.InvalidateOutputRaster();
 		m_impl->RenegotiateOutput();
         m_impl->Resize(m_videoHwnd);
     }
@@ -21380,40 +21388,10 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				m_impl->lastSdrGammaDecision.actualTarget));
 		value += gamma;
 	}
-	// Raster stages for the stats OSD, from values already logged: the wire mode
-	// from the last verified output-mode line, then the desktop and the swapchain
-	// only where they differ from the stage after them.
-	CurrentDisplayMode verifiedMode{};
-	if (m_impl->displayRefreshRate.LastVerifiedOutputMode(verifiedMode))
-	{
-		const auto ordering =
-			verifiedMode.targetMode.targetVideoSignalInfo.scanLineOrdering;
-		const bool interlaced = verifiedMode.hasTargetMode &&
-			(ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST ||
-			 ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST);
-		CStringA raster;
-		raster.Format(" | WIRE: %ux%u%s", verifiedMode.targetWidth,
-			verifiedMode.targetHeight, interlaced ? "i" : "");
-		value += raster;
-		if (verifiedMode.sourceWidth != verifiedMode.targetWidth ||
-			verifiedMode.sourceHeight != verifiedMode.targetHeight)
-		{
-			raster.Format(" | DESKTOP: %ux%u", verifiedMode.sourceWidth,
-				verifiedMode.sourceHeight);
-			value += raster;
-		}
-		const int drawnWidth = m_impl->loggedSwapchainWidth.load(
-			std::memory_order_relaxed);
-		const int drawnHeight = m_impl->loggedSwapchainHeight.load(
-			std::memory_order_relaxed);
-		if (drawnWidth > 0 && drawnHeight > 0 &&
-			(static_cast<UINT32>(drawnWidth) != verifiedMode.sourceWidth ||
-			 static_cast<UINT32>(drawnHeight) != verifiedMode.sourceHeight))
-		{
-			raster.Format(" | DRAWN: %dx%d", drawnWidth, drawnHeight);
-			value += raster;
-		}
-	}
+    // Cache-only on the OSD thread. Read-back is refreshed at initialization
+    // and deferred display notifications; geometry comes from successful resizes.
+    value += DisplayRasterInfo::FormatDetails(m_impl->displayRefreshRate.OutputRaster()).c_str();
+
 	details = CString(value);
 	return true;
 }
@@ -23739,6 +23717,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::memory_order_acq_rel))
 			{
 				m_impl->RetryAutoLimitedCandidate("deferred display change");
+                m_impl->displayRefreshRate.ObserveOutputRaster(m_videoHwnd);
 			}
 			m_impl->ApplyPendingProfileSettingsLocked();
 			ApplyPendingShaderSelectionLocked();

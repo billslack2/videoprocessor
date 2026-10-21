@@ -201,6 +201,7 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
     <ClInclude Include="DisplayMonitorInventory.h" />
     <ClInclude Include="DisplayWindowGeometry.h" />
+    <ClInclude Include="DisplayRasterInfo.h" />
 	<ClInclude Include="DisplayRefreshRateEstimator.h" />
 	<ClInclude Include="DisplayRefreshRateWindow.h" />
 	<ClInclude Include="CadenceIntervalEstimate.h" />

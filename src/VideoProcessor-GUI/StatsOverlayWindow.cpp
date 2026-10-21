@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <DisplayRasterInfo.h>
 #include <OsdTimingPolicy.h>
 #include "StatsOverlayWindow.h"
 #include <algorithm>
@@ -493,33 +494,14 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		y += lineHeight;
 	}
 
-	// Resolution: input -> wire, tagged where the desktop or the drawn size differs
-	CString resolution = m_stats.resolution.IsEmpty() ? CString(TEXT("---")) : m_stats.resolution;
-	auto rasterValue = [this](LPCTSTR marker) -> CString
-	{
-		const CString tag(marker);
-		const int separator = m_stats.outputMode.Find(tag);
-		CString result = separator >= 0
-			? m_stats.outputMode.Mid(separator + tag.GetLength()) : CString();
-		const int nextDetail = result.Find(TEXT(" | "));
-		if (nextDetail >= 0)
-			result = result.Left(nextDetail);
-		return result;
-	};
-	const CString wire = rasterValue(TEXT(" | WIRE: "));
-	if (!wire.IsEmpty())
-	{
-		resolution += TEXT(" -> ") + wire;
-		const CString drawn = rasterValue(TEXT(" | DRAWN: "));
-		if (!drawn.IsEmpty())
-			resolution += TEXT("  [drawn ") + drawn + TEXT("]");
-		const CString desktop = rasterValue(TEXT(" | DESKTOP: "));
-		if (!desktop.IsEmpty())
-			resolution += TEXT("  [GPU-scaled from ") + desktop + TEXT("]");
-	}
-	line.Format(TEXT("Resolution:       %-s"), static_cast<LPCTSTR>(resolution));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+    const auto resolution=DisplayRasterInfo::ResolutionLines(
+        static_cast<LPCTSTR>(m_stats.resolution),static_cast<LPCTSTR>(m_stats.outputMode));
+    for(size_t row=0;row<resolution.size();++row)
+    {
+        line.Format(row==0 ? TEXT("Resolution:       %s") : TEXT("%s"),resolution[row].c_str());
+        DrawText(hdc,line,PADDING,y);
+        y+=lineHeight;
+    }
 
 	if (m_stats.isAlphaRenderer)
 	{
@@ -993,6 +975,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
+    lineCount+=DisplayRasterInfo::ResolutionLines(
+        static_cast<LPCTSTR>(stats.resolution),static_cast<LPCTSTR>(stats.outputMode)).size()-1;
 	if (stats.renderLoadKnown)
 		lineCount += 4;
 	if (!stats.outputSweep.IsEmpty())
