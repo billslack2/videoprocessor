@@ -26,6 +26,7 @@ try {
     $artifactRoot = Join-Path $root 'artifacts'
     $null = New-Item -ItemType Directory -Path $artifactRoot -Force
     $receiptPath = Join-Path $artifactRoot 'installer-build.json'
+    $requiredBinaries = @('VideoProcessor-GUI.exe','VideoProcessorConfig.exe','VideoProcessorConfigDiscovery.dll','vprenderer/VideoProcessorVPRenderer.dll','vprenderer-beta/VideoProcessorVPRendererBeta.dll')
     if (-not $SkipBuild) {
         if (-not $MSBuildPath) {
             $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -34,7 +35,7 @@ try {
         if (-not $MSBuildPath) { throw 'Install Visual Studio C++ build tools and Qt as documented.' }
         & $MSBuildPath VideoProcessor.sln /t:Rebuild /m /p:Configuration=Release /p:Platform=x64 /nologo /v:minimal /fl "/flp:logfile=$artifactRoot\installer-build.log;verbosity=normal"
         if ($LASTEXITCODE -ne 0) { throw 'x64 Release solution rebuild failed. No installer was generated.' }
-        $binaries = @(foreach ($relative in @('VideoProcessor-GUI.exe','VideoProcessorConfig.exe','VideoProcessorConfigDiscovery.dll','vprenderer/VideoProcessorVPRenderer.dll','vprenderer-beta/VideoProcessorVPRendererBeta.dll')) {
+        $binaries = @(foreach ($relative in $requiredBinaries) {
             $file = Join-Path $root "x64\Release\$relative"
             [ordered]@{ path=$relative; sha256=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash }
         })
@@ -43,7 +44,8 @@ try {
     }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     if (-not $receipt.PSObject.Properties['sourceFingerprint'] -or $receipt.sourceFingerprint -ne $identity.fingerprint -or
-        $receipt.dirty -ne $identity.dirty -or $receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne 4) {
+        $receipt.dirty -ne $identity.dirty -or $receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne $requiredBinaries.Count -or
+        @($requiredBinaries | Where-Object { $_ -notin @($receipt.binaries.path) }).Count -ne 0) {
         throw 'No successful x64 Release solution build for these exact sources. Rerun without -SkipBuild.'
     }
     foreach ($binary in $receipt.binaries) {

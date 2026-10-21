@@ -50,4 +50,53 @@ Assert ((Get-VpSourceIdentity $fixture).build -eq $committed.build) 'ignored bui
 Remove-Item -LiteralPath (Join-Path $fixture 'tracked.txt')
 $deleted=Get-VpSourceIdentity $fixture
 Assert ($deleted.dirty -and $deleted.fingerprint -ne $committed.fingerprint) 'source deletion invalidates the build identity'
+# Inspect only the inventory and receipt guard AST. Do not invoke the builder,
+# fabricate an installer receipt, compile an application or package a fixture.
+$parseErrors=$null
+$builderAst=[System.Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'build_installer.ps1'),[ref]$null,[ref]$parseErrors)
+Assert ($null -eq $parseErrors -or @($parseErrors).Count -eq 0) 'installer builder parses for receipt contract checks'
+$inventory=$builderAst.Find({param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -eq '$requiredBinaries'
+},$true)
+Assert ($null -ne $inventory) 'receipt producer and verifier declare one required binary inventory'
+$requiredBinaries=@($inventory.Right.FindAll({param($node)
+    $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+},$true) | ForEach-Object { $_.Value })
+$expectedBinaries=@('VideoProcessor-GUI.exe','VideoProcessorConfig.exe',
+    'VideoProcessorConfigDiscovery.dll','vprenderer/VideoProcessorVPRenderer.dll',
+    'vprenderer-beta/VideoProcessorVPRendererBeta.dll')
+Assert ($requiredBinaries.Count -eq 5 -and
+    @(Compare-Object $requiredBinaries $expectedBinaries).Count -eq 0 -and
+    @($requiredBinaries | Select-Object -Unique).Count -eq 5) 'all five host, Config and stable/beta renderer binaries are required'
+$builderSource=$builderAst.Extent.Text
+Assert ($builderSource -match 'foreach\s*\(\s*\$relative\s+in\s+\$requiredBinaries\s*\)') 'receipt creation uses the shared required inventory'
+$guard=$builderAst.Find({param($node)
+    $node -is [System.Management.Automation.Language.IfStatementAst] -and
+        $node.Extent.Text.Contains('No successful x64 Release solution build for these exact sources.')
+},$true)
+Assert ($null -ne $guard) 'exact-build receipt rejection guard is present'
+$guardText=$guard.Clauses[0].Item1.Extent.Text
+Assert ($guardText -match '\$receipt\.binaries\.Count\s+-ne\s+\$requiredBinaries\.Count') 'receipt verifier uses the same inventory count as creation'
+$rejectReceipt=[scriptblock]::Create('param($receipt,$identity,$commit,$requiredBinaries) '+$guardText)
+$receiptIdentity=[pscustomobject]@{fingerprint='fixture-fingerprint';dirty=$false}
+$receiptCommit='a'*40
+$validReceipt=[ordered]@{sourceFingerprint=$receiptIdentity.fingerprint;dirty=$false;
+    commit=$receiptCommit;configuration='Release';architecture='x64';
+    binaries=@($requiredBinaries | ForEach-Object { [ordered]@{path=$_;sha256='b'*64} })}
+Assert (-not (& $rejectReceipt ([pscustomobject]$validReceipt) $receiptIdentity $receiptCommit $requiredBinaries)) 'fresh five-binary exact x64 Release receipt passes the real guard'
+foreach($case in @('missing-beta','duplicate-host','unexpected-path','extra-binary','wrong-source','dirty','wrong-commit','debug','x86')){
+    $receipt=$validReceipt | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+    if($case -eq 'missing-beta'){$receipt.binaries=@($receipt.binaries | Where-Object {$_.path -ne 'vprenderer-beta/VideoProcessorVPRendererBeta.dll'})}
+    if($case -eq 'duplicate-host'){$receipt.binaries[-1].path='VideoProcessor-GUI.exe'}
+    if($case -eq 'unexpected-path'){$receipt.binaries[-1].path='unexpected.dll'}
+    if($case -eq 'extra-binary'){$receipt.binaries+= [pscustomobject]@{path='unexpected.dll';sha256='c'*64}}
+    if($case -eq 'wrong-source'){$receipt.sourceFingerprint='older-source'}
+    if($case -eq 'dirty'){$receipt.dirty=$true}
+    if($case -eq 'wrong-commit'){$receipt.commit='c'*40}
+    if($case -eq 'debug'){$receipt.configuration='Debug'}
+    if($case -eq 'x86'){$receipt.architecture='x86'}
+    Assert ([bool](& $rejectReceipt $receipt $receiptIdentity $receiptCommit $requiredBinaries)) "invalid build receipt remains rejected: $case"
+}
 Write-Host "$checks installer identity checks passed. Fixtures: $fixture"

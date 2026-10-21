@@ -124,7 +124,7 @@ For a release, use a clean checkout of the selected source commit:
 ~~~
 
 The command completes a full x64 Release solution rebuild, records the exact
-commit, source fingerprint and four VP binary hashes, invokes the runtime-aware
+commit, source fingerprint and required VP binary hashes, invokes the runtime-aware
 manifest packager, resolves private runtime dependencies with dumpbin, then
 compiles setup. Licensed Visual Studio Release CRT/MFC redistributable folders
 are discovered automatically; -RuntimeDirectories may specify them explicitly.
