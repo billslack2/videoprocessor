@@ -13,6 +13,7 @@ struct GradualPictureBoundaryRetentionDiagnostics
     bool pixelProofEvaluated = false;
     bool broadOpposingPicture = false;
     bool nativeDistributedPicture = false;
+    bool continuationDistributedPicture = false;
     bool stepsEvaluated = false;
     int topStep = 0, bottomStep = 0, scanStep = 0;
     uint64_t previousSequence = 0, observedNativeSequence = 0, currentSequence = 0;
@@ -123,12 +124,50 @@ inline MovingPictureTransitionState RetainMovingPictureAtDarknessBoundary(
         diagnostic->nativeDistributedPicture = pixels.nativeDistributedPicture;
         diagnostic->pixelReason = pixels.diagnosticReason;
     }
-    if (!pixels.broadOpposingPicture && !pixels.nativeDistributedPicture) return reject("pixel-proof");
+    bool continuationDistributedPicture = false;
+    if (!pixels.broadOpposingPicture && !pixels.nativeDistributedPicture) {
+        // Retain only this already-active episode across the darkness notice.
+        // The current native edge pair and every source/context/step gate above
+        // remain mandatory. One dark depth quartile cannot grant acquisition,
+        // certify an endpoint, or alter the global outward-picture proof.
+        const auto& native=current.retention.activePicture;
+        const auto& nativeVertical=native.axisEvidence.vertical;
+        auto nativeProposal=native.proposedBounds;
+        nativeProposal.trustedBarAxes=measured.trustedBarAxes; // Proposals carry geometry, not authority.
+        if (!current.evidence.top.trusted || !current.evidence.bottom.trusted ||
+            !native.available || native.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            native.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+            !same(native.trustedBounds,measured) || !same(nativeProposal,measured) ||
+            !nativeVertical.scanComplete || nativeVertical.state!=ActivePictureAxisState::TRUSTED_BARS ||
+            native.axisEvidence.HasFailedBar() || !native.top.trusted || !native.bottom.trusted)
+            return reject("pixel-proof");
+        unsigned weakQuartiles=0;
+        const auto supported=[&](const ActivePictureEdgeEvidence& edge,int expectedPixels) {
+            if (edge.barPixels<=0 || edge.barPixels!=expectedPixels ||
+                !std::isfinite(edge.blackFraction) || edge.blackFraction<0 || edge.blackFraction>0.5 ||
+                !std::isfinite(edge.continuity) || edge.continuity<0 || edge.continuity>0.85) return false;
+            for (const auto rowMask:edge.distributedSupportDepthRowsByQuartile) {
+                if (rowMask & ~0x3fu) return false;
+                unsigned rows=0;
+                for (unsigned depth=0;depth<6;++depth) rows+=(rowMask>>depth)&1u;
+                // Every horizontal quarter has current content; seven of the
+                // eight edge quarters must span at least half the depth probes.
+                if (rows==0 || (rows<3 && ++weakQuartiles>1)) return false;
+            }
+            return true;
+        };
+        continuationDistributedPicture=
+            supported(current.retention.expandingTop,base.top-measured.top) &&
+            supported(current.retention.expandingBottom,measured.bottom-base.bottom);
+        if (!continuationDistributedPicture) return reject("pixel-proof");
+        if (diagnostic) diagnostic->continuationDistributedPicture=true;
+    }
     auto retained=previous;
     retained.directionalChanges=0;
     retained.quietSamples=0;
     retained.quietAnchor=measured;
-    if (diagnostic) diagnostic->reason = "retained";
+    if (diagnostic) diagnostic->reason = continuationDistributedPicture
+        ? "retained-native-continuation" : "retained";
     return retained;
 }
 }

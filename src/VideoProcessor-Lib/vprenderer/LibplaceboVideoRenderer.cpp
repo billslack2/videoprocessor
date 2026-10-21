@@ -10450,14 +10450,15 @@ struct LibplaceboVideoRenderer::Impl
                 // Record the exact gate and source-owned inputs only at scene boundaries.
                 // Diagnostics never participate in retention or presentation admission.
                 const auto& priorIdentity = boundaryMotion->identity;
-                DebugLog::Log("Alpha moving boundary proof: schema=1 generation=%llu sequence=%llu event=%llu reason=%s pixel_reason=%s steps_evaluated=%d steps=%d,%d limit=%d prior_sequence=%llu prior_native_sequence=%llu pixel_proof=%d broad=%d distributed=%d compatible=%d trusted_available=%d analysis_valid=%d presentation_valid=%d expansion_available=%d native_class=%d vertical_state=%d vertical_complete=%d failed_bar=%d",
+                DebugLog::Log("Alpha moving boundary proof: schema=1 generation=%llu sequence=%llu event=%llu reason=%s pixel_reason=%s steps_evaluated=%d steps=%d,%d limit=%d prior_sequence=%llu prior_native_sequence=%llu pixel_proof=%d broad=%d distributed=%d continuation=%d compatible=%d trusted_available=%d analysis_valid=%d presentation_valid=%d expansion_available=%d native_class=%d vertical_state=%d vertical_complete=%d failed_bar=%d",
                     analysisSource.generation, frameNumber, motionBoundary->eventId,
                     boundaryDiagnostic.reason, boundaryDiagnostic.pixelReason,
                     boundaryDiagnostic.stepsEvaluated?1:0, boundaryDiagnostic.topStep,
                     boundaryDiagnostic.bottomStep, boundaryDiagnostic.scanStep,
                     priorIdentity.acceptedSequence, boundaryMotion->observedNativeSourceSequence,
                     boundaryDiagnostic.pixelProofEvaluated?1:0, boundaryDiagnostic.broadOpposingPicture?1:0,
-                    boundaryDiagnostic.nativeDistributedPicture?1:0, movementInput.compatiblePresentation?1:0,
+                    boundaryDiagnostic.nativeDistributedPicture?1:0, boundaryDiagnostic.continuationDistributedPicture?1:0,
+                    movementInput.compatiblePresentation?1:0,
                     movementInput.trustedGeometryAvailable?1:0, movementInput.retention.analysisValid?1:0,
                     movementInput.retention.presentationValid?1:0, movementInput.retention.expansionStripsAvailable?1:0,
                     static_cast<int>(movementInput.evidence.classification),

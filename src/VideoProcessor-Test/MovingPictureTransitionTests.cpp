@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <limits>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace AlphaSourceCrop;
@@ -1041,6 +1042,188 @@ namespace Tests
                     Assert::IsFalse(diagnostic.broadOpposingPicture || diagnostic.nativeDistributedPicture);
                     Assert::AreEqual("vertical-not-broad",diagnostic.pixelReason);
                 }
+            }
+        }
+        static SceneDetectorResult LoggedDarknessBoundaryFixture(MotionSequence& s)
+        {
+            auto boundary=DiagnosticBoundaryFixture(s,274,1886);
+            s.identity={2,743,1224,963343347730ULL,16737397427277638757ULL,0,2,3440028774926749422ULL};
+            s.motion.identity=s.identity; s.motion.identity.acceptedSequence=742;
+            s.motion.identity.sourceFrameNumber=1223; s.motion.identity.captureTimestamp=963343306060ULL;
+            s.motion.observedNativeSourceSequence=742;
+            s.input.sourceSequence=743; s.input.sourceGeneration=s.input.trustedGeneration=2;
+            s.input.presentationEvidenceGeneration=2;
+            boundary.eventId=4; boundary.generation=2; boundary.sourceSequence=743;
+            boundary.immediateAverageLumaDifference=7; boundary.changedSampleCount=26;
+            boundary.histogramDistance=18;
+            auto& top=s.input.retention.expandingTop;
+            top.barPixels=150; top.blackFraction=.347222; top.lumaP90=45; top.lumaFloor=0;
+            top.lumaDispersion=26; top.texture=6.206; top.continuity=0; top.neutralChromaFraction=1;
+            top.innerBoundaryContrast=.809; top.confidence=.309223; top.trusted=false;
+            top.distributedSupportDepthRowsByQuartile={32,63,63,63};
+            auto& bottom=s.input.retention.expandingBottom;
+            bottom.barPixels=152; bottom.blackFraction=.222222; bottom.lumaP90=376; bottom.lumaFloor=0;
+            bottom.lumaDispersion=356; bottom.texture=45.078; bottom.continuity=0; bottom.neutralChromaFraction=.993056;
+            bottom.innerBoundaryContrast=-6.115; bottom.confidence=.265278; bottom.trusted=false;
+            bottom.distributedSupportDepthRowsByQuartile={63,63,63,63};
+            s.input.retention.activePicture=s.input.evidence;
+            return boundary;
+        }
+        TEST_METHOD(LoggedMandalorianDarknessBoundaryKeepsAlreadyActiveScopeWithoutNewAuthority)
+        {
+            MotionSequence s; const auto boundary=LoggedDarknessBoundaryFixture(s);
+            const auto proof=ConfirmOutwardPictureTransition({},s.input.trustedGeometry,s.input.outwardCandidate,
+                s.input.retention,s.input.sourceGeneration,s.input.sourceSequence);
+            Assert::IsFalse(proof.broadOpposingPicture || proof.nativeDistributedPicture);
+            Assert::AreEqual("vertical-not-broad",proof.diagnosticReason);
+            const auto prior=s.motion;
+            GradualPictureBoundaryRetentionDiagnostics diagnostic;
+            s.motion=RetainMovingPictureAtDarknessBoundary(prior,boundary,s.identity,s.input,&diagnostic);
+            Assert::IsTrue(s.motion.active,
+                L"Logged frame743 has exact adjacent native motion and one sparse depth quartile; keep only its established scope episode.");
+            Assert::IsFalse(s.motion.awaitingPublication);
+            Assert::AreEqual("retained-native-continuation",diagnostic.reason);
+            Assert::AreEqual("vertical-not-broad",diagnostic.pixelReason);
+            Assert::IsTrue(diagnostic.continuationDistributedPicture);
+            Assert::IsFalse(diagnostic.broadOpposingPicture || diagnostic.nativeDistributedPicture);
+            Assert::AreEqual(prior.base.top,s.motion.base.top);
+            Assert::AreEqual(prior.base.bottom,s.motion.base.bottom);
+            Assert::AreEqual(prior.last.top,s.motion.last.top);
+            Assert::AreEqual(0u,s.motion.quietSamples);
+            Assert::AreEqual(0u,s.motion.directionalChanges);
+            // Current weak strip evidence still grants no new endpoint/geometry.
+            s.motion=ObserveMovingPictureTransition(s.motion,s.identity,s.input);
+            const auto transition=EvaluateTransitionAdmission(s.input);
+            Assert::IsFalse(transition.outward.authoritative);
+            Assert::IsTrue(s.motion.active);
+        }
+        TEST_METHOD(LoggedBoundaryRetainsOneScopePoseUntilCurrentFullRasterAuthority)
+        {
+            MotionSequence s; const auto boundary=LoggedDarknessBoundaryFixture(s);
+            s.motion=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input);
+            Assert::IsTrue(s.motion.active,L"The logged darkness boundary must not drop the established motion episode.");
+            const auto base=s.input.trustedGeometry;
+            CropPresentationAdmissionState admitted;
+            admitted.available=true; admitted.sourceGeneration=2; admitted.presentationEpoch=0;
+            admitted.trustedCrop=base; admitted.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            int changes=0, lastTop=base.top, lastBottom=base.bottom;
+            const auto present=[&](bool full) {
+                Input crop;
+                crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+                crop.geometry=base; crop.rasterWidth=3840; crop.rasterHeight=2160;
+                crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.latestObservationClassification=full?ActivePictureClassification::FULL_RASTER_TRUSTED:
+                    ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.frameSourceGeneration=crop.geometrySourceGeneration=2;
+                crop.frameSourceSequence=s.input.sourceSequence; crop.framePresentationEpoch=0;
+                crop.movingPictureTransition=HasCurrentMovingPictureTransition(s.motion,2,s.input.sourceSequence);
+                crop.movingPictureHold={false,base,2,s.input.sourceSequence,0};
+                crop.fullRasterPresentationAuthoritative=full;
+                crop.currentVisibleBoundsAvailable=true; crop.currentVisibleBounds=s.input.outwardCandidate;
+                crop.currentVisibleBase=base; crop.currentVisibleSourceGeneration=2;
+                crop.currentVisibleSourceSequence=s.input.sourceSequence;
+                const bool routed=RouteAdvancedMovingPictureHold(crop,SubtitlePreviewMode::GeneratedGrayBackground);
+                Assert::AreEqual(!full,routed);
+                const auto result=AdmitCropPresentation(admitted,crop,Evaluate(crop),0);
+                Assert::IsFalse(result.blocked);
+                admitted=result.state;
+                const auto shown=SubtitlePresentationBounds(result.presentation,
+                    SubtitlePreviewMode::GeneratedGrayBackground,false,false);
+                if(shown.top!=lastTop || shown.bottom!=lastBottom)++changes;
+                lastTop=shown.top;lastBottom=shown.bottom;
+                Assert::AreEqual(full?0:base.top,shown.top);
+                Assert::AreEqual(full?2160:base.bottom,shown.bottom);
+            };
+            s.Step(); present(false);
+            for(int top=122;top>=2;top-=2) {
+                s.Target(top); s.input.retention.activePicture=s.input.evidence;
+                s.Step(); Assert::IsTrue(s.motion.active); present(false);
+            }
+            Assert::AreEqual(0,changes,L"A dark strip cannot cause intermediate display sizes during the remaining ramp.");
+            s.Target(0); s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            s.input.retention.activePicture=s.input.evidence;
+            s.Step(); Assert::IsFalse(s.motion.active || s.motion.awaitingPublication);
+            present(true);
+            Assert::AreEqual(1,changes,L"Current full-raster authority ends the hold in one display change.");
+        }
+        TEST_METHOD(NativeBoundaryContinuationRejectsSparseCaptionStaleProofAndCleanCuts)
+        {
+            for(int fault=0;fault<30;++fault) {
+                MotionSequence s; auto boundary=LoggedDarknessBoundaryFixture(s);
+                auto& top=s.input.retention.expandingTop;
+                auto& bottom=s.input.retention.expandingBottom;
+                auto& native=s.input.retention.activePicture;
+                switch(fault) {
+                case 0: top.distributedSupportDepthRowsByQuartile.fill(0); break;
+                case 1: top.distributedSupportDepthRowsByQuartile.fill(32); break; // One full-width caption row.
+                case 2: top.distributedSupportDepthRowsByQuartile={0,63,63,63}; break; // Missing quarter.
+                case 3: top.distributedSupportDepthRowsByQuartile={32,3,63,63}; break;
+                case 4: bottom.distributedSupportDepthRowsByQuartile={32,63,63,63}; break;
+                case 5: top.blackFraction=.500001; break;
+                case 6: bottom.continuity=.850001; break;
+                case 7: top.blackFraction=std::numeric_limits<double>::quiet_NaN(); break;
+                case 8: top.continuity=-.01; break;
+                case 9: top.distributedSupportDepthRowsByQuartile[0]=128; break;
+                case 10: native.available=false; break;
+                case 11: native.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+                case 12: native.trustedBounds.top-=2; break;
+                case 13: native.proposedBounds.bottom+=2; break;
+                case 14: native.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE; break;
+                case 15: native.axisEvidence.vertical.scanComplete=false; break;
+                case 16: native.top.trusted=false; break;
+                case 17: s.input.evidence.top.trusted=false; break;
+                case 18: --s.motion.identity.acceptedSequence; break;
+                case 19: boundary.hardCutConfirmed=true; break;
+                case 20: s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 21: s.input.retention.globalNearBlack=true; break;
+                case 22: --top.barPixels; break;
+                case 23: top.blackFraction=bottom.blackFraction=1; break;
+                case 24: top.distributedSupportDepthRowsByQuartile={1,0,0,0}; break; // Isolated ink.
+                case 25: native.classification=ActivePictureClassification::PROVISIONAL; break;
+                case 26: s.motion.active=false; break;
+                case 27: s.motion.observedNative.top=130; break;
+                case 28: s.motion.observedNative.top=122; break;
+                case 29: boundary.differenceEvaluated=false; break;
+                }
+                GradualPictureBoundaryRetentionDiagnostics diagnostic;
+                const auto held=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input,&diagnostic);
+                Assert::IsFalse(held.active || held.awaitingPublication);
+                Assert::IsFalse(diagnostic.continuationDistributedPicture);
+            }
+        }
+        TEST_METHOD(CleanNativeChangeAtDarknessBoundaryUsesOrdinaryAdmissionWithoutRampDwell)
+        {
+            for(bool hardCut : {false,true}) {
+                MotionSequence s; auto boundary=LoggedDarknessBoundaryFixture(s);
+                boundary.hardCutConfirmed=hardCut;
+                if(!hardCut) {
+                    s.Target(68); // Clear immediate geometry jump, not a gradual step.
+                    s.input.retention.activePicture=s.input.evidence;
+                }
+                const auto retained=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input);
+                Assert::IsFalse(retained.active || retained.awaitingPublication);
+                s.motion=ObserveMovingPictureTransition(retained,s.identity,s.input);
+                Assert::IsFalse(s.motion.active || s.motion.awaitingPublication);
+                auto admission=EvaluateTransitionAdmission(s.input);
+                const auto ordinary=admission;
+                ConstrainMovingPictureTransition(s.motion,admission);
+                Assert::AreEqual(ordinary.deferOutward,admission.deferOutward);
+                Assert::AreEqual(ordinary.deferPresentation,admission.deferPresentation);
+                Assert::AreEqual(ordinary.observation.transitionDeferred,admission.observation.transitionDeferred);
+                Assert::AreEqual(0u,s.motion.quietSamples);
+                // Once the unchanged native model publishes the clean geometry,
+                // the presentation policy applies it directly, with no new dwell.
+                Input crop;
+                crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                crop.geometry=s.input.evidence.trustedBounds;
+                crop.rasterWidth=3840;crop.rasterHeight=2160;
+                crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.frameSourceGeneration=crop.geometrySourceGeneration=2;
+                crop.frameSourceSequence=743;crop.frameLocalPresentationRetentionEvaluated=crop.frameLocalPresentationRetentionSafe=true;
+                const auto shown=Evaluate(crop);
+                Assert::IsTrue(shown.applyCrop);
+                Assert::AreEqual(crop.geometry.top,shown.sourceBounds.top);
+                Assert::AreEqual(crop.geometry.bottom,shown.sourceBounds.bottom);
             }
         }
         TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
