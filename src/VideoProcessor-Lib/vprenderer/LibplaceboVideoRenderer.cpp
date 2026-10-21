@@ -10908,11 +10908,15 @@ struct LibplaceboVideoRenderer::Impl
                     movementInput.evidence.trustedBounds.right,movementInput.evidence.trustedBounds.bottom);
             }
             const auto motionBeforeObservation = movingPictureTransition;
+            static const SubtitleAssistedVerticalBarProof noSubtitleBarProof;
             movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
-                AlphaSourceCrop::ObserveMovingPictureTransition(
-                movingPictureTransition, currentIdentity,
-                    AlphaSourceCrop::PictureMotionTrackingInput(movementInput,
-                        !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode)));
+                AlphaSourceCrop::ObserveSubtitleAssistedMovingPictureTransition(
+                    movingPictureTransition, currentIdentity, movementInput,
+                    !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode),
+                    analysisSource, currentSubtitlePreview ? currentSubtitlePreview->current.subtitleArProof :
+                        noSubtitleBarProof,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                    activeSettings.subtitleScriptHint);
             AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
             if (wasMovingPicture != movingPictureTransition.active ||
                 wasAwaitingPicturePublication != movingPictureTransition.awaitingPublication)
@@ -10930,7 +10934,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& priorNative = motionBeforeObservation.observedNative;
                 const auto& priorCertified = motionBeforeObservation.last;
                 const auto& currentNative = movementInput.evidence.trustedBounds;
-                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u presentation_only=1",
+                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u subtitle_bar_proof=%d subtitle_motion=%d vertical_action=%d directional=%u presentation_only=1",
                     analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
                     movingPictureTransition.active ? 1 : 0,
                     movingPictureTransition.awaitingPublication ? 1 : 0, motionReason,
@@ -10940,7 +10944,9 @@ struct LibplaceboVideoRenderer::Impl
                     currentNative.left, currentNative.top, currentNative.right, currentNative.bottom,
                     movingPictureTransition.quietSamples,
                     static_cast<unsigned>((std::max)(2.0,
-                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)));
+                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)),
+                    currentWorkerBarProof ? 1 : 0, movingPictureTransition.subtitleAssistedBars ? 1 : 0,
+                    static_cast<int>(movementInput.presentation.action), movingPictureTransition.directionalChanges);
             }
             auto subtitleBase = nlsGeometry;
             subtitleBase.left = scopeSubtitlePictureLeft;
@@ -15509,9 +15515,14 @@ releaseDriftBaseRetention =
             cropInput.movingPictureHold.sourceGeneration = movingPictureTransition.identity.transportGeneration;
             cropInput.movingPictureHold.sourceSequence = movingPictureTransition.identity.acceptedSequence;
             cropInput.movingPictureHold.presentationEpoch = movingPictureTransition.identity.viewportGeneration;
-            // Detector-only expansion is the moving picture itself; dense FIT
-            // and translation remain competing presentation owners.
+            // Detector expansion is the moving picture itself. Keep dense FIT
+            // competing until the mode-specific route validates a proved ramp.
             cropInput.movingPictureHold.competingPresentation = denseFitEvidenceActive;
+            cropInput.movingPictureHold.subtitleAssistedBars = movingPictureTransition.subtitleAssistedBars;
+            cropInput.movingPictureHold.verticalFitOnly =
+                (detailedVerticalFitEvidence || verticalFitConfirmationPending) &&
+                !leftBarContentActive && !rightBarContentActive &&
+                !detectorLeftExpansion && !detectorRightExpansion;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
@@ -15599,7 +15610,8 @@ releaseDriftBaseRetention =
                 automaticSourceCropRequested, scopeSubtitleFit, cropInput, configuredFillInput);
             // Advanced modes keep a physical picture pose. Their suppressed
             // Classic translation must not defeat an exact current gradual hold.
-            // FIT, recovery, authority and final prior-admission checks remain.
+            // Only proved captioned ramps may suppress vertical FIT. Horizontal FIT,
+            // recovery, authority and final prior-admission checks remain.
             RouteAdvancedMovingPictureHold(cropInput, subtitlePreviewMode);
 
             // A first crop cannot translate away real picture pixels merely to

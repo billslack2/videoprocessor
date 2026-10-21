@@ -67,6 +67,35 @@ namespace AlphaSourceCrop
                 SameBounds(candidate, current.outwardCandidate);
         }
 
+        // A current raw vertical-only proof retains uncertain boundary rows
+        // and every source column. Once text leaves the bar, it may continue
+        // an established captioned ramp without borrowing any glyph exclusion.
+        bool CurrentUnmaskedGuardedNativeBars(const AnalysisLumaSource& source,
+            const ActivePictureFrameIdentity& identity, const TransitionAdmissionInput& current)
+        {
+            const auto& evidence = current.evidence;
+            const auto& candidate = evidence.trustedBounds;
+            const auto& axes = evidence.axisEvidence;
+            const auto& profile = evidence.verticalBarGuardProfile;
+            return source.IsValid() && source.generation == identity.transportGeneration &&
+                source.width == candidate.rasterWidth && source.height == candidate.rasterHeight &&
+                current.sourceGeneration == identity.transportGeneration &&
+                current.sourceSequence != 0 && current.sourceSequence == identity.acceptedSequence &&
+                evidence.available && evidence.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                evidence.top.trusted && evidence.bottom.trusted &&
+                ValidVerticalBarPicture(candidate) && SameBounds(candidate, current.outwardCandidate) &&
+                current.retention.analysisValid && current.retention.presentationValid &&
+                !current.retention.EffectiveArNearBlack() &&
+                axes.HasVerifiedVerticalCropProfile(candidate) && !axes.verticalCropGlyphExclusions &&
+                evidence.proposedBounds.rasterWidth == source.width &&
+                evidence.proposedBounds.rasterHeight == source.height &&
+                evidence.proposedBounds.top == axes.sidePictureTop &&
+                evidence.proposedBounds.bottom == axes.sidePictureBottom &&
+                profile.evaluated && profile.completed && profile.clean &&
+                profile.apertureTop == candidate.top && profile.apertureBottom == candidate.bottom;
+        }
+
         bool SameContext(const ActivePictureFrameIdentity& a,
             const ActivePictureFrameIdentity& b)
         {
@@ -164,10 +193,11 @@ namespace AlphaSourceCrop
         return tracking;
     }
 
-    MovingPictureTransitionState ObserveMovingPictureTransition(
+    static MovingPictureTransitionState ObserveMovingPictureTransitionImpl(
         const MovingPictureTransitionState& previous,
         const ActivePictureFrameIdentity& identity,
-        const TransitionAdmissionInput& current)
+        const TransitionAdmissionInput& current,
+        bool independentSubtitleBars, bool retainOnly)
     {
         const auto& candidate = current.evidence.trustedBounds;
         const bool context = SameContext(previous.identity, identity) &&
@@ -202,11 +232,23 @@ namespace AlphaSourceCrop
         // in an already established motion episode of the same context.
         auto state = context && (adjacent || previous.active || previous.awaitingPublication)
             ? previous : MovingPictureTransitionState{};
-        if (!adjacent) { state.directionalChanges = 0; state.quietSamples = 0; }
+        if (!adjacent)
+        {
+            state.directionalChanges = 0;
+            state.quietSamples = 0;
+            state.missedActiveBarSamples = 0;
+            if (state.subtitleAssistedBars)
+            {
+                // Keep the admitted pose, but the pre-gap measured position
+                // cannot supply a new adjacent return-jump certificate.
+                state.last = state.anchor = state.quietAnchor = {};
+            }
+        }
         state.change = MovingPictureTransitionChange::NONE;
         state.base = current.trustedGeometry;
         state.identity = identity;
-        const bool nativePosition = CurrentNativeEdgePosition(current, candidate);
+        state.subtitleAssistedBars = state.subtitleAssistedBars || independentSubtitleBars;
+        const bool nativePosition = independentSubtitleBars || CurrentNativeEdgePosition(current, candidate);
         const bool priorNativePosition = previous.active && adjacent &&
             previous.observedNativeSourceSequence != 0 &&
             previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
@@ -236,12 +278,34 @@ namespace AlphaSourceCrop
             BothEdgesExpand(state.base, candidate) &&
             ConfirmOutwardPictureTransition({}, state.base, candidate, current.retention,
                 current.sourceGeneration, current.sourceSequence).nativeDistributedPicture;
-        const bool certified = broadCertified || nativeDistributedContinuation;
+        // The caption cannot nominate an edge: this route requires two freshly
+        // inspected independent physical bars on this exact source frame. It
+        // certifies motion positions, not a new display crop. A FIT proof gap
+        // may retain the old pose but cannot make movement or an endpoint true.
+        // Once the caption leaves the bar, an independently current raw native
+        // position AND existing pixel certificate can resume an active episode.
+        const bool nativeContinuation = retainOnly && (state.active || state.awaitingPublication) &&
+            nativePosition && (broadCertified || nativeDistributedContinuation);
+        const bool certified = nativeContinuation || (!retainOnly &&
+            (broadCertified || nativeDistributedContinuation ||
+             (independentSubtitleBars && BothEdgesExpand(state.base, candidate))));
+        // Unknown caption proof invalidates observedNative, not the last
+        // certified position. A returning native cut must still end the hold;
+        // allow only the travel possible over adjacent unmeasured samples.
+        const int scanStep = (std::max)(2, candidate.rasterHeight / 540);
+        const auto returnTravel = (std::max)(int64_t((std::max)(4, candidate.rasterHeight / 100)),
+            int64_t(scanStep) * (int64_t((std::min)(previous.missedActiveBarSamples,
+                static_cast<uint32_t>((std::max)(0, candidate.rasterHeight)))) + 1));
+        const bool abruptAfterCaptionGap = previous.active && previous.subtitleAssistedBars &&
+            adjacent && nativePosition && previous.missedActiveBarSamples != 0 &&
+            ValidVerticalBarPicture(previous.last) &&
+            (std::abs(previous.last.top - candidate.top) > returnTravel ||
+             std::abs(previous.last.bottom - candidate.bottom) > returnTravel);
         // A trusted different crop (including a cut back to the old scope)
         // leaves this outward episode immediately, even without expansion strips.
         if (current.evidence.available &&
             current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-            (!BothEdgesExpand(state.base, candidate) ||
+            (!BothEdgesExpand(state.base, candidate) || abruptAfterCaptionGap ||
              (nativePosition && priorNativePosition &&
               (std::abs(previous.observedNative.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
                std::abs(previous.observedNative.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
@@ -255,6 +319,7 @@ namespace AlphaSourceCrop
             state.awaitingPublication = keepPresentationHold;
             state.base = current.trustedGeometry;
             state.identity = identity;
+            state.subtitleAssistedBars = independentSubtitleBars;
             if (!certified) return state;
             state.anchor = state.last = state.quietAnchor = candidate;
             return state;
@@ -266,8 +331,41 @@ namespace AlphaSourceCrop
             // Fresh full authority and unrelated owners were handled above.
             state.quietSamples = 0;
             state.directionalChanges = 0;
-            return state.active || state.awaitingPublication ? state : MovingPictureTransitionState{};
+            if (state.active || state.awaitingPublication)
+            {
+                if (state.active && state.subtitleAssistedBars && adjacent)
+                    state.missedActiveBarSamples = static_cast<uint32_t>((std::min)(
+                        uint64_t(state.missedActiveBarSamples) + 1,
+                        uint64_t((std::max)(0, state.base.rasterHeight))));
+                return state;
+            }
+            // Preserve only a short, adjacent seed gap. No missing frame adds
+            // motion credit, and the next proof must rejoin the last measured
+            // position at the detector's bounded step before reusing its anchor.
+            if (adjacent && state.subtitleAssistedBars &&
+                ValidVerticalBarPicture(state.last) && state.missingBarProofSamples < 2)
+            {
+                ++state.missingBarProofSamples;
+                return state;
+            }
+            return {};
         }
+        if (!state.active && !state.awaitingPublication && state.missingBarProofSamples != 0)
+        {
+            const int scanStep = (std::max)(2, candidate.rasterHeight / 540);
+            const int maxTravel = scanStep * static_cast<int>(state.missingBarProofSamples + 1);
+            const int topTravel = state.last.top - candidate.top;
+            const int bottomTravel = candidate.bottom - state.last.bottom;
+            if (topTravel < 0 || bottomTravel < 0 ||
+                topTravel > maxTravel || bottomTravel > maxTravel)
+                state.anchor = candidate; // A cut/reversal hidden in the gap is a new seed.
+            state.last = state.quietAnchor = candidate;
+            state.missingBarProofSamples = 0;
+            state.directionalChanges = state.quietSamples = 0;
+            return state;
+        }
+        state.missingBarProofSamples = 0;
+        state.missedActiveBarSamples = 0;
         if (!adjacent || previous.last.rasterHeight == 0)
         {
             state.anchor = state.last = state.quietAnchor = candidate;
@@ -275,7 +373,6 @@ namespace AlphaSourceCrop
         }
         const int topStep = previous.last.top - candidate.top;
         const int bottomStep = candidate.bottom - previous.last.bottom;
-        const int scanStep = (std::max)(2, candidate.rasterHeight / 540);
         state.last = candidate;
         if (!state.active)
         {
@@ -324,6 +421,98 @@ namespace AlphaSourceCrop
             state.anchor = candidate;
         }
         return state;
+    }
+
+    MovingPictureTransitionState ObserveMovingPictureTransition(
+        const MovingPictureTransitionState& previous,
+        const ActivePictureFrameIdentity& identity,
+        const TransitionAdmissionInput& current)
+    {
+        return ObserveMovingPictureTransitionImpl(previous, identity, current, false, false);
+    }
+
+    MovingPictureTransitionState ObserveSubtitleAssistedMovingPictureTransition(
+        const MovingPictureTransitionState& previous,
+        const ActivePictureFrameIdentity& identity,
+        const TransitionAdmissionInput& current,
+        bool classicPicturePresentationAllowed,
+        const AnalysisLumaSource& source,
+        const SubtitleAssistedVerticalBarProof& subtitleBars,
+        uint64_t policyGeneration, uint64_t continuityGeneration,
+        SubtitleScriptHint scriptHint)
+    {
+        const bool independentBars = !classicPicturePresentationAllowed &&
+            subtitleBars.IsCurrentFor(source, identity,
+                policyGeneration, continuityGeneration, scriptHint) &&
+            current.sourceGeneration == identity.transportGeneration &&
+            current.sourceSequence == identity.acceptedSequence &&
+            current.evidence.available &&
+            current.evidence.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            current.evidence.axisEvidence.vertical.scanComplete &&
+            current.evidence.axisEvidence.vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+            current.retention.analysisValid && current.retention.presentationValid &&
+            !current.retention.EffectiveArNearBlack() &&
+            ValidVerticalBarPicture(subtitleBars.candidate) &&
+            SameBounds(subtitleBars.candidate, subtitleBars.evidence.trustedBounds) &&
+            SameBounds(subtitleBars.candidate, current.evidence.trustedBounds) &&
+            SameBounds(subtitleBars.candidate, current.outwardCandidate) &&
+            SameBounds(subtitleBars.evidence.proposedBounds, current.evidence.proposedBounds);
+        auto prior = previous;
+        if (prior.subtitleAssistedBars)
+        {
+            if (prior.subtitleBarPolicyGeneration != policyGeneration ||
+                prior.subtitleBarScriptHint != scriptHint)
+                prior = {};
+            else if (prior.subtitleBarContinuityGeneration != continuityGeneration)
+            {
+                // Queue retirement also breaks analysis continuity. Preserve
+                // only an established same-context pose, never its old proof.
+                if ((prior.active || prior.awaitingPublication) &&
+                    SameContext(prior.identity, identity) &&
+                    SameBounds(prior.base, current.trustedGeometry))
+                {
+                    prior.anchor = prior.last = prior.quietAnchor = prior.observedNative = {};
+                    prior.observedNativeSourceSequence = 0;
+                    prior.directionalChanges = prior.quietSamples = 0;
+                    prior.missingBarProofSamples = prior.missedActiveBarSamples = 0;
+                    prior.subtitleBarContinuityGeneration = continuityGeneration;
+                }
+                else
+                    prior = {};
+            }
+        }
+        const bool guardedNativeContinuation = !classicPicturePresentationAllowed &&
+            prior.subtitleAssistedBars && (prior.active || prior.awaitingPublication) &&
+            SameContext(prior.identity, identity) && SameBounds(prior.base, current.trustedGeometry) &&
+            CurrentUnmaskedGuardedNativeBars(source, identity, current);
+        auto tracking = PictureMotionTrackingInput(current, classicPicturePresentationAllowed);
+        bool retainOnly = false;
+        if (!classicPicturePresentationAllowed &&
+            tracking.presentation.action == VerticalBarPresentationAction::FIT)
+        {
+            const bool sameEpisode = prior.subtitleAssistedBars &&
+                (prior.active || prior.awaitingPublication ||
+                 (ValidVerticalBarPicture(prior.last) && prior.missingBarProofSamples < 2)) &&
+                SameContext(prior.identity, identity) &&
+                SameBounds(prior.base, current.trustedGeometry);
+            if (independentBars || sameEpisode)
+            {
+                tracking.presentation.action = VerticalBarPresentationAction::NONE;
+                tracking.translationDriftActive = false;
+                tracking.previousOutward.verticalPresentationSeen = false;
+                retainOnly = !independentBars && !guardedNativeContinuation;
+            }
+        }
+        auto result = ObserveMovingPictureTransitionImpl(prior, identity, tracking,
+            independentBars || guardedNativeContinuation, retainOnly);
+        if (result.subtitleAssistedBars)
+        {
+            result.subtitleBarPolicyGeneration = policyGeneration;
+            result.subtitleBarContinuityGeneration = continuityGeneration;
+            result.subtitleBarScriptHint = scriptHint;
+        }
+        return result;
     }
 
     void CompleteMovingPictureTransition(MovingPictureTransitionState& state,
