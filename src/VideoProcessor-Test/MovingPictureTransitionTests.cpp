@@ -1226,6 +1226,139 @@ namespace Tests
                 Assert::AreEqual(crop.geometry.bottom,shown.sourceBounds.bottom);
             }
         }
+        TEST_METHOD(ProgressiveOnsetBlocksQueuedIntermediatePublicationAcrossTwoHistoryLoops)
+        {
+            ActivePictureTransitionModel model;
+            uint64_t sequence=2000;
+            const auto bounds=[](int top) { return ActivePictureBounds{0,top,3840,2160-top,3840,2160,
+                3840.0/(2160-2*top),top?ActivePictureBounds::BarAxes::TOP_BOTTOM:ActivePictureBounds::BarAxes::NONE}; };
+            // This is a reconstructed onset with logged geometry/proof gaps, not
+            // captured pixels. Keep one real model/history alive across both loops.
+            for(int top : {248,0,274}) for(int i=0;i<24;++i)
+                model.Observe({bounds(top),sequence++,true,top?ActivePictureClassification::BAR_CROP_TRUSTED:
+                    ActivePictureClassification::FULL_RASTER_TRUSTED,24});
+            unsigned blockedReadyWindows=0;
+            for(int loop=0;loop<2;++loop)
+            {
+                for(int i=0;i<8;++i) model.Observe({bounds(0),sequence++,true,ActivePictureClassification::FULL_RASTER_TRUSTED,24});
+                model.ResetCandidateEvidence();
+                auto logical=bounds(274);
+                for(int i=0;i<24;++i) { const auto d=model.Observe({logical,sequence++,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+                    if(d.publish)logical=d.bounds; }
+                MovingPictureTransitionState motion;
+                OutwardPictureConfirmationState outward;
+                const int tops[]={256,255,254,252,250,248,247,244,242,240,238,236,234,232,230,228};
+                for(int i=0;i<16;++i,++sequence)
+                {
+                    const bool missing=i==1||i==6;
+                    MotionSequence sample;
+                    sample.input.trustedGeometry=sample.input.presentationBeforeObservation=logical;
+                    sample.input.retention.expansionBase=logical;
+                    sample.Target(tops[i]);
+                    sample.input.evidence.classification=missing?ActivePictureClassification::PROVISIONAL:ActivePictureClassification::BAR_CROP_TRUSTED;
+                    sample.input.retention.expansionStripsAvailable=!missing;
+                    sample.input.retention.activePicture=sample.input.evidence;
+                    sample.input.retention.expandingTop.barPixels=sample.input.retention.expandingBottom.barPixels=logical.top-tops[i];
+                    sample.input.sourceSequence=sequence;
+                    sample.identity.acceptedSequence=sample.identity.sourceFrameNumber=sequence;
+                    sample.identity.captureTimestamp=sequence*417083;
+                    sample.input.previousOutward=outward;
+                    auto admission=EvaluateTransitionAdmission(sample.input);
+                    motion=ObserveMovingPictureTransition(motion,sample.identity,sample.input);
+                    ConstrainMovingPictureTransition(motion,admission);
+                    BufferedPictureExpansionSample window[3];
+                    for(int n=0;n<3;++n) {
+                        auto& w=window[n];w.identity=sample.identity;w.identity.acceptedSequence+=n;w.identity.sourceFrameNumber+=n;w.identity.captureTimestamp+=n*417083;
+                        w.observation=MakeActivePictureObservation(sample.input.evidence,sequence+n,24);w.observation.bounds=bounds(tops[i]-2*n);
+                        w.retention=sample.input.retention;w.retention.expansionCandidate=w.observation.bounds;w.nearBlackEvaluated=true;
+                    }
+                    const auto proof=BuildBufferedPictureExpansion(window,3,logical,2,2,11,12);
+                    const bool proofReady=ValidateBufferedPictureExpansion(proof,sample.identity,sample.input,
+                        model.WouldAdmitGeometryChange(MakeActivePictureObservation(sample.input.evidence,sequence,24)));
+                    const bool onset=HasCurrentMovingPictureOnset(motion,7,sequence);
+                    if(onset&&proofReady)++blockedReadyWindows;
+                    const bool ready=!motion.active&&!onset&&proofReady;
+                    if(ready) {
+                        admission.deferOutward=admission.deferPresentation=false;
+                        admission.observation=MakeActivePictureObservation(sample.input.evidence,sequence,24);
+                    }
+                    const bool adopted=ready&&model.AdoptPublishedDecision(proof.decision.transition,
+                        sample.input.evidence.classification,admission.observation.transitionDeferred,nullptr,
+                        &sample.input.evidence.axisEvidence,true);
+                    const auto decision=adopted?proof.decision.transition:model.Observe(admission.observation);
+                    outward=admission.outward.state;
+                    if(decision.publish)logical=decision.bounds;
+                    Assert::AreEqual(274,logical.top,L"A coherent moving preview must not win the race before motion acquisition.");
+                    if(missing)Assert::IsFalse(onset,L"Unknown pixels cannot renew current onset interest.");
+                }
+                Assert::IsTrue(motion.active);
+            }
+            Assert::IsTrue(blockedReadyWindows>=2,L"The test must exercise actual valid queued proofs in both history loops.");
+        }
+        TEST_METHOD(CurrentOnsetExpiresWithoutRenewalOnStaticUnknownAbruptAndChangedContext)
+        {
+            for(int fault=0;fault<12;++fault)
+            {
+                MotionSequence s; s.Target(256);s.Step();s.Target(254);s.Step();
+                Assert::IsTrue(HasCurrentMovingPictureOnset(s.motion,7,s.identity.acceptedSequence-1));
+                Assert::IsFalse(s.motion.active||s.motion.awaitingPublication);
+                Assert::IsFalse(HasCurrentMovingPictureOnset(s.motion,8,s.identity.acceptedSequence-1));
+                Assert::IsFalse(HasCurrentMovingPictureOnset(s.motion,7,s.identity.acceptedSequence));
+                s.Target(252);
+                switch(fault) {
+                case 0:s.Target(254);break; // Static: ordinary native confirmation resumes immediately.
+                case 1:s.Target(68);break; // Clean abrupt change, no gradual waiting.
+                case 2:s.Target(256);break;
+                case 3:s.input.evidence.classification=ActivePictureClassification::PROVISIONAL;break;
+                case 4:s.input.retention.expansionStripsAvailable=false;break;
+                case 5:++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;break;
+                case 6:++s.identity.viewportGeneration;break;
+                case 7:s.input.presentation.action=VerticalBarPresentationAction::FIT;break;
+                case 8:s.input.retention.globalNearBlack=true;break;
+                case 9:s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;break;
+                case 10:s.input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;break;
+                case 11:s.motion={};break; // An explicit scene/cut reset does not preserve the interest.
+                }
+                s.Step();
+                Assert::IsFalse(HasCurrentMovingPictureOnset(s.motion,7,s.identity.acceptedSequence-1));
+                auto ordinary=EvaluateTransitionAdmission(s.input);const auto before=ordinary;
+                ConstrainMovingPictureTransition(s.motion,ordinary);
+                Assert::AreEqual(before.observation.transitionDeferred,ordinary.observation.transitionDeferred);
+            }
+        }
+        TEST_METHOD(OnsetDoesNotDelayCleanStaticOrAbruptNativeModelPublication)
+        {
+            for(int target : {254,68,0})
+            {
+                MotionSequence s;s.Target(256);s.Step();s.Target(254);s.Step();
+                Assert::IsTrue(s.motion.onsetPending);
+                ActivePictureTransitionModel ordinaryModel;
+                for(uint64_t n=1;n<40;++n)ordinaryModel.Observe({s.input.trustedGeometry,n,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+                auto onsetModel=ordinaryModel;
+                OutwardPictureConfirmationState outward;
+                unsigned ordinaryPublications=0;
+                for(int n=0;n<20;++n)
+                {
+                    s.Target(target);
+                    if(target==0) { s.input.evidence.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                        s.input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED; }
+                    s.input.previousOutward=outward;s.Step();
+                    Assert::IsFalse(s.motion.onsetPending||s.motion.active);
+                    auto ordinary=EvaluateTransitionAdmission(s.input);auto guarded=ordinary;
+                    ConstrainMovingPictureTransition(s.motion,guarded);
+                    const auto expected=ordinaryModel.Observe(ordinary.observation);
+                    const auto actual=onsetModel.Observe(guarded.observation);
+                    outward=ordinary.outward.state;
+                    Assert::AreEqual(expected.publish,actual.publish,L"Static and clean abrupt native changes retain ordinary publication timing.");
+                    Assert::AreEqual(expected.bounds.top,actual.bounds.top);
+                    Assert::AreEqual(expected.bounds.bottom,actual.bounds.bottom);
+                    ordinaryPublications+=expected.publish?1:0;
+                }
+                // The small static shift may remain deliberately inside the native
+                // deadband. The large crop jump and full raster must publish.
+                if(target!=254)Assert::IsTrue(ordinaryPublications>0);
+            }
+        }
         TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
         {
             for(bool full : {false,true}) {

@@ -38,6 +38,9 @@ namespace AlphaSourceCrop
     struct MovingPictureTransitionState
     {
         bool active = false;
+        // One current-source progressive sample: blocks intermediate publication only.
+        // It is neither an active presentation hold nor an endpoint/quiet certificate.
+        bool onsetPending = false;
         // Keep the established presentation after motion ends until ordinary publication
         // accepts the new crop; this flag never delays the model or queued proof.
         bool awaitingPublication = false;
@@ -74,8 +77,11 @@ namespace AlphaSourceCrop
     bool HasCurrentMovingPictureTransition(const MovingPictureTransitionState& state,
         uint64_t sourceGeneration, uint64_t sourceSequence);
 
+    bool HasCurrentMovingPictureOnset(const MovingPictureTransitionState& state,
+        uint64_t sourceGeneration, uint64_t sourceSequence);
+
     // Apply before both local Observe and queued adoption. The queued proof
-    // consumer must also be withheld while state.active is true.
+    // consumer must also be withheld while active or current onset is true.
     void ConstrainMovingPictureTransition(const MovingPictureTransitionState& state,
         TransitionAdmissionDecision& admission);
 

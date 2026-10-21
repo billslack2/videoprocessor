@@ -9674,7 +9674,7 @@ struct LibplaceboVideoRenderer::Impl
             frameNumber >= captionBootstrapFirstProofSequence &&
             frameNumber - captionBootstrapFirstProofSequence < captionBurstFrames &&
             captionBurstGeometryCompatible;
-		if (scheduledAnalysis || forceAnalysis || forceWorkerBarAcquisition || forceCaptionBootstrapBurstAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
+		if (scheduledAnalysis || forceAnalysis || forceWorkerBarAcquisition || forceCaptionBootstrapBurstAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication || movingPictureTransition.onsetPending ||
 			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis ||
             (rememberedEdgeEnabled && rememberedContext.enabled) ||
 			(sparseBoundaryEnabled && (sparseBoundaryStartupGate.IsOpen(analysisSource.generation) ||
@@ -10512,6 +10512,21 @@ struct LibplaceboVideoRenderer::Impl
                     AlphaSourceCrop::PictureMotionTrackingInput(movementInput,
                         !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode)));
             AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
+            const bool movingPictureOnset = AlphaSourceCrop::HasCurrentMovingPictureOnset(
+                movingPictureTransition, analysisSource.generation, frameNumber);
+            if (movingPictureOnset || motionBeforeObservation.onsetPending)
+                DebugLog::Log("Alpha moving onset: generation=%llu sequence=%llu pending=%d prior_pending=%d active=%d awaiting=%d prior_directional=%u directional=%u anchor=%d,%d-%d,%d prior_native_sequence=%llu prior_native=%d,%d-%d,%d candidate=%d,%d-%d,%d broad=%d deferred=%d",
+                    analysisSource.generation, frameNumber, movingPictureOnset?1:0,
+                    motionBeforeObservation.onsetPending?1:0, movingPictureTransition.active?1:0,
+                    movingPictureTransition.awaitingPublication?1:0, motionBeforeObservation.directionalChanges,
+                    movingPictureTransition.directionalChanges, movingPictureTransition.anchor.left,
+                    movingPictureTransition.anchor.top, movingPictureTransition.anchor.right,
+                    movingPictureTransition.anchor.bottom, motionBeforeObservation.observedNativeSourceSequence,
+                    motionBeforeObservation.observedNative.left, motionBeforeObservation.observedNative.top,
+                    motionBeforeObservation.observedNative.right, motionBeforeObservation.observedNative.bottom,
+                    movementInput.outwardCandidate.left, movementInput.outwardCandidate.top,
+                    movementInput.outwardCandidate.right, movementInput.outwardCandidate.bottom,
+                    admission.outward.broadOpposingPicture?1:0, admission.observation.transitionDeferred?1:0);
             if (wasMovingPicture != movingPictureTransition.active ||
                 wasAwaitingPicturePublication != movingPictureTransition.awaitingPublication)
             {
@@ -10545,14 +10560,14 @@ struct LibplaceboVideoRenderer::Impl
             subtitleBase.top = scopeSubtitlePictureTop;
             subtitleBase.right = scopeSubtitlePictureRight;
             subtitleBase.bottom = scopeSubtitlePictureBottom;
-            const bool bufferedTranslationHandoff = bufferedExpansion &&
+            const bool bufferedTranslationHandoff = !movingPictureOnset && bufferedExpansion &&
                 !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
                 AlphaSourceCrop::ValidateBufferedTranslatedPictureExpansion(*bufferedExpansion,
                     currentIdentity, admissionInput, eligiblePictureChange, subtitleBase);
             RelativeBarContrastEvidence currentRelativeContrast;
             bool currentQualifiedPair = false;
-            const bool relativeOwnerEligible = rememberedEdgeGuarded && automaticSourceCrop &&
+            const bool relativeOwnerEligible = !movingPictureOnset && rememberedEdgeGuarded && automaticSourceCrop &&
                 configuredScreenActive && !nlsRequested && !fixedCropAspectConfigured &&
                 nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
                 !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
@@ -10571,10 +10586,11 @@ struct LibplaceboVideoRenderer::Impl
                     currentRelativeContrast, subtitleBase, scopeSubtitleFitConfirmation.confirmations);
             const bool bufferedRelativeFitHandoff = bufferedRelativeReady &&
                 scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT;
-            const bool bufferedExpansionReady = bufferedTranslationHandoff || bufferedRelativeReady ||
-                (!movingPictureTransition.active && bufferedExpansion &&
-                 AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
-                    currentIdentity, admissionInput, eligiblePictureChange));
+            const bool bufferedExpansionReady = !movingPictureOnset &&
+                (bufferedTranslationHandoff || bufferedRelativeReady ||
+                 (!movingPictureTransition.active && bufferedExpansion &&
+                  AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
+                    currentIdentity, admissionInput, eligiblePictureChange)));
 			if (bufferedExpansionReady)
 			{
                 if (asyncOutwardProof &&
@@ -10631,11 +10647,11 @@ struct LibplaceboVideoRenderer::Impl
 				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
 			ActivePicturePublicationAdmission publicationAdmission =
 				ActivePicturePublicationAdmission::NOT_EVALUATED;
-            const bool inwardPresentationCompatible = !scheduledDecision ||
+            const bool inwardPresentationCompatible = !movingPictureOnset && (!scheduledDecision ||
                 scheduledDecision->association != ActivePictureDecisionAssociation::EXACT_INWARD ||
                 (scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
                  !scopeSubtitleDrift.IsActive() && !outwardPictureConfirmation.verticalPresentationSeen &&
-                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication);
+                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication));
             const bool applyScheduledDecision = scheduledDecision && inwardPresentationCompatible &&
 				observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
 				scheduledValidation ==

@@ -204,6 +204,7 @@ namespace AlphaSourceCrop
             ? previous : MovingPictureTransitionState{};
         if (!adjacent) { state.directionalChanges = 0; state.quietSamples = 0; }
         state.change = MovingPictureTransitionChange::NONE;
+        state.onsetPending = false;
         state.base = current.trustedGeometry;
         state.identity = identity;
         const bool nativePosition = CurrentNativeEdgePosition(current, candidate);
@@ -268,6 +269,12 @@ namespace AlphaSourceCrop
             state.directionalChanges = 0;
             return state.active || state.awaitingPublication ? state : MovingPictureTransitionState{};
         }
+        // Keep the exact certified native predecessor for onset, never unknown pixels.
+        if (nativePosition)
+        {
+            state.observedNative = candidate;
+            state.observedNativeSourceSequence = identity.acceptedSequence;
+        }
         if (!adjacent || previous.last.rasterHeight == 0)
         {
             state.anchor = state.last = state.quietAnchor = candidate;
@@ -279,6 +286,14 @@ namespace AlphaSourceCrop
         state.last = candidate;
         if (!state.active)
         {
+            // A moving preview can otherwise publish before the longer motion
+            // threshold is reached. Defer only this freshly certified small step;
+            // static, unknown, abrupt, reversed or non-native samples cannot renew it.
+            state.onsetPending = !state.awaitingPublication && nativePosition && adjacent &&
+                previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
+                SameBounds(previous.observedNative, previous.last) &&
+                topStep >= 0 && bottomStep >= 0 && (topStep > 0 || bottomStep > 0) &&
+                topStep <= scanStep && bottomStep <= scanStep;
             if (topStep < 0 || bottomStep < 0)
             {
                 state.anchor = candidate;
@@ -291,6 +306,7 @@ namespace AlphaSourceCrop
                 candidate.bottom - state.anchor.bottom > 2 * scanStep)
             {
                 state.active = true;
+                state.onsetPending = false;
                 state.awaitingPublication = false;
                 state.change = MovingPictureTransitionChange::ACQUIRED;
                 state.observedNative = nativePosition ? candidate : ActivePictureBounds{};
@@ -355,10 +371,19 @@ namespace AlphaSourceCrop
             state.identity.acceptedSequence == sourceSequence;
     }
 
+    bool HasCurrentMovingPictureOnset(const MovingPictureTransitionState& state,
+        uint64_t sourceGeneration, uint64_t sourceSequence)
+    {
+        return state.onsetPending && !state.active && !state.awaitingPublication &&
+            sourceGeneration != 0 && sourceSequence != 0 &&
+            state.identity.transportGeneration == sourceGeneration &&
+            state.identity.acceptedSequence == sourceSequence;
+    }
     void ConstrainMovingPictureTransition(const MovingPictureTransitionState& state,
         TransitionAdmissionDecision& admission)
     {
-        if (!state.active) return;
+        if (!state.active && !HasCurrentMovingPictureOnset(state,
+            state.identity.transportGeneration, admission.observation.frameNumber)) return;
         admission.deferOutward = true;
         admission.observation.transitionDeferred = true;
         admission.observation.classification = ActivePictureClassification::PROVISIONAL;
