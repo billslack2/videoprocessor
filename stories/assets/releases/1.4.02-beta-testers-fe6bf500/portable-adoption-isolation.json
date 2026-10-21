@@ -1,0 +1,28 @@
+{
+  "qaRoot": "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\q-9d2969aa",
+  "qaIdentity": "3263421D-94E3-49DD-B7D4-397369245B06",
+  "modernAdoptionExitCode": 0,
+  "publicFiles": [
+    {
+      "path": "artifacts/installers/VideoProcessorSetup-1.4.02-beta-fe6bf5007230.exe",
+      "matched": true
+    },
+    {
+      "path": "artifacts/installers/VideoProcessor-1.4.02-beta-fe6bf5007230-x64-Portable.zip",
+      "matched": true
+    }
+  ],
+  "managedPayloadMismatches": [],
+  "realRegistrationUnchanged": true,
+  "qtPreferencesBeforeSha256": "195DB18C3B25D1090AFD9C52B4493E87D581131550EB3464D0AF47DEE827B6CC",
+  "qtPreferencesAfterSha256": "195DB18C3B25D1090AFD9C52B4493E87D581131550EB3464D0AF47DEE827B6CC",
+  "qtPreferencesUnchanged": true,
+  "qaRegistrationAbsent": true,
+  "originalProcesses": [
+    {
+      "pid": 68336,
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "stillSameProcess": true
+    }
+  ]
+}

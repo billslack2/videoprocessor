@@ -1,0 +1,22 @@
+﻿{
+    "qaRoot":  "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\tester-installer-qa-9787c33e914947708186dddd915735d0",
+    "qaIdentity":  "F0894A8B-EF74-4B55-91D2-E2B997845EB3",
+    "sourceCommit":  "fe6bf50072306482592659cebad85d94ae4bf2ee",
+    "publicSetupSha256":  "50160C0AAC2B4EEFFB0EEA92213237FDE66DBFFAA1894FA1CF3B77697DDB353A",
+    "portableZipSha256":  "348132E52B1C1002E739D0DA4AC83DD06CB89207E5BFBCBDFE4BCF08663D456D",
+    "realRegistrationUnchanged":  true,
+    "qtPreferencesBeforeSha256":  "195DB18C3B25D1090AFD9C52B4493E87D581131550EB3464D0AF47DEE827B6CC",
+    "qtPreferencesAfterSha256":  "195DB18C3B25D1090AFD9C52B4493E87D581131550EB3464D0AF47DEE827B6CC",
+    "qtPreferencesUnchanged":  true,
+    "protectedHashMismatches":  [
+
+                                ],
+    "originalProcessObservations":  [
+                                        {
+                                            "pid":  68336,
+                                            "path":  "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+                                            "stillSameProcess":  true
+                                        }
+                                    ],
+    "coverageLimit":  "Same-user isolated GUID on developer Windows. Clean VM, interactive persistence and cross-version rollback not qualified. QA Config is offline but shares per-user Qt preferences."
+}

@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "status": "qualified local tester handoff; clean-machine and interactive qualification remain open",
+  "createdUtc": "2026-10-21T20:51:47.2100928Z",
+  "repository": "billslack2/videoprocessor",
+  "coreVersion": "1.4.02-beta",
+  "releaseSequence": 20261021203018,
+  "source": {
+    "commit": "fe6bf50072306482592659cebad85d94ae4bf2ee",
+    "betaCommit": "71043e192b658c433dc8d888632f4740d1e61b01",
+    "installerToolingCommit": "fe6bf50072306482592659cebad85d94ae4bf2ee",
+    "clean": true,
+    "sourceFingerprint": "8cf28f7a6bba6fffb2edecdc75047024d91c1bf528474b8a98c7ca06124b6030",
+    "configuration": "Release",
+    "architecture": "x64",
+    "applicationSourceTree": "d7114c20f9982ccbfa6362b260e0e72e180a7b7f",
+    "betaApplicationSourceTree": "d7114c20f9982ccbfa6362b260e0e72e180a7b7f",
+    "applicationSourcesEqualBeta": true,
+    "packagingOnlyDelta": [
+      "docs/VP-0192_INSTALLER.md",
+      "tools/build_installer.ps1",
+      "tools/test_installer_identity.ps1"
+    ],
+    "provenance": "Application src tree equals beta 71043e19. Release-only commit corrects shared five-binary receipt inventory and exact path-set validation, extends installer identity regression tests, and updates packaging documentation.",
+    "releaseBranch": "codex/tester-release-20261021-71043e19"
+  },
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.02-beta-fe6bf5007230.exe",
+      "sha256": "50160C0AAC2B4EEFFB0EEA92213237FDE66DBFFAA1894FA1CF3B77697DDB353A",
+      "length": 35159741,
+      "localPath": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\VideoProcessorSetup-1.4.02-beta-fe6bf5007230.exe",
+      "userFacingPath": "C:\\Users\\bslac\\Documents\\ChatGPT\\Done\\VP-1.4.02-beta-testers-fe6bf500\\VideoProcessorSetup-1.4.02-beta-fe6bf5007230.exe"
+    },
+    {
+      "name": "VideoProcessor-1.4.02-beta-fe6bf5007230-x64-Portable.zip",
+      "sha256": "348132E52B1C1002E739D0DA4AC83DD06CB89207E5BFBCBDFE4BCF08663D456D",
+      "length": 50753144,
+      "localPath": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\VideoProcessor-1.4.02-beta-fe6bf5007230-x64-Portable.zip",
+      "userFacingPath": "C:\\Users\\bslac\\Documents\\ChatGPT\\Done\\VP-1.4.02-beta-testers-fe6bf500\\VideoProcessor-1.4.02-beta-fe6bf5007230-x64-Portable.zip"
+    }
+  ],
+  "unsigned": true,
+  "distribution": {
+    "kind": "local tester handoff",
+    "exportDirectory": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers",
+    "userFacingCopyVerified": true,
+    "publicPublishing": false,
+    "githubReleaseCreated": false,
+    "updaterDescriptorPublished": false,
+    "userFacingDirectory": "C:\\Users\\bslac\\Documents\\ChatGPT\\Done\\VP-1.4.02-beta-testers-fe6bf500"
+  },
+  "qualification": {
+    "unit": {
+      "passed": true,
+      "total": 2936,
+      "passedCount": 2936,
+      "failedCount": 0,
+      "durationMinutes": 14.7792,
+      "receipt": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\release-receipt.json",
+      "trx": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\release.trx",
+      "log": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\tests.log"
+    },
+    "packaging": {
+      "identityChecks": 28,
+      "preservationRecoveryChecks": 59,
+      "runtimePrerequisiteChecks": 23,
+      "portableContractChecks": 8,
+      "finishedPortableConfigVerified": true,
+      "identityLog": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\test_installer_identity.log",
+      "supportLog": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\test_installer_support.log",
+      "runtimeLog": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\runtime-packaging.log",
+      "portableLog": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\portable-config.log",
+      "buildAndPackageLog": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\build-and-package.log"
+    },
+    "installerLifecycle": {
+      "passed": true,
+      "checks": 225,
+      "scope": "same-user isolated QA application GUID on development Windows; actual installer lifecycle",
+      "retryReceipt": "installer-qualification.json",
+      "firstAttempt": {
+        "passed": false,
+        "failureCategory": "deep QA destination path",
+        "observedError": "An error occurred while trying to create a file in the destination directory: The system cannot find the path specified.",
+        "failedPath": "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\tester-installer-qa-9787c33e914947708186dddd915735d0\\artifacts\\installer-e2e-c339c2c1d1cd4089921fed2b0a24381a\\Custom VP space\\vprenderer-beta\\third_party_licenses\\vulkan-loader\\LICENSE",
+        "failedPathLength": 251,
+        "freshLog": "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\tester-installer-qa-9787c33e914947708186dddd915735d0\\artifacts\\installer-e2e-c339c2c1d1cd4089921fed2b0a24381a\\fresh.log",
+        "isolationReceipt": "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\tester-installer-qa-9787c33e914947708186dddd915735d0\\isolation-receipt.json",
+        "rollbackObservedInLog": true,
+        "realRegistrationUnchanged": true,
+        "qtPreferencesUnchanged": true,
+        "originalConfigProcessRetained": true
+      },
+      "modernPortableAdoptionScenariosPassed": 2,
+      "intentionalCorruptManifestRollbackScenariosPassed": 1,
+      "legacyFixtureAttempt": "Original legacy RELEASE-MANIFEST assumption stopped before Setup execution. A copied test adapted to the supported modern INSTALL-MANIFEST contract passed both ordinary and edited-extra scenarios; public packages and tracked source were unchanged."
+    },
+    "gaps": [
+      "Clean Windows without Visual Studio and absent/old global VC runtime not newly qualified.",
+      "Interactive Config edit, Apply, OK and reopen persistence not newly qualified.",
+      "Cross-version upgrade/rollback not qualified by a same-build isolated retry.",
+      "Physical playback/capture and second-computer operation not newly qualified.",
+      "Legacy RELEASE-MANIFEST portable adoption not rerun with a genuine legacy archive; modern ownership adoption passed.",
+      "Deep QA destination of 251 characters failed; installer rolled back. Shorter destinations with projected maximum 172 characters passed."
+    ],
+    "reproducibility": "Pinned source and recorded dependencies/tools; byte-identical PE or installer rebuilds are not asserted.",
+    "legacyRuntimeDiagnostic": {
+      "exitCode": 1,
+      "log": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\validation\\runtime-check.log",
+      "diagnostic": "Legacy blanket-floor validator flags MFC14.29 against CRT14.44 minimum. The app-local manifest records separate per-library floors.",
+      "manifest": "E:\\codex\\releases\\VideoProcessor-1.4.02-beta-fe6bf5007230-20261021-testers\\INSTALL-MANIFEST.json",
+      "appLocalCrtMinimum": "14.44.35211.0",
+      "appLocalMfcMinimum": "14.29.30133",
+      "shippedMfcVersion": "14.29.30139.0"
+    }
+  },
+  "tracker": {
+    "evidenceDirectory": "stories/assets/releases/1.4.02-beta-testers-fe6bf500",
+    "storyStatusesChanged": false,
+    "publication": "Local files only; no GitHub Release or updater descriptor published."
+  },
+  "finalizedUtc": "2026-10-21T20:59:37.7680835Z"
+}

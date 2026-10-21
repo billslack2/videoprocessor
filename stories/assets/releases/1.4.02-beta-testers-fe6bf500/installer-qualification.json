@@ -1,0 +1,104 @@
+{
+  "sourceCommit": "fe6bf50072306482592659cebad85d94ae4bf2ee",
+  "version": "1.4.02-beta",
+  "configuration": "x64 Release",
+  "trackedSourceClean": true,
+  "qaRoot": "E:\\codex\\videoprocessor\\tester-release-20261021-71043e19\\artifacts\\q-9d2969aa",
+  "privateInstallerGuid": "3263421D-94E3-49DD-B7D4-397369245B06",
+  "projectedMaximumManagedDestinationCharacters": 172,
+  "qualification": {
+    "lifecycleChecksPassed": 225,
+    "modernPortableAdoptionCasesPassed": 2,
+    "intentionalCorruptManifestRollbackCasesPassed": 1
+  },
+  "logs": {
+    "lifecycle": "lifecycle.log",
+    "modernAdoption": "modern-adoption.log",
+    "intentionalFailure": "failure-independent.log",
+    "lifecycleFixture": "artifacts/e-c7d51211",
+    "modernAdoptionFixtures": [
+      "artifacts/z-a41524c2",
+      "artifacts/z-e422921e"
+    ],
+    "failureFixture": "artifacts/f-df09db2e",
+    "isolation": [
+      "isolation-receipt.json",
+      "modern-adoption-isolation.json"
+    ]
+  },
+  "publicArtifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.02-beta-fe6bf5007230.exe",
+      "sha256": "50160C0AAC2B4EEFFB0EEA92213237FDE66DBFFAA1894FA1CF3B77697DDB353A"
+    },
+    {
+      "name": "VideoProcessor-1.4.02-beta-fe6bf5007230-x64-Portable.zip",
+      "sha256": "348132E52B1C1002E739D0DA4AC83DD06CB89207E5BFBCBDFE4BCF08663D456D"
+    }
+  ],
+  "privateQaHashes": [
+    {
+      "path": "artifacts\\qualify-tester-isolated.ps1",
+      "sha256": "69670BFF30F7FDD9A63E16A4F9571D66403C803D0EA979719B123858E969B040"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\tools\\test_installer_e2e.ps1",
+      "sha256": "A432B5CEA5B8486B3E6B9816354219519D882A8049DC48226633AB50C06D4B71"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\tools\\test_installer_zip_adoption.ps1",
+      "sha256": "5DE7CAA2D31B8B992B57BF42128BFCCA7888ADF2DEBEDD0B1A90973E47225A5A"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\tools\\test_installer_zip_adoption.legacy-assumption.ps1",
+      "sha256": "F0520E42EF0DB3B83163D4FB249C5DC9D4E276DC4645193C2A1EA6DD52F9A26A"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\tools\\test_installer_failure.ps1",
+      "sha256": "98351435C7881669F901E995A869A75B1EB7846FF9CE5618BE6471B7B800C623"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\qa.iss",
+      "sha256": "9255A54FD6B068BDE96C4DE8E2DB448851FDD37B762AE297C27B6938600D31E6"
+    },
+    {
+      "path": "artifacts\\q-9d2969aa\\DO-NOT-DISTRIBUTE-Tester-QA.exe",
+      "sha256": "F3880D58E98A595AEA9C99C657B3BB5DACCDE691FE99660BB0985C24778A88EB"
+    }
+  ],
+  "isolationAssertions": [
+    "Full real uninstall registration snapshot unchanged during lifecycle and modern adoption.",
+    "Public Setup and ZIP SHA256 unchanged from approved inputs.",
+    "Every staged public managed-file SHA256 unchanged.",
+    "Real Qt preferences SHA256 unchanged; no restoration attempted.",
+    "Original Config PID68336 remains same path and creation identity.",
+    "No real VP/Config process was stopped; only test-created private-path Config was terminated.",
+    "Disposable QA registration absent after all scenarios.",
+    "Managed QA app payload bytes matched public manifest."
+  ],
+  "liveProcesses": [
+    {
+      "ProcessId": 68336,
+      "ExecutablePath": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe"
+    }
+  ],
+  "preservedFailedAttempts": [
+    {
+      "root": "artifacts/tester-installer-qa-9787c33e914947708186dddd915735d0",
+      "classification": "Deep QA path failed creating 251-character Vulkan license destination; installer rollback completed; no registration or public data changed."
+    },
+    {
+      "root": "artifacts/q-9d2969aa",
+      "log": "../isolated-installer-qa-retry.log",
+      "classification": "After225 lifecycle passed, legacy-adoption fixture stopped before Setup because modern ZIP intentionally lacks RELEASE-MANIFEST.json. Original copied test preserved; approved modern INSTALL-MANIFEST ownership adaptation passed independently."
+    }
+  ],
+  "limits": [
+    "Developer Windows10Pro19045 under isolated installer GUID/shortcuts, not a disposable account or clean VM.",
+    "Actual private QA Setup has a different identity from public Setup; application managed bytes are identical.",
+    "Clean Windows without Visual Studio, interactive Config Apply/OK/reopen and cross-version A-B-A rollback not newly qualified.",
+    "Legacy VP-0107 RELEASE-MANIFEST ZIP adoption not rerun; modern INSTALL-MANIFEST adoption passed.",
+    "Very deep installation paths remain a documented observed limit; shortened QA destination maximum172 characters passed.",
+    "Windows application/installer binaries are unsigned."
+  ]
+}

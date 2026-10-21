@@ -1,0 +1,21 @@
+VideoProcessor 1.4.02-beta - local tester packages (2026-10-21)
+
+Share only the Setup EXE and portable ZIP from:
+C:\Users\bslac\Documents\ChatGPT\Done\VP-1.4.02-beta-testers-fe6bf500
+
+Application sources equal beta 71043e192b658c433dc8d888632f4740d1e61b01.
+Recoverable release branch: codex/tester-release-20261021-71043e19.
+Actual source/build commit: fe6bf50072306482592659cebad85d94ae4bf2ee.
+The three-file packaging delta fixes exact five-binary build-receipt validation and its tests/documentation. It changes no application sources.
+Fresh x64 Release build; globally increasing release sequence 20261021203018.
+
+Passed: 2,936/2,936 unit tests, 28 installer identity checks, 59 preservation/recovery support checks, 23 runtime prerequisite checks, 8 portable contract checks, and finished portable config verification.
+Actual isolated Setup passed 225 lifecycle checks, 2 modern portable-adoption scenarios, and 1 intentional corrupt-manifest rollback fixture. Public managed bytes matched private QA payload; only QA product identity/shortcuts differed. Real installer registration, Qt preferences and original Config process were preserved; temporary QA registration removed.
+The first long QA path failed creating a 251-character destination and rolled back. The approved shorter fixture passed at maximum 172 characters. The original adoption fixture expected an obsolete RELEASE-MANIFEST; it stopped before Setup. The copied fixture was adapted only to current INSTALL-MANIFEST ownership and then passed. Preserve those findings; do not represent the stopped attempts as passes.
+
+The legacy global-runtime checker returns exit 1 because its blanket CRT 14.44 floor also checks MFC 14.29. Current packaging uses distinct manifest minima for CRT and MFC; all 23 app-local runtime checks passed and shipped Microsoft libraries satisfy their individual floors. See release-record.json for exact versions.
+
+Setup is unsigned. Clean Windows without Visual Studio, interactive Config Apply/OK/reopen, cross-version A-B-A rollback, genuine legacy portable-adoption and physical capture/playback were not newly qualified. This run used the development Windows account and a distinct disposable installer identity, not a separate account or clean VM.
+
+For a fresh portable install, extract the complete ZIP and copy root VideoProcessor.cfg.example to VideoProcessor.cfg. For an upgrade, preserve existing settings. The ZIP contains no active user configuration.
+No GitHub Release, updater descriptor or deployment was performed. These receipts/checksum sidecars/QA scripts are internal evidence, not public distribution assets. No story status changed.
