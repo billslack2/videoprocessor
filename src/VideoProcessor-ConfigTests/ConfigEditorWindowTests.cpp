@@ -904,8 +904,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 22,
-        "Renderer, Scaling, Color, Output, Screen, Zoom, Processing, shader, and shortcut pages were not added as dedicated settings pages");
+    require(pages->count() == 23,
+        "The top-level Display page and all existing dedicated settings pages were not added");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -999,7 +999,7 @@ void testEveryPageRoundTrips()
     requireControl<QCheckBox>(window, QStringLiteral("config.general.startminimized"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.general.scene_detect"))->setChecked(false);
     selectData(requireControl<QComboBox>(window,
-        QStringLiteral("config.general.fullscreen_monitor_name")),
+        QStringLiteral("config.output_display.monitor")),
         QStringLiteral("Test Display"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.general.video_conversion")),
         QStringLiteral("V210_TO_P010"));
@@ -1371,12 +1371,16 @@ void testEveryPageRoundTrips()
 
     save(window);
     const QByteArray saved = readBytes(path);
+    require(saved.contains("[output_display.Default]"),
+        "The migrated monitor was not saved under the Display profile family");
+    require(!saved.contains("fullscreen_monitor_name:"),
+        "The migrated legacy fullscreen monitor key remained in the saved configuration");
     const QList<QByteArray> expected = {
         "capture_device: Decklink Test Device", "capture_input: HDMI",
         "renderer: VP Renderer", "fullscreen: false",
 		"profile_change_display_seconds: 0",
         "scene_detect: false",
-        "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
+        "monitor: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
@@ -3010,9 +3014,11 @@ void testRendererProfileSectionsCollapseAndPersist()
 		downscaler->findData(QStringLiteral("none")) < 0 &&
 		downscaler->findData(QStringLiteral("ewa_lanczos")) < 0,
 		"Downscaler choices include a removed or pathologically expensive mode");
-    QComboBox* refreshRateSwitch = pages->widget(0)->findChild<QComboBox*>(
+    QComboBox* refreshRateSwitch = pages->widget(22)->findChild<QComboBox*>(
         QStringLiteral("config.general.switch_refresh_rate"));
     require(refreshRateSwitch != nullptr &&
+        pages->widget(0)->findChild<QComboBox*>(
+            QStringLiteral("config.general.switch_refresh_rate")) == nullptr &&
         refreshRateSwitch->itemData(0).toString() == QStringLiteral("never") &&
         refreshRateSwitch->itemText(0) == QStringLiteral("Never") &&
         refreshRateSwitch->itemData(1).toString() == QStringLiteral("fullscreen_only") &&
@@ -3021,7 +3027,7 @@ void testRendererProfileSectionsCollapseAndPersist()
         refreshRateSwitch->itemText(2) == QStringLiteral("Always") &&
         pages->widget(2)->findChild<QComboBox*>(
         QStringLiteral("config.general.switch_refresh_rate")) == nullptr,
-        "Switch refresh rate selector was not moved from Renderer Basic to General Display");
+        "Switch refresh rate selector was not moved to the top-level Display page");
     QComboBox* debanding = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.deband_strength"));
     require(debanding->findData(QStringLiteral("AUTO")) >= 0 &&
@@ -3036,8 +3042,8 @@ void testRendererProfileSectionsCollapseAndPersist()
         "Debanding choices are not ordered Standard, Light, Off after Auto");
     QComboBox* sigmoid = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.sigmoid"));
-    require(sigmoid->accessibleName() == QStringLiteral("Anti-ringing"),
-        "Sigmoid scaling does not expose the Anti-ringing accessible name");
+    require(sigmoid->accessibleName() == QStringLiteral("Sigmoid upscaling"),
+        "Sigmoid scaling does not expose its precise Sigmoid upscaling accessible name");
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
     require(peakDetection->itemData(1).toString() == QStringLiteral("AUTO") &&
@@ -4527,6 +4533,10 @@ void testApplyOkCancelContract()
             apply->click();
             QCoreApplication::processEvents();
         }
+        require(requireControl<QLabel>(window, QStringLiteral("configurationEffectSummary"))->text() ==
+            QStringLiteral("No pending changes"),
+            (std::string("Initial migration save did not succeed: ") +
+                requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
         require(!apply->isEnabled(), "Apply was enabled for a clean document");
 
         QCheckBox* fullscreen = requireControl<QCheckBox>(window,
@@ -4537,7 +4547,7 @@ void testApplyOkCancelContract()
             QStringLiteral("configurationEffectSummary"));
         require(effect->text() == QStringLiteral(
             "Takes effect next start: Startup / input"),
-            "The pending effect summary did not honestly classify the edit");
+            (std::string("The pending effect summary did not honestly classify the edit: ") + effect->text().toStdString() + " Status: " + requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
 
         apply->click();
         QCoreApplication::processEvents();

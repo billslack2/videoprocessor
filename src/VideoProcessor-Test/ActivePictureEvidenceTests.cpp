@@ -278,6 +278,21 @@ namespace VideoProcessorTest
 			}
 		}
 
+        void FillUhdSideAmbiguousScope(P010Frame& frame,int fringeDepth=0,bool upper=true,
+            int fringeLuma=79,int fringeU=512,int barFloor=64)
+        {
+            frame.Fill(160,512,512);
+            frame.BlackOutside(0,276,3840,1884,barFloor);
+            // Missing one bright side zone and a lifted colored opposite edge
+            // reproduce the independent horizontal proposal's rejection.
+            frame.FillRectangle(0,276,120,678,barFloor);
+            frame.FillRectangle(3520,276,3840,1884,barFloor+16,640,512);
+            if(fringeDepth>0) {
+                const int y=upper?276-fringeDepth:1884+fringeDepth-1;
+                frame.FillRectangle(0,y,3840,y+1,fringeLuma,fringeU,512);
+            }
+        }
+
 		AnalysisLumaSource AsDecodedDolbyVisionSource(
 			const P010Frame& frame)
 		{
@@ -1080,9 +1095,16 @@ namespace VideoProcessorTest
                 Assert::AreEqual(0,proof.candidate.left);Assert::AreEqual(source.width,proof.candidate.right);
                 Assert::IsTrue(proof.evidence.axisEvidence.horizontal.FailedBar());
                 Assert::IsTrue(proof.evidence.axisEvidence.HasVerifiedVerticalCropProfile(proof.candidate));
-                auto missingMaskContract=proof.evidence.axisEvidence;
-                missingMaskContract.verticalCropGlyphExclusions=false;
-                Assert::IsFalse(missingMaskContract.HasVerifiedVerticalCropProfile(proof.candidate));
+                Assert::IsTrue(proof.evidence.axisEvidence.verticalCropGlyphExclusions);
+                Assert::AreEqual(source.width,RecoverSubtitleInspectionBarsFromWorkerProof(source,proof.candidate,
+                    source.generation,ActivePictureClassification::BAR_CROP_TRUSTED,proof,identity,47,23,
+                    SubtitleScriptHint::Latin,true,false).rasterWidth);
+                auto missingMaskContract=proof;
+                missingMaskContract.evidence.axisEvidence.verticalCropGlyphExclusions=false;
+                Assert::AreEqual(0,RecoverSubtitleInspectionBarsFromWorkerProof(source,proof.candidate,
+                    source.generation,ActivePictureClassification::BAR_CROP_TRUSTED,missingMaskContract,identity,47,23,
+                    SubtitleScriptHint::Latin,true,false).rasterWidth,
+                    L"An ordinary geometric guard cannot impersonate current glyph-excluded worker provenance.");
                 ActivePictureTransitionModel model;
                 ActivePictureTransitionDecision decision;
                 for(uint64_t sequence=1;sequence<=ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;++sequence) {
@@ -2091,6 +2113,91 @@ namespace VideoProcessorTest
                 Assert::IsFalse(capped.qualified,L"Actual native reconciliation work must retain its budget guard.");
                 Assert::IsTrue(std::strcmp(capped.reason,"ownership-budget")==0);
                 Assert::IsTrue(capped.ownershipSamples==0,L"Insufficient budget must reject before native sampling.");
+            }
+        }
+
+        TEST_METHOD(GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible)
+        {
+            for(bool p210:{false,true})
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int scenario=-2;scenario<13;++scenario) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                f.base.top=f.observation.pictureTop=276;
+                f.base.aspectRatio=3840.0/(1884-276);
+                f.frame.FillRectangle(0,274,3840,276,64);
+                f.BuildRealComposition();
+                auto guarded=ScopePresentation(3840,2160,268,1892);
+                f.composition=FitSubtitleToVisiblePicture(f.composition,
+                    {guarded.left,guarded.top,guarded.right,guarded.bottom},20);
+                Assert::IsTrue(f.composition.valid);
+                Assert::AreEqual(276,f.composition.pictureTop,L"Guard rows are visible display context, not physical subtitle ownership.");
+                Assert::AreEqual(1884,f.composition.pictureBottom);
+                Assert::AreEqual(268,f.composition.displayPictureTop);
+                Assert::AreEqual(1892,f.composition.displayPictureBottom);
+                if(scenario==4)guarded=ScopePresentation(3840,2160,280,1880);
+                if(scenario==5)guarded=ScopePresentation(3840,2160,266,1892);
+                if(scenario==6)guarded.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+                f.observation.sharedPicture.required=true;
+                f.observation.sharedPicture.identity=f.observation.identity;
+                f.observation.sharedPicture.bounds=guarded;
+                const auto selectedIdentity=f.observation.identity;
+                auto currentDisplay=f.observation.sharedPicture;
+                if(scenario==-2) {
+                    // Worker packets intentionally retain the renderer snapshot
+                    // captured before queueing. Geometry/context must match,
+                    // while display ownership belongs to the selected packet.
+                    --f.observation.sharedPicture.identity.acceptedSequence;
+                    --f.observation.sharedPicture.identity.sourceFrameNumber;
+                    f.observation.sharedPicture.identity.captureTimestamp-=417000;
+                }
+                if(scenario==0)currentDisplay.required=false;
+                if(scenario==1)++currentDisplay.identity.acceptedSequence;
+                if(scenario==2)++currentDisplay.identity.analysisDomainKey;
+                if(scenario==3)--currentDisplay.bounds.bottom;
+                if(scenario==7)++currentDisplay.identity.captureTimestamp;
+                if(scenario==8)f.frame.FillRectangle(100,1940,300,2000,300);
+                if(scenario==9)++f.observation.identity.acceptedSequence;
+                if(scenario==10)++f.observation.identity.captureTimestamp;
+                if(scenario==11)++f.observation.sharedPicture.identity.analysisDomainKey;
+                if(scenario==12)--f.observation.sharedPicture.bounds.bottom;
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),guarded);
+                auto input=f.Input();input.mode=mode;input.physicalBase=guarded;
+                input.currentIdentity=selectedIdentity;input.currentDisplayPicture=currentDisplay;
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(semantic.qualified,L"Display guards cannot widen semantic source ownership tolerance.");
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                std::ostringstream detail;detail<<"Guarded subtitle scenario="<<scenario<<" P210="<<p210
+                    <<" mode="<<int(mode)<<" reason="<<prepared.reason;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto diagnostic=detail.str();const std::wstring wide(diagnostic.begin(),diagnostic.end());
+                Assert::AreEqual(scenario<0,prepared.qualified,wide.c_str());
+                Assert::IsFalse(prepared.renewsHold);
+                if(scenario<0) {
+                    const auto projected=ProjectQualifiedSubtitlePresentationEvidence(prepared,{},guarded,guarded,
+                        f.observation.identity,raw);
+                    Assert::IsTrue(projected.qualified);
+                    Assert::AreEqual(268,projected.currentBounds.top);Assert::AreEqual(1892,projected.currentBounds.bottom);
+                    const auto physical=f.base;
+                    // The same cue may arrive with alternating physical and
+                    // guarded packet snapshots. No proof may leak across them.
+                    for(bool nextGuard:{false,true,false,true}) {
+                        ++f.observation.identity.acceptedSequence;++f.observation.identity.sourceFrameNumber;
+                        f.observation.identity.captureTimestamp+=417000;
+                        const auto nextBase=nextGuard?guarded:physical;
+                        f.composition=FitSubtitleToVisiblePicture(f.composition,
+                            {nextBase.left,nextBase.top,nextBase.right,nextBase.bottom},20);
+                        f.observation.sharedPicture.bounds=nextBase;
+                        f.observation.sharedPicture.identity=f.observation.identity;
+                        auto nextInput=f.Input();nextInput.mode=mode;nextInput.physicalBase=nextBase;
+                        nextInput.currentDisplayPicture=f.observation.sharedPicture;
+                        const auto nextRaw=EvaluateActivePicturePresentationRetention(f.Source(),nextBase);
+                        const auto next=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),nextRaw,nextInput);
+                        Assert::IsTrue(next.qualified,L"Each current packet must prove its own physical/display relationship.");
+                        Assert::AreEqual(276,f.composition.pictureTop);Assert::AreEqual(1884,f.composition.pictureBottom);
+                        Assert::IsFalse(next.renewsHold);
+                    }
+                }
+                Assert::AreEqual(276,f.observation.pictureTop);Assert::AreEqual(1884,f.observation.pictureBottom);
             }
         }
 
@@ -3952,6 +4059,129 @@ namespace VideoProcessorTest
             Assert::IsFalse(AlphaSourceCrop::IsPixelSafeCropReaffirmation(oldCrop,
                 raw.trustedBounds,oldProof.excludedBandsPixelSafe));
         }
+        TEST_METHOD(UhdTwoStepGuardRetainsNativeBoundaryFringeAcrossAnalysisFormats)
+        {
+            for(int barFloor:{1,64})for(int format=0;format<3;++format)
+            for(bool upper:{false,true})for(int fringeDepth:{0,4,6,8}) {
+                P010Frame frame(3840,2160,32,format!=0);
+                FillUhdSideAmbiguousScope(frame,fringeDepth,upper,barFloor+15,512,barFloor);
+                const auto source=format==0?frame.P010Source():format==1?frame.P210Source():AsDecodedDolbyVisionSource(frame);
+                const auto evidence=ExtractActivePictureEvidence(source);
+                std::ostringstream detail;detail<<"Two-step source floor="<<barFloor<<" format="<<format<<" upper="<<upper
+                    <<" fringe="<<fringeDepth<<" bounds="<<evidence.trustedBounds.top<<".."<<evidence.trustedBounds.bottom
+                    <<" raw="<<evidence.verticalBarProfile.reason<<" guard="<<evidence.verticalBarGuardProfile.reason;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                Assert::IsTrue(evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED,wide.c_str());
+                Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds),wide.c_str());
+                Assert::AreEqual(0,evidence.trustedBounds.left);Assert::AreEqual(3840,evidence.trustedBounds.right);
+                Assert::AreEqual(268,evidence.trustedBounds.top);Assert::AreEqual(1892,evidence.trustedBounds.bottom);
+                Assert::AreEqual(276,evidence.axisEvidence.sidePictureTop);Assert::AreEqual(1884,evidence.axisEvidence.sidePictureBottom);
+                Assert::AreEqual(8,evidence.axisEvidence.verticalCropGuardTop);Assert::AreEqual(8,evidence.axisEvidence.verticalCropGuardBottom);
+                Assert::IsTrue(evidence.verticalBarGuardProfile.completed && evidence.verticalBarGuardProfile.clean);
+                Assert::IsTrue(evidence.verticalBarGuardProfile.maxLumaDelta<=4 && evidence.verticalBarGuardProfile.maxChromaDelta<=4);
+                if(fringeDepth>0) {
+                    Assert::IsFalse(evidence.verticalBarProfile.clean,L"Original aperture failure remains visible in raw diagnostics.");
+                    Assert::IsTrue(evidence.verticalBarProfile.mismatchSamples>0);
+                    AnalysisLumaSample retained;
+                    const int y=upper?276-fringeDepth:1884+fringeDepth-1;
+                    Assert::IsTrue(source.Sample(1920,y,retained));Assert::AreEqual(barFloor+15,int(retained.luma));
+                    Assert::IsTrue(y>=evidence.trustedBounds.top && y<evidence.trustedBounds.bottom,
+                        L"The guard must retain the actual differing native pixels.");
+                }
+                const auto diagnostics=MeasureActivePictureSideDiagnostics(source,evidence);
+                Assert::IsTrue(diagnostics.evaluated,L"Larger valid guard must not disable independent side diagnostics.");
+                Assert::AreEqual(276,diagnostics.aperture.top);Assert::AreEqual(1884,diagnostics.aperture.bottom);
+                const auto retention=EvaluateActivePicturePresentationRetention(source,evidence.trustedBounds);
+                Assert::IsTrue(retention.excludedBandsPixelSafe,L"The exact guarded crop must be safe on these same source pixels.");
+            }
+        }
+        TEST_METHOD(UhdTwoStepGuardRejectsDeeperContentAndSubtitleOcclusion)
+        {
+            for(int barFloor:{1,64})for(bool p210:{false,true})
+            for(bool upper:{false,true})for(int scenario=0;scenario<4;++scenario) {
+                P010Frame frame(3840,2160,32,p210);
+                FillUhdSideAmbiguousScope(frame,12,upper,
+                    scenario==0?barFloor+15:scenario==1?barFloor:barFloor+46,scenario==1?518:512,barFloor);
+                if(scenario==3) {
+                    FillUhdSideAmbiguousScope(frame,0,true,barFloor+15,512,barFloor);
+                    // Current text in the lower bar is not an empty bar fringe.
+                    // Raw extraction may not borrow its bounding rectangle as ownership.
+                    for(int x=1728;x<2100;x+=28)frame.FillRectangle(x,1937,x+12,2008,700);
+                }
+                const auto source=p210?frame.P210Source():frame.P010Source();
+                const auto evidence=ExtractActivePictureEvidence(source);
+                std::ostringstream detail;detail<<"Rejected two-step fringe floor="<<barFloor<<" P210="<<p210<<" upper="<<upper
+                    <<" scenario="<<scenario<<" classification="<<int(evidence.classification)
+                    <<" raw="<<evidence.verticalBarProfile.reason<<" raw_deep="<<evidence.verticalBarProfile.deepMismatchSamples
+                    <<" guard="<<evidence.verticalBarGuardProfile.reason<<" guard_mismatches="<<evidence.verticalBarGuardProfile.mismatchSamples;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                Assert::IsFalse(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds),wide.c_str());
+                if(scenario<2) {
+                    // A lower stripe can fall between the raw profile's deeper
+                    // sample rows. The independently shifted guarded profile
+                    // must still reject it among its dense boundary samples.
+                    const bool rawConflict=evidence.verticalBarProfile.completed &&
+                        !evidence.verticalBarProfile.clean && evidence.verticalBarProfile.mismatchSamples>0;
+                    const bool guardedConflict=evidence.verticalBarGuardProfile.completed &&
+                        !evidence.verticalBarGuardProfile.clean && evidence.verticalBarGuardProfile.mismatchSamples>0;
+                    Assert::IsTrue(rawConflict || guardedConflict,wide.c_str());
+                }
+            }
+        }
+        TEST_METHOD(UhdGuardedScopeHasSameExactApertureAtStartupLiveAndQueuedTransition)
+        {
+            using namespace AlphaSourceCrop;
+            for(bool p210:{false,true}) {
+                P010Frame initial(3840,2160,32,p210),scope(3840,2160,32,p210);
+                initial.BlackOutside(0,68,3840,2092);
+                FillUhdSideAmbiguousScope(scope,6,true);
+                const auto firstSource=p210?initial.P210Source():initial.P010Source();
+                const auto scopeSource=p210?scope.P210Source():scope.P010Source();
+                const auto base=ExtractActivePictureEvidence(firstSource);
+                const auto evidence=ExtractActivePictureEvidence(scopeSource);
+                Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds));
+                ActivePictureTransitionModel startup,live;
+                for(uint64_t sequence=1;sequence<=4;++sequence) {
+                    live.Observe(MakeActivePictureObservation(base,sequence,23.976));
+                    startup.Observe(MakeActivePictureObservation(evidence,sequence,23.976));
+                }
+                const auto startupView=startup.Observe(MakeActivePictureObservation(evidence,5,23.976));
+                Assert::AreEqual(268,startupView.stableBounds.top);Assert::AreEqual(1892,startupView.stableBounds.bottom);
+                const auto queuedBase=live;
+                BufferedPictureExpansionSample samples[5];
+                bool published=false;
+                for(uint64_t sequence=5;sequence<=9;++sequence) {
+                    TransitionAdmissionInput input;
+                    input.evidence=evidence;
+                    input.retention=EvaluateActivePicturePresentationRetention(scopeSource,base.trustedBounds);
+                    input.trustedGeometry=input.presentationBeforeObservation=base.trustedBounds;
+                    input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                    input.trustedGeneration=input.sourceGeneration=1;
+                    input.sourceSequence=sequence;input.framesPerSecond=23.976;
+                    input.outwardCandidate=evidence.trustedBounds;
+                    const auto admitted=EvaluateTransitionAdmission(input);
+                    Assert::IsFalse(admitted.observation.transitionDeferred);
+                    const auto decision=live.Observe(admitted.observation);
+                    if(sequence==6)Assert::IsTrue(decision.publish,L"Established tall format must accept two exact guarded observations promptly.");
+                    if(decision.publish) {
+                        published=true;Assert::AreEqual(268,decision.bounds.top);Assert::AreEqual(1892,decision.bounds.bottom);
+                    }
+                    auto& sample=samples[sequence-5];sample.identity={1,sequence,sequence,sequence*417000,1,1,1};
+                    sample.observation=MakeActivePictureObservation(evidence,sequence,23.976);
+                    sample.retention=input.retention;sample.nearBlackEvaluated=true;
+                }
+                Assert::IsTrue(published);
+                const auto queued=BuildBufferedInwardDecision(samples,5,queuedBase,base.trustedBounds,5,4,1,1);
+                Assert::IsTrue(queued.transition.publish);
+                Assert::AreEqual(268,queued.transition.bounds.top);Assert::AreEqual(1892,queued.transition.bounds.bottom);
+                samples[1].observation.bounds.top+=2;
+                Assert::IsFalse(BuildBufferedInwardDecision(samples,5,queuedBase,base.trustedBounds,5,4,1,1).transition.publish,
+                    L"A clean profile cannot be borrowed for a different queued aperture.");
+            }
+        }
+
 		TEST_METHOD(SideZoneTelemetryStaysIndependentOfVerifiedVerticalPermission)
 		{
 			for (bool darkCorner : {true, false})
@@ -3966,7 +4196,7 @@ namespace VideoProcessorTest
 				Assert::IsFalse(evidence.axisEvidence.HasBlockingFailedBar(evidence.trustedBounds));
                 Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds));
                 Assert::AreEqual(0,evidence.trustedBounds.left);Assert::AreEqual(960,evidence.trustedBounds.right);
-                Assert::AreEqual(66,evidence.trustedBounds.top);Assert::AreEqual(474,evidence.trustedBounds.bottom);
+                Assert::AreEqual(64,evidence.trustedBounds.top);Assert::AreEqual(476,evidence.trustedBounds.bottom);
 				Assert::IsTrue(evidence.leftSideProbe.evaluated);
 				Assert::IsFalse(evidence.rightSideProbe.evaluated);
 				for (int depth=0;depth<3;++depth)
@@ -4049,7 +4279,7 @@ namespace VideoProcessorTest
                 // All authored side graphics stay inside the full-width crop;
                 // the certificate removes only the separately verified bars.
                 Assert::AreEqual(0,evidence.trustedBounds.left);Assert::AreEqual(960,evidence.trustedBounds.right);
-                Assert::AreEqual(66,evidence.trustedBounds.top);Assert::AreEqual(474,evidence.trustedBounds.bottom);
+                Assert::AreEqual(64,evidence.trustedBounds.top);Assert::AreEqual(476,evidence.trustedBounds.bottom);
                 const auto darkness=EvaluateActivePictureGlobalNearBlack(frame.P010Source());
                 Assert::IsTrue(darkness.evaluated && !darkness.nearBlack);
                 const auto constrained=ConstrainNearBlackCropAcquisition(evidence,darkness.nearBlack);
@@ -4914,9 +5144,11 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.top.trusted);
 			Assert::IsTrue(evidence.bottom.trusted);
 			Assert::AreEqual(280,evidence.proposedBounds.top);
-            Assert::AreEqual(276, evidence.trustedBounds.top);
+            Assert::AreEqual(272, evidence.trustedBounds.top);
 			Assert::AreEqual(1880,evidence.proposedBounds.bottom);
-            Assert::AreEqual(1884, evidence.trustedBounds.bottom);
+            Assert::AreEqual(1888, evidence.trustedBounds.bottom);
+            Assert::AreEqual(8,evidence.axisEvidence.verticalCropGuardTop);
+            Assert::AreEqual(8,evidence.axisEvidence.verticalCropGuardBottom);
 			Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds));
             const size_t profiles=evidence.verticalBarProfile.samples+evidence.verticalBarGuardProfile.samples;
             Assert::IsTrue(evidence.lumaSamples>=profiles);

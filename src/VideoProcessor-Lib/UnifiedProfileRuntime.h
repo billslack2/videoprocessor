@@ -28,6 +28,7 @@ namespace UnifiedProfileRuntime
 		RendererProfileConfig::ResolvedViewport viewport;
 		RendererProfileConfig::ResolvedQueue queue;
 		RendererProfileConfig::ResolvedLldv lldv;
+        std::string outputDisplayMonitor;
 		StateVariables::Snapshot variables;
 
 		bool LookupVariable(const std::string& name, std::string& value) const

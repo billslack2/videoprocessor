@@ -29,7 +29,8 @@ namespace ConfigurationRpcProtocol
 		DiscoveryReply = 5,
 		GetActiveProfileStatus = 6,
 		SelectProfile = 7,
-		RunAction = 8
+		RunAction = 8,
+        GetDisplayModes = 9
 	};
 
 	struct Frame
@@ -77,6 +78,7 @@ namespace ConfigurationRpcProtocol
 		case static_cast<uint16_t>(Operation::GetActiveProfileStatus):
 		case static_cast<uint16_t>(Operation::SelectProfile):
 		case static_cast<uint16_t>(Operation::RunAction):
+        case static_cast<uint16_t>(Operation::GetDisplayModes):
 			return true;
 		default:
 			return false;
@@ -148,6 +150,72 @@ namespace ConfigurationRpcProtocol
 		return true;
 	}
 
+    struct DisplayMode
+    {
+        uint32_t width = 0, height = 0, numerator = 0, denominator = 0;
+    };
+    struct DisplayModes
+    {
+        bool known = false;
+        std::string monitor;
+        std::string diagnostic;
+        std::vector<DisplayMode> modes;
+        uint32_t preferredWidth = 0, preferredHeight = 0;
+    };
+    constexpr size_t MaximumDisplayModes = 16384;
+    inline bool BuildDisplayModes(const DisplayModes& value, std::vector<uint8_t>& payload)
+    {
+        if (value.monitor.size() > 1024 || value.diagnostic.size() > 4096 ||
+            value.modes.size() > MaximumDisplayModes) return false;
+        payload = {2, static_cast<uint8_t>(value.known ? 1 : 0)};
+        if (!WriteString(payload, value.monitor) || !WriteString(payload, value.diagnostic)) return false;
+        Write32(payload, value.preferredWidth);
+        Write32(payload, value.preferredHeight);
+        Write32(payload, static_cast<uint32_t>(value.modes.size()));
+        for (const auto& mode : value.modes)
+        {
+            if (mode.width < 100 || mode.height < 100 || !mode.numerator || !mode.denominator) return false;
+            Write32(payload, mode.width); Write32(payload, mode.height);
+            Write32(payload, mode.numerator); Write32(payload, mode.denominator);
+        }
+        return true;
+    }
+    inline bool ParseDisplayModes(const std::vector<uint8_t>& payload, DisplayModes& value)
+    {
+        if (payload.size() < 2 || (payload[0] != 1 && payload[0] != 2) || payload[1] > 1) return false;
+        DisplayModes parsed;
+        parsed.known = payload[1] != 0;
+        size_t cursor = 2;
+        if (!ReadString(payload, cursor, parsed.monitor) || parsed.monitor.size() > 1024 ||
+            !ReadString(payload, cursor, parsed.diagnostic) || parsed.diagnostic.size() > 4096 ||
+            payload.size() - cursor < 4) return false;
+        if (payload[0] >= 2)
+        {
+            if (payload.size() - cursor < 12) return false;
+            parsed.preferredWidth = Read32(payload.data() + cursor);
+            parsed.preferredHeight = Read32(payload.data() + cursor + 4);
+            cursor += 8;
+            if ((parsed.preferredWidth == 0) != (parsed.preferredHeight == 0) ||
+                (parsed.preferredWidth && (parsed.preferredWidth < 100 || parsed.preferredHeight < 100))) return false;
+        }
+        const uint32_t count = Read32(payload.data() + cursor);
+        cursor += 4;
+        if (count > MaximumDisplayModes || payload.size() - cursor != size_t(count) * 16) return false;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            DisplayMode mode;
+            mode.width = Read32(payload.data() + cursor);
+            mode.height = Read32(payload.data() + cursor + 4);
+            mode.numerator = Read32(payload.data() + cursor + 8);
+            mode.denominator = Read32(payload.data() + cursor + 12);
+            cursor += 16;
+            if (mode.width < 100 || mode.height < 100 || !mode.numerator || !mode.denominator) return false;
+            parsed.modes.push_back(mode);
+        }
+        value = std::move(parsed);
+        return true;
+    }
+
 	// A bounded, read-only snapshot of VP's already-published active selections.
 	// The editor requests it only while visible; no configuration or renderer
 	// work is performed for a status request.
@@ -162,11 +230,12 @@ namespace ConfigurationRpcProtocol
 		std::string viewport;
 		std::string zoom;
         std::string subtitles;
+        std::string outputDisplay;
 		bool shaderAvailable = false;
 		std::vector<std::string> shaders;
 	};
 
-	constexpr uint8_t LiveProfileStatusVersion = 2;
+	constexpr uint8_t LiveProfileStatusVersion = 3;
 	constexpr size_t MaximumProfileSectionBytes = 96;
 	constexpr size_t MaximumProfileShaders = 16;
 
@@ -178,7 +247,8 @@ namespace ConfigurationRpcProtocol
 		if (!status.available) return true;
 		const std::string* const sections[] = { &status.queue,
 			&status.renderer, &status.color, &status.scaling,
-			&status.output, &status.viewport, &status.zoom, &status.subtitles };
+			&status.output, &status.viewport, &status.zoom, &status.subtitles,
+            &status.outputDisplay };
 		for (const auto* section : sections)
 			if (section->size() > MaximumProfileSectionBytes ||
 				!WriteString(payload, *section)) return false;
@@ -194,7 +264,7 @@ namespace ConfigurationRpcProtocol
 	inline bool ParseLiveProfileStatus(const std::vector<uint8_t>& payload,
 		LiveProfileStatus& status)
 	{
-		if (payload.size() < 2 || (payload[0] != 1 && payload[0] != LiveProfileStatusVersion) ||
+		if (payload.size() < 2 || payload[0] < 1 || payload[0] > LiveProfileStatusVersion ||
 			payload[1] > 1) return false;
 		LiveProfileStatus parsed;
 		parsed.available = payload[1] != 0;
@@ -212,6 +282,7 @@ namespace ConfigurationRpcProtocol
 			if (!ReadString(payload, cursor, *section) ||
 				section->size() > MaximumProfileSectionBytes) return false;
         if(payload[0]>=2 && (!ReadString(payload,cursor,parsed.subtitles) || parsed.subtitles.size()>MaximumProfileSectionBytes)) return false;
+        if(payload[0]>=3 && (!ReadString(payload,cursor,parsed.outputDisplay) || parsed.outputDisplay.size()>MaximumProfileSectionBytes)) return false;
 		if (cursor > payload.size() || payload.size() - cursor < 5 ||
 			payload[cursor] > 1) return false;
 		parsed.shaderAvailable = payload[cursor++] != 0;

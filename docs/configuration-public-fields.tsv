@@ -88,6 +88,10 @@ vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	Color / Output (legacy s
 vprenderer.target_primaries	vprenderer-target-primaries	Color / Output (legacy spelling)	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	Color / Output (legacy spelling)	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	Color / Output (legacy spelling)	no
+output_display.monitor	output-display-mode-policy	Display profiles	no
+output_display.mode_policy	output-display-mode-policy	Display profiles	no
+output_display.allowed_modes	output-display-mode-policy	Display profiles	no
+output_display.restore_previous_mode	output-display-mode-policy	Display profiles	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
 general.profile_change_display_seconds	general-profile-change-display	General display	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no

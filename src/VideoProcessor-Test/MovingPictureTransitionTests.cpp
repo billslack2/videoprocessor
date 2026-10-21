@@ -3,9 +3,11 @@
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/GradualPictureBoundaryRetention.h>
 #include <vprenderer/SubtitleAspectRetention.h>
+#include <SubtitleBoxLookahead.h>
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace AlphaSourceCrop;
@@ -14,6 +16,65 @@ namespace Tests
 {
     namespace
     {
+        struct CaptionMotionPixels
+        {
+            static constexpr int width=3840,height=2160;
+            bool p210;
+            std::vector<uint16_t> words;
+            explicit CaptionMotionPixels(bool fullChroma=false):p210(fullChroma),
+                words(size_t(width)*(height+(fullChroma?height:height/2)),uint16_t(512<<6)) {}
+            void Rectangle(int left,int top,int right,int bottom,int luma) {
+                for(int y=top;y<bottom;++y)
+                    std::fill(words.begin()+size_t(y)*width+left,words.begin()+size_t(y)*width+right,uint16_t(luma<<6));
+            }
+            void Draw(int top,int bottom,bool caption=true,int captionShift=0,bool darkSides=false) {
+                for(int y=0;y<height;++y)
+                    std::fill(words.begin()+size_t(y)*width,words.begin()+size_t(y+1)*width,
+                        uint16_t((y>=top && y<bottom?300:64)<<6));
+                if(darkSides) {
+                    // Genuine dim picture fades smoothly into both side edges.
+                    // A horizontal bar candidate has no trustworthy boundary;
+                    // the strict vertical-only proof must preserve all columns.
+                    for(int y=top;y<bottom;++y)
+                        for(int x=0;x<640;++x) {
+                            const auto code=uint16_t((68+(300-68)*x/640)<<6);
+                            words[size_t(y)*width+x]=code;
+                            words[size_t(y)*width+(width-1-x)]=code;
+                        }
+                }
+                if(!caption)return;
+                Rectangle(1190,1916+captionShift,2650,2032+captionShift,64);
+                for(int glyph=0;glyph<26;++glyph) {
+                    const int x=1210+glyph*52;
+                    Rectangle(x,1930+captionShift,x+34,2012+captionShift,800);
+                    Rectangle(x+8,1940+captionShift,x+26,2002+captionShift,64);
+                }
+            }
+            AnalysisLumaSource Source() const {
+                return {reinterpret_cast<const uint8_t*>(words.data()),words.size()*2,width,height,
+                    size_t(width)*2,size_t(width)*2,p210?AnalysisLumaFormat::P210:AnalysisLumaFormat::P010,
+                    p210?VideoFrameEncoding::V210:VideoFrameEncoding::UNKNOWN,ColorSpace::REC_709,7};
+            }
+            SubtitleAssistedVerticalBarProof Proof(const ActivePictureFrameIdentity& identity,
+                uint64_t policy=41,uint64_t continuity=9) const {
+                const auto source=Source();const auto raw=ExtractActivePictureEvidence(source);
+                SubtitleBoxDetector scanner;scanner.SetScriptHint(SubtitleScriptHint::Latin);
+                scanner.SetNearBarDistance(20);
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=identity;
+                const auto observation=SubtitleBoxLookahead::Measure(scanner,source,raw,identity,false,{},policy,continuity,shared);
+                const auto proof=EvaluateSubtitleAssistedVerticalBarProof(source,raw,observation,identity,policy,continuity,SubtitleScriptHint::Latin);
+                if(!proof.accepted) {
+                    std::ostringstream detail;detail<<"Native caption fixture proof="<<proof.reason
+                        <<" detected="<<observation.text.detected<<" detector="<<observation.text.diagnosticReason
+                        <<" physical="<<observation.pictureTop<<".."<<observation.pictureBottom
+                        <<" independent="<<observation.independentBarAnalysis<<" raw_class="<<int(raw.classification)
+                        <<" raw="<<raw.proposedBounds.top<<".."<<raw.proposedBounds.bottom;
+                    Logger::WriteMessage(detail.str().c_str());
+                }
+                return proof;
+            }
+        };
+
         struct MotionSequence
         {
             TransitionAdmissionInput input;
@@ -67,6 +128,589 @@ namespace Tests
     TEST_CLASS(MovingPictureTransitionTests)
     {
     public:
+        TEST_METHOD(CurrentNativeSubtitleBarsAcquireGradualHoldBeforeIntermediatePublication)
+        {
+            for(bool p210:{false,true}) {
+                CaptionMotionPixels caption(p210),clean(p210);
+                MotionSequence s,control;
+                ActivePictureTransitionModel model;
+                for(uint64_t sequence=1;sequence<=4;++sequence)
+                    model.Observe({s.input.trustedGeometry,sequence,true,ActivePictureClassification::BAR_CROP_TRUSTED,23.976});
+                Input crop;crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                crop.geometry=s.input.trustedGeometry;crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.geometrySourceGeneration=crop.frameSourceGeneration=7;crop.frameSourceSequence=99;
+                crop.framePresentationEpoch=17;crop.rasterWidth=3840;crop.rasterHeight=2160;
+                auto displayed=AdmitCropPresentation({},crop,Evaluate(crop),17);
+                Assert::IsFalse(displayed.blocked);
+                int acquired=-1,controlAcquired=-1;bool captionBiasedRawSeen=false;
+                for(int frame=0;frame<18;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1),bottom=2160-top;
+                    caption.Draw(top,bottom);clean.Draw(top,bottom,false);
+                    const auto proof=caption.Proof(s.identity);
+                    std::ostringstream detail;detail<<"Native caption ramp P210="<<p210<<" frame="<<frame<<" proof="<<proof.reason;
+                    Logger::WriteMessage(detail.str().c_str());
+                    const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                    Assert::IsTrue(proof.accepted,wide.c_str());
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.translationDriftActive=true;s.input.previousOutward.verticalPresentationSeen=true;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(caption.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(caption.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    captionBiasedRawSeen|=proof.evidence.proposedBounds.bottom!=proof.candidate.bottom;
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        caption.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                    control.Target(top);control.input.evidence=ExtractActivePictureEvidence(clean.Source());
+                    control.input.outwardCandidate=control.input.evidence.trustedBounds;
+                    control.input.sourceSequence=control.identity.acceptedSequence;
+                    control.input.retention=EvaluateActivePicturePresentationRetention(clean.Source(),control.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(clean.Source(),control.input.trustedGeometry,
+                        control.input.outwardCandidate,control.input.retention);
+                    control.motion=ObserveMovingPictureTransition(control.motion,control.identity,control.input);
+                    if(s.motion.active && acquired<0)acquired=frame;
+                    if(control.motion.active && controlAcquired<0)controlAcquired=frame;
+                    auto admission=EvaluateTransitionAdmission(s.input);
+                    ConstrainMovingPictureTransition(s.motion,admission);
+                    const auto transition=model.Observe(admission.observation);
+                    Assert::IsFalse(transition.publish,L"Captioned continuous motion must not publish intermediate aspects.");
+                    if(s.motion.active) {
+                        Assert::IsTrue(s.motion.subtitleAssistedBars);
+                        crop.frameSourceSequence=s.identity.acceptedSequence;
+                        crop.movingPictureTransition=true;crop.movingPictureHold.base=crop.geometry;
+                        crop.movingPictureHold.sourceGeneration=7;crop.movingPictureHold.sourceSequence=crop.frameSourceSequence;
+                        crop.movingPictureHold.presentationEpoch=17;crop.movingPictureHold.subtitleAssistedBars=s.motion.subtitleAssistedBars;
+                        crop.movingPictureHold.verticalFitOnly=true;crop.movingPictureHold.competingPresentation=true;
+                        crop.verticalFitConfirmationPending=true;
+                        crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBounds=crop.geometry;
+                        crop.currentVisibleBounds.bottom=2076;crop.currentVisibleBase=crop.geometry;
+                        crop.currentVisibleSourceGeneration=7;crop.currentVisibleSourceSequence=crop.frameSourceSequence;
+                        for(bool confirmedFit:{false,true})
+                        for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground}) {
+                            auto routed=crop;
+                            routed.movingPictureHold.competingPresentation=confirmedFit;
+                            Assert::IsTrue(RouteAdvancedMovingPictureHold(routed,mode),
+                                L"Exact current subtitle-assisted motion must supersede only legacy vertical FIT.");
+                            const auto actual=AdmitCropPresentation(displayed.state,routed,Evaluate(routed),17);
+                            Assert::IsFalse(actual.blocked);Assert::IsTrue(actual.presentation.applyCrop);
+                            Assert::IsTrue(actual.presentation.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                            Assert::AreEqual(crop.geometry.top,actual.presentation.sourceBounds.top);
+                            Assert::AreEqual(crop.geometry.bottom,actual.presentation.sourceBounds.bottom);
+                        }
+                        for(int conflict=0;conflict<3;++conflict) {
+                            auto blocked=crop;
+                            if(conflict==0)blocked.movingPictureHold.subtitleAssistedBars=false;
+                            if(conflict==1)blocked.movingPictureHold.verticalFitOnly=false;
+                            if(conflict==2)blocked.barCropRefinementHorizontalConflict=true;
+                            Assert::IsFalse(RouteAdvancedMovingPictureHold(blocked,SubtitlePreviewMode::GeneratedGrayBackground),
+                                L"Generic FIT, missing assisted provenance, and horizontal conflicts retain their competing ownership.");
+                            Assert::IsFalse(HasCurrentMovingPictureHold(blocked));
+                        }
+                    }
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                    ++control.identity.acceptedSequence;++control.identity.sourceFrameNumber;control.identity.captureTimestamp+=417083;
+                }
+                Assert::IsTrue(captionBiasedRawSeen,L"Fixture must reproduce a raw caption envelope different from the physical picture.");
+                Assert::IsTrue(acquired>=0 && acquired<=7,L"Motion must be detected before intermediate crops cross the ordinary geometry deadband.");
+                Assert::IsTrue(controlAcquired>=0 && acquired<=controlAcquired,
+                    L"A current caption may prove native motion earlier, but must never postpone acquisition compared with the same picture without text.");
+            }
+        }
+        TEST_METHOD(GuardedVerticalSubtitleBarsAcquireMotionDespiteDimUncertainSides)
+        {
+            for(bool p210:{false,true}) {
+                CaptionMotionPixels pixels(p210);MotionSequence s;ActivePictureTransitionModel model;
+                for(uint64_t sequence=1;sequence<=4;++sequence)
+                    model.Observe({s.input.trustedGeometry,sequence,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+                int acquired=-1;bool sideFailureSeen=false,captionBiasedRawSeen=false;
+                for(int frame=0;frame<18;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1),bottom=2160-top;
+                    pixels.Draw(top,bottom,true,0,true);const auto source=pixels.Source();
+                    const auto raw=ExtractActivePictureEvidence(source);const auto proof=pixels.Proof(s.identity);
+                    if(frame==0) {
+                        std::ostringstream diagnostic;diagnostic<<"Dim side caption ramp P210="<<p210
+                            <<" horizontal="<<int(raw.axisEvidence.horizontal.state)
+                            <<" reason="<<int(raw.axisEvidence.horizontal.reason)
+                            <<" proposed="<<raw.proposedBounds.left<<","<<raw.proposedBounds.top
+                            <<".."<<raw.proposedBounds.right<<","<<raw.proposedBounds.bottom;
+                        Logger::WriteMessage(diagnostic.str().c_str());
+                    }
+                    Assert::IsTrue(proof.accepted,L"Dim uncertain sides must not invalidate independently proved vertical caption bars.");
+                    Assert::IsTrue(raw.axisEvidence.horizontal.FailedBar() &&
+                        raw.axisEvidence.horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED,
+                        L"The fixture must reproduce the native failed horizontal bar candidate from the recorded regression.");
+                    sideFailureSeen=true;
+                    Assert::IsTrue(proof.evidence.verticalBarGuardProfile.completed && proof.evidence.verticalBarGuardProfile.clean);
+                    Assert::IsTrue(proof.evidence.axisEvidence.HasVerifiedVerticalCropProfile(proof.candidate));
+                    Assert::IsTrue(proof.evidence.axisEvidence.verticalCropGlyphExclusions);
+                    Assert::AreEqual(top-8,proof.candidate.top);Assert::AreEqual(bottom+8,proof.candidate.bottom);
+                    Assert::AreEqual(0,proof.candidate.left);Assert::AreEqual(CaptionMotionPixels::width,proof.candidate.right);
+                    captionBiasedRawSeen|=raw.proposedBounds.bottom!=proof.candidate.bottom;
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(source,s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(source,s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        source,proof,41,9,SubtitleScriptHint::Latin);
+                    if(s.motion.active && acquired<0)acquired=frame;
+                    auto admission=EvaluateTransitionAdmission(s.input);ConstrainMovingPictureTransition(s.motion,admission);
+                    const auto transition=model.Observe(admission.observation);
+                    Assert::IsFalse(transition.publish,L"A failed horizontal candidate cannot expose intermediate vertical aspects during a proved ramp.");
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                Assert::IsTrue(sideFailureSeen && captionBiasedRawSeen,
+                    L"The fixture must combine failed horizontal bars with a subtitle-biased raw vertical proposal.");
+                Assert::IsTrue(acquired>=0 && acquired<=7,
+                    L"The exact guarded vertical proof must acquire motion before ordinary geometry publication, despite uncertain sides.");
+            }
+        }
+        TEST_METHOD(SubtitleAssistedMotionRejectsStaleProofAndUnrelatedPictureOwners)
+        {
+            for(int fault=0;fault<16;++fault) {
+                CaptionMotionPixels pixels;
+                MotionSequence s;
+                for(int frame=0;frame<10;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1);
+                    pixels.Draw(top,2160-top);
+                    auto source=pixels.Source();auto proof=pixels.Proof(s.identity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(source,s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(source,s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    auto selected=s.identity;bool classic=false;
+                    switch(fault) {
+                    case 0: --proof.identity.acceptedSequence;break;
+                    case 1: ++proof.policyGeneration;break;
+                    case 2: ++proof.continuityGeneration;break;
+                    case 3: proof.scriptHint=SubtitleScriptHint::Thai;break;
+                    case 4: ++s.input.sourceGeneration;break;
+                    case 5: ++selected.analysisDomainKey;break;
+                    case 6: proof.candidate.top-=2;break;
+                    case 7: proof.accepted=false;break;
+                    case 8: ++source.generation;break;
+                    case 9: classic=true;break;
+                    case 10: s.input.presentation.action=VerticalBarPresentationAction::FAIL_OPEN;break;
+                    case 11: --proof.identity.captureTimestamp;break;
+                    case 12: ++proof.identity.sourceFormatGeneration;break;
+                    case 13: s.input.retention.globalNearBlack=true;s.input.retention.distributedDarkPicture=false;break;
+                    case 14: s.input.retention.analysisValid=false;break;
+                    }
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,selected,s.input,classic,
+                        source,proof,41,9,SubtitleScriptHint::Latin);
+                    Assert::IsFalse(s.motion.active,L"Stale or unrelated proof cannot clear a competing picture owner or acquire motion.");
+                    s.input.sourceGeneration=7;
+                    s.identity.acceptedSequence+=fault==15?2:1;
+                    s.identity.sourceFrameNumber+=fault==15?2:1;
+                    s.identity.captureTimestamp+=fault==15?834166:417083;
+                }
+            }
+        }
+        TEST_METHOD(AdjacentUnknownSubtitleProofKeepsOnlySeedAnchorUntilFreshMotionIsConfirmed)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            s.input.trustedGeometry.top=274;s.input.trustedGeometry.bottom=1886;
+            s.input.trustedGeometry.aspectRatio=3840.0/(1886-274);
+            s.input.presentationBeforeObservation=s.input.trustedGeometry;
+            ActivePictureTransitionModel model;
+            for(uint64_t sequence=1;sequence<=4;++sequence)
+                model.Observe({s.input.trustedGeometry,sequence,true,ActivePictureClassification::BAR_CROP_TRUSTED,23.976});
+            int acquired=-1;
+            for(int frame=0;frame<14;++frame) {
+                const int top=266-2*frame;
+                pixels.Draw(top,2160-top);
+                auto proof=pixels.Proof(s.identity);Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                if(frame==2)proof.accepted=false;
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                if(frame<=4)Assert::IsFalse(s.motion.active,
+                    L"An unknown source proof and fewer than three fresh directional samples cannot acquire a picture hold.");
+                if(s.motion.active && acquired<0)acquired=frame;
+                auto admission=EvaluateTransitionAdmission(s.input);
+                ConstrainMovingPictureTransition(s.motion,admission);
+                const auto decision=model.Observe(admission.observation);
+                Assert::IsFalse(decision.publish,L"An adjacent proof gap cannot expose intermediate ramp geometry before the existing hold is acquired.");
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+            Assert::IsTrue(acquired>=5 && acquired<=6,
+                L"Retain the last valid anchor through an adjacent unknown proof, then require fresh directional motion before the geometry deadband.");
+        }
+        TEST_METHOD(UnknownSubtitleSeedCannotBridgeAnUnseenPictureJump)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            s.input.trustedGeometry.top=274;s.input.trustedGeometry.bottom=1886;
+            s.input.trustedGeometry.aspectRatio=3840.0/(1886-274);
+            s.input.presentationBeforeObservation=s.input.trustedGeometry;
+            const int topRows[]={266,264,262,260,220,218,216,214};
+            for(int frame=0;frame<8;++frame) {
+                const int top=topRows[frame];pixels.Draw(top,2160-top);
+                auto proof=pixels.Proof(s.identity);Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                if(frame==2 || frame==3)proof.accepted=false;
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                Assert::IsFalse(s.motion.active,
+                    L"A cut hidden during a proof gap must reset the anchor; three tiny later changes cannot borrow the old displacement.");
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+        }
+
+        TEST_METHOD(ActiveSubtitleMotionUnknownCannotSettleAndRealPictureChangesStillRetireHold)
+        {
+            for(int ending=0;ending<3;++ending) {
+                CaptionMotionPixels pixels;MotionSequence s;
+                for(int frame=0;frame<12;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1);
+                    pixels.Draw(top,2160-top);const auto proof=pixels.Proof(s.identity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                Assert::IsTrue(s.motion.active && s.motion.subtitleAssistedBars);
+                for(int unknown=0;unknown<10;++unknown) {
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),{},41,9,SubtitleScriptHint::Latin);
+                    Assert::IsTrue(s.motion.active,L"Unknown same-context caption proof must not restore legacy FIT mid-ramp.");
+                    Assert::AreEqual(uint32_t(0),s.motion.quietSamples,L"Unknown pixels cannot count as a settled endpoint.");
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                if(ending==0) {
+                    ++s.identity.analysisDomainKey;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),{},41,9,SubtitleScriptHint::Latin);
+                } else {
+                    const int top=ending==1?0:96;
+                    pixels.Draw(top,2160-top,false);
+                    s.input.evidence=ExtractActivePictureEvidence(pixels.Source());
+                    s.input.outwardCandidate=s.input.evidence.trustedBounds;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,
+                        s.input.outwardCandidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),{},41,9,SubtitleScriptHint::Latin);
+                }
+                Assert::IsFalse(s.motion.active,L"A new analysis domain, native full raster, or abrupt picture cut must still end the moving hold.");
+            }
+        }
+
+        TEST_METHOD(SubtitleMovementAloneCannotStartPhysicalPictureMotion)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            for(int frame=0;frame<12;++frame) {
+                pixels.Draw(s.input.trustedGeometry.top,s.input.trustedGeometry.bottom,true,-frame*2);
+                const auto source=pixels.Source();const auto proof=pixels.Proof(s.identity);
+                Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(source,s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(source,s.input.trustedGeometry,proof.candidate,s.input.retention);
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    source,proof,41,9,SubtitleScriptHint::Latin);
+                Assert::IsFalse(s.motion.active,L"A moving subtitle inside a stationary physical aperture is not a moving-picture transition.");
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+        }
+
+        TEST_METHOD(BoundedNativeRampAcrossUnknownSubtitleFramesRequiresFreshQuietEndpoint)
+        {
+            for(bool p210:{false,true}) {
+                CaptionMotionPixels pixels(p210);MotionSequence s;
+                for(int frame=0;frame<23;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1);
+                    pixels.Draw(top,2160-top);auto proof=pixels.Proof(s.identity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    const bool unknown=frame>=12 && frame<22;
+                    if(unknown)proof.accepted=false;
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                    if(frame>=11)Assert::IsTrue(s.motion.active,
+                        L"Ten adjacent unknown caption samples cannot end a real bounded gradual picture ramp.");
+                    if(unknown)Assert::AreEqual(uint32_t(0),s.motion.quietSamples);
+                    if(frame==22)Assert::IsTrue(s.motion.quietSamples<=1,
+                        L"The returning native proof starts fresh quiet evidence after the bounded gap.");
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                const auto endpoint=s.input.outwardCandidate;
+                bool reachedQuiet=false;
+                for(int quiet=0;quiet<9 && s.motion.active;++quiet) {
+                    pixels.Draw(endpoint.top,endpoint.bottom);const auto proof=pixels.Proof(s.identity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                    reachedQuiet|=s.motion.awaitingPublication;
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                Assert::IsTrue(reachedQuiet && !s.motion.active,L"Only fresh proved stationary edges may settle the preserved ramp.");
+            }
+        }
+        TEST_METHOD(NonadjacentUnknownCaptionGapRetainsPoseAndReseedsNativePosition)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            for(int frame=0;frame<16;++frame) {
+                // Twenty real source intervals passed before this unmeasured
+                // packet. The picture continued its two-pixel-per-frame ramp.
+                if(frame==12) {
+                    s.identity.acceptedSequence+=19;s.identity.sourceFrameNumber+=19;
+                    s.identity.captureTimestamp+=19*417083;
+                }
+                const int top=frame<12?s.input.trustedGeometry.top-2*(frame+1):212-2*(frame-12);
+                pixels.Draw(top,2160-top);auto proof=pixels.Proof(s.identity);
+                Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                const bool unknown=frame==12 || frame==13;
+                if(unknown)proof.accepted=false;
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                if(frame>=11)Assert::IsTrue(s.motion.active,
+                    L"A source gap invalidates native positions without returning the admitted moving pose to legacy FIT.");
+                if(unknown) {
+                    Assert::AreEqual(0,s.motion.last.rasterHeight,
+                        L"Neither the source gap nor the next unknown packet may retain a pre-gap native jump anchor.");
+                    Assert::AreEqual(uint32_t(0),s.motion.quietSamples);
+                }
+                if(frame==14) {
+                    Assert::AreEqual(proof.candidate.top,s.motion.last.top);
+                    Assert::AreEqual(uint32_t(0),s.motion.quietSamples,
+                        L"The first fresh proof only reseeds native position; it cannot compare with a pre-gap edge or count as quiet.");
+                }
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+        }
+        TEST_METHOD(SubtitleAssistedQuietEndpointPublishesWithCaptionStillPresent)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;ActivePictureTransitionModel model;
+            for(uint64_t frame=1;frame<=4;++frame)
+                model.Observe({s.input.trustedGeometry,frame,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+            bool published=false;bool becameActive=false;
+            ActivePictureBounds endpoint;
+            for(int frame=0;frame<40 && !published;++frame) {
+                const int top=s.input.trustedGeometry.top-2*(std::min)(frame+1,18);
+                pixels.Draw(top,2160-top);const auto proof=pixels.Proof(s.identity);
+                Assert::IsTrue(proof.accepted,L"The caption remains independently detected throughout endpoint confirmation.");
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;endpoint=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                becameActive|=s.motion.active;
+                auto admission=EvaluateTransitionAdmission(s.input);
+                ConstrainMovingPictureTransition(s.motion,admission);
+                const auto transition=model.Observe(admission.observation);
+                s.input.previousOutward=admission.outward.state;
+                if(frame<18)Assert::IsFalse(transition.publish,L"Continuous native movement cannot publish an intermediate crop.");
+                if(transition.publish) {
+                    Assert::IsFalse(s.motion.active,L"Endpoint publication must wait for freshly proved quiet picture edges.");
+                    Assert::AreEqual(endpoint.top,transition.bounds.top);Assert::AreEqual(endpoint.bottom,transition.bounds.bottom);
+                    CompleteMovingPictureTransition(s.motion,s.input,transition);
+                    Assert::IsFalse(HasCurrentMovingPictureTransition(s.motion,7,s.input.sourceSequence));
+                    published=true;
+                }
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+            Assert::IsTrue(becameActive && published,L"A stable endpoint must publish through normal admission while the subtitle remains present.");
+        }
+        TEST_METHOD(CurrentNativePictureProofSettlesRampAfterCaptionLeavesTheBar)
+        {
+            for(bool p210:{false,true})
+            for(bool darkSides:{false,true}) {
+                CaptionMotionPixels pixels(p210);MotionSequence s;
+                bool acquired=false,nativeTakeover=false,settled=false;
+                for(int frame=0;frame<94 && !settled;++frame) {
+                    const int top=(std::max)(96,250-2*frame),bottom=2160-top;
+                    pixels.Draw(top,bottom,true,0,darkSides);const auto source=pixels.Source();
+                    const auto raw=ExtractActivePictureEvidence(source);
+                    const auto proof=pixels.Proof(s.identity);
+                    if(frame<6)Assert::IsTrue(proof.accepted,
+                        L"The ramp must begin with a currently detected bar-occluding caption.");
+                    s.input.evidence=proof.accepted?proof.evidence:raw;
+                    s.input.outwardCandidate=proof.accepted?proof.candidate:raw.trustedBounds;
+                    s.input.sourceSequence=s.identity.acceptedSequence;
+                    // Legacy FIT can still be present for the original caption.
+                    // Only current strict native picture evidence may replace the
+                    // independent caption/bar certificate once text is fully inside.
+                    s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(source,s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(source,s.input.trustedGeometry,s.input.outwardCandidate,s.input.retention);
+                    if(top==96) {
+                        Assert::IsFalse(proof.accepted,
+                            L"The fixed caption is no longer near or overlapping the measured native black bar.");
+                        Assert::IsTrue(raw.available && raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                        const int guard=darkSides?8:0;
+                        Assert::AreEqual(top-guard,raw.trustedBounds.top);Assert::AreEqual(bottom+guard,raw.trustedBounds.bottom);
+                        Assert::AreEqual(top,raw.proposedBounds.top);Assert::AreEqual(bottom,raw.proposedBounds.bottom);
+                        Assert::IsTrue(pixels.words[size_t(1930)*CaptionMotionPixels::width+1210]==uint16_t(800<<6),
+                            L"The caption remains visible inside the physical picture while native bars settle.");
+                        if(darkSides) {
+                            Assert::IsTrue(raw.axisEvidence.horizontal.FailedBar());
+                            Assert::IsTrue(raw.axisEvidence.HasVerifiedVerticalCropProfile(raw.trustedBounds));
+                            Assert::IsFalse(raw.axisEvidence.verticalCropGlyphExclusions,
+                                L"Native takeover must use a current unmasked strict profile, without borrowing subtitle erasure ownership.");
+                            Assert::IsTrue(raw.verticalBarGuardProfile.completed && raw.verticalBarGuardProfile.clean);
+                            Assert::AreEqual(raw.trustedBounds.top,raw.verticalBarGuardProfile.apertureTop);
+                            Assert::AreEqual(raw.trustedBounds.bottom,raw.verticalBarGuardProfile.apertureBottom);
+                            if(!nativeTakeover) {
+                                for(int fault=0;fault<9;++fault) {
+                                    auto invalid=s.input;
+                                    switch(fault) {
+                                    case 0: invalid.evidence.verticalBarGuardProfile.completed=false;break;
+                                    case 1: invalid.evidence.verticalBarGuardProfile.clean=false;break;
+                                    case 2: invalid.evidence.verticalBarGuardProfile.apertureTop-=2;break;
+                                    case 3: invalid.evidence.axisEvidence.verticalCropProfileEvaluated=false;break;
+                                    case 4: invalid.evidence.axisEvidence.verticalCropGlyphExclusions=true;break;
+                                    case 5: invalid.evidence.proposedBounds.bottom+=2;break;
+                                    case 6: invalid.evidence.axisEvidence.sidePictureTop-=2;break;
+                                    case 7: invalid.evidence.top.trusted=false;break;
+                                    case 8: invalid.evidence.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+                                    }
+                                    const auto rejected=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,invalid,false,
+                                        source,proof,41,9,SubtitleScriptHint::Latin);
+                                    Assert::IsTrue(rejected.active,L"Invalid guarded metadata may retain the pose, but cannot certify a new position or endpoint.");
+                                    Assert::AreEqual(uint32_t(0),rejected.quietSamples,
+                                        L"Incomplete, masked, misbound, or non-native vertical profiles cannot contribute quiet evidence.");
+                                }
+                            }
+                        }
+                        nativeTakeover=true;
+                    }
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        source,proof,41,9,SubtitleScriptHint::Latin);
+                    acquired|=s.motion.active && s.motion.subtitleAssistedBars;
+                    if(acquired && !s.motion.active) {
+                        Assert::AreEqual(96,top,L"A continuing gradual ramp must retain the original presentation until its actual endpoint.");
+                        Assert::IsTrue(s.motion.awaitingPublication && nativeTakeover,
+                            L"Fresh native picture proof must settle the episode even after caption-assisted bar proof is unavailable.");
+                        settled=true;
+                    }
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+                Assert::IsTrue(acquired && nativeTakeover && settled,
+                    L"Caption ownership may not freeze an old crop after current native bars establish a quiet endpoint.");
+            }
+        }
+        TEST_METHOD(GuardedRawVerticalBarsCannotAcquireSubtitleMotionWithoutAnExistingEpisode)
+        {
+            for(bool p210:{false,true}) {
+                CaptionMotionPixels pixels(p210);MotionSequence s;
+                for(int frame=0;frame<12;++frame) {
+                    const int top=96-2*frame;pixels.Draw(top,2160-top,true,0,true);
+                    const auto source=pixels.Source();const auto raw=ExtractActivePictureEvidence(source);
+                    const auto proof=pixels.Proof(s.identity);
+                    Assert::IsFalse(proof.accepted);
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                        raw.axisEvidence.HasVerifiedVerticalCropProfile(raw.trustedBounds));
+                    Assert::IsFalse(raw.axisEvidence.verticalCropGlyphExclusions);
+                    s.input.evidence=raw;s.input.outwardCandidate=raw.trustedBounds;
+                    s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(source,s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(source,s.input.trustedGeometry,s.input.outwardCandidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        source,proof,41,9,SubtitleScriptHint::Latin);
+                    Assert::IsFalse(s.motion.active || s.motion.awaitingPublication,
+                        L"Unmasked guarded raw bars can continue only a previously acquired subtitle-assisted pose.");
+                    Assert::AreEqual(0,s.motion.last.rasterHeight,
+                        L"The continuation exception may not manufacture a subtitle-motion acquisition seed.");
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+            }
+        }
+        TEST_METHOD(ClassicNoneDoesNotBorrowSubtitleBarsToReplaceMissingBroadPictureProof)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            for(int frame=0;frame<12;++frame) {
+                const int top=s.input.trustedGeometry.top-2*(frame+1);
+                pixels.Draw(top,2160-top);const auto proof=pixels.Proof(s.identity);Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::NONE;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                s.input.retention.expansionStripsAvailable=false;
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,true,
+                    pixels.Source(),proof,41,9,SubtitleScriptHint::Latin);
+                Assert::IsFalse(s.motion.active,L"Classic NONE must retain its original broad native picture proof contract.");
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+        }
+        TEST_METHOD(SubtitleRulesRetireActiveMotionWhileContinuityOnlyReseedsProof)
+        {
+            for(int changed=0;changed<3;++changed) {
+                CaptionMotionPixels pixels;MotionSequence s;
+                for(int frame=0;frame<13;++frame) {
+                    const int top=s.input.trustedGeometry.top-2*(frame+1);
+                    const uint64_t policy=changed==0 && frame==12?42:41;
+                    const uint64_t continuity=changed==1 && frame==12?10:9;
+                    const auto script=changed==2 && frame==12?SubtitleScriptHint::Thai:SubtitleScriptHint::Latin;
+                    pixels.Draw(top,2160-top);const auto proof=pixels.Proof(s.identity,policy,continuity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                    s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                    s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                    ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                    s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                        pixels.Source(),proof,policy,continuity,script);
+                    if(frame==11)Assert::IsTrue(s.motion.active);
+                    if(frame==12) {
+                        if(changed==1) {
+                            Assert::IsTrue(s.motion.active && s.motion.subtitleAssistedBars,
+                                L"A continuity-only queue or analysis gap must retain an already admitted same-context pose.");
+                            Assert::AreEqual(uint32_t(0),s.motion.directionalChanges);
+                            Assert::AreEqual(uint32_t(0),s.motion.quietSamples,
+                                L"Fresh proof after continuity changes reseeds position without quiet credit.");
+                        } else Assert::IsFalse(s.motion.active,
+                            L"Changing subtitle policy or script must start fresh motion confirmation.");
+                    }
+                    ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+                }
+            }
+        }
+
+        TEST_METHOD(ContinuityChangeCannotPreserveAnUnacquiredSubtitleMotionSeed)
+        {
+            CaptionMotionPixels pixels;MotionSequence s;
+            for(int frame=0;frame<8;++frame) {
+                const int top=268-2*frame;
+                const uint64_t continuity=frame<4?9:10;
+                pixels.Draw(top,2160-top);const auto proof=pixels.Proof(s.identity,41,continuity);
+                Assert::IsTrue(proof.accepted);
+                s.input.evidence=proof.evidence;s.input.outwardCandidate=proof.candidate;
+                s.input.sourceSequence=s.identity.acceptedSequence;s.input.presentation.action=VerticalBarPresentationAction::FIT;
+                s.input.retention=EvaluateActivePicturePresentationRetention(pixels.Source(),s.input.trustedGeometry);
+                ResampleActivePictureExpansionStrips(pixels.Source(),s.input.trustedGeometry,proof.candidate,s.input.retention);
+                s.motion=ObserveSubtitleAssistedMovingPictureTransition(s.motion,s.identity,s.input,false,
+                    pixels.Source(),proof,41,continuity,SubtitleScriptHint::Latin);
+                Assert::IsFalse(s.motion.active || s.motion.awaitingPublication,
+                    L"A pending seed cannot borrow displacement or direction from before a continuity change.");
+                if(frame==4)Assert::AreEqual(uint32_t(0),s.motion.directionalChanges);
+                ++s.identity.acceptedSequence;++s.identity.sourceFrameNumber;s.identity.captureTimestamp+=417083;
+            }
+        }
+
         TEST_METHOD(SustainedOpposingMotionPrecedesTwoPercentDeadbandAcrossRatesAndRasters)
         {
             for (int height : {1080,2160})

@@ -94,6 +94,10 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClCompile Include="..\VideoProcessor-Lib\ConfigFile.cpp">
       <ObjectFileName>$(IntDir)ConfigFileStandalone.obj</ObjectFileName>
     </ClCompile>
+    <ClCompile Include="..\VideoProcessor-Lib\DisplayRefreshRatePolicy.cpp">
+      <ObjectFileName>$(IntDir)DisplayRefreshRatePolicy.obj</ObjectFileName>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ToneMappingControl.h" />

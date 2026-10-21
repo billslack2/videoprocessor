@@ -14,6 +14,7 @@
 #include "HdrTargetLuminance.h"
 #include "ToneMappingTuning.h"
 #include "MotionConfig.h"
+#include "DisplayRefreshRatePolicy.h"
 
 #include <algorithm>
 #include <cctype>
@@ -60,6 +61,8 @@ namespace RendererProfileConfig
 			section == "profiles.scaling" ||
 			section == "profiles.display" ||
 			section == "profiles.viewport" ||
+			section == "output_display" ||
+			section.rfind("output_display.", 0) == 0 ||
 			section == "event_actions" ||
 			section == "display_rules" ||
 			section == "refresh_rate_commands" ||
@@ -704,6 +707,23 @@ namespace RendererProfileConfig
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
 			expected = "a display-owned setting"; return false;
 		}
+		if (group == "output_display")
+		{
+            if (key == "monitor") return !ConfigFile::Trim(value).empty() && value.size() <= 1024 &&
+                std::none_of(value.begin(), value.end(), [](unsigned char c) { return c < 32; });
+			if (key == "mode_policy") return IsChoice(value, { "auto", "advanced" });
+			if (key == "restore_previous_mode") return IsBoolean(value);
+			if (key == "allowed_modes")
+			{
+				std::vector<DisplayOutputMode> modes;
+				std::string detail;
+				const bool valid = ParseDisplayOutputModeList(value, modes, detail);
+				expected = valid ? "an ordered list of complete display modes" : detail;
+				return valid;
+			}
+			expected = "monitor, mode_policy, allowed_modes, or restore_previous_mode";
+			return false;
+		}
 		if (group == "output")
 		{
 			if (key == "output_path_profile") return IsChoice(value, { "legacy", "proposed", "custom" });
@@ -949,6 +969,7 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (section.rfind("vprenderer.", 0) == 0 ||
 				section == "queue" || section.rfind("queue.", 0) == 0 ||
+				section == "output_display" || section.rfind("output_display.", 0) == 0 ||
 				section == "lldv" || section.rfind("lldv.", 0) == 0 ||
 				section == "directshow" || section.rfind("directshow.", 0) == 0 ||
 				section.rfind("shader.", 0) == 0 ||
@@ -1296,7 +1317,8 @@ namespace RendererProfileConfig
 			{ "zoom", "vprenderer.zoom", true },
             { "subtitles", "vprenderer.subtitles", true },
 			{ "queue", "queue", true },
-			{ "lldv", "lldv", true }
+			{ "lldv", "lldv", true },
+			{ "output_display", "output_display", true }
 		};
 		const std::set<std::string> expressionVariables = {
 			"eotf", "transfer", "colorspace", "primaries", "format",
@@ -1476,7 +1498,28 @@ namespace RendererProfileConfig
 				 !ValidateExpressionVariables(base.whenExpression,
 					expressionVariables, "[" + prefix + baselineName + "] when=", error)))
 				return false;
-            const auto validateToneProfile = [&](const Profile& candidate, const std::string& owner) {
+            const auto validateOutputDisplayProfile = [&](const Profile& candidate, const std::string& owner) {
+				if (group.name != "output_display") return true;
+				const auto policy = candidate.settings.find("mode_policy");
+				const bool advanced = policy != candidate.settings.end() &&
+					ConfigFile::NormalizeName(policy->second) == "advanced";
+				const auto modesValue = candidate.settings.find("allowed_modes");
+				std::vector<DisplayOutputMode> modes;
+				std::string detail;
+				if (modesValue != candidate.settings.end() &&
+					!ParseDisplayOutputModeList(modesValue->second, modes, detail))
+				{
+					error = "[" + owner + "] allowed_modes is invalid: " + detail;
+					return false;
+				}
+				if (advanced && modes.empty())
+				{
+					error = "[" + owner + "] Advanced mode requires at least one allowed mode";
+					return false;
+				}
+				return true;
+			};
+			const auto validateToneProfile = [&](const Profile& candidate, const std::string& owner) {
                 if (group.name != "display" && group.name != "input") return true;
                 std::string key, detail;
                 const bool valid = ToneMappingTuning::Validate([&](const char* name) {
@@ -1489,7 +1532,8 @@ namespace RendererProfileConfig
                 if (!valid) error = "[" + owner + "] " + detail;
                 return valid;
             };
-            if (!validateToneProfile(base, namedBaseline ? prefix + baselineName : section)) return false;
+            if (!validateToneProfile(base, namedBaseline ? prefix + baselineName : section) ||
+				!validateOutputDisplayProfile(base, namedBaseline ? prefix + baselineName : section)) return false;
 			model.profiles.emplace(group.name + "." + baselineName, base);
 
 			for (const std::string& variant : variants)
@@ -1573,7 +1617,8 @@ namespace RendererProfileConfig
 					 !ValidateExpressionVariables(profile.whenExpression,
 						expressionVariables, "[" + variantSection + "] when=", error)))
 					return false;
-                if (!validateToneProfile(profile, variantSection)) return false;
+                if (!validateToneProfile(profile, variantSection) ||
+				!validateOutputDisplayProfile(profile, variantSection)) return false;
 				group.profiles.push_back(variant);
 				model.profiles.emplace(group.name + "." + variant,
 					std::move(profile));
@@ -1812,6 +1857,7 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
+				section != "output_display" && section.rfind("output_display.", 0) != 0 &&
                 !ColorOutputProfileMigration::IsArchive(section) &&
                 !CalibrationProfileMigration::IsArchive(section) &&
 				section.rfind("actions.", 0) != 0 &&
@@ -2252,6 +2298,7 @@ namespace RendererProfileConfig
 			if (expectedSections.find(section) == expectedSections.end() &&
 				!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
+				section != "output_display" && section.rfind("output_display.", 0) != 0 &&
                 !ColorOutputProfileMigration::IsArchive(section) &&
                 !CalibrationProfileMigration::IsArchive(section))
 			{
@@ -2861,6 +2908,16 @@ namespace RendererProfileConfig
 			return false;
 		return true;
 	}
+
+    // Profiles already contain inherited settings after Read. An absent key
+    // preserves the legacy global target until Config migrates it on Save.
+    inline std::string ResolveOutputDisplayMonitor(const Model& model, const std::string& profileName)
+    {
+        const auto profile = model.profiles.find("output_display." + ConfigFile::NormalizeName(profileName));
+        if (profile == model.profiles.end()) return {};
+        const auto monitor = profile->second.settings.find("monitor");
+        return monitor == profile->second.settings.end() ? std::string() : ConfigFile::Trim(monitor->second);
+    }
 
 	inline bool ResolveLldv(const Model& model, const std::string& profileName,
 		ResolvedLldv& lldv, std::string& error)

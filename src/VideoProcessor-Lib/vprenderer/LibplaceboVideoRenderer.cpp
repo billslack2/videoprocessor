@@ -10,6 +10,7 @@
 
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
+#include <DisplayMonitorInventory.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -813,6 +814,11 @@ namespace
 		bool switchRefreshRate = true;
 		RefreshRateSwitchMode refreshRateSwitchMode =
 			RefreshRateSwitchMode::FullscreenOnly;
+		bool outputDisplayAdvanced = false;
+		bool restorePreviousDisplayMode = true;
+		std::vector<DisplayOutputMode> allowedDisplayModes;
+		std::string outputDisplayProfile;
+        std::string outputDisplayMonitor;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -949,7 +955,13 @@ namespace
 		stream
 			<< settings.configurationIdentity << '|' << settings.configurationPath << '|'
             << settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
-			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
+			<< static_cast<int>(settings.refreshRateSwitchMode) << '|'
+			<< settings.outputDisplayAdvanced << '|'
+			<< settings.restorePreviousDisplayMode << '|' << settings.outputDisplayMonitor << '|';
+		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
+			stream << mode.width << 'x' << mode.height << 'p'
+				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
+		stream << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.customToneMapping << '|'
@@ -1237,6 +1249,35 @@ namespace
 				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
                 if(group.name=="subtitles") { settings.subtitleProfileSettings=profile->second.settings; settings.subtitleProfileSelected=true; continue; }
+				if (group.name == "output_display")
+				{
+					const auto& values = profile->second.settings;
+					const auto policy = values.find("mode_policy");
+					settings.outputDisplayAdvanced = policy != values.end() &&
+						ConfigFile::NormalizeName(policy->second) == "advanced";
+					const auto modes = values.find("allowed_modes");
+					settings.allowedDisplayModes.clear();
+					if (modes != values.end())
+					{
+						std::string parseError;
+						if (!ParseDisplayOutputModeList(modes->second,
+							settings.allowedDisplayModes, parseError))
+							DebugLog::Log("output display profile '%s' has invalid allowed_modes: %s",
+								profileName.c_str(), parseError.c_str());
+					}
+					const auto restore = values.find("restore_previous_mode");
+					settings.restorePreviousDisplayMode = restore == values.end() ||
+						ConfigFile::NormalizeName(restore->second) == "true" ||
+						ConfigFile::NormalizeName(restore->second) == "yes" ||
+						ConfigFile::NormalizeName(restore->second) == "on" ||
+						ConfigFile::NormalizeName(restore->second) == "1";
+					settings.outputDisplayProfile = profileName;
+                    settings.outputDisplayMonitor = RendererProfileConfig::ResolveOutputDisplayMonitor(model, profileName);
+					if (!activeProfiles.empty()) activeProfiles += ", ";
+					activeProfiles += group.name + "/" + profileName;
+					if (manual) activeProfiles += " (manual)";
+					continue;
+				}
 				std::string section = "profiles." + group.name + "." + profileName;
 				if (RendererProfileConfig::IsTargetModel(config))
 				{
@@ -3098,27 +3139,16 @@ namespace
 		bool doubledRate = false;
 	};
 
-	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
-		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	bool QueryDxgiSupportedOutputModes(const std::wstring& displayDeviceName,
+		std::vector<DisplayOutputMode>& displayModes, bool progressiveOnly = true)
 	{
-		refreshRates.clear();
-		if (displayDeviceName.empty())
-			return false;
-
-		DEVMODEW currentMode{};
-		currentMode.dmSize = sizeof(currentMode);
-		if (!EnumDisplaySettingsW(displayDeviceName.c_str(),
-			ENUM_CURRENT_SETTINGS, &currentMode))
-		{
-			return false;
-		}
+		displayModes.clear();
+		if (displayDeviceName.empty()) return false;
 
 		CComPtr<IDXGIFactory1> factory;
 		if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) || !factory)
 			return false;
-
-		const DXGI_FORMAT formats[] =
-		{
+		const DXGI_FORMAT formats[] = {
 			DXGI_FORMAT_R8G8B8A8_UNORM,
 			DXGI_FORMAT_R10G10B10A2_UNORM
 		};
@@ -3127,65 +3157,109 @@ namespace
 			CComPtr<IDXGIAdapter1> adapter;
 			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
 				break;
-			if (!adapter)
-				continue;
+			if (!adapter) continue;
 			for (UINT outputIndex = 0;; ++outputIndex)
 			{
 				CComPtr<IDXGIOutput> output;
 				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
 					break;
-				if (!output)
-					continue;
+				if (!output) continue;
 				DXGI_OUTPUT_DESC outputDesc{};
 				if (FAILED(output->GetDesc(&outputDesc)) ||
 					_wcsicmp(outputDesc.DeviceName, displayDeviceName.c_str()) != 0)
-				{
 					continue;
-				}
 				CComQIPtr<IDXGIOutput1> output1(output);
-				if (!output1)
-					return false;
+				if (!output1) return false;
 				for (const DXGI_FORMAT format : formats)
 				{
 					UINT modeCount = 0;
 					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, nullptr)) || modeCount == 0)
-					{
-						continue;
-					}
+						&modeCount, nullptr)) || modeCount == 0) continue;
 					std::vector<DXGI_MODE_DESC1> modes(modeCount);
 					if (FAILED(output1->GetDisplayModeList1(format, 0,
-						&modeCount, modes.data())))
+						&modeCount, modes.data()))) continue;
+					for (const DXGI_MODE_DESC1& candidate : modes)
 					{
-						continue;
-					}
-					for (const DXGI_MODE_DESC1& mode : modes)
-					{
-						if (mode.Width != currentMode.dmPelsWidth ||
-							mode.Height != currentMode.dmPelsHeight ||
-							mode.RefreshRate.Numerator == 0 ||
-							mode.RefreshRate.Denominator == 0)
-						{
+						if (candidate.Width < 100 || candidate.Height < 100 ||
+							candidate.RefreshRate.Numerator == 0 ||
+							candidate.RefreshRate.Denominator == 0 ||
+							(progressiveOnly &&
+							 (candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_UPPER_FIELD_FIRST ||
+							  candidate.ScanlineOrdering == DXGI_MODE_SCANLINE_ORDER_LOWER_FIELD_FIRST)))
 							continue;
-						}
-						const DISPLAYCONFIG_RATIONAL candidate =
-							{ mode.RefreshRate.Numerator, mode.RefreshRate.Denominator };
-						const bool alreadyPresent = std::any_of(
-							refreshRates.begin(), refreshRates.end(),
-							[&candidate](const DISPLAYCONFIG_RATIONAL& existing)
-							{
-								return DisplayRefreshRatesExactlyEqual(
-									{ existing.Numerator, existing.Denominator },
-									{ candidate.Numerator, candidate.Denominator });
-							});
-						if (!alreadyPresent)
-							refreshRates.push_back(candidate);
+						DisplayOutputMode mode{ candidate.Width, candidate.Height,
+							{ candidate.RefreshRate.Numerator,
+							  candidate.RefreshRate.Denominator } };
+						if (std::none_of(displayModes.begin(), displayModes.end(),
+							[&mode](const DisplayOutputMode& existing)
+							{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+							displayModes.push_back(mode);
 					}
 				}
-				return !refreshRates.empty();
+				return !displayModes.empty();
 			}
 		}
 		return false;
+	}
+
+	DisplayRefreshRational GdiRefreshRate(DWORD rate)
+	{
+		if (rate == 23) return { 24000, 1001 };
+		if (rate == 29) return { 30000, 1001 };
+		if (rate == 59) return { 60000, 1001 };
+		return { rate, 1 };
+	}
+
+	bool QueryGdiSupportedOutputModes(const std::wstring& displayDeviceName,
+		std::vector<DisplayOutputMode>& displayModes)
+	{
+		displayModes.clear();
+		if (displayDeviceName.empty()) return false;
+		for (DWORD index = 0;; ++index)
+		{
+			DEVMODEW candidate{};
+			candidate.dmSize = sizeof(candidate);
+			if (!EnumDisplaySettingsW(displayDeviceName.c_str(), index, &candidate)) break;
+			if (candidate.dmBitsPerPel != 32 || candidate.dmPelsWidth < 100 ||
+				candidate.dmPelsHeight < 100 || candidate.dmDisplayFrequency == 0 ||
+				(candidate.dmDisplayFlags & DM_INTERLACED) != 0) continue;
+			DisplayOutputMode mode{ candidate.dmPelsWidth, candidate.dmPelsHeight,
+				GdiRefreshRate(candidate.dmDisplayFrequency) };
+			if (std::none_of(displayModes.begin(), displayModes.end(),
+				[&mode](const DisplayOutputMode& existing)
+				{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+				displayModes.push_back(mode);
+		}
+		return !displayModes.empty();
+	}
+
+	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
+		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	{
+		refreshRates.clear();
+		DEVMODEW currentMode{};
+		currentMode.dmSize = sizeof(currentMode);
+		if (!EnumDisplaySettingsW(displayDeviceName.c_str(),
+			ENUM_CURRENT_SETTINGS, &currentMode)) return false;
+		std::vector<DisplayOutputMode> displayModes;
+		if (!QueryDxgiSupportedOutputModes(displayDeviceName, displayModes, false))
+			return false;
+		for (const DisplayOutputMode& mode : displayModes)
+		{
+			if (mode.width != currentMode.dmPelsWidth ||
+				mode.height != currentMode.dmPelsHeight) continue;
+			const DISPLAYCONFIG_RATIONAL candidate = {
+				mode.refreshRate.numerator, mode.refreshRate.denominator };
+			if (std::none_of(refreshRates.begin(), refreshRates.end(),
+				[&candidate](const DISPLAYCONFIG_RATIONAL& existing)
+				{
+					return DisplayRefreshRatesExactlyEqual(
+						{ existing.Numerator, existing.Denominator },
+						{ candidate.Numerator, candidate.Denominator });
+				}))
+				refreshRates.push_back(candidate);
+		}
+		return !refreshRates.empty();
 	}
 
 	std::vector<RankedDisplayRefreshRate> RankDisplayRefreshRates(
@@ -3235,6 +3309,97 @@ namespace
 			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
 	}
 
+	struct CurrentDisplayMode
+	{
+		UINT32 sourceWidth = 0;
+		UINT32 sourceHeight = 0;
+		UINT32 targetWidth = 0;
+		UINT32 targetHeight = 0;
+		DISPLAYCONFIG_RATIONAL refreshRate{};
+	};
+
+	bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
+		const CurrentDisplayMode& second)
+	{
+		return first.sourceWidth == second.sourceWidth &&
+			first.sourceHeight == second.sourceHeight &&
+			first.targetWidth == second.targetWidth &&
+			first.targetHeight == second.targetHeight &&
+			DisplayRefreshRatesEquivalentForRestore(
+				{ first.refreshRate.Numerator, first.refreshRate.Denominator },
+				{ second.refreshRate.Numerator, second.refreshRate.Denominator });
+	}
+
+	UINT32 SourceModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+	{
+		return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+			path.sourceInfo.sourceModeInfoIdx : path.sourceInfo.modeInfoIdx;
+	}
+
+	UINT32 TargetModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+	{
+		return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+			path.targetInfo.targetModeInfoIdx : path.targetInfo.modeInfoIdx;
+	}
+
+	bool ReadCurrentDisplayMode(const std::wstring& displayDeviceName,
+		CurrentDisplayMode& current)
+	{
+		std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+		std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+		UINT32 pathCount = 0, modeCount = 0;
+		size_t pathIndex = 0;
+		if (!QueryDisplayPath(displayDeviceName, paths, modes,
+			pathCount, modeCount, pathIndex)) return false;
+		const DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
+		const UINT32 sourceIndex = SourceModeIndex(path);
+		if (sourceIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || sourceIndex >= modeCount ||
+			modes[sourceIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE)
+			return false;
+		current.sourceWidth = modes[sourceIndex].sourceMode.width;
+		current.sourceHeight = modes[sourceIndex].sourceMode.height;
+		const UINT32 targetIndex = TargetModeIndex(path);
+		if (targetIndex != DISPLAYCONFIG_PATH_MODE_IDX_INVALID && targetIndex < modeCount &&
+			modes[targetIndex].infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)
+		{
+			current.targetWidth = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cx;
+			current.targetHeight = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cy;
+		}
+		if (current.targetWidth == 0 || current.targetHeight == 0)
+		{
+			current.targetWidth = current.sourceWidth;
+			current.targetHeight = current.sourceHeight;
+		}
+		current.refreshRate = path.targetInfo.refreshRate;
+		return current.sourceWidth > 0 && current.sourceHeight > 0 &&
+			current.refreshRate.Numerator > 0 && current.refreshRate.Denominator > 0;
+	}
+
+	LONG ApplyDisplayOutputMode(std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
+		std::vector<DISPLAYCONFIG_MODE_INFO>& modes, UINT32 pathCount,
+		UINT32 modeCount, size_t pathIndex, UINT32 width, UINT32 height,
+		const DISPLAYCONFIG_RATIONAL& refreshRate)
+	{
+		DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
+		const UINT32 sourceIndex = SourceModeIndex(path);
+		if (sourceIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || sourceIndex >= modeCount ||
+			modes[sourceIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE)
+			return ERROR_INVALID_PARAMETER;
+		modes[sourceIndex].sourceMode.width = width;
+		modes[sourceIndex].sourceMode.height = height;
+		path.targetInfo.refreshRate = refreshRate;
+		// Keep the display topology and source path, supply the requested desktop
+		// raster, and let CCD select the matching available target timing. A stale
+		// target-mode entry would override the requested refresh just as it does
+		// for the existing refresh-only transition.
+		if ((path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
+			path.targetInfo.targetModeInfoIdx = DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID;
+		else
+			path.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+		return SetDisplayConfig(pathCount, paths.data(), modeCount, modes.data(),
+			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
+	}
+
 	class ScopedDisplayRefreshRate
 	{
 	public:
@@ -3277,6 +3442,17 @@ namespace
 		{
 			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
+            if (!settings.outputDisplayMonitor.empty())
+            {
+                const CString target(settings.outputDisplayMonitor.c_str());
+                const auto monitors = DisplayMonitorInventory::Enumerate();
+                const auto* selected = DisplayMonitorInventory::Resolve(monitors, target.GetString());
+                if (!selected || MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) != selected->handle)
+                {
+                    DebugLog::Log("libplacebo display mode switch skipped: profile monitor unavailable or playback target does not match");
+                    return;
+                }
+            }
 			m_refreshCommandSettings = settings;
 
 			m_displayDeviceName = DisplayDeviceNameForWindow(hwnd);
@@ -3311,7 +3487,8 @@ namespace
 			DebugLog::Log("libplacebo refresh-rate policy: input=%.6f Hz interlaced=%d policy=%s preferred=%.6f Hz",
 				contentRate, interlaced ? 1 : 0,
 				interlaced ? "field-rate" : "native-first", RefreshRateHz(targetRefreshRate));
-			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
+			if (!settings.outputDisplayAdvanced &&
+				RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{
 				DebugLog::Log(
 					"libplacebo refresh-rate switch: display already %.6f Hz for %.6f Hz input",
@@ -3322,6 +3499,13 @@ namespace
 					RefreshRateHz(m_originalRefreshRate),
 					RefreshRateHz(targetRefreshRate),
 					RefreshRateHz(m_originalRefreshRate));
+				return;
+			}
+
+			if (settings.outputDisplayAdvanced)
+			{
+				SwitchOutputMode(contentRate, inputRefreshRate, interlaced,
+					state.displayMode->FrameWidth(), state.displayMode->FrameHeight(), settings);
 				return;
 			}
 
@@ -3436,6 +3620,236 @@ namespace
 		}
 
 	private:
+		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
+			CurrentDisplayMode& observed) const
+		{
+			unsigned int consecutiveMatches = 0;
+			const ULONGLONG deadline = GetTickCount64() + 2500;
+			do
+			{
+				const bool queried = ReadCurrentDisplayMode(m_displayDeviceName, observed);
+				const bool matches = queried &&
+					observed.sourceWidth == expected.sourceWidth &&
+					observed.sourceHeight == expected.sourceHeight &&
+					observed.targetWidth == expected.targetWidth &&
+					observed.targetHeight == expected.targetHeight &&
+					DisplayRefreshRatesEquivalentForRestore(
+						{ observed.refreshRate.Numerator, observed.refreshRate.Denominator },
+						{ expected.refreshRate.Numerator, expected.refreshRate.Denominator });
+				consecutiveMatches = matches ? consecutiveMatches + 1 : 0;
+				if (consecutiveMatches >= 2) return true;
+				Sleep(50);
+			}
+			while (GetTickCount64() < deadline);
+			return false;
+		}
+
+		void SwitchOutputMode(double contentRate,
+			const DISPLAYCONFIG_RATIONAL& inputRefreshRate, bool interlaced,
+			uint32_t sourceWidth, uint32_t sourceHeight,
+			const RendererSettings& settings)
+		{
+			std::vector<DisplayOutputMode> dxgiModes, gdiModes, availableModes;
+			const bool dxgiAvailable = QueryDxgiSupportedOutputModes(
+				m_displayDeviceName, dxgiModes);
+			const bool gdiAvailable = QueryGdiSupportedOutputModes(
+				m_displayDeviceName, gdiModes);
+			availableModes = dxgiModes;
+			for (const DisplayOutputMode& mode : gdiModes)
+				if (std::none_of(availableModes.begin(), availableModes.end(),
+					[&mode](const DisplayOutputMode& existing)
+					{ return DisplayOutputModesExactlyEqual(existing, mode); }))
+					availableModes.push_back(mode);
+			std::ostringstream enumerated;
+			for (size_t index = 0; index < availableModes.size(); ++index)
+			{
+				if (index) enumerated << ", ";
+				const DisplayOutputMode& mode = availableModes[index];
+				const bool inDxgi = std::any_of(dxgiModes.begin(), dxgiModes.end(),
+					[&mode](const DisplayOutputMode& candidate)
+					{ return DisplayOutputModesExactlyEqual(mode, candidate); });
+				const bool inGdi = std::any_of(gdiModes.begin(), gdiModes.end(),
+					[&mode](const DisplayOutputMode& candidate)
+					{ return DisplayOutputModesExactlyEqual(mode, candidate); });
+				enumerated << FormatDisplayOutputMode(mode) << "["
+					<< (inDxgi && inGdi ? "DXGI+GDI" : inDxgi ? "DXGI" : "GDI") << "]";
+			}
+			const std::string enumeratedText = enumerated.str().empty() ? "<none>" : enumerated.str();
+			DebugLog::Log("libplacebo output-mode inventory: source=%ux%u cadence=%.6f Hz scan=%s dxgi=%zu gdi=%zu union=%zu modes={%s}",
+				sourceWidth, sourceHeight, contentRate, interlaced ? "interlaced" : "progressive",
+				dxgiAvailable ? dxgiModes.size() : 0, gdiAvailable ? gdiModes.size() : 0,
+				availableModes.size(), enumeratedText.c_str());
+			if (availableModes.empty())
+			{
+				DebugLog::Log("libplacebo output-mode switch: DXGI and GDI progressive mode enumeration returned no modes; retaining current display mode");
+				return;
+			}
+			for (const DisplayOutputMode& configured : settings.allowedDisplayModes)
+				if (std::none_of(availableModes.begin(), availableModes.end(),
+					[&configured](const DisplayOutputMode& mode)
+					{ return DisplayOutputModesExactlyEqual(configured, mode); }))
+					DebugLog::Log("libplacebo output-mode unavailable: configured=%s enumerated={%s}",
+						FormatDisplayOutputMode(configured).c_str(), enumeratedText.c_str());
+			const bool dciSource = sourceWidth == 4096 && sourceHeight == 2160;
+			const bool dciConfigured = std::any_of(settings.allowedDisplayModes.begin(),
+				settings.allowedDisplayModes.end(), [](const DisplayOutputMode& mode)
+				{ return mode.width == 4096 && mode.height == 2160; });
+			if (dciSource && !dciConfigured)
+				DebugLog::Log("libplacebo output-mode DCI note: 4096x2160 source at %.6f Hz has no full 4096x2160 entry in the configured allowed-mode list; selection follows the remaining configured modes", contentRate);
+			const std::vector<DisplayOutputModeChoice> rankedModes =
+				RankDisplayOutputModesForInput(
+					{ inputRefreshRate.Numerator, inputRefreshRate.Denominator },
+					interlaced, settings.allowedDisplayModes, availableModes);
+			if (rankedModes.empty())
+			{
+				DebugLog::Log("libplacebo output-mode switch: no permitted mode is eligible for source=%ux%u cadence=%.6f Hz interlaced=%d configured=%zu enumerated={%s}; retaining current mode",
+					sourceWidth, sourceHeight, contentRate, interlaced ? 1 : 0,
+					settings.allowedDisplayModes.size(), enumeratedText.c_str());
+				return;
+			}
+			std::ostringstream eligible;
+			for (size_t index = 0; index < rankedModes.size(); ++index)
+			{
+				if (index) eligible << ", ";
+				eligible << FormatDisplayOutputMode(rankedModes[index].mode);
+			}
+			DebugLog::Log("libplacebo output-mode eligible: source=%ux%u cadence=%.6f Hz modes={%s}",
+				sourceWidth, sourceHeight, contentRate, eligible.str().c_str());
+			CurrentDisplayMode currentMode{};
+			if (!ReadCurrentDisplayMode(m_displayDeviceName, currentMode))
+			{
+				DebugLog::Log("libplacebo output-mode switch: current complete display mode is unavailable");
+				return;
+			}
+			if (!m_hasOriginalDisplayMode)
+			{
+				m_originalDisplayMode = currentMode;
+				m_hasOriginalDisplayMode = true;
+			}
+			m_advancedModeActive = true;
+			for (size_t attempt = 0; attempt < rankedModes.size(); ++attempt)
+			{
+				const DisplayOutputModeChoice& candidate = rankedModes[attempt];
+				DebugLog::Log("libplacebo output-mode candidate: input=%.6f Hz mode=%s rate_path=%s attempt=%zu/%zu available=%zu",
+					contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
+					candidate.configuredFallback ? "configured-order-fallback" :
+                    candidate.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
+						"exact-or-close" : "closest-in-range",
+					attempt + 1, rankedModes.size(), availableModes.size());
+				if (currentMode.sourceWidth == candidate.mode.width &&
+					currentMode.sourceHeight == candidate.mode.height &&
+					currentMode.targetWidth == candidate.mode.width &&
+					currentMode.targetHeight == candidate.mode.height &&
+					RefreshRatesEqual(currentMode.refreshRate,
+						{ candidate.mode.refreshRate.numerator,
+						  candidate.mode.refreshRate.denominator }))
+				{
+					m_changed = !DisplayModesEquivalentForRestore(
+						currentMode, m_originalDisplayMode);
+					if (!m_changed)
+					{
+						m_advancedModeActive = false;
+						m_hasOriginalDisplayMode = false;
+					}
+					m_restoreOnStop = settings.restorePreviousDisplayMode;
+					DebugLog::Log("libplacebo output-mode candidate already active: %s",
+						FormatDisplayOutputMode(candidate.mode).c_str());
+					RunRefreshRateCommand(settings,
+						RefreshRateHz(currentMode.refreshRate));
+					PublishEvent("refresh.confirmed",
+						RefreshRateHz(currentMode.refreshRate),
+						RefreshRateHz({ candidate.mode.refreshRate.numerator,
+							candidate.mode.refreshRate.denominator }),
+						RefreshRateHz(m_originalDisplayMode.refreshRate));
+					return;
+				}
+				std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+				UINT32 pathCount = 0, modeCount = 0;
+				size_t pathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, paths, modes,
+					pathCount, modeCount, pathIndex))
+				{
+					DebugLog::Log("libplacebo output-mode candidate skipped: active display path disappeared");
+					break;
+				}
+				const DISPLAYCONFIG_RATIONAL rate = {
+					candidate.mode.refreshRate.numerator,
+					candidate.mode.refreshRate.denominator };
+				const LONG result = ApplyDisplayOutputMode(paths, modes,
+					pathCount, modeCount, pathIndex, candidate.mode.width,
+					candidate.mode.height, rate);
+				if (result != ERROR_SUCCESS)
+				{
+					DebugLog::Log("libplacebo output-mode candidate rejected: mode=%s error=%ld",
+						FormatDisplayOutputMode(candidate.mode).c_str(), result);
+					continue;
+				}
+				CurrentDisplayMode expected{ candidate.mode.width,
+					candidate.mode.height, candidate.mode.width,
+					candidate.mode.height, rate };
+				CurrentDisplayMode actual{};
+				if (VerifyCurrentDisplayMode(expected, actual))
+				{
+					m_changed = !DisplayModesEquivalentForRestore(
+						actual, m_originalDisplayMode);
+					if (!m_changed)
+					{
+						m_advancedModeActive = false;
+						m_hasOriginalDisplayMode = false;
+					}
+					m_restoreOnStop = settings.restorePreviousDisplayMode;
+					DebugLog::Log("libplacebo output-mode switch verified: input=%.6f Hz mode=%s previous=%ux%u@%.6f actual=%ux%u@%.6f restore_on_stop=%d",
+						contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
+						currentMode.targetWidth,
+						currentMode.targetHeight,
+						RefreshRateHz(currentMode.refreshRate),
+						actual.targetWidth, actual.targetHeight,
+						RefreshRateHz(actual.refreshRate),
+						m_restoreOnStop ? 1 : 0);
+					RunRefreshRateCommand(settings, RefreshRateHz(actual.refreshRate));
+					PublishEvent("refresh.applied", RefreshRateHz(actual.refreshRate),
+						RefreshRateHz(rate), RefreshRateHz(m_originalDisplayMode.refreshRate));
+					return;
+				}
+				DebugLog::Log("libplacebo output-mode candidate unverified: requested=%s actual=%ux%u@%.6f; restoring previous full mode",
+					FormatDisplayOutputMode(candidate.mode).c_str(), actual.targetWidth,
+					actual.targetHeight, RefreshRateHz(actual.refreshRate));
+				std::vector<DISPLAYCONFIG_PATH_INFO> restorePaths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> restoreModes;
+				UINT32 restorePathCount = 0, restoreModeCount = 0;
+				size_t restorePathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, restorePaths,
+					restoreModes, restorePathCount, restoreModeCount,
+					restorePathIndex) ||
+					ApplyDisplayOutputMode(restorePaths, restoreModes,
+						restorePathCount, restoreModeCount, restorePathIndex,
+						currentMode.sourceWidth,
+						currentMode.sourceHeight,
+						currentMode.refreshRate) != ERROR_SUCCESS ||
+					!VerifyCurrentDisplayMode(currentMode, actual))
+				{
+					m_changed = true;
+					m_advancedModeActive = true;
+					m_restoreOnStop = true;
+					DebugLog::Log("libplacebo output-mode candidate rollback failed; previous full display mode remains unverified");
+					return;
+				}
+				m_changed = !DisplayModesEquivalentForRestore(
+					currentMode, m_originalDisplayMode);
+			}
+			m_changed = !DisplayModesEquivalentForRestore(
+				currentMode, m_originalDisplayMode);
+			if (!m_changed)
+			{
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+			}
+			DebugLog::Log("libplacebo output-mode switch: all %zu ranked modes failed verification; retaining %ux%u@%.6f",
+				rankedModes.size(), currentMode.targetWidth,
+				currentMode.targetHeight, RefreshRateHz(currentMode.refreshRate));
+		}
+
 		bool GetCurrentRefreshRate(DISPLAYCONFIG_RATIONAL& refreshRate) const
 		{
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
@@ -3476,6 +3890,14 @@ namespace
 		{
 			if (!m_changed)
 				return true;
+			if (!m_restoreOnStop)
+			{
+				DebugLog::Log("libplacebo output-mode restore skipped by profile policy; keeping current display mode");
+				m_changed = false;
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+				return true;
+			}
 
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
@@ -3491,6 +3913,42 @@ namespace
 					"during topology rebuild; attempt=%u external_state=unverified",
 					m_restoreFailureCount);
 				return false;
+			}
+
+			if (m_advancedModeActive)
+			{
+				const LONG restoreResult = ApplyDisplayOutputMode(paths, modes,
+					pathCount, modeCount, pathIndex,
+					m_originalDisplayMode.sourceWidth,
+					m_originalDisplayMode.sourceHeight,
+					m_originalDisplayMode.refreshRate);
+				CurrentDisplayMode actual{};
+				if (restoreResult != ERROR_SUCCESS ||
+					!VerifyCurrentDisplayMode(m_originalDisplayMode, actual))
+				{
+					++m_restoreFailureCount;
+					DebugLog::Log("libplacebo output-mode restore unverified: expected=%ux%u@%.6f actual=%ux%u@%.6f error=%ld attempt=%u external_state=unverified",
+						m_originalDisplayMode.targetWidth,
+						m_originalDisplayMode.targetHeight,
+						RefreshRateHz(m_originalDisplayMode.refreshRate),
+						actual.targetWidth, actual.targetHeight,
+						RefreshRateHz(actual.refreshRate), restoreResult,
+						m_restoreFailureCount);
+					return false;
+				}
+				DebugLog::Log("libplacebo output-mode restore verified: %ux%u@%.6f",
+					actual.targetWidth, actual.targetHeight,
+					RefreshRateHz(actual.refreshRate));
+				RunRefreshRateCommand(m_refreshCommandSettings,
+					RefreshRateHz(actual.refreshRate));
+				PublishEvent("refresh.restored", RefreshRateHz(actual.refreshRate),
+					RefreshRateHz(m_originalDisplayMode.refreshRate),
+					RefreshRateHz(m_originalDisplayMode.refreshRate));
+				m_restoreFailureCount = 0;
+				m_changed = false;
+				m_advancedModeActive = false;
+				m_hasOriginalDisplayMode = false;
+				return true;
 			}
 
 			const LONG restoreResult = ApplyDisplayRefreshRate(
@@ -3575,6 +4033,10 @@ namespace
 
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
+		CurrentDisplayMode m_originalDisplayMode{};
+		bool m_advancedModeActive = false;
+		bool m_hasOriginalDisplayMode = false;
+		bool m_restoreOnStop = true;
 		unsigned int m_restoreFailureCount = 0;
 		bool m_changed = false;
 		bool m_finalRestoreAttempted = false;
@@ -3784,6 +4246,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t outwardAsyncOffered=0, outwardAsyncAdopted=0, outwardAsyncNextLogTick=0;
     uint64_t outwardAsyncLastAdoptedGeneration=0, outwardAsyncLastAdoptedSequence=0;
     uint64_t subtitlePrimeCalls=0, subtitlePrimeRequests=0;
+    uint64_t subtitlePrimeReadySeen=0, subtitlePrimePublishedFuture=0, subtitlePrimeMissing=0;
     uint64_t subtitleReuseRejectNextTick=0;
     double subtitlePrimeMs=0, subtitlePrimePeakMs=0;
     PresentationAnalysisBudget analysisWorkBudget;
@@ -10451,11 +10914,15 @@ struct LibplaceboVideoRenderer::Impl
                     movementInput.evidence.trustedBounds.right,movementInput.evidence.trustedBounds.bottom);
             }
             const auto motionBeforeObservation = movingPictureTransition;
+            static const SubtitleAssistedVerticalBarProof noSubtitleBarProof;
             movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
-                AlphaSourceCrop::ObserveMovingPictureTransition(
-                movingPictureTransition, currentIdentity,
-                    AlphaSourceCrop::PictureMotionTrackingInput(movementInput,
-                        !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode)));
+                AlphaSourceCrop::ObserveSubtitleAssistedMovingPictureTransition(
+                    movingPictureTransition, currentIdentity, movementInput,
+                    !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode),
+                    analysisSource, currentSubtitlePreview ? currentSubtitlePreview->current.subtitleArProof :
+                        noSubtitleBarProof,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                    activeSettings.subtitleScriptHint);
             AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
             if (wasMovingPicture != movingPictureTransition.active ||
                 wasAwaitingPicturePublication != movingPictureTransition.awaitingPublication)
@@ -10473,7 +10940,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& priorNative = motionBeforeObservation.observedNative;
                 const auto& priorCertified = motionBeforeObservation.last;
                 const auto& currentNative = movementInput.evidence.trustedBounds;
-                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u presentation_only=1",
+                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d awaiting=%d reason=%s style=%d prior_native_seq=%llu prior_native=%d,%d-%d,%d prior_certified=%d,%d-%d,%d candidate=%d,%d-%d,%d quiet=%u/%u subtitle_bar_proof=%d subtitle_motion=%d vertical_action=%d directional=%u presentation_only=1",
                     analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
                     movingPictureTransition.active ? 1 : 0,
                     movingPictureTransition.awaitingPublication ? 1 : 0, motionReason,
@@ -10483,7 +10950,9 @@ struct LibplaceboVideoRenderer::Impl
                     currentNative.left, currentNative.top, currentNative.right, currentNative.bottom,
                     movingPictureTransition.quietSamples,
                     static_cast<unsigned>((std::max)(2.0,
-                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)));
+                        std::ceil(movementInput.framesPerSecond * 0.250) + 1)),
+                    currentWorkerBarProof ? 1 : 0, movingPictureTransition.subtitleAssistedBars ? 1 : 0,
+                    static_cast<int>(movementInput.presentation.action), movingPictureTransition.directionalChanges);
             }
             auto subtitleBase = nlsGeometry;
             subtitleBase.left = scopeSubtitlePictureLeft;
@@ -12916,7 +13385,8 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    &subtitleBoxPresentation.AcceptedCueSeedCertificate());
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -13479,10 +13949,12 @@ struct LibplaceboVideoRenderer::Impl
             const double seconds=(subtitlePerfNow-subtitlePerfTick)/1000.0;
             const auto worker=subtitleMeasurementWorker.TakeDiagnostics();
             const auto jobs=worker.fullScans+worker.refreshes+worker.failed;
-            DebugLog::Log("SUBTITLE DISPATCH: window_s=%.3f calls=%llu requests=%llu avg_ms=%.3f peak_ms=%.3f submitted=%llu exact_reads=%llu deduplicated=%llu expired_jobs=%llu",
+            DebugLog::Log("SUBTITLE DISPATCH: window_s=%.3f calls=%llu requests=%llu avg_ms=%.3f peak_ms=%.3f submitted=%llu exact_reads=%llu deduplicated=%llu expired_jobs=%llu ready_seen=%llu published_future=%llu missing=%llu",
                 seconds,subtitlePrimeCalls,subtitlePrimeRequests,
                 subtitlePrimeCalls?subtitlePrimeMs/subtitlePrimeCalls:0,subtitlePrimePeakMs,
-                worker.submitted,worker.exactReads,worker.deduplicated,worker.expired);
+                worker.submitted,worker.exactReads,worker.deduplicated,worker.expired,
+                subtitlePrimeReadySeen,subtitlePrimePublishedFuture,subtitlePrimeMissing);
+            subtitlePrimeReadySeen=subtitlePrimePublishedFuture=subtitlePrimeMissing=0;
             subtitlePrimeCalls=subtitlePrimeRequests=0;subtitlePrimeMs=subtitlePrimePeakMs=0;
 
             DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d ready=%zu dropped_jobs=%llu failed_jobs=%llu request_misses=%llu",
@@ -13875,6 +14347,9 @@ struct LibplaceboVideoRenderer::Impl
             ownershipInput.accepted=&subtitleSourcePreparation.ownershipAccepted;
             ownershipInput.composition=&relocatedSubtitle;
             ownershipInput.physicalBase=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.required=true;
+            ownershipInput.currentDisplayPicture.bounds=effectiveGeometry;
+            ownershipInput.currentDisplayPicture.identity=subtitleIdentity;
             ownershipInput.policyGeneration=localBoundaryPolicyGeneration;
             ownershipInput.continuityGeneration=localBoundaryContinuityGeneration;
             ownershipInput.pendingCurrentPixelsVerified=subtitleSourcePreparation.pendingPixelsVerified;
@@ -15050,9 +15525,14 @@ releaseDriftBaseRetention =
             cropInput.movingPictureHold.sourceGeneration = movingPictureTransition.identity.transportGeneration;
             cropInput.movingPictureHold.sourceSequence = movingPictureTransition.identity.acceptedSequence;
             cropInput.movingPictureHold.presentationEpoch = movingPictureTransition.identity.viewportGeneration;
-            // Detector-only expansion is the moving picture itself; dense FIT
-            // and translation remain competing presentation owners.
+            // Detector expansion is the moving picture itself. Keep dense FIT
+            // competing until the mode-specific route validates a proved ramp.
             cropInput.movingPictureHold.competingPresentation = denseFitEvidenceActive;
+            cropInput.movingPictureHold.subtitleAssistedBars = movingPictureTransition.subtitleAssistedBars;
+            cropInput.movingPictureHold.verticalFitOnly =
+                (detailedVerticalFitEvidence || verticalFitConfirmationPending) &&
+                !leftBarContentActive && !rightBarContentActive &&
+                !detectorLeftExpansion && !detectorRightExpansion;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
@@ -15140,7 +15620,8 @@ releaseDriftBaseRetention =
                 automaticSourceCropRequested, scopeSubtitleFit, cropInput, configuredFillInput);
             // Advanced modes keep a physical picture pose. Their suppressed
             // Classic translation must not defeat an exact current gradual hold.
-            // FIT, recovery, authority and final prior-admission checks remain.
+            // Only proved captioned ramps may suppress vertical FIT. Horizontal FIT,
+            // recovery, authority and final prior-admission checks remain.
             RouteAdvancedMovingPictureHold(cropInput, subtitlePreviewMode);
 
             // A first crop cannot translate away real picture pixels merely to
@@ -20920,21 +21401,83 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
     const auto started=SteadyClock::now();
     m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity);
     unsigned requests=0;
-    for(size_t i=0;i<(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);++i) {
+    const size_t count=(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);
+    std::array<SubtitleBoxObservation,SubtitleBoxLookahead::MaxFrames> observations;
+    std::array<uint64_t,SubtitleBoxLookahead::MaxFrames> preparedDomains{};
+    SubtitleBarTrackingReference tracking;
+    for(size_t i=0;i<count;++i) {
         const auto& queued=frames[i];
+        observations[i].identity=queued.activePictureIdentity;
         if(queued.cadenceRepeat || !queued.state || !queued.state->displayMode ||
-            !queued.frame.GetData() || queued.conversionFailed) continue;
+            !queued.frame.GetData() || queued.conversionFailed) {tracking={};continue;}
         const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
             queued.converted,queued.analysis,AnalysisSourceProfile::QueuedCapture,
             queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
-        if(!prepared.IsValid()) continue; // Pending DV conversion is never raw RGB evidence.
+        if(!prepared.IsValid()) {tracking={};continue;} // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
+        preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
+        if(i==0) {
+            std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
+            if(!guard.owns_lock() || policy!=m_impl->localBoundaryPolicyGeneration ||
+                continuity!=m_impl->localBoundaryContinuityGeneration ||
+                identity.viewportGeneration!=m_impl->renderViewportRequestSerial)return;
+            tracking=m_impl->subtitleBoxPresentation.BarTrackingReferenceFor(identity,
+                prepared.source.width,prepared.source.height,policy,continuity,script);
+        }
         auto picture=shared;
         if(picture.identity.analysisDomainKey!=prepared.domainKey) picture.bounds={};
-        m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
-            queued.frame.IsSourceDiscontinuity(),{},policy,continuity,nearBar,optimization,
+        observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
+            queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
             script,picture,prepared);
+        tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
         ++requests;
+        if(observations[i].analyzed)++m_impl->subtitlePrimeReadySeen;
+        else ++m_impl->subtitlePrimeMissing;
+    }
+    // Publish only independently completed subtitle work. Native AR may still
+    // have no ready prefix, and its optional deadline must not erase this one.
+    {
+        std::unique_lock<std::mutex> guard(m_queueMutex,std::try_to_lock);
+        if(guard.owns_lock() && !m_frameQueue.empty() &&
+            policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
+            continuity==m_activePictureTimeline.ContinuityGeneration() &&
+            SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
+                frames.front().activePictureIdentity)) {
+            std::array<ActivePictureFrameIdentity,SubtitleBoxLookahead::MaxFrames> owned{};
+            size_t ownedCount=0;
+            for(size_t i=0;i<count;++i) {
+                const auto queued=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),
+                    [&](const QueuedFrame& candidate) {
+                        return !candidate.cadenceRepeat && SameActivePictureFrameIdentity(
+                            candidate.activePictureIdentity,frames[i].activePictureIdentity);
+                    });
+                if(queued==m_frameQueue.end() || queued->analysis!=frames[i].analysis ||
+                    queued->converted!=frames[i].converted || queued->state!=frames[i].state ||
+                    queued->frame.GetData()!=frames[i].frame.GetData())break;
+                owned[i]=queued->activePictureIdentity;
+                // This domain came from the same still-owned prepared source,
+                // never from the worker result whose identity is being checked.
+                owned[i].analysisDomainKey=preparedDomains[i];
+                ++ownedCount;
+            }
+            if(ownedCount) {
+                auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
+                    observations.data(),owned.data(),ownedCount,policy,continuity);
+                if(preview.available) {
+                    m_impl->subtitlePrimePublishedFuture+=preview.followingCount;
+                    m_frameQueue.front().subtitleBoxPreview=std::move(preview);
+                }
+                for(size_t i=0;i<ownedCount;++i) {
+                    const auto& observation=observations[i];
+                    if(!observation.analyzed || !SameAnalysisFrameIdentity(observation.identity,owned[i]) ||
+                        observation.policyGeneration!=policy || observation.continuityGeneration!=continuity)continue;
+                    auto queued=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),[&](const QueuedFrame& candidate) {
+                        return !candidate.cadenceRepeat && SameActivePictureFrameIdentity(candidate.activePictureIdentity,owned[i]);
+                    });
+                    queued->subtitleBoxObservation=observation;
+                }
+            }
+        }
     }
     const auto elapsed=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
     ++m_impl->subtitlePrimeCalls;m_impl->subtitlePrimeRequests+=requests;
@@ -21651,7 +22194,6 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 
         // Reuse raw measurements as this sliding window advances. Only current
         // presentation consumes cue state; future scans do not advance it.
-        bool subtitleWindowCurrent = !subtitleObservations.empty() && !m_frameQueue.empty();
         for (const auto& subtitle : subtitleObservations)
         {
             auto queued = std::find_if(m_frameQueue.begin(),m_frameQueue.end(),
@@ -21659,18 +22201,11 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     return !candidate.cadenceRepeat &&
                         SameActivePictureFrameIdentity(candidate.activePictureIdentity,subtitle.identity);
                 });
-            if (queued == m_frameQueue.end()) { subtitleWindowCurrent = false; continue; }
-            if(subtitle.analyzed)queued->subtitleBoxObservation = subtitle;
+            if (queued != m_frameQueue.end() && subtitle.analyzed)
+                queued->subtitleBoxObservation = subtitle;
         }
-        if (subtitleWindowCurrent && SameActivePictureFrameIdentity(
-            m_frameQueue.front().activePictureIdentity,subtitleObservations.front().identity))
-        {
-            m_frameQueue.front().subtitleBoxPreview = SubtitleBoxLookahead::Resolve(
-                subtitleObservations.data(),subtitleObservations.size(),lookaheadPolicyGeneration,
-                subtitleContinuityGeneration);
-            m_frameQueue.front().subtitleBoxPreview.newScanMs = subtitleNewScanMs;
-            m_frameQueue.front().subtitleBoxPreview.newScanFrames = subtitleNewScanFrames;
-        }
+        // PrimeSubtitleMeasurements alone publishes subtitle previews. This
+        // native-AR prefix may be shorter even when subtitle future scans are ready.
 
 		for (const PreviewEvidence& preview : observations)
 		{

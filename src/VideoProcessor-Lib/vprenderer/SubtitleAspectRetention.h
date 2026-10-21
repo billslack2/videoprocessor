@@ -68,7 +68,8 @@ inline bool SubtitlePresentationKeepsClassicTranslation(
 }
 // An advanced subtitle mode owns the picture pose during a gradual picture
 // transition. Classic's translation state may not veto an otherwise current
-// moving-picture hold. Keep FIT and every other competing owner intact.
+// moving-picture hold. An independently proved captioned ramp also supersedes
+// its legacy vertical FIT; horizontal FIT and every other owner remain intact.
 inline bool RouteAdvancedMovingPictureHold(
     AlphaSourceCrop::Input& input, SubtitlePreviewMode mode)
 {
@@ -80,6 +81,11 @@ inline bool RouteAdvancedMovingPictureHold(
     routed.verticalTranslationConfirmationPending = false;
     routed.verticalTranslationBaseRetentionActive = false;
     routed.verticalTranslationEngageBaseRetentionActive = false;
+    if (routed.movingPictureHold.subtitleAssistedBars && routed.movingPictureHold.verticalFitOnly)
+    {
+        routed.verticalFitConfirmationPending = false;
+        routed.movingPictureHold.competingPresentation = false;
+    }
     if (!AlphaSourceCrop::HasCurrentMovingPictureHold(routed))
         return false;
 
@@ -119,6 +125,9 @@ struct QualifiedSubtitlePresentationInput
     const SubtitleCutPasteGeometry* composition = nullptr;
     const SubtitleCueContinuation* continuation = nullptr;
     ActivePictureBounds physicalBase;
+    // Current renderer-owned output authority. A queued worker's geometry hint
+    // may predate this source packet even when its measured pixels are current.
+    SubtitlePictureAuthority currentDisplayPicture;
     uint64_t policyGeneration=0,continuityGeneration=0;
     bool sourcePrepared = false, pendingCurrentPixelsVerified=false;
     size_t maxOwnershipSamples=262144;
@@ -218,22 +227,42 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         if(!captured || !contains(move.content,measured))
             return reject("incomplete-current-glyph-capture");
     }
+    // A strict AR profile can retain a small OUTWARD boundary guard while
+    // the subtitle worker still measures the physical picture inside it. The
+    // prepared compositor has cleared everything outside that sampled picture.
+    // Accept that output fact only for this exact current display snapshot;
+    // neither source sampling nor native glyph/AR authority is enlarged.
+    const auto& display=input.currentDisplayPicture;
+    const int maxOutwardGuard=2*(std::max)(2,source.height/540);
+    const bool preparedOutwardGuard=preparedErasureOnly &&
+        base.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        base.left==0 && base.right==source.width &&
+        base.top>0 && base.bottom<source.height &&
+        move.pictureTop>=base.top && move.pictureBottom<=base.bottom &&
+        move.pictureTop<move.pictureBottom &&
+        move.pictureTop-base.top<=maxOutwardGuard &&
+        base.bottom-move.pictureBottom<=maxOutwardGuard &&
+        display.AvailableFor(input.currentIdentity,source.width,source.height) &&
+        SameAnalysisFrameIdentity(display.identity,input.currentIdentity) &&
+        SameSubtitlePresentationBounds(display.bounds,base) &&
+        observation.sharedPicture.Matches(display);
+    const bool exactComposedPicture=move.pictureTop==base.top && move.pictureBottom==base.bottom;
     if(!source.IsValid() || source.generation!=input.currentIdentity.transportGeneration || observation.width!=source.width || observation.height!=source.height ||
         base.rasterWidth!=source.width || base.rasterHeight!=source.height ||
         base.left<0 || base.top<0 || base.right>source.width || base.bottom>source.height ||
         base.left>=base.right || base.top>=base.bottom ||
         pictureTop<0 || pictureBottom>source.height ||
         pictureTop>=pictureBottom ||
-        move.pictureTop!=base.top || move.pictureBottom!=base.bottom ||
+        (!exactComposedPicture && !preparedOutwardGuard) ||
         !raw.analysisValid || !raw.presentationValid || raw.presentationBlackThreshold<=0 ||
         raw.excludedTop.barPixels!=base.top || raw.excludedBottom.barPixels!=source.height-base.bottom ||
         raw.excludedLeft.barPixels!=base.left || raw.excludedRight.barPixels!=source.width-base.right)
         return reject("physical-base-mismatch");
-    // FitSubtitleToVisiblePicture reconciles these independent edge estimates.
-    // The composed physical edges and current raw bands must still match exactly;
-    // native ownership and residual-band inspection below validate every exclusion.
-    if(std::abs(pictureTop-base.top)>SubtitlePhysicalEdgeReconciliationTolerance ||
-        std::abs(pictureBottom-base.bottom)>SubtitlePhysicalEdgeReconciliationTolerance)
+    // Keep the existing tight agreement between measurement and sampling.
+    // A certified outward display guard retains rows; it must not reclassify
+    // those rows as physical bars or change the subtitle's extraction boundary.
+    if(std::abs(pictureTop-move.pictureTop)>SubtitlePhysicalEdgeReconciliationTolerance ||
+        std::abs(pictureBottom-move.pictureBottom)>SubtitlePhysicalEdgeReconciliationTolerance)
         return reject("subtitle-observation-edge-mismatch");
     const SubtitleBoxRect baseRect{base.left,base.top,base.right,base.bottom};
     if(!contains(baseRect,move.destination))return reject("destination-outside-picture");

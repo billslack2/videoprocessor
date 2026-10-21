@@ -1244,6 +1244,10 @@ namespace AlphaSourceCrop
         uint64_t sourceGeneration = 0;
         uint64_t sourceSequence = 0;
         uint64_t presentationEpoch = 0;
+        // Only an independently proved subtitle-assisted gradual episode may
+        // displace legacy vertical FIT in advanced modes. Horizontal FIT stays.
+        bool subtitleAssistedBars = false;
+        bool verticalFitOnly = false;
     };
 
 	struct Input
