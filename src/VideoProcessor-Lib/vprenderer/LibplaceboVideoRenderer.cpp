@@ -45,6 +45,7 @@
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
 #include <vprenderer/SubmittedOutputGeometryTrace.h>
@@ -4472,6 +4473,9 @@ struct LibplaceboVideoRenderer::Impl
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
     TemporalRenderer temporalRenderer;
+    uint64_t pictureProcessingEpoch = 0;
+    TemporalRenderer::ProcessingStatistics lastPictureProcessingStatistics;
+    int subtitleAnalysisStride = 0;
     std::string lastMotionStatus;
 	CComPtr<ID3D11DeviceContext> renderTimingContext;
 	// The headline result sums tightly bounded command stages from one frame.
@@ -5943,6 +5947,7 @@ struct LibplaceboVideoRenderer::Impl
 				"could not configure libplacebo render parameters: " + projectionError);
 		}
 		renderParams = projection.renderParams;
+        ++pictureProcessingEpoch;
 		colorMapParams = projection.colorMapParams;
 		peakDetectParams = projection.peakDetectParams;
 		sigmoidParams = projection.sigmoidParams;
@@ -8528,9 +8533,12 @@ struct LibplaceboVideoRenderer::Impl
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
-        bool backlogRetirementOnly = false)
+        bool backlogRetirementOnly = false, bool allowSubmit = true)
     {
+        const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
+        key.analysisStride=fps>30.0?2u:1u;
+        key.cadenceSkipped=!InputFrameAnalysisDue(fps,identity.acceptedSequence);
         key.identity.analysisDomainKey=prepared.domainKey;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;
         key.scriptHint=scriptHint;key.discontinuity=discontinuity;
@@ -8579,7 +8587,15 @@ struct LibplaceboVideoRenderer::Impl
                     ready.sharedProbeAnchor.right,ready.sharedProbeAnchor.bottom);
             }
         }
-        const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
+        const int stride = fps > 30.0 ? 2 : 1;
+        if (subtitleAnalysisStride != stride) {
+            subtitleAnalysisStride = stride;
+            DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
+        }
+        if (!allowSubmit || key.cadenceSkipped) {
+            key.text.diagnosticReason = "input-cadence-not-analyzed";
+            return key;
+        }
         subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
@@ -12209,7 +12225,7 @@ struct LibplaceboVideoRenderer::Impl
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
-                    shared,preparedQueued);
+                    shared,preparedQueued,{},false,!repeatedTemporalOutput);
                 earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
@@ -13206,7 +13222,7 @@ struct LibplaceboVideoRenderer::Impl
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,
-                        preparedQueued,{},subtitleBacklogRetirementOnly);
+                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;
@@ -18014,7 +18030,7 @@ releaseDriftBaseRetention =
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
-                return temporalRenderer.Render(renderer,source,destination,parameters);
+                return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
             });
         bool rendered = hookRender.rendered;
         if (hookRender.retried)
@@ -18589,6 +18605,13 @@ releaseDriftBaseRetention =
                 renderMs,swapBlockMs,captureRateHz,sample.expectedDisplayHz);
             if(!analysisPerformanceLogTick)analysisPerformanceLogTick=correlationNow;
             if(correlationNow-analysisPerformanceLogTick>=2000){
+                const auto& processed=temporalRenderer.ProcessingSnapshot();
+                const auto& oldProcessing=lastPictureProcessingStatistics;
+                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet",
+                    processed.sourceRenders-oldProcessing.sourceRenders,
+                    processed.sourceReuses-oldProcessing.sourceReuses,
+                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride);
+                lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;
                 const double jobs=double(worker.completed-old.completed);

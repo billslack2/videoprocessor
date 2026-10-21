@@ -68,6 +68,7 @@ public:
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+        result.analysisStride=key.analysisStride;
         if (result.independentBarAnalysis && result.text.detected && !result.text.held &&
             !result.text.workLimit) {
             const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
@@ -232,6 +233,7 @@ public:
             !a.sharedPicture.AvailableFor(a.identity,a.width,a.height) &&
             !b.sharedPicture.AvailableFor(b.identity,b.width,b.height);
         return SameAnalysisFrameIdentity(a.identity,b.identity) &&
+            a.analysisStride==b.analysisStride &&
             a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode && a.scriptHint==b.scriptHint &&
             a.policyGeneration==b.policyGeneration &&
             (a.continuityGeneration==b.continuityGeneration ||

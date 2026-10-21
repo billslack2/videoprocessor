@@ -2,6 +2,7 @@
 #include <MotionConfig.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/gpu.h>
+#include <libplacebo/shaders/custom.h>
 #include <algorithm>
 #include <deque>
 #include <memory>
@@ -61,7 +62,23 @@ private:
             pl_deinterlace_algorithm algorithm=PL_DEINTERLACE_BOB;
             bool valid=false;
         };
+        struct Processed {
+            pl_frame frame{};
+            pl_tex texture=nullptr;
+            pl_rect2df sourceCrop{},targetCrop{},peakCrop{};
+            pl_color_space targetColor{};
+            pl_color_repr targetRepr{};
+            pl_rotation sourceRotation=PL_ROTATION_0,targetRotation=PL_ROTATION_0;
+            const pl_custom_lut* targetLut=nullptr;
+            pl_icc_object targetIcc=nullptr;
+            uint64_t epoch=0,inputSignature=0,signature=0,profileSignature=0;
+            uint64_t prevSignature=0,nextSignature=0;
+            std::vector<uint64_t> hooks;
+            int width=0,height=0;
+            bool valid=false;
+        };
         std::array<Prepared,2> prepared{};
+        std::array<Processed,2> processed{};
         NativePrepare nativePrepare;
         bool hasSubtitle=false;
         pl_dovi_metadata dovi{};
@@ -75,7 +92,8 @@ private:
         pl_gpu gpu=nullptr;
         pl_tex textures[PL_MAX_PLANES]{};
         ~Stored(){if(gpu){for(auto& texture:textures)pl_tex_destroy(gpu,&texture);pl_tex_destroy(gpu,&subtitle);
-            for(auto& field:prepared){pl_tex_destroy(gpu,&field.texture);pl_tex_destroy(gpu,&field.subtitle);}}}
+            for(auto& field:prepared){pl_tex_destroy(gpu,&field.texture);pl_tex_destroy(gpu,&field.subtitle);}
+            for(auto& field:processed)pl_tex_destroy(gpu,&field.texture);}}
     };
     static bool SameRect(pl_rect2d a,pl_rect2d b) {
         return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
@@ -96,6 +114,13 @@ private:
     MotionConfig::Settings settings;
     const pl_filter_config* mixer=nullptr;
     pl_deinterlace_params deinterlace{};
+public:
+    struct ProcessingStatistics {
+        uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
+    };
+    const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
+private:
+    ProcessingStatistics processingStatistics;
 public:
     std::vector<double> outputs;
     double currentPts=0,outputPts=0;
@@ -227,8 +252,10 @@ public:
         stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
         stored->nativePrepare={};stored->hasSubtitle=false;
         for(auto& field:stored->prepared)field.valid=false;
+        for(auto& field:stored->processed)field.valid=false;
         stored->subtitleBounds={};
         stored->frame=source;stored->frame.overlays=nullptr;stored->frame.num_overlays=0;
+        if(source.repr.dovi){stored->dovi=*source.repr.dovi;stored->frame.repr.dovi=&stored->dovi;}
         stored->frame.prev=nullptr;stored->frame.next=nullptr;stored->signature=nextSignature++;
         // First null every borrowed plane so partial failure cannot destroy it.
         for(int p=0;p<source.num_planes;++p)stored->frame.planes[p].texture=nullptr;
@@ -537,198 +564,176 @@ public:
             if(!PrepareNativeField(entry.index,entry.field)){Clear();return false;}
         return true;
     }
-    bool RenderComposition(pl_renderer renderer,const pl_frame& source,
-        const pl_frame& target,pl_render_params& params) {
-        if(!PreflightCompositionOutput())return false;
-        const Stored* cue=nullptr;
-        for(const auto& packet:history)
-            if(packet->pts<=outputPts+1e-8)cue=packet.get();
-        const bool fields=interlaced&&settings.cadence=="field";
-        const double unit=sourceDuration/(fields?2.0:1.0);
-        // Deque elements are individually allocated, so locate by identity.
-        size_t selectedCueIndex=0;
-        if(cue)for(size_t i=0;i<history.size();++i)if(history[i].get()==cue){selectedCueIndex=i;break;}
-        const int cueField=fields&&cue&&outputPts>=cue->pts+unit-1e-8?1:0;
-        if(nativeMode&&cue&&!PrepareNativeField(selectedCueIndex,cueField)){
-            Clear();return false;
+    static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {
+        return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
+    }
+    bool ProcessSource(pl_renderer renderer,size_t index,int fieldIndex,
+        const pl_frame& source,const pl_frame& target,pl_render_params& params,
+        uint64_t epoch,Stored::Processed*& result) {
+        auto& packet=*history[index];
+        if(nativeMode&&!PrepareNativeField(index,fieldIndex))return false;
+        pl_frame input=nativeMode?packet.prepared[fieldIndex].frame:packet.frame;
+        input.crop=source.crop;input.rotation=source.rotation;
+        uint64_t prevSignature=0,nextSignature=0;
+        pl_deinterlace_params algorithm=deinterlace;
+        if(interlaced&&!nativeMode) {
+            input.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
+            input.field=fieldIndex?pl_field_other(input.first_field):input.first_field;
+            input.prev=index&&CompatiblePresentation(packet,*history[index-1],source.crop)?&history[index-1]->frame:nullptr;
+            input.next=index+1<history.size()&&CompatiblePresentation(packet,*history[index+1],source.crop)?&history[index+1]->frame:nullptr;
+            prevSignature=input.prev?history[index-1]->signature:0;
+            nextSignature=input.next?history[index+1]->signature:0;
+            if(!input.prev||!input.next)algorithm.algo=PL_DEINTERLACE_BOB;
         }
-        const pl_tex selectedLayer=cue?(nativeMode?cue->prepared[cueField].subtitle:cue->subtitle):nullptr;
-        const pl_rect2d selectedBounds=cue?(nativeMode?cue->prepared[cueField].subtitleBounds:cue->subtitleBounds):pl_rect2d{};
-        lastSubtitleSequence=selectedLayer?cue->sequence:0;
-        const Stored* reference=cue?cue:history.front().get();
-        const pl_tex picture=reference->frame.planes[0].texture;
-        if(!picture)return false;
-        pl_tex_params surface{};
-        surface.w=picture->params.w;surface.h=picture->params.h;
-        surface.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
-            static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_BLENDABLE));
-        surface.sampleable=true;surface.renderable=true;
-        if(!surface.format||!pl_tex_recreate(gpu,&compositionSurface,&surface)){
-            status="Motion: linear composition surface unavailable";return false;
+        const uint64_t inputSignature=nativeMode?packet.prepared[fieldIndex].signature:packet.signature;
+        auto& cached=packet.processed[fieldIndex];
+        std::vector<uint64_t> hookSignatures;
+        for(int h=0;h<params.num_hooks;++h)hookSignatures.push_back(params.hooks[h]->signature);
+        const pl_rect2df peakCrop=params.peak_detect_params?params.peak_detect_params->analysis_crop:pl_rect2df{};
+        const pl_tex output=target.num_planes==1?target.planes[0].texture:nullptr;
+        if(!output)return false;
+        if(cached.valid&&cached.epoch==epoch&&cached.inputSignature==inputSignature&&
+            cached.prevSignature==prevSignature&&cached.nextSignature==nextSignature&&
+            cached.width==output->params.w&&cached.height==output->params.h&&
+            cached.sourceRotation==source.rotation&&cached.targetRotation==target.rotation&&
+            SameCrop(cached.sourceCrop,source.crop)&&SameCrop(cached.targetCrop,target.crop)&&
+            SameCrop(cached.peakCrop,peakCrop)&&cached.hooks==hookSignatures&&
+            pl_color_space_equal(&cached.targetColor,&target.color)&&
+            pl_color_repr_equal(&cached.targetRepr,&target.repr)&&cached.targetLut==target.lut&&
+            cached.targetIcc==target.icc&&cached.profileSignature==target.profile.signature) {
+            ++processingStatistics.sourceReuses;result=&cached;return true;
         }
-
-        // The output packet is discrete. Picture frames remain eligible for
-        // temporal blending, but every source frame is cropped to the full
-        // raster here; the current viewport crop is applied only to the final
-        // composited image below.
-        std::vector<pl_frame> frames;
-        std::vector<const pl_frame*> pointers;
-        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
-        std::vector<uint64_t> signatures;
-        std::vector<Timestamp> timestamps;
-        std::vector<NativeEntry> entries;
-        if(nativeMode)entries=NativeEntriesForOutput();
-        else {
-            entries.reserve(history.size()*(fields?2:1));
-            for(size_t i=0;i<history.size();++i)
-                for(int f=0;f<(fields?2:1);++f)
-                    entries.push_back({i,f,(history[i]->pts+f*unit-outputPts)/unit});
+        cached.valid=false;
+        pl_tex_params storage{};
+        storage.w=output->params.w;storage.h=output->params.h;
+        storage.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
+            static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_BLITTABLE));
+        storage.sampleable=true;storage.renderable=true;storage.blit_src=true;storage.blit_dst=true;
+        if(!storage.format||!pl_tex_recreate(gpu,&cached.texture,&storage)) {
+            status="Motion: processed source allocation failed";return false;
         }
-        frames.reserve(entries.size());
-        signatures.reserve(entries.size());timestamps.reserve(entries.size());
-        for(const auto& entry:entries) {
-            const size_t i=entry.index;const int f=entry.field;
-            if(cue&&history[i].get()!=cue&&
-                !CompatiblePresentation(*cue,*history[i],source.crop))continue;
-            if(nativeMode&&!PrepareNativeField(i,f)){Clear();return false;}
-            pl_frame frame=nativeMode?history[i]->prepared[f].frame:history[i]->frame;
-            frame.crop={0,0,float(surface.w),float(surface.h)};
-            frame.rotation=PL_ROTATION_0; // Apply source rotation once in the final pass.
-            if(interlaced&&!nativeMode) {
-                frame.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
-                frame.field=f?pl_field_other(frame.first_field):frame.first_field;
-                frame.prev=i&&(!cue||CompatiblePresentation(*cue,*history[i-1],source.crop)) ?&history[i-1]->frame:nullptr;
-                frame.next=i+1<history.size()&&(!cue||CompatiblePresentation(*cue,*history[i+1],source.crop)) ?&history[i+1]->frame:nullptr;
-            }
-            frames.push_back(frame);
-            signatures.push_back(nativeMode?history[i]->prepared[f].signature:
-                ((history[i]->signature<<1)|f));
-            timestamps.push_back(static_cast<Timestamp>(entry.offset));
-        }
-        for(auto& frame:frames)pointers.push_back(&frame);
-
-        pl_overlay overlay{};
-        pl_overlay_part part{};
-        pl_tex layer=selectedLayer;
+        // Compose each packet's own subtitle before scaling and tone mapping.
+        // Smooth motion blends complete processed source pictures afterward.
+        pl_overlay overlay{};pl_overlay_part part{};
+        const pl_tex layer=composition?(nativeMode?packet.prepared[fieldIndex].subtitle:packet.subtitle):nullptr;
         if(layer) {
-            const auto& bounds=selectedBounds;
+            const auto bounds=nativeMode?packet.prepared[fieldIndex].subtitleBounds:packet.subtitleBounds;
             part.src={0,0,float(layer->params.w),float(layer->params.h)};
             part.dst={float(bounds.x0),float(bounds.y0),float(bounds.x1),float(bounds.y1)};
-            overlay.tex=layer;
-            overlay.mode=PL_OVERLAY_NORMAL;
-            overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
-            overlay.repr=pl_color_repr_rgb;
-            overlay.repr.levels=PL_COLOR_LEVELS_FULL;
-            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;
-            overlay.color=nativeMode?cue->prepared[cueField].frame.color:cue->frame.color;
+            overlay.tex=layer;overlay.mode=PL_OVERLAY_NORMAL;overlay.coords=PL_OVERLAY_COORDS_SRC_FRAME;
+            overlay.repr=pl_color_repr_rgb;overlay.repr.levels=PL_COLOR_LEVELS_FULL;
+            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;overlay.color=input.color;
             overlay.parts=&part;overlay.num_parts=1;
+            input.overlays=&overlay;input.num_overlays=1;
         }
-
-        pl_frame mixed{};
-        mixed.num_planes=1;mixed.planes[0].texture=compositionSurface;
-        mixed.planes[0].components=4;
-        for(int c=0;c<4;++c)mixed.planes[0].component_mapping[c]=c;
-        mixed.repr=pl_color_repr_rgb;
-        mixed.repr.levels=PL_COLOR_LEVELS_FULL;
-        mixed.repr.alpha=PL_ALPHA_NONE;
-        mixed.color=nativeMode?cue->prepared[cueField].frame.color:reference->frame.color;
-        mixed.color.transfer=PL_COLOR_TRC_LINEAR;
-        mixed.crop={0,0,float(surface.w),float(surface.h)};
-        if(layer){mixed.overlays=&overlay;mixed.num_overlays=1;}
-        auto preparation=pl_render_fast_params;
-        preparation.deinterlace_params=interlaced&&!nativeMode?&deinterlace:nullptr;
-        bool prepared=false;
+        pl_frame destination=target;
+        destination.num_planes=1;destination.planes[0]={};
+        destination.planes[0].texture=cached.texture;destination.planes[0].components=4;
+        for(int c=0;c<4;++c)destination.planes[0].component_mapping[c]=c;
+        destination.repr=pl_color_repr_rgb;destination.repr.levels=PL_COLOR_LEVELS_FULL;
+        destination.repr.alpha=PL_ALPHA_NONE;
+        destination.overlays=nullptr;destination.num_overlays=0;
+        destination.acquire=nullptr;destination.release=nullptr;
+        destination.prev=nullptr;destination.next=nullptr;
+        destination.field=PL_FIELD_NONE;destination.first_field=PL_FIELD_NONE;
+        // The target transfer, gamut and calibration LUT are applied here.
+        // Float storage defers only output-depth dithering to presentation.
+        pl_frames_infer(renderer,&input,&destination);
+        const float black[3]={0,0,0};
+        pl_frame_clear(gpu,&destination,black);
+        auto processing=params;
+        processing.frame_mixer=nullptr;
+        processing.deinterlace_params=interlaced&&!nativeMode?&algorithm:nullptr;
+        if(composition)processing.deband_params=nullptr; // Already done during normalization.
+        processing.dither_params=nullptr;processing.error_diffusion=nullptr;
+        processing.blend_params=nullptr;
+        if(!pl_render_image(renderer,&input,&destination,&processing))return false;
+        cached.frame=destination;
+        cached.frame.lut=nullptr;cached.frame.icc=nullptr;cached.frame.profile={};
+        cached.frame.overlays=nullptr;cached.frame.num_overlays=0;
+        cached.frame.repr=destination.repr;cached.frame.color=destination.color;
+        cached.width=output->params.w;cached.height=output->params.h;
+        cached.sourceCrop=source.crop;cached.targetCrop=target.crop;cached.peakCrop=peakCrop;
+        cached.sourceRotation=source.rotation;cached.targetRotation=target.rotation;
+        cached.targetColor=target.color;cached.targetRepr=target.repr;
+        cached.targetLut=target.lut;cached.targetIcc=target.icc;cached.profileSignature=target.profile.signature;
+        cached.epoch=epoch;cached.inputSignature=inputSignature;
+        cached.prevSignature=prevSignature;cached.nextSignature=nextSignature;
+        cached.hooks=std::move(hookSignatures);cached.signature=this->nextSignature++;
+        cached.valid=true;++processingStatistics.sourceRenders;result=&cached;return true;
+    }
+    bool RenderProcessed(pl_renderer renderer,const pl_frame& source,
+        const pl_frame& target,pl_render_params& params,uint64_t epoch) {
+        if(composition&&!PreflightCompositionOutput())return false;
+        const Stored* selected=nullptr;
+        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
+        const auto entries=NativeEntriesForOutput();
+        std::vector<const pl_frame*> frames;
+        std::vector<uint64_t> signatures;
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        std::vector<Timestamp> timestamps;
+        std::array<std::array<bool,2>,8> used{};
+        for(const auto& entry:entries) {
+            if(selected&&history[entry.index].get()!=selected&&
+                !CompatiblePresentation(*selected,*history[entry.index],source.crop))continue;
+            Stored::Processed* processed=nullptr;
+            if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
+            used[entry.index][entry.field]=true;
+            frames.push_back(&processed->frame);signatures.push_back(processed->signature);
+            timestamps.push_back(static_cast<Timestamp>(entry.offset));
+        }
+        if(frames.empty())return false;
+        if(composition)lastSubtitleSequence=SelectedSubtitleSequence();
+        if(interlaced) {
+            const double unit=sourceDuration/(settings.cadence=="field"?2.0:1.0);
+            lastSubmittedField=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
+            if(selected&&settings.cadence=="field"&&outputPts>=selected->pts+unit-1e-8)
+                lastSubmittedField=pl_field_other(lastSubmittedField);
+        }
+        // Expensive source work is complete. Keep the final target overlays
+        // live, but never run peak detection, tone mapping, NLS or LUTs again.
+        pl_frame destination=target;
+        destination.lut=nullptr;destination.icc=nullptr;destination.profile={};
+        auto presentation=pl_render_fast_params;
+        presentation.dither_params=params.dither_params;
+        presentation.error_diffusion=params.error_diffusion;
+        presentation.blend_params=params.blend_params;
+        presentation.dynamic_constants=true;
+        presentation.info_callback=params.info_callback;presentation.info_priv=params.info_priv;
+        bool rendered=false;
         if(mixing) {
-            preparation.frame_mixer=mixer;
-            pl_frame_mix mix{};
-            mix.num_frames=static_cast<int>(frames.size());
-            mix.frames=pointers.data();mix.signatures=signatures.data();
-            mix.timestamps=timestamps.data();
+            presentation.frame_mixer=mixer;
+            pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
+            mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
+            const double unit=sourceDuration/(interlaced&&settings.cadence=="field"?2.0:1.0);
             mix.vsync_duration=static_cast<float>(displayDuration/unit);
-            prepared=pl_render_image_mix(renderer,&mix,&mixed,&preparation);
+            rendered=pl_render_image_mix(renderer,&mix,&destination,&presentation);
         } else {
-            size_t selected=0;
-            for(size_t i=0;i<frames.size();++i)
-                if(timestamps[i]<=1e-6f)selected=i;
-            lastSubmittedField=nativeMode&&interlaced?
-                (entries[selected].field?pl_field_other(topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM):
-                    (topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM)):frames[selected].field;
-            if(interlaced&&!nativeMode&&(!frames[selected].prev||!frames[selected].next)) {
-                auto bob=deinterlace;bob.algo=PL_DEINTERLACE_BOB;
-                preparation.deinterlace_params=&bob;
-                prepared=pl_render_image(renderer,&frames[selected],&mixed,&preparation);
-            } else {
-                prepared=pl_render_image(renderer,&frames[selected],&mixed,&preparation);
-            }
+            size_t current=0;for(size_t i=0;i<frames.size();++i)if(timestamps[i]<=1e-6)current=i;
+            rendered=pl_render_image(renderer,frames[current],&destination,&presentation);
         }
-        if(!prepared)return false;
-        pl_frame final=mixed;
-        final.crop=source.crop;
-        final.rotation=source.rotation;
-        final.overlays=nullptr;final.num_overlays=0;
-        pl_render_params output=params;
-        output.deinterlace_params=nullptr;
-        output.frame_mixer=nullptr;
-        // Source planes were debanded during full-raster normalization.
-        output.deband_params=nullptr;
-        const bool rendered=pl_render_image(renderer,&final,&target,&output);
-        if(nativeMode) {
-            // Raw packets remain available as deinterlacing references; only
-            // prepared RGBA field pictures outside the current support window
-            // are released to keep 4K GPU memory bounded.
-            for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f) {
-                bool keep=cue&&history[i].get()==cue&&f==cueField;
-                for(const auto& entry:entries)
-                    if(entry.index==i&&entry.field==f){keep=true;break;}
-                if(!keep) {
-                    auto& cached=history[i]->prepared[f];
-                    pl_tex_destroy(gpu,&cached.texture);
-                    pl_tex_destroy(gpu,&cached.subtitle);
-                    cached.valid=false;
-                }
+        if(rendered)++processingStatistics.outputRenders;
+        // Keep only the active filter support. Raw history remains available
+        // for deinterlacing and geometry guards; float output caches are bounded.
+        for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]) {
+            auto& processed=history[i]->processed[f];
+            pl_tex_destroy(gpu,&processed.texture);processed.valid=false;
+            if(nativeMode) {
+                auto& prepared=history[i]->prepared[f];
+                pl_tex_destroy(gpu,&prepared.texture);pl_tex_destroy(gpu,&prepared.subtitle);
+                prepared.valid=false;
             }
         }
         return rendered;
     }
-    bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,pl_render_params& params) {
+    bool RenderComposition(pl_renderer renderer,const pl_frame& source,
+        const pl_frame& target,pl_render_params& params,uint64_t epoch=0) {
+        return RenderProcessed(renderer,source,target,params,epoch);
+    }
+    bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,
+        pl_render_params& params,uint64_t epoch=0) {
         lastSubmittedField=PL_FIELD_NONE;
-        if(composition&&Active())return RenderComposition(renderer,source,target,params);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
-        std::vector<pl_frame> frames;std::vector<const pl_frame*> pointers;
-        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
-        std::vector<uint64_t> signatures;std::vector<Timestamp> timestamps;
-        frames.reserve(history.size()*2);signatures.reserve(history.size()*2);timestamps.reserve(history.size()*2);
-        const bool fields=interlaced&&settings.cadence=="field";
-        const double unit=sourceDuration/(fields?2.0:1.0);
-        const Stored* selectedPacket=nullptr;
-        for(const auto& packet:history)
-            if(packet->pts<=outputPts+1e-8)selectedPacket=packet.get();
-        for(size_t i=0;i<history.size();++i){
-            if(selectedPacket&&history[i].get()!=selectedPacket&&
-                !CompatiblePresentation(*selectedPacket,*history[i],source.crop))continue;
-            for(int f=0;f<(fields?2:1);++f){
-                pl_frame frame=history[i]->frame;
-                if(interlaced){frame.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;frame.field=f?pl_field_other(frame.first_field):frame.first_field;
-                    frame.prev=i&&(!selectedPacket||CompatiblePresentation(*selectedPacket,*history[i-1],source.crop)) ?&history[i-1]->frame:nullptr;
-                    frame.next=i+1<history.size()&&(!selectedPacket||CompatiblePresentation(*selectedPacket,*history[i+1],source.crop)) ?&history[i+1]->frame:nullptr;
-                }
-                // Geometry is committed by the current presentation pass; never
-                // blend unrelated source rectangles across aspect transitions.
-                frame.crop=source.crop;
-                frames.push_back(frame);signatures.push_back((history[i]->signature<<1)|f);
-                timestamps.push_back(static_cast<Timestamp>((history[i]->pts+f*unit-outputPts)/unit));
-            }
-        }
-        for(auto& frame:frames)pointers.push_back(&frame);
-        pl_render_params temporal=params;temporal.deinterlace_params=interlaced?&deinterlace:nullptr;
-        if(mixing){temporal.frame_mixer=mixer;pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());mix.frames=pointers.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();mix.vsync_duration=static_cast<float>(displayDuration/unit);
-            return pl_render_image_mix(renderer,&mix,&target,&temporal);
-        }
-        // A temporal deinterlacer needs both neighbors. During bounded warmup,
-        // use Bob rather than asking YADIF/BWDIF to read absent references.
-        size_t selected=0;for(size_t i=0;i<frames.size();++i)if(timestamps[i]<=1e-6f)selected=i;
-        lastSubmittedField=frames[selected].field;
-        if(!frames[selected].prev||!frames[selected].next){auto bob=deinterlace;bob.algo=PL_DEINTERLACE_BOB;temporal.deinterlace_params=&bob;return pl_render_image(renderer,&frames[selected],&target,&temporal);}
-        return pl_render_image(renderer,&frames[selected],&target,&temporal);
+        return RenderProcessed(renderer,source,target,params,epoch);
     }
 };
