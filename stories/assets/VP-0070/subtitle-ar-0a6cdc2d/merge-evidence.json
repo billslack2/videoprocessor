@@ -1,0 +1,76 @@
+{
+  "story": "VP-0070",
+  "recordedDate": "2026-10-20",
+  "repository": "billslack2/videoprocessor",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/176",
+  "betaBranch": "v1.4.02-beta",
+  "previousBetaCommit": "76d922ea75aa191fcdb934dc4aa08a24b4ef21ef",
+  "testedSourceCommit": "78ad183420718bc686bb0fdc42835bf827c1a8a8",
+  "mergedCommit": "0a6cdc2dbbb68a14c3b687d8e2dbcdad4878cd2b",
+  "mergedAt": "2026-10-21T02:57:40Z",
+  "mergedTreeEqualsTestedTree": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "selectedNativeTests": {
+    "testDllSha256": "64D5023803B08B25FB0A2E22EF50EEC821FD160958B26726498BB416509E79E2",
+    "passed": 1057,
+    "failed": 0,
+    "receiptSha256": "D855438C36465D91B6625A6A3831546439FD153F866F01BB76F315F7C3B76A6C",
+    "total": 1057,
+    "trxSha256": "EC3EC2EE74D4CA9417D750F7357B102984919E7D22D8A663A0CB7FF83612ABB7"
+  },
+  "capturedCaptionReplay": {
+    "receiptSha256": "3ED423078252EBAE0986C39C8929DD498BCDA45901DC94A512B406C7356EF969",
+    "cpuOnly": true,
+    "reportSha256": "309852e3879f5807a9f1d69b9a1cde3d9a7fbba56ff69e6d695bf40209d8e200",
+    "failed": 0,
+    "librarySha256": "921ed36f64c82680644a069e318dc329f1f0d481c828273c94cd23fed9f3e2d9",
+    "capturedInputSha256": "62a9784a1f5a3f51e4bc22e73db1a6b7672594b53e8e8459328ee54784980ab0",
+    "syntheticAdjacentIdentities": true,
+    "checks": 46,
+    "exitCode": 0,
+    "gpuCompositionVerified": false
+  },
+  "preservedLocalBuild": {
+    "buildReceiptSha256": "B051F5625FC2C0167A78570E31726500BC9E3BF8FE464EC5799D680935C63863",
+    "captionChecks": 46,
+    "customSourceIncludedInMerge": false,
+    "configProfilesValidated": 37,
+    "selectedNativePassed": 984,
+    "commit": "704e202b0ba6216bcd6af07d1aa3613b96cddd96",
+    "configEdits": [],
+    "selectedNativeFailed": 0
+  },
+  "githubChecks": {
+    "configuredChecksReported": false,
+    "statusContexts": 0,
+    "checkRuns": 0
+  },
+  "reviews": [
+    "continuity",
+    "adversarial_qa",
+    "subtitle_vision"
+  ],
+  "liveValidation": {
+    "anotherVpTestCopyRunning": true,
+    "windowsException": "0xc0000409",
+    "status": "Pending",
+    "repeatedLiveAcceptance": false,
+    "causationEstablished": false,
+    "mainStartup": "Exited on 2026-10-20 at 22:33 EDT"
+  },
+  "deployment": {
+    "restartVerified": false,
+    "activeConfigurationUnchanged": true,
+    "commit": "704e202b0ba6216bcd6af07d1aa3613b96cddd96",
+    "verifiedBinaryHashes": 6,
+    "backup": "C:\\Videoprocessor\\vp\\backups\\mandalorian-ar-snap-20261020-223257-162-e5d9c58f"
+  },
+  "limitations": [
+    "Selected native tests are not the entire native suite.",
+    "Captured-source replay uses synthetic adjacent identities and does not verify GPU composition.",
+    "Pure beta does not accept the existing custom output_display.default config extension.",
+    "Pre-acquisition reversal without progressive queued proof retains ordinary clean-change admission.",
+    "VP-0070 remains Blocked for broader live qualification; VP-0189 remains Done by explicit user acceptance."
+  ]
+}

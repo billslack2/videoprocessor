@@ -1,5 +1,30 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Subtitle continuity and gradual AR follow-up merged - 2026-10-20
+
+Merged [PR #176](https://github.com/billslack2/videoprocessor/pull/176) into
+`v1.4.02-beta` at `0a6cdc2dbbb68a14c3b687d8e2dbcdad4878cd2b`. The merged tree
+is identical to tested source `78ad183420718bc686bb0fdc42835bf827c1a8a8`.
+Subtitle lookahead now uses its own exact owned ready prefix, independently
+of AR readiness; a fresh accepted-cue certificate can preserve a qualified
+pending refresh. Gradual AR detection withholds intermediate publication
+using current native progress or a verified progressive queued window.
+Clean stationary changes retain fast adoption, scan jitter cannot starve
+publication, and the existing abrupt-native threshold clears pre-acquisition
+motion votes. Generated subtitle pixels never become crop/history authority.
+
+The clean x64 Release integration passed 1,057 selected native tests and all
+46 captured-source CPU replay checks. The separately preserved local source
+`704e202b0ba6216bcd6af07d1aa3613b96cddd96` passed 984 selected native tests,
+46 replay checks, and all 37 active config profiles without config edits;
+its unrelated custom extensions were not merged. These are scoped automated
+results, not full-suite or GPU-composition/live acceptance. The deployed main
+process exited during startup while another VP test copy was running; the
+cause and successful restart remain unverified. VP-0070 remains Blocked for
+broader live qualification. VP-0189 remains Done by explicit user acceptance.
+
+Evidence: [merge and validation receipt](../assets/VP-0070/subtitle-ar-0a6cdc2d/merge-evidence.json).
+
 ## 1.4 RC2.2 published - 2026-10-10
 
 Release: https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2.2
