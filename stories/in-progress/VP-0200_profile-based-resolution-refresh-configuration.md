@@ -2,20 +2,25 @@
 
 ## Status
 
-In Progress (2026-10-21; tester mode/DPI control checks passed;
-projector-on picture acceptance pending). Current fix:
-`4fd790cec52077f1d559e11da812b17a841ed9be` on
-`codex/vp-0200-wire-raster-20261021` in
-`E:\codex\videoprocessor\vp-0200-wire-raster-20261021`, rebased onto fetched beta
-`88289699c0d48626bc18dc4411316b95b4e8b02a` (`v1.4.02-beta`, PR #180).
-The beta advanced during implementation; range-diff confirms the fix survived
-the rebase unchanged. No deployment of this follow-up has been requested.
+In Progress (2026-10-21; software review and regression validation complete;
+projector-on acceptance pending). The merge-ready upstream integration is
+[PR #184](https://github.com/billslack2/videoprocessor/pull/184), clean head
+`921791d0768a18df4087cbc09a97110bd609aefc` on fetched current beta
+`71043e192b658c433dc8d888632f4740d1e61b01` (`v1.4.02-beta`, PR #182 included).
+It preserves #181/#183 history and adds fixes for stale raster snapshots,
+recreated swapchain dimensions and clipped OSD annotations. All 26 added tests
+passed. The #181 layer `3a8f8a08` passed all 2,948 native tests; the final
+combined head passed 378 targeted regressions and four Config checks. Both
+clean x64 Release solution builds passed. The final combined head did not run
+the entire 2,948-test suite again.
 
-Merge request: [PR #181](https://github.com/billslack2/videoprocessor/pull/181),
-opened 2026-10-21 against `v1.4.02-beta` at head `4fd790ce`. The request
-records the Release build and outstanding hardware qualification. It is open
-and has not been merged. Partial tester qualification is recorded below;
-projector-on picture and the remaining acceptance cases are still pending.
+#181 is updated to `3a8f8a086339d75951a6cebd57fe8c3647ad0251` on current beta.
+Original fork #183 remains at `1669ee64`; its review fixes live in #184 after
+automatic approval rejected writing to that fork. #184 is the single tested
+integration candidate into beta. GitHub reports MERGEABLE and no advertised
+CI checks; no merge or deployment has occurred. Source/worktree pins, exact
+coverage and remaining hardware limits are in the
+[review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md).
 
 Previous operator deployment (2026-10-20): implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the then-current beta

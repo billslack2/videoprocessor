@@ -2,45 +2,29 @@
 
 ## Status
 
-In Progress (2026-10-21; integrated with VP-0200; tester mode/DPI control
-checks passed, projector-on qualification pending). The current tester-driven follow-up is
-`4fd790cec52077f1d559e11da812b17a841ed9be` on
-`codex/vp-0200-wire-raster-20261021`, based on fetched beta
-`88289699c0d48626bc18dc4411316b95b4e8b02a` (`v1.4.02-beta`, PR #180).
-Worktree: `E:\codex\videoprocessor\vp-0200-wire-raster-20261021`.
+In Progress (2026-10-21; software merge readiness verified with VP-0200;
+projector-on qualification pending). Current combined integration is
+[PR #184](https://github.com/billslack2/videoprocessor/pull/184), clean head
+`921791d0768a18df4087cbc09a97110bd609aefc` on current beta
+`71043e192b658c433dc8d888632f4740d1e61b01` (`v1.4.02-beta`).
+The reviewed #181 layer `3a8f8a08` contains twelve backend/cadence/DPI regressions
+and passed the complete 2,948 native tests, plus four focused Config checks.
+The final #181/#183 combined head adds fourteen OSD cache/font/bitmap tests and
+passed 378 targeted regressions plus the same four Config checks. All 26 added
+tests were discovered and passed on that final head. Both clean x64 Release
+solution builds succeeded; no failures/skips in the stated test selections.
+The complete native suite was not rerun on the final combined head.
 
-Merge request: [PR #181](https://github.com/billslack2/videoprocessor/pull/181),
-opened 2026-10-21 against `v1.4.02-beta` at head `4fd790ce`. The request
-records the Release build and outstanding hardware qualification. It is open
-and has not been merged. Partial tester qualification is recorded below;
-projector-on picture and the remaining acceptance cases are still pending.
-
-The supplied tester log confirms that CCD 1080p requests could leave a 4K wire
-signal and that verification/rollback caught each failure. Their config is
-valid. Raster changes now prefer a matching enumerated progressive GDI
-fullscreen mode in one call; rate-only changes and custom timings without a GDI
-selector retain CCD. Read-back requires both source and target raster plus the
-signal refresh and progressive scan. CCD restoration retains captured target
-timing/scaling. Native/close ranking is followed by exact integer cadence
-multiples/divisors, then configured-order fallback: 29.97 precedes 30 for a
-59.94 source. Preview and runtime use one helper. VP Renderer fullscreen/client
-and swapchain sizing follows physical geometry on every display/DPI change.
-See the VP-0200 record and source `docs/VP-0200_DISPLAY_MODE_SWITCHING.md` for
-the evidence, implementation contract and remaining bench work.
-
-Release evidence: full x64 Release Rebuild succeeded from clean commit
-`4fd790cec52077f1d559e11da812b17a841ed9be` (72 warnings, zero errors).
-Host and renderer identities show `v1.4.02-beta-4fd790c`, dirty=false. The
-player, both renderer variants and Config hashes match their genuine x64
-Release runtime records. Source branch is pushed. Build log and receipt are
-under the fix worktree's `artifacts/vp0200-wire-raster-beta-release.log` and
-`artifacts/vp0200-wire-raster-build-receipt.json`. No new automated tests were added or
-run for this follow-up. The old missing-Magewell-SDK report was incorrect; the
-official SDK is installed under `E:\codex\tools`, and the isolated build uses
-`MagewellSdkRoot`. Historical validation and deployments are recorded in
-VP-0200. The new fix has not been deployed. Physical HDMI switching, repeated
-200% DPI transitions, native OSD dimensions, rollback, restoration ownership,
-custom timings and external display changes remain acceptance work.
+The reviewed stack addresses stale raster cache lifetime, all swapchain size
+publication paths and native-panel clipping while keeping OSD polling free of
+new display-driver queries. #181 routing and consecutive read-back verification
+use shared production helpers exercised by tests. The original #183 fork was
+not modified after automatic approval rejected the fork push; all original
+author commits and review changes are in upstream #184. Use #184 as the single
+integration candidate. It is MERGEABLE; no beta merge, deployment or active
+config/state edit has occurred. See the
+[review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md) for exact
+source/binary/test pins and remaining physical-display acceptance.
 
 ## Successful tester run (2026-10-21)
 
