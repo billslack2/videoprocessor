@@ -3783,6 +3783,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t outwardAsyncOffered=0, outwardAsyncAdopted=0, outwardAsyncNextLogTick=0;
     uint64_t outwardAsyncLastAdoptedGeneration=0, outwardAsyncLastAdoptedSequence=0;
     uint64_t subtitlePrimeCalls=0, subtitlePrimeRequests=0;
+    uint64_t subtitlePrimeReadySeen=0, subtitlePrimePublishedFuture=0, subtitlePrimeMissing=0;
     uint64_t subtitleReuseRejectNextTick=0;
     double subtitlePrimeMs=0, subtitlePrimePeakMs=0;
     PresentationAnalysisBudget analysisWorkBudget;
@@ -12911,7 +12912,8 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    &subtitleBoxPresentation.AcceptedCueSeedCertificate());
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -13474,10 +13476,12 @@ struct LibplaceboVideoRenderer::Impl
             const double seconds=(subtitlePerfNow-subtitlePerfTick)/1000.0;
             const auto worker=subtitleMeasurementWorker.TakeDiagnostics();
             const auto jobs=worker.fullScans+worker.refreshes+worker.failed;
-            DebugLog::Log("SUBTITLE DISPATCH: window_s=%.3f calls=%llu requests=%llu avg_ms=%.3f peak_ms=%.3f submitted=%llu exact_reads=%llu deduplicated=%llu expired_jobs=%llu",
+            DebugLog::Log("SUBTITLE DISPATCH: window_s=%.3f calls=%llu requests=%llu avg_ms=%.3f peak_ms=%.3f submitted=%llu exact_reads=%llu deduplicated=%llu expired_jobs=%llu ready_seen=%llu published_future=%llu missing=%llu",
                 seconds,subtitlePrimeCalls,subtitlePrimeRequests,
                 subtitlePrimeCalls?subtitlePrimeMs/subtitlePrimeCalls:0,subtitlePrimePeakMs,
-                worker.submitted,worker.exactReads,worker.deduplicated,worker.expired);
+                worker.submitted,worker.exactReads,worker.deduplicated,worker.expired,
+                subtitlePrimeReadySeen,subtitlePrimePublishedFuture,subtitlePrimeMissing);
+            subtitlePrimeReadySeen=subtitlePrimePublishedFuture=subtitlePrimeMissing=0;
             subtitlePrimeCalls=subtitlePrimeRequests=0;subtitlePrimeMs=subtitlePrimePeakMs=0;
 
             DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d ready=%zu dropped_jobs=%llu failed_jobs=%llu request_misses=%llu",
@@ -20915,21 +20919,83 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
     const auto started=SteadyClock::now();
     m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity);
     unsigned requests=0;
-    for(size_t i=0;i<(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);++i) {
+    const size_t count=(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);
+    std::array<SubtitleBoxObservation,SubtitleBoxLookahead::MaxFrames> observations;
+    std::array<uint64_t,SubtitleBoxLookahead::MaxFrames> preparedDomains{};
+    SubtitleBarTrackingReference tracking;
+    for(size_t i=0;i<count;++i) {
         const auto& queued=frames[i];
+        observations[i].identity=queued.activePictureIdentity;
         if(queued.cadenceRepeat || !queued.state || !queued.state->displayMode ||
-            !queued.frame.GetData() || queued.conversionFailed) continue;
+            !queued.frame.GetData() || queued.conversionFailed) {tracking={};continue;}
         const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
             queued.converted,queued.analysis,AnalysisSourceProfile::QueuedCapture,
             queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
-        if(!prepared.IsValid()) continue; // Pending DV conversion is never raw RGB evidence.
+        if(!prepared.IsValid()) {tracking={};continue;} // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
+        preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
+        if(i==0) {
+            std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
+            if(!guard.owns_lock() || policy!=m_impl->localBoundaryPolicyGeneration ||
+                continuity!=m_impl->localBoundaryContinuityGeneration ||
+                identity.viewportGeneration!=m_impl->renderViewportRequestSerial)return;
+            tracking=m_impl->subtitleBoxPresentation.BarTrackingReferenceFor(identity,
+                prepared.source.width,prepared.source.height,policy,continuity,script);
+        }
         auto picture=shared;
         if(picture.identity.analysisDomainKey!=prepared.domainKey) picture.bounds={};
-        m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
-            queued.frame.IsSourceDiscontinuity(),{},policy,continuity,nearBar,optimization,
+        observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
+            queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
             script,picture,prepared);
+        tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
         ++requests;
+        if(observations[i].analyzed)++m_impl->subtitlePrimeReadySeen;
+        else ++m_impl->subtitlePrimeMissing;
+    }
+    // Publish only independently completed subtitle work. Native AR may still
+    // have no ready prefix, and its optional deadline must not erase this one.
+    {
+        std::unique_lock<std::mutex> guard(m_queueMutex,std::try_to_lock);
+        if(guard.owns_lock() && !m_frameQueue.empty() &&
+            policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
+            continuity==m_activePictureTimeline.ContinuityGeneration() &&
+            SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
+                frames.front().activePictureIdentity)) {
+            std::array<ActivePictureFrameIdentity,SubtitleBoxLookahead::MaxFrames> owned{};
+            size_t ownedCount=0;
+            for(size_t i=0;i<count;++i) {
+                const auto queued=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),
+                    [&](const QueuedFrame& candidate) {
+                        return !candidate.cadenceRepeat && SameActivePictureFrameIdentity(
+                            candidate.activePictureIdentity,frames[i].activePictureIdentity);
+                    });
+                if(queued==m_frameQueue.end() || queued->analysis!=frames[i].analysis ||
+                    queued->converted!=frames[i].converted || queued->state!=frames[i].state ||
+                    queued->frame.GetData()!=frames[i].frame.GetData())break;
+                owned[i]=queued->activePictureIdentity;
+                // This domain came from the same still-owned prepared source,
+                // never from the worker result whose identity is being checked.
+                owned[i].analysisDomainKey=preparedDomains[i];
+                ++ownedCount;
+            }
+            if(ownedCount) {
+                auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
+                    observations.data(),owned.data(),ownedCount,policy,continuity);
+                if(preview.available) {
+                    m_impl->subtitlePrimePublishedFuture+=preview.followingCount;
+                    m_frameQueue.front().subtitleBoxPreview=std::move(preview);
+                }
+                for(size_t i=0;i<ownedCount;++i) {
+                    const auto& observation=observations[i];
+                    if(!observation.analyzed || !SameAnalysisFrameIdentity(observation.identity,owned[i]) ||
+                        observation.policyGeneration!=policy || observation.continuityGeneration!=continuity)continue;
+                    auto queued=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),[&](const QueuedFrame& candidate) {
+                        return !candidate.cadenceRepeat && SameActivePictureFrameIdentity(candidate.activePictureIdentity,owned[i]);
+                    });
+                    queued->subtitleBoxObservation=observation;
+                }
+            }
+        }
     }
     const auto elapsed=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
     ++m_impl->subtitlePrimeCalls;m_impl->subtitlePrimeRequests+=requests;
@@ -21646,7 +21712,6 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 
         // Reuse raw measurements as this sliding window advances. Only current
         // presentation consumes cue state; future scans do not advance it.
-        bool subtitleWindowCurrent = !subtitleObservations.empty() && !m_frameQueue.empty();
         for (const auto& subtitle : subtitleObservations)
         {
             auto queued = std::find_if(m_frameQueue.begin(),m_frameQueue.end(),
@@ -21654,18 +21719,11 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     return !candidate.cadenceRepeat &&
                         SameActivePictureFrameIdentity(candidate.activePictureIdentity,subtitle.identity);
                 });
-            if (queued == m_frameQueue.end()) { subtitleWindowCurrent = false; continue; }
-            if(subtitle.analyzed)queued->subtitleBoxObservation = subtitle;
+            if (queued != m_frameQueue.end() && subtitle.analyzed)
+                queued->subtitleBoxObservation = subtitle;
         }
-        if (subtitleWindowCurrent && SameActivePictureFrameIdentity(
-            m_frameQueue.front().activePictureIdentity,subtitleObservations.front().identity))
-        {
-            m_frameQueue.front().subtitleBoxPreview = SubtitleBoxLookahead::Resolve(
-                subtitleObservations.data(),subtitleObservations.size(),lookaheadPolicyGeneration,
-                subtitleContinuityGeneration);
-            m_frameQueue.front().subtitleBoxPreview.newScanMs = subtitleNewScanMs;
-            m_frameQueue.front().subtitleBoxPreview.newScanFrames = subtitleNewScanFrames;
-        }
+        // PrimeSubtitleMeasurements alone publishes subtitle previews. This
+        // native-AR prefix may be shorter even when subtitle future scans are ready.
 
 		for (const PreviewEvidence& preview : observations)
 		{
