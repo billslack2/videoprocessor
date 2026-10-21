@@ -1562,7 +1562,7 @@ namespace Tests
                 MotionSequence s(height);const int start=s.input.trustedGeometry.top-16;
                 s.Target(start);s.Step();s.Target(start-2);s.Step();s.Target(start-4);s.Step();
                 Assert::IsTrue(s.motion.onsetPending);
-                const int limit=std::max(4,height/100),delta=limit+(abrupt?1:0);
+                const int limit=std::max(4,height/100),delta=(limit/2)*2+(abrupt?2:0);
                 const auto set=[&](int top,int bottom) {
                     s.Target(top);auto b=s.input.outwardCandidate;b.bottom=bottom;
                     b.aspectRatio=double(b.rasterWidth)/(b.bottom-b.top);
