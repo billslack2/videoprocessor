@@ -504,6 +504,31 @@ std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
 					[&mode](const DisplayOutputModeChoice& existing)
 						{ return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
 				result.push_back({ mode, rate.path, rate.doubledRate });
+    struct CadenceRatioMode { DisplayOutputMode mode; uint64_t factor; bool multiple; };
+    std::vector<CadenceRatioMode> related;
+    if (!interlaced || input.numerator <= (std::numeric_limits<uint32_t>::max)() / 2)
+    {
+        const uint64_t sourceNumerator = uint64_t(input.numerator) * (interlaced ? 2 : 1);
+        for (const auto& mode : configured)
+        {
+            if (!IsDisplayModeAvailable(mode, available) || !mode.refreshRate.numerator || !mode.refreshRate.denominator ||
+                std::any_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
+                    { return DisplayOutputModesExactlyEqual(existing.mode, mode); })) continue;
+            const uint64_t a = uint64_t(mode.refreshRate.numerator) * input.denominator;
+            const uint64_t b = sourceNumerator * mode.refreshRate.denominator;
+            const bool multiple = a >= b;
+            const uint64_t larger = multiple ? a : b, smaller = multiple ? b : a;
+            if (smaller && larger % smaller == 0)
+                related.push_back({mode, larger / smaller, multiple});
+        }
+    }
+    std::stable_sort(related.begin(), related.end(), [](const CadenceRatioMode& a, const CadenceRatioMode& b)
+    {
+        if (a.multiple != b.multiple) return a.multiple;
+        return a.factor < b.factor;
+    });
+    for (const auto& item : related)
+        result.push_back({item.mode, DisplayRefreshModeSelectionPath::None, false, false, true});
     for (const auto& mode : configured)
         if (IsDisplayModeAvailable(mode, available) &&
             std::none_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
