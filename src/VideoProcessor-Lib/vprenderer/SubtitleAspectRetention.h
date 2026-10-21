@@ -68,7 +68,8 @@ inline bool SubtitlePresentationKeepsClassicTranslation(
 }
 // An advanced subtitle mode owns the picture pose during a gradual picture
 // transition. Classic's translation state may not veto an otherwise current
-// moving-picture hold. Keep FIT and every other competing owner intact.
+// moving-picture hold. An independently proved captioned ramp also supersedes
+// its legacy vertical FIT; horizontal FIT and every other owner remain intact.
 inline bool RouteAdvancedMovingPictureHold(
     AlphaSourceCrop::Input& input, SubtitlePreviewMode mode)
 {
@@ -80,6 +81,11 @@ inline bool RouteAdvancedMovingPictureHold(
     routed.verticalTranslationConfirmationPending = false;
     routed.verticalTranslationBaseRetentionActive = false;
     routed.verticalTranslationEngageBaseRetentionActive = false;
+    if (routed.movingPictureHold.subtitleAssistedBars && routed.movingPictureHold.verticalFitOnly)
+    {
+        routed.verticalFitConfirmationPending = false;
+        routed.movingPictureHold.competingPresentation = false;
+    }
     if (!AlphaSourceCrop::HasCurrentMovingPictureHold(routed))
         return false;
 
