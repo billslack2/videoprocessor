@@ -21099,9 +21099,8 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			(ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST ||
 			 ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST);
 		CStringA raster;
-		raster.Format(" | WIRE: %ux%u%s @ %.3f Hz", verifiedMode.targetWidth,
-			verifiedMode.targetHeight, interlaced ? "i" : "",
-			RefreshRateHz(verifiedMode.refreshRate));
+		raster.Format(" | WIRE: %ux%u%s", verifiedMode.targetWidth,
+			verifiedMode.targetHeight, interlaced ? "i" : "");
 		value += raster;
 		if (verifiedMode.sourceWidth != verifiedMode.targetWidth ||
 			verifiedMode.sourceHeight != verifiedMode.targetHeight)
