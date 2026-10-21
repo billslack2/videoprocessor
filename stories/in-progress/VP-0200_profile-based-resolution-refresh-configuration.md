@@ -11,6 +11,11 @@ implemented, bench validation pending). Current fix:
 The beta advanced during implementation; range-diff confirms the fix survived
 the rebase unchanged. No deployment of this follow-up has been requested.
 
+Merge request: [PR #181](https://github.com/billslack2/videoprocessor/pull/181),
+opened 2026-10-21 against `v1.4.02-beta` at head `4fd790ce`. The request
+records the Release build and outstanding hardware qualification. It is open
+and has not been merged; story acceptance remains pending bench validation.
+
 Previous operator deployment (2026-10-20): implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the then-current beta
 branch tip `72bcc9ad1fc29142fb91928461e567f5725dcd0b` (`v1.4.02-beta`).

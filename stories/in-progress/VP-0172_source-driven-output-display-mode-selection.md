@@ -9,6 +9,11 @@ pending). The current tester-driven follow-up is
 `88289699c0d48626bc18dc4411316b95b4e8b02a` (`v1.4.02-beta`, PR #180).
 Worktree: `E:\codex\videoprocessor\vp-0200-wire-raster-20261021`.
 
+Merge request: [PR #181](https://github.com/billslack2/videoprocessor/pull/181),
+opened 2026-10-21 against `v1.4.02-beta` at head `4fd790ce`. The request
+records the Release build and outstanding hardware qualification. It is open
+and has not been merged; story acceptance remains pending bench validation.
+
 The supplied tester log confirms that CCD 1080p requests could leave a 4K wire
 signal and that verification/rollback caught each failure. Their config is
 valid. Raster changes now prefer a matching enumerated progressive GDI
