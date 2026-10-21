@@ -2,8 +2,17 @@
 
 ## Status
 
-In Progress (2026-10-20; deployed for operator validation). Implementation is in `codex/vp-0200-display-tab`
-in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the current beta
+In Progress (2026-10-21; tester signal-raster failure confirmed; follow-up
+implemented, bench validation pending). Current fix:
+`4fd790cec52077f1d559e11da812b17a841ed9be` on
+`codex/vp-0200-wire-raster-20261021` in
+`E:\codex\videoprocessor\vp-0200-wire-raster-20261021`, rebased onto fetched beta
+`88289699c0d48626bc18dc4411316b95b4e8b02a` (`v1.4.02-beta`, PR #180).
+The beta advanced during implementation; range-diff confirms the fix survived
+the rebase unchanged. No deployment of this follow-up has been requested.
+
+Previous operator deployment (2026-10-20): implementation is in `codex/vp-0200-display-tab`
+in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the then-current beta
 branch tip `72bcc9ad1fc29142fb91928461e567f5725dcd0b` (`v1.4.02-beta`).
 The deployed feature commit is `5101c22a638316628c0cea878744bcb85e7b9b25`. The top-level Display page is directly
 below General and outside VP Renderer. The existing refresh-switch setting is
@@ -197,6 +206,54 @@ operator/bench qualification work.
 Local evidence: `artifacts/vp0200-picker-release.log`,
 `vp0200-picker-preview.png`, and `vp0200-picker-*-catalog.png[.choices.png]`.
 
+## Tester signal-raster follow-up (2026-10-21)
+
+The user supplied `vp-log-2026-10-21.zip.txt` (a ZIP with only `vp.log`) and
+then `VideoProcessor.cfg.txt`. The config is valid: one Advanced `Under_30`
+profile, monitor `auto`, restoration enabled, fullscreen-only switching, and
+1080p50/59.94/60 followed by 2160p30/29.97/25/24/23.976. It matches the log.
+At 00:21:09 and 00:23:01, CCD requests for 1080p59.94/60/50 left the target
+signal at 3840x2160 with the requested refresh. Verification rejected them and
+rollback succeeded; configured-order fallback then selected 2160p30 before
+2160p29.97. 23.976 mode switches and restoration verified in that same log.
+The tester's separate GDI probe success and 200% DPI symptom are reported
+observations, not independently established by the supplied log.
+
+The fix uses one progressive GDI fullscreen request for raster changes where
+an equivalent enumerated selector exists (59 for 59.94), retaining CCD for
+rate-only transitions and custom DXGI timings without a GDI selector. Read-back
+requires actual source and target modes, signal vSync frequency and progressive
+scan; a GPU-scaled desktop is never accepted as the requested physical raster.
+Unverified transitions roll back and verify before another candidate; failed
+rollback stops attempts. CCD restoration captures original target timing and
+scaling. A failure at one rate does not blacklist other rates at that raster.
+
+Shared preview/runtime ranking now puts exact integer cadence multiples and
+divisors after native/close candidates and before arbitrary configured-order
+fallbacks. Thus the supplied 59.94 profile tries 2160p29.97 after the two native
+59.94/60 candidates, ahead of 1080p50 and 2160p30. The config needs no edit.
+
+VP Renderer fullscreen creation and refitting use physical per-monitor DPI
+coordinates; client size is re-read after mode selection, and later display
+notifications schedule swapchain resizing on the renderer thread. Legacy
+DirectShow hosts keep their prior context. Host recreation across backend
+changes occurs after retirement; ordinary source/profile restarts retain it.
+New diagnostics show API route, desktop/signal dimensions and physical
+client/swapchain geometry. Source documentation:
+`docs/VP-0200_DISPLAY_MODE_SWITCHING.md`.
+
+Release evidence: full x64 Release Rebuild succeeded from clean commit
+`4fd790cec52077f1d559e11da812b17a841ed9be` (72 warnings, zero errors).
+Host and renderer identities show `v1.4.02-beta-4fd790c`, dirty=false. The
+player, both renderer variants and Config hashes match their genuine x64
+Release runtime records. Source branch is pushed. Build log and receipt are
+under the fix worktree's `artifacts/vp0200-wire-raster-beta-release.log` and
+`artifacts/vp0200-wire-raster-build-receipt.json`. No new automated tests were added or
+run. Repeated 4K/1080p transitions on the reported NVIDIA 511.17 driver at 200%
+scaling, physical receiver timing, native OSD sizing, stop restoration,
+rejected-mode rollback, external changes and custom timings remain bench
+qualification. No active configuration, state or deployed binaries were changed.
+
 ## User story
 
 As a VP Renderer user, I want display-mode profiles with an obvious Auto default
@@ -249,7 +306,8 @@ to the existing display transaction. Do not add a second mode selector.
   small device clock drift. Coalesce requests and reject stale generations.
 - With no available permitted mode, retain the current mode and continue playback
   with a clear diagnostic. Advanced profiles fall back to available allowed modes
-  in configured order after cadence matches; one available entry is fixed output. Apply and verify full modes through VP-0172; restore
+  after native/close matches and exact integer cadence multiples/divisors;
+  remaining fallbacks follow configured order and one available entry is fixed output. Apply and verify full modes through VP-0172; restore
   prior full mode only while VP still owns the display change.
 
 ## Mockups

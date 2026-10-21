@@ -2,24 +2,39 @@
 
 ## Status
 
-In Progress (2026-10-19). Implementation is integrated with VP-0200 on
-`codex/vp-0200-display-tab` in
-`E:\codex\videoprocessor\vp-0200-display-tab`, based on beta tip `d988e54`
-(`v1.4.02-beta`). The platform-independent mode parser and selector compose
-with VP-0167 ranking. Advanced mode intersects the ordered configured list with
-a deduplicated DXGI/GDI progressive 32-bpp inventory, logs source raster,
-cadence, inventory origins, unavailable entries, eligible candidates, and DCI
-fallback context, then applies and verifies raster plus refresh. Failed
-transitions roll back to the immediately prior mode; renderer retirement can
-restore the baseline mode according to profile policy. Auto continues using
-the existing refresh-only path.
+In Progress (2026-10-21; integrated with VP-0200, physical-display validation
+pending). The current tester-driven follow-up is
+`4fd790cec52077f1d559e11da812b17a841ed9be` on
+`codex/vp-0200-wire-raster-20261021`, based on fetched beta
+`88289699c0d48626bc18dc4411316b95b4e8b02a` (`v1.4.02-beta`, PR #180).
+Worktree: `E:\codex\videoprocessor\vp-0200-wire-raster-20261021`.
 
-Validation: the config editor build target compiled and linked in x64 Release.
-The modified beta renderer translation unit compiled in an isolated project
-check; that broader check then stopped on missing generated `version.h`. The
-full solution build is blocked because the official Magewell SDK is not
-installed. No test executable was run and no binaries were deployed. Focused
-acceptance checks and physical-display bench validation remain outstanding.
+The supplied tester log confirms that CCD 1080p requests could leave a 4K wire
+signal and that verification/rollback caught each failure. Their config is
+valid. Raster changes now prefer a matching enumerated progressive GDI
+fullscreen mode in one call; rate-only changes and custom timings without a GDI
+selector retain CCD. Read-back requires both source and target raster plus the
+signal refresh and progressive scan. CCD restoration retains captured target
+timing/scaling. Native/close ranking is followed by exact integer cadence
+multiples/divisors, then configured-order fallback: 29.97 precedes 30 for a
+59.94 source. Preview and runtime use one helper. VP Renderer fullscreen/client
+and swapchain sizing follows physical geometry on every display/DPI change.
+See the VP-0200 record and source `docs/VP-0200_DISPLAY_MODE_SWITCHING.md` for
+the evidence, implementation contract and remaining bench work.
+
+Release evidence: full x64 Release Rebuild succeeded from clean commit
+`4fd790cec52077f1d559e11da812b17a841ed9be` (72 warnings, zero errors).
+Host and renderer identities show `v1.4.02-beta-4fd790c`, dirty=false. The
+player, both renderer variants and Config hashes match their genuine x64
+Release runtime records. Source branch is pushed. Build log and receipt are
+under the fix worktree's `artifacts/vp0200-wire-raster-beta-release.log` and
+`artifacts/vp0200-wire-raster-build-receipt.json`. No new automated tests were added or
+run for this follow-up. The old missing-Magewell-SDK report was incorrect; the
+official SDK is installed under `E:\codex\tools`, and the isolated build uses
+`MagewellSdkRoot`. Historical validation and deployments are recorded in
+VP-0200. The new fix has not been deployed. Physical HDMI switching, repeated
+200% DPI transitions, native OSD dimensions, rollback, restoration ownership,
+custom timings and external display changes remain acceptance work.
 
 ## User story
 
@@ -60,8 +75,9 @@ may change, desktop raster does not.
    DXGI, GDI, or both. Do not discard modes merely because their raster differs
    from the current desktop.
 4. Carry the selected width, height, and rational rate through the existing
-   display transition. Request all three in one `SetDisplayConfig` operation;
-   preserve the current virtual-mode versus non-virtual-mode index handling.
+   display transaction. Prefer one enumerated progressive GDI fullscreen mode
+   request for raster changes. Retain verified CCD for refresh-only changes and
+   custom timings without a GDI selector; preserve virtual-mode index handling.
 5. Verify the applied width, height, and refresh after the transition. Candidate
    rollback and retirement restore must restore the entire pre-VP display mode,
    not only the rate.
