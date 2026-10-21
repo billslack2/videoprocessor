@@ -863,6 +863,7 @@ namespace
         bool subtitleStretchFill = false;
         SubtitlePreviewMode subtitleMode = SubtitlePreviewMode::None;
         std::map<std::string,std::string> subtitleProfileSettings;
+        bool subtitleProfileSelected = false;
         int subtitleHoldMs = 250;
         int subtitleNearBarDistance = 20;
         int subtitleDetectionOptimization=0;
@@ -1235,7 +1236,7 @@ namespace
 				}
 				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
-                if(group.name=="subtitles") { settings.subtitleProfileSettings=profile->second.settings; continue; }
+                if(group.name=="subtitles") { settings.subtitleProfileSettings=profile->second.settings; settings.subtitleProfileSelected=true; continue; }
 				std::string section = "profiles." + group.name + "." + profileName;
 				if (RendererProfileConfig::IsTargetModel(config))
 				{
@@ -2611,7 +2612,7 @@ namespace
         settings.scopeSubtitleEngageDriftMs=subtitleDefaults.scopeSubtitleEngageDriftMs;
         settings.scopeSubtitleReleaseDriftMs=subtitleDefaults.scopeSubtitleReleaseDriftMs;
         settings.scopeSubtitleTargetBufferPixels=subtitleDefaults.scopeSubtitleTargetBufferPixels;
-        settings.scopeSubtitleFit=true;
+        settings.scopeSubtitleFit=false;
         settings.scopeSubtitlePaddingPixels=0;
         {
             const auto& values=settings.subtitleProfileSettings;
@@ -2644,7 +2645,7 @@ namespace
                     } else RendererProfileConfig::ParseBoolean(get("temporal_fill"),settings.subtitleTemporalFill);
                     settings.subtitleMode=type=="black"?SubtitlePreviewMode::BlackBackground:
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;
-                    const bool classicStyle=type.empty() || type=="classic";
+                    const bool classicStyle=settings.subtitleProfileSelected && (type.empty() || type=="classic");
                     settings.scopeSubtitleFit=classicStyle || SubtitlePreviewOverridesClassicHandling(settings.subtitleMode);
                     int n=0;
                     if(settings.scopeSubtitleFit) {

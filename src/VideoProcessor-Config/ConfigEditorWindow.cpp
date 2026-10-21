@@ -4100,7 +4100,7 @@ QWidget* ConfigEditorWindow::createShell()
 	pages_->addWidget(createScalingPage());
 	pages_->addWidget(createZoomPage());
     pages_->addWidget(createProfilePage(QStringLiteral("Subtitles"),
-        QStringLiteral("Choose subtitle processing and inward placement. The first profile is the default."),
+        QStringLiteral("Choose subtitle processing and inward placement. With no profile, processing is Off; otherwise the first profile is the default."),
         QStringLiteral("vprenderer.subtitles")));
 
     updatePanel_ = new UpdatePanel(QString::fromStdWString(UpdateLauncher::InstallationRoot()), nullptr, !testMode_);

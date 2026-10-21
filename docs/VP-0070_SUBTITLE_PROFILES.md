@@ -1,6 +1,6 @@
 # Subtitle profiles
 
-**VP Renderer → Subtitles** contains standard ordered profiles with shortcuts, shared cycle shortcuts, source rules, persistence, live selection, and top OSD integration. The first profile is the default.
+**VP Renderer → Subtitles** contains standard ordered profiles with shortcuts, shared cycle shortcuts, source rules, persistence, live selection, and top OSD integration. Without a Subtitles profile, processing is Off. Otherwise the first profile is the default.
 
 ## Processing styles
 
