@@ -133,6 +133,61 @@ struct SubtitleBoxPreview
     unsigned followingCount = 0;
 };
 
+// One successful tracker call may certify its already acquired complete cue.
+// This only lets the pending guard ignore future-row pruning; raw current
+// coverage and native pixel/bar revalidation remain mandatory there.
+class SubtitleAcceptedCueSeedCertificate
+{
+public:
+    bool Matches(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted) const {
+        const auto& current=preview.current;
+        return m_valid && preview.available && current.analyzed &&
+            !current.discontinuity && !current.analysisRefresh && !current.pendingRefresh &&
+            current.independentBarAnalysis && current.barAuthority && current.barEvidence.available &&
+            !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
+            !current.glyphLocalTop && !current.glyphLocalBottom &&
+            current.ink && current.ink==m_current.ink && current.ink->rawEvidenceComplete &&
+            SameAnalysisFrameIdentity(current.identity,m_current.identity) &&
+            preview.policyGeneration==m_current.policyGeneration &&
+            preview.continuityGeneration==m_current.continuityGeneration &&
+            current.policyGeneration==m_current.policyGeneration &&
+            current.continuityGeneration==m_current.continuityGeneration &&
+            current.width==m_current.width && current.height==m_current.height &&
+            current.pictureTop==m_current.pictureTop && current.pictureBottom==m_current.pictureBottom &&
+            current.barEvidence.top==current.pictureTop && current.barEvidence.bottom==current.pictureBottom &&
+            current.scriptHint==m_current.scriptHint && current.optimizationMode==m_current.optimizationMode &&
+            current.nearBarDistance==m_current.nearBarDistance && current.sharedPicture.Matches(m_current.sharedPicture) &&
+            SameCueResult(current.text,m_current.text) && SameCueResult(accepted,m_accepted) &&
+            accepted.detected && !accepted.held && !accepted.revised && !accepted.workLimit && accepted.cue!=0;
+    }
+private:
+    friend class SubtitleBoxPresentation;
+    static bool SameRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+    }
+    static bool SameCueResult(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
+        if(a.cue!=b.cue || a.observations!=b.observations || a.lineCount!=b.lineCount ||
+            a.detected!=b.detected || a.held!=b.held || a.revised!=b.revised || a.workLimit!=b.workLimit ||
+            a.capturePanelMeasured!=b.capturePanelMeasured ||
+            a.nearBarEligibilityMeasured!=b.nearBarEligibilityMeasured || a.nearBarEligible!=b.nearBarEligible ||
+            a.topSearchComplete!=b.topSearchComplete || a.bottomSearchComplete!=b.bottomSearchComplete ||
+            !SameRect(a.bounds,b.bounds) || !SameRect(a.anchor,b.anchor) ||
+            !SameRect(a.sourcePanel,b.sourcePanel) || !SameRect(a.provenSourcePanel,b.provenSourcePanel) ||
+            !SameRect(a.capturePanel,b.capturePanel) || a.signature!=b.signature || a.anchorSignature!=b.anchorSignature)
+            return false;
+        for(size_t i=0;i<a.lineBounds.size();++i)
+            if(!SameRect(a.lineBounds[i],b.lineBounds[i]) || a.lineSignatures[i]!=b.lineSignatures[i] ||
+                !SameRect(a.linePanels[i],b.linePanels[i]) || !SameRect(a.lineCapturePanels[i],b.lineCapturePanels[i]) ||
+                a.panelTopEdges[i].y!=b.panelTopEdges[i].y || a.panelTopEdges[i].left!=b.panelTopEdges[i].left ||
+                a.panelTopEdges[i].right!=b.panelTopEdges[i].right ||
+                a.panelTopEdges[i].supportBasisPoints!=b.panelTopEdges[i].supportBasisPoints)return false;
+        return true;
+    }
+    bool m_valid=false;
+    SubtitleBoxObservation m_current;
+    SubtitleBoxResult m_accepted;
+};
+
 namespace SubtitleBoxLookahead
 {
     constexpr size_t MaxFrames = 8;
@@ -1578,6 +1633,24 @@ namespace SubtitleBoxLookahead
         return result;
     }
 
+    // Subtitle readiness is independent of native AR readiness. The caller
+    // supplies identities rechecked against the owned current queue, including
+    // each prepared source domain. Missing/stale future work ends this prefix.
+    inline SubtitleBoxPreview ResolveOwnedWindow(const SubtitleBoxObservation* frames,
+        const ActivePictureFrameIdentity* ownedIdentities,size_t count,
+        uint64_t policy,uint64_t continuity)
+    {
+        if(!frames || !ownedIdentities || !count)return {};
+        size_t ready=0;
+        for(;ready<(std::min)(count,MaxFrames);++ready) {
+            const auto& current=frames[ready];
+            if(!current.analyzed || current.pendingRefresh || current.analysisRefresh ||
+                !SameAnalysisFrameIdentity(current.identity,ownedIdentities[ready]) ||
+                current.policyGeneration!=policy || current.continuityGeneration!=continuity)break;
+        }
+        return ready?Resolve(frames,ready,policy,continuity):SubtitleBoxPreview{};
+    }
+
     // Before conversion completes, the render queue has only immutable
     // transport identity. The prepared analysis domain is checked again by
     // IsCurrent after RenderLocked selects the actual source pixels.
@@ -1602,6 +1675,7 @@ class SubtitleBoxPresentation
 {
 public:
     void Reset() {
+        m_acceptedCueSeedCertificate = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_barTrackingReference = {};
         m_expansionEvidence.clear();
@@ -1621,6 +1695,7 @@ public:
     uint64_t AcceptedTemplateContinuity() const {
         return HasAcceptedSourceTemplate()?m_previous.continuityGeneration:0;
     }
+    const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
@@ -1711,6 +1786,9 @@ public:
         bool backlogPendingPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
+        // Certificates belong to one completed current-source Consume call.
+        // Repeats, pending reuse and all early returns cannot renew a seed.
+        m_acceptedCueSeedCertificate = {};
         if (!preview.available) {
             // A queue-only gap can retain the template internally. Unknown
             // source pixels never emit a cue or renew the lease.
@@ -2057,6 +2135,15 @@ public:
             preview.current.text.lineCount==result.lineCount && preview.current.ink &&
             SubtitleBoxLookahead::SameCue(m_reference,preview.current))
             m_inkReference=preview.current;
+        if(completedBacklogReassociation && currentTemplatePixelsMatch &&
+            !weakTemplateEligible && !bridged && !templateHeld &&
+            m_result.detected && result.detected && result.cue==m_result.cue &&
+            !result.held && !result.revised && !result.workLimit &&
+            preview.current.ink && preview.current.ink->rawEvidenceComplete) {
+            m_acceptedCueSeedCertificate.m_valid=true;
+            m_acceptedCueSeedCertificate.m_current=preview.current;
+            m_acceptedCueSeedCertificate.m_accepted=result;
+        }
         m_previous = preview;
         // Keep only accepted cue evidence as the temporal reference. Rejected
         // transient companions must not poison the next frame's comparison.
@@ -2066,6 +2153,7 @@ public:
         return result;
     }
 private:
+    SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
     static SubtitleBoxObservation AcquisitionReference(const SubtitleBoxObservation& current,
         const SubtitleBoxResult& accepted) {
         auto reference=current;

@@ -4543,5 +4543,91 @@ public:
         Assert::IsTrue(rejected.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
             rejected.trustedBounds.bottom>=330,L"connected picture must not become an inferred subtitle bar");
     }
+    TEST_METHOD(OwnedSubtitleWindowAcquiresAllThreeRowsFromItsOwnReadyEvidence) {
+        for(bool top:{false,true}) {
+            std::array<SubtitleBoxObservation,4> frames;
+            std::array<ActivePictureFrameIdentity,4> owned;
+            for(size_t i=0;i<frames.size();++i) {
+                frames[i]=NearCardThreeRows(i+1,top);
+                frames[i].policyGeneration=11;frames[i].continuityGeneration=21;
+                owned[i]=frames[i].identity;
+            }
+            const auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
+                frames.data(),owned.data(),frames.size(),11,21);
+            Assert::IsTrue(preview.available && preview.futureAvailable);
+            Assert::AreEqual(3u,preview.followingCount);
+            Assert::AreEqual(3,preview.text.lineCount);
+            SubtitleBoxPresentation tracker;
+            const auto accepted=tracker.Consume(preview);
+            Assert::IsTrue(accepted.detected);
+            Assert::AreEqual(3,accepted.lineCount);
+        }
+    }
+    TEST_METHOD(OwnedSubtitleWindowNeverBridgesAMissingOrForeignFutureSample) {
+        for(int scenario=0;scenario<13;++scenario) {
+            std::array<SubtitleBoxObservation,4> frames;
+            std::array<ActivePictureFrameIdentity,4> owned;
+            for(size_t i=0;i<frames.size();++i) {
+                frames[i]=NearCardThreeRows(i+1,false);
+                frames[i].policyGeneration=11;frames[i].continuityGeneration=21;
+                owned[i]=frames[i].identity;
+            }
+            auto& future=frames[1];
+            if(scenario==0)future.analyzed=false;
+            if(scenario==1)future.pendingRefresh=true;
+            if(scenario==2)future.analysisRefresh=true;
+            if(scenario==3)future.text.workLimit=true;
+            if(scenario==4)future.discontinuity=true;
+            if(scenario==5)future.identity.acceptedSequence++;
+            if(scenario==6)future.identity.analysisDomainKey++;
+            if(scenario==7)future.identity.sourceFormatGeneration++;
+            if(scenario==8)future.identity.viewportGeneration++;
+            if(scenario==9)future.identity.rendererGeneration++;
+            if(scenario==10)future.policyGeneration++;
+            if(scenario==11)future.continuityGeneration++;
+            if(scenario==12)owned[1].captureTimestamp++;
+            const auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
+                frames.data(),owned.data(),frames.size(),11,21);
+            Assert::IsTrue(preview.available);
+            Assert::IsFalse(preview.futureAvailable);
+            Assert::AreEqual(0u,preview.followingCount);
+            Assert::AreEqual(0,preview.text.lineCount);
+        }
+    }
+    TEST_METHOD(OwnedSubtitleWindowRequiresExactCurrentQueueOwnershipAndContext) {
+        for(int scenario=0;scenario<5;++scenario) {
+            auto frame=NearCardThreeRows(1,false);
+            frame.policyGeneration=11;frame.continuityGeneration=21;
+            auto owned=frame.identity;
+            if(scenario==0)owned.acceptedSequence++;
+            if(scenario==1)owned.analysisDomainKey++;
+            if(scenario==2)frame.policyGeneration++;
+            if(scenario==3)frame.continuityGeneration++;
+            if(scenario==4)frame.analyzed=false;
+            const auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(&frame,&owned,1,11,21);
+            Assert::IsFalse(preview.available);
+        }
+        Assert::IsFalse(SubtitleBoxLookahead::ResolveOwnedWindow(nullptr,nullptr,0,11,21).available);
+    }
+    TEST_METHOD(OwnedSubtitleWindowCannotUseFutureCaptionToFillACurrentCueEnd) {
+        std::array<SubtitleBoxObservation,4> frames;
+        std::array<ActivePictureFrameIdentity,4> owned;
+        for(size_t i=0;i<frames.size();++i) {
+            frames[i]=NearCardThreeRows(i+1,false);
+            frames[i].policyGeneration=11;frames[i].continuityGeneration=21;
+            owned[i]=frames[i].identity;
+        }
+        frames[0].text={};
+        auto empty=std::make_shared<SubtitleInkSnapshot>(*frames[0].ink);
+        std::fill(empty->rawInk.begin(),empty->rawInk.end(),0);
+        std::fill(empty->ownedInk.begin(),empty->ownedInk.end(),0);
+        frames[0].ink=empty;
+        const auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
+            frames.data(),owned.data(),frames.size(),11,21);
+        Assert::IsTrue(preview.available);
+        Assert::IsFalse(preview.text.detected);
+        SubtitleBoxPresentation tracker;
+        Assert::IsFalse(tracker.Consume(preview).detected);
+    }
 };
 }
