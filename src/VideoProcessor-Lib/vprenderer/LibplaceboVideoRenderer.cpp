@@ -48,6 +48,7 @@
 #include <vprenderer/TemporalPresentationPose.h>
 #include <vprenderer/SubmittedOutputGeometryTrace.h>
 #include <vprenderer/SourceUploadBatch.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
 #include <SubtitleBoxDetector.h>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
@@ -4400,6 +4401,7 @@ struct LibplaceboVideoRenderer::Impl
 	HMONITOR negotiatedMonitor = nullptr;
 	bool hasPresentedFrame = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
+    uint64_t nextSourceMeasurementCacheLogTick = 0;
 	PostStallResetAdvisor postStallResetAdvisor;
 	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
@@ -9484,6 +9486,7 @@ struct LibplaceboVideoRenderer::Impl
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
+        ActivePictureMeasurementCache& pixelMeasurements,
 		double framesPerSecond,
 		bool configuredScreenActive,
 		AlphaSourceCrop::SceneHoldDecision& sceneHold,
@@ -9710,16 +9713,17 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePicturePresentationRetentionEvidence retentionEvidence;
 			ActivePictureEvidence evidence;
 			ActivePictureEvidence nativeBootstrapEvidence;
+            pixelMeasurements.Begin(analysisSource, currentIdentity,
+                localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
 			const ActivePictureGlobalNearBlackEvidence globalNearBlack =
-				EvaluateActivePictureGlobalNearBlack(analysisSource);
+                pixelMeasurements.GlobalNearBlack();
 			const bool needsNativeBootstrapEvidence =
 				nearBlackPresentationEpisode.mode ==
 					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
 			if (hadCompatiblePresentation)
 			{
 				retentionEvidence =
-					EvaluateActivePicturePresentationRetention(
-						analysisSource, presentationBeforeObservation);
+                    pixelMeasurements.Retention(presentationBeforeObservation);
 				latestRawPictureEvidence = retentionEvidence.activePicture;
 				evidence = usingSubmittedScopeAnchorAsRetentionBase
 					? retentionEvidence.activePicture
@@ -9739,7 +9743,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			else
 			{
-				evidence = ExtractActivePictureEvidence(analysisSource);
+                evidence = pixelMeasurements.Picture();
 				latestRawPictureEvidence = evidence;
 				nativeBootstrapEvidence = evidence;
 			}
@@ -11290,7 +11294,8 @@ struct LibplaceboVideoRenderer::Impl
         SubtitlePreviewMode sourceSubtitleMode, bool repeatedTemporalOutput,
         bool subtitleBacklogRetirementOnly,
         const ActivePictureFrameIdentity& backlogTemplateIdentity,
-        SourceUploadBatch& sourceUploadBatch)
+        SourceUploadBatch& sourceUploadBatch,
+        ActivePictureMeasurementCache& pixelMeasurements)
 	{
         const auto renderWorkStarted=SteadyClock::now();
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
@@ -11792,7 +11797,7 @@ struct LibplaceboVideoRenderer::Impl
 			TraceLocalBoundaryDiagnostics(analysisSource, currentActivePictureIdentity,
 				!cadenceRepeat && sceneResult.safeBoundary, cadenceRepeat);
 			UpdateNlsForFrame(analysisSource, sourceSequence,
-				currentActivePictureIdentity,
+				currentActivePictureIdentity, pixelMeasurements,
 				state.displayMode->RefreshRateHz(),
 				configuredScreenActive, sceneHold,
 				(!cadenceRepeat && sceneResult.safeBoundary) ||
@@ -22858,6 +22863,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 const auto motionOutputs=m_impl->temporalRenderer.outputs;
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 SourceUploadBatch sourceUploadBatch;
+                ActivePictureMeasurementCache pixelMeasurements(motionDraws > 1);
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
                     if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
                 const uint64_t beforeSubmission=m_impl->renderLoadSubmissionSerial;
@@ -22898,11 +22904,19 @@ void LibplaceboVideoRenderer::RenderLoop()
 					presentationTargetTimingKnown,
 					presentationTargetLeadMs,sourceSubtitleMode,motionDraw>0,
                     subtitleBacklogRetirementOnly,backlogTemplateIdentity,
-                    sourceUploadBatch);
+                    sourceUploadBatch, pixelMeasurements);
                     actuallySubmitted=actuallySubmitted || m_impl->renderLoadSubmissionSerial>beforeSubmission;
                     if(!rendered)break;
                     std::lock_guard<std::mutex> motionQueueGuard(m_queueMutex);
                     if(m_stopRequested||frameGeneration!=m_queueGeneration)break;
+                }
+                if(motionDraws>1 && GetTickCount64()>=m_impl->nextSourceMeasurementCacheLogTick) {
+                    m_impl->nextSourceMeasurementCacheLogTick=GetTickCount64()+2000;
+                    const auto& samples=pixelMeasurements.Snapshot();
+                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu",
+                        static_cast<unsigned long long>(sourceSequence),motionDraws,
+                        samples.globalRequests,samples.globalHits,samples.pictureRequests,samples.pictureHits,
+                        samples.retentionRequests,samples.retentionHits);
                 }
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(
