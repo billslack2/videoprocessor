@@ -148,4 +148,5 @@
   </ItemGroup>
   <ItemGroup><ClCompile Include="LocalBoundaryRefinementTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
   <ItemGroup><ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup><ClCompile Include="ActivePictureMeasurementCacheTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
 </Project>

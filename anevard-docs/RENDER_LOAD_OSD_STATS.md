@@ -3,7 +3,7 @@
 The current beta cadence/OSD policy is combined with the corrected same-frame
 timing series through 8c3429df. The old Expected D/R and comparison presentation
 experiments are excluded. The OSD shows GPU frame average/maximum milliseconds,
-one CPU/GPU-budget average/maximum load row, and the source frame budget.
+one CPU/GPU-budget average/maximum load row, and separate source/output intervals.
 Native bitmap and fallback windows share drawing and dynamic height calculation.
 
 ## Measurement and cost
@@ -34,7 +34,9 @@ also reject an old in-flight submission that completes after the reset.
 ## Windows and resets
 
 GPU average and maximum cover accepted samples in the trailing ten seconds.
-Budget percentages use each sample's validated source/render period. CPU uses
+Budget percentages use each sample's saved output interval: the scheduled temporal
+render period when active, otherwise validated source/render cadence. The separate
+source interval uses measured input cadence with known-format fallback. CPU uses
 GetProcessTimes on the existing UI timer regardless of OSD visibility; average
 weights elapsed intervals clipped to their overlap with the ten-second window.
 No claim of hardware-engine occupancy is made.

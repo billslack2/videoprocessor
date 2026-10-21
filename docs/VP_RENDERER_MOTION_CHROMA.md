@@ -67,6 +67,31 @@ quality require operator review; no live capture playback was changed during
 implementation. Black/Reconstruction subtitle composition retains motion and
 deinterlacing. Ordinary target overlays remain active.
 
+### Source measurements and output intervals
+
+The OSD separates source input interval from scheduled output interval. For
+23.976 fps input mixed to 75 Hz, it shows 41.71 ms and 13.33 ms respectively.
+Source interval uses measured input cadence with known-format fallback. Output
+interval remains the GPU-budget percentage denominator; this change does not
+increase the allowed output cost or change playback scheduling. Unknown input
+rates remain unavailable. GPU percentages cover the existing sampled timestamp
+stages, not all CPU/GPU preparation, Present waiting or scanout.
+
+One source's output loop owns a temporary pixel-measurement cache. Repeated
+outputs can reuse raw global-darkness, active-picture and presentation-retention
+observations from the same immutable analysis input. The key includes complete
+source identity and analysis domain, live source layout/interpretation, pixel
+pointer/extent, backing-owner pointer and ownership identity, plus policy and
+continuity generations. Retention also requires the exact presentation bounds.
+Missing ownership or an incomplete identity disables reuse; context changes invalidate
+observations, and leaving the source's output batch discards the cache.
+
+Only pixel observations are cached. Existing per-output policy evaluation,
+current worker evidence, crop admission, evidence leases and presentation timers
+retain their existing behavior. Cached evidence is returned by value so those
+updates cannot modify the saved raw measurement. Rendering, temporal history,
+frame mixing, NLS and output processing keep their existing ordering.
+
 ### Subtitle composition with motion
 
 Each accepted source frame is captured once, including frames with no scheduled
