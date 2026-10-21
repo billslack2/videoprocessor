@@ -707,7 +707,27 @@ public:
             mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
             const double unit=sourceDuration/(interlaced&&settings.cadence=="field"?2.0:1.0);
             mix.vsync_duration=static_cast<float>(displayDuration/unit);
-            rendered=pl_render_image_mix(renderer,&mix,&destination,&presentation);
+            // Stable libplacebo mixes in the target transfer domain. Use an
+            // explicitly linear float target on both runtimes so blending is
+            // consistent, then only encode/dither and add the live OSD.
+            const pl_tex output=destination.planes[0].texture;
+            pl_tex_params storage{};storage.w=output->params.w;storage.h=output->params.h;
+            storage.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
+                static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE));
+            storage.sampleable=true;storage.renderable=true;
+            if(!storage.format||!pl_tex_recreate(gpu,&compositionSurface,&storage))return false;
+            pl_frame linear=destination;linear.planes[0]={};
+            linear.planes[0].texture=compositionSurface;linear.planes[0].components=4;
+            for(int c=0;c<4;++c)linear.planes[0].component_mapping[c]=c;
+            linear.repr=pl_color_repr_rgb;linear.repr.levels=PL_COLOR_LEVELS_FULL;
+            linear.repr.alpha=PL_ALPHA_NONE;linear.color=frames.front()->color;
+            linear.color.transfer=PL_COLOR_TRC_LINEAR;
+            linear.overlays=nullptr;linear.num_overlays=0;
+            auto blending=pl_render_fast_params;blending.frame_mixer=mixer;
+            blending.dynamic_constants=true;
+            blending.info_callback=params.info_callback;blending.info_priv=params.info_priv;
+            rendered=pl_render_image_mix(renderer,&mix,&linear,&blending);
+            if(rendered)rendered=pl_render_image(renderer,&linear,&destination,&presentation);
         } else {
             size_t current=0;for(size_t i=0;i<frames.size();++i)if(timestamps[i]<=1e-6)current=i;
             rendered=pl_render_image(renderer,frames[current],&destination,&presentation);
@@ -733,6 +753,7 @@ public:
     bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,
         pl_render_params& params,uint64_t epoch=0) {
         lastSubmittedField=PL_FIELD_NONE;
+        if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
         return RenderProcessed(renderer,source,target,params,epoch);
     }
