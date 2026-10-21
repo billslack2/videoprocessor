@@ -932,6 +932,8 @@ namespace AlphaSourceCrop
 		ActivePictureBounds sourceBounds;
 		bool applied = false;
         bool samplingEnvelopeFilled = false;
+        // Reuses only side fill that already reached successful submission.
+        bool retainedSubmittedFill = false;
         bool contentEligible = false;
 		double contentAspect = 0.0;
         double referenceAspect = 0.0;
@@ -1409,6 +1411,7 @@ namespace AlphaSourceCrop
         double samplingEnvelopeFillScreenAspect = 0.0;
         // Actual optional fill from the immediately preceding presentation.
         bool optionalFillApplied = false;
+        bool optionalFillRetained = false;
         ActivePictureBounds optionalFillSourceBounds;
         uint64_t optionalFillSourceSequence = 0;
         double optionalFillScreenAspect = 0.0;
@@ -1440,6 +1443,12 @@ namespace AlphaSourceCrop
         bool submittedEnvelopeAvailable = false;
         ActivePictureBounds submittedEnvelope;
         uint64_t submittedEnvelopeSourceSequence = 0;
+        // Exact selected optional side fill is presentation-only. Its successful
+        // submission cannot teach or renew native picture authority.
+        bool submittedOptionalFillAvailable = false;
+        ActivePictureBounds submittedOptionalFill;
+        uint64_t submittedOptionalFillSourceSequence = 0;
+        double submittedOptionalFillScreenAspect = 0.0;
 	};
 	struct SubmittedNativeScopeAnchorUpdateInput
 	{
@@ -1964,6 +1973,9 @@ namespace AlphaSourceCrop
         bool nearBlackFailOpenProposal = false;
         bool nlsOwnsPresentationGeometry = false;
         bool configuredScreenActive = false;
+        // Fresh confirmed caption/content conflicts veto submitted side-fill
+        // retention; missing or held analysis alone is not such a conflict.
+        bool currentConfirmedPresentationConflict = false;
         // Fail closed unless the renderer excludes current/held Classic or
         // advanced captions/icons, side content, pending confirmation and drift.
         bool samplingCompetingPresentation = true;
