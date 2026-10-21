@@ -114,6 +114,48 @@ namespace AlphaSourceCrop
                 axes.vertical.scanComplete && axes.vertical.state == ActivePictureAxisState::TRUSTED_BARS;
         }
 
+        bool ExactNativeWindowPosition(const BufferedPictureExpansionSample& sample)
+        {
+            const auto& observation=sample.observation;
+            const auto& raw=sample.retention.activePicture;
+            return observation.available && !observation.transitionDeferred &&
+                observation.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                observation.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                observation.axisEvidence.vertical.scanComplete &&
+                observation.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+                !observation.axisEvidence.HasFailedBar() &&
+                ValidVerticalBarPicture(observation.bounds) && raw.available &&
+                raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                raw.axisEvidence.vertical.scanComplete &&
+                raw.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+                !raw.axisEvidence.HasFailedBar() && raw.top.trusted && raw.bottom.trusted &&
+                SameBounds(raw.trustedBounds,observation.bounds) &&
+                raw.proposedBounds.left==observation.bounds.left && raw.proposedBounds.top==observation.bounds.top &&
+                raw.proposedBounds.right==observation.bounds.right && raw.proposedBounds.bottom==observation.bounds.bottom &&
+                raw.proposedBounds.rasterWidth==observation.bounds.rasterWidth &&
+                raw.proposedBounds.rasterHeight==observation.bounds.rasterHeight;
+        }
+
+        bool ProgressiveNativeWindow(const BufferedPictureExpansionSample* samples,
+            size_t count, const ActivePictureBounds& base)
+        {
+            if(count<OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED)return false;
+            for(size_t i=0;i<count;++i)
+            {
+                const auto& candidate=samples[i].observation.bounds;
+                if(!ExactNativeWindowPosition(samples[i]) || !BothEdgesExpand(base,candidate))return false;
+                if(i==0)continue;
+                const auto& prior=samples[i-1].observation.bounds;
+                const int top=prior.top-candidate.top,bottom=candidate.bottom-prior.bottom;
+                const int step=(std::max)(2,candidate.rasterHeight/540);
+                if(top<0||bottom<0||(top==0&&bottom==0)||top>step||bottom>step)return false;
+            }
+            // Quantized opposing edges may advance on different samples.
+            // A single moving/jittering edge alone cannot delay a clean crop.
+            return samples[count-1].observation.bounds.top < samples[0].observation.bounds.top &&
+                samples[count-1].observation.bounds.bottom > samples[0].observation.bounds.bottom;
+        }
         bool CurrentScheduledExpansion(const BufferedPictureExpansionProof& proof,
             const ActivePictureFrameIdentity& currentIdentity,
             const TransitionAdmissionInput& current, bool modelWouldAdmit)
@@ -204,10 +246,11 @@ namespace AlphaSourceCrop
             ? previous : MovingPictureTransitionState{};
         if (!adjacent) { state.directionalChanges = 0; state.quietSamples = 0; }
         state.change = MovingPictureTransitionChange::NONE;
+        state.onsetPending = false;
         state.base = current.trustedGeometry;
         state.identity = identity;
         const bool nativePosition = CurrentNativeEdgePosition(current, candidate);
-        const bool priorNativePosition = previous.active && adjacent &&
+        const bool priorNativePosition = adjacent &&
             previous.observedNativeSourceSequence != 0 &&
             previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
             ValidVerticalBarPicture(previous.observedNative);
@@ -257,6 +300,11 @@ namespace AlphaSourceCrop
             state.identity = identity;
             if (!certified) return state;
             state.anchor = state.last = state.quietAnchor = candidate;
+            if (!previous.active && nativePosition)
+            {
+                state.observedNative = candidate;
+                state.observedNativeSourceSequence = identity.acceptedSequence;
+            }
             return state;
         }
         if (!certified)
@@ -267,6 +315,12 @@ namespace AlphaSourceCrop
             state.quietSamples = 0;
             state.directionalChanges = 0;
             return state.active || state.awaitingPublication ? state : MovingPictureTransitionState{};
+        }
+        // Keep the exact certified native predecessor for onset, never unknown pixels.
+        if (nativePosition)
+        {
+            state.observedNative = candidate;
+            state.observedNativeSourceSequence = identity.acceptedSequence;
         }
         if (!adjacent || previous.last.rasterHeight == 0)
         {
@@ -279,6 +333,16 @@ namespace AlphaSourceCrop
         state.last = candidate;
         if (!state.active)
         {
+            // A moving preview can otherwise publish before the longer motion
+            // threshold is reached. Defer only this freshly certified small step;
+            // static, unknown, abrupt, reversed or non-native samples cannot renew it.
+            state.onsetPending = !state.awaitingPublication && nativePosition && adjacent &&
+                previous.directionalChanges > 0 &&
+                previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
+                SameBounds(previous.observedNative, previous.last) &&
+                candidate.top < state.quietAnchor.top && candidate.bottom > state.quietAnchor.bottom &&
+                topStep >= 0 && bottomStep >= 0 && (topStep > 0 || bottomStep > 0) &&
+                topStep <= scanStep && bottomStep <= scanStep;
             if (topStep < 0 || bottomStep < 0)
             {
                 state.anchor = candidate;
@@ -291,6 +355,7 @@ namespace AlphaSourceCrop
                 candidate.bottom - state.anchor.bottom > 2 * scanStep)
             {
                 state.active = true;
+                state.onsetPending = false;
                 state.awaitingPublication = false;
                 state.change = MovingPictureTransitionChange::ACQUIRED;
                 state.observedNative = nativePosition ? candidate : ActivePictureBounds{};
@@ -355,10 +420,19 @@ namespace AlphaSourceCrop
             state.identity.acceptedSequence == sourceSequence;
     }
 
+    bool HasCurrentMovingPictureOnset(const MovingPictureTransitionState& state,
+        uint64_t sourceGeneration, uint64_t sourceSequence)
+    {
+        return state.onsetPending && !state.active && !state.awaitingPublication &&
+            sourceGeneration != 0 && sourceSequence != 0 &&
+            state.identity.transportGeneration == sourceGeneration &&
+            state.identity.acceptedSequence == sourceSequence;
+    }
     void ConstrainMovingPictureTransition(const MovingPictureTransitionState& state,
         TransitionAdmissionDecision& admission)
     {
-        if (!state.active) return;
+        if (!state.active && !HasCurrentMovingPictureOnset(state,
+            state.identity.transportGeneration, admission.observation.frameNumber)) return;
         admission.deferOutward = true;
         admission.observation.transitionDeferred = true;
         admission.observation.classification = ActivePictureClassification::PROVISIONAL;
@@ -441,6 +515,7 @@ namespace AlphaSourceCrop
         if (diagnostic) *diagnostic = details;
         proof.valid = true;
         proof.relativeContrast = relativeReady;
+        proof.progressiveNativeEdges = !relativeReady && ProgressiveNativeWindow(samples, required, base);
         auto& decision = proof.decision;
         decision.observationIdentity = samples[required - 1].identity;
         decision.effectiveIdentity = first.identity;
@@ -638,6 +713,32 @@ namespace AlphaSourceCrop
         // Preserve the composition veto. Only temporal outward deferral is
         // satisfied by this independent complete proof.
         return !EvaluateTransitionAdmission(current).deferPartialComposition;
+    }
+    bool ConstrainBufferedMovingPictureOnset(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current,
+        TransitionAdmissionDecision& admission)
+    {
+        // Geometry eligibility is deliberately not authority here: even a history
+        // return must wait while this exact source window independently moves.
+        if(!proof.progressiveNativeEdges || proof.relativeContrast ||
+            !CurrentScheduledExpansion(proof,currentIdentity,current,true) ||
+            admission.observation.frameNumber!=currentIdentity.acceptedSequence ||
+            !SameBounds(admission.observation.bounds,current.evidence.trustedBounds))
+            return false;
+        BufferedPictureExpansionSample sample;
+        sample.observation=MakeActivePictureObservation(current.evidence,current.sourceSequence,current.framesPerSecond);
+        sample.retention=current.retention;
+        if(!ExactNativeWindowPosition(sample) ||
+            !CurrentBroadEvidence(current.trustedGeometry,sample.observation,current.retention,
+                current.sourceGeneration,current.sourceSequence) ||
+            EvaluateTransitionAdmission(current).deferPartialComposition)
+            return false;
+        admission.deferOutward=true;
+        admission.observation.transitionDeferred=true;
+        admission.observation.classification=ActivePictureClassification::PROVISIONAL;
+        return true;
     }
     bool ValidateBufferedTranslatedPictureExpansion(
         const BufferedPictureExpansionProof& proof,

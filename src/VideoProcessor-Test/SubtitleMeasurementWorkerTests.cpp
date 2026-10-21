@@ -57,6 +57,46 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         auto preview=Ready(sequence);preview.available=false;preview.text={};
         preview.current.analyzed=false;preview.current.text={};return preview;
     }
+    static SubtitleBoxObservation CompleteThreeLineScan(uint64_t sequence,
+        const std::vector<uint16_t>& pixels,uint64_t continuity=21) {
+        auto scan=Ready(sequence).current;scan.continuityGeneration=continuity;
+        scan.independentBarAnalysis=true;scan.barEvidence.available=true;
+        scan.barEvidence.top=scan.pictureTop;scan.barEvidence.bottom=scan.pictureBottom;
+        scan.text.signature.fill(0x55);
+        for(auto& signature:scan.text.lineSignatures)signature.fill(0x55);
+        auto ink=std::make_shared<SubtitleInkSnapshot>();
+        ink->width=160;ink->height=90;ink->step=1;ink->sourceRows.resize(90);
+        ink->rawEvidenceComplete=ink->paletteValid=true;ink->inkFloor=500;ink->blackLimit=96;
+        ink->rawInk.resize((160*90+63)/64);ink->ownedInk.resize(ink->rawInk.size());
+        ink->blackBacking.resize(ink->rawInk.size());
+        for(int y=0;y<90;++y) {ink->sourceRows[y]=y;for(int x=0;x<160;++x) {
+            const size_t i=size_t(y)*160+x;const uint64_t bit=uint64_t(1)<<(i%64);
+            const int value=pixels[i]>>6;
+            if(value>=500) {ink->rawInk[i/64]|=bit;ink->ownedInk[i/64]|=bit;}
+            if(value<=96)ink->blackBacking[i/64]|=bit;
+        }}
+        scan.ink=ink;return scan;
+    }
+    static SubtitleBoxPreview ReassociateThreeLineCue(SubtitleBoxPresentation& tracker,
+        const std::vector<uint16_t>& pixels,SubtitleBoxResult& accepted) {
+        std::array<SubtitleBoxObservation,4> initial;
+        for(size_t i=0;i<initial.size();++i)initial[i]=CompleteThreeLineScan(i+1,pixels);
+        const auto acquired=tracker.Consume(SubtitleBoxLookahead::Resolve(initial.data(),initial.size(),11,21));
+        Assert::IsTrue(acquired.detected);Assert::AreEqual(3,acquired.lineCount);
+        auto current=CompleteThreeLineScan(5,pixels,22);
+        auto preview=SubtitleBoxLookahead::Resolve(&current,1,11,22);
+        Assert::IsFalse(preview.text.detected,L"One ready frame cannot freshly acquire a crowded cue.");
+        accepted=tracker.Consume(preview,250,40,&initial[0].identity,true);
+        Assert::IsTrue(accepted.detected);Assert::AreEqual(3,accepted.lineCount);
+        Assert::IsFalse(accepted.held);Assert::AreEqual(acquired.cue,accepted.cue);
+        Assert::AreEqual("backlog-current-cue-reassociated",tracker.DecisionReason());
+        Assert::IsTrue(tracker.AcceptedCueSeedCertificate().Matches(preview,accepted));
+        return preview;
+    }
+    static SubtitleBoxPreview PendingAfterReassociation(uint64_t sequence) {
+        auto pending=Pending(sequence);pending.continuityGeneration=pending.current.continuityGeneration=22;
+        return pending;
+    }
     static SubtitleBoxObservation WorkerKey(uint64_t sequence,uint64_t analysisDomain) {
         SubtitleBoxObservation key;key.identity=Identity(sequence);
         key.identity.analysisDomainKey=analysisDomain;
@@ -539,6 +579,107 @@ public:
         Assert::AreEqual(3,pending.current.text.lineCount);
         for(int line=0;line<3;++line)
             Assert::AreEqual(ready.text.lineBounds[line].top,pending.current.text.lineBounds[line].top);
+    }
+    TEST_METHOD(CompletedThreeLineBacklogScanSeedsNextPendingOnlyWithTrackerCertificate) {
+        auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+        const auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
+        SubtitlePendingMeasurementGuard guard;
+        Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250));
+        auto missing=PendingAfterReassociation(6);
+        Assert::IsFalse(guard.Resolve(missing,Source(pixels),40,250),L"Reproduces the old no-accepted-seed loss.");
+        Assert::IsTrue(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,
+            &tracker.AcceptedCueSeedCertificate()));
+        Assert::AreEqual("accepted-existing-cue-certified",guard.DecisionReason());
+        auto pending=PendingAfterReassociation(6);
+        Assert::IsTrue(guard.Resolve(pending,Source(pixels),40,250));
+        const auto retained=tracker.Consume(pending,250,40);
+        Assert::IsTrue(retained.detected);Assert::AreEqual(3,retained.lineCount);
+        Assert::AreEqual(accepted.cue,retained.cue);
+        for(int line=0;line<3;++line)
+            Assert::AreEqual(accepted.lineBounds[line].top,retained.lineBounds[line].top);
+    }
+    TEST_METHOD(UnresolvedFreshThreeLineCueCannotMintPendingSeedCertificate) {
+        auto pixels=PixelsWithCurrentBars();auto current=CompleteThreeLineScan(1,pixels);
+        const auto preview=SubtitleBoxLookahead::Resolve(&current,1,11,21);
+        SubtitleBoxPresentation tracker;const auto accepted=tracker.Consume(preview);
+        Assert::IsFalse(accepted.detected);
+        SubtitlePendingMeasurementGuard guard;
+        Assert::IsFalse(guard.RememberAccepted(preview,current.text,Source(pixels),40,250,
+            &tracker.AcceptedCueSeedCertificate()));
+        const SubtitleAcceptedCueSeedCertificate empty;
+        Assert::IsFalse(guard.RememberAccepted(preview,current.text,Source(pixels),40,250,&empty));
+    }
+    TEST_METHOD(CertifiedSeedRejectsPartialRawChangedInkContextAndHeldRenewal) {
+        for(int defect=0;defect<23;++defect) {
+            auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+            auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
+            const auto certificate=tracker.AcceptedCueSeedCertificate();
+            if(defect==0)preview.current.text.lineCount=2;
+            if(defect==1)preview.current.text.capturePanel.top=60;
+            if(defect==2)preview.current.identity.acceptedSequence++;
+            if(defect==3)preview.current.identity.transportGeneration++;
+            if(defect==4)preview.current.identity.sourceFormatGeneration++;
+            if(defect==5)preview.current.identity.analysisDomainKey++;
+            if(defect==6)preview.current.identity.viewportGeneration++;
+            if(defect==7)preview.current.identity.rendererGeneration++;
+            if(defect==8)preview.policyGeneration++;
+            if(defect==9)preview.continuityGeneration++;
+            if(defect==10)preview.current.pendingRefresh=true;
+            if(defect==11)preview.current.analysisRefresh=true;
+            if(defect==12)preview.current.discontinuity=true;
+            if(defect==13)preview.current.independentBarAnalysis=false;
+            if(defect==14)preview.current.text.workLimit=true;
+            if(defect==15)accepted.held=true;
+            if(defect==16)accepted.revised=true;
+            if(defect==17)accepted.lineBounds[0].top++;
+            if(defect==18)preview.current.pictureBottom++;
+            if(defect==19)preview.current.barEvidence.bottomRevalidatedAtReference=true;
+            if(defect==20)preview.current.barEvidence.captionBackedBottom=true;
+            if(defect==21)preview.current.scriptHint=SubtitleScriptHint::Arabic;
+            if(defect==22) {
+                auto changed=std::make_shared<SubtitleInkSnapshot>(*preview.current.ink);
+                changed->rawInk.assign(changed->rawInk.size(),0);preview.current.ink=changed;
+            }
+            SubtitlePendingMeasurementGuard guard;
+            Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,&certificate));
+            auto pending=PendingAfterReassociation(6);Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
+        }
+    }
+    TEST_METHOD(CertifiedSeedCannotHoldRemovedLineCueEndOrLostPhysicalBar) {
+        for(int change=0;change<5;++change) {
+            auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+            const auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
+            SubtitlePendingMeasurementGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,
+                &tracker.AcceptedCueSeedCertificate()));
+            if(change<3)for(int y=50+12*change;y<56+12*change;++y)for(int x=50;x<110;++x)
+                pixels[y*160+x]=uint16_t((y<78?300:64)<<6);
+            if(change==3)std::fill(pixels.begin(),pixels.begin()+160*90,uint16_t(64<<6));
+            if(change==4)for(int y=0;y<90;++y)for(int x=0;x<160;++x)
+                if(y<12 || y>=78)pixels[y*160+x]=uint16_t(300<<6);
+            auto pending=PendingAfterReassociation(6);
+            Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
+            Assert::IsFalse(pending.available);
+        }
+    }
+    TEST_METHOD(ExportedCertificateCannotRenewPendingBudgetOrSurviveRepeatedConsume) {
+        auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+        const auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
+        const auto certificate=tracker.AcceptedCueSeedCertificate();SubtitlePendingMeasurementGuard guard;
+        Assert::IsTrue(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,&certificate));
+        tracker.Consume(preview,250,40);
+        Assert::IsFalse(tracker.AcceptedCueSeedCertificate().Matches(preview,accepted));
+        Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,
+            &tracker.AcceptedCueSeedCertificate()),L"A repeated presentation must neither clear nor renew its seed.");
+        for(uint64_t sequence=6;sequence<=11;++sequence) {
+            auto pending=PendingAfterReassociation(sequence);
+            Assert::IsTrue(guard.Resolve(pending,Source(pixels),40,250));
+            Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,&certificate));
+        }
+        auto expired=PendingAfterReassociation(12);Assert::IsFalse(guard.Resolve(expired,Source(pixels),40,250));
+        Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,&certificate));
+        tracker.Consume(preview,250,40);
+        Assert::IsFalse(tracker.AcceptedCueSeedCertificate().Matches(preview,accepted));
     }
     TEST_METHOD(PartialDetectionPruningAndNarrowCaptureCannotSeedSmallerFallback) {
         for(int scenario=0;scenario<4;++scenario) {

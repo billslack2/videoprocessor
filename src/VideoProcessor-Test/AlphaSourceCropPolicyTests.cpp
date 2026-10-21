@@ -16220,4 +16220,178 @@ public:
 };
 
 
+    TEST_CLASS(MovingPictureDownstreamOwnershipTests)
+    {
+        static PresentationRecoveryInput Frame(int top = 248, int bottom = 1912)
+        {
+            // Geometry from logged source993; prior admission and the exact
+            // motion certificate are explicit test assumptions, not recovered
+            // telemetry. The trace does not log the pre-uncertainty admission.
+            PresentationRecoveryInput r;
+            r.crop = TrustedScopeCrop();
+            auto& c = r.crop;
+            c.geometry = {0,top,3840,bottom,3840,2160,
+                3840.0/(bottom-top),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.frameSourceGeneration = c.geometrySourceGeneration = 2;
+            c.frameSourceSequence = 993;
+            c.framePresentationEpoch = r.presentationEpoch = 0;
+            c.latestObservationSupportsCrop = false;
+            c.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            c.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+            c.movingPictureTransition = true;
+            c.movingPictureHold.base = c.geometry;
+            c.movingPictureHold.sourceGeneration = 2;
+            c.movingPictureHold.sourceSequence = 993;
+            c.movingPictureHold.presentationEpoch = 0;
+            c.currentVisibleBoundsAvailable = true;
+            c.currentVisibleBase = c.geometry;
+            c.currentVisibleSourceGeneration = 2;
+            c.currentVisibleSourceSequence = 993;
+            c.currentVisibleBounds = {0,176,3840,2046,3840,2160,0,
+                ActivePictureBounds::BarAxes::NONE};
+            r.previousAdmission.available = true;
+            r.previousAdmission.trustedCrop = c.geometry;
+            r.previousAdmission.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+            r.previousAdmission.sourceGeneration = 2;
+            r.previousAdmission.presentationEpoch = 0;
+            r.previousAdmission.outwardPresentationAvailable = true;
+            r.previousAdmission.outwardPresentation = c.currentVisibleBounds;
+            r.previousAdmission.presentationSourceSequence = 992;
+            r.submittedScopeAnchor.available = true;
+            r.submittedScopeAnchor.crop = c.geometry;
+            r.submittedScopeAnchor.sourceGeneration = 2;
+            r.submittedScopeAnchor.presentationEpoch = 0;
+            r.submittedScopeAnchor.lastSubmittedSourceSequence = 960;
+            r.submittedScopeAnchor.lastSubmittedPresentationSourceSequence = 992;
+            r.submittedScopeAnchor.submittedEnvelopeAvailable = true;
+            r.submittedScopeAnchor.submittedEnvelope = c.currentVisibleBounds;
+            r.submittedScopeAnchor.submittedEnvelopeSourceSequence = 992;
+            r.measurementCurrent = r.retentionEvaluated = r.observationAvailable = true;
+            r.retentionSourceGeneration = 2;
+            r.retentionSourceSequence = 993;
+            r.retentionBounds = c.geometry;
+            r.observation = r.observedTrustedCrop = {0,190,3840,1970,3840,2160,0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            r.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            r.nearBlackEvaluated = true;
+            r.framesPerSecond = 24;
+            return r;
+        }
+        struct Selected
+        {
+            Decision evaluated;
+            PresentationRecoveryDecision recovery;
+            CropPresentationAdmissionDecision admission;
+            UncertainPicturePresentationDecision uncertainty;
+            AspectLimitFillDecision fill;
+        };
+        static Selected Select(PresentationRecoveryInput r)
+        {
+            Selected s;
+            r.candidate = s.evaluated = Evaluate(r.crop);
+            s.recovery = EvaluatePresentationRecovery(r);
+            r.candidate = s.recovery.presentation;
+            const auto bounded = EvaluateNearBlackBoundedPresentation({},r);
+            s.admission = AdmitCropPresentation(r.previousAdmission,r.crop,
+                bounded.presentation,r.presentationEpoch);
+            s.uncertainty = ResolveUncertainPicturePresentation(r,s.admission.presentation);
+            FinalAspectLimitFillInput f;
+            f.crop = r.crop;
+            f.evidence = r;
+            f.presentation = s.uncertainty.presentation;
+            f.uncertainPicture = s.uncertainty;
+            f.recoveryBoundedPresentation = s.recovery.boundedPresentation;
+            f.configuredScreenActive = true;
+            f.configured.screenAspect = 2.35;
+            f.configured.cropNarrowerContentToFillScreen = true;
+            f.configured.narrowerLimitConfigured = true;
+            f.configured.narrowerAspectLimit = 2.32;
+            f.configured.cropWiderContentToFillScreen = true;
+            f.configured.widerLimitConfigured = true;
+            f.configured.widerAspectLimit = 2.42;
+            s.fill = EvaluateFinalAspectLimitFill(f);
+            return s;
+        }
+    public:
+        TEST_METHOD(CurrentAdmittedMovingHoldSurvivesEntireDownstreamChainAndFill)
+        {
+            for (const bool originalScope : {false,true})
+            {
+                const auto r = originalScope ? Frame(274,1886) : Frame();
+                const auto s = Select(r);
+                Assert::IsTrue(s.evaluated.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+                Assert::IsFalse(s.recovery.state.active || s.admission.blocked || s.uncertainty.retained);
+                Assert::IsTrue(s.admission.presentation.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+                Assert::IsTrue(s.uncertainty.presentation.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+                Assert::AreEqual(r.crop.geometry.top,s.fill.sourceBounds.top);
+                Assert::AreEqual(r.crop.geometry.bottom,s.fill.sourceBounds.bottom);
+                Assert::AreEqual(originalScope,s.fill.applied);
+                Assert::AreEqual(r.crop.geometry.top,s.admission.state.trustedCrop.top);
+                Assert::AreEqual(r.crop.geometry.bottom,s.admission.state.trustedCrop.bottom);
+            }
+        }
+        TEST_METHOD(CompetingOrUnadmittedMovingCandidateCannotBypassVisibleEnvelope)
+        {
+            for (int failure=0;failure<7;++failure)
+            {
+                auto r = Frame();
+                if (failure==0) r.crop.movingPictureHold.competingPresentation = true;
+                if (failure==1) r.crop.barCropRefinementHorizontalConflict = true;
+                if (failure==2) r.crop.verticalFitConfirmationPending = true;
+                if (failure==3) --r.crop.movingPictureHold.sourceSequence;
+                if (failure==4) r.previousAdmission = {};
+                if (failure==5) ++r.previousAdmission.presentationEpoch;
+                if (failure==6) r.previousAdmission.trustedCrop.top -= 2;
+                const auto s = Select(r);
+                if (failure>=4) Assert::IsTrue(s.admission.blocked);
+                else Assert::IsFalse(s.evaluated.applyCrop);
+                Assert::IsTrue(s.uncertainty.retained && s.uncertainty.expanded);
+                Assert::IsTrue(s.uncertainty.presentation.owner == DecisionOwner::OUTWARD_FIT);
+                Assert::AreEqual(176,s.fill.sourceBounds.top);
+                Assert::AreEqual(2046,s.fill.sourceBounds.bottom);
+                Assert::IsFalse(s.fill.applied);
+            }
+        }
+        TEST_METHOD(LoggedLogicalBaseChangeExplainsUnadmittedMovingHoldFallback)
+        {
+            // Sources960/1008 retain admission/anchor274..1886 while the
+            // native model and motion base already changed to248..1912.
+            // The later recovery log's trusted rectangle is the native model;
+            // it is not proof that the same crop reached admission.
+            auto r = Frame();
+            const auto submitted = Frame(274,1886).crop.geometry;
+            r.previousAdmission.trustedCrop = submitted;
+            r.submittedScopeAnchor.crop = submitted;
+            const auto changed = Select(r);
+            Assert::IsTrue(changed.evaluated.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+            Assert::IsTrue(changed.admission.blocked);
+            Assert::IsTrue(changed.uncertainty.retained && changed.uncertainty.expanded);
+            Assert::IsTrue(changed.uncertainty.presentation.owner == DecisionOwner::OUTWARD_FIT);
+            Assert::AreEqual(274,changed.uncertainty.nativeCrop.top);
+            Assert::AreEqual(1886,changed.uncertainty.nativeCrop.bottom);
+            Assert::AreEqual(176,changed.fill.sourceBounds.top);
+            Assert::AreEqual(2046,changed.fill.sourceBounds.bottom);
+
+            // When onset deferral preserves the actual admitted logical base,
+            // the same current visible extent cannot steal the valid hold.
+            r.crop.geometry = r.crop.movingPictureHold.base = submitted;
+            r.crop.currentVisibleBase = r.retentionBounds = submitted;
+            const auto deferred = Select(r);
+            Assert::IsFalse(deferred.admission.blocked || deferred.uncertainty.retained);
+            Assert::IsTrue(deferred.uncertainty.presentation.owner == DecisionOwner::MOVING_PICTURE_HOLD);
+            Assert::AreEqual(274,deferred.fill.sourceBounds.top);
+            Assert::AreEqual(1886,deferred.fill.sourceBounds.bottom);
+            Assert::IsTrue(deferred.fill.applied);
+        }
+        TEST_METHOD(FullRasterAuthorityStillReleasesMovingHoldImmediately)
+        {
+            auto r = Frame(274,1886);
+            r.crop.fullRasterPresentationAuthoritative = true;
+            const auto s = Select(r);
+            Assert::IsFalse(s.evaluated.applyCrop || s.uncertainty.retained || s.admission.state.available);
+            Assert::AreEqual(0,s.fill.sourceBounds.top);
+            Assert::AreEqual(2160,s.fill.sourceBounds.bottom);
+        }
+    };
+
 }

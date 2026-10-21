@@ -2837,7 +2837,9 @@ namespace Tests
 			Assert::AreEqual<uint64_t>(
 				20, snapshot->viewport.screenAspect.denominator);
 			Assert::IsTrue(snapshot->viewport.automaticCrop);
-			Assert::IsTrue(snapshot->viewport.subtitleFit);
+			Assert::IsFalse(snapshot->viewport.subtitleFit,
+				L"No subtitle profile must keep fitting Off despite legacy viewport settings.");
+			Assert::AreEqual(0, snapshot->viewport.subtitlePaddingPixels);
 			const StateVariables::Value* automaticCrop =
 				snapshot->variables.Find("$automatic_crop");
 			Assert::IsNotNull(automaticCrop);

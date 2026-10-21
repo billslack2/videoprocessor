@@ -452,14 +452,16 @@ public:
         bool backlogReassociated=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
     };
-    void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={}; }
+    void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={};
+        m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
     bool RememberAccepted(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
-        const AnalysisLumaSource& source,double frameMs,int holdMs) {
+        const AnalysisLumaSource& source,double frameMs,int holdMs,
+        const SubtitleAcceptedCueSeedCertificate* existingCueCertificate=nullptr) {
         const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
             return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
                 outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
@@ -477,14 +479,54 @@ public:
             const auto& newCard=measured.capturePanelMeasured?measured.capturePanel:measured.sourcePanel;
             return !oldCard.Valid() || contains(newCard,oldCard);
         };
+        // A completed independent scan may restore an ALREADY acquired cue
+        // after backlog retirement even though Resolve has no future rows yet.
+        // Only the tracker's exact current-cue certificate can replace that
+        // future grouping vote; raw current extraction must still cover all rows.
+        const auto& current=preview.current;
+        const bool independentCurrentCue=current.independentBarAnalysis && !current.analysisRefresh &&
+            !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
+            current.barEvidence.available && !current.barEvidence.topRevalidatedAtReference &&
+            !current.barEvidence.topRevalidatedNearby && !current.barEvidence.bottomRevalidatedAtReference &&
+            !current.barEvidence.bottomRevalidatedNearby && !current.barEvidence.captionBackedTop &&
+            !current.barEvidence.captionBackedBottom &&
+            current.pictureTop==current.barEvidence.top && current.pictureBottom==current.barEvidence.bottom &&
+            current.ink && current.ink->rawEvidenceComplete &&
+            !current.text.held && !accepted.held && !accepted.revised;
+        const bool certifiedExistingCue=independentCurrentCue && existingCueCertificate &&
+            existingCueCertificate->Matches(preview,accepted);
+        const bool consumedCertificate=independentCurrentCue && m_consumedCertificate.Matches(preview,accepted);
+        const bool resolvedCovers=covers(preview.text);
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
             preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
             !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
-            !covers(preview.current.text) || !covers(preview.text)) { return Reject("accepted-seed-incomplete"); }
+            !covers(preview.current.text) || (!resolvedCovers && !certifiedExistingCue && !consumedCertificate)) {
+            return Reject("accepted-seed-incomplete");
+        }
+        if(!resolvedCovers && consumedCertificate) {
+            // The tracker intentionally exports no new certificate on a repeated
+            // presentation. Preserve the exact prior seed without renewing time.
+            m_reason="accepted-certificate-already-consumed";return false;
+        }
+        const auto& old=m_certifiedSeed;const auto& now=current.identity;
+        if(!resolvedCovers && certifiedExistingCue && old.acceptedSequence &&
+            old.transportGeneration==now.transportGeneration && old.sourceFormatGeneration==now.sourceFormatGeneration &&
+            old.analysisDomainKey==now.analysisDomainKey && old.viewportGeneration==now.viewportGeneration &&
+            old.rendererGeneration==now.rendererGeneration && m_certifiedPolicy==preview.policyGeneration &&
+            m_certifiedContinuity==preview.continuityGeneration && now.acceptedSequence<=old.acceptedSequence) {
+            // Replaying the same exported certificate cannot renew the lease.
+            m_reason="accepted-certificate-already-consumed";return false;
+        }
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
         Resolve(seed,source,frameMs,holdMs);
+        if(!m_samples.empty() && !resolvedCovers && certifiedExistingCue) {
+            m_certifiedSeed=now;m_certifiedPolicy=preview.policyGeneration;
+            m_certifiedContinuity=preview.continuityGeneration;
+            m_consumedCertificate=*existingCueCertificate;
+            m_reason="accepted-existing-cue-certified";
+        }
         return !m_samples.empty();
     }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
@@ -632,7 +674,11 @@ public:
 private:
     bool Reject(const char* reason) {
         const auto diagnostics=m_diagnostics;
+        const auto certified=m_certifiedSeed;const auto policy=m_certifiedPolicy,continuity=m_certifiedContinuity;
+        const auto certificate=m_consumedCertificate;
         Reset();
+        m_certifiedSeed=certified;m_certifiedPolicy=policy;m_certifiedContinuity=continuity;
+        m_consumedCertificate=certificate;
         m_diagnostics=diagnostics;
         m_reason=reason;
         return false;
@@ -641,7 +687,9 @@ private:
     Diagnostics m_diagnostics;
     struct Sample { int x,y;AnalysisLumaSample value; };
     SubtitleBoxPreview m_reference;
-    ActivePictureFrameIdentity m_last;
+    SubtitleAcceptedCueSeedCertificate m_consumedCertificate;
+    ActivePictureFrameIdentity m_last,m_certifiedSeed;
+    uint64_t m_certifiedPolicy=0,m_certifiedContinuity=0;
     std::vector<Sample> m_samples;
     double m_elapsed=0;
 };
