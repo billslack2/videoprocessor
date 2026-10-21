@@ -1228,6 +1228,8 @@ namespace Tests
         }
         TEST_METHOD(ProgressiveOnsetBlocksQueuedIntermediatePublicationAcrossTwoHistoryLoops)
         {
+            for(bool futureReady : {false,true})
+            {
             ActivePictureTransitionModel model;
             uint64_t sequence=2000;
             const auto bounds=[](int top) { return ActivePictureBounds{0,top,3840,2160-top,3840,2160,
@@ -1248,17 +1250,19 @@ namespace Tests
                 MovingPictureTransitionState motion;
                 OutwardPictureConfirmationState outward;
                 const int tops[]={256,255,254,252,250,248,247,244,242,240,238,236,234,232,230,228};
-                for(int i=0;i<16;++i,++sequence)
+                unsigned endpointPublications=0;
+                for(int i=0;i<36;++i,++sequence)
                 {
                     const bool missing=i==1||i==6;
                     MotionSequence sample;
                     sample.input.trustedGeometry=sample.input.presentationBeforeObservation=logical;
                     sample.input.retention.expansionBase=logical;
-                    sample.Target(tops[i]);
+                    const int top=i<16?tops[i]:228;
+                    sample.Target(top);
                     sample.input.evidence.classification=missing?ActivePictureClassification::PROVISIONAL:ActivePictureClassification::BAR_CROP_TRUSTED;
                     sample.input.retention.expansionStripsAvailable=!missing;
                     sample.input.retention.activePicture=sample.input.evidence;
-                    sample.input.retention.expandingTop.barPixels=sample.input.retention.expandingBottom.barPixels=logical.top-tops[i];
+                    sample.input.retention.expandingTop.barPixels=sample.input.retention.expandingBottom.barPixels=logical.top-top;
                     sample.input.sourceSequence=sequence;
                     sample.identity.acceptedSequence=sample.identity.sourceFrameNumber=sequence;
                     sample.identity.captureTimestamp=sequence*417083;
@@ -1269,15 +1273,21 @@ namespace Tests
                     BufferedPictureExpansionSample window[3];
                     for(int n=0;n<3;++n) {
                         auto& w=window[n];w.identity=sample.identity;w.identity.acceptedSequence+=n;w.identity.sourceFrameNumber+=n;w.identity.captureTimestamp+=n*417083;
-                        w.observation=MakeActivePictureObservation(sample.input.evidence,sequence+n,24);w.observation.bounds=bounds(tops[i]-2*n);
-                        w.retention=sample.input.retention;w.retention.expansionCandidate=w.observation.bounds;w.nearBlackEvaluated=true;
+                        w.observation=MakeActivePictureObservation(sample.input.evidence,sequence+n,24);w.observation.bounds=bounds(i<16?top-2*n:top);
+                        w.retention=sample.input.retention;w.retention.expansionCandidate=w.observation.bounds;
+                        w.retention.activePicture=sample.input.evidence;
+                        w.retention.activePicture.trustedBounds=w.retention.activePicture.proposedBounds=w.observation.bounds;
+                        w.retention.expandingTop.barPixels=w.retention.expandingBottom.barPixels=logical.top-w.observation.bounds.top;
+                        w.nearBlackEvaluated=true;
                     }
-                    const auto proof=BuildBufferedPictureExpansion(window,3,logical,2,2,11,12);
+                    const auto proof=BuildBufferedPictureExpansion(window,futureReady?3:1,logical,2,futureReady?2:0,11,12);
                     const bool proofReady=ValidateBufferedPictureExpansion(proof,sample.identity,sample.input,
                         model.WouldAdmitGeometryChange(MakeActivePictureObservation(sample.input.evidence,sequence,24)));
                     const bool onset=HasCurrentMovingPictureOnset(motion,7,sequence);
-                    if(onset&&proofReady)++blockedReadyWindows;
-                    const bool ready=!motion.active&&!onset&&proofReady;
+                    const bool queuedOnset=!motion.active&&!motion.awaitingPublication&&
+                        ConstrainBufferedMovingPictureOnset(proof,sample.identity,sample.input,admission);
+                    if((onset||queuedOnset)&&proofReady)++blockedReadyWindows;
+                    const bool ready=!motion.active&&!onset&&!queuedOnset&&proofReady;
                     if(ready) {
                         admission.deferOutward=admission.deferPresentation=false;
                         admission.observation=MakeActivePictureObservation(sample.input.evidence,sequence,24);
@@ -1287,13 +1297,102 @@ namespace Tests
                         &sample.input.evidence.axisEvidence,true);
                     const auto decision=adopted?proof.decision.transition:model.Observe(admission.observation);
                     outward=admission.outward.state;
-                    if(decision.publish)logical=decision.bounds;
-                    Assert::AreEqual(274,logical.top,L"A coherent moving preview must not win the race before motion acquisition.");
-                    if(missing)Assert::IsFalse(onset,L"Unknown pixels cannot renew current onset interest.");
+                    CompleteMovingPictureTransition(motion,sample.input,decision);
+                    if(decision.publish) { logical=decision.bounds;if(i>=16)++endpointPublications; }
+                    if(i<16)Assert::AreEqual(274,logical.top,L"A coherent moving preview must not win the race before motion acquisition.");
+                    if(missing)Assert::IsFalse(onset||queuedOnset,L"Unknown pixels cannot renew current onset interest.");
                 }
-                Assert::IsTrue(motion.active);
+                Assert::IsFalse(motion.active||motion.awaitingPublication);
+                Assert::AreEqual(228,logical.top);
+                Assert::AreEqual(1u,endpointPublications,L"A stable endpoint must publish once, through ordinary authority.");
             }
-            Assert::IsTrue(blockedReadyWindows>=2,L"The test must exercise actual valid queued proofs in both history loops.");
+            if(futureReady)Assert::IsTrue(blockedReadyWindows>=2,L"The test must exercise actual valid queued proofs in both history loops.");
+            else Assert::AreEqual(0u,blockedReadyWindows);
+            }
+        }
+        TEST_METHOD(QueuedOnsetRequiresCompleteProgressiveNativeWindowAndExactCurrentSource)
+        {
+            for(int fault=0;fault<29;++fault)
+            {
+                MotionSequence s;s.Target(244);s.input.sourceSequence=s.identity.acceptedSequence;
+                s.input.retention.activePicture=s.input.evidence;
+                BufferedPictureExpansionSample window[3];
+                for(int n=0;n<3;++n) {
+                    auto future=s;future.Target(244-2*n);
+                    auto&w=window[n];w.identity=s.identity;w.identity.acceptedSequence+=n;w.identity.sourceFrameNumber+=n;w.identity.captureTimestamp+=n*417083;
+                    w.observation=MakeActivePictureObservation(future.input.evidence,s.identity.acceptedSequence+n,24);
+                    w.retention=future.input.retention;w.retention.activePicture=future.input.evidence;w.nearBlackEvaluated=true;
+                }
+                size_t count=3;
+                switch(fault) {
+                case 1:++window[1].identity.acceptedSequence;break;
+                case 2:++window[1].identity.sourceFrameNumber;break;
+                case 3:window[1].identity.captureTimestamp=window[0].identity.captureTimestamp;break;
+                case 4:++window[1].identity.analysisDomainKey;break;
+                case 5:window[1].observation.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;break;
+                case 6:window[1].retention.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;break;
+                case 7:++window[1].retention.activePicture.trustedBounds.top;break;
+                case 8:++window[1].retention.activePicture.proposedBounds.top;break;
+                case 9:window[1].retention.activePicture.available=false;break;
+                case 10:window[1].observation.classification=ActivePictureClassification::PROVISIONAL;break;
+                case 11:window[1].retention.activePicture.axisEvidence.vertical.scanComplete=false;break;
+                case 12:window[1].retention.activePicture.top.trusted=false;break;
+                case 13:count=2;break;
+                case 14:window[1].retention.expansionStripsAvailable=false;break;
+                case 15:window[1].retention.globalNearBlack=true;break;
+                }
+                const auto proof=BuildBufferedPictureExpansion(window,count,s.input.trustedGeometry,2,2,11,12);
+                auto identity=s.identity;
+                switch(fault) {
+                case 16:++identity.transportGeneration;break;
+                case 17:++identity.acceptedSequence;break;
+                case 18:++identity.sourceFrameNumber;break;
+                case 19:++identity.captureTimestamp;break;
+                case 20:++identity.analysisDomainKey;break;
+                case 21:++s.input.sourceGeneration;break;
+                case 22:s.input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;break;
+                case 23:++s.input.evidence.trustedBounds.top;break;
+                case 24:++s.input.trustedGeometry.top;break;
+                case 25:++s.input.retention.activePicture.trustedBounds.top;break;
+                case 26:s.input.retention.activePicture.axisEvidence.vertical.scanComplete=false;break;
+                case 27:s.input.retention.globalNearBlack=true;break;
+                case 28:s.input.retention.expansionStripsAvailable=false;break;
+                }
+                auto admission=EvaluateTransitionAdmission(s.input);const auto original=admission;
+                const bool constrained=ConstrainBufferedMovingPictureOnset(proof,identity,s.input,admission);
+                Assert::AreEqual(fault==0,constrained);
+                if(constrained)Assert::IsTrue(admission.observation.transitionDeferred);
+                else {
+                    Assert::AreEqual(original.observation.transitionDeferred,admission.observation.transitionDeferred);
+                    Assert::AreEqual(original.deferOutward,admission.deferOutward);
+                }
+            }
+        }
+        TEST_METHOD(StationaryQueuedNativeChangeKeepsImmediateOrdinaryAdoption)
+        {
+            for(int top : {244,68})
+            {
+                MotionSequence s;s.Target(top);s.input.sourceSequence=s.identity.acceptedSequence;
+                s.input.retention.activePicture=s.input.evidence;
+                BufferedPictureExpansionSample window[3];
+                for(int n=0;n<3;++n) {
+                    auto&w=window[n];w.identity=s.identity;w.identity.acceptedSequence+=n;w.identity.sourceFrameNumber+=n;w.identity.captureTimestamp+=n*417083;
+                    w.observation=MakeActivePictureObservation(s.input.evidence,s.identity.acceptedSequence+n,24);
+                    w.retention=s.input.retention;w.nearBlackEvaluated=true;
+                }
+                const auto proof=BuildBufferedPictureExpansion(window,3,s.input.trustedGeometry,2,2,11,12);
+                Assert::IsTrue(proof.valid);Assert::IsFalse(proof.progressiveNativeEdges);
+                auto admission=EvaluateTransitionAdmission(s.input);
+                Assert::IsFalse(ConstrainBufferedMovingPictureOnset(proof,s.identity,s.input,admission));
+                ActivePictureTransitionModel model;
+                for(uint64_t sequence=1;sequence<40;++sequence)model.Observe({s.input.trustedGeometry,sequence,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+                Assert::IsTrue(ValidateBufferedPictureExpansion(proof,s.identity,s.input,
+                    model.WouldAdmitGeometryChange(MakeActivePictureObservation(s.input.evidence,s.input.sourceSequence,24))));
+                // The ordinary renderer clears its satisfied temporal deferral.
+                admission.observation=MakeActivePictureObservation(s.input.evidence,s.input.sourceSequence,24);
+                Assert::IsTrue(model.AdoptPublishedDecision(proof.decision.transition,s.input.evidence.classification,
+                    admission.observation.transitionDeferred,nullptr,&s.input.evidence.axisEvidence,true));
+            }
         }
         TEST_METHOD(CurrentOnsetExpiresWithoutRenewalOnStaticUnknownAbruptAndChangedContext)
         {

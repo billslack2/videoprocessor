@@ -114,6 +114,45 @@ namespace AlphaSourceCrop
                 axes.vertical.scanComplete && axes.vertical.state == ActivePictureAxisState::TRUSTED_BARS;
         }
 
+        bool ExactNativeWindowPosition(const BufferedPictureExpansionSample& sample)
+        {
+            const auto& observation=sample.observation;
+            const auto& raw=sample.retention.activePicture;
+            return observation.available && !observation.transitionDeferred &&
+                observation.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                observation.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                observation.axisEvidence.vertical.scanComplete &&
+                observation.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+                !observation.axisEvidence.HasFailedBar() &&
+                ValidVerticalBarPicture(observation.bounds) && raw.available &&
+                raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                raw.axisEvidence.vertical.scanComplete &&
+                raw.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+                !raw.axisEvidence.HasFailedBar() && raw.top.trusted && raw.bottom.trusted &&
+                SameBounds(raw.trustedBounds,observation.bounds) &&
+                raw.proposedBounds.left==observation.bounds.left && raw.proposedBounds.top==observation.bounds.top &&
+                raw.proposedBounds.right==observation.bounds.right && raw.proposedBounds.bottom==observation.bounds.bottom &&
+                raw.proposedBounds.rasterWidth==observation.bounds.rasterWidth &&
+                raw.proposedBounds.rasterHeight==observation.bounds.rasterHeight;
+        }
+
+        bool ProgressiveNativeWindow(const BufferedPictureExpansionSample* samples,
+            size_t count, const ActivePictureBounds& base)
+        {
+            if(count<OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED)return false;
+            for(size_t i=0;i<count;++i)
+            {
+                const auto& candidate=samples[i].observation.bounds;
+                if(!ExactNativeWindowPosition(samples[i]) || !BothEdgesExpand(base,candidate))return false;
+                if(i==0)continue;
+                const auto& prior=samples[i-1].observation.bounds;
+                const int top=prior.top-candidate.top,bottom=candidate.bottom-prior.bottom;
+                const int step=(std::max)(2,candidate.rasterHeight/540);
+                if(top<0||bottom<0||(top==0&&bottom==0)||top>step||bottom>step)return false;
+            }
+            return true;
+        }
         bool CurrentScheduledExpansion(const BufferedPictureExpansionProof& proof,
             const ActivePictureFrameIdentity& currentIdentity,
             const TransitionAdmissionInput& current, bool modelWouldAdmit)
@@ -466,6 +505,7 @@ namespace AlphaSourceCrop
         if (diagnostic) *diagnostic = details;
         proof.valid = true;
         proof.relativeContrast = relativeReady;
+        proof.progressiveNativeEdges = !relativeReady && ProgressiveNativeWindow(samples, required, base);
         auto& decision = proof.decision;
         decision.observationIdentity = samples[required - 1].identity;
         decision.effectiveIdentity = first.identity;
@@ -663,6 +703,32 @@ namespace AlphaSourceCrop
         // Preserve the composition veto. Only temporal outward deferral is
         // satisfied by this independent complete proof.
         return !EvaluateTransitionAdmission(current).deferPartialComposition;
+    }
+    bool ConstrainBufferedMovingPictureOnset(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current,
+        TransitionAdmissionDecision& admission)
+    {
+        // Geometry eligibility is deliberately not authority here: even a history
+        // return must wait while this exact source window independently moves.
+        if(!proof.progressiveNativeEdges || proof.relativeContrast ||
+            !CurrentScheduledExpansion(proof,currentIdentity,current,true) ||
+            admission.observation.frameNumber!=currentIdentity.acceptedSequence ||
+            !SameBounds(admission.observation.bounds,current.evidence.trustedBounds))
+            return false;
+        BufferedPictureExpansionSample sample;
+        sample.observation=MakeActivePictureObservation(current.evidence,current.sourceSequence,current.framesPerSecond);
+        sample.retention=current.retention;
+        if(!ExactNativeWindowPosition(sample) ||
+            !CurrentBroadEvidence(current.trustedGeometry,sample.observation,current.retention,
+                current.sourceGeneration,current.sourceSequence) ||
+            EvaluateTransitionAdmission(current).deferPartialComposition)
+            return false;
+        admission.deferOutward=true;
+        admission.observation.transitionDeferred=true;
+        admission.observation.classification=ActivePictureClassification::PROVISIONAL;
+        return true;
     }
     bool ValidateBufferedTranslatedPictureExpansion(
         const BufferedPictureExpansionProof& proof,

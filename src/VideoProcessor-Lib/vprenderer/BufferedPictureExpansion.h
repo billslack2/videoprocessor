@@ -91,6 +91,9 @@ namespace AlphaSourceCrop
     {
         bool valid = false;
         bool relativeContrast = false;
+        // Complete current/future native proof of bounded progressive edges.
+        // This can defer current publication, never grant a crop or motion lease.
+        bool progressiveNativeEdges = false;
         ActivePictureFrameDecision decision;
     };
 
@@ -146,6 +149,14 @@ namespace AlphaSourceCrop
         const ActivePictureFrameIdentity& currentIdentity,
         const TransitionAdmissionInput& current,
         bool modelWouldAdmit);
+    // Apply after the live observer, before any queued override. This revalidates
+    // the exact current source and only defers its publication; future positions
+    // never enter the live model, active hold, or quiet/endpoint counters.
+    bool ConstrainBufferedMovingPictureOnset(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current,
+        TransitionAdmissionDecision& admission);
     // Explicit handoff for an old subtitle translation; ordinary proof consumers
     // continue to reject all presentation owners.
     bool ValidateBufferedTranslatedPictureExpansion(

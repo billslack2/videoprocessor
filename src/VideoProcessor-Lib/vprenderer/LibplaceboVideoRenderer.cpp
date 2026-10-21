@@ -10512,11 +10512,21 @@ struct LibplaceboVideoRenderer::Impl
                     AlphaSourceCrop::PictureMotionTrackingInput(movementInput,
                         !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode)));
             AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
-            const bool movingPictureOnset = AlphaSourceCrop::HasCurrentMovingPictureOnset(
+            const bool nativePictureOnset = AlphaSourceCrop::HasCurrentMovingPictureOnset(
                 movingPictureTransition, analysisSource.generation, frameNumber);
+            // A complete native queue window may expose motion immediately after
+            // a missing measurement. It only withholds this current publication;
+            // live acquisition and endpoint votes still come from current sources.
+            const bool bufferedPictureOnset = bufferedExpansion &&
+                !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                AlphaSourceCrop::ConstrainBufferedMovingPictureOnset(*bufferedExpansion,
+                    currentIdentity, admissionInput, admission);
+            const bool movingPictureOnset = nativePictureOnset || bufferedPictureOnset;
             if (movingPictureOnset || motionBeforeObservation.onsetPending)
-                DebugLog::Log("Alpha moving onset: generation=%llu sequence=%llu pending=%d prior_pending=%d active=%d awaiting=%d prior_directional=%u directional=%u anchor=%d,%d-%d,%d prior_native_sequence=%llu prior_native=%d,%d-%d,%d candidate=%d,%d-%d,%d broad=%d deferred=%d",
+                DebugLog::Log("Alpha moving onset: generation=%llu sequence=%llu pending=%d native_pending=%d queued_pending=%d prior_pending=%d active=%d awaiting=%d prior_directional=%u directional=%u anchor=%d,%d-%d,%d prior_native_sequence=%llu prior_native=%d,%d-%d,%d candidate=%d,%d-%d,%d broad=%d deferred=%d",
                     analysisSource.generation, frameNumber, movingPictureOnset?1:0,
+                    nativePictureOnset?1:0, bufferedPictureOnset?1:0,
                     motionBeforeObservation.onsetPending?1:0, movingPictureTransition.active?1:0,
                     movingPictureTransition.awaitingPublication?1:0, motionBeforeObservation.directionalChanges,
                     movingPictureTransition.directionalChanges, movingPictureTransition.anchor.left,
