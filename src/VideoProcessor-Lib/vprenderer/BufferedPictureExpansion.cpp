@@ -332,6 +332,7 @@ namespace AlphaSourceCrop
             // threshold is reached. Defer only this freshly certified small step;
             // static, unknown, abrupt, reversed or non-native samples cannot renew it.
             state.onsetPending = !state.awaitingPublication && nativePosition && adjacent &&
+                previous.directionalChanges > 0 &&
                 previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
                 SameBounds(previous.observedNative, previous.last) &&
                 candidate.top < state.quietAnchor.top && candidate.bottom > state.quietAnchor.bottom &&

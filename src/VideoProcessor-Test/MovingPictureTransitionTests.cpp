@@ -1434,7 +1434,7 @@ namespace Tests
         {
             for(int fault=0;fault<12;++fault)
             {
-                MotionSequence s; s.Target(256);s.Step();s.Target(254);s.Step();
+                MotionSequence s; s.Target(258);s.Step();s.Target(256);s.Step();s.Target(254);s.Step();
                 Assert::IsTrue(HasCurrentMovingPictureOnset(s.motion,7,s.identity.acceptedSequence-1));
                 Assert::IsFalse(s.motion.active||s.motion.awaitingPublication);
                 Assert::IsFalse(HasCurrentMovingPictureOnset(s.motion,8,s.identity.acceptedSequence-1));
@@ -1465,7 +1465,7 @@ namespace Tests
         {
             for(int target : {254,68,0})
             {
-                MotionSequence s;s.Target(256);s.Step();s.Target(254);s.Step();
+                MotionSequence s;s.Target(258);s.Step();s.Target(256);s.Step();s.Target(254);s.Step();
                 Assert::IsTrue(s.motion.onsetPending);
                 ActivePictureTransitionModel ordinaryModel;
                 for(uint64_t n=1;n<40;++n)ordinaryModel.Observe({s.input.trustedGeometry,n,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
@@ -1492,6 +1492,67 @@ namespace Tests
                 // The small static shift may remain deliberately inside the native
                 // deadband. The large crop jump and full raster must publish.
                 if(target!=254)Assert::IsTrue(ordinaryPublications>0);
+            }
+        }
+        TEST_METHOD(CleanOutwardReturnJitterKeepsOrdinaryPublicationTimingWithAndWithoutHistory)
+        {
+            for(int height : {1080,2160}) for(bool known : {false,true})
+            {
+                int first[2]={-1,-1};
+                for(int guarded=0;guarded<2;++guarded)
+                {
+                    MotionSequence s(height);const auto initial=s.input.trustedGeometry;
+                    const int target=height*68/2160;
+                    const auto bounds=[&](int top) { auto b=initial;b.top=top;b.bottom=height-top;
+                        b.aspectRatio=double(b.rasterWidth)/(b.bottom-b.top);
+                        b.trustedBarAxes=top?ActivePictureBounds::BarAxes::TOP_BOTTOM:ActivePictureBounds::BarAxes::NONE;return b; };
+                    ActivePictureTransitionModel model;uint64_t sequence=1;
+                    if(known)for(int top : {target,0})for(int n=0;n<24;++n)
+                        model.Observe({bounds(top),sequence++,true,top?ActivePictureClassification::BAR_CROP_TRUSTED:
+                            ActivePictureClassification::FULL_RASTER_TRUSTED,24});
+                    for(int n=0;n<24;++n)model.Observe({initial,sequence++,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+                    auto logical=initial;OutwardPictureConfirmationState outward;
+                    for(int n=0;n<12;++n,++sequence)
+                    {
+                        s.input.trustedGeometry=s.input.presentationBeforeObservation=logical;
+                        s.input.retention.expansionBase=logical;s.Target(target-(n&1?2:0));
+                        s.input.retention.activePicture=s.input.evidence;
+                        s.input.retention.expandingTop.barPixels=logical.top-s.input.outwardCandidate.top;
+                        s.input.retention.expandingBottom.barPixels=s.input.outwardCandidate.bottom-logical.bottom;
+                        s.input.previousOutward=outward;
+                        s.identity.acceptedSequence=s.identity.sourceFrameNumber=sequence;s.identity.captureTimestamp=sequence*417083;
+                        s.Step();auto admission=EvaluateTransitionAdmission(s.input);
+                        if(guarded)ConstrainMovingPictureTransition(s.motion,admission);
+                        const auto result=model.Observe(admission.observation);outward=admission.outward.state;
+                        if(result.publish){logical=result.bounds;if(first[guarded]<0)first[guarded]=n;}
+                    }
+                }
+                Assert::IsTrue(first[0]>=0,L"The ordinary clean change must actually publish.");
+                Assert::AreEqual(first[0],first[1],L"Outward-return scan jitter must not starve ordinary clean-change publication.");
+            }
+        }
+        TEST_METHOD(SecondProgressivePairStillPrecedesRememberedNativePublicationWithoutFuture)
+        {
+            MotionSequence s;ActivePictureTransitionModel model;uint64_t sequence=1;
+            const auto initial=s.input.trustedGeometry;
+            const auto bounds=[&](int top) {auto b=initial;b.top=top;b.bottom=2160-top;
+                b.aspectRatio=3840.0/(b.bottom-b.top);b.trustedBarAxes=top?ActivePictureBounds::BarAxes::TOP_BOTTOM:
+                    ActivePictureBounds::BarAxes::NONE;return b;};
+            for(int top : {244,0,initial.top})for(int n=0;n<24;++n)
+                model.Observe({bounds(top),sequence++,true,top?ActivePictureClassification::BAR_CROP_TRUSTED:
+                    ActivePictureClassification::FULL_RASTER_TRUSTED,24});
+            OutwardPictureConfirmationState outward;
+            for(int n=0;n<12;++n,++sequence)
+            {
+                s.Target(244-2*n);s.input.retention.activePicture=s.input.evidence;
+                s.input.retention.expandingTop.barPixels=s.input.retention.expandingBottom.barPixels=initial.top-s.input.outwardCandidate.top;
+                s.input.previousOutward=outward;s.identity.acceptedSequence=s.identity.sourceFrameNumber=sequence;
+                s.identity.captureTimestamp=sequence*417083;s.Step();
+                auto admission=EvaluateTransitionAdmission(s.input);ConstrainMovingPictureTransition(s.motion,admission);
+                const auto result=model.Observe(admission.observation);outward=admission.outward.state;
+                Assert::IsFalse(result.publish,L"Ordinary outward confirmation must leave time for the second progressive pair before remembered publication.");
+                if(n==1)Assert::IsFalse(s.motion.onsetPending);
+                if(n==2)Assert::IsTrue(s.motion.onsetPending);
             }
         }
         TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
