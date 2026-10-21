@@ -275,6 +275,22 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         }
     };
 public:
+    TEST_METHOD(PictureGlyphConfirmationFollowsIndependentInputAnalysisCadence) {
+        auto first=CompleteBackedCue(1),next=CompleteBackedCue(3);
+        first.text.diagnosticPictureGlyphProofRequired=true;
+        next.text.diagnosticPictureGlyphProofRequired=true;
+        first.analysisStride=next.analysisStride=2;
+        Assert::IsTrue(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(first,next,true).confirmed);
+        Assert::IsTrue(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(next,first,false).confirmed);
+        next.analysisStride=1;
+        Assert::IsFalse(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(first,next,true).confirmed);
+        next.analysisStride=2;next.identity=Identity(5);
+        Assert::IsFalse(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(first,next,true).confirmed);
+        next.identity=Identity(3);next.analyzed=false;next.cadenceSkipped=true;
+        Assert::IsFalse(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(first,next,true).confirmed);
+        first.analysisStride=next.analysisStride=1;next=CompleteBackedCue(2);
+        Assert::IsTrue(SubtitleBoxLookahead::ConfirmPictureGlyphAcquisitionPair(first,next,true).confirmed);
+    }
     TEST_METHOD(AlternateInputCadenceCountsOnlyIndependentMeasuredFrames) {
         std::array<SubtitleBoxObservation,5> frames;
         std::array<ActivePictureFrameIdentity,5> owned;

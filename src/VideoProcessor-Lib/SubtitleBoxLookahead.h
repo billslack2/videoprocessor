@@ -1276,6 +1276,16 @@ namespace SubtitleBoxLookahead
         return match;
     }
 
+    // Consecutive independent analyses may be two input frames apart. They
+    // still count as two observations; a skipped frame never adds a vote.
+    inline bool NextIndependentAnalysis(const SubtitleBoxObservation& previous,
+        const SubtitleBoxObservation& next) {
+        return (previous.analysisStride==1 || previous.analysisStride==2) &&
+            previous.analysisStride==next.analysisStride &&
+            next.identity.acceptedSequence>previous.identity.acceptedSequence &&
+            next.identity.acceptedSequence-previous.identity.acceptedSequence==previous.analysisStride;
+    }
+
     struct PictureGlyphAcquisitionConfirmation
     {
         bool required=false,confirmed=false;
@@ -1292,7 +1302,7 @@ namespace SubtitleBoxLookahead
     }
 
     // Dark picture-side backing without a finite card is spatially ambiguous.
-    // Certify the CURRENT candidate against one independently analyzed adjacent
+    // Certify the CURRENT candidate against one consecutive independently analyzed
     // source. A previous unaccepted candidate is evidence only, never a cue or
     // presentation template. No renderer refresh, alias or skipped source votes.
     inline PictureGlyphAcquisitionConfirmation ConfirmPictureGlyphAcquisitionPair(
@@ -1309,10 +1319,8 @@ namespace SubtitleBoxLookahead
             return reject("picture-glyph-acquisition-current-incomplete");
         if(!IsCompletePictureGlyphAcquisitionSource(adjacent))
             return reject("picture-glyph-acquisition-neighbor-incomplete");
-        const auto source=current.identity.acceptedSequence;
-        const auto neighbor=adjacent.identity.acceptedSequence;
-        if(followingSource ? (neighbor<=source || neighbor-source!=1) :
-            (source<=neighbor || source-neighbor!=1))
+        if(!(followingSource ? NextIndependentAnalysis(current,adjacent) :
+            NextIndependentAnalysis(adjacent,current)))
             return reject("picture-glyph-acquisition-not-adjacent");
         const auto& earlier=followingSource ? current.identity : adjacent.identity;
         const auto& later=followingSource ? adjacent.identity : current.identity;
@@ -1454,15 +1462,7 @@ namespace SubtitleBoxLookahead
         return StableBlackBacking(reference,sampled) && SameInkAtReference(reference,sampled);
     }
 
-    // Consecutive independent analyses may be two input frames apart. They
-    // still count as two observations; a skipped frame never adds a vote.
-    inline bool NextIndependentAnalysis(const SubtitleBoxObservation& previous,
-        const SubtitleBoxObservation& next) {
-        return (previous.analysisStride==1 || previous.analysisStride==2) &&
-            previous.analysisStride==next.analysisStride &&
-            next.identity.acceptedSequence>previous.identity.acceptedSequence &&
-            next.identity.acceptedSequence-previous.identity.acceptedSequence==previous.analysisStride;
-    }
+
 
     inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames, size_t count,
         uint64_t policy, uint64_t continuity)
