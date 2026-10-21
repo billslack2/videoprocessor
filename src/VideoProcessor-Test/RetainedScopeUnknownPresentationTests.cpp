@@ -71,6 +71,69 @@ namespace Tests
             input.candidate.reason="unresolved observation has no independent presentation owner";
             return input;
         }
+        ConfirmedFitOwnershipInput CaptionOwner(const PresentationRecoveryInput& input,
+            const ActivePictureBounds& approved,const ActivePictureBounds& evidence)
+        {
+            ConfirmedFitOwnershipInput owner;
+            owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+            owner.current=owner.confirmed=true;
+            owner.nativeBase=input.crop.geometry;owner.approvedBounds=approved;
+            owner.evidenceBounds=evidence;
+            owner.sourceGeneration=input.crop.frameSourceGeneration;
+            owner.sourceSequence=input.crop.frameSourceSequence;
+            owner.presentationEpoch=input.presentationEpoch;
+            return owner;
+        }
+        void SetFitCandidate(PresentationRecoveryInput& input,const ActivePictureBounds& bounds)
+        {
+            input.crop.outwardPresentationActive=input.crop.outwardExpansionAvailable=true;
+            input.crop.outwardExpansion=bounds;
+            input.crop.outwardExpansionSourceGeneration=input.crop.frameSourceGeneration;
+            auto owner=input.crop;
+            owner.nearBlackEpisodeRetainCrop=owner.nearBlackEpisodeFullRaster=false;
+            input.candidate=Evaluate(owner);
+            Assert::IsTrue(input.candidate.applyCrop && input.candidate.owner==DecisionOwner::OUTWARD_FIT);
+            AssertBounds(bounds,input.candidate.sourceBounds);
+        }
+        SubmittedNativeScopeAnchor Submit(const PresentationRecoveryInput& input,
+            const Decision& selected,CropPresentationAdmissionState& admission,
+            const AspectLimitFillDecision* fill=nullptr,bool submitted=true)
+        {
+            auto admitted=AdmitCropPresentation(admission,input.crop,selected,input.presentationEpoch);
+            Assert::IsFalse(admitted.blocked);
+            admission=admitted.state;
+            if(fill && fill->applied)
+            {
+                admission.optionalFillApplied=true;
+                admission.optionalFillRetained=fill->retainedSubmittedFill;
+                admission.optionalFillSourceBounds=fill->sourceBounds;
+                admission.optionalFillSourceSequence=input.crop.frameSourceSequence;
+                admission.optionalFillScreenAspect=2.35;
+            }
+            SubmittedNativeScopeAnchorUpdateInput update;
+            update.previous=input.submittedScopeAnchor;update.selectedAdmission=admission;
+            update.nativeCropAvailable=admission.available;update.nativeCrop=admission.trustedCrop;
+            update.submittedBounds=fill && fill->applied?fill->sourceBounds:selected.sourceBounds;
+            update.authorityOrigin=input.crop.authorityOrigin;update.selectedOwner=selected.owner;
+            update.sourceGeneration=input.crop.frameSourceGeneration;
+            update.sourceSequence=input.crop.frameSourceSequence;
+            update.presentationEpoch=input.presentationEpoch;update.frameSubmitted=submitted;
+            return CommitSubmittedNativeScopeAnchor(update);
+        }
+        FinalAspectLimitFillInput ScreenFill(const PresentationRecoveryInput& input,
+            const UncertainPicturePresentationDecision& resolved)
+        {
+            FinalAspectLimitFillInput fill;
+            fill.crop=input.crop;fill.presentation=resolved.presentation;
+            fill.evidence=input;fill.uncertainPicture=resolved;
+            fill.configuredScreenActive=true;fill.configured.screenAspect=2.35;
+            fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+            fill.configured.narrowerAspectLimit=2.32;
+            fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+            fill.configured.widerAspectLimit=2.42;
+            fill.currentConfirmedPresentationConflict=false;
+            return fill;
+        }
         NearBlackPresentationEpisodeState RetainedEpisode(const PresentationRecoveryInput& input)
         {
             NearBlackPresentationEpisodeState episode;
@@ -253,6 +316,12 @@ namespace Tests
                 Assert::IsTrue(input.candidate.owner==DecisionOwner::OUTWARD_FIT);
                 AssertBounds(input.crop.outwardExpansion,input.candidate.sourceBounds);
                 input.confirmedPresentationResolved=true;
+                // The fixture explicitly originates from accepted current caption
+                // backing, independently of the provisional visible scan.
+                const auto owner=CaptionOwner(input,input.crop.outwardExpansion,
+                    input.crop.outwardExpansion);
+                input.confirmedFitOwnership=QualifyConfirmedFitOwnership(owner);
+                Assert::IsTrue(input.confirmedFitOwnership.available);
                 const auto output=ResolveIncident(input);
                 AssertBounds(input.candidate.sourceBounds,output.sourceBounds);
                 Assert::IsTrue(output.owner==DecisionOwner::OUTWARD_FIT);
@@ -262,6 +331,248 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(DenseFitResolutionWithoutAcceptedCaptionOrUiOwnershipCannotFlashFullRaster)
+        {
+            for(bool nearBlack:{false,true})for(bool full:{false,true})
+            {
+                auto input=UnknownIncident(205,nearBlack);
+                SetFitCandidate(input,full?VisibleBounds(0,2160):VisibleBounds(180,2032));
+                input.confirmedPresentationResolved=true; // Dense FIT reached 2/2.
+                Assert::IsFalse(input.confirmedFitOwnership.available);
+                AssertBounds(IncidentScope(),ResolveIncident(input).sourceBounds);
+            }
+        }
+        TEST_METHOD(ConfirmedFitCapsuleRequiresIndependentCurrentBoundedEvidence)
+        {
+            auto input=UnknownIncident(205);
+            const auto approved=VisibleBounds(278,2032);
+            const ActivePictureBounds caption{1200,1900,2640,2024,3840,2160};
+            const auto valid=CaptionOwner(input,approved,caption);
+            Assert::IsTrue(QualifyConfirmedFitOwnership(valid).available);
+            for(int fault=0;fault<13;++fault)
+            {
+                auto owner=valid;
+                if(fault==0)owner.current=false;
+                if(fault==1)owner.confirmed=false;
+                if(fault==2)owner.origin=ConfirmedFitOwnershipOrigin::NONE;
+                if(fault==3)owner.sourceGeneration=0;
+                if(fault==4)owner.sourceSequence=0;
+                if(fault==5)owner.nativeBase.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                if(fault==6)owner.approvedBounds=owner.nativeBase;
+                if(fault==7)owner.approvedBounds.top=280;
+                if(fault==8)owner.approvedBounds.bottom=2031;
+                if(fault==9)owner.evidenceBounds.bottom=2034;
+                if(fault==10)owner.evidenceBounds.left=-2;
+                if(fault==11)owner.approvedBounds.right=3838;
+                if(fault==12)owner.evidenceBounds={1200,1800,2640,1870,3840,2160};
+                Assert::IsFalse(QualifyConfirmedFitOwnership(owner).available,
+                    L"Unknown, unconfirmed, unbounded or unpaired input cannot originate FIT ownership.");
+            }
+        }
+        TEST_METHOD(StaleOrOversizedFitCannotBorrowAQualifiedCurrentCaptionCapsule)
+        {
+            for(bool nearBlack:{false,true})for(int fault=0;fault<12;++fault)
+            {
+                auto input=UnknownIncident(205,nearBlack);
+                // The unavailable/stale native-contract cases isolate the
+                // full-envelope exemption; partial non-full fast paths retain
+                // their separate existing geometry contract.
+                const auto approved=fault>=10?VisibleBounds(0,2160):VisibleBounds(278,2032);
+                const ActivePictureBounds caption{1200,1900,2640,2024,3840,2160};
+                SetFitCandidate(input,approved);
+                input.confirmedPresentationResolved=true;
+                input.confirmedFitOwnership=QualifyConfirmedFitOwnership(CaptionOwner(input,approved,caption));
+                Assert::IsTrue(input.confirmedFitOwnership.available);
+                if(fault==0)--input.confirmedFitOwnership.sourceSequence;
+                if(fault==1)++input.confirmedFitOwnership.sourceGeneration;
+                if(fault==2)++input.confirmedFitOwnership.presentationEpoch;
+                if(fault==3)input.confirmedFitOwnership.nativeBase.top-=2;
+                if(fault==4)input.confirmedFitOwnership.nativeBase.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                if(fault==5)input.confirmedFitOwnership.approvedBounds.bottom+=2;
+                if(fault==6)input.candidate.sourceBounds=VisibleBounds(0,2160);
+                if(fault==7)input.confirmedFitOwnership.origin=ConfirmedFitOwnershipOrigin::NONE;
+                if(fault==8)++input.crop.framePresentationEpoch;
+                if(fault==9)input.confirmedFitOwnership.available=false;
+                if(fault==10)input.crop.sharedGeometryAvailable=false;
+                if(fault==11)--input.crop.geometrySourceGeneration;
+                AssertBounds(IncidentScope(),ResolveIncident(input).sourceBounds);
+            }
+            auto input=UnknownIncident(205);
+            const auto approved=VisibleBounds(278,2032);
+            SetFitCandidate(input,approved);
+            input.confirmedFitOwnership=QualifyConfirmedFitOwnership(CaptionOwner(input,approved,approved));
+            auto different=input.candidate;different.sourceBounds=VisibleBounds(0,2160);
+            AssertBounds(IncidentScope(),ResolveUncertainPicturePresentation(input,different).presentation.sourceBounds);
+        }
+        TEST_METHOD(MixedUiAndPictureEdgesCannotMasqueradeAsConfirmedOverlayOwnership)
+        {
+            auto input=UnknownIncident(205);
+            const auto approved=VisibleBounds(180,2032);
+            auto owner=CaptionOwner(input,approved,VisibleBounds(184,2026));
+            owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+            owner.upperContent=owner.lowerContent=true;
+            owner.upperOverlayLike=true;owner.lowerOverlayLike=false; // Logged 205.
+            Assert::IsFalse(QualifyConfirmedFitOwnership(owner).available);
+            owner.lowerOverlayLike=true;
+            Assert::IsTrue(QualifyConfirmedFitOwnership(owner).available,
+                L"Current UI/icon evidence is valid without requiring subtitle glyphs.");
+            for(int fault=0;fault<5;++fault)
+            {
+                auto invalid=owner;
+                if(fault==0)invalid.upperContent=false;
+                if(fault==1)invalid.lowerContent=false;
+                if(fault==2)invalid.upperOverlayLike=false;
+                if(fault==3)invalid.evidenceBounds.top=278;
+                if(fault==4)invalid.evidenceBounds.bottom=1880;
+                Assert::IsFalse(QualifyConfirmedFitOwnership(invalid).available);
+            }
+        }
+        TEST_METHOD(ExactCurrentAcceptedCaptionDoesNotWaitForTheCoarseArMeasurementStride)
+        {
+            for(bool nearBlack:{false,true})for(bool skipped:{false,true})
+            {
+                auto input=UnknownIncident(205,nearBlack);
+                const auto approved=VisibleBounds(278,2032);
+                const ActivePictureBounds multilineCaption{1100,1870,2740,2024,3840,2160};
+                SetFitCandidate(input,approved);
+                input.confirmedPresentationResolved=true;
+                input.confirmedFitOwnership=QualifyConfirmedFitOwnership(
+                    CaptionOwner(input,approved,multilineCaption));
+                Assert::IsTrue(input.confirmedFitOwnership.available);
+                if(skipped)
+                {
+                    input.measurementCurrent=input.retentionEvaluated=input.observationAvailable=false;
+                    input.retentionSourceSequence=0;
+                    input.crop.latestObservationIsUnavailable=true;
+                    input.crop.latestObservationClassification=ActivePictureClassification::UNAVAILABLE;
+                }
+                const auto result=ResolveIncident(input);
+                AssertBounds(approved,result.sourceBounds);
+                Assert::IsTrue(result.owner==DecisionOwner::OUTWARD_FIT,
+                    L"An independently current accepted caption must not be delayed by the AR analysis cadence.");
+            }
+        }
+        TEST_METHOD(CaptionOwnedPaddingPermitsSmallerLegacyFitWithoutDelayingAcceptedCue)
+        {
+            for(int bottom:{2024,2032,2056})
+            {
+                auto input=UnknownIncident(205);
+                const ActivePictureBounds caption{1200,1900,2640,2024,3840,2160};
+                const auto approved=VisibleBounds(278,bottom);
+                SetFitCandidate(input,approved);
+                input.confirmedFitOwnership=QualifyCaptionFitWithinPadding(
+                    CaptionOwner(input,approved,caption),32,32);
+                Assert::IsTrue(input.confirmedFitOwnership.available,
+                    L"A current accepted cue may keep the existing smaller dense clearance inside its independently bounded padding.");
+                input.measurementCurrent=input.retentionEvaluated=input.observationAvailable=false;
+                const auto resolved=ResolveUncertainPicturePresentation(input,input.candidate);
+                Assert::IsFalse(resolved.retained);
+                AssertBounds(approved,resolved.presentation.sourceBounds);
+                Assert::IsTrue(resolved.presentation.owner==DecisionOwner::OUTWARD_FIT);
+            }
+        }
+        TEST_METHOD(CaptionOwnedPaddingCannotCertifyUnrelatedDenseOrDetectorExtent)
+        {
+            for(int fault=0;fault<8;++fault)
+            {
+                auto input=UnknownIncident(205);
+                const ActivePictureBounds caption{1200,1900,2640,2024,3840,2160};
+                auto approved=VisibleBounds(278,2032);
+                if(fault==0)approved=VisibleBounds(180,2032); // Unrelated opposite bar.
+                if(fault==1)approved=VisibleBounds(278,2058); // Beyond cue-owned padding.
+                if(fault==2)approved=VisibleBounds(0,2160); // Detector/dense full raster.
+                SetFitCandidate(input,approved);
+                auto owner=CaptionOwner(input,approved,caption);
+                if(fault==3)owner.evidenceBounds={1200,1800,2640,1870,3840,2160};
+                if(fault==4)owner.current=false;
+                if(fault==5)owner.confirmed=false;
+                if(fault==6)owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+                input.confirmedFitOwnership=QualifyCaptionFitWithinPadding(owner,32,fault==7?-1:32);
+                Assert::IsFalse(input.confirmedFitOwnership.available,
+                    L"The presence of a caption cannot authorize independent raw/dense geometry outside that caption's own padded area.");
+                input.confirmedPresentationResolved=true;
+                AssertBounds(IncidentScope(),ResolveIncident(input).sourceBounds);
+            }
+        }
+        TEST_METHOD(SelectedUiFitSurvivesHeldSkippedAndRepeatedAnalysisWithoutGrowing)
+        {
+            auto input=UnknownIncident(200);
+            const auto approved=VisibleBounds(180,2032);
+            SetFitCandidate(input,approved);
+            input.crop.currentVisibleBounds=approved;
+            auto owner=CaptionOwner(input,approved,VisibleBounds(184,2026));
+            owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+            owner.upperContent=owner.lowerContent=owner.upperOverlayLike=owner.lowerOverlayLike=true;
+            input.confirmedFitOwnership=QualifyConfirmedFitOwnership(owner);
+            Assert::IsTrue(input.confirmedFitOwnership.available);
+            auto admission=input.previousAdmission;
+            auto anchor=Submit(input,ResolveIncident(input),admission);
+            Assert::IsTrue(anchor.submittedEnvelopeAvailable);
+            AssertBounds(approved,anchor.submittedEnvelope);
+            Assert::AreEqual(uint64_t(199),anchor.lastSubmittedSourceSequence);
+            for(uint64_t sequence:{201,202,202,203,204})
+            {
+                auto held=UnknownIncident(sequence,sequence%2==0);
+                held.previousAdmission=admission;held.submittedScopeAnchor=anchor;
+                held.confirmedPresentationResolved=true; // Held cold/UI result, not fresh pixels.
+                held.measurementCurrent=held.retentionEvaluated=held.observationAvailable=false;
+                held.crop.latestObservationIsUnavailable=true;
+                held.crop.latestObservationClassification=ActivePictureClassification::UNAVAILABLE;
+                SetFitCandidate(held,VisibleBounds(0,2160)); // New raw occupancy must not grow it.
+                Assert::IsFalse(held.confirmedFitOwnership.available);
+                const auto result=ResolveIncident(held);
+                AssertBounds(approved,result.sourceBounds);
+                anchor=Submit(held,result,admission);
+                AssertBounds(approved,anchor.submittedEnvelope);
+                Assert::AreEqual(uint64_t(199),anchor.lastSubmittedSourceSequence,
+                    L"Held/repeated UI presentation may not renew native AR authority.");
+                Assert::AreEqual(sequence,anchor.lastSubmittedPresentationSourceSequence);
+            }
+        }
+        TEST_METHOD(Startup205Through210CannotAlternateDenseFullFitAndSubmittedNativeFill)
+        {
+            auto seed=UnknownIncident(204);
+            MakeNativeCurrent(seed,IncidentScope());
+            seed.crop.frameLocalPresentationRetentionSafe=seed.excludedBandsPixelSafe=true;
+            seed.crop.currentVisibleBoundsAvailable=false;
+            seed.previousAdmission={};seed.submittedScopeAnchor={};
+            seed.candidate=Evaluate(seed.crop);
+            UncertainPicturePresentationDecision native;native.presentation=seed.candidate;
+            const auto firstFill=EvaluateFinalAspectLimitFill(ScreenFill(seed,native));
+            Assert::IsTrue(firstFill.applied && !firstFill.retainedSubmittedFill);
+            CropPresentationAdmissionState admission;
+            auto anchor=Submit(seed,seed.candidate,admission,&firstFill);
+            Assert::IsTrue(anchor.available && anchor.submittedOptionalFillAvailable);
+            Assert::AreEqual(uint64_t(204),anchor.lastSubmittedSourceSequence);
+            for(uint64_t sequence=205;sequence<=210;++sequence)
+            {
+                auto frame=UnknownIncident(sequence);
+                frame.previousAdmission=admission;frame.submittedScopeAnchor=anchor;
+                if(sequence%2)
+                {
+                    SetFitCandidate(frame,VisibleBounds(0,2160));
+                    frame.confirmedPresentationResolved=true; // Dense 2/2, no accepted cue.
+                }
+                else
+                {
+                    frame.measurementCurrent=frame.retentionEvaluated=frame.observationAvailable=false;
+                    frame.crop.latestObservationIsUnavailable=true;
+                    frame.crop.latestObservationClassification=ActivePictureClassification::UNAVAILABLE;
+                }
+                const auto resolved=ResolveUncertainPicturePresentation(frame,frame.candidate);
+                Assert::IsTrue(resolved.retained && !resolved.expanded);
+                AssertBounds(IncidentScope(),resolved.presentation.sourceBounds);
+                const auto fill=EvaluateFinalAspectLimitFill(ScreenFill(frame,resolved));
+                Assert::IsTrue(fill.applied && fill.retainedSubmittedFill);
+                AssertBounds(firstFill.sourceBounds,fill.sourceBounds);
+                anchor=Submit(frame,resolved.presentation,admission,&fill);
+                Assert::IsFalse(anchor.submittedEnvelopeAvailable,
+                    L"A raw dense FIT must never contaminate selected output continuity with a full envelope.");
+                Assert::AreEqual(uint64_t(204),anchor.lastSubmittedSourceSequence);
+                Assert::AreEqual(sequence,anchor.lastSubmittedPresentationSourceSequence);
+                Assert::AreEqual(sequence,anchor.submittedOptionalFillSourceSequence);
+            }
+        }
         TEST_METHOD(CurrentConfirmedTranslationKeepsItsDimensionsAndDisplacement)
         {
             auto input=UnknownIncident();

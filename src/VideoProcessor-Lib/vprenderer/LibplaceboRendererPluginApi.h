@@ -1,6 +1,7 @@
 #pragma once
 
 #include <IRenderer.h>
+#include <StartupPresentationReadiness.h>
 #include <AnalysisDiagnosticTrace.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
@@ -40,3 +41,22 @@ static constexpr const char* VP_LIBPLACEBO_DIAGNOSTIC_EXPORT = "VideoProcessorLi
 using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
     AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
     AnalysisDiagnosticTrace::FrameCaptureActiveCallback);
+
+// Optional V1 side-channel. Its absence preserves API-28 reveal behavior; it
+// changes neither the factory nor any existing shared interface/snapshot.
+static constexpr const char* VP_LIBPLACEBO_STARTUP_READINESS_EXPORT =
+    "VideoProcessorLibplaceboGetStartupPresentationReadinessV1";
+using VideoProcessorLibplaceboGetStartupReadinessFn = uint32_t (__cdecl *)(
+    IVideoRenderer*, StartupPresentation::SnapshotV1*);
+
+inline StartupPresentation::QueryStatus QueryOptionalStartupReadiness(
+    VideoProcessorLibplaceboGetStartupReadinessFn query, IVideoRenderer* renderer,
+    StartupPresentation::SnapshotV1& snapshot)
+{
+    snapshot = {};
+    if (!query || !renderer) return StartupPresentation::QueryStatus::Unsupported;
+    const auto status = static_cast<StartupPresentation::QueryStatus>(query(renderer, &snapshot));
+    if (status == StartupPresentation::QueryStatus::Busy) return status;
+    return status == StartupPresentation::QueryStatus::Available && StartupPresentation::Supported(snapshot)
+        ? status : StartupPresentation::QueryStatus::Unsupported;
+}

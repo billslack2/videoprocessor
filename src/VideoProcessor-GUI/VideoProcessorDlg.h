@@ -8,6 +8,7 @@
 
 #pragma once
 #include <ConfigurationLiveApply.h>
+#include <StartupPresentationReadiness.h>
 
 
 
@@ -810,6 +811,8 @@ protected:
 	uint32_t m_rendererFirstFrameRevealPendingGeneration = 0;
 	HWND m_rendererFirstFrameRevealTargetHwnd = nullptr;
 	std::atomic_bool m_transitionRevealPosted{false};
+	StartupPresentation::RevealGate m_startupPresentationRevealGate;
+	StartupPresentation::RevealReason m_startupPresentationRevealReason = StartupPresentation::RevealReason::AlreadyReleased;
 	RendererTransitionModel m_rendererTransitionModel;
 	bool m_rendererResetTransitionActive = false;
 	RendererQueueLaunchContractModel m_queueLaunchContractModel;

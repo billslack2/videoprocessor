@@ -3823,13 +3823,106 @@ namespace AlphaSourceCrop
 		return true;
 	}
 
+    ConfirmedFitOwnershipEvidence QualifyConfirmedFitOwnership(
+        const ConfirmedFitOwnershipInput& input)
+    {
+        ConfirmedFitOwnershipEvidence result;
+        const auto& native = input.nativeBase;
+        const auto& approved = input.approvedBounds;
+        const int width = native.rasterWidth, height = native.rasterHeight;
+        if (!input.current || !input.confirmed || !input.sourceGeneration || !input.sourceSequence ||
+            (input.origin != ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) ||
+            !ValidBounds(native,width,height) || !HasAuthorityForCroppedAxes(native,width,height) ||
+            !CropEdgesAreChromaAligned(native,width,height) ||
+            !ValidBounds(approved,width,height) || !CropEdgesAreChromaAligned(approved,width,height) ||
+            !ValidBounds(input.evidenceBounds,width,height) ||
+            !ContainedBounds(approved,native) || SameBounds(approved,native) ||
+            !ContainedBounds(approved,input.evidenceBounds))
+            return result;
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+            ContainedBounds(native,input.evidenceBounds))
+            return result; // An inside-only cue cannot originate an outward FIT.
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY)
+        {
+            // Keep Classic's non-glyph UI route, but require EVERY occupied
+            // expanding edge to be independently current and overlay-like.
+            // A mixed UI/picture pair cannot turn broad dense FIT into a caption.
+            if (native.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+                native.left != 0 || native.right != width ||
+                approved.left != native.left || approved.right != native.right ||
+                (!input.upperContent && !input.lowerContent) ||
+                (input.upperContent && !input.upperOverlayLike) ||
+                (input.lowerContent && !input.lowerOverlayLike) ||
+                (approved.top < native.top && !input.upperContent) ||
+                (approved.bottom > native.bottom && !input.lowerContent) ||
+                (input.upperContent && (input.evidenceBounds.top >= native.top ||
+                    approved.top >= native.top)) ||
+                (input.lowerContent && (input.evidenceBounds.bottom <= native.bottom ||
+                    approved.bottom <= native.bottom)))
+                return result;
+        }
+        result.available = true;
+        result.origin = input.origin;
+        result.nativeBase = native;
+        result.approvedBounds = approved;
+        result.sourceGeneration = input.sourceGeneration;
+        result.sourceSequence = input.sourceSequence;
+        result.presentationEpoch = input.presentationEpoch;
+        return result;
+    }
+
+    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding)
+    {
+        if(input.origin!=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION)
+            return {};
+        const auto qualified=QualifyConfirmedFitOwnership(input);
+        if(!qualified.available)return {};
+        PresentationEnvelopeGeometryInput caption;
+        caption.trustedPicture=input.nativeBase;
+        caption.observedContent=input.evidenceBounds;
+        caption.observedContentAvailable=true;
+        caption.expandLeft=input.evidenceBounds.left<input.nativeBase.left;
+        caption.expandTop=input.evidenceBounds.top<input.nativeBase.top;
+        caption.expandRight=input.evidenceBounds.right>input.nativeBase.right;
+        caption.expandBottom=input.evidenceBounds.bottom>input.nativeBase.bottom;
+        caption.horizontalPadding=horizontalPadding;caption.verticalPadding=verticalPadding;
+        const auto maximum=BuildPresentationEnvelope(caption);
+        if(!maximum.valid || !maximum.expanded ||
+            !ContainedBounds(maximum.bounds,input.approvedBounds))
+            return {};
+        return qualified;
+    }
     static bool HasConfirmedPresentationCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
-        // A current confirmed caption/FIT owner can expose occupied bars without
-        // changing native AR. A sparse-pixel rectangle, or an OUTWARD_FIT label
-        // manufactured by recovery, is not that confirmation.
+        // Recovery/inspection resolution is not caption ownership. In
+        // particular, a dense FIT label cannot authorize a full-raster flash.
         const auto& accepted = input.candidate;
+        if (accepted.owner == DecisionOwner::OUTWARD_FIT)
+        {
+            const auto& proof = input.confirmedFitOwnership;
+            return proof.available && input.crop.sharedGeometryAvailable &&
+                input.crop.geometrySourceGeneration == input.crop.frameSourceGeneration &&
+                (proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION ||
+                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) &&
+                proof.sourceGeneration != 0 && proof.sourceSequence != 0 &&
+                proof.sourceGeneration == input.crop.frameSourceGeneration &&
+                proof.sourceSequence == input.crop.frameSourceSequence &&
+                proof.presentationEpoch == input.presentationEpoch &&
+                proof.presentationEpoch == input.crop.framePresentationEpoch &&
+                SameTrustedCropContract(proof.nativeBase,input.crop.geometry) &&
+                accepted.applyCrop && proposed.applyCrop &&
+                proposed.owner == DecisionOwner::OUTWARD_FIT &&
+                !accepted.verticallyTranslated && !proposed.verticallyTranslated &&
+                ValidBounds(proof.approvedBounds,input.crop.rasterWidth,input.crop.rasterHeight) &&
+                CropEdgesAreChromaAligned(proof.approvedBounds,input.crop.rasterWidth,input.crop.rasterHeight) &&
+                SameBounds(proof.approvedBounds,accepted.sourceBounds) &&
+                SameBounds(proof.approvedBounds,proposed.sourceBounds);
+        }
+        // Keep the existing actual confirmed translation contract, including
+        // Classic UI/icons; it does not require glyph-only FIT qualification.
         return input.confirmedPresentationResolved && input.measurementCurrent && input.retentionEvaluated &&
             input.crop.frameSourceGeneration != 0 && input.crop.frameSourceSequence != 0 &&
             input.retentionSourceGeneration == input.crop.frameSourceGeneration &&

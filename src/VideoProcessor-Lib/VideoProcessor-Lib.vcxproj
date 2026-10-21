@@ -168,6 +168,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="StartupPresentationReadiness.h" />
+    <ClInclude Include="vprenderer\QueueNativeContinuity.h" />
     <ClInclude Include="ToneMappingTuning.h" />
     <ClInclude Include="WindowsDisplayDiagnostics.h" />
     <ClInclude Include="ACaptureDevice.h" />

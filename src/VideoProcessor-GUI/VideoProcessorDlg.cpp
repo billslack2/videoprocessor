@@ -9040,6 +9040,8 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
 
+	m_startupPresentationRevealGate.BeginSession();
+
 	// A new capture session is an initial lifecycle start, never a continuation
 	// of a profile-only replacement from the preceding session.
 	m_postRendererStartRequiresGraph = true;
@@ -9403,6 +9405,8 @@ void CVideoProcessorDlg::RenderStart()
 	// exact renderer generation and target instead of popup visibility.
 	m_rendererFirstFrameRevealPendingGeneration = rendererGeneration;
 	m_rendererFirstFrameRevealTargetHwnd = m_rendererTargetHwnd;
+	m_startupPresentationRevealGate.Arm(rendererGeneration);
+	m_startupPresentationRevealReason = StartupPresentation::RevealReason::AlreadyReleased;
 
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
@@ -10714,6 +10718,30 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			return;
 		}
 	}
+    // Only the initial renderer-start shield waits for automatic-AR geometry.
+    // Delivery, analysis, graph/queue readiness, and playback clocks keep running.
+    StartupPresentation::RevealInput startupReveal;
+    startupReveal.rendererGeneration = generation;
+    startupReveal.now = GetTickCount64();
+    startupReveal.existingFrameReady = currentFrameReady;
+#if defined(_WIN64)
+    const auto vpStartup = std::dynamic_pointer_cast<LibplaceboPluginVideoRenderer>(m_videoRenderer);
+    if (vpStartup)
+        startupReveal.queryStatus = vpStartup->GetStartupPresentationReadiness(startupReveal.snapshot);
+#endif
+    const auto startupDecision = m_startupPresentationRevealGate.Evaluate(startupReveal);
+    if (startupDecision.reason != m_startupPresentationRevealReason) {
+        m_startupPresentationRevealReason = startupDecision.reason;
+        DebugLog::Log("Renderer startup geometry: generation=%u release=%d reason=%u elapsed_ms=%llu required=%d selected=%llu source_generation=%llu viewport=%llu",
+            generation, startupDecision.release ? 1 : 0, static_cast<unsigned>(startupDecision.reason),
+            static_cast<unsigned long long>(startupDecision.elapsedMs),
+            (startupReveal.snapshot.flags & StartupPresentation::Required) ? 1 : 0,
+            static_cast<unsigned long long>(startupReveal.snapshot.selectedSequence),
+            static_cast<unsigned long long>(startupReveal.snapshot.sourceGeneration),
+            static_cast<unsigned long long>(startupReveal.snapshot.viewportEpoch));
+    }
+    if (!startupDecision.release) return;
+
 	if (coordinatedReset)
 	{
 		if (m_rendererTransitionModel.State() !=
@@ -10774,6 +10802,7 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			: 0;
 	m_windowedVideoWindow.ShowLogo(false);
 	m_rendererTransitionWindow.Hide();
+	m_startupPresentationRevealGate.MarkRevealed();
 	m_rendererFirstFrameRevealPendingGeneration = 0;
 	m_rendererFirstFrameRevealTargetHwnd = nullptr;
 	HWND configurationEditor = VisibleAssociatedConfigurationEditor();

@@ -1764,6 +1764,35 @@ namespace AlphaSourceCrop
 		uint32_t samples = 0;
 	};
 
+    enum class ConfirmedFitOwnershipOrigin : uint8_t
+    {
+        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY
+    };
+    // The approved envelope is built independently from current accepted
+    // caption/UI evidence. A dense geometry/FIT completion is not ownership.
+    struct ConfirmedFitOwnershipInput
+    {
+        ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
+        bool current = false, confirmed = false;
+        ActivePictureBounds nativeBase, approvedBounds, evidenceBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        bool upperContent = false, lowerContent = false;
+        bool upperOverlayLike = false, lowerOverlayLike = false;
+    };
+    struct ConfirmedFitOwnershipEvidence
+    {
+        bool available = false;
+        ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
+        ActivePictureBounds nativeBase, approvedBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+    };
+    ConfirmedFitOwnershipEvidence QualifyConfirmedFitOwnership(
+        const ConfirmedFitOwnershipInput& input);
+    // Established caption FIT may retain its existing smaller clearance, but
+    // cannot borrow detector/dense extents beyond this cue's own padded bounds.
+    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding);
+
 	struct PresentationRecoveryInput
 	{
 		PresentationRecoveryState previous;
@@ -1787,6 +1816,9 @@ namespace AlphaSourceCrop
 		// Only a confirmed current dense presentation or a completed episode
 		// proof can resolve ownership; pending refinement/inspection cannot.
 		bool confirmedPresentationResolved = false;
+        // Separate from generic recovery/inspection resolution above. Only an
+        // exact current caption/UI owner may exempt an OUTWARD_FIT candidate.
+        ConfirmedFitOwnershipEvidence confirmedFitOwnership;
 		uint64_t presentationEpoch = 0;
 		uint64_t currentTick = 0;
 		double framesPerSecond = 60.0;
