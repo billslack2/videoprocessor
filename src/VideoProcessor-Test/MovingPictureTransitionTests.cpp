@@ -1312,7 +1312,7 @@ namespace Tests
         }
         TEST_METHOD(QueuedOnsetRequiresCompleteProgressiveNativeWindowAndExactCurrentSource)
         {
-            for(int fault=0;fault<29;++fault)
+            for(int fault=0;fault<32;++fault)
             {
                 MotionSequence s;s.Target(244);s.input.sourceSequence=s.identity.acceptedSequence;
                 s.input.retention.activePicture=s.input.evidence;
@@ -1322,6 +1322,17 @@ namespace Tests
                     auto&w=window[n];w.identity=s.identity;w.identity.acceptedSequence+=n;w.identity.sourceFrameNumber+=n;w.identity.captureTimestamp+=n*417083;
                     w.observation=MakeActivePictureObservation(future.input.evidence,s.identity.acceptedSequence+n,24);
                     w.retention=future.input.retention;w.retention.activePicture=future.input.evidence;w.nearBlackEvaluated=true;
+                }
+                if(fault>=29)for(int n=0;n<3;++n) {
+                    auto& w=window[n];
+                    if(fault==29)w.observation.bounds.bottom=window[0].observation.bounds.bottom;
+                    if(fault==30)w.observation.bounds.top=window[0].observation.bounds.top;
+                    if(fault==31) { w.observation.bounds.top=244-(n?2:0);w.observation.bounds.bottom=1916+(n==2?2:0); }
+                    w.observation.bounds.aspectRatio=3840.0/(w.observation.bounds.bottom-w.observation.bounds.top);
+                    w.retention.expansionCandidate=w.observation.bounds;
+                    w.retention.activePicture.trustedBounds=w.retention.activePicture.proposedBounds=w.observation.bounds;
+                    w.retention.expandingTop.barPixels=s.input.trustedGeometry.top-w.observation.bounds.top;
+                    w.retention.expandingBottom.barPixels=w.observation.bounds.bottom-s.input.trustedGeometry.bottom;
                 }
                 size_t count=3;
                 switch(fault) {
@@ -1360,12 +1371,37 @@ namespace Tests
                 }
                 auto admission=EvaluateTransitionAdmission(s.input);const auto original=admission;
                 const bool constrained=ConstrainBufferedMovingPictureOnset(proof,identity,s.input,admission);
-                Assert::AreEqual(fault==0,constrained);
+                Assert::AreEqual(fault==0||fault==31,constrained);
                 if(constrained)Assert::IsTrue(admission.observation.transitionDeferred);
                 else {
                     Assert::AreEqual(original.observation.transitionDeferred,admission.observation.transitionDeferred);
                     Assert::AreEqual(original.deferOutward,admission.deferOutward);
                 }
+            }
+        }
+        TEST_METHOD(OnsetIgnoresOneEdgeJitterButAllowsAlternatingOpposingQuantization)
+        {
+            for(int height : {1080,2160})
+            {
+                const auto set=[](MotionSequence& s,int top,int bottom) {
+                    s.Target(top);auto b=s.input.evidence.trustedBounds;b.bottom=bottom;
+                    b.aspectRatio=double(b.rasterWidth)/(b.bottom-b.top);
+                    s.input.evidence.trustedBounds=s.input.evidence.proposedBounds=s.input.outwardCandidate=b;
+                    s.input.retention.expansionCandidate=b;
+                };
+                for(int jitter=0;jitter<3;++jitter) {
+                    MotionSequence s(height);const int top=height/32/2*2,bottom=height-top;
+                    for(int n=0;n<6;++n) {
+                        set(s,top+(jitter!=0&&(n&1)?2:0),bottom-(jitter!=1&&(n&1)?2:0));s.Step();
+                        Assert::IsFalse(s.motion.onsetPending||s.motion.active,
+                            L"One-edge or inward-return scan jitter must not become gradual opposing-picture onset.");
+                    }
+                }
+                MotionSequence s(height);const int top=s.input.trustedGeometry.top-16,bottom=height-top;
+                set(s,top,bottom);s.Step();
+                set(s,top-2,bottom);s.Step();Assert::IsFalse(s.motion.onsetPending);
+                set(s,top-2,bottom+2);s.Step();Assert::IsTrue(s.motion.onsetPending);
+                Assert::IsFalse(s.motion.active||s.motion.awaitingPublication);
             }
         }
         TEST_METHOD(StationaryQueuedNativeChangeKeepsImmediateOrdinaryAdoption)

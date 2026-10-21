@@ -151,7 +151,10 @@ namespace AlphaSourceCrop
                 const int step=(std::max)(2,candidate.rasterHeight/540);
                 if(top<0||bottom<0||(top==0&&bottom==0)||top>step||bottom>step)return false;
             }
-            return true;
+            // Quantized opposing edges may advance on different samples.
+            // A single moving/jittering edge alone cannot delay a clean crop.
+            return samples[count-1].observation.bounds.top < samples[0].observation.bounds.top &&
+                samples[count-1].observation.bounds.bottom > samples[0].observation.bounds.bottom;
         }
         bool CurrentScheduledExpansion(const BufferedPictureExpansionProof& proof,
             const ActivePictureFrameIdentity& currentIdentity,
@@ -331,6 +334,7 @@ namespace AlphaSourceCrop
             state.onsetPending = !state.awaitingPublication && nativePosition && adjacent &&
                 previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
                 SameBounds(previous.observedNative, previous.last) &&
+                candidate.top < state.quietAnchor.top && candidate.bottom > state.quietAnchor.bottom &&
                 topStep >= 0 && bottomStep >= 0 && (topStep > 0 || bottomStep > 0) &&
                 topStep <= scanStep && bottomStep <= scanStep;
             if (topStep < 0 || bottomStep < 0)
