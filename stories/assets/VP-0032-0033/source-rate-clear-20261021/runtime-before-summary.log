@@ -1,0 +1,269 @@
+2026-10-21 09:57:37 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:37 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | Alpha backlog recovery: generation=2 source=7154 trigger=render_stall render_cycle_ms=165.855 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.149 dropped=3 dropped_total=3745 canceled_repeats=0 queue_after=5 oldest_after_ms=169.005 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | Alpha backlog recovery: generation=2 source=7159 trigger=render_stall render_cycle_ms=175.003 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=300.598 dropped=3 dropped_total=3748 canceled_repeats=0 queue_after=5 oldest_after_ms=175.457 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | VP source/output processing: source_renders=20 source_reuses=40 output_renders=30 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:38 | VP analysis performance: window_ms=2032 source_hz=23.97648 display_hz=59.95056 submissions=30 preview_attempts=20 preview_complete=20 preview_skipped=0 phase_known=0 preview_avg_ms=0.169 preview_peak_ms=0.345 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=60.045 active_peak_ms=90.916 source_period_exceeded=30 display_period_exceeded=30 live_prep_avg_ms=3.315 live_prep_peak_ms=13.272 render_avg_ms=56.641 render_peak_ms=77.286 swap_avg_ms=0.087 swap_peak_ms=0.126 worker_threads=1 logical_processors=16 worker_submitted=49 worker_completed=49 worker_failed=0 worker_cancelled=0 worker_duplicate=8 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=1.204 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.940 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=0.957 worker_cpu_samples=49 worker_completed_cpu_ms=46.875 worker_completed_wall_ms=46.057
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | Alpha backlog recovery: generation=2 source=7164 trigger=render_stall render_cycle_ms=168.407 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.795 dropped=3 dropped_total=3751 canceled_repeats=0 queue_after=5 oldest_after_ms=168.802 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | Alpha backlog recovery: generation=2 source=7169 trigger=render_stall render_cycle_ms=168.652 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.199 dropped=3 dropped_total=3754 canceled_repeats=0 queue_after=5 oldest_after_ms=169.072 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | Alpha backlog recovery: generation=2 source=7174 trigger=render_stall render_cycle_ms=165.382 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=290.813 dropped=2 dropped_total=3756 canceled_repeats=0 queue_after=5 oldest_after_ms=207.447 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:38 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7178 trigger=render_stall render_cycle_ms=167.137 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=303.734 dropped=3 dropped_total=3759 canceled_repeats=0 queue_after=5 oldest_after_ms=178.084 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7183 trigger=render_stall render_cycle_ms=161.959 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=287.410 dropped=2 dropped_total=3761 canceled_repeats=0 queue_after=5 oldest_after_ms=203.959 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7187 trigger=render_stall render_cycle_ms=173.645 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=305.802 dropped=3 dropped_total=3764 canceled_repeats=0 queue_after=5 oldest_after_ms=179.826 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7192 trigger=render_stall render_cycle_ms=177.908 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=303.526 dropped=3 dropped_total=3767 canceled_repeats=0 queue_after=5 oldest_after_ms=178.394 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7197 trigger=render_stall render_cycle_ms=161.498 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=286.963 dropped=2 dropped_total=3769 canceled_repeats=0 queue_after=5 oldest_after_ms=203.686 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:39 | Alpha backlog recovery: generation=2 source=7201 trigger=render_stall render_cycle_ms=160.974 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=292.190 dropped=3 dropped_total=3772 canceled_repeats=0 queue_after=5 oldest_after_ms=166.250 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | Alpha backlog recovery: generation=2 source=7206 trigger=render_stall render_cycle_ms=159.546 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=285.032 dropped=2 dropped_total=3774 canceled_repeats=0 queue_after=5 oldest_after_ms=201.612 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | VP source/output processing: source_renders=20 source_reuses=44 output_renders=32 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:40 | VP analysis performance: window_ms=2031 source_hz=23.97648 display_hz=59.95055 submissions=32 preview_attempts=20 preview_complete=20 preview_skipped=0 phase_known=0 preview_avg_ms=0.158 preview_peak_ms=0.401 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=55.361 active_peak_ms=68.880 source_period_exceeded=32 display_period_exceeded=32 live_prep_avg_ms=2.978 live_prep_peak_ms=13.859 render_avg_ms=52.301 render_peak_ms=59.677 swap_avg_ms=0.086 swap_peak_ms=0.203 worker_threads=1 logical_processors=16 worker_submitted=46 worker_completed=46 worker_failed=0 worker_cancelled=0 worker_duplicate=9 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=0.940 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.874 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=1.019 worker_cpu_samples=46 worker_completed_cpu_ms=46.875 worker_completed_wall_ms=40.195
+2026-10-21 09:57:40 | Alpha backlog recovery: generation=2 source=7210 trigger=render_stall render_cycle_ms=174.942 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=306.235 dropped=3 dropped_total=3777 canceled_repeats=0 queue_after=5 oldest_after_ms=179.804 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | Alpha backlog recovery: generation=2 source=7215 trigger=render_stall render_cycle_ms=186.417 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=312.040 dropped=3 dropped_total=3780 canceled_repeats=0 queue_after=5 oldest_after_ms=186.867 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | Alpha backlog recovery: generation=2 source=7220 trigger=render_stall render_cycle_ms=161.627 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=287.185 dropped=2 dropped_total=3782 canceled_repeats=0 queue_after=5 oldest_after_ms=203.798 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:40 | Alpha backlog recovery: generation=2 source=7224 trigger=render_stall render_cycle_ms=162.886 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.688 dropped=3 dropped_total=3785 canceled_repeats=0 queue_after=5 oldest_after_ms=167.944 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | Alpha backlog recovery: generation=2 source=7229 trigger=render_stall render_cycle_ms=158.497 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=284.019 dropped=2 dropped_total=3787 canceled_repeats=0 queue_after=5 oldest_after_ms=200.663 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | Alpha backlog recovery: generation=2 source=7233 trigger=render_stall render_cycle_ms=181.780 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=309.213 dropped=3 dropped_total=3790 canceled_repeats=0 queue_after=5 oldest_after_ms=183.667 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | Alpha backlog recovery: generation=2 source=7238 trigger=render_stall render_cycle_ms=169.447 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.758 dropped=3 dropped_total=3793 canceled_repeats=0 queue_after=5 oldest_after_ms=169.945 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | Alpha backlog recovery: generation=2 source=7243 trigger=render_stall render_cycle_ms=158.039 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=283.179 dropped=2 dropped_total=3795 canceled_repeats=0 queue_after=5 oldest_after_ms=200.198 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:41 | Alpha backlog recovery: generation=2 source=7247 trigger=render_stall render_cycle_ms=164.767 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.417 dropped=3 dropped_total=3798 canceled_repeats=0 queue_after=5 oldest_after_ms=168.936 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:41 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | Alpha backlog recovery: generation=2 source=7252 trigger=render_stall render_cycle_ms=158.885 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=284.439 dropped=2 dropped_total=3800 canceled_repeats=0 queue_after=5 oldest_after_ms=200.710 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | Alpha backlog recovery: generation=2 source=7256 trigger=render_stall render_cycle_ms=162.191 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.473 dropped=3 dropped_total=3803 canceled_repeats=0 queue_after=5 oldest_after_ms=167.509 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | VP source/output processing: source_renders=22 source_reuses=40 output_renders=31 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:42 | VP analysis performance: window_ms=2031 source_hz=23.97648 display_hz=59.95057 submissions=31 preview_attempts=22 preview_complete=22 preview_skipped=0 phase_known=0 preview_avg_ms=0.139 preview_peak_ms=0.234 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=55.937 active_peak_ms=77.791 source_period_exceeded=31 display_period_exceeded=31 live_prep_avg_ms=3.473 live_prep_peak_ms=13.577 render_avg_ms=52.383 render_peak_ms=63.963 swap_avg_ms=0.084 swap_peak_ms=0.167 worker_threads=1 logical_processors=16 worker_submitted=51 worker_completed=51 worker_failed=0 worker_cancelled=0 worker_duplicate=11 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=0.852 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.831 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=0.306 worker_cpu_samples=51 worker_completed_cpu_ms=15.625 worker_completed_wall_ms=42.402
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | Alpha backlog recovery: generation=2 source=7261 trigger=render_stall render_cycle_ms=187.488 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=313.013 dropped=3 dropped_total=3806 canceled_repeats=0 queue_after=5 oldest_after_ms=187.868 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | Alpha backlog recovery: generation=2 source=7266 trigger=render_stall render_cycle_ms=174.469 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=300.200 dropped=3 dropped_total=3809 canceled_repeats=0 queue_after=5 oldest_after_ms=175.037 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | Alpha backlog recovery: generation=2 source=7271 trigger=render_stall render_cycle_ms=153.467 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=279.116 dropped=2 dropped_total=3811 canceled_repeats=0 queue_after=5 oldest_after_ms=195.467 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:42 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | Alpha backlog recovery: generation=2 source=7275 trigger=render_stall render_cycle_ms=159.136 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=284.932 dropped=2 dropped_total=3813 canceled_repeats=0 queue_after=5 oldest_after_ms=201.577 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | Alpha backlog recovery: generation=2 source=7279 trigger=render_stall render_cycle_ms=160.243 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=289.215 dropped=2 dropped_total=3815 canceled_repeats=0 queue_after=5 oldest_after_ms=205.688 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | Alpha backlog recovery: generation=2 source=7283 trigger=render_stall render_cycle_ms=168.581 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=304.381 dropped=3 dropped_total=3818 canceled_repeats=0 queue_after=5 oldest_after_ms=179.026 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | Alpha backlog recovery: generation=2 source=7288 trigger=render_stall render_cycle_ms=166.646 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=291.997 dropped=3 dropped_total=3821 canceled_repeats=0 queue_after=5 oldest_after_ms=167.011 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | Alpha backlog recovery: generation=2 source=7293 trigger=render_stall render_cycle_ms=171.361 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=296.682 dropped=3 dropped_total=3824 canceled_repeats=0 queue_after=5 oldest_after_ms=171.710 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:43 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | Alpha backlog recovery: generation=2 source=7298 trigger=render_stall render_cycle_ms=161.163 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=286.606 dropped=2 dropped_total=3826 canceled_repeats=0 queue_after=5 oldest_after_ms=203.277 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | Alpha backlog recovery: generation=2 source=7302 trigger=render_stall render_cycle_ms=163.770 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.996 dropped=3 dropped_total=3829 canceled_repeats=0 queue_after=5 oldest_after_ms=168.373 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | VP source/output processing: source_renders=20 source_reuses=44 output_renders=32 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:44 | VP analysis performance: window_ms=2016 source_hz=23.97648 display_hz=59.95018 submissions=32 preview_attempts=20 preview_complete=20 preview_skipped=0 phase_known=0 preview_avg_ms=0.132 preview_peak_ms=0.247 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=55.048 active_peak_ms=73.381 source_period_exceeded=32 display_period_exceeded=32 live_prep_avg_ms=2.807 live_prep_peak_ms=11.420 render_avg_ms=52.167 render_peak_ms=63.868 swap_avg_ms=0.084 swap_peak_ms=0.169 worker_threads=1 logical_processors=16 worker_submitted=46 worker_completed=46 worker_failed=0 worker_cancelled=0 worker_duplicate=10 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=0.786 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.793 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=0.679 worker_cpu_samples=46 worker_completed_cpu_ms=31.250 worker_completed_wall_ms=36.475
+2026-10-21 09:57:44 | Alpha backlog recovery: generation=2 source=7307 trigger=render_stall render_cycle_ms=168.177 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.682 dropped=3 dropped_total=3832 canceled_repeats=0 queue_after=5 oldest_after_ms=168.553 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | Alpha backlog recovery: generation=2 source=7312 trigger=render_stall render_cycle_ms=178.378 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=303.977 dropped=3 dropped_total=3835 canceled_repeats=0 queue_after=5 oldest_after_ms=178.878 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | Alpha backlog recovery: generation=2 source=7317 trigger=render_stall render_cycle_ms=171.684 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=296.988 dropped=3 dropped_total=3838 canceled_repeats=0 queue_after=5 oldest_after_ms=172.028 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:44 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7322 trigger=render_stall render_cycle_ms=156.032 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=281.496 dropped=2 dropped_total=3840 canceled_repeats=0 queue_after=5 oldest_after_ms=198.133 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7326 trigger=render_stall render_cycle_ms=153.963 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=280.882 dropped=2 dropped_total=3842 canceled_repeats=0 queue_after=5 oldest_after_ms=197.464 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7330 trigger=render_stall render_cycle_ms=164.071 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=290.844 dropped=2 dropped_total=3844 canceled_repeats=0 queue_after=5 oldest_after_ms=207.348 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7334 trigger=render_stall render_cycle_ms=190.606 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=327.607 dropped=3 dropped_total=3847 canceled_repeats=0 queue_after=5 oldest_after_ms=202.374 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7339 trigger=render_stall render_cycle_ms=182.734 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=318.495 dropped=3 dropped_total=3850 canceled_repeats=0 queue_after=5 oldest_after_ms=193.073 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:45 | Alpha backlog recovery: generation=2 source=7344 trigger=render_stall render_cycle_ms=178.713 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=305.100 dropped=3 dropped_total=3853 canceled_repeats=0 queue_after=5 oldest_after_ms=179.245 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | Alpha backlog recovery: generation=2 source=7349 trigger=render_stall render_cycle_ms=156.734 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=282.177 dropped=2 dropped_total=3855 canceled_repeats=0 queue_after=5 oldest_after_ms=198.857 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | Alpha backlog recovery: generation=2 source=7353 trigger=render_stall render_cycle_ms=171.010 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=298.115 dropped=3 dropped_total=3858 canceled_repeats=0 queue_after=5 oldest_after_ms=172.362 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | VP source/output processing: source_renders=22 source_reuses=40 output_renders=31 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:46 | VP analysis performance: window_ms=2015 source_hz=23.97648 display_hz=59.95052 submissions=31 preview_attempts=22 preview_complete=22 preview_skipped=0 phase_known=0 preview_avg_ms=0.156 preview_peak_ms=0.295 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=57.066 active_peak_ms=80.543 source_period_exceeded=31 display_period_exceeded=31 live_prep_avg_ms=3.482 live_prep_peak_ms=13.725 render_avg_ms=53.493 render_peak_ms=70.093 swap_avg_ms=0.100 swap_peak_ms=0.415 worker_threads=1 logical_processors=16 worker_submitted=51 worker_completed=51 worker_failed=0 worker_cancelled=0 worker_duplicate=9 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=1.041 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.927 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=0.613 worker_cpu_samples=51 worker_completed_cpu_ms=31.250 worker_completed_wall_ms=47.276
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | Alpha backlog recovery: generation=2 source=7358 trigger=render_stall render_cycle_ms=180.104 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=305.691 dropped=3 dropped_total=3861 canceled_repeats=0 queue_after=5 oldest_after_ms=180.552 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | Alpha backlog recovery: generation=2 source=7363 trigger=render_stall render_cycle_ms=168.821 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.274 dropped=3 dropped_total=3864 canceled_repeats=0 queue_after=5 oldest_after_ms=169.256 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:46 | Alpha backlog recovery: generation=2 source=7368 trigger=render_stall render_cycle_ms=166.338 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=291.797 dropped=2 dropped_total=3866 canceled_repeats=0 queue_after=5 oldest_after_ms=208.350 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:46 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | Alpha backlog recovery: generation=2 source=7372 trigger=render_stall render_cycle_ms=156.572 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=292.772 dropped=3 dropped_total=3869 canceled_repeats=0 queue_after=5 oldest_after_ms=167.614 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | Alpha backlog recovery: generation=2 source=7377 trigger=render_stall render_cycle_ms=162.488 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=287.796 dropped=2 dropped_total=3871 canceled_repeats=0 queue_after=5 oldest_after_ms=204.559 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | Alpha backlog recovery: generation=2 source=7381 trigger=render_stall render_cycle_ms=195.906 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=327.602 dropped=3 dropped_total=3874 canceled_repeats=0 queue_after=5 oldest_after_ms=202.234 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | Alpha backlog recovery: generation=2 source=7386 trigger=render_stall render_cycle_ms=167.954 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=301.535 dropped=3 dropped_total=3877 canceled_repeats=0 queue_after=5 oldest_after_ms=175.548 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | Alpha backlog recovery: generation=2 source=7391 trigger=render_stall render_cycle_ms=158.854 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=284.212 dropped=2 dropped_total=3879 canceled_repeats=0 queue_after=5 oldest_after_ms=200.871 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:47 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7395 trigger=render_stall render_cycle_ms=168.181 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=295.484 dropped=3 dropped_total=3882 canceled_repeats=0 queue_after=5 oldest_after_ms=169.974 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7400 trigger=render_stall render_cycle_ms=107.325 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=2 source_period_ms=41.708 queue_before=6 target=5 oldest_before_ms=232.841 dropped=1 dropped_total=3883 canceled_repeats=0 queue_after=5 oldest_after_ms=191.059 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7403 trigger=render_stall render_cycle_ms=162.302 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=287.760 dropped=2 dropped_total=3885 canceled_repeats=0 queue_after=5 oldest_after_ms=204.093 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | VP source/output processing: source_renders=22 source_reuses=42 output_renders=32 input_analysis_stride=1 expensive_processing=before_blend subtitles=source_packet
+2026-10-21 09:57:48 | VP analysis performance: window_ms=2063 source_hz=23.97648 display_hz=59.95042 submissions=32 preview_attempts=22 preview_complete=22 preview_skipped=0 phase_known=0 preview_avg_ms=0.150 preview_peak_ms=0.287 deadline_overruns=0 deadline_overrun_peak_ms=0.000 active_avg_ms=56.090 active_peak_ms=77.423 source_period_exceeded=32 display_period_exceeded=32 live_prep_avg_ms=3.573 live_prep_peak_ms=14.188 render_avg_ms=52.435 render_peak_ms=64.992 swap_avg_ms=0.081 swap_peak_ms=0.132 worker_threads=1 logical_processors=16 worker_submitted=49 worker_completed=49 worker_failed=0 worker_cancelled=0 worker_duplicate=10 worker_contended=0 worker_full=0 worker_queued=0 worker_queue_high_lifetime=5 worker_active_age_ms=0.000 worker_queue_avg_ms=0.870 worker_queue_peak_lifetime_ms=5.267 worker_wall_avg_ms=0.873 worker_wall_peak_lifetime_ms=2.451 worker_cpu_avg_ms=0.957 worker_cpu_samples=49 worker_completed_cpu_ms=46.875 worker_completed_wall_ms=42.792
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7407 trigger=render_stall render_cycle_ms=167.467 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=300.234 dropped=3 dropped_total=3888 canceled_repeats=0 queue_after=5 oldest_after_ms=174.890 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7412 trigger=render_stall render_cycle_ms=165.366 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=290.665 dropped=2 dropped_total=3890 canceled_repeats=0 queue_after=5 oldest_after_ms=207.407 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:48 | Alpha backlog recovery: generation=2 source=7416 trigger=render_stall render_cycle_ms=154.298 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=291.580 dropped=2 dropped_total=3892 canceled_repeats=0 queue_after=5 oldest_after_ms=208.204 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:48 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | Alpha backlog recovery: generation=2 source=7420 trigger=render_stall render_cycle_ms=162.079 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=296.815 dropped=3 dropped_total=3895 canceled_repeats=0 queue_after=5 oldest_after_ms=171.700 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | Alpha backlog recovery: generation=2 source=7425 trigger=render_stall render_cycle_ms=152.345 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=277.788 dropped=2 dropped_total=3897 canceled_repeats=0 queue_after=5 oldest_after_ms=194.361 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | Alpha backlog recovery: generation=2 source=7429 trigger=render_stall render_cycle_ms=164.166 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=7 target=5 oldest_before_ms=289.573 dropped=2 dropped_total=3899 canceled_repeats=0 queue_after=5 oldest_after_ms=206.192 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | Alpha backlog recovery: generation=2 source=7433 trigger=render_stall render_cycle_ms=157.443 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=294.321 dropped=3 dropped_total=3902 canceled_repeats=0 queue_after=5 oldest_after_ms=169.135 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | Alpha backlog recovery: generation=2 source=7438 trigger=render_stall render_cycle_ms=168.155 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.649 dropped=3 dropped_total=3905 canceled_repeats=0 queue_after=5 oldest_after_ms=168.534 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:49 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:50 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:50 | Alpha backlog recovery: generation=2 source=7443 trigger=render_stall render_cycle_ms=167.838 threshold_ms=83.415 stale_age_threshold_ms=250.245 output_draws=3 source_period_ms=41.708 queue_before=8 target=5 oldest_before_ms=293.297 dropped=3 dropped_total=3908 canceled_repeats=0 queue_after=5 oldest_after_ms=168.202 shader=none mapping=waiting decision=flush_to_target
+2026-10-21 09:57:50 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:50 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+2026-10-21 09:57:50 | libplacebo [error]: Validation failed: dst->params.blit_dst (../src/gpu.c:318)

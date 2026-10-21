@@ -1,0 +1,14 @@
+test_temporal_letterbox.cpp
+PASS API 360 oversample composition=0
+PASS API 360 linear composition=0
+PASS API 360 mitchell_clamp composition=0
+PASS API 360 oversample composition=1
+PASS API 360 linear composition=1
+PASS API 360 mitchell_clamp composition=1
+test_temporal_letterbox.cpp
+PASS API 377 oversample composition=0
+PASS API 377 linear composition=0
+PASS API 377 mitchell_clamp composition=0
+PASS API 377 oversample composition=1
+PASS API 377 linear composition=1
+PASS API 377 mitchell_clamp composition=1

@@ -1,0 +1,15 @@
+test_temporal_letterbox.cpp
+Validation failed: dst->params.blit_dst (../src/gpu.c:318)
+  Backtrace:
+    #0  0x7ffa30cb4d3a in pl_tex_clear+0xfa (E:\codex\videoprocessor\source-rate-blend-fix-20261021\3rdparty\libplacebo-beta\bin\libplacebo-377.dll+0x64d3a) (0x3b45c4d3a)
+    #1  0x7ffa30c61d66 in pl_frame_clear_rgba+0x146 (E:\codex\videoprocessor\source-rate-blend-fix-20261021\3rdparty\libplacebo-beta\bin\libplacebo-377.dll+0x11d66) (0x3b4571d66)
+    #2  0x7ffa30c61e3e in pl_frame_clear_rgba+0x21e (E:\codex\videoprocessor\source-rate-blend-fix-20261021\3rdparty\libplacebo-beta\bin\libplacebo-377.dll+0x11e3e) (0x3b4571e3e)
+    #3  0x7ffa30c6414a in pl_frame_clear_rgba+0x252a (E:\codex\videoprocessor\source-rate-blend-fix-20261021\3rdparty\libplacebo-beta\bin\libplacebo-377.dll+0x1414a) (0x3b457414a)
+    #4  0x7ffa30c66f6f in pl_render_image_mix+0x1daf (E:\codex\videoprocessor\source-rate-blend-fix-20261021\3rdparty\libplacebo-beta\bin\libplacebo-377.dll+0x16f6f) (0x3b4576f6f)
+    #5  0x7ff737238b06 (E:\codex\videoprocessor\source-rate-blend-fix-20261021\artifacts\test-temporal-beta.exe+0x8b06) (0x140008b06)
+    #6  0x7ff7372390cd (E:\codex\videoprocessor\source-rate-blend-fix-20261021\artifacts\test-temporal-beta.exe+0x90cd) (0x1400090cd)
+    #7  0x7ff737239dd7 (E:\codex\videoprocessor\source-rate-blend-fix-20261021\artifacts\test-temporal-beta.exe+0x9dd7) (0x140009dd7)
+    #8  0x7ff73723a3cb (E:\codex\videoprocessor\source-rate-blend-fix-20261021\artifacts\test-temporal-beta.exe+0xa3cb) (0x14000a3cb)
+    #9  0x7ffab5f67373 in BaseThreadInitThunk+0x13 (C:\WINDOWS\System32\KERNEL32.DLL+0x17373) (0x180017373)
+    #10 0x7ffab72fcc90 in RtlUserThreadStart+0x20 (C:\WINDOWS\SYSTEM32\ntdll.dll+0x4cc90) (0x18004cc90)
+FAIL: GPU validation errors during letterboxed source-rate blending
