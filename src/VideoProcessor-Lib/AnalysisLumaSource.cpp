@@ -321,6 +321,42 @@ bool AnalysisLumaSource::IsValid() const
 		requiredBytes + chromaBytes <= dataBytes;
 }
 
+bool AnalysisLumaSource::MeasureLumaRowContent(int y, int x0, int x1, int step,
+    uint16_t threshold, AnalysisLumaRowContent& result) const
+{
+    result = {};
+    if (!IsValid() || y < 0 || y >= height || x0 < 0 || x1 > width ||
+        x0 >= x1 || step <= 0 || threshold > 1023)
+        return false;
+    result.left = width;
+    const auto record = [&](int x, uint16_t code) {
+        if (code <= threshold) return;
+        ++result.samples;
+        result.left = (std::min)(result.left, x);
+        result.right = x;
+    };
+    if (format == AnalysisLumaFormat::P010 || format == AnalysisLumaFormat::P210 ||
+        format == AnalysisLumaFormat::DecodedDolbyVision422) {
+        const auto* row = data + static_cast<size_t>(y) * rowBytes;
+        // All three formats use the same upper ten bits, including exact DV
+        // truncation. Keep byte reads valid for unaligned/padded source rows.
+        for (int x = x0; x < x1; ) {
+            record(x, P010Code(row + static_cast<size_t>(x) * 2));
+            if (step >= x1 - x) break;
+            x += step;
+        }
+    } else {
+        for (int x = x0; x < x1; ) {
+            AnalysisLumaSample sample;
+            if (!Sample(x, y, sample)) return false;
+            record(x, sample.luma);
+            if (step >= x1 - x) break;
+            x += step;
+        }
+    }
+    return true;
+}
+
 bool AnalysisLumaSource::RowWithinLimits(int y, uint16_t lumaMax,
     uint16_t chromaDeviation, bool& withinLimits, size_t& samplesChecked) const
 {
