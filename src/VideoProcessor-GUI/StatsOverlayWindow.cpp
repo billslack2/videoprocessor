@@ -493,8 +493,31 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		y += lineHeight;
 	}
 
-	// Resolution
-	line.Format(TEXT("Resolution:       %-s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
+	// Resolution: input -> wire, tagged where the desktop or the drawn size differs
+	CString resolution = m_stats.resolution.IsEmpty() ? CString(TEXT("---")) : m_stats.resolution;
+	auto rasterValue = [this](LPCTSTR marker) -> CString
+	{
+		const CString tag(marker);
+		const int separator = m_stats.outputMode.Find(tag);
+		CString result = separator >= 0
+			? m_stats.outputMode.Mid(separator + tag.GetLength()) : CString();
+		const int nextDetail = result.Find(TEXT(" | "));
+		if (nextDetail >= 0)
+			result = result.Left(nextDetail);
+		return result;
+	};
+	const CString wire = rasterValue(TEXT(" | WIRE: "));
+	if (!wire.IsEmpty())
+	{
+		resolution += TEXT(" -> ") + wire;
+		const CString drawn = rasterValue(TEXT(" | DRAWN: "));
+		if (!drawn.IsEmpty())
+			resolution += TEXT("  [drawn ") + drawn + TEXT("]");
+		const CString desktop = rasterValue(TEXT(" | DESKTOP: "));
+		if (!desktop.IsEmpty())
+			resolution += TEXT("  [GPU-scaled from ") + desktop + TEXT("]");
+	}
+	line.Format(TEXT("Resolution:       %-s"), static_cast<LPCTSTR>(resolution));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
