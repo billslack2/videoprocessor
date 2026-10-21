@@ -2,8 +2,8 @@
 
 ## Status
 
-In Progress (2026-10-21; tester signal-raster failure confirmed; follow-up
-implemented, bench validation pending). Current fix:
+In Progress (2026-10-21; tester mode/DPI control checks passed;
+projector-on picture acceptance pending). Current fix:
 `4fd790cec52077f1d559e11da812b17a841ed9be` on
 `codex/vp-0200-wire-raster-20261021` in
 `E:\codex\videoprocessor\vp-0200-wire-raster-20261021`, rebased onto fetched beta
@@ -14,7 +14,8 @@ the rebase unchanged. No deployment of this follow-up has been requested.
 Merge request: [PR #181](https://github.com/billslack2/videoprocessor/pull/181),
 opened 2026-10-21 against `v1.4.02-beta` at head `4fd790ce`. The request
 records the Release build and outstanding hardware qualification. It is open
-and has not been merged; story acceptance remains pending bench validation.
+and has not been merged. Partial tester qualification is recorded below;
+projector-on picture and the remaining acceptance cases are still pending.
 
 Previous operator deployment (2026-10-20): implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the then-current beta
@@ -258,6 +259,30 @@ run. Repeated 4K/1080p transitions on the reported NVIDIA 511.17 driver at 200%
 scaling, physical receiver timing, native OSD sizing, stop restoration,
 rejected-mode rollback, external changes and custom timings remain bench
 qualification. No active configuration, state or deployed binaries were changed.
+
+## Successful tester run (2026-10-21)
+
+Analysis of the newly supplied `vp-log-pr181-2026-10-21.zip.txt` confirms six
+first-candidate GDI 1080p59.94 selections with 1920x1080 client and swapchain on
+every selection; five successful CCD 2160p23.976 requests; six verified GDI
+restores to 4K23.976; and no mode unverified/rejected/rollback/failure messages.
+1080p candidate-to-verification intervals are 0–1 seconds at one-second log
+precision. Eligible lists put 29.97 before arbitrary 50/30 Hz fallback, but no
+fallback or failure recovery was exercised because first candidates succeeded.
+
+The tester reports the same RTX 3060 Ti / 511.17 rig at 200% scaling, with
+#181 `4fd790ce` on `88289699` plus their open PRs. Both modules actually log
+clean combined build `07ab5fffc593fdb77e2d07a38786d33e193f4a60`.
+The projector was off and TightVNC was used: mode read-back and geometry are
+qualified for this run; projected picture, independent receiver timing and
+visually checked native OSD/1:1 mapping are not. This does not qualify the new
+beta `71043e19` combination. No new local tests, source changes, merge,
+deployment or config edits were performed.
+
+[Detailed evidence and remaining acceptance](../assets/VP-0200/pr181-tester-validation-20261021.md).
+The #181 description now records this partial qualification. The announced
+[OSD raster PR #183](https://github.com/billslack2/videoprocessor/pull/183)
+is open and stacked on #181 at `4fd790ce`; review/integration is separate.
 
 ## User story
 
