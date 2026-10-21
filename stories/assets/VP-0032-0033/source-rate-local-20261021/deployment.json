@@ -1,0 +1,59 @@
+{
+  "localSnapshot": "e534ff3cadfe020268f24cd47f1a3803667b2d13",
+  "architecture": "x64",
+  "configEdits": [],
+  "stoppedProcesses": [
+    {
+      "ProcessId": 27664,
+      "ExecutablePath": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "ProcessId": 24816,
+      "ExecutablePath": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe"
+    }
+  ],
+  "beta": "0a6cdc2dbbb68a14c3b687d8e2dbcdad4878cd2b",
+  "time": "2026-10-21T09:44:19.8078453-04:00",
+  "commit": "28d9cf18acf0395ee74b85e97411f607e9479a0d",
+  "files": [
+    {
+      "sha256": "6AC506CC7653A23B75FC6C08DF0403977F3DA28A9AE98441211D4958B5FC331F",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "sha256": "DD89A7BFA8ABC73871D3D7092FC7E66938AF2B2E8F15B40BF497A257288B12DC",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "F1ADDDF93C4ED21DC80C90AFAF35539FE9E13DC051F4960E11250D8E7E020B1E",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "sha256": "229DC8F923BDC23D48018E37775656F640845B1DB3B6D8A5A4F0C80AC12E75EB",
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe"
+    },
+    {
+      "sha256": "A2A5CC005E41561691261EEB7D5488500CBA24C8DB935333CA801109C4AFD5C1",
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll"
+    },
+    {
+      "sha256": "8F80D8D9242305C69F3443A585EA126C28C3E923917F18C133690B9BC9A17FBC",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessorOutputProbe.exe"
+    }
+  ],
+  "configSHA256": "0DB3A695CA743E7F0D0B55BC90FE5DE1C9BA49463F7B13FCB48B2AA8BE5A81F4",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\source-rate-local-28d9cf18-20261021-094419",
+  "testsPassed": 872,
+  "configuration": "Release",
+  "startup": {
+    "responding": true,
+    "pid": 62752,
+    "hostIdentity": "28d9cf18; dirty=0",
+    "rendererModules": [
+      "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    ],
+    "profileRuntime": "initialized",
+    "liveInput": "No capture graph yet; performance acceptance pending"
+  }
+}
