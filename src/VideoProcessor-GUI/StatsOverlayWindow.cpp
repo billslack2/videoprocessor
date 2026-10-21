@@ -883,17 +883,28 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
-		// The validated source/render period associated with these samples.
+		// New input frames and temporal output renders have separate cadences.
+		// The input format remains useful while measured capture timing recovers.
+		const double sourceRateHz = OsdTimingPolicy::FrameBudgetRate(
+			m_stats.measuredRefreshRate, m_stats.theoreticalRefreshRate);
+		if (sourceRateHz > 0.0)
+			line.Format(TEXT("Source interval: %.2f ms @ %.3f fps"),
+				1000.0 / sourceRateHz, sourceRateHz);
+		else
+			line.Format(TEXT("Source interval: unavailable"));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		// The scheduled output interval is also the GPU-budget denominator.
 		if (m_stats.renderLoadFramePeriodMs > 0.0 &&
 			m_stats.renderLoadFramePeriodFromRenderCadence)
-			line.Format(TEXT("Frame budget:    %.2f ms @ %.3f fps"),
+			line.Format(TEXT("Output interval: %.2f ms @ %.3f fps"),
 				m_stats.renderLoadFramePeriodMs,
 				1000.0 / m_stats.renderLoadFramePeriodMs);
 		else if (m_stats.renderLoadFramePeriodMs > 0.0)
-			// Do not show a percentage unless the source/render cadence is valid.
-			line.Format(TEXT("Frame budget:    cadence unavailable"));
+			line.Format(TEXT("Output interval: cadence unavailable"));
 		else
-			line.Format(TEXT("Frame budget:    measuring..."));
+			line.Format(TEXT("Output interval: measuring..."));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
@@ -960,7 +971,7 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
 	if (stats.renderLoadKnown)
-		lineCount += 3;
+		lineCount += 4;
 	if (!stats.outputSweep.IsEmpty())
 		++lineCount;
 	if (stats.measuredRefreshRate > 0.0)

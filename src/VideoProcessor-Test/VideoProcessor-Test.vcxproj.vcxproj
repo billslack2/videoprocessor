@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -270,6 +270,7 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="ActivePictureMeasurementCacheTests.cpp" />
     <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp" />
     <ClCompile Include="LocalBoundaryRefinementTests.cpp" />
     <ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp" />

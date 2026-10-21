@@ -152,6 +152,22 @@ namespace Tests
             Assert::AreEqual(24.0, OsdTimingPolicy::RenderBudgetRate(24.0, 24.0, 600.0));
             Assert::AreEqual(0.0, OsdTimingPolicy::RenderBudgetRate(0.0, 0.0, 0.0));
         }
+        TEST_METHOD(SmoothMotionKeepsSourceAndOutputIntervalsSeparate)
+        {
+            const double nominalSourceHz = 24000.0 / 1001.0;
+            const double outputHz = OsdTimingPolicy::RenderBudgetRate(
+                nominalSourceHz, nominalSourceHz, 75.0);
+            Assert::AreEqual(13.3333333333333, 1000.0 / outputHz, 1e-9);
+            const double measuredSourceHz = OsdTimingPolicy::FrameBudgetRate(
+                nominalSourceHz, 24.0);
+            Assert::AreEqual(41.7083333333333, 1000.0 / measuredSourceHz, 1e-9);
+            const double fallbackSourceHz = OsdTimingPolicy::FrameBudgetRate(
+                0.0, nominalSourceHz);
+            Assert::AreEqual(measuredSourceHz, fallbackSourceHz, 1e-9);
+            // A known output rate cannot invent an unavailable input interval.
+            Assert::AreEqual(0.0, OsdTimingPolicy::FrameBudgetRate(0.0, 0.0));
+            Assert::AreEqual(75.0, OsdTimingPolicy::RenderBudgetRate(0.0, 0.0, 75.0));
+        }
         TEST_METHOD(FormatsRequestedIntervalsAndRoundingBoundaries)
         {
             Assert::AreEqual(L"1h5m30s", Estimate::FormatInterval(3930.0).c_str());
