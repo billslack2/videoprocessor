@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-16). Invalid cubic mixer corrected to mitchell_clamp with legacy cubic compatibility. All exposed renderer choices audited against stable and beta libplacebo; no additional invalid mappings found. Clean x64 Release build and beta renderer build passed, plus 113 targeted native tests and 3 config-editor tests. Changes remain local in E:\codex\videoprocessor\nls-live-preparation-20261016 on v1.4.02-beta 51b211dc with the latest local rendering fixes. Not deployed; live visual review remains.
+In Progress (2026-10-20). User authorized repeated pixel-measurement caching and clearer source/output timing in the OSD. Implementation branch `codex/smooth-motion-measurement-cache-20261020`, worktree `E:\codex\videoprocessor\smooth-motion-measurement-cache-20261020`, starts from freshly fetched `origin/v1.4.02-beta` at `72bcc9ad1fc29142fb91928461e567f5725dcd0b`. GitHub discovery confirms `v1.4.02-beta` is both the latest beta integration branch and current default branch; the user's standing instructions explicitly select the current beta. Rendering order, source subtitle composition, and per-output state/timer decisions remain in scope for preservation. Build/tests and independent review are pending; no deployment requested for this follow-up. Earlier live visual acceptance remains outstanding.
 
 ## User story
 
@@ -109,3 +109,25 @@ User authorized and completed replacement deployment of DV2 `2a2b4242dfc950381fb
 - Tests require every offered mixer to resolve to a non-null native filter in both bundled runtimes, exercise GPU rendering, and cover chroma mappings and comment-preserving config round trips.
 - All 40 data exports used by the render-parameter mapper exist in both bundled libraries.
 - Evidence: E:\codex\videoprocessor\nls-live-preparation-20261016\nls-test-results\mixer-validation.json and mixer-validation.trx; runtime audit in renderer-choice-export-audit.json.
+
+## Smooth-motion measurement caching and OSD follow-up - 2026-10-20
+
+The user observed an approximately 13.33 ms allocated frame time with 23.976 fps input and 75 Hz smooth-motion output. This is the scheduled output interval, whereas fresh source frames arrive approximately every 41.71 ms. The OSD should distinguish both intervals while keeping output-render utilization tied to the output interval. Replacing the output denominator with the source interval would conceal genuine output-rate work.
+
+User authorization: "ok -- lets try the caching and also updating OSD". Scope is a conservative follow-up to this story: cache repeated source pixel measurements only when the source identity, measurement settings, and analysis geometry match; retain per-output crop decisions, timers, presentation state, blending, tone mapping, and subtitle ordering. Do not infer permission to deploy, overwrite configuration, or merge/release.
+
+### Readiness review
+
+- The implementation starts in a clean source worktree from the newly discovered and fetched beta tip, rather than a stale local checkout.
+- The design preserves renderer pipeline placement and source-buffer lifetime; only reusable measurement results may be retained.
+- Invalidating frame identity, analysis configuration, geometry, source/reset epochs, or unavailable/unsafe sample storage must not yield a stale cache hit.
+- State-dependent policy and time progression must continue once per output; the cache must not freeze delayed crop decisions or presentation transitions.
+- OSD changes distinguish the captured source interval from the scheduled output interval and retain the output-render percentage denominator.
+- Focused deterministic tests must prove repeat reuse and meaningful invalidation, including state/timing progression; an x64 Release build and existing relevant crop/temporal/OSD regression checks qualify review readiness.
+- No new setting or migration is planned. Live visual/performance acceptance, and any deployment, remain separate review decisions.
+
+### Progress
+
+- 2026-10-20: Current beta and source identity verified; caching and OSD implementation started on the branch/worktree recorded in Status. Story returned from Review to In Progress for this authorized follow-up. Historical mixer, Motion UI, and deployment evidence above remains intact.
+
+The previous Review status (2026-10-16) recorded local mixer validation in `E:\codex\videoprocessor\nls-live-preparation-20261016` on `v1.4.02-beta` at `51b211dc`: clean x64 Release solution and beta renderer builds, 113 targeted native tests, and three config-editor tests passed. That change was not deployed at that point and live visual review remained. This snapshot is retained as historical evidence and does not identify the current follow-up source tip.
