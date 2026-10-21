@@ -86,6 +86,14 @@ struct SubtitleBoxResult
     bool topSearchComplete = false, bottomSearchComplete = false;
     const char* diagnosticReason = "not-analyzed";
     unsigned diagnosticComponentCount = 0;
+    // Picture-only acquisition needs a real glyph row when no finite opaque
+    // card is visible. These metrics never grant bar or cleanup authority.
+    bool diagnosticPictureGlyphProofRequired = false;
+    unsigned diagnosticCoreGlyphCount = 0;
+    int diagnosticCoreGlyphHeight = 0;
+    unsigned diagnosticInkDensityBasisPoints = 0;
+    unsigned diagnosticBaselineSupportBasisPoints = 0;
+    const char* diagnosticGlyphTopology = "not-required";
     int diagnosticNearBarGap = -1;
     bool diagnosticNearBarGapInferred = false;
 };
@@ -163,6 +171,12 @@ private:
     bool m_nearBarEligibilityMeasured=false,m_nearBarEligible=false;
     const char* m_diagnosticReason="not-analyzed";
     unsigned m_diagnosticComponentCount=0;
+    bool m_diagnosticPictureGlyphProofRequired=false;
+    unsigned m_diagnosticCoreGlyphCount=0;
+    int m_diagnosticCoreGlyphHeight=0;
+    unsigned m_diagnosticInkDensityBasisPoints=0;
+    unsigned m_diagnosticBaselineSupportBasisPoints=0;
+    const char* m_diagnosticGlyphTopology="not-required";
     int m_diagnosticNearBarGap=-1;
     bool m_diagnosticNearBarGapInferred=false;
 };

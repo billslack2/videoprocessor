@@ -4252,6 +4252,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool cropAdmissionPreviouslyBlocked = false;
 	std::string cropAdmissionPreviousReason;
 	uint64_t cropAdmissionLastLogTick = 0;
+    uint64_t nearBlackBoundedLastLogTick = 0;
 	const std::string diagnosticInstanceId = CreateRendererDiagnosticInstanceId();
 	bool blackLevelTraceConfigured = false, blackLevelTraceTransitions = false;
 	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
@@ -13247,6 +13248,12 @@ struct LibplaceboVideoRenderer::Impl
                     bars.topReferenceBoundarySupport,bars.bottomReferenceBoundarySupport,
                     bars.topReferenceBlackFraction,bars.bottomReferenceBlackFraction,
                     bars.topReferenceMaxIntrusion,bars.bottomReferenceMaxIntrusion,bars.samples);
+                const auto& glyphProof=subtitlePreview->current.text;
+                DebugLog::Log("SUBTITLE GLYPH ACQUISITION: frame=%llu required=%d cores=%u core_height=%d ink_density_bp=%u baseline_support_bp=%u topology=%s",
+                    sourceSequence,glyphProof.diagnosticPictureGlyphProofRequired?1:0,
+                    glyphProof.diagnosticCoreGlyphCount,glyphProof.diagnosticCoreGlyphHeight,
+                    glyphProof.diagnosticInkDensityBasisPoints,glyphProof.diagnosticBaselineSupportBasisPoints,
+                    glyphProof.diagnosticGlyphTopology);
                 const auto& probe=subtitlePreview->current;
                 DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d measured=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d",
                     sourceSequence,probe.sharedPicture.AvailableFor(probe.identity,probe.width,probe.height)?1:0,
@@ -15114,16 +15121,9 @@ releaseDriftBaseRetention =
 			cropInput.currentVisibleSourceGeneration = episodeInput.retentionSourceGeneration;
 			cropInput.currentVisibleSourceSequence = episodeInput.retentionSourceSequence;
 			cropInput.currentVisibleBounds = presentationRetention.outwardVisibleBounds;
-			if (cropInput.currentVisibleBoundsAvailable && latestActivePictureEvidenceAvailable)
-			{
-				// Cover pixel extents and resolved presentation bounds. Unresolved
-				// axes retain their conservative full-raster fallback.
-				auto& visible = cropInput.currentVisibleBounds;
-				visible.left = std::min(visible.left, latestActivePicturePresentationBounds.left);
-				visible.top = std::min(visible.top, latestActivePicturePresentationBounds.top);
-				visible.right = std::max(visible.right, latestActivePicturePresentationBounds.right);
-				visible.bottom = std::max(visible.bottom, latestActivePicturePresentationBounds.bottom);
-			}
+            // Keep this exact-frame pixel witness pure. Detector presentation
+            // bounds can contain full-raster placeholders on unresolved axes;
+            // merging them would stamp UNKNOWN coordinates as measured pixels.
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
 			cropInput.pictureTransitionHandoff = pictureTransitionHandoff;
@@ -15367,11 +15367,15 @@ releaseDriftBaseRetention =
 			nearBlackBoundedInput.candidate = cropDecision;
 			const auto nearBlackBoundedDecision = AlphaSourceCrop::EvaluateNearBlackBoundedPresentation(
 				nearBlackPresentationEpisode, nearBlackBoundedInput);
-			if (nearBlackBoundedDecision.retainedScopeFallback ||
+            const auto boundedLogTick = GetTickCount64();
+			if ((nearBlackBoundedDecision.retainedScopeFallback &&
+                 boundedLogTick - nearBlackBoundedLastLogTick >= 2000) ||
 				nearBlackBoundedDecision.state.boundedPresentationAvailable != nearBlackPresentationEpisode.boundedPresentationAvailable ||
 				nearBlackBoundedDecision.state.boundedPresentationFailed != nearBlackPresentationEpisode.boundedPresentationFailed ||
 				(nearBlackBoundedDecision.boundedPresentation &&
 				 !sameBounds(nearBlackBoundedDecision.presentation.sourceBounds, nearBlackPresentationEpisode.boundedPresentation)))
+            {
+                nearBlackBoundedLastLogTick = boundedLogTick;
 				DebugLog::Log("Alpha near-black bounded presentation: instance=%s generation=%llu sequence=%llu epoch=%llu bounded=%d hold_scope=%d failed=%d rect=%d,%d-%d,%d reason=\"%s\"",
 					diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
 					nearBlackBoundedDecision.boundedPresentation ? 1 : 0,
@@ -15380,6 +15384,7 @@ releaseDriftBaseRetention =
 					nearBlackBoundedDecision.presentation.sourceBounds.left, nearBlackBoundedDecision.presentation.sourceBounds.top,
 					nearBlackBoundedDecision.presentation.sourceBounds.right, nearBlackBoundedDecision.presentation.sourceBounds.bottom,
 					nearBlackBoundedDecision.presentation.reason.c_str());
+            }
 			nearBlackPresentationEpisode = nearBlackBoundedDecision.state;
 			cropDecision = nearBlackBoundedDecision.presentation;
             AlphaSourceCrop::ColdMaskedCaptionPresentationInput coldCaptionInput;
@@ -15600,6 +15605,19 @@ releaseDriftBaseRetention =
                 }
             }
             recoveryInput.crop = cropInput;
+            // Cold caption proof runs after generic recovery. Carry only its
+            // exact successfully admitted FIT into the final ownership check;
+            // a late raw-pixel/recovery envelope must not inherit confirmation.
+            if (coldCaptionDecision.available && !admissionDecision.blocked &&
+                admissionDecision.presentation.applyCrop &&
+                admissionDecision.presentation.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                coldCaptionDecision.presentation.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                sameBounds(admissionDecision.presentation.sourceBounds,
+                    coldCaptionDecision.presentation.sourceBounds))
+            {
+                recoveryInput.candidate = admissionDecision.presentation;
+                recoveryInput.confirmedPresentationResolved = true;
+            }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
             if (uncertainPicture.retained)
@@ -15659,6 +15677,17 @@ releaseDriftBaseRetention =
 					cropDecision.sourceBounds.left, cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right, cropDecision.sourceBounds.bottom,
 					admissionDecision.presentation.reason.c_str());
+                DebugLog::Log("Alpha crop extent provenance: generation=%llu sequence=%llu confirmed_owner=%d candidate_owner=%s raw_available=%d raw=%d,%d-%d,%d measured=%d,%d-%d,%d detector=%d,%d-%d,%d near_black=%d retained_scope=%d",
+                    frameGeneration, sourceSequence, recoveryInput.confirmedPresentationResolved ? 1 : 0,
+                    AlphaSourceCrop::DecisionOwnerName(recoveryInput.candidate.owner),
+                    presentationRetention.outwardVisibleBoundsAvailable ? 1 : 0,
+                    presentationRetention.outwardVisibleBounds.left, presentationRetention.outwardVisibleBounds.top,
+                    presentationRetention.outwardVisibleBounds.right, presentationRetention.outwardVisibleBounds.bottom,
+                    cropInput.currentVisibleBounds.left, cropInput.currentVisibleBounds.top,
+                    cropInput.currentVisibleBounds.right, cropInput.currentVisibleBounds.bottom,
+                    latestActivePicturePresentationBounds.left, latestActivePicturePresentationBounds.top,
+                    latestActivePicturePresentationBounds.right, latestActivePicturePresentationBounds.bottom,
+                    recoveryInput.globalNearBlack ? 1 : 0, uncertainPicture.retained ? 1 : 0);
 				cropAdmissionLastLogTick = admissionLogTick;
 			}
 			cropAdmissionPreviousReason = admissionDecision.presentation.reason;
