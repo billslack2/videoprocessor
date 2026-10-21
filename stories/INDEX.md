@@ -58,7 +58,7 @@ they must not contain requirements that are absent from this file.
 | VP-0030 | Done | Rotate debug logs with a fixed default retention of ten files |
 | VP-0031 | Done | Make debug-log retention configurable |
 | VP-0032 | Review | Alpha renderer field-aware GPU deinterlacing |
-| VP-0033 | In Progress | Alpha renderer libplacebo frame-mixing smooth motion |
+| VP-0033 | Review | Alpha renderer libplacebo frame-mixing smooth motion |
 | VP-0034 | Done | Restart-free mixed-aspect NLS |
 | VP-0035 | Done | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |
