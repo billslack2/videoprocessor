@@ -1,0 +1,78 @@
+{
+  "previous_artifacts": [
+    {
+      "sha256": "7DEFF9A49BE7863CFDA54C2F9BD2E127B7C8D05ECDA345DEBA690F8A33D1CA80",
+      "file": "VideoProcessor.exe"
+    },
+    {
+      "sha256": "9173EFE80796B1AE12C2D8996A5B779CD363E739E7DA178BCFCC01DB5AC51F0D",
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "5E9567C26EA0617CBC0B951956AB0E09C726CCEC8C0A85E1E1F6C210D1807076",
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "sha256": "0783652FAA2F0ABF4A66CA0F10A9BBEE0B675DF5DBB435F9CE6BC778C67FE563",
+      "file": "config\\VideoProcessorConfig.exe"
+    },
+    {
+      "sha256": "8DC4B0A7A149ADB4B55B9F22AC37FEF0B3E46B2D8A3F15B24867A56FF26AB546",
+      "file": "config\\VideoProcessorConfigDiscovery.dll"
+    },
+    {
+      "sha256": "E61A0E6FF81EC2A8FA11FF6AB0E4557DC9AB91C4AB86136F119B81B990C77D09",
+      "file": "VideoProcessorOutputProbe.exe"
+    }
+  ],
+  "configuration_edits": [],
+  "artifacts": [
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\VideoProcessor-GUI.exe",
+      "file": "VideoProcessor.exe",
+      "sha256": "2930593290D4D1278CE5EF9DEA0F20D346124D2EC417119A5CA612675547D324"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "06B32F88B9B75E102EDC73FAEB6EF5EC467860FB796A30EC81439F9043D971F5"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "0E6C61527D825687D2A5232E40B7C6CFAB882B7DB7656A663AF178B7C0A58499"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\VideoProcessorConfig.exe",
+      "file": "config\\VideoProcessorConfig.exe",
+      "sha256": "56CFCE9ADFFD953CB678CE877571E82D7735821E996E9D4CB07CDEF3A03E55BE"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "file": "config\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "6BB1CDB9AFEC54C3D42C70B2A4A45F0956E6F33D6E911EEF304AE20307EB9935"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-rate-picture-processing-20261020\\x64\\Release\\VideoProcessorOutputProbe.exe",
+      "file": "VideoProcessorOutputProbe.exe",
+      "sha256": "B9F431A7D6710C764E155AABE56F93C6DEFE1725CAE6B5626947E6A3C52A31FD"
+    }
+  ],
+  "stopped": [],
+  "started_pid": 67884,
+  "configuration": "Release",
+  "source_commit": "1e0edf78e73844ad7f2d3ef26c1f27911d6fccb4",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\source-rate-1e0edf78-20261020-232828",
+  "architecture": "x64",
+  "target": "C:\\Videoprocessor\\vp",
+  "configuration_sha256": "98DE34B1F307AF0DE921EAB172DFD64E44D503B0772B980339942C6487D31D57",
+  "started_at": "2026-10-20T23:28:29.1832196-04:00",
+  "tests_passed": 645,
+  "rebased_beta": "0a6cdc2dbbb68a14c3b687d8e2dbcdad4878cd2b",
+  "verified_running_executable": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+  "startup_verified_at": "2026-10-20T23:29:16.2086260-04:00",
+  "loaded_renderer_paths": [
+    "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+  ]
+}
