@@ -38,3 +38,10 @@ Validation must exercise processing reuse at 24-to-75 Hz, HDR-to-SDR, output
 color/geometry/settings changes, live OSD overlays, native fields and subtitle
 transitions. Counters distinguish input preparation from output presentations;
 raw scan speedups alone do not establish full playback deadline compliance.
+
+The linear mixer target must support blit destination operations: libplacebo
+clears its border when the output crop letterboxes the picture. A renderable-only
+texture can still return successful rendering while logging a failed clear and
+expensive backtraces on every output. Run `tools/test_temporal_letterbox.ps1` to
+exercise both bundled APIs with error logging enabled, all three supported mixers,
+subtitles composition enabled/disabled, repeated outputs and black border readback.

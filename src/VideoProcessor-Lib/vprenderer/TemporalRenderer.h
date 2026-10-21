@@ -728,8 +728,10 @@ public:
             const pl_tex output=destination.planes[0].texture;
             pl_tex_params storage{};storage.w=output->params.w;storage.h=output->params.h;
             storage.format=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,
-                static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE));
-            storage.sampleable=true;storage.renderable=true;
+                static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_BLITTABLE));
+            // The mixer clears borders when target.crop letterboxes the output.
+            // Renderability alone cannot satisfy pl_frame_clear's blit contract.
+            storage.sampleable=true;storage.renderable=true;storage.blit_dst=true;
             if(!storage.format||!pl_tex_recreate(gpu,&compositionSurface,&storage))return false;
             pl_frame linear=destination;linear.planes[0]={};
             linear.planes[0].texture=compositionSurface;linear.planes[0].components=4;
