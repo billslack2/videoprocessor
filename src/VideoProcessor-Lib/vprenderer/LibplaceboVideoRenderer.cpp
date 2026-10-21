@@ -6225,6 +6225,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool configuredScreenActive,
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
+        ActivePictureMeasurementCache& pixelMeasurements,
 		bool forceAnalysis = false,
 		bool heldBarAnalysisAuthority = false,
 		bool* analysisScheduled = nullptr,
@@ -6389,7 +6390,6 @@ struct LibplaceboVideoRenderer::Impl
 				blackSamples.begin() + median,
 				blackSamples.begin() + blackSampleCount);
 			const int blackCode = blackSamples[median];
-			const int rowStep = std::max(1, height / 1080);
 
 			// Subtitle fitting deliberately uses a simple, renderer-local rule:
 			// meaningful non-black content inside a confirmed encoded black bar
@@ -6399,86 +6399,17 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitlePictureTop > 0 &&
 				scopeSubtitlePictureBottom < height)
 			{
-				const int x0 = width / 32;
-				const int x1 = width - x0;
-				const int xStep = std::max(1, width / 1920);
-				const int contentLimit = std::min(1023, blackCode + 32);
-				const int sampledColumns = std::max(1, (x1 - x0) / xStep);
-				// A few bright pixels are normally edge noise, receiver overlays, or
-				// compression shimmer. Captions occupy a meaningful central horizontal
-				// span even when the text itself is short, so require that before a bar
-				// can move the picture.
-				const int minimumContentSamples =
-					std::max(8, sampledColumns / 192);
-				const int minimumContentSpan = std::max(24, width / 48);
-				const int minimumContentRows = 2;
-				const int barInset = std::max(1, rowStep);
-
-				auto findBarContent =
-					[&](int searchTop, int searchBottom,
-						int& detectedTop, int& detectedBottom,
-						int& maximumContentSamples)
-					{
-						detectedTop = height;
-						detectedBottom = 0;
-						maximumContentSamples = 0;
-						int contentRows = 0;
-						for (int y = searchTop; y < searchBottom; y += rowStep)
-						{
-							int contentSamples = 0;
-							int left = width;
-							int right = 0;
-							for (int x = x0; x < x1; x += xStep)
-							{
-								if (lumaCode(x, y) <= contentLimit)
-									continue;
-								++contentSamples;
-								left = std::min(left, x);
-								right = std::max(right, x);
-							}
-							if (contentSamples < minimumContentSamples ||
-								right - left < minimumContentSpan)
-							{
-								continue;
-							}
-							++contentRows;
-							maximumContentSamples = std::max(
-								maximumContentSamples, contentSamples);
-							detectedTop = std::min(detectedTop, y);
-							detectedBottom =
-								std::max(detectedBottom, y + rowStep);
-						}
-						if (contentRows < minimumContentRows)
-						{
-							detectedTop = 0;
-							detectedBottom = 0;
-							return false;
-						}
-						return true;
-					};
-
-				int upperContentTop = 0;
-				int upperContentBottom = 0;
-				int lowerContentTop = 0;
-				int lowerContentBottom = 0;
-				int upperMaximumContentSamples = 0;
-				int lowerMaximumContentSamples = 0;
-				const bool upperContent =
-					scopeSubtitlePictureTop > barInset * 2 &&
-					findBarContent(
-						barInset,
-						scopeSubtitlePictureTop - barInset,
-						upperContentTop,
-						upperContentBottom,
-						upperMaximumContentSamples);
-				const bool lowerContent =
-					scopeSubtitlePictureBottom + barInset * 2 < height &&
-					findBarContent(
-						scopeSubtitlePictureBottom + barInset,
-						height - barInset,
-						lowerContentTop,
-						lowerContentBottom,
-						lowerMaximumContentSamples);
+                const int x0 = width / 32;
+                const int x1 = width - x0;
+                const int xStep = std::max(1, width / 1920);
+                const int sampledColumns = std::max(1, (x1 - x0) / xStep);
+                const auto content = pixelMeasurements.SubtitleContent(
+                    scopeSubtitleAnalysisBounds, blackCode);
+                const bool upperContent = content.upper, lowerContent = content.lower;
+                const int upperContentTop = content.upperTop, upperContentBottom = content.upperBottom;
+                const int lowerContentTop = content.lowerTop, lowerContentBottom = content.lowerBottom;
+                const int upperMaximumContentSamples = content.upperPeak;
+                const int lowerMaximumContentSamples = content.lowerPeak;
 				// Source overlay extent is owned entirely by the trusted active
 				// picture and current bar pixels. In particular, screenAspect must
 				// never influence whether source pixels require accommodation.
@@ -12668,10 +12599,20 @@ struct LibplaceboVideoRenderer::Impl
 		const auto fitBeforeAnalysis = scopeSubtitleFitConfirmation;
         // All enabled subtitle styles share raw-source bar analysis and crop
         // arbitration. Relocation changes only final presentation, never evidence.
+        // This scan also runs when NLS analysis is bypassed. Bind its immutable
+        // source explicitly rather than relying on UpdateNlsForFrame to do so.
+        auto subtitlePixelIdentity = activePictureIdentity;
+        subtitlePixelIdentity.analysisDomainKey = queuedAnalysisDomainKey;
+        subtitlePixelIdentity.transportGeneration = frameGeneration;
+        subtitlePixelIdentity.sourceFormatGeneration = AlphaSourceFormatKey(state);
+        subtitlePixelIdentity.viewportGeneration = viewportRequestSerial;
+        subtitlePixelIdentity.rendererGeneration = frameGeneration;
+        pixelMeasurements.Begin(analysisSource, subtitlePixelIdentity,
+            localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
         const float subtitleShiftSourcePixels = inwardCaptionProtected ? 0.0f :
             UpdateScopeSubtitleShift(&analysisSource,
                 width, height, configuredScreenActive, subtitleBarAuthority,
-                sourceSequence, forceSubtitleBarAnalysis,
+                sourceSequence, pixelMeasurements, forceSubtitleBarAnalysis,
                 heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
                 &subtitleBarAnalysisCompleted, retiringTranslationFitInspection);
         subtitleSharedPicture.required=true;
@@ -23336,10 +23277,11 @@ void LibplaceboVideoRenderer::RenderLoop()
                 if(motionDraws>1 && GetTickCount64()>=m_impl->nextSourceMeasurementCacheLogTick) {
                     m_impl->nextSourceMeasurementCacheLogTick=GetTickCount64()+2000;
                     const auto& samples=pixelMeasurements.Snapshot();
-                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu",
+                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu subtitle_requests=%zu subtitle_hits=%zu subtitle_scan_total_ms=%.3f subtitle_scan_peak_ms=%.3f",
                         static_cast<unsigned long long>(sourceSequence),motionDraws,
                         samples.globalRequests,samples.globalHits,samples.pictureRequests,samples.pictureHits,
-                        samples.retentionRequests,samples.retentionHits);
+                        samples.retentionRequests,samples.retentionHits,samples.subtitleRequests,samples.subtitleHits,
+                        samples.subtitleScanMs,samples.subtitleScanPeakMs);
                 }
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(
