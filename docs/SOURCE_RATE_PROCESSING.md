@@ -6,6 +6,10 @@ source hooks and target calibration run in that preparation pass. Each subtitle
 belongs to its source packet and is composed before processing; complete processed
 pictures, including subtitle changes, are then blended at output cadence.
 
+Source processing owns a separate renderer so output-only passes cannot reset
+its HDR peak-detection history. Both bundled runtimes blend in an explicitly
+linear float surface before the final encoding pass.
+
 The output pass retains live OSD/overlays, range conversion and output-depth
 dithering. It does not repeat source peak detection, tone mapping, NLS or LUTs.
 Cache reuse requires matching source/field/neighbors, geometry, target color and

@@ -104,6 +104,8 @@ private:
     }
     std::deque<std::unique_ptr<Stored>> history;
     pl_gpu gpu=nullptr;
+    pl_renderer sourceRenderer=nullptr;
+    uint64_t sourceRendererEpoch=0;
     pl_tex compositionSurface=nullptr;
     uint64_t generation=0,lastSequence=0,nextSignature=1;
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
@@ -166,7 +168,7 @@ public:
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
     void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
-    void Clear(){submittedOutputAvailable=false;history.clear();if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
+    void Clear(){submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
@@ -564,6 +566,13 @@ public:
             if(!PrepareNativeField(entry.index,entry.field)){Clear();return false;}
         return true;
     }
+    // Source peak-detection history must not be reset by the inexpensive
+    // output passes (which deliberately have peak detection disabled).
+    pl_renderer ProcessingRenderer(pl_renderer fallback) {
+        if(!Active()||!gpu||history.empty())return fallback;
+        if(!sourceRenderer)sourceRenderer=pl_renderer_create(nullptr,gpu);
+        return sourceRenderer?sourceRenderer:fallback;
+    }
     static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {
         return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
     }
@@ -638,7 +647,13 @@ public:
         destination.field=PL_FIELD_NONE;destination.first_field=PL_FIELD_NONE;
         // The target transfer, gamut and calibration LUT are applied here.
         // Float storage defers only output-depth dithering to presentation.
-        pl_frames_infer(renderer,&input,&destination);
+        ProcessingRenderer(renderer);
+        if(!sourceRenderer)return false;
+        if(sourceRendererEpoch!=epoch) {
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            sourceRendererEpoch=epoch;
+        }
+        pl_frames_infer(sourceRenderer,&input,&destination);
         const float black[3]={0,0,0};
         pl_frame_clear(gpu,&destination,black);
         auto processing=params;
@@ -647,7 +662,7 @@ public:
         if(composition)processing.deband_params=nullptr; // Already done during normalization.
         processing.dither_params=nullptr;processing.error_diffusion=nullptr;
         processing.blend_params=nullptr;
-        if(!pl_render_image(renderer,&input,&destination,&processing))return false;
+        if(!pl_render_image(sourceRenderer,&input,&destination,&processing))return false;
         cached.frame=destination;
         cached.frame.lut=nullptr;cached.frame.icc=nullptr;cached.frame.profile={};
         cached.frame.overlays=nullptr;cached.frame.num_overlays=0;
