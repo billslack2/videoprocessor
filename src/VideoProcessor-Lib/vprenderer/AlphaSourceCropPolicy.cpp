@@ -5524,6 +5524,67 @@ namespace AlphaSourceCrop
         const auto expected = EvaluateAspectLimitFill(fill);
         return expected.applied && SameBounds(expected.sourceBounds,actual);
     }
+    static void ClearSubmittedOptionalFill(SubmittedNativeScopeAnchor& anchor)
+    {
+        anchor.submittedOptionalFillAvailable = false;
+        anchor.submittedOptionalFill = {};
+        anchor.submittedOptionalFillSourceSequence = 0;
+        anchor.submittedOptionalFillScreenAspect = 0.0;
+    }
+
+    static bool HasSubmittedOptionalFill(const SubmittedNativeScopeAnchor& anchor,
+        uint64_t generation, uint64_t sequence, uint64_t epoch, int width, int height)
+    {
+        const auto& actual = anchor.submittedOptionalFill;
+        const auto& native = anchor.crop;
+        return IsCurrentSubmittedNativeScopeAnchor(anchor,generation,sequence,epoch,width,height) &&
+            anchor.submittedOptionalFillAvailable &&
+            anchor.submittedOptionalFillSourceSequence != 0 &&
+            anchor.submittedOptionalFillSourceSequence >= anchor.lastSubmittedSourceSequence &&
+            anchor.submittedOptionalFillSourceSequence == anchor.lastSubmittedPresentationSourceSequence &&
+            anchor.submittedOptionalFillSourceSequence <= sequence &&
+            std::isfinite(anchor.submittedOptionalFillScreenAspect) &&
+            anchor.submittedOptionalFillScreenAspect > 0.0 &&
+            ValidBounds(actual,width,height) && CropEdgesAreChromaAligned(actual,width,height) &&
+            actual.top == native.top && actual.bottom == native.bottom &&
+            actual.left >= native.left && actual.right <= native.right &&
+            (actual.left > native.left || actual.right < native.right);
+    }
+
+    static bool HasSelectedNativeOptionalFill(const SubmittedNativeScopeAnchorUpdateInput& input)
+    {
+        const auto& native = input.nativeCrop;
+        const auto& actual = input.submittedBounds;
+        const auto& selected = input.selectedAdmission;
+        if (!input.nativeCropAvailable || input.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            input.selectedOwner == DecisionOwner::FULL_RASTER ||
+            input.selectedOwner == DecisionOwner::OUTWARD_FIT ||
+            input.selectedOwner == DecisionOwner::MOVING_PICTURE_HOLD ||
+            !HasSelectedHorizontalFillWitness(selected,native,actual,input.sourceGeneration,
+                input.sourceSequence,input.presentationEpoch) ||
+            (actual.left == native.left && actual.right == native.right) ||
+            !std::isfinite(selected.optionalFillScreenAspect) || selected.optionalFillScreenAspect <= 0.0)
+            return false;
+        AspectLimitFillInput fill;
+        fill.trustedContentAuthorityAccepted = true;
+        fill.cropWiderContentToFillScreen = true;
+        fill.screenAspect = selected.optionalFillScreenAspect;
+        fill.sourceBounds = native;
+        fill.contentReferenceAvailable = true;
+        fill.contentReferenceBounds = native;
+        const auto expected = EvaluateAspectLimitFill(fill);
+        return expected.applied && SameBounds(expected.sourceBounds,actual);
+    }
+
+    static void StoreSubmittedOptionalFill(SubmittedNativeScopeAnchor& anchor,
+        const SubmittedNativeScopeAnchorUpdateInput& input)
+    {
+        anchor.submittedOptionalFillAvailable = true;
+        anchor.submittedOptionalFill = input.submittedBounds;
+        anchor.submittedOptionalFillSourceSequence = input.sourceSequence;
+        anchor.submittedOptionalFillScreenAspect = input.selectedAdmission.optionalFillScreenAspect;
+    }
+
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
 		const SubmittedNativeScopeAnchorUpdateInput& input)
 	{
@@ -5533,7 +5594,7 @@ namespace AlphaSourceCrop
         if (result.available && result.sourceGeneration == input.sourceGeneration &&
             result.presentationEpoch == input.presentationEpoch &&
             input.sourceSequence < std::max(std::max(result.lastSubmittedSourceSequence, result.lastSubmittedPresentationSourceSequence),
-                result.submittedEnvelopeSourceSequence))
+                std::max(result.submittedEnvelopeSourceSequence,result.submittedOptionalFillSourceSequence)))
             return result;
 		if (input.fullRasterAuthority)
 			return {};
@@ -5551,6 +5612,32 @@ namespace AlphaSourceCrop
 			result = {};
 		else if (input.sourceSequence < result.lastSubmittedSourceSequence)
 			return result;
+        const bool selectedOptionalFill = HasSelectedNativeOptionalFill(input);
+        const bool priorOptionalFill = HasSubmittedOptionalFill(result,input.sourceGeneration,
+            input.sourceSequence,input.presentationEpoch,input.submittedBounds.rasterWidth,
+            input.submittedBounds.rasterHeight);
+        const auto priorFillBounds = result.submittedOptionalFill;
+        const double priorFillAspect = result.submittedOptionalFillScreenAspect;
+        // A successful superseding output retires the old fill certificate.
+        // Missing/proposed/failed submissions returned above without changing it.
+        ClearSubmittedOptionalFill(result);
+        if (input.selectedAdmission.optionalFillRetained)
+        {
+            if (previousSameContext && priorOptionalFill && selectedOptionalFill &&
+                SameTrustedCropContract(input.nativeCrop,result.crop) &&
+                SameBounds(input.submittedBounds,priorFillBounds) &&
+                input.selectedAdmission.optionalFillScreenAspect == priorFillAspect)
+            {
+                StoreSubmittedOptionalFill(result,input);
+                result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+            }
+            // A retained fill never acquires or renews native AR, even if an
+            // invalid caller labels an unsubmitted proposal as retention.
+            return result;
+        }
+        if (previousSameContext && selectedOptionalFill &&
+            SameTrustedCropContract(input.nativeCrop,result.crop))
+            StoreSubmittedOptionalFill(result,input);
         if (previousSameContext && input.nativeCropAvailable &&
             input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
             SameTrustedCropContract(input.nativeCrop, result.crop) &&
@@ -5629,6 +5716,7 @@ namespace AlphaSourceCrop
         result.submittedEnvelopeAvailable = false;
         result.submittedEnvelope = {};
         result.submittedEnvelopeSourceSequence = 0;
+        if (selectedOptionalFill) StoreSubmittedOptionalFill(result,input);
 		return result;
 	}
 
@@ -5848,6 +5936,57 @@ namespace AlphaSourceCrop
         return true;
     }
 
+    static bool TryRetainSubmittedNativeOptionalFill(const FinalAspectLimitFillInput& input,
+        AspectLimitFillDecision& result)
+    {
+        const auto& crop = input.crop;
+        const auto& anchor = input.evidence.submittedScopeAnchor;
+        const auto& native = anchor.crop;
+        const auto& presentation = input.presentation;
+        if (!input.configuredScreenActive || input.currentConfirmedPresentationConflict ||
+            input.protectedCaptionFit || input.nlsPresentationFailOpen || input.nlsOwnsPresentationGeometry ||
+            input.uncertainPicture.expanded || !crop.automaticCropEnabled ||
+            !crop.sharedGeometryAvailable || crop.geometrySourceGeneration != crop.frameSourceGeneration ||
+            crop.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            crop.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+            crop.fullRasterPresentationAuthoritative ||
+            crop.latestObservationClassification == ActivePictureClassification::FULL_RASTER_TRUSTED ||
+            crop.movingPictureTransition || HasCurrentPictureTransitionHandoff(crop) ||
+            crop.movingPictureHold.competingPresentation || crop.barCropRefinementHorizontalConflict ||
+            !presentation.applyCrop || presentation.outwardExpanded ||
+            presentation.owner == DecisionOwner::FULL_RASTER ||
+            presentation.owner == DecisionOwner::OUTWARD_FIT ||
+            presentation.owner == DecisionOwner::MOVING_PICTURE_HOLD ||
+            !HasSubmittedOptionalFill(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                crop.framePresentationEpoch,crop.rasterWidth,crop.rasterHeight) ||
+            input.evidence.presentationEpoch != crop.framePresentationEpoch ||
+            !SameTrustedCropContract(crop.geometry,native) ||
+            native.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            native.left != 0 || native.right != crop.rasterWidth ||
+            !SameBounds(presentation.sourceBounds,native) ||
+            input.configured.screenAspect != anchor.submittedOptionalFillScreenAspect)
+            return false;
+        // The exact actual native bounds above reject a real translation.
+        // Advanced subtitle modes may retain Classic's logical translation
+        // flag after physical placement has already restored those bounds.
+        // Current policy always wins. The stored rectangle is a witness, never
+        // permission to reuse stale limits, a changed screen or a new crop.
+        auto fill = input.configured;
+        fill.trustedContentAuthorityAccepted = true;
+        fill.contentReferenceAvailable = true;
+        fill.contentReferenceBounds = native;
+        fill.sourceBounds = native;
+        auto current = EvaluateAspectLimitFill(fill);
+        if (!current.applied || current.sourceBounds.top != native.top ||
+            current.sourceBounds.bottom != native.bottom ||
+            !SameBounds(current.sourceBounds,anchor.submittedOptionalFill))
+            return false;
+        current.retainedSubmittedFill = true;
+        current.reason = "submitted native side fill retained across uncertain analysis";
+        result = current;
+        return true;
+    }
+
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(const FinalAspectLimitFillInput& input)
     {
         AspectLimitFillDecision result;
@@ -5859,6 +5998,24 @@ namespace AlphaSourceCrop
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
         }
+        const auto& submittedFillAnchor = input.evidence.submittedScopeAnchor;
+        if (input.currentConfirmedPresentationConflict && input.presentation.applyCrop &&
+            SameBounds(input.presentation.sourceBounds,submittedFillAnchor.crop) &&
+            SameTrustedCropContract(input.crop.geometry,submittedFillAnchor.crop) &&
+            HasSubmittedOptionalFill(submittedFillAnchor,input.crop.frameSourceGeneration,
+                input.crop.frameSourceSequence,input.crop.framePresentationEpoch,
+                input.crop.rasterWidth,input.crop.rasterHeight))
+        {
+            // A fresh independent conflict must win on measured sources too;
+            // changing the recovery route cannot reapply the conflicting fill.
+            result.reason = "current confirmed presentation conflict retires submitted side fill";
+            return result;
+        }
+        const bool retainedPresentation = input.uncertainPicture.retained ||
+            input.recoveryBoundedPresentation || input.nearBlackBoundedPresentation ||
+            input.nearBlackRetainedScopeFallback || input.nearBlackFailOpenProposal;
+        if (retainedPresentation && TryRetainSubmittedNativeOptionalFill(input,result))
+            return result;
         if (input.protectedCaptionFit || input.nlsPresentationFailOpen ||
             input.uncertainPicture.expanded ||
             (!input.uncertainPicture.retained && (input.recoveryBoundedPresentation ||

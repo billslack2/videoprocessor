@@ -42,14 +42,93 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
     // Advanced styles have already undone the shared Classic translation.
     // The exact-native check below forbids certifying any remaining shift or
     // expanded viewport; mode alone is never evidence of a native presentation.
-    return !captionPresentationHeld && fill.applied && presentation.applyCrop &&
+    return (!captionPresentationHeld || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
         !fixedCropAspectConfigured && !nlsRequested && !protectedCaptionFit &&
         !presentation.outwardExpanded &&
         (!presentation.verticallyTranslated ||
             (SubtitlePreviewOverridesClassicHandling(mode) &&
              presentation.owner==AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION)) &&
-        !crop.movingPictureTransition && !recoveryActive &&
+        !crop.movingPictureTransition && (!recoveryActive || fill.retainedSubmittedFill) &&
         origin==ActivePictureAuthorityOrigin::NATIVE && exactNativeBounds;
+}
+
+// Missing analysis does not revoke an already displayed fill. Only a fresh,
+// accepted caption footprint can prove that its horizontal trim hides text.
+// Moved styles use their successfully composed destination, not the erased
+// source card. Classic/unprepared output still displays the native footprint.
+inline bool ConfirmedSubtitleConflictsWithHorizontalFill(bool confirmed, bool measured,
+    SubtitlePreviewMode mode, bool composed, const ActivePictureBounds& nativeCaption,
+    const SubtitleCutPasteGeometry& relocated, const ActivePictureBounds& filled)
+{
+    if (!confirmed || !measured) return false;
+    if (filled.right <= filled.left || filled.bottom <= filled.top) return false;
+    if (SubtitlePreviewOverridesClassicHandling(mode) && composed && relocated.valid) {
+        if (!std::isfinite(relocated.glyphScale) || relocated.glyphScale <= 0.0f ||
+            !std::isfinite(relocated.glyphTranslateX)) return true;
+        bool hasGlyphs=false,conflict=false;
+        const auto check=[&](const SubtitleBoxRect& glyphs) {
+            if (!glyphs.Valid()) return;
+            hasGlyphs=true;
+            const float left=relocated.centeredGlyphMapping
+                ? relocated.glyphScale*glyphs.left+relocated.glyphTranslateX
+                : float(glyphs.left+relocated.destination.left-relocated.source.left);
+            const float right=relocated.centeredGlyphMapping
+                ? relocated.glyphScale*glyphs.right+relocated.glyphTranslateX
+                : float(glyphs.right+relocated.destination.left-relocated.source.left);
+            conflict=conflict || left < filled.left || right > filled.right;
+        };
+        for (const auto& line:relocated.glyphLines) check(line);
+        if (!hasGlyphs) check(relocated.content);
+        return !hasGlyphs || conflict;
+    }
+    if (nativeCaption.right <= nativeCaption.left || nativeCaption.bottom <= nativeCaption.top)
+        return true;
+    return nativeCaption.left < filled.left || nativeCaption.right > filled.right;
+}
+
+struct RetainedNativeFillSelection
+{
+    bool deauthorized=false;
+    ActivePictureBounds sourceBounds;
+    AlphaSourceCrop::CropPresentationAdmissionState selectedAdmission;
+    bool nativeCropAvailable=false;
+};
+
+// Preparing a source is not submission. Check the selected fill against the
+// live successful-submission certificate before using its optional side trim.
+// The dry-run commit below modifies only a local copy; actual state changes
+// still happen exclusively after a successful renderer submission.
+inline RetainedNativeFillSelection RevalidateRetainedNativeFillSelection(
+    const AlphaSourceCrop::SubmittedNativeScopeAnchorUpdateInput& selected)
+{
+    RetainedNativeFillSelection result;
+    result.sourceBounds=selected.submittedBounds;
+    result.selectedAdmission=selected.selectedAdmission;
+    result.nativeCropAvailable=selected.nativeCropAvailable;
+    if (!selected.selectedAdmission.optionalFillRetained) return result;
+    auto proposal=selected;
+    proposal.frameSubmitted=true;
+    const auto checked=AlphaSourceCrop::CommitSubmittedNativeScopeAnchor(proposal);
+    const auto& actual=selected.submittedBounds;
+    const auto& witnessed=checked.submittedOptionalFill;
+    const bool current=checked.submittedOptionalFillAvailable &&
+        checked.sourceGeneration==selected.sourceGeneration &&
+        checked.presentationEpoch==selected.presentationEpoch &&
+        checked.submittedOptionalFillSourceSequence==selected.sourceSequence &&
+        checked.lastSubmittedSourceSequence==selected.previous.lastSubmittedSourceSequence &&
+        witnessed.left==actual.left && witnessed.top==actual.top &&
+        witnessed.right==actual.right && witnessed.bottom==actual.bottom;
+    if (current) return result;
+    result.deauthorized=true;
+    result.sourceBounds=selected.nativeCrop;
+    result.selectedAdmission.optionalFillApplied=false;
+    result.selectedAdmission.optionalFillRetained=false;
+    result.selectedAdmission.optionalFillSourceBounds={};
+    result.selectedAdmission.optionalFillSourceSequence=0;
+    result.selectedAdmission.optionalFillScreenAspect=0.0;
+    // Restoring an old prepared native rectangle is not fresh native authority.
+    result.nativeCropAvailable=false;
+    return result;
 }
 
 // Output-time pose may advance Classic's translation only while the selected

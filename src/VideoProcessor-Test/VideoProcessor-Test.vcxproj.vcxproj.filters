@@ -53,6 +53,9 @@
     <ClCompile Include="RetainedScopeUnknownPresentationTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SubmittedNativeFillRetentionTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="AlphaSourceCropPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

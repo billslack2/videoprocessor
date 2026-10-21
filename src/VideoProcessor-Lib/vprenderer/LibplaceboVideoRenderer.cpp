@@ -16274,6 +16274,30 @@ releaseDriftBaseRetention =
             finalFillInput.nearBlackFailOpenProposal = nearBlackBoundedDecision.failOpenProposal;
             finalFillInput.nlsOwnsPresentationGeometry = nlsOwnsPresentationGeometry;
             finalFillInput.configuredScreenActive = configuredScreenActive;
+            ActivePictureBounds confirmedCaptionGlyphs;
+            if (currentConfirmedCaptionAvailable && currentMeasuredCaptionAvailable) {
+                // The card/padded panel is not glyph evidence. Reuse the
+                // selected source's accepted/current ink extents already measured
+                // above; no additional pixel scan is needed for fill retention.
+                auto glyphs=SubtitleGlyphCaptureBounds(
+                    subtitleSourcePreparation.ownershipObservation.text,width,height);
+                const auto acceptedGlyphs=SubtitleGlyphCaptureBounds(
+                    subtitleSourcePreparation.ownershipAccepted,width,height);
+                if (acceptedGlyphs.Valid()) glyphs=glyphs.Valid()
+                    ? SubtitleBoxRect{std::min(glyphs.left,acceptedGlyphs.left),
+                        std::min(glyphs.top,acceptedGlyphs.top),
+                        std::max(glyphs.right,acceptedGlyphs.right),
+                        std::max(glyphs.bottom,acceptedGlyphs.bottom)}
+                    : acceptedGlyphs;
+                confirmedCaptionGlyphs={glyphs.left,glyphs.top,glyphs.right,glyphs.bottom,
+                    width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+            }
+            finalFillInput.currentConfirmedPresentationConflict =
+                ConfirmedSubtitleConflictsWithHorizontalFill(
+                    currentConfirmedCaptionAvailable, currentMeasuredCaptionAvailable,
+                    subtitlePreviewMode, subtitleCompositionSucceeded,
+                    confirmedCaptionGlyphs, relocatedSubtitle,
+                    submittedNativeScopeAnchor.submittedOptionalFill);
             finalFillInput.samplingCompetingPresentation = nlsRequested ||
                 currentMeasuredCaptionAvailable || inwardCaptionProtected ||
                 leftBarContentActive || rightBarContentActive || denseFitEvidenceActive ||
@@ -16401,6 +16425,8 @@ releaseDriftBaseRetention =
                 cropInput,cropDecision,aspectLimitFill,subtitlePreviewMode,
                 captionPresentationHeld || unknownCaptionHold.retained,fixedCropAspectConfigured,nlsRequested,
                 protectedCaptionFit,recoveryDecision.state.active,episodeInput.trustedCropOrigin);
+            cropPresentationAdmission.optionalFillRetained =
+                cropPresentationAdmission.optionalFillApplied && aspectLimitFill.retainedSubmittedFill;
             cropPresentationAdmission.optionalFillSourceBounds = cropPresentationAdmission.optionalFillApplied
                 ? aspectLimitFill.sourceBounds : ActivePictureBounds{};
             cropPresentationAdmission.optionalFillSourceSequence = sourceSequence;
@@ -16734,7 +16760,7 @@ releaseDriftBaseRetention =
 			const char* presentationOwnerLabel =
 				AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f fill_reference_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d sampling_retained=%d sampling_strip_conflict=%d sampling_equivalent=%d partial_sampling_checked=%d partial_sampling_reaffirmed=%d refinement_outward_fit=%d generic_fit_held=%d contained_inspection_resolved=%d vertical_fail_open=%d invalid_expansion=%d sampling_strip_peak_y=%d sampling_strip_peak_uv_delta=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_fit_resolved=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f fill_reference_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d fill_retained=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d sampling_retained=%d sampling_strip_conflict=%d sampling_equivalent=%d partial_sampling_checked=%d partial_sampling_reaffirmed=%d refinement_outward_fit=%d generic_fit_held=%d contained_inspection_resolved=%d vertical_fail_open=%d invalid_expansion=%d sampling_strip_peak_y=%d sampling_strip_peak_uv_delta=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_fit_resolved=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -16788,6 +16814,7 @@ releaseDriftBaseRetention =
 					cropWiderContentAspectLimitConfigured ? "" : "off/",
 					cropWiderContentAspectLimit,
 					aspectLimitFill.applied ? 1 : 0,
+                    aspectLimitFill.retainedSubmittedFill ? 1 : 0,
 					static_cast<int>(effectiveClassification),
 					static_cast<unsigned long long>(
 						effectiveGeometrySourceGeneration),
@@ -17540,8 +17567,48 @@ releaseDriftBaseRetention =
                 return true;
             }
             selectedPresentationForCommit=*selectedSnapshot;
+            if (selectedPresentationForCommit.cropAdmission.optionalFillRetained) {
+                auto& selectedFill=selectedPresentationForCommit;
+                AlphaSourceCrop::SubmittedNativeScopeAnchorUpdateInput selection;
+                selection.previous=submittedNativeScopeAnchor;
+                selection.selectedAdmission=selectedFill.cropAdmission;
+                selection.nativeCrop=selectedFill.nativeScopeAnchorCandidate;
+                selection.nativeCropAvailable=selectedFill.nativeScopeAnchorCandidateAvailable;
+                selection.authorityOrigin=selectedFill.nativeScopeAnchorCandidateOrigin;
+                selection.selectedOwner=static_cast<AlphaSourceCrop::DecisionOwner>(
+                    selectedFill.presentation.owner);
+                selection.fullRasterAuthority=selectedFill.fullRasterAuthority;
+                selection.sourceGeneration=selectedFill.sourceGeneration;
+                selection.sourceSequence=selectedFill.sourceSequence;
+                selection.presentationEpoch=selectedFill.viewportEpoch;
+                selection.submittedBounds={
+                    static_cast<int>(std::lround(selectedFill.sourceCrop.x0)),
+                    static_cast<int>(std::lround(selectedFill.sourceCrop.y0)),
+                    static_cast<int>(std::lround(selectedFill.sourceCrop.x1)),
+                    static_cast<int>(std::lround(selectedFill.sourceCrop.y1)),
+                    width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+                const auto validated=RevalidateRetainedNativeFillSelection(selection);
+                if (validated.deauthorized) {
+                    const auto& native=validated.sourceBounds;
+                    selectedFill.sourceCrop={float(native.left),float(native.top),
+                        float(native.right),float(native.bottom)};
+                    selectedFill.presentation.sourceCrop={native.left,native.top,native.right,native.bottom};
+                    selectedFill.cropAdmission=validated.selectedAdmission;
+                    selectedFill.nativeScopeAnchorCandidateAvailable=validated.nativeCropAvailable;
+                    const auto fitted=AnamorphicPresentation::FitPicture(
+                        pl_rect2df_aspect(&selectedFill.sourceCrop),anamorphicScale,
+                        selectedFill.screen,ResolveVerticalPictureAlignment(verticalAlignment));
+                    if (fitted.valid) {
+                        selectedFill.targetCrop={float(fitted.picture.left),float(fitted.picture.top),
+                            float(fitted.picture.right),float(fitted.picture.bottom)};
+                        selectedFill.linearFallbackCrop=selectedFill.targetCrop;
+                    }
+                    DebugLog::Log("Alpha selected native fill retired: generation=%llu source=%llu epoch=%llu reason=successful-presentation-superseded-prepared-fill",
+                        selectedFill.sourceGeneration,selectedFill.sourceSequence,selectedFill.viewportEpoch);
+                }
+            }
             selectedPresentationValid=true;
-            applyPresentationSnapshot(*selectedSnapshot);
+            applyPresentationSnapshot(selectedPresentationForCommit);
             const uint64_t temporalLogNow=GetTickCount64();
             if ((selected!=temporalLastLogSelected &&
                 temporalLogNow-temporalLastLogTick>=250) ||
