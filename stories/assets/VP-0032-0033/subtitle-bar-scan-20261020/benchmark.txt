@@ -1,0 +1,7 @@
+p010-plane reference_ms=4.77499 row_scan_ms=0.305758 cached_ms=7.5e-06 speedup=15.6169
+p210-plane reference_ms=5.32603 row_scan_ms=0.333863 cached_ms=7.5e-06 speedup=15.9528
+decoded-dv-12bit-422 reference_ms=5.21615 row_scan_ms=0.337732 cached_ms=7.5e-06 speedup=15.4446
+E:\codex\diagnostics\continuous-subtitle-ar-20261013\frame.bin reference_ms=5.23933 row_scan_ms=0.328257 cached_ms=1.25e-05 speedup=15.961
+E:\codex\diagnostics\reactor-three-lines-20261012\native.bin reference_ms=7.90217 row_scan_ms=7.91629 cached_ms=2.75e-05 speedup=0.998216
+E:\codex\diagnostics\thai-top-card-20261012\native.bin reference_ms=4.94928 row_scan_ms=4.63012 cached_ms=7.5e-06 speedup=1.06893
+Exact row results, bar extents/peak counts and same-frame invalidation checks passed.

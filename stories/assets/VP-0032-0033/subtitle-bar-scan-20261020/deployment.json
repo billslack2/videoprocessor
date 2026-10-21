@@ -1,0 +1,28 @@
+{
+  "configuration_sha256": "908C0CF41E5C9D8979A4029B94AACBD28A9DDECCBE5BDD366C9BAD5B323A7AA5",
+  "configuration_edits": [],
+  "preserved_deployment_source": "893824466396a0c88c4e096d22b5dc513aab3a49",
+  "launched": false,
+  "artifacts": [
+    {
+      "sha256": "333A55A9A4FA74C4D0A97B4A325B47171AB2044BCBA674DF926E1D7FB6FBB171",
+      "file": "VideoProcessor.exe"
+    },
+    {
+      "sha256": "85AD42545EBB7AD70B1C3C7C0CD41D48ACC10312F639197D77F3CF2042BBCC72",
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "C66E80271435C2229408999F2EBB24038697B98F968D8BA0B74143F87EE40924",
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    }
+  ],
+  "configuration": "Release",
+  "configuration_source": "C:\\Videoprocessor\\vp-test-smooth-motion-cache-89382446\\VideoProcessor.cfg",
+  "source_commit": "177b7c8cc1866356726de768999bfd8eacc9f978",
+  "architecture": "x64",
+  "shader_cache_copied": true,
+  "original_installation_unchanged": true,
+  "running_copy_unchanged": true,
+  "validation": "Release host and both renderers built; exact-output CPU scan benchmark; no full suite or playback run"
+}
