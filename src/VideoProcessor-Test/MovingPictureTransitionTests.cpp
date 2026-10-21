@@ -936,6 +936,113 @@ namespace Tests
                 Assert::IsFalse(rejected.active,L"A missing predecessor or real jump cannot borrow the old gradual episode.");
             }
         }
+        // Logged bounds and scene summary, with explicitly synthetic adjacent
+        // identities/native proof. This diagnoses gates; it does not claim to
+        // reproduce the unrecorded proof inputs of live frame 4485.
+        static SceneDetectorResult DiagnosticBoundaryFixture(MotionSequence& s,
+            int baseTop, int baseBottom, bool asymmetricStep=false)
+        {
+            s.input.trustedGeometry.top=baseTop; s.input.trustedGeometry.bottom=baseBottom;
+            s.input.presentationBeforeObservation=s.input.retention.expansionBase=s.input.trustedGeometry;
+            s.Target(124);
+            s.input.evidence.trustedBounds.bottom=2038;
+            s.input.evidence.proposedBounds=s.input.outwardCandidate=
+                s.input.retention.expansionCandidate=s.input.evidence.trustedBounds;
+            s.input.evidence.proposedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+            s.identity.acceptedSequence=4485; s.identity.sourceFrameNumber=7001;
+            s.identity.captureTimestamp=7001*417083ULL;
+            s.input.sourceSequence=s.identity.acceptedSequence;
+            s.motion.active=true; s.motion.base=s.input.trustedGeometry;
+            s.motion.identity=s.identity; --s.motion.identity.acceptedSequence;
+            --s.motion.identity.sourceFrameNumber; s.motion.identity.captureTimestamp-=417083;
+            s.motion.observedNative=s.input.evidence.trustedBounds;
+            s.motion.observedNative.top=126;
+            s.motion.observedNative.bottom=asymmetricStep?2038:2036;
+            s.motion.observedNativeSourceSequence=s.motion.identity.acceptedSequence;
+            s.motion.last=s.motion.observedNative;
+            s.motion.directionalChanges=12; s.motion.quietSamples=3;
+            SceneDetectorResult boundary;
+            boundary.safeBoundary=boundary.nearBlackEntry=boundary.differenceEvaluated=true;
+            boundary.sampleCount=576; boundary.generation=s.identity.transportGeneration;
+            boundary.sourceSequence=s.identity.acceptedSequence;
+            return boundary;
+        }
+        TEST_METHOD(DarknessBoundaryDiagnosticsAcceptBothLoggedBasesWithoutChangingDecision)
+        {
+            for(bool secondBase : {false,true}) for(bool asymmetric : {false,true}) {
+                MotionSequence s;
+                const auto boundary=DiagnosticBoundaryFixture(s,secondBase?274:270,secondBase?1886:1888,asymmetric);
+                GradualPictureBoundaryRetentionDiagnostics diagnostic;
+                const auto plain=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input);
+                const auto traced=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input,&diagnostic);
+                Assert::IsTrue(plain.active && traced.active);
+                Assert::AreEqual("retained",diagnostic.reason);
+                Assert::IsTrue(diagnostic.stepsEvaluated && diagnostic.pixelProofEvaluated && diagnostic.broadOpposingPicture);
+                Assert::AreEqual(2,diagnostic.topStep);
+                Assert::AreEqual(asymmetric?0:2,diagnostic.bottomStep);
+                Assert::AreEqual(4,diagnostic.scanStep);
+                Assert::AreEqual(4484ULL,diagnostic.previousSequence);
+                Assert::AreEqual(4484ULL,diagnostic.observedNativeSequence);
+                Assert::AreEqual(4485ULL,diagnostic.currentSequence);
+                Assert::AreEqual(126,diagnostic.previousNative.top);
+                Assert::AreEqual(2038,diagnostic.currentNative.bottom);
+                Assert::AreEqual(plain.identity.acceptedSequence,traced.identity.acceptedSequence);
+                Assert::AreEqual(plain.quietSamples,traced.quietSamples);
+                Assert::AreEqual(plain.directionalChanges,traced.directionalChanges);
+                Assert::AreEqual(plain.quietAnchor.top,traced.quietAnchor.top);
+                Assert::AreEqual(s.motion.base.top,traced.base.top);
+            }
+        }
+        TEST_METHOD(DarknessBoundaryDiagnosticsIdentifyRejectedGuardWithoutRelaxingIt)
+        {
+            for(int fault=0;fault<28;++fault) {
+                MotionSequence s; auto boundary=DiagnosticBoundaryFixture(s,274,1886);
+                const char* expected="";
+                switch(fault) {
+                case 0: s.motion.active=false; expected="inactive-episode"; break;
+                case 1: boundary.hardCutCandidate=true; expected="boundary-kind"; break;
+                case 2: ++boundary.sourceSequence; expected="boundary-identity"; break;
+                case 3: ++s.identity.viewportGeneration; expected="source-context"; break;
+                case 4: --s.motion.identity.acceptedSequence; expected="nonadjacent-source"; break;
+                case 5: s.input.compatiblePresentation=false; expected="presentation-unavailable"; break;
+                case 6: ++s.input.sourceSequence; expected="measurement-identity"; break;
+                case 7: s.input.retention.globalNearBlack=true; expected="measurement-unavailable-or-dark"; break;
+                case 8: s.input.evidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+                    expected="native-authority"; break;
+                case 9: s.motion.base.top=0; expected="invalid-base"; break;
+                case 10: s.motion.observedNative={}; expected="invalid-native-predecessor"; break;
+                case 11: s.motion.observedNativeSourceSequence=0; expected="native-predecessor-sequence"; break;
+                case 12: --s.input.evidence.trustedBounds.top; expected="invalid-native-geometry"; break;
+                case 13: s.input.trustedGeometry.top-=2; expected="logical-base-mismatch"; break;
+                case 14: s.input.presentationBeforeObservation.top-=2; expected="presentation-base-mismatch"; break;
+                case 15: s.input.outwardCandidate.top-=2; expected="outward-candidate-mismatch"; break;
+                case 16: s.input.evidence.proposedBounds.bottom+=2; expected="raw-proposal-mismatch"; break;
+                case 17: s.input.evidence.axisEvidence.vertical.scanComplete=false; expected="native-axis-authority"; break;
+                case 18: s.motion.observedNative.rasterHeight+=2; expected="native-geometry"; break;
+                case 19: s.motion.observedNative.top=122; expected="edge-step"; break; // 2px reversal is still rejected.
+                case 20: s.motion.observedNative.top=130; expected="edge-step"; break;
+                case 21: s.motion.observedNative=s.input.evidence.trustedBounds; expected="edge-step"; break;
+                case 22: s.input.retention.expansionStripsAvailable=false; expected="strip-identity"; break;
+                case 23: s.input.retention.expansionBase.top-=2; expected="strip-identity"; break;
+                case 24: UnknownStrips(s); expected="pixel-proof"; break;
+                case 25: s.identity.captureTimestamp=s.motion.identity.captureTimestamp; expected="nonadjacent-source"; break;
+                case 26: s.motion.observedNativeSourceSequence--; expected="native-predecessor-sequence"; break;
+                case 27: s.input.retention.expansionCandidate.bottom+=2; expected="strip-identity"; break;
+                }
+                GradualPictureBoundaryRetentionDiagnostics diagnostic;
+                diagnostic.reason="stale-diagnostic"; diagnostic.pixelProofEvaluated=true;
+                const auto plain=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input);
+                const auto traced=RetainMovingPictureAtDarknessBoundary(s.motion,boundary,s.identity,s.input,&diagnostic);
+                Assert::IsFalse(plain.active || plain.awaitingPublication);
+                Assert::IsFalse(traced.active || traced.awaitingPublication);
+                Assert::AreEqual(expected,diagnostic.reason);
+                Assert::AreEqual(fault==24,diagnostic.pixelProofEvaluated);
+                if(fault==24) {
+                    Assert::IsFalse(diagnostic.broadOpposingPicture || diagnostic.nativeDistributedPicture);
+                    Assert::AreEqual("vertical-not-broad",diagnostic.pixelReason);
+                }
+            }
+        }
         TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
         {
             for(bool full : {false,true}) {

@@ -10436,8 +10436,9 @@ struct LibplaceboVideoRenderer::Impl
             }
             if (boundaryMotion && motionBoundary && !nearBlackAcquisitionBlocked)
             {
+                AlphaSourceCrop::GradualPictureBoundaryRetentionDiagnostics boundaryDiagnostic;
                 movingPictureTransition = AlphaSourceCrop::RetainMovingPictureAtDarknessBoundary(
-                    *boundaryMotion, *motionBoundary, currentIdentity, movementInput);
+                    *boundaryMotion, *motionBoundary, currentIdentity, movementInput, &boundaryDiagnostic);
                 DebugLog::Log("Alpha moving boundary: generation=%llu sequence=%llu event=%llu retained=%d prior_active=%d current_native=%d ar_near_black=%d base=%d,%d-%d,%d observed=%d,%d-%d,%d",
                     analysisSource.generation, frameNumber, motionBoundary->eventId,
                     movingPictureTransition.active?1:0, boundaryMotion->active?1:0,
@@ -10446,6 +10447,58 @@ struct LibplaceboVideoRenderer::Impl
                     boundaryMotion->base.left,boundaryMotion->base.top,boundaryMotion->base.right,boundaryMotion->base.bottom,
                     movementInput.evidence.trustedBounds.left,movementInput.evidence.trustedBounds.top,
                     movementInput.evidence.trustedBounds.right,movementInput.evidence.trustedBounds.bottom);
+                // Record the exact gate and source-owned inputs only at scene boundaries.
+                // Diagnostics never participate in retention or presentation admission.
+                const auto& priorIdentity = boundaryMotion->identity;
+                DebugLog::Log("Alpha moving boundary proof: schema=1 generation=%llu sequence=%llu event=%llu reason=%s pixel_reason=%s steps_evaluated=%d steps=%d,%d limit=%d prior_sequence=%llu prior_native_sequence=%llu pixel_proof=%d broad=%d distributed=%d compatible=%d trusted_available=%d analysis_valid=%d presentation_valid=%d expansion_available=%d native_class=%d vertical_state=%d vertical_complete=%d failed_bar=%d",
+                    analysisSource.generation, frameNumber, motionBoundary->eventId,
+                    boundaryDiagnostic.reason, boundaryDiagnostic.pixelReason,
+                    boundaryDiagnostic.stepsEvaluated?1:0, boundaryDiagnostic.topStep,
+                    boundaryDiagnostic.bottomStep, boundaryDiagnostic.scanStep,
+                    priorIdentity.acceptedSequence, boundaryMotion->observedNativeSourceSequence,
+                    boundaryDiagnostic.pixelProofEvaluated?1:0, boundaryDiagnostic.broadOpposingPicture?1:0,
+                    boundaryDiagnostic.nativeDistributedPicture?1:0, movementInput.compatiblePresentation?1:0,
+                    movementInput.trustedGeometryAvailable?1:0, movementInput.retention.analysisValid?1:0,
+                    movementInput.retention.presentationValid?1:0, movementInput.retention.expansionStripsAvailable?1:0,
+                    static_cast<int>(movementInput.evidence.classification),
+                    static_cast<int>(movementInput.evidence.axisEvidence.vertical.state),
+                    movementInput.evidence.axisEvidence.vertical.scanComplete?1:0,
+                    movementInput.evidence.axisEvidence.HasFailedBar()?1:0);
+                DebugLog::Log("Alpha moving boundary identity: schema=1 sequence=%llu event=%llu prior_current_fields=transport,format,domain,viewport,renderer,frame,timestamp prior=%llu,%llu,%llu,%llu,%llu,%llu,%llu current=%llu,%llu,%llu,%llu,%llu,%llu,%llu input_source=%llu input_trusted=%llu input_sequence=%llu",
+                    frameNumber, motionBoundary->eventId,
+                    priorIdentity.transportGeneration, priorIdentity.sourceFormatGeneration,
+                    priorIdentity.analysisDomainKey, priorIdentity.viewportGeneration,
+                    priorIdentity.rendererGeneration, priorIdentity.sourceFrameNumber, priorIdentity.captureTimestamp,
+                    currentIdentity.transportGeneration, currentIdentity.sourceFormatGeneration,
+                    currentIdentity.analysisDomainKey, currentIdentity.viewportGeneration,
+                    currentIdentity.rendererGeneration, currentIdentity.sourceFrameNumber, currentIdentity.captureTimestamp,
+                    movementInput.sourceGeneration, movementInput.trustedGeneration, movementInput.sourceSequence);
+                const auto traceBoundaryBounds = [&](const char* role, const ActivePictureBounds& bounds) {
+                    DebugLog::Log("Alpha moving boundary bounds: schema=1 sequence=%llu event=%llu role=%s rect=%d,%d-%d,%d raster=%dx%d axes=%d",
+                        frameNumber, motionBoundary->eventId, role, bounds.left, bounds.top, bounds.right,
+                        bounds.bottom, bounds.rasterWidth, bounds.rasterHeight, static_cast<int>(bounds.trustedBarAxes));
+                };
+                traceBoundaryBounds("episode-base", boundaryMotion->base);
+                traceBoundaryBounds("prior-native", boundaryMotion->observedNative);
+                traceBoundaryBounds("logical-base", movementInput.trustedGeometry);
+                traceBoundaryBounds("presentation-base", movementInput.presentationBeforeObservation);
+                traceBoundaryBounds("measured", movementInput.evidence.trustedBounds);
+                traceBoundaryBounds("raw-proposal", movementInput.evidence.proposedBounds);
+                traceBoundaryBounds("outward-candidate", movementInput.outwardCandidate);
+                traceBoundaryBounds("strip-base", movementInput.retention.expansionBase);
+                traceBoundaryBounds("strip-candidate", movementInput.retention.expansionCandidate);
+                const auto traceBoundaryEdge = [&](const char* role, const ActivePictureEdgeEvidence& edge) {
+                    DebugLog::Log("Alpha moving boundary strip: schema=1 sequence=%llu event=%llu role=%s pixels=%d black_fraction=%.6f p90=%.3f floor=%.3f dispersion=%.3f texture=%.3f continuity=%.6f neutral_chroma=%.6f contrast=%.3f confidence=%.6f trusted=%d support_rows=%u,%u,%u,%u",
+                        frameNumber, motionBoundary->eventId, role, edge.barPixels, edge.blackFraction,
+                        edge.lumaP90, edge.lumaFloor, edge.lumaDispersion, edge.texture, edge.continuity,
+                        edge.neutralChromaFraction, edge.innerBoundaryContrast, edge.confidence, edge.trusted?1:0,
+                        static_cast<unsigned>(edge.distributedSupportDepthRowsByQuartile[0]),
+                        static_cast<unsigned>(edge.distributedSupportDepthRowsByQuartile[1]),
+                        static_cast<unsigned>(edge.distributedSupportDepthRowsByQuartile[2]),
+                        static_cast<unsigned>(edge.distributedSupportDepthRowsByQuartile[3]));
+                };
+                traceBoundaryEdge("top", movementInput.retention.expandingTop);
+                traceBoundaryEdge("bottom", movementInput.retention.expandingBottom);
             }
             const auto motionBeforeObservation = movingPictureTransition;
             movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
