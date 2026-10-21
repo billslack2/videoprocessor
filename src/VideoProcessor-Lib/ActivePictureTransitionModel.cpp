@@ -102,6 +102,31 @@ void ActivePictureTransitionModel::ResetPresentationState()
 }
 
 
+bool ActivePictureTransitionModel::ResetForNativeQueueContinuity(
+    const ActivePictureBounds& exactNativeBounds)
+{
+    ActivePictureObservation stable;
+    stable.available = m_hasStable;
+    stable.bounds = m_stable;
+    stable.classification = m_stableClassification;
+    stable.authorityOrigin = m_stableOrigin;
+    if (!m_hasStable || m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+        !HasCropAuthority(stable) || !ExactSparseBounds(m_stable, exactNativeBounds))
+        return false;
+    const auto native = m_stable;
+    const auto recent = m_recentTrusted;
+    const auto recentCount = m_recentTrustedCount;
+    Reset();
+    m_hasStable = true;
+    m_stable = native;
+    m_stableClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+    m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
+    m_recentTrusted = recent;
+    m_recentTrustedCount = recentCount;
+    return true;
+}
+
 void ActivePictureTransitionModel::ResetCandidateEvidence()
 {
 	ClearCandidate();

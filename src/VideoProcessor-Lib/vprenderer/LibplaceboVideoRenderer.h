@@ -1,6 +1,7 @@
 #pragma once
 
 #include <IRenderer.h>
+#include <StartupPresentationReadiness.h>
 #include <AnalysisFrame.h>
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <ITimingClock.h>
@@ -55,6 +56,8 @@ public:
 	{
 		return "swapchain-submitted";
 	}
+	// Optional export only; deliberately not part of IVideoRenderer's vtable.
+	bool GetStartupPresentationReadiness(StartupPresentation::SnapshotV1& snapshot) const;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;

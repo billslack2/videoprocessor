@@ -337,6 +337,11 @@ public:
     // Presentation-only changes discard authority and votes exactly like Reset,
     // while retaining source-bound independent native facts for revalidation.
     void ResetPresentationState();
+    // Call only after a queue-only boundary has independently revalidated the
+    // exact native rectangle on the new source packet. Preserve native format
+    // facts, never pending votes, source identities or remembered-edge leases.
+    bool ResetForNativeQueueContinuity(const ActivePictureBounds& exactNativeBounds);
+
 	// Scene edits invalidate in-flight proof, not the last affirmative geometry.
 	// This prevents confirmations from straddling a cut while keeping the stable
 	// same-generation reference available to the frame-local presentation policy.

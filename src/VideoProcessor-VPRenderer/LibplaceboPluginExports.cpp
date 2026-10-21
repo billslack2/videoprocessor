@@ -82,3 +82,19 @@ VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink(void* context,
 {
     AnalysisDiagnosticTrace::SetExternalSinks(context,records,frames,active);
 }
+
+extern "C" __declspec(dllexport) uint32_t __cdecl
+VideoProcessorLibplaceboGetStartupPresentationReadinessV1(
+    IVideoRenderer* renderer, StartupPresentation::SnapshotV1* snapshot)
+{
+    using namespace StartupPresentation;
+    if (!renderer || !snapshot || !Supported(*snapshot))
+        return static_cast<uint32_t>(QueryStatus::Unsupported);
+    auto* vp = dynamic_cast<LibplaceboVideoRenderer*>(renderer);
+    if (!vp) return static_cast<uint32_t>(QueryStatus::Unsupported);
+    SnapshotV1 current;
+    if (!vp->GetStartupPresentationReadiness(current))
+        return static_cast<uint32_t>(QueryStatus::Busy);
+    *snapshot = current;
+    return static_cast<uint32_t>(QueryStatus::Available);
+}

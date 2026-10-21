@@ -39,6 +39,27 @@ namespace Tests
 			return input;
 		}
 
+        void QualifyExplicitCaptionFitFixture(PresentationRecoveryInput& input,
+            const ActivePictureBounds& independentlyConfirmedCaptionBounds)
+        {
+            // The caller explicitly declares an accepted current caption/backing
+            // in these positive fixtures. Raw visibility and dense FIT completion
+            // are deliberately insufficient in the negative fixtures.
+            input.crop.framePresentationEpoch=input.presentationEpoch;
+            ConfirmedFitOwnershipInput owner;
+            owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+            owner.current=owner.confirmed=true;
+            owner.nativeBase=input.crop.geometry;
+            owner.approvedBounds=input.candidate.sourceBounds;
+            owner.evidenceBounds=independentlyConfirmedCaptionBounds;
+            owner.sourceGeneration=input.crop.frameSourceGeneration;
+            owner.sourceSequence=input.crop.frameSourceSequence;
+            owner.presentationEpoch=input.presentationEpoch;
+            input.confirmedFitOwnership=QualifyConfirmedFitOwnership(owner);
+            Assert::IsTrue(input.confirmedFitOwnership.available,
+                L"This positive fixture must originate an explicit current bounded caption owner.");
+        }
+
 		CaptionBoundedFitAcquisitionInput MakeCaptionFitInput(
 			Input& crop, int rasterWidth, int rasterHeight,
 			int pictureTop, int pictureBottom, int captionLeft,
@@ -3671,6 +3692,7 @@ namespace Tests
             pending.candidate=Evaluate(captionOwner);
             Assert::IsTrue(pending.candidate.applyCrop);
             Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT),int(pending.candidate.owner));
+            QualifyExplicitCaptionFitFixture(pending,pending.crop.outwardExpansion);
             const auto bounded=EvaluateNearBlackBoundedPresentation(caption.state,pending);
             const auto admitted=AdmitCropPresentation(fill,pending.crop,bounded.presentation,1);
             Assert::IsFalse(admitted.blocked);
@@ -10529,6 +10551,7 @@ namespace Tests
                     recovery.presentationEpoch = 3;
                     recovery.framesPerSecond = 23.976;
                     recovery.confirmedPresentationResolved = proof.available;
+                    if(proof.available)QualifyExplicitCaptionFitFixture(recovery,acquisition.captionBounds);
                     const auto recovered = EvaluatePresentationRecovery(recovery);
                     recoveryState = recovered.state;
                     recovery.previous = recoveryState;
@@ -10848,6 +10871,7 @@ namespace Tests
                 recovery.retentionBounds = fit.geometry;
                 recovery.confirmedPresentationResolved = true;
                 recovery.candidate = Evaluate(fit);
+                QualifyExplicitCaptionFitFixture(recovery,request.captionBounds);
                 const auto recovered = EvaluatePresentationRecovery(recovery);
                 Assert::IsFalse(recovered.state.active);
                 recovery.previous = recovered.state;
@@ -14948,6 +14972,7 @@ input.currentNativeBounds = crop.geometry;
             input.candidate.sourceBounds.top &= ~1;
             input.candidate.sourceBounds.bottom =
                 (std::min)(input.crop.rasterHeight, (input.candidate.sourceBounds.bottom + 1) & ~1);
+            QualifyExplicitCaptionFitFixture(input,input.crop.currentVisibleBounds);
             return ResolveUncertainPicturePresentation(input, input.candidate);
         }
         static SubmittedNativeScopeAnchorUpdateInput CommitInput(const PresentationRecoveryInput& input,
@@ -15351,6 +15376,7 @@ input.currentNativeBounds = crop.geometry;
             currentOwner.nearBlackEpisodeRetainCrop=currentOwner.nearBlackEpisodeFullRaster=false;
             r.candidate=Evaluate(currentOwner);
             Assert::IsTrue(r.candidate.applyCrop && r.candidate.owner==DecisionOwner::OUTWARD_FIT);
+            QualifyExplicitCaptionFitFixture(r,r.crop.outwardExpansion);
             return r.candidate;
         }
         static SubmittedNativeScopeAnchor CommitCaptionFit(const PresentationRecoveryInput& r,
@@ -15709,6 +15735,9 @@ input.currentNativeBounds = crop.geometry;
             Assert::AreEqual(2102,confirmed.presentation.sourceBounds.bottom,
                 L"The independently confirmed exact current caption FIT can reveal the larger extent without waiting for AR reacquisition.");
             --r.retentionSourceSequence;
+            Assert::AreEqual(2102,ResolveUncertainPicturePresentation(r,r.candidate).presentation.sourceBounds.bottom,
+                L"A stale coarse AR scan cannot revoke an independently current accepted caption capsule.");
+            --r.confirmedFitOwnership.sourceSequence;
             Assert::AreEqual(2000,ResolveUncertainPicturePresentation(r,r.candidate).presentation.sourceBounds.bottom,
                 L"An old confirmation cannot qualify a new source envelope.");
         }

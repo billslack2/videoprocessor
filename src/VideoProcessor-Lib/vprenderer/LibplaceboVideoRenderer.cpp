@@ -4,7 +4,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
-#include <vprenderer/PresentationResetEpoch.h>
+#include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
 #include <vprenderer/NvidiaBt2020Reporter.h>
 
@@ -4321,6 +4321,8 @@ struct LibplaceboVideoRenderer::Impl
     std::array<SubtitlePresentationPacket,8> subtitlePresentationPackets{};
 
     struct TemporalPresentationSnapshot {
+        bool startupPoseQualified=false;
+        uint64_t startupFormatKey=0, startupOutputContract=0;
         AlphaSourceCrop::CropPresentationAdmissionState cropAdmission{};
         uint64_t viewportEpoch=0;
         SubtitlePreviewMode subtitleMode=SubtitlePreviewMode::None;
@@ -4630,6 +4632,11 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleLeftLastDetectionTick = 0;
 	uint64_t scopeSubtitleRightLastDetectionTick = 0;
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
+    // Fresh classified bar evidence, independent of retained/extreme FIT state.
+    AlphaSourceCrop::VerticalBarContentInput scopeCurrentVerticalContent{};
+    AlphaSourceCrop::VerticalBarContentDecision scopeCurrentVerticalDecision{};
+    ActivePictureBounds scopeCurrentVerticalBase{}, scopeCurrentVerticalBounds{};
+    uint64_t scopeCurrentVerticalGeneration=0, scopeCurrentVerticalSequence=0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
 	AlphaSourceCrop::VerticalTranslationConfirmationState
@@ -4873,9 +4880,46 @@ struct LibplaceboVideoRenderer::Impl
 	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
-	PresentationResetEpoch presentationResetEpoch;
-	uint64_t consumedPresentationResetEpoch = 0;
+    QueueNativeResetEpoch presentationResetEpoch;
+    uint64_t consumedPresentationResetEpoch = 0;
+    ActivePictureFrameIdentity lastNativeAnalysisIdentity;
+    struct PendingQueueNativeContinuity
+    {
+        bool available = false;
+        ActivePictureTransitionModel model;
+        ActivePictureBounds bounds;
+        ActivePictureFrameIdentity identity;
+    } pendingQueueNativeContinuity;
+    uint64_t deferredQueueNativeResetEpoch = 0, deferredQueueNativeResetGeneration = 0;
 	std::mutex renderMutex;
+    uint32_t startupRendererGeneration=0;
+    mutable std::mutex startupReadinessMutex;
+    StartupPresentation::SnapshotV1 startupReadiness{};
+    std::atomic<uint64_t> startupReadinessRevision{1};
+    uint64_t startupPublishedRevision=0;
+    StartupPresentation::Context startupDesiredContext{};
+
+    void UpdateStartupContext(const StartupPresentation::Context& context, bool required)
+    {
+        if (StartupPresentation::SameContext(StartupPresentation::Reset(startupDesiredContext),context)) return;
+        startupDesiredContext=context;
+        startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
+        std::unique_lock<std::mutex> lock(startupReadinessMutex,std::try_to_lock);
+        if (lock.owns_lock()) {
+            startupReadiness=StartupPresentation::Reset(context,required,startupReadiness);
+            startupPublishedRevision=startupReadinessRevision.load(std::memory_order_acquire);
+        }
+    }
+
+    void PublishStartupSubmission(const StartupPresentation::SubmissionInput& input, uint64_t revision)
+    {
+        if (revision!=startupReadinessRevision.load(std::memory_order_acquire)) return;
+        std::unique_lock<std::mutex> lock(startupReadinessMutex,std::try_to_lock);
+        if (!lock.owns_lock() || revision!=startupReadinessRevision.load(std::memory_order_acquire)) return;
+        startupReadiness=StartupPresentation::AfterSubmission(startupReadiness,input);
+        startupPublishedRevision=revision;
+    }
+
 	ViewportIntentMailbox<RendererSettings> pendingProfileIntent;
 	bool renderConfiguredScreenActive = false;
 	uint64_t renderViewportRequestSerial = 0;
@@ -6199,6 +6243,9 @@ struct LibplaceboVideoRenderer::Impl
 	void ClearScopeSubtitleEvidence()
 	{
         scopeSubtitleAnalysisBounds={};subtitleSharedPicture={};
+        scopeCurrentVerticalContent={}; scopeCurrentVerticalDecision={};
+        scopeCurrentVerticalBase={}; scopeCurrentVerticalBounds={};
+        scopeCurrentVerticalGeneration=0; scopeCurrentVerticalSequence=0;
         scopeSubtitleLastAdmittedTranslation = {};
         scopeSubtitleLastAdmittedTranslationBase = {};
         scopeSubtitleLastAdmittedTranslationGeneration = 0;
@@ -6493,6 +6540,15 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
 				if (analysisCompleted)
 					*analysisCompleted = true;
+                scopeCurrentVerticalContent=verticalInput;
+                scopeCurrentVerticalDecision=verticalDecision;
+                scopeCurrentVerticalBase=trustedPicture;
+                scopeCurrentVerticalBounds=trustedPicture;
+                scopeCurrentVerticalBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                if (upperContent) scopeCurrentVerticalBounds.top=upperContentTop;
+                if (lowerContent) scopeCurrentVerticalBounds.bottom=lowerContentBottom;
+                scopeCurrentVerticalGeneration=source->generation;
+                scopeCurrentVerticalSequence=sourceSequence;
 				const bool upperOverlayLike = verticalDecision.upperOverlayLike;
 				const bool lowerOverlayLike = verticalDecision.lowerOverlayLike;
 				AlphaSourceCrop::VerticalTranslationConfirmationInput
@@ -9292,10 +9348,11 @@ struct LibplaceboVideoRenderer::Impl
 		latestFullRasterCommitEpoch = 0;
 	}
 
-	void RequestPresentationStateReset()
-	{
-		presentationResetEpoch.Request();
-	}
+    void RequestPresentationStateReset(QueueNativeResetKind kind = QueueNativeResetKind::FULL)
+    {
+        startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
+        presentationResetEpoch.Request(kind);
+    }
 
 	// Consumed after RenderLocked returns, so this frame's geometry references
 	// remain valid and its full-raster presentation completes before withdrawal.
@@ -9303,6 +9360,9 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ClearActivePictureAuthorityForReacquisition()
 	{
+        pendingQueueNativeContinuity = {};
+        lastNativeAnalysisIdentity = {};
+        deferredQueueNativeResetEpoch = deferredQueueNativeResetGeneration = 0;
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
 		movingPictureTransition = {};
@@ -9351,9 +9411,23 @@ struct LibplaceboVideoRenderer::Impl
         subtitleTemporalCleanFrames = 0;
     }
 
-	void ClearPresentationStateForReset(uint64_t resetEpoch)
-	{
-		ClearActivePictureAuthorityForReacquisition();
+    void ClearPresentationStateForReset(uint64_t resetEpoch, QueueNativeResetKind kind)
+    {
+        PendingQueueNativeContinuity pending;
+        if (kind == QueueNativeResetKind::QUEUE_ONLY && nlsGeometryAvailable &&
+            nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            lastNativeAnalysisIdentity.transportGeneration == nlsGeometrySourceGeneration &&
+            lastNativeAnalysisIdentity.sourceFormatGeneration == nlsGeometrySourceFormatKey &&
+            lastNativeAnalysisIdentity.acceptedSequence && lastNativeAnalysisIdentity.analysisDomainKey)
+        {
+            pending.available = true;
+            pending.model = nlsTransition;
+            pending.bounds = nlsGeometry;
+            pending.identity = lastNativeAnalysisIdentity;
+        }
+        ClearActivePictureAuthorityForReacquisition();
+        pendingQueueNativeContinuity = std::move(pending);
 		// A renderer/refresh reset additionally breaks source/profile association.
 		activePictureAnalysisSourceGeneration = 0;
 		activePictureScreenProfileRequestSerial = 0;
@@ -9897,6 +9971,7 @@ struct LibplaceboVideoRenderer::Impl
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
         ActivePictureMeasurementCache& pixelMeasurements,
+        bool sourceDiscontinuity,
 		double framesPerSecond,
 		bool configuredScreenActive,
 		AlphaSourceCrop::SceneHoldDecision& sceneHold,
@@ -9962,6 +10037,50 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<unsigned long long>(analysisSource.generation));
 		}
 
+        if (pendingQueueNativeContinuity.available)
+        {
+            // One exact-current attempt, before ordinary model observation. The
+            // prior queue contributes native format facts only; caption, fill,
+            // admission, motion and remembered-edge certificates were cleared.
+            auto pending = std::move(pendingQueueNativeContinuity);
+            pendingQueueNativeContinuity = {};
+            QueueNativeContinuityDecision continuity;
+            if (automaticSourceCrop && configuredScreenActive && !nlsRequested && !fixedCropAspectConfigured)
+            {
+                pixelMeasurements.Begin(analysisSource, currentIdentity,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+                QueueNativeContinuityInput input;
+                input.resetKind = QueueNativeResetKind::QUEUE_ONLY;
+                input.previousModel = &pending.model;
+                input.previousNativeBounds = pending.bounds;
+                input.previousIdentity = pending.identity;
+                input.currentIdentity = input.nativeEvidenceIdentity = input.retentionIdentity = currentIdentity;
+                input.nativeEvidence = pixelMeasurements.Picture();
+                input.retention = pixelMeasurements.Retention(pending.bounds);
+                input.darknessEvaluated = pixelMeasurements.GlobalNearBlack().evaluated;
+                input.currentSourceValid = analysisSource.IsValid() &&
+                    analysisSource.generation == currentIdentity.transportGeneration;
+                input.sourceDiscontinuity = sourceDiscontinuity;
+                input.width = analysisSource.width; input.height = analysisSource.height;
+                continuity = EvaluateQueueNativeContinuity(input);
+            }
+            else continuity.reason = "queue-reset-analysis-mode-changed";
+            if (continuity.retained)
+            {
+                nlsTransition = std::move(continuity.model);
+                nlsGeometry = continuity.nativeBounds;
+                nlsGeometryAvailable = true; nlsTransitionWithdrawn = false;
+                nlsGeometryClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                nlsGeometryOrigin = ActivePictureAuthorityOrigin::NATIVE;
+                nlsGeometrySourceGeneration = continuity.sourceGeneration;
+                nlsGeometrySourceFormatKey = currentIdentity.sourceFormatGeneration;
+                forceAnalysis = true;
+            }
+            DebugLog::Log("Alpha queue native continuity: old_generation=%llu generation=%llu sequence=%llu retained=%d rect=%d,%d-%d,%d reason=%s",
+                pending.identity.transportGeneration, analysisSource.generation, frameNumber,
+                continuity.retained ? 1 : 0, pending.bounds.left, pending.bounds.top,
+                pending.bounds.right, pending.bounds.bottom, continuity.reason);
+        }
 		if (sparseBoundaryEnabled && sparseSceneCut) ++sparseBoundarySceneGeneration;
         RememberedEdgeReturnContext rememberedContext;
         if (rememberedEdgeEnabled || rememberedEdgeShadow)
@@ -11629,6 +11748,21 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePictureObservationSupportsCrop,
 				latestActivePictureEvidenceClassification,
 				ACTIVE_PICTURE_AMBIGUITY_HOLD_MS);
+            const auto& nativeBounds = sparseNativeEvidence.trustedBounds;
+            lastNativeAnalysisIdentity = nlsGeometryAvailable &&
+                nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                nlsGeometrySourceGeneration == analysisSource.generation &&
+                sparseNativeEvidence.available &&
+                sparseNativeEvidence.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                sparseNativeEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                !sparseNativeEvidence.axisEvidence.verticalCropGlyphExclusions &&
+                nlsGeometry.left == nativeBounds.left && nlsGeometry.top == nativeBounds.top &&
+                nlsGeometry.right == nativeBounds.right && nlsGeometry.bottom == nativeBounds.bottom &&
+                nlsGeometry.rasterWidth == nativeBounds.rasterWidth &&
+                nlsGeometry.rasterHeight == nativeBounds.rasterHeight &&
+                nlsGeometry.trustedBarAxes == nativeBounds.trustedBarAxes
+                    ? currentIdentity : ActivePictureFrameIdentity{};
 			if (applyScheduledDecision)
 			{
 				DebugLog::Log(
@@ -11789,12 +11923,28 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
-		uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
-		if (presentationResetEpoch.Consume(requestedResetEpoch))
-		{
-			consumedPresentationResetEpoch = requestedResetEpoch;
-			ClearPresentationStateForReset(requestedResetEpoch);
-		}
+        uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
+        QueueNativeResetKind resetKind = QueueNativeResetKind::NONE;
+        if (presentationResetEpoch.Consume(requestedResetEpoch, &resetKind))
+        {
+            consumedPresentationResetEpoch = requestedResetEpoch;
+            // The UI requests before advancing the queue generation. An already
+            // dequeued old packet may finish under its existing exact source
+            // contract; native continuity is considered only on the new queue.
+            if (DeferQueueNativeResetUntilNewPacket(resetKind,
+                activePictureAnalysisSourceGeneration, frameGeneration, videoFrame.IsSourceDiscontinuity()))
+            {
+                deferredQueueNativeResetEpoch = requestedResetEpoch;
+                deferredQueueNativeResetGeneration = activePictureAnalysisSourceGeneration;
+            }
+            else ClearPresentationStateForReset(requestedResetEpoch, resetKind);
+        }
+        if (deferredQueueNativeResetEpoch &&
+            (frameGeneration > deferredQueueNativeResetGeneration || videoFrame.IsSourceDiscontinuity()))
+        {
+            const auto deferredEpoch = deferredQueueNativeResetEpoch;
+            ClearPresentationStateForReset(deferredEpoch, QueueNativeResetKind::QUEUE_ONLY);
+        }
 		bool verifyRetainedProfileGeometryThisFrame = false;
 		if (viewportRequestSerial !=
 			activePictureScreenProfileRequestSerial)
@@ -12239,7 +12389,7 @@ struct LibplaceboVideoRenderer::Impl
 			TraceLocalBoundaryDiagnostics(analysisSource, currentActivePictureIdentity,
 				!cadenceRepeat && sceneResult.safeBoundary, cadenceRepeat);
 			UpdateNlsForFrame(analysisSource, sourceSequence,
-				currentActivePictureIdentity, pixelMeasurements,
+				currentActivePictureIdentity, pixelMeasurements, videoFrame.IsSourceDiscontinuity(),
 				state.displayMode->RefreshRateHz(),
 				configuredScreenActive, sceneHold,
 				(!cadenceRepeat && sceneResult.safeBoundary) ||
@@ -12257,6 +12407,8 @@ struct LibplaceboVideoRenderer::Impl
 			sparseBoundaryExperiment.Reset();
 			// An invalid analysis view is not a black frame. Publish an explicit
 			// unsafe result so neither a timer nor stale evidence can preserve crop.
+            pendingQueueNativeContinuity = {};
+            lastNativeAnalysisIdentity = {};
             inwardCaptionEvidence = {};
             inwardCaptionEstablishedBase = {};
             inwardCaptionIdentity = {};
@@ -13902,6 +14054,19 @@ struct LibplaceboVideoRenderer::Impl
             foldContract(configuredScreenActive ? 1ULL : 0ULL);
             if(!temporalOutputContract)temporalOutputContract=1;
         }
+        StartupPresentation::Context startupContext;
+        startupContext.rendererGeneration=startupRendererGeneration;
+        startupContext.rasterWidth=width; startupContext.rasterHeight=height;
+        startupContext.sourceGeneration=frameGeneration;
+        startupContext.sourceFormatKey=AlphaSourceFormatKey(state);
+        startupContext.viewportEpoch=viewportRequestSerial;
+        // Include output identity for the ordinary path as well as temporal output.
+        startupContext.outputContract=temporalOutputContract ^ vpOwnedSwapchainGeneration ^
+            (static_cast<uint64_t>(actualOutput.encoding)<<32);
+        const bool startupRequired=automaticSourceCropRequested && configuredScreenActive &&
+            !fixedCropAspectConfigured;
+        UpdateStartupContext(startupContext,startupRequired);
+        const uint64_t startupFrameRevision=startupReadinessRevision.load(std::memory_order_acquire);
         // Refit immutable source geometry for a new output contract, including
         // a paused source or the delayed packet selected from retained history.
         // This never advances detector, owner, or subtitle lease state.
@@ -13959,6 +14124,10 @@ struct LibplaceboVideoRenderer::Impl
                         static_cast<float>(picture.top),
                         static_cast<float>(picture.right),
                         static_cast<float>(picture.bottom)};
+                    // This completed mapping owns the new output contract;
+                    // its frozen source-format proof remains unchanged and is
+                    // checked against the live context at selected submission.
+                    mapped.startupOutputContract=startupContext.outputContract;
                     return true;
                 },true);
         };
@@ -14249,6 +14418,7 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationPoseEligible=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
         bool temporalPolicySubmittedScopeContinuityRetention=false;
+        bool temporalPolicyStartupPoseQualified=false;
         int temporalPolicyOwnerUpdate=0;
         AlphaSourceCrop::VerticalBarPresentationState temporalPolicyOwnerCandidate{};
         ActivePictureBounds temporalPolicyOwnerBase{};
@@ -14281,6 +14451,12 @@ struct LibplaceboVideoRenderer::Impl
             latestColdStrictDomain == queuedAnalysisDomainKey;
         const ActivePictureBounds coldStrictWorkerPicture =
             coldStrictWorkerProof ? latestColdStrictWorkerPicture : ActivePictureBounds{};
+        const auto& captionFitWorkerProof=currentSubtitlePreview.current.subtitleArProof;
+        const bool currentCaptionFitWorkerProof=captionFitWorkerProof.IsCurrentFor(
+            analysisSource,subtitleIdentity,localBoundaryPolicyGeneration,
+            localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
+        const ActivePictureBounds currentCaptionFitWorkerBase=currentCaptionFitWorkerProof
+            ? captionFitWorkerProof.candidate : ActivePictureBounds{};
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
 		auto configureViewport =
 			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
@@ -14294,7 +14470,8 @@ struct LibplaceboVideoRenderer::Impl
              subtitleIdentity, captureClockFrequency, &temporalPolicyCaptionProof,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
-             currentMeasuredCaptionAvailable, captionAnchorContextMatches, &state, &videoFrame,
+             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof,
+             currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
              recoveredSubtitleInspection, recoveredSubtitleBars,
@@ -14302,6 +14479,7 @@ struct LibplaceboVideoRenderer::Impl
 			 &hdrPeakAnalysisMotionProtectionPixels, &frameScreen, &linearFallbackCrop,
              &temporalRuntimeNlsGeometry, &temporalRuntimeNlsGeometryAvailable,
              &temporalRuntimeNlsTargetAspect, &temporalPolicySourceTick,
+             &temporalPolicyStartupPoseQualified,
              &temporalPolicyDrift, &temporalPolicyVerticalInput,
              &temporalPolicyRequestedTranslation, &temporalPolicyDriftDurationMs,
              &temporalPolicyRoutedTranslation, &temporalPolicyTranslationRequested,
@@ -15710,6 +15888,64 @@ releaseDriftBaseRetention =
 			recoveryInput.presentationEpoch = viewportRequestSerial;
 			recoveryInput.currentTick = episodeInput.currentTick;
 			recoveryInput.framesPerSecond = episodeInput.framesPerSecond;
+            // Inspection completion and presentation ownership have different
+            // jobs. Only independently current caption/UI evidence can certify
+            // a new FIT around this native picture; raw dense geometry cannot.
+            const auto sameNative=[&](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+                return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+                    a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight &&
+                    a.trustedBarAxes==b.trustedBarAxes;
+            };
+            const auto qualifyFit=[&](AlphaSourceCrop::ConfirmedFitOwnershipOrigin origin,
+                const ActivePictureBounds& approved,const ActivePictureBounds& occupied,
+                bool captionPaddingBounded=false) {
+                AlphaSourceCrop::ConfirmedFitOwnershipInput proof;
+                proof.origin=origin; proof.current=true; proof.confirmed=true;
+                proof.nativeBase=cropInput.geometry; proof.approvedBounds=approved;
+                proof.evidenceBounds=occupied; proof.sourceGeneration=frameGeneration;
+                proof.sourceSequence=sourceSequence; proof.presentationEpoch=viewportRequestSerial;
+                proof.upperContent=scopeCurrentVerticalContent.upperContent;
+                proof.lowerContent=scopeCurrentVerticalContent.lowerContent;
+                proof.upperOverlayLike=scopeCurrentVerticalDecision.upperOverlayLike;
+                proof.lowerOverlayLike=scopeCurrentVerticalDecision.lowerOverlayLike;
+                return captionPaddingBounded
+                    ? AlphaSourceCrop::QualifyCaptionFitWithinPadding(proof,
+                        std::max(8,width/160)+scopeSubtitlePaddingPixels,
+                        std::max(8,height/90)+scopeSubtitlePaddingPixels)
+                    : AlphaSourceCrop::QualifyConfirmedFitOwnership(proof);
+            };
+            if (captionFitAcquisition.available)
+                recoveryInput.confirmedFitOwnership=qualifyFit(
+                    AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_CAPTION,
+                    captionFitAcquisition.bounds,currentConfirmedCaptionBounds);
+            else if (protectedCaptionFit)
+                recoveryInput.confirmedFitOwnership=qualifyFit(
+                    AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_CAPTION,
+                    inwardCaptionEvidence.protectedBounds,inwardCaptionEvidence.protectedBounds);
+            else if (!suppressCaptionPresentation && currentMeasuredCaptionAvailable &&
+                currentConfirmedCaptionAvailable && currentCaptionFitWorkerProof &&
+                sameNative(currentCaptionFitWorkerBase,cropInput.geometry) &&
+                confirmedCurrentVerticalFit && outwardExpansionAvailable)
+                recoveryInput.confirmedFitOwnership=qualifyFit(
+                    AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_CAPTION,
+                    outwardExpansion,currentConfirmedCaptionBounds,true);
+            if (!recoveryInput.confirmedFitOwnership.available && confirmedCurrentVerticalFit &&
+                subtitleBarAnalysisCompleted && scopeCurrentVerticalGeneration==frameGeneration &&
+                scopeCurrentVerticalSequence==sourceSequence &&
+                sameNative(scopeCurrentVerticalBase,cropInput.geometry)) {
+                AlphaSourceCrop::PresentationEnvelopeGeometryInput ui;
+                ui.trustedPicture=cropInput.geometry;
+                ui.observedContent=scopeCurrentVerticalBounds; ui.observedContentAvailable=true;
+                ui.expandTop=scopeCurrentVerticalContent.upperContent;
+                ui.expandBottom=scopeCurrentVerticalContent.lowerContent;
+                ui.horizontalPadding=std::max(8,width/160)+scopeSubtitlePaddingPixels;
+                ui.verticalPadding=std::max(8,height/90)+scopeSubtitlePaddingPixels;
+                const auto approved=AlphaSourceCrop::BuildPresentationEnvelope(ui);
+                if (approved.valid && approved.expanded)
+                    recoveryInput.confirmedFitOwnership=qualifyFit(
+                        AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY,
+                        approved.bounds,scopeCurrentVerticalBounds);
+            }
 			// A current contained observation can retire only the obsolete inspection
 			// latch. It does not bypass recovery proof or establish new crop authority.
 			const bool currentContainedInspectionRetention =
@@ -15791,6 +16027,7 @@ releaseDriftBaseRetention =
 				   confirmedCurrentVerticalFit) ||
 				  (cropDecision.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION &&
 				   subtitleBarAnalysisCompleted && verticalTranslationActive)));
+            recoveryInput.confirmedPresentationResolved |= recoveryInput.confirmedFitOwnership.available;
 			const auto recoveryDecision = AlphaSourceCrop::EvaluatePresentationRecovery(recoveryInput);
 			cropPresentationRecovery = recoveryDecision.state;
 			cropDecision = recoveryDecision.presentation;
@@ -16051,6 +16288,11 @@ releaseDriftBaseRetention =
             {
                 recoveryInput.candidate = admissionDecision.presentation;
                 recoveryInput.confirmedPresentationResolved = true;
+                if (!coldCaptionDecision.held)
+                    recoveryInput.confirmedFitOwnership=qualifyFit(
+                        AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_CAPTION,
+                        coldCaptionDecision.presentation.sourceBounds,
+                        coldCaptionDecision.presentation.sourceBounds);
             }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
@@ -16128,6 +16370,13 @@ releaseDriftBaseRetention =
 			cropAdmissionPreviouslyBlocked = admissionDecision.blocked;
 			cropPresentationAdmission = admissionDecision.state;
 			cropDecision = admissionDecision.presentation;
+            // Readiness observes an admitted pose, never an unowned FIT proposal.
+            // It cannot grant crop authority or change ordinary playback policy.
+            temporalPolicyStartupPoseQualified = !admissionDecision.blocked &&
+                cropDecision.owner != AlphaSourceCrop::DecisionOwner::FULL_RASTER &&
+                (cropDecision.owner != AlphaSourceCrop::DecisionOwner::OUTWARD_FIT ||
+                 recoveryInput.confirmedFitOwnership.available);
+
             // Stage an admitted translation; only selected successful output commits it.
             // crop. Release-only output cannot renew this provenance.
             if (!admissionDecision.blocked &&
@@ -17440,6 +17689,9 @@ releaseDriftBaseRetention =
                     configureViewport(renderImage,target,configuredScreenActive,
                         subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
                     sourceSnapshot.viewportEpoch=viewportRequestSerial;
+                    sourceSnapshot.startupPoseQualified=temporalPolicyStartupPoseQualified;
+                    sourceSnapshot.startupFormatKey=startupContext.sourceFormatKey;
+                    sourceSnapshot.startupOutputContract=startupContext.outputContract;
                     sourceSnapshot.subtitleMode=subtitlePreviewMode;
                     sourceSnapshot.captionOwnershipProof=temporalPolicyCaptionProof;
                     sourceSnapshot.captionOwnershipIdentity=subtitleIdentity;
@@ -18336,6 +18588,31 @@ releaseDriftBaseRetention =
                 static_cast<int>(std::lround(renderImage.crop.x1)),
                 static_cast<int>(std::lround(renderImage.crop.y1)),
                 width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            StartupPresentation::SubmissionInput startupSubmission;
+            startupSubmission.context=startupContext;
+            startupSubmission.selectedSequence=scopeAnchorCommit.sourceSequence;
+            startupSubmission.tick=GetTickCount64();
+            startupSubmission.required=startupRequired;
+            startupSubmission.rendered=true; startupSubmission.submitted=true;
+            startupSubmission.contextCurrent=scopeAnchorCommit.sourceGeneration==frameGeneration &&
+                scopeAnchorCommit.presentationEpoch==viewportRequestSerial &&
+                (!selectedPresentationValid ||
+                 (selectedPresentationForCommit.startupFormatKey==startupContext.sourceFormatKey &&
+                  selectedPresentationForCommit.startupOutputContract==startupContext.outputContract));
+            const auto& startupNative=scopeAnchorCommit.nativeCrop;
+            startupSubmission.nativeAuthorityConfirmed=scopeAnchorCommit.nativeCropAvailable &&
+                scopeAnchorCommit.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                startupNative.trustedBarAxes!=ActivePictureBounds::BarAxes::NONE;
+            startupSubmission.fullRasterAuthorityConfirmed=scopeAnchorCommit.fullRasterAuthority;
+            startupSubmission.nativeBounds=startupSubmission.fullRasterAuthorityConfirmed
+                ? StartupPresentation::Rect{0,0,width,height}
+                : StartupPresentation::Rect{startupNative.left,startupNative.top,startupNative.right,startupNative.bottom};
+            const auto& startupDisplay=scopeAnchorCommit.submittedBounds;
+            startupSubmission.displayedBounds={startupDisplay.left,startupDisplay.top,startupDisplay.right,startupDisplay.bottom};
+            startupSubmission.poseQualified=scopeAnchorCommit.fullRasterAuthority ||
+                (selectedPresentationValid ? selectedPresentationForCommit.startupPoseQualified :
+                    temporalPolicyStartupPoseQualified);
+            PublishStartupSubmission(startupSubmission,startupFrameRevision);
             const bool hadSubmittedScope = submittedNativeScopeAnchor.available;
             submittedNativeScopeAnchor =
                 AlphaSourceCrop::CommitSubmittedNativeScopeAnchor(scopeAnchorCommit);
@@ -19200,11 +19477,13 @@ releaseDriftBaseRetention =
 		UNREFERENCED_PARAMETER(videoHwnd);
 		// ResizeBuffers and output negotiation may enter the driver. Never run
 		// them from the window/UI thread; coalesce to the next render safe point.
+		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		resizePending.store(true, std::memory_order_release);
 	}
 
 	void RenegotiateOutput()
 	{
+		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		outputRenegotiationPending.store(true, std::memory_order_release);
 	}
 
@@ -19316,6 +19595,7 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		 videoState->colorspace != m_videoState->colorspace);
 	if (materialSourceTransition && m_impl)
 	{
+        m_impl->startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		m_impl->subtitlePreviewState.ResetForSourceChange();
 		std::lock_guard<std::mutex> sourceGuard(m_impl->ingressStatusMutex);
 		m_impl->sourceLuminance = {};
@@ -19729,6 +20009,7 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl());
+    m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
 			double requestedRefreshRate, double previousRefreshRate)
@@ -20371,6 +20652,27 @@ bool LibplaceboVideoRenderer::FinalizeRetirementForShutdown() noexcept
 }
 
 
+bool LibplaceboVideoRenderer::GetStartupPresentationReadiness(StartupPresentation::SnapshotV1& snapshot) const
+{
+    if (!m_impl) return false;
+    const auto revision=m_impl->startupReadinessRevision.load(std::memory_order_acquire);
+    std::unique_lock<std::mutex> lock(m_impl->startupReadinessMutex,std::try_to_lock);
+    if (!lock.owns_lock() || m_impl->startupPublishedRevision!=revision) return false;
+    snapshot=m_impl->startupReadiness;
+    // A reset may arrive before this old frame captures its publication revision.
+    // Verify the requested source/output context too; every lock is try-only.
+    std::unique_lock<std::mutex> queueLock(m_queueMutex,std::try_to_lock);
+    std::unique_lock<std::mutex> stateLock(m_stateMutex,std::try_to_lock);
+    if (!queueLock.owns_lock() || !stateLock.owns_lock() || !m_videoState ||
+        !m_videoState->valid || !m_videoState->displayMode ||
+        snapshot.sourceGeneration!=m_queueGeneration ||
+        snapshot.sourceFormatKey!=AlphaSourceFormatKey(*m_videoState) ||
+        m_impl->resizePending.load(std::memory_order_acquire) ||
+        m_impl->outputRenegotiationPending.load(std::memory_order_acquire)) return false;
+    return revision==m_impl->startupReadinessRevision.load(std::memory_order_acquire) &&
+        snapshot.viewportEpoch==m_viewportRequestSerial.load(std::memory_order_acquire);
+}
+
 void LibplaceboVideoRenderer::Reset()
 {
 	// Queue invalidation is CPU-side state and must never wait for an in-flight
@@ -20417,10 +20719,10 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 {
 	// This may be called from UI/profile application paths. It only advances
 	// queue state, so waiting for the GPU render/compile lock is unnecessary.
-	// It nevertheless discards source frames, so the next generation must not
-	// reuse source-derived crop/presentation authority from the old queue.
+    // Caption/fill presentation state is invalidated. Only an exact first
+    // new-packet native bar proof can revalidate native format continuity.
 	if (m_impl)
-		m_impl->RequestPresentationStateReset();
+        m_impl->RequestPresentationStateReset(QueueNativeResetKind::QUEUE_ONLY);
 	BeginQueueGeneration("live queue reset");
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
@@ -20743,6 +21045,7 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 	if (!m_impl)
 		return;
 
+	m_impl->startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 	m_viewportRequestNs.store(
 		SteadyClockNowNs(), std::memory_order_relaxed);
 	const uint64_t requestSerial =
@@ -23266,6 +23569,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 			// UI-originated control changes never wait behind shader compilation.
 			// Coalesced work is applied here, on the render thread, once the GPU is
 			// available again and before the next frame is described.
+            // Invalidate any old-frame publication that adopted an output
+            // request's revision before its deferred work was consumed. Do it
+            // before clearing either pending flag that the UI query checks.
+            if (m_impl->resizePending.load(std::memory_order_acquire) ||
+                m_impl->outputRenegotiationPending.load(std::memory_order_acquire))
+                m_impl->startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 			if (m_impl->resizePending.exchange(false,
 				std::memory_order_acq_rel))
 			{

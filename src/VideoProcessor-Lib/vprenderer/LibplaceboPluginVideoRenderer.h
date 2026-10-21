@@ -1,6 +1,7 @@
 #pragma once
 
 #include <IRenderer.h>
+#include <StartupPresentationReadiness.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 
@@ -28,6 +29,8 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override;
 	const char* PresentedLiveFrameEvidence() const override;
+	StartupPresentation::QueryStatus GetStartupPresentationReadiness(
+		StartupPresentation::SnapshotV1& snapshot) const;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
@@ -109,4 +112,5 @@ public:
 private:
 	IVideoRenderer* m_renderer = nullptr;
 	void (__cdecl *m_destroyRenderer)(IVideoRenderer*) = nullptr;
+	uint32_t (__cdecl *m_startupReadiness)(IVideoRenderer*, StartupPresentation::SnapshotV1*) = nullptr;
 };
