@@ -1555,6 +1555,41 @@ namespace Tests
                 if(n==2)Assert::IsTrue(s.motion.onsetPending);
             }
         }
+        TEST_METHOD(PreactiveNativeAbruptJumpResetsEarlierVotesAndSeedsLaterMotion)
+        {
+            for(int height : {1080,2160}) for(int axis=0;axis<3;++axis) for(bool abrupt : {false,true})
+            {
+                MotionSequence s(height);const int start=s.input.trustedGeometry.top-16;
+                s.Target(start);s.Step();s.Target(start-2);s.Step();s.Target(start-4);s.Step();
+                Assert::IsTrue(s.motion.onsetPending);
+                const int limit=std::max(4,height/100),delta=limit+(abrupt?1:0);
+                const auto set=[&](int top,int bottom) {
+                    s.Target(top);auto b=s.input.outwardCandidate;b.bottom=bottom;
+                    b.aspectRatio=double(b.rasterWidth)/(b.bottom-b.top);
+                    s.input.evidence.trustedBounds=s.input.evidence.proposedBounds=s.input.outwardCandidate=b;
+                    s.input.retention.expansionCandidate=b;s.input.retention.activePicture=s.input.evidence;
+                    s.input.retention.expandingTop.barPixels=s.input.trustedGeometry.top-top;
+                    s.input.retention.expandingBottom.barPixels=bottom-s.input.trustedGeometry.bottom;
+                };
+                const int top=start-4-(axis==1?2:delta),bottom=height-(start-4)+(axis==0?2:delta);
+                set(top,bottom);s.Step();
+                if(!abrupt)
+                {
+                    Assert::IsTrue(s.motion.change!=MovingPictureTransitionChange::ABRUPT_NATIVE,
+                        L"The existing native jump threshold remains inclusive; supported larger scan steps are unchanged.");
+                    continue;
+                }
+                Assert::IsTrue(s.motion.change==MovingPictureTransitionChange::ABRUPT_NATIVE);
+                Assert::IsFalse(s.motion.active||s.motion.onsetPending||s.motion.awaitingPublication);
+                Assert::AreEqual(0u,s.motion.directionalChanges);
+                Assert::AreEqual(top,s.motion.anchor.top);Assert::AreEqual(bottom,s.motion.quietAnchor.bottom);
+                Assert::AreEqual(s.identity.acceptedSequence-1,s.motion.observedNativeSourceSequence);
+                Assert::AreEqual(top,s.motion.observedNative.top);
+                set(top-2,bottom+2);s.Step();Assert::IsFalse(s.motion.onsetPending||s.motion.active);
+                set(top-4,bottom+4);s.Step();Assert::IsTrue(s.motion.onsetPending);
+                Assert::IsFalse(s.motion.active||s.motion.awaitingPublication);
+            }
+        }
         TEST_METHOD(FullRasterAuthorityAndNearBlackStillRetireUncertifiedHold)
         {
             for(bool full : {false,true}) {

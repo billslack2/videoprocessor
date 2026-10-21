@@ -250,7 +250,7 @@ namespace AlphaSourceCrop
         state.base = current.trustedGeometry;
         state.identity = identity;
         const bool nativePosition = CurrentNativeEdgePosition(current, candidate);
-        const bool priorNativePosition = previous.active && adjacent &&
+        const bool priorNativePosition = adjacent &&
             previous.observedNativeSourceSequence != 0 &&
             previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
             ValidVerticalBarPicture(previous.observedNative);
@@ -300,6 +300,11 @@ namespace AlphaSourceCrop
             state.identity = identity;
             if (!certified) return state;
             state.anchor = state.last = state.quietAnchor = candidate;
+            if (!previous.active && nativePosition)
+            {
+                state.observedNative = candidate;
+                state.observedNativeSourceSequence = identity.acceptedSequence;
+            }
             return state;
         }
         if (!certified)
