@@ -8,6 +8,7 @@
 
 #include <pch.h>
 #include <DisplayMonitorInventory.h>
+#include <DisplayWindowGeometry.h>
 #include "BackendInputConfig.h"
 #include <ApplicationShutdownPolicy.h>
 #include <AnalysisDiagnosticTrace.h>
@@ -9342,6 +9343,15 @@ void CVideoProcessorDlg::RenderStart()
 	m_directShowGraphRecoveryGeneration = rendererGeneration;
 	m_directShowGraphRecoveryEpoch = 0;
 	m_directShowGraphRecoveryStartedTick = 0;
+    // Window DPI awareness is fixed at creation. Recreate only when changing
+    // between VP Renderer and a legacy child renderer, after retirement has
+    // released the old host. Ordinary source/profile restarts retain the HWND.
+    if (m_fullScreenVideoWindow &&
+        m_fullScreenVideoWindow->UsesPhysicalCoordinates() != !m_activeRendererIsDirectShow)
+    {
+        FullScreenVideoWindowDestroy();
+        m_preserveFullscreenHostForProfileRestart = false;
+    }
 	if (m_preserveFullscreenHostForProfileRestart &&
 		m_fullScreenVideoWindow &&
 		IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -10980,6 +10990,7 @@ void CVideoProcessorDlg::RefreshPresentationLayoutAfterSessionToggle(
 
 void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 {
+    DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates(!m_activeRendererIsDirectShow);
 	assert(!m_fullScreenVideoWindow);
 
 	HMONITOR hmon = SelectFullscreenMonitor();
@@ -10988,9 +10999,9 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	if (!m_fullScreenVideoWindow)
 		FatalError(TEXT("Failed to create full screen renderer window"));
 	if (m_windowedFullScreenMode == false)
-		m_fullScreenVideoWindow->Create(hmon, this->GetSafeHwnd());
+		m_fullScreenVideoWindow->Create(hmon, this->GetSafeHwnd(), !m_activeRendererIsDirectShow);
 	if (m_windowedFullScreenMode == true)
-		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
+		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd(), !m_activeRendererIsDirectShow);
 
 	const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
 	HWND configurationEditor = VisibleAssociatedConfigurationEditor();
@@ -12363,6 +12374,8 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
         if (requested.CompareNoCase(m_fullscreenMonitorName) != 0)
         {
             FullscreenMonitorName(requested);
+            DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates(
+                m_fullScreenVideoWindow && m_fullScreenVideoWindow->UsesPhysicalCoordinates());
             // Use the existing fullscreen window and normal resize coordination.
             // Config live apply must preserve keyboard focus.
             const auto monitors = DisplayMonitorInventory::Enumerate();
@@ -14535,6 +14548,24 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 		return;
 	}
 
+    if (m_fullScreenVideoWindow && m_fullScreenVideoWindow->UsesPhysicalCoordinates() &&
+        ::IsWindow(m_fullScreenVideoWindow->GetHWND()))
+    {
+        DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates;
+        MONITORINFO info{sizeof(info)};
+        const HWND window = m_fullScreenVideoWindow->GetHWND();
+        if (GetMonitorInfoW(SelectFullscreenMonitor(), &info))
+        {
+            ::SetWindowPos(window, nullptr, info.rcMonitor.left, info.rcMonitor.top,
+                info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+            RECT client{};
+            DisplayWindowGeometry::ClientRect(window, &client);
+            DebugLog::Log("Fullscreen display-change physical geometry: monitor=%ldx%ld client=%ldx%ld",
+                info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top,
+                client.right - client.left, client.bottom - client.top);
+        }
+    }
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
@@ -15034,6 +15065,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// host-only timer must never take keyboard focus later.
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
 	{
+        DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates(
+            m_fullScreenVideoWindow && m_fullScreenVideoWindow->UsesPhysicalCoordinates());
 		KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
 		HWND configurationEditor = VisibleAssociatedConfigurationEditor();
 		if (!configurationEditor)

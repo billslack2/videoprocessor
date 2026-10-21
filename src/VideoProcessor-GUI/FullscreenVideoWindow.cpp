@@ -8,6 +8,7 @@
 
 #include <pch.h>
 #include <ApplicationShutdownPolicy.h>
+#include <DisplayWindowGeometry.h>
 
 #include "FullscreenVideoWindow.h"
 #include "VideoProcessorDlg.h"
@@ -88,8 +89,10 @@ LRESULT CALLBACK FullscreenVideoWindow::WindowProc(HWND hwnd, UINT uMsg, WPARAM 
 }
 
 // Same as create, but this time it's not exclusive
-void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow)
+void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow, bool physicalCoordinates)
 {
+    m_physicalCoordinates = physicalCoordinates;
+    DisplayWindowGeometry::PhysicalCoordinates coordinateScope(physicalCoordinates);
     //
     // Register the window class
     //
@@ -143,8 +146,10 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
 }
 
 
-void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
+void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow, bool physicalCoordinates)
 {
+    m_physicalCoordinates = physicalCoordinates;
+    DisplayWindowGeometry::PhysicalCoordinates coordinateScope(physicalCoordinates);
     //
     // Register the window class
     //
@@ -230,6 +235,21 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 	}
     switch (uMsg)
     {
+    case WM_DPICHANGED:
+    {
+        if (!m_physicalCoordinates) break;
+        DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates;
+        const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+        const HMONITOR monitor = suggested ? MonitorFromRect(suggested, MONITOR_DEFAULTTONEAREST) :
+            MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO info{sizeof(info)};
+        if (GetMonitorInfoW(monitor, &info))
+            SetWindowPos(m_hwnd, nullptr, info.rcMonitor.left, info.rcMonitor.top,
+                info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+        return 0;
+    }
+
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
 		// Keep system close unconditional. It cannot depend on an accelerator

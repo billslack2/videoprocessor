@@ -10,6 +10,9 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DisplayWindowGeometry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DisplayMonitorInventory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
