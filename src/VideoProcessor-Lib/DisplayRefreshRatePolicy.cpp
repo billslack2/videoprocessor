@@ -724,3 +724,36 @@ const char* ToString(DisplayRefreshRateReason reason)
 	default: return "unknown";
 	}
 }
+
+bool DisplayOutputModeMatches(const DisplayOutputModeState& expected,
+    const DisplayOutputModeState& observed)
+{
+    const bool scanMatches = expected.scan == DisplayOutputScan::Progressive ?
+        observed.scan != DisplayOutputScan::InterlacedUpper && observed.scan != DisplayOutputScan::InterlacedLower :
+        expected.scan == observed.scan;
+    return observed.targetKnown && expected.refreshRate.numerator && expected.refreshRate.denominator &&
+        observed.refreshRate.numerator && observed.refreshRate.denominator && expected.sourceWidth && expected.sourceHeight &&
+        expected.targetWidth && expected.targetHeight &&
+        expected.sourceWidth == observed.sourceWidth && expected.sourceHeight == observed.sourceHeight &&
+        expected.targetWidth == observed.targetWidth && expected.targetHeight == observed.targetHeight &&
+        scanMatches && DisplayRefreshRatesEquivalentForRestore(expected.refreshRate, observed.refreshRate);
+}
+bool DisplayOutputModeChangesRaster(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired)
+{
+    return desired.sourceWidth != before.sourceWidth || desired.sourceHeight != before.sourceHeight ||
+        desired.targetWidth != before.targetWidth || desired.targetHeight != before.targetHeight;
+}
+bool DisplayOutputModePrefersGdi(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired)
+{
+    return desired.sourceWidth && desired.sourceHeight &&
+        desired.sourceWidth == desired.targetWidth && desired.sourceHeight == desired.targetHeight &&
+        DisplayOutputModeChangesRaster(before, desired);
+}
+bool DisplayOutputModeVerifier::Observe(bool querySucceeded, const DisplayOutputModeState& observed)
+{
+    if (!querySucceeded || !DisplayOutputModeMatches(expected_, observed)) consecutive_ = 0;
+    else if (consecutive_ < 2) ++consecutive_;
+    return consecutive_ >= 2;
+}

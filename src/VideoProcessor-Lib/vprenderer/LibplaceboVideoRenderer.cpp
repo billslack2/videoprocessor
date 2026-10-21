@@ -3323,20 +3323,27 @@ namespace
         bool hasTargetMode = false;
 	};
 
-	bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
-		const CurrentDisplayMode& second)
-	{
-		return first.sourceWidth == second.sourceWidth &&
-			first.sourceHeight == second.sourceHeight &&
-			first.targetWidth == second.targetWidth &&
-			first.targetHeight == second.targetHeight &&
-            (!first.hasTargetMode || !second.hasTargetMode ||
-                first.targetMode.targetVideoSignalInfo.scanLineOrdering ==
-                    second.targetMode.targetVideoSignalInfo.scanLineOrdering) &&
-			DisplayRefreshRatesEquivalentForRestore(
-				{ first.refreshRate.Numerator, first.refreshRate.Denominator },
-				{ second.refreshRate.Numerator, second.refreshRate.Denominator });
-	}
+    DisplayOutputModeState ModeState(const CurrentDisplayMode& mode)
+    {
+        DisplayOutputScan scan = DisplayOutputScan::Progressive;
+        if (mode.hasTargetMode)
+        {
+            switch (mode.targetMode.targetVideoSignalInfo.scanLineOrdering)
+            {
+            case DISPLAYCONFIG_SCANLINE_ORDERING_PROGRESSIVE: break;
+            case DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST: scan = DisplayOutputScan::InterlacedUpper; break;
+            case DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST: scan = DisplayOutputScan::InterlacedLower; break;
+            default: scan = DisplayOutputScan::Unknown; break;
+            }
+        }
+        return {mode.sourceWidth, mode.sourceHeight, mode.targetWidth, mode.targetHeight,
+            {mode.refreshRate.Numerator, mode.refreshRate.Denominator}, scan, mode.hasTargetMode};
+    }
+    bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
+        const CurrentDisplayMode& second)
+    {
+        return DisplayOutputModeMatches(ModeState(first), ModeState(second));
+    }
 
 	UINT32 SourceModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
 	{
@@ -3474,9 +3481,8 @@ namespace
     LONG ApplyCompleteOutputMode(const std::wstring& device, const CurrentDisplayMode& desired,
         const CurrentDisplayMode& before, bool restoring, const char*& route)
     {
-        const bool rasterChange = desired.sourceWidth != before.sourceWidth || desired.sourceHeight != before.sourceHeight ||
-            desired.targetWidth != before.targetWidth || desired.targetHeight != before.targetHeight;
-        if (rasterChange && desired.sourceWidth == desired.targetWidth && desired.sourceHeight == desired.targetHeight)
+        const bool rasterChange = DisplayOutputModeChangesRaster(ModeState(before), ModeState(desired));
+        if (DisplayOutputModePrefersGdi(ModeState(before), ModeState(desired)))
         {
             route = "GDI-full-mode";
             bool selectorFound = false;
@@ -3720,28 +3726,12 @@ namespace
 		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
 			CurrentDisplayMode& observed) const
 		{
-			unsigned int consecutiveMatches = 0;
+			DisplayOutputModeVerifier verifier(ModeState(expected));
 			const ULONGLONG deadline = GetTickCount64() + 2500;
 			do
 			{
 				const bool queried = ReadCurrentDisplayMode(m_displayDeviceName, observed);
-				const bool matches = queried &&
-					observed.sourceWidth == expected.sourceWidth &&
-					observed.sourceHeight == expected.sourceHeight &&
-					observed.targetWidth == expected.targetWidth &&
-					observed.targetHeight == expected.targetHeight &&
-                    (expected.hasTargetMode ?
-                        observed.targetMode.targetVideoSignalInfo.scanLineOrdering ==
-                            expected.targetMode.targetVideoSignalInfo.scanLineOrdering :
-                        observed.targetMode.targetVideoSignalInfo.scanLineOrdering !=
-                            DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST &&
-                        observed.targetMode.targetVideoSignalInfo.scanLineOrdering !=
-                            DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST) &&
-					DisplayRefreshRatesEquivalentForRestore(
-						{ observed.refreshRate.Numerator, observed.refreshRate.Denominator },
-						{ expected.refreshRate.Numerator, expected.refreshRate.Denominator });
-				consecutiveMatches = matches ? consecutiveMatches + 1 : 0;
-				if (consecutiveMatches >= 2) return true;
+                if (verifier.Observe(queried, ModeState(observed))) return true;
 				Sleep(50);
 			}
 			while (GetTickCount64() < deadline);

@@ -447,5 +447,105 @@ namespace Tests
 			Assert::AreEqual(3840u, interlaced[0].mode.width);
 			Assert::IsTrue(interlaced[0].doubledRate);
 		}
+
+        TEST_METHOD(TesterProfileRanksExactHalfBeforeArbitraryFallbacks)
+        {
+            std::vector<DisplayOutputMode> modes;
+            std::string error;
+            Assert::IsTrue(ParseDisplayOutputModeList(
+                "1080p50 1080p59.94 1080p60 2160p30 2160p29.97 2160p25 2160p24 2160p23.976", modes, error));
+            const auto ranked = RankDisplayOutputModesForInput({60000,1001}, false, modes, modes);
+            const size_t order[] = {1,2,4,0,3,5,6,7};
+            Assert::AreEqual(size_t(8), ranked.size());
+            for (size_t i=0;i<8;++i) Assert::IsTrue(DisplayOutputModesExactlyEqual(modes[order[i]], ranked[i].mode));
+            Assert::IsTrue(ranked[2].exactCadenceRatio);
+            Assert::IsFalse(ranked[2].configuredFallback);
+            Assert::IsTrue(ranked[3].configuredFallback);
+        }
+        TEST_METHOD(CadenceRatiosPreferMultiplesAndSmallFactorsWithStableRasterTies)
+        {
+            const std::vector<DisplayOutputMode> modes = {
+                {3840,2160,{24,1}}, {1920,1080,{96,1}}, {3840,2160,{48,1}},
+                {1920,1080,{48,1}}, {3840,2160,{120,1}}};
+            const auto ranked = RankDisplayOutputModesForInput({24,1},false,modes,modes);
+            const size_t order[] = {0,2,3,1,4};
+            Assert::AreEqual(size_t(5),ranked.size());
+            for(size_t i=0;i<5;++i) Assert::IsTrue(DisplayOutputModesExactlyEqual(modes[order[i]],ranked[i].mode));
+        }
+        TEST_METHOD(UnavailableExactHalfCannotDisplaceAvailableFallback)
+        {
+            const std::vector<DisplayOutputMode> modes = {{3840,2160,{30,1}}, {3840,2160,{30000,1001}}};
+            const auto ranked=RankDisplayOutputModesForInput({60000,1001},false,modes,{modes[0]});
+            Assert::AreEqual(size_t(1),ranked.size());
+            Assert::IsTrue(ranked[0].configuredFallback);
+        }
+        TEST_METHOD(InterlacedRatioRankingUsesFieldCadence)
+        {
+            const std::vector<DisplayOutputMode> modes={{3840,2160,{30,1}}, {1920,1080,{30000,1001}}};
+            const auto ranked=RankDisplayOutputModesForInput({30000,1001},true,modes,modes);
+            Assert::IsTrue(DisplayOutputModesExactlyEqual(modes[1],ranked[0].mode));
+            Assert::IsTrue(ranked[0].exactCadenceRatio);
+        }
+        TEST_METHOD(FixedOutputWorksForUnrelatedCadenceAndInvalidInputStaysEmpty)
+        {
+            const std::vector<DisplayOutputMode> modes={{2560,1440,{60,1}}};
+            const auto ranked=RankDisplayOutputModesForInput({24,1},false,modes,modes);
+            Assert::AreEqual(size_t(1),ranked.size());
+            Assert::IsTrue(ranked[0].configuredFallback);
+            Assert::IsTrue(RankDisplayOutputModesForInput({0,1},false,modes,modes).empty());
+            Assert::IsTrue(RankDisplayOutputModesForInput({24,0},false,modes,modes).empty());
+        }
+        TEST_METHOD(FullModeRoutingUsesGdiForSourceOrSignalRasterChanges)
+        {
+            const DisplayOutputModeState full{3840,2160,3840,2160,{24,1},DisplayOutputScan::Progressive,true};
+            auto desired=full; desired.sourceWidth=desired.targetWidth=1920; desired.sourceHeight=desired.targetHeight=1080;
+            Assert::IsTrue(DisplayOutputModePrefersGdi(full,desired));
+            Assert::IsTrue(DisplayOutputModePrefersGdi(desired,full));
+            auto scaled=desired; scaled.targetWidth=3840; scaled.targetHeight=2160;
+            Assert::IsTrue(DisplayOutputModePrefersGdi(scaled,desired));
+            Assert::IsFalse(DisplayOutputModePrefersGdi(full,scaled));
+            desired=full; desired.refreshRate={60000,1001};
+            Assert::IsFalse(DisplayOutputModeChangesRaster(full,desired));
+            Assert::IsFalse(DisplayOutputModePrefersGdi(full,desired));
+        }
+        TEST_METHOD(FullModeVerificationRejectsGpuScaledWireAndWrongDesktop)
+        {
+            const DisplayOutputModeState expected{1920,1080,1920,1080,{60000,1001},DisplayOutputScan::Progressive,true};
+            auto actual=expected; actual.targetWidth=3840; actual.targetHeight=2160;
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+            actual=expected; actual.sourceWidth=3840; actual.sourceHeight=2160;
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+            actual=expected; actual.targetKnown=false;
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+        }
+        TEST_METHOD(FullModeVerificationRejectsWrongRateAndScanButAcceptsDriverRounding)
+        {
+            const DisplayOutputModeState expected{1920,1080,1920,1080,{60000,1001},DisplayOutputScan::Progressive,true};
+            auto actual=expected; actual.refreshRate={59940,1000};
+            Assert::IsTrue(DisplayOutputModeMatches(expected,actual));
+            actual.refreshRate={60,1}; Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+            actual=expected; actual.scan=DisplayOutputScan::InterlacedUpper;
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+            auto original=actual;
+            Assert::IsTrue(DisplayOutputModeMatches(original,actual));
+            actual.scan=DisplayOutputScan::InterlacedLower;
+            Assert::IsFalse(DisplayOutputModeMatches(original,actual));
+            actual=expected; actual.refreshRate={0,1};
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+            actual=expected; actual.refreshRate={60,0};
+            Assert::IsFalse(DisplayOutputModeMatches(expected,actual));
+        }
+        TEST_METHOD(FullModeVerifierRequiresConsecutiveCompleteObservations)
+        {
+            const DisplayOutputModeState expected{1920,1080,1920,1080,{60000,1001},DisplayOutputScan::Progressive,true};
+            DisplayOutputModeVerifier verifier(expected);
+            Assert::IsFalse(verifier.Observe(true,expected));
+            Assert::IsFalse(verifier.Observe(false,expected));
+            Assert::IsFalse(verifier.Observe(true,expected));
+            auto wrong=expected; wrong.targetWidth=3840;
+            Assert::IsFalse(verifier.Observe(true,wrong));
+            Assert::IsFalse(verifier.Observe(true,expected));
+            Assert::IsTrue(verifier.Observe(true,expected));
+        }
 	};
 }

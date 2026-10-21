@@ -137,6 +137,32 @@ std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
 	const DisplayRefreshRational& input, bool interlaced,
 	const std::vector<DisplayOutputMode>& configured,
 	const std::vector<DisplayOutputMode>& available);
+// Platform-independent read-back contract used by the Windows mode transaction.
+enum class DisplayOutputScan { Unknown, Progressive, InterlacedUpper, InterlacedLower };
+struct DisplayOutputModeState
+{
+    uint32_t sourceWidth = 0, sourceHeight = 0;
+    uint32_t targetWidth = 0, targetHeight = 0;
+    DisplayRefreshRational refreshRate{};
+    DisplayOutputScan scan = DisplayOutputScan::Progressive;
+    bool targetKnown = false;
+};
+bool DisplayOutputModeMatches(const DisplayOutputModeState& expected,
+    const DisplayOutputModeState& observed);
+bool DisplayOutputModeChangesRaster(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired);
+bool DisplayOutputModePrefersGdi(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired);
+class DisplayOutputModeVerifier
+{
+public:
+    explicit DisplayOutputModeVerifier(const DisplayOutputModeState& expected) : expected_(expected) {}
+    bool Observe(bool querySucceeded, const DisplayOutputModeState& observed);
+private:
+    DisplayOutputModeState expected_;
+    unsigned int consecutive_ = 0;
+};
+
 enum class RefreshRateSwitchMode
 {
 	Never,
