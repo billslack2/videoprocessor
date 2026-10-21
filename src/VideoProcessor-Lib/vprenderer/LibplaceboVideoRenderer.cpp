@@ -3722,7 +3722,22 @@ namespace
 				rankedRates.size(), RefreshRateHz(m_originalRefreshRate));
 		}
 
+		// The output mode most recently logged as verified, for the stats OSD.
+		bool LastVerifiedOutputMode(CurrentDisplayMode& mode) const
+		{
+			std::lock_guard<std::mutex> lock(m_lastVerifiedMutex);
+			mode = m_lastVerifiedMode;
+			return m_hasLastVerifiedMode;
+		}
+
 	private:
+		void RecordVerifiedOutputMode(const CurrentDisplayMode& mode)
+		{
+			std::lock_guard<std::mutex> lock(m_lastVerifiedMutex);
+			m_lastVerifiedMode = mode;
+			m_hasLastVerifiedMode = true;
+		}
+
 		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
 			CurrentDisplayMode& observed) const
 		{
@@ -3849,6 +3864,7 @@ namespace
 					m_restoreOnStop = settings.restorePreviousDisplayMode;
 					DebugLog::Log("libplacebo output-mode candidate already active: %s",
 						FormatDisplayOutputMode(candidate.mode).c_str());
+					RecordVerifiedOutputMode(currentMode);
 					RunRefreshRateCommand(settings,
 						RefreshRateHz(currentMode.refreshRate));
 					PublishEvent("refresh.confirmed",
@@ -3885,6 +3901,7 @@ namespace
 						actual.targetWidth, actual.targetHeight,
 						RefreshRateHz(actual.refreshRate),
 						m_restoreOnStop ? 1 : 0);
+					RecordVerifiedOutputMode(actual);
 					RunRefreshRateCommand(settings, RefreshRateHz(actual.refreshRate));
 					PublishEvent("refresh.applied", RefreshRateHz(actual.refreshRate),
 						RefreshRateHz(rate), RefreshRateHz(m_originalDisplayMode.refreshRate));
@@ -3914,6 +3931,7 @@ namespace
                 DebugLog::Log("libplacebo output-mode rollback verified: route=%s source=%ux%u target=%ux%u@%.6f",
                     rollbackRoute, actual.sourceWidth, actual.sourceHeight, actual.targetWidth, actual.targetHeight,
                     RefreshRateHz(actual.refreshRate));
+				RecordVerifiedOutputMode(actual);
 				m_changed = !DisplayModesEquivalentForRestore(
 					currentMode, m_originalDisplayMode);
 			}
@@ -4017,6 +4035,7 @@ namespace
 				DebugLog::Log("libplacebo output-mode restore verified: route=%s %ux%u@%.6f",
                     restoreRoute, actual.targetWidth, actual.targetHeight,
 					RefreshRateHz(actual.refreshRate));
+				RecordVerifiedOutputMode(actual);
 				RunRefreshRateCommand(m_refreshCommandSettings,
 					RefreshRateHz(actual.refreshRate));
 				PublishEvent("refresh.restored", RefreshRateHz(actual.refreshRate),
@@ -4121,6 +4140,9 @@ namespace
 		RendererSettings m_refreshCommandSettings;
 		std::function<void(const std::string&, double, double, double)> m_eventSink;
 		std::set<std::string> m_publishedTransitions;
+		mutable std::mutex m_lastVerifiedMutex;
+		CurrentDisplayMode m_lastVerifiedMode{};
+		bool m_hasLastVerifiedMode = false;
 	};
 }
 
@@ -4273,6 +4295,9 @@ struct LibplaceboVideoRenderer::Impl
 	uint32_t lastFramePacingStatsPresentRefresh = 0;
 	uint64_t nextFramePacingTraceTick = 0;
 	ScopedDisplayRefreshRate displayRefreshRate;
+	// Swapchain size from the latest geometry log line, for the stats OSD.
+	std::atomic<int> loggedSwapchainWidth{ 0 };
+	std::atomic<int> loggedSwapchainHeight{ 0 };
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
 	pl_cache cache = nullptr;
@@ -8211,6 +8236,8 @@ struct LibplaceboVideoRenderer::Impl
                 throw std::runtime_error("Failed to resize libplacebo swapchain after display-mode selection");
             DebugLog::Log("libplacebo post-mode geometry: client=%ldx%ld swapchain=%dx%d",
                 settledClient.right - settledClient.left, settledClient.bottom - settledClient.top, width, height);
+            loggedSwapchainWidth.store(width, std::memory_order_relaxed);
+            loggedSwapchainHeight.store(height, std::memory_order_relaxed);
         }
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
@@ -19557,6 +19584,8 @@ releaseDriftBaseRetention =
 		{
             DebugLog::Log("libplacebo resize geometry: client=%ldx%ld swapchain=%dx%d",
                 client.right - client.left, client.bottom - client.top, width, height);
+            loggedSwapchainWidth.store(width, std::memory_order_relaxed);
+            loggedSwapchainHeight.store(height, std::memory_order_relaxed);
 			ConfigureAndFallback("resize");
 		}
 	}
@@ -21350,6 +21379,40 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			LibplaceboOutput::ToString(
 				m_impl->lastSdrGammaDecision.actualTarget));
 		value += gamma;
+	}
+	// Raster stages for the stats OSD, from values already logged: the wire mode
+	// from the last verified output-mode line, then the desktop and the swapchain
+	// only where they differ from the stage after them.
+	CurrentDisplayMode verifiedMode{};
+	if (m_impl->displayRefreshRate.LastVerifiedOutputMode(verifiedMode))
+	{
+		const auto ordering =
+			verifiedMode.targetMode.targetVideoSignalInfo.scanLineOrdering;
+		const bool interlaced = verifiedMode.hasTargetMode &&
+			(ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST ||
+			 ordering == DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST);
+		CStringA raster;
+		raster.Format(" | WIRE: %ux%u%s", verifiedMode.targetWidth,
+			verifiedMode.targetHeight, interlaced ? "i" : "");
+		value += raster;
+		if (verifiedMode.sourceWidth != verifiedMode.targetWidth ||
+			verifiedMode.sourceHeight != verifiedMode.targetHeight)
+		{
+			raster.Format(" | DESKTOP: %ux%u", verifiedMode.sourceWidth,
+				verifiedMode.sourceHeight);
+			value += raster;
+		}
+		const int drawnWidth = m_impl->loggedSwapchainWidth.load(
+			std::memory_order_relaxed);
+		const int drawnHeight = m_impl->loggedSwapchainHeight.load(
+			std::memory_order_relaxed);
+		if (drawnWidth > 0 && drawnHeight > 0 &&
+			(static_cast<UINT32>(drawnWidth) != verifiedMode.sourceWidth ||
+			 static_cast<UINT32>(drawnHeight) != verifiedMode.sourceHeight))
+		{
+			raster.Format(" | DRAWN: %dx%d", drawnWidth, drawnHeight);
+			value += raster;
+		}
 	}
 	details = CString(value);
 	return true;
