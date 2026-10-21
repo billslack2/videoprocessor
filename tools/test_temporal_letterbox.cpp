@@ -48,7 +48,7 @@ struct Fixture {
     void Run(const char* filter, bool composition) {
         MotionConfig::Settings settings; settings.smoothMotion="always";
         settings.deinterlace="off"; settings.mixer=filter;
-        const float gray[]={.5f,.5f,.5f}, poison[]={1,0,1};
+        const float gray[]={.5f,.5f,.5f,1}, poison[]={1,0,1,1};
         for(unsigned i=1;i<=3;++i) {
             temporal.Begin(settings,24,75,false,0,1,i,double(i-1)/24,false,composition);
             pl_tex_clear(device->gpu,source,gray);

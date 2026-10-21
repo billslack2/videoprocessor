@@ -43,5 +43,5 @@ The linear mixer target must support blit destination operations: libplacebo
 clears its border when the output crop letterboxes the picture. A renderable-only
 texture can still return successful rendering while logging a failed clear and
 expensive backtraces on every output. Run `tools/test_temporal_letterbox.ps1` to
-exercise both bundled APIs with error logging enabled, all three supported mixers,
+exercise both bundled APIs with error logging enabled, three mixers,
 subtitles composition enabled/disabled, repeated outputs and black border readback.
