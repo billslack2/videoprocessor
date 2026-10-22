@@ -37,6 +37,7 @@
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
 #include <EotfTransitionStabilizer.h>
+#include <OsdInputColorInfo.h>
 #include <InvalidCaptureStateGrace.h>
 #include <RendererQueueLaunchContractModel.h>
 #include <QueueProfileRestartPolicy.h>
@@ -604,6 +605,7 @@ protected:
 	VideoStateComPtr m_captureDeviceVideoState = nullptr;  // This is what we get from the capture card
 
 	VideoStateComPtr m_builtVideoState = nullptr;  // This is what we make of it
+	OsdInputColorInfo::AcceptedState m_osdAcceptedInputColor;
 
 
 	// Startup options
@@ -1109,6 +1111,7 @@ protected:
 
 
 	bool BuildPushVideoState();
+	bool PushRendererVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
 	void ObserveEotfTransition(EOTF observed, bool valid, const char* source);

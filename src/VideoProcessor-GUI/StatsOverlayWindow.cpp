@@ -18,7 +18,7 @@
 
 // Bitmap rasterizer only: the active renderer owns OSD presentation.
 StatsOverlayWindow::StatsOverlayWindow()
-	: m_windowHeight(610), m_font(nullptr), m_alphaFont(nullptr)
+	: m_font(nullptr), m_alphaFont(nullptr)
 {
 }
 
@@ -63,7 +63,6 @@ void StatsOverlayWindow::UpdateStats(const StatsData& stats)
 {
 	std::lock_guard<std::mutex> lock(m_statsMutex);
 	m_stats = stats;
-	m_windowHeight = CalculateRequiredHeight(m_stats);
 }
 
 bool StatsOverlayWindow::RenderBgra(
@@ -71,8 +70,23 @@ bool StatsOverlayWindow::RenderBgra(
 {
 	if (!Initialize())
 		return false;
+	StatsData stats;
+	{
+		std::lock_guard<std::mutex> lock(m_statsMutex);
+		stats = m_stats;
+	}
+	HDC screen = GetDC(nullptr);
+	HDC memory = screen ? CreateCompatibleDC(screen) : nullptr;
+	if (!memory)
+	{
+		if (screen) ReleaseDC(nullptr, screen);
+		return false;
+	}
+	HGDIOBJ oldFont = SelectObject(memory, stats.isAlphaRenderer ? m_alphaFont : m_font);
+	const auto rows = StatsOverlayLayout::Arrange(memory, BuildStatsRows(stats));
+	SelectObject(memory, oldFont);
 	width = WINDOW_WIDTH;
-	height = m_windowHeight;
+	height = StatsOverlayLayout::Height(rows);
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -82,10 +96,8 @@ bool StatsOverlayWindow::RenderBgra(
 	info.bmiHeader.biBitCount = 32;
 	info.bmiHeader.biCompression = BI_RGB;
 	void* bits = nullptr;
-	HDC screen = GetDC(nullptr);
 	HBITMAP bitmap = CreateDIBSection(
 		screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-	HDC memory = bitmap ? CreateCompatibleDC(screen) : nullptr;
 	ReleaseDC(nullptr, screen);
 	if (!bitmap || !memory || !bits)
 	{
@@ -98,7 +110,7 @@ bool StatsOverlayWindow::RenderBgra(
 	HBRUSH brush = CreateSolidBrush(BACKGROUND_COLOR);
 	FillRect(memory, &rect, brush);
 	DeleteObject(brush);
-	DrawStats(memory);
+	DrawStats(memory, rows, stats.isAlphaRenderer);
 	SelectObject(memory, oldBitmap);
 	pixels.assign(
 		static_cast<uint8_t*>(bits),
@@ -465,593 +477,187 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	return true;
 }
 
-void StatsOverlayWindow::DrawStats(HDC hdc)
+std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const StatsData& stats)
 {
-	std::lock_guard<std::mutex> lock(m_statsMutex);
-
-	SetBkMode(hdc, TRANSPARENT);
-	const int lineHeight =
-		m_stats.isAlphaRenderer ? ALPHA_LINE_HEIGHT : LINE_HEIGHT;
-	HFONT oldFont = (HFONT)SelectObject(
-		hdc, m_stats.isAlphaRenderer ? m_alphaFont : m_font);
-
-	int y = PADDING;
-	SetTextColor(hdc, TEXT_COLOR);
-
-	// Fixed-width format with consistent spacing - use 18 chars for label, then value
-	CString line;
-	line.Format(TEXT("Renderer:         %-s"),
-		m_stats.rendererName.IsEmpty() ? TEXT("---") :
-		static_cast<LPCTSTR>(m_stats.rendererName));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (!m_stats.outputSweep.IsEmpty())
-	{
-		line.Format(TEXT("OUTPUT SWEEP:     %-s"),
-			static_cast<LPCTSTR>(m_stats.outputSweep));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-    const auto resolution=DisplayRasterInfo::ResolutionLines(
-        static_cast<LPCTSTR>(m_stats.resolution),static_cast<LPCTSTR>(m_stats.outputMode));
-    for(size_t row=0;row<resolution.size();++row)
+    std::vector<StatsOverlayLayout::Row> rows;
+    int gap = 0;
+    const auto add = [&](const wchar_t* label, const CString& value, bool wrap = true) {
+        rows.push_back({label, value.GetString(), gap, wrap}); gap = 0;
+    };
+    const auto present = [](const CString& value, const wchar_t* fallback = L"---") {
+        return value.IsEmpty() ? CString(fallback) : value;
+    };
+    const auto format = [](const wchar_t* pattern, auto... values) {
+        CString value; value.Format(pattern, values...); return value;
+    };
+    const auto detail = [&](const wchar_t* marker) {
+        const CString tag(marker);
+        const int at = stats.outputMode.Find(tag);
+        CString value = at >= 0 ? stats.outputMode.Mid(at + tag.GetLength()) : CString();
+        const int end = value.Find(L" | ");
+        return end >= 0 ? value.Left(end) : value;
+    };
+    add(L"Renderer:", present(stats.rendererName));
+    if (!stats.outputSweep.IsEmpty()) add(L"OUTPUT SWEEP:", stats.outputSweep, false);
+    const auto resolution = DisplayRasterInfo::ResolutionLines(
+        stats.resolution.GetString(), stats.outputMode.GetString());
+    for (size_t i = 0; i < resolution.size(); ++i)
     {
-        line.Format(row==0 ? TEXT("Resolution:       %s") : TEXT("%s"),resolution[row].c_str());
-        DrawText(hdc,line,PADDING,y);
-        y+=lineHeight;
+        CString value(resolution[i].c_str()); value.TrimLeft();
+        add(i == 0 ? L"Resolution:" : L"", value);
     }
-
-	if (m_stats.isAlphaRenderer)
-	{
-		line.Format(TEXT("Aspect Ratio:     %s (%s)"),
-			m_stats.aspectRatio.IsEmpty() ? TEXT("---") :
-			static_cast<LPCTSTR>(m_stats.aspectRatio),
-			m_stats.aspectName.IsEmpty() ? TEXT("Unknown") :
-			static_cast<LPCTSTR>(m_stats.aspectName));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Refresh rate
-	line.Format(TEXT("Refresh:          %.6f Hz"), m_stats.refreshRate);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Actual display refresh period as reported by the Desktop Window Manager.
-	if (m_stats.displayRefreshRate > 0.0)
-	{
-		CString statusSuffix;
-		if (!m_stats.displayRefreshRateStatus.IsEmpty())
-			statusSuffix.Format(TEXT(" (%s)"),
-				m_stats.displayRefreshRateStatus.GetString());
-		line.Format(TEXT("- Display Rate:   %.6f Hz%s%s"),
-			m_stats.displayRefreshRate,
-			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""),
-			statusSuffix.GetString());
-	}
-	else if (!m_stats.displayRefreshRateStatus.IsEmpty())
-		line.Format(TEXT("- Display Rate:   --- (%s)"),
-			m_stats.displayRefreshRateStatus.GetString());
-	else
-		line.Format(TEXT("- Display Rate:   ---"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Measured refresh rate (calculated from frame arrivals)
-	if (m_stats.measuredRefreshRate > 0.0)
-	{
-		line.Format(TEXT("- Est. Rate:      %.6f Hz"), m_stats.measuredRefreshRate);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		
-		// PPM deviation between theoretical and measured rates
-		line.Format(TEXT("- Est. PPM:       %+d ppm"), m_stats.ppmDeviation);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// PPM Correction
-	if (m_stats.hasPPMCorrection || (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A")))
-	{
-		line.Format(TEXT("- Applied PPM:    %+d ppm"), m_stats.ppmCorrection);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Corrected refresh rate (only for rational modes with PPM correction)
-	if ((m_stats.method == TEXT("Rational-Rational") || m_stats.method == TEXT("Clock-Rational")) &&
-		m_stats.hasPPMCorrection)
-	{
-		// Calculate corrected rate: nominal + (nominal * PPM / 1000000)
-		double correctedRate = m_stats.refreshRate * (1.0 + (double) (m_stats.ppmCorrection*-1) / 1000000.0); //TODO: thats a hacky way to calc by applying -1; oh well
-		line.Format(TEXT("- Delivery Rate:  %.6f Hz"), correctedRate);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// EOTF
-	line.Format(TEXT("EOTF:             %-s"), m_stats.eotf.IsEmpty() ? TEXT("---") : m_stats.eotf);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Colorspace
-	line.Format(TEXT("Input Colorspace: %-s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("DTM Profile:      %-s"), m_stats.dtmProfile.IsEmpty() ? TEXT("---") : m_stats.dtmProfile);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("HDR10:            %-s"), m_stats.hdr10.IsEmpty() ? TEXT("---") : m_stats.hdr10);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Measured:         %-s"), m_stats.measuredHdr.IsEmpty() ? TEXT("---") : m_stats.measuredHdr);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Pixel Format
-	line.Format(TEXT("Pixel Format:     %-s"), m_stats.pixelFormat.IsEmpty() ? TEXT("---") : m_stats.pixelFormat);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Viewport:         %-s"),
-		m_stats.viewport.IsEmpty() ? TEXT("default (renderer native)") :
-		static_cast<LPCTSTR>(m_stats.viewport));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Surface:          %-s"),
-		m_stats.surfaceMode.IsEmpty() ? TEXT("---") :
-		static_cast<LPCTSTR>(m_stats.surfaceMode));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (!m_stats.outputMode.IsEmpty())
-	{
-		const int targetSeparator = m_stats.outputMode.Find(TEXT(" | "));
-		const CString target = targetSeparator >= 0
-			? m_stats.outputMode.Left(targetSeparator) : TEXT("Target ---");
-		const CString transport = targetSeparator >= 0
-			? m_stats.outputMode.Mid(targetSeparator + 3) : m_stats.outputMode;
-		const int separator = transport.Find(TEXT(" -> "));
-		const CString actualAndDetails = separator >= 0
-			? transport.Mid(separator + 4) : TEXT("---");
-		const int detailsSeparator = actualAndDetails.Find(TEXT(" | "));
-		const CString actual = detailsSeparator >= 0
-			? actualAndDetails.Left(detailsSeparator) : actualAndDetails;
-		auto detailValue = [this](LPCTSTR marker) -> CString
-		{
-			const CString tag(marker);
-			const int separator = m_stats.outputMode.Find(tag);
-			CString result = separator >= 0
-				? m_stats.outputMode.Mid(separator + tag.GetLength()) : CString();
-			const int nextDetail = result.Find(TEXT(" | "));
-			if (nextDetail >= 0)
-				result = result.Left(nextDetail);
-			return result;
-		};
-		const CString gamma = detailValue(TEXT(" | GAMMA: "));
-		const CString status = detailValue(TEXT(" | STATUS: "));
-		const CString display = detailValue(TEXT(" | DISPLAY: "));
-		const CString signal = detailValue(TEXT(" | SIGNAL: "));
-		const CString swapchain = detailValue(TEXT(" | SWAPCHAIN: "));
-		const CString presenter = detailValue(TEXT(" | PRESENTER: "));
-		const CString contract = detailValue(TEXT(" | CONTRACT: "));
-
-		const int firstSlash = actual.Find(TEXT('/'));
-		const int secondSlash = firstSlash >= 0
-			? actual.Find(TEXT('/'), firstSlash + 1) : -1;
-		const int lastSlash = actual.ReverseFind(TEXT('/'));
-		const CString presentation = firstSlash >= 0
-			? actual.Left(firstSlash) : actual;
-		const CString rangeCode = firstSlash >= 0 && secondSlash > firstSlash
-			? actual.Mid(firstSlash + 1, secondSlash - firstSlash - 1) : TEXT("?");
-		const CString transferCode = secondSlash >= 0 && lastSlash > secondSlash
-			? actual.Mid(secondSlash + 1, lastSlash - secondSlash - 1) : TEXT("?");
-		const CString range = rangeCode == TEXT("F") ? TEXT("RGB Full") :
-			rangeCode == TEXT("L") ? TEXT("RGB Limited") : TEXT("RGB ?");
-		const CString transfer = transferCode.Find(TEXT("sRGB")) >= 0
-			? TEXT("sRGB") : transferCode;
-		const CString primaries = target.Find(TEXT("BT.2020")) >= 0
-			? TEXT("BT.2020") : TEXT("Rec.709");
-
-		line.Format(TEXT("Output:           %s / %s / %s"),
-			static_cast<LPCTSTR>(range),
-			static_cast<LPCTSTR>(transfer),
-			static_cast<LPCTSTR>(primaries));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		if (!signal.IsEmpty())
-		{
-			line.Format(TEXT("Signal:           %-s"),
-				static_cast<LPCTSTR>(signal));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		if (!swapchain.IsEmpty())
-		{
-			line.Format(TEXT("Swapchain:        %-s"),
-				static_cast<LPCTSTR>(swapchain));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		line.Format(TEXT("Present:          %-s"),
-			static_cast<LPCTSTR>(presentation));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		if (!presenter.IsEmpty())
-		{
-			line.Format(TEXT("Presenter:        %-s"),
-				static_cast<LPCTSTR>(presenter));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		if (!contract.IsEmpty())
-		{
-			line.Format(TEXT("Contract:         %-s"),
-				static_cast<LPCTSTR>(contract));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		if (!display.IsEmpty())
-		{
-			line.Format(TEXT("Display:          %-s"),
-				static_cast<LPCTSTR>(display));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		if (!gamma.IsEmpty())
-		{
-			line.Format(TEXT("Gamma:            %-s"),
-				static_cast<LPCTSTR>(gamma));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-		if (!status.IsEmpty())
-		{
-			line.Format(TEXT("Status:           %-s"),
-				static_cast<LPCTSTR>(status));
-			DrawText(hdc, line, PADDING, y);
-			y += lineHeight;
-		}
-	}
-
-	if (!m_stats.displayLut.IsEmpty())
-	{
-		// The overlay is intentionally narrow. Keep even a long configured
-		// filename on one line rather than allowing it to run off screen:
-		// 44 characters end at the 62nd column, the longest row's.
-		CString lut = m_stats.displayLut;
-		constexpr int LUT_OSD_MAX_CHARS = 44;
-		if (lut.GetLength() > LUT_OSD_MAX_CHARS)
-			lut = lut.Left(LUT_OSD_MAX_CHARS - 3) + TEXT("...");
-		line.Format(TEXT("LUT:              %s"), static_cast<LPCTSTR>(lut));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Video Conversion
-	line.Format(TEXT("Video Conv:       %-s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Shader Rule:      %-s"),
-		m_stats.activeShaderRule.IsEmpty() ? TEXT("None") :
-		static_cast<LPCTSTR>(m_stats.activeShaderRule));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (m_stats.activeShaders.empty())
-		line.Format(TEXT("Shaders:          None"));
-	else
-		line.Format(TEXT("Shaders:          %zu Active"), m_stats.activeShaders.size());
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	for (const CString& shader : m_stats.activeShaders)
-	{
-		line.Format(TEXT(" - %-s"), static_cast<LPCTSTR>(shader));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-	
-	// Conversion Performance (show if available)
-	if (m_stats.hasConversionData)
-	{
-		// Calculate frame time and conversion percentage
-		double frameTimeMs = 1000.0 / m_stats.refreshRate;
-		double currentConvMs = m_stats.currentConversionTimeUs / 1000.0;
-		double conversionPct = (currentConvMs / frameTimeMs) * 100.0;
-	
-		
-			line.Format(TEXT("Conv Time:        %.2f ms"), 
-				currentConvMs, conversionPct);
-		
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		
-		// 10-second average and max on one line (convert μs to ms)
-		line.Format(TEXT("10s Avg/Max:      %.2f / %.2f ms"), 
-			m_stats.avgConversionTime10s / 1000.0, m_stats.maxConversionTime10s / 1000.0);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Separator
-	y += 4;
-
-	// Start/Stop is a DirectShow-only sample-timestamp policy. Alpha submits
-	// directly to its swapchain, so showing the dormant DirectShow selection
-	// here would imply it affects Alpha playback.
-	if (!m_stats.isAlphaRenderer)
-	{
-		line.Format(TEXT("Method:           %-s"),
-			m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Alpha does not schedule its FIFO from capture timestamps, so the offset
-	// control is deliberately unavailable there.
-	if (!m_stats.isAlphaRenderer)
-	{
-		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-	}
-
-	// Separator
-	y += 4;
-
-	if (m_stats.isAlphaRenderer)
-	{
-		// Alpha remains direct FIFO. Total is a measurement only: raw hardware
-		// capture to the forecast display target, so it is comparable with the
-		// audio extraction boundary without changing Alpha's scheduling.
-		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-18s%.0f ms"), TEXT("Delay:"),
-				m_stats.captureToPresentationTargetMs);
-		else
-			line.Format(TEXT("%-18s---"), TEXT("Delay:"));
-	}
-	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-18s%.0f ms"), TEXT("Delay:"),
-			m_stats.scheduledLatencyMs);
-	else
-		line.Format(TEXT("%-18s---"), TEXT("Delay:"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
-	// by DirectShow and Alpha, despite their different presentation owners.
-	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("%-18s%.0f ms"), TEXT("- Renderer:"),
-			m_stats.vpInternalLatencyMs);
-	else
-		line.Format(TEXT("%-18s---"), TEXT("- Renderer:"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (m_stats.isAlphaRenderer)
-	{
-		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-18s%.0f ms"), TEXT("- Present:"),
-				m_stats.presentationTargetLeadMs);
-		else if (!m_stats.presentationTimingStatus.IsEmpty())
-			line.Format(TEXT("%-18s--- (%s)"), TEXT("- Present:"),
-				OsdTimingPolicy::Status(m_stats.presentationTimingStatus.GetString()).c_str());
-		else
-			line.Format(TEXT("%-18s---"), TEXT("- Present:"));
-	}
-	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-18s%.0f ms"), TEXT("- Present:"),
-			m_stats.dsScheduleLeadMs);
-	else
-		line.Format(TEXT("%-18s---"), TEXT("- Present:"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Separator
-	y += 4;
-
-	// Alpha/libplacebo has only one FIFO.  Do not present DirectShow's
-	// raw/converted/total fields (or Alpha's internal safety capacity) as if
-	// they were separate user-visible queues.
-	if (m_stats.isAlphaRenderer)
-		line.Format(TEXT("Queue:            %zu / %zu"),
-			m_stats.rawQueueSize, m_stats.maxQueueSize);
-	else
-		line.Format(TEXT("Queue R/C/T:      %zu/%zu/%zu/%zu%s"),
-			m_stats.rawQueueSize, m_stats.convertedQueueSize,
-			m_stats.currentQueueSize, m_stats.maxQueueSize,
-			m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	// Render cost. GPU frame is the rolling average of the tightly bounded
-	// source-upload, changed-overlay-upload, and core-render stages from one
-	// frame. Keep the comparison and diagnostic detail in telemetry; the OSD
-	// presents one authoritative number.
-	if (m_stats.renderLoadKnown)
-	{
-		if (OsdTimingPolicy::WarmingEnabled && m_stats.renderLoadSettling)
-			line.Format(TEXT("GPU frame:        settling..."));
-		else if (!m_stats.renderLoadGpuValid)
-			line.Format(TEXT("GPU frame:        measuring..."));
-		else
-			line.Format(TEXT("GPU frame:        avg %.2f, max %.2f ms (10 s)"),
-				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-
-		CString cpuLoad(TEXT("measuring"));
-		CString gpuLoad(TEXT("measuring"));
-		if (m_stats.cpuUsageKnown)
-			cpuLoad.Format(TEXT("%.0f/%.0f%%"),
-				m_stats.cpuUsageAvgPercent, m_stats.cpuUsagePeakPercent);
-		if (m_stats.renderLoadGpuPercentValid)
-			gpuLoad.Format(TEXT("%.0f/%.0f%%"),
-				m_stats.renderLoadGpuAvgPercent, m_stats.renderLoadGpuPercent);
-		line.Format(TEXT("10s avg/max:      CPU %s, GPU output load %s"),
-			static_cast<LPCTSTR>(cpuLoad), static_cast<LPCTSTR>(gpuLoad));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-
-		// New input frames and temporal output renders have separate cadences.
-		// The input format remains useful while measured capture timing recovers.
-		const double sourceRateHz = OsdTimingPolicy::FrameBudgetRate(
-			m_stats.measuredRefreshRate, m_stats.theoreticalRefreshRate);
-		if (sourceRateHz > 0.0)
-			line.Format(TEXT("Source interval:  %.2f ms @ %.3f fps"),
-				1000.0 / sourceRateHz, sourceRateHz);
-		else
-			line.Format(TEXT("Source interval:  unavailable"));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-
-		// The scheduled output interval is also the GPU-budget denominator.
-		if (m_stats.renderLoadFramePeriodMs > 0.0 &&
-			m_stats.renderLoadFramePeriodFromRenderCadence)
-			line.Format(TEXT("Output interval:  %.2f ms @ %.3f fps"),
-				m_stats.renderLoadFramePeriodMs,
-				1000.0 / m_stats.renderLoadFramePeriodMs);
-		else if (m_stats.renderLoadFramePeriodMs > 0.0)
-			line.Format(TEXT("Output interval:  cadence unavailable"));
-		else
-			line.Format(TEXT("Output interval:  measuring..."));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-
-	}
-
-	// Frame stats
-	line.Format(TEXT("VFrames:          %llu"), m_stats.rendererCapturedFrames);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Dropped:          %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("D/R estimate:     %s"),
-		m_stats.cadenceIntervalEstimate.IsEmpty() ? TEXT("Unavailable") :
-			static_cast<LPCTSTR>(m_stats.cadenceIntervalEstimate));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT("Scene Mode:       %-s"),
-		m_stats.sceneDetectMode.IsEmpty() ? TEXT("Off") :
-			static_cast<LPCTSTR>(m_stats.sceneDetectMode));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	const bool sceneModeOff = m_stats.sceneDetectMode.IsEmpty() ||
-		m_stats.sceneDetectMode.CompareNoCase(TEXT("Off")) == 0;
-	if (sceneModeOff)
-		line.Format(TEXT(" - Status:        None"));
-	else if (!m_stats.sceneTimingStatus.IsEmpty())
-		line.Format(TEXT(" - Status:        %-s"),
-			OsdTimingPolicy::Status(m_stats.sceneTimingStatus.GetString()).c_str());
-	else if (!m_stats.sceneTimingReady)
-		line.Format(TEXT(" - Status:        %s"),
-			OsdTimingPolicy::WarmingEnabled ? TEXT("Warming") : TEXT("Measuring"));
-	else if (!m_stats.sceneTimingRatesCompatible)
-		line.Format(TEXT(" - Status:        Unavailable"));
-	else
-		line.Format(TEXT(" - Status:        Ready"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-
-	// These are source-side actions at detected scene boundaries.
-	line.Format(TEXT(" - Action D/R:    %llu / %llu"),
-		m_stats.sceneDetectCorrectionDrops,
-		m_stats.sceneDetectCorrectionRepeats);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	line.Format(TEXT(" - Detected:      %llu"), m_stats.sceneDetectDetected);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	SelectObject(hdc, oldFont);
+    if (stats.isAlphaRenderer)
+        add(L"Aspect Ratio:", format(L"%s (%s)", present(stats.aspectRatio).GetString(),
+            present(stats.aspectName, L"Unknown").GetString()));
+    add(L"Refresh:", format(L"%.6f Hz", stats.refreshRate));
+    CString displayRate = stats.displayRefreshRate > 0.0
+        ? format(L"%.6f Hz%s", stats.displayRefreshRate,
+            stats.displayRefreshRateOverridden ? L" *" : L"") : CString(L"---");
+    if (!stats.displayRefreshRateStatus.IsEmpty())
+        displayRate.AppendFormat(L" (%s)", stats.displayRefreshRateStatus.GetString());
+    add(L"- Display Rate:", displayRate);
+    if (stats.measuredRefreshRate > 0.0)
+    {
+        add(L"- Est. Rate:", format(L"%.6f Hz", stats.measuredRefreshRate));
+        add(L"- Est. PPM:", format(L"%+d ppm", stats.ppmDeviation));
+    }
+    if (stats.hasPPMCorrection || (!stats.ppmSource.IsEmpty() && stats.ppmSource != L"N/A"))
+        add(L"- Applied PPM:", format(L"%+d ppm", stats.ppmCorrection));
+    if ((stats.method == L"Rational-Rational" || stats.method == L"Clock-Rational") && stats.hasPPMCorrection)
+        add(L"- Delivery Rate:", format(L"%.6f Hz", stats.refreshRate *
+            (1.0 - static_cast<double>(stats.ppmCorrection) / 1000000.0)));
+    add(L"Input EOTF:", present(stats.eotf));
+    add(L"Input Colorspace:", present(stats.colorspace));
+    add(L"DTM Profile:", present(stats.dtmProfile), false);
+    add(L"HDR10 (nits):", present(stats.hdr10));
+    add(L"Measured (nits):", present(stats.measuredHdr));
+    add(L"Pixel Format:", present(stats.pixelFormat));
+    add(L"Viewport:", present(stats.viewport, L"default (renderer native)"), false);
+    add(L"Surface:", present(stats.surfaceMode));
+    if (!stats.outputMode.IsEmpty())
+    {
+        const int targetSeparator = stats.outputMode.Find(L" | ");
+        const CString target = targetSeparator >= 0 ? stats.outputMode.Left(targetSeparator) : L"Target ---";
+        const CString transport = targetSeparator >= 0 ? stats.outputMode.Mid(targetSeparator + 3) : stats.outputMode;
+        const int separator = transport.Find(L" -> ");
+        const CString actualAndDetails = separator >= 0 ? transport.Mid(separator + 4) : L"---";
+        const int detailsSeparator = actualAndDetails.Find(L" | ");
+        const CString actual = detailsSeparator >= 0 ? actualAndDetails.Left(detailsSeparator) : actualAndDetails;
+        const int firstSlash = actual.Find(L'/');
+        const int secondSlash = firstSlash >= 0 ? actual.Find(L'/', firstSlash + 1) : -1;
+        const int lastSlash = actual.ReverseFind(L'/');
+        const CString presentation = firstSlash >= 0 ? actual.Left(firstSlash) : actual;
+        const CString rangeCode = firstSlash >= 0 && secondSlash > firstSlash
+            ? actual.Mid(firstSlash + 1, secondSlash - firstSlash - 1) : L"?";
+        const CString transferCode = secondSlash >= 0 && lastSlash > secondSlash
+            ? actual.Mid(secondSlash + 1, lastSlash - secondSlash - 1) : L"?";
+        const wchar_t* range = rangeCode == L"F" ? L"RGB Full" : rangeCode == L"L" ? L"RGB Limited" : L"RGB ?";
+        const CString transfer = transferCode.Find(L"sRGB") >= 0 ? L"sRGB" : transferCode;
+        const wchar_t* primaries = target.Find(L"BT.2020") >= 0 ? L"BT.2020" : L"Rec.709";
+        add(L"Output:", format(L"%s / %s / %s", range, transfer.GetString(), primaries));
+        const auto addDetail = [&](const wchar_t* label, const wchar_t* marker) {
+            const CString value = detail(marker); if (!value.IsEmpty()) add(label, value, false);
+        };
+        addDetail(L"Signal:", L" | SIGNAL: ");
+        addDetail(L"Swapchain:", L" | SWAPCHAIN: ");
+        add(L"Present:", presentation);
+        addDetail(L"Presenter:", L" | PRESENTER: ");
+        addDetail(L"Contract:", L" | CONTRACT: ");
+        addDetail(L"Display:", L" | DISPLAY: ");
+        addDetail(L"Gamma:", L" | GAMMA: ");
+        addDetail(L"Status:", L" | STATUS: ");
+    }
+    if (!stats.displayLut.IsEmpty()) add(L"LUT:", stats.displayLut, false);
+    add(L"Video Conv:", present(stats.videoConversion));
+    add(L"Shader Rule:", present(stats.activeShaderRule, L"None"), false);
+    add(L"Shaders:", stats.activeShaders.empty() ? CString(L"None")
+        : format(L"%zu Active", stats.activeShaders.size()));
+    for (const CString& shader : stats.activeShaders)
+        add(L"", L"- " + shader, false);
+    if (stats.hasConversionData)
+    {
+        add(L"Conv Time:", format(L"%.2f ms", stats.currentConversionTimeUs / 1000.0));
+        add(L"10s Avg/Max:", format(L"%.2f / %.2f ms", stats.avgConversionTime10s / 1000.0,
+            stats.maxConversionTime10s / 1000.0));
+    }
+    // A section gap only exists when its following section exists. Alpha omits
+    // the entire DirectShow scheduling section, including its leading gap.
+    if (!stats.isAlphaRenderer)
+    {
+        gap = StatsOverlayLayout::SectionGap;
+        add(L"Method:", present(stats.method));
+        add(L"Offset:", format(L"%d ms", stats.frameOffsetMs));
+    }
+    gap = StatsOverlayLayout::SectionGap;
+    const bool delayKnown = stats.isAlphaRenderer ? stats.presentationTargetTimingKnown : stats.scheduledLatencyKnown;
+    add(L"Delay:", delayKnown ? format(L"%.0f ms", stats.isAlphaRenderer
+        ? stats.captureToPresentationTargetMs : stats.scheduledLatencyMs) : CString(L"---"));
+    add(L"- Renderer:", stats.vpInternalLatencyKnown ? format(L"%.0f ms", stats.vpInternalLatencyMs) : CString(L"---"));
+    CString presentDelay(L"---");
+    if (delayKnown) presentDelay = format(L"%.0f ms", stats.isAlphaRenderer
+        ? stats.presentationTargetLeadMs : stats.dsScheduleLeadMs);
+    else if (stats.isAlphaRenderer && !stats.presentationTimingStatus.IsEmpty())
+        presentDelay = format(L"--- (%s)", OsdTimingPolicy::Status(stats.presentationTimingStatus.GetString()).c_str());
+    add(L"- Present:", presentDelay);
+    gap = StatsOverlayLayout::SectionGap;
+    if (stats.isAlphaRenderer)
+        add(L"Queue:", format(L"%zu / %zu", stats.rawQueueSize, stats.maxQueueSize));
+    else
+        add(L"Queue R/C/T:", format(L"%zu/%zu/%zu/%zu%s", stats.rawQueueSize,
+            stats.convertedQueueSize, stats.currentQueueSize, stats.maxQueueSize, stats.isQueueFull ? L" [FULL]" : L""));
+    if (stats.renderLoadKnown)
+    {
+        CString gpuTime(L"measuring...");
+        if (OsdTimingPolicy::WarmingEnabled && stats.renderLoadSettling) gpuTime = L"settling...";
+        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg %.2f, max %.2f ms (10 s)",
+            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs);
+        add(L"GPU frame:", gpuTime);
+        const CString cpuLoad = stats.cpuUsageKnown ? format(L"%.0f/%.0f%%", stats.cpuUsageAvgPercent,
+            stats.cpuUsagePeakPercent) : CString(L"measuring");
+        const CString gpuLoad = stats.renderLoadGpuPercentValid ? format(L"%.0f/%.0f%%",
+            stats.renderLoadGpuAvgPercent, stats.renderLoadGpuPercent) : CString(L"measuring");
+        add(L"10s avg/max:", format(L"CPU %s, GPU output load %s", cpuLoad.GetString(), gpuLoad.GetString()));
+        const double sourceRate = OsdTimingPolicy::FrameBudgetRate(stats.measuredRefreshRate, stats.theoreticalRefreshRate);
+        add(L"Source interval:", sourceRate > 0.0 ? format(L"%.2f ms @ %.3f fps", 1000.0 / sourceRate,
+            sourceRate) : CString(L"unavailable"));
+        CString outputInterval(L"measuring...");
+        if (stats.renderLoadFramePeriodMs > 0.0)
+            outputInterval = stats.renderLoadFramePeriodFromRenderCadence
+                ? format(L"%.2f ms @ %.3f fps", stats.renderLoadFramePeriodMs, 1000.0 / stats.renderLoadFramePeriodMs)
+                : CString(L"cadence unavailable");
+        add(L"Output interval:", outputInterval);
+    }
+    add(L"VFrames:", format(L"%llu", stats.rendererCapturedFrames));
+    add(L"Dropped:", format(L"%llu/%llu", stats.capturedDroppedFrames, stats.queueDroppedFrames));
+    add(L"D/R estimate:", present(stats.cadenceIntervalEstimate, L"Unavailable"));
+    add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));
+    CString sceneStatus;
+    if (stats.sceneDetectMode.IsEmpty() || stats.sceneDetectMode.CompareNoCase(L"Off") == 0) sceneStatus = L"None";
+    else if (!stats.sceneTimingStatus.IsEmpty()) sceneStatus = OsdTimingPolicy::Status(stats.sceneTimingStatus.GetString()).c_str();
+    else if (!stats.sceneTimingReady) sceneStatus = OsdTimingPolicy::WarmingEnabled ? L"Warming" : L"Measuring";
+    else sceneStatus = stats.sceneTimingRatesCompatible ? L"Ready" : L"Unavailable";
+    add(L"- Status:", sceneStatus);
+    add(L"- Action D/R:", format(L"%llu / %llu", stats.sceneDetectCorrectionDrops, stats.sceneDetectCorrectionRepeats));
+    add(L"- Detected:", format(L"%llu", stats.sceneDetectDetected));
+    return rows;
 }
 
-int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
+void StatsOverlayWindow::DrawStats(HDC hdc,
+    const std::vector<StatsOverlayLayout::Row>& rows, bool alphaRenderer)
 {
-	// VP Renderer omits two DirectShow-only rows, but adds one aspect row.
-	// The remaining rows mirror the exact
-	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = stats.isAlphaRenderer ? 21 : 22;
-	++lineCount; // Surface mode is always shown.
-    lineCount+=DisplayRasterInfo::ResolutionLines(
-        static_cast<LPCTSTR>(stats.resolution),static_cast<LPCTSTR>(stats.outputMode)).size()-1;
-	lineCount += 3; // DTM Profile, HDR10 and Measured are always shown.
-	if (stats.renderLoadKnown)
-		lineCount += 4;
-	if (!stats.outputSweep.IsEmpty())
-		++lineCount;
-	if (stats.measuredRefreshRate > 0.0)
-		lineCount += 2;
-	if (stats.hasPPMCorrection ||
-		(!stats.ppmSource.IsEmpty() && stats.ppmSource != TEXT("N/A")))
-	{
-		++lineCount;
-	}
-	if ((stats.method == TEXT("Rational-Rational") ||
-		stats.method == TEXT("Clock-Rational")) && stats.hasPPMCorrection)
-	{
-		++lineCount;
-	}
-	if (stats.hasConversionData)
-		lineCount += 2;
-	if (!stats.outputMode.IsEmpty())
-	{
-		lineCount += 2;
-		if (stats.outputMode.Find(TEXT(" | GAMMA: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | DISPLAY: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | STATUS: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | SIGNAL: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | SWAPCHAIN: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | PRESENTER: ")) >= 0)
-			++lineCount;
-		if (stats.outputMode.Find(TEXT(" | CONTRACT: ")) >= 0)
-			++lineCount;
-	}
-	if (!stats.displayLut.IsEmpty())
-		++lineCount;
-
-	// The selected rule and shader summary are always visible, followed by one row per active
-	// shader. DrawStats also contains three four-pixel section separators.
-	lineCount += 2 + stats.activeShaders.size();
-	const int lineHeight =
-		stats.isAlphaRenderer ? ALPHA_LINE_HEIGHT : LINE_HEIGHT;
-	return PADDING * 2 + static_cast<int>(lineCount) * lineHeight + 12;
-}
-
-void StatsOverlayWindow::DrawText(HDC hdc, const CString& text, int x, int y)
-{
-	TextOut(hdc, x, y, text, text.GetLength());
-}
-
-CString StatsOverlayWindow::FormatQueueStatus()
-{
-	CString result;
-	if (m_stats.isAlphaRenderer)
-		result.Format(TEXT("Queue: %zu / %zu"),
-			m_stats.rawQueueSize, m_stats.maxQueueSize);
-	else
-		result.Format(TEXT("Queue R/C/T: %zu/%zu/%zu/%zu"),
-			m_stats.rawQueueSize, m_stats.convertedQueueSize,
-			m_stats.currentQueueSize, m_stats.maxQueueSize);
-	return result;
+    SetBkMode(hdc, TRANSPARENT);
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, alphaRenderer ? m_alphaFont : m_font));
+    SetTextColor(hdc, TEXT_COLOR);
+    const int valueX = StatsOverlayLayout::ValueX(hdc);
+    int y = PADDING;
+    for (const auto& row : rows)
+    {
+        y += row.gapBefore;
+        const auto label = StatsOverlayLayout::FitText(hdc, row.label, valueX - PADDING - 9);
+        const auto value = StatsOverlayLayout::FitText(hdc, row.value, WINDOW_WIDTH - PADDING - valueX);
+        TextOutW(hdc, PADDING, y, label.c_str(), static_cast<int>(label.size()));
+        TextOutW(hdc, valueX, y, value.c_str(), static_cast<int>(value.size()));
+        y += StatsOverlayLayout::LineHeight;
+    }
+    SelectObject(hdc, oldFont);
 }

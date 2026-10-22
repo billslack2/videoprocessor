@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <DisplayRasterInfo.h>
+#include <OsdTelemetryText.h>
 #include "../VideoProcessor-GUI/StatsOverlayWindow.h"
 #include <atomic>
 #include <thread>
@@ -99,7 +100,8 @@ public:
             const auto text=(i==0 ? std::wstring(L"Resolution:       ") : std::wstring())+lines[i];
             SIZE size{};
             Assert::IsTrue(GetTextExtentPoint32W(graphics.dc,text.c_str(),static_cast<int>(text.size()),&size)!=FALSE);
-            Assert::IsTrue(size.cx<=520,L"Raster annotation clipped by the native 540px panel");
+            Assert::IsTrue(size.cx<=StatsOverlayLayout::Width-StatsOverlayLayout::Padding*2,
+                L"Raster annotation clipped by the native panel");
         }
     }
     TEST_METHOD(NativeBitmapHeightTracksRasterContinuationRows)
@@ -110,16 +112,16 @@ public:
         const auto height=[&]() {
             overlay.UpdateStats(stats); std::vector<uint8_t> pixels; int width=0,rows=0,stride=0;
             Assert::IsTrue(overlay.RenderBgra(pixels,width,rows,stride));
-            Assert::AreEqual(540,width); Assert::AreEqual(width*4,stride);
+            Assert::AreEqual(StatsOverlayLayout::Width,width); Assert::AreEqual(width*4,stride);
             Assert::AreEqual(size_t(stride)*rows,pixels.size()); return rows;
         };
         const int baseline=height();
         stats.outputMode+=L" | WIRE: 3840x2160";
         Assert::AreEqual(baseline,height());
         stats.outputMode+=L" | DRAWN: 3840x2160";
-        Assert::AreEqual(baseline+20,height());
+        Assert::AreEqual(baseline+StatsOverlayLayout::LineHeight,height());
         stats.outputMode+=L" | DESKTOP: 1920x1080";
-        Assert::AreEqual(baseline+40,height());
+        Assert::AreEqual(baseline+2*StatsOverlayLayout::LineHeight,height());
     }
     TEST_METHOD(NativeBitmapDoesNotAllocateRowsForUnavailableOrMalformedRaster)
     {
@@ -132,6 +134,51 @@ public:
         int height=0; overlay.UpdateStats(stats);
         Assert::IsTrue(overlay.RenderBgra(pixels,width,height,stride));
         Assert::AreEqual(baseline,height);
+    }
+    TEST_METHOD(HostFallbackDoesNotResurrectRasterAfterAuthoritativeInvalidation)
+    {
+        Cache cache; cache.RecordMode(Mode()); cache.RecordDrawn(1344,756);
+        const CString previous(Row(cache).c_str());
+        Assert::IsTrue(previous.Find(L"1920x1080") >= 0);
+        cache.Invalidate();
+        CString queried;
+        // The supported renderer getter still runs during graph transitions,
+        // and its handled/empty snapshot overrides same-generation host text.
+        OsdTelemetryText::ApplyFallback(queried,true,true,&previous);
+        Assert::IsTrue(queried.IsEmpty());
+        cache.RecordMode(Mode(3840,2160,3840,2160));
+        queried = Row(cache).c_str();
+        OsdTelemetryText::ApplyFallback(queried,true,true,&previous);
+        Assert::IsTrue(queried.Find(L"3840x2160") >= 0);
+        Assert::IsTrue(queried.Find(L"drawn") < 0);
+    }
+    TEST_METHOD(HostFallbackPreservesUnsupportedSameGenerationOnlyAndHonorsLutClear)
+    {
+        const CString previous(L"Active: old-calibration.cube (65^3)");
+        CString queried;
+        OsdTelemetryText::ApplyFallback(queried,false,true,&previous);
+        Assert::AreEqual(previous.GetString(),queried.GetString());
+        queried.Empty();
+        OsdTelemetryText::ApplyFallback(queried,false,false,&previous);
+        Assert::IsTrue(queried.IsEmpty());
+        OsdTelemetryText::ApplyFallback(queried,true,true,&previous);
+        Assert::IsTrue(queried.IsEmpty());
+        queried = L"Rejected: invalid LUT";
+        OsdTelemetryText::ApplyFallback(queried,true,true,&previous);
+        Assert::AreEqual(L"Rejected: invalid LUT",queried.GetString());
+    }
+    TEST_METHOD(FirstHostSnapshotHasNoPreviousTelemetryToDereference)
+    {
+        for (const bool handled : {false,true})
+            for (const bool sameGeneration : {false,true})
+            {
+                CString queried;
+                OsdTelemetryText::ApplyFallback(queried,handled,sameGeneration,nullptr);
+                Assert::IsTrue(queried.IsEmpty());
+                queried = L"Current snapshot";
+                OsdTelemetryText::ApplyFallback(queried,handled,sameGeneration,nullptr);
+                Assert::AreEqual(L"Current snapshot",queried.GetString());
+            }
     }
     TEST_METHOD(ConcurrentDrawnUpdatesAreCoherentPairs)
     {
