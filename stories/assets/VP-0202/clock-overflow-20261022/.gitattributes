@@ -1,0 +1,2 @@
+*.trx -text whitespace=cr-at-eol
+/deployment-receipt.json -text whitespace=cr-at-eol

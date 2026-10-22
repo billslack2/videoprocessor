@@ -1,0 +1,52 @@
+{
+  "story": "VP-0202",
+  "status": "Done",
+  "clientDate": "2026-10-22",
+  "repository": "billslack2/videoprocessor",
+  "integrationBranch": "v1.4.02-beta",
+  "baseCommit": "3746d59e6c51b6056d8eef8443e0039fba978dcb",
+  "testedSourceHead": "4a1f58f4910e63a2193e27d04b7a50002fc45072",
+  "mergeCommit": "b656c25f701462b96bb625def8e19350fa4420cd",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/189",
+  "deployedCombinedSource": "92e50dbf707982d3144cfe8966871695f640a4ea",
+  "deployedSourceIncludesPreservedSubtitleOverlay": true,
+  "clockOnlyMergeExcludesSubtitleOverlay": true,
+  "redeployedAfterMerge": false,
+  "liveAcceptance": "The developer confirmed: yes this fixed it.",
+  "exactHeadValidation": "Native x64 Release test-target build passed; 93 focused regressions passed.",
+  "deployedValidation": "Complete x64 Release solution build passed; 120 focused combined-source regressions passed.",
+  "fullNativeSuiteClaim": false,
+  "independentLiveHardwareCounterProbeConfirmed": false,
+  "reports": [
+    {
+      "file": "clock-fix-regressions.trx",
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "sha256": "350601A8B4C47E724E81AD7388295C683CA7C42495D22CE3AFAF204303C9764D"
+    },
+    {
+      "file": "combined-deployment-regressions.trx",
+      "total": 120,
+      "passed": 120,
+      "failed": 0,
+      "sha256": "28B5934B7B2C445C0C37061FE82E0D29A976CBF3B3637F8CDC6A3991E4645537"
+    },
+    {
+      "file": "clock-merge-current-beta.trx",
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "sha256": "794A46DFC0A64FBB3A462FAAC465622D4D96B6FCC83D679AE815C29189C4CF1D"
+    }
+  ],
+  "deploymentReceipt": "deployment-receipt.json",
+  "deploymentReceiptSha256": "26C90BBB582BE4CC94A59C3D5B98BDDB1E8005CDDFF90FA03C5C3CE5E18D1670",
+  "trackerAudit": {
+    "canonicalRecords": 221,
+    "indexRows": 221,
+    "duplicates": 0,
+    "missingRecords": 0,
+    "inheritedUnmodifiedFinding": "VP-0070 has no Status heading on origin/main; its Blocked folder/index and content remain unchanged."
+  }
+}

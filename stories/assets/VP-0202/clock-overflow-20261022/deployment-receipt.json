@@ -1,0 +1,68 @@
+{
+  "status": "deployed-and-hash-verified",
+  "clientDate": "2026-10-22",
+  "timestamp": "2026-10-22T10:24:36.2742561-04:00",
+  "sourceWorktree": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022",
+  "sourceCommit": "92e50dbf707982d3144cfe8966871695f640a4ea",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backupDirectory": "C:\\Videoprocessor\\vp\\backups\\madvr-clock-overflow-20261022-102436135",
+  "deployedFiles": [
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "before": "68CCDF3422C2827270E38C8CF64FA02B92985303D0F8A11C23D5085E4E43B11E",
+      "after": "89446C3FEE9B081E774D5D5416E4175D8E5D1CE92625EF5B12021A3624EF7397"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "relative": "VideoProcessor.exe.runtime.json",
+      "before": "F5631486F5B6BB44DF83325B5E4C9B787AE9C5D32321ED19A03C47BEF1B92849",
+      "after": "F32BB38F85BA179EBF56B38398047E7C0179937EA63D7D35BC49A0549FB4360F"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "before": "2CD761B3F5D1D3C7C74E2E923E31CB6A797ECE535187E86B2F350D6D47386EA3",
+      "after": "73D327E1BA392462011C49543702E94CCF8484C4E4DE860FC75AFC8B04A4585D"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "before": "602E1E424AE1558ACEF9CE726849BBF4D2D5685F218B7C2C8765BFEB22077363",
+      "after": "6B2DA428CB3F303B008C95AF24CF2FE177CB7DD1170012FAC9DD306D0D93A730"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "before": "1DDA71E74462FFB4D4F80413EB22DE8121544CD8841210FC71B623E50BA18F64",
+      "after": "06936C03611E7992ABB123F6FF35CE872E98C50573631EE82631EFE5B58F5AD6"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\madvr-timing-audit-20261022\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "before": "C598BCF24EC43754F5653FE2F17B101929E8033CF1ECAE4ECD1026BB3D4D3243",
+      "after": "99B9BEC2EA021BC84B020C0BF4257EAF760894935EC2EC0468957E29CB455586"
+    }
+  ],
+  "preservedUserFiles": [
+    {
+      "relative": "VideoProcessor.cfg",
+      "sha256": "3394BAD626CA3771C9DBD1E3049A7F7FCDFF71CC05385326988C17B9ED9546B6"
+    },
+    {
+      "relative": "VideoProcessor.state",
+      "sha256": "5D98C91F02A6785F84A5DCFB3FB818D5427A04B9309F9A67A4A55177352C6D5E"
+    }
+  ],
+  "configurationEdits": [],
+  "startedPlayer": false,
+  "sourceIncludesDeployedSubtitleHandoff": true,
+  "validation": "Full x64 Release solution build; 120/120 exact combined-source focused native regressions passed."
+}
