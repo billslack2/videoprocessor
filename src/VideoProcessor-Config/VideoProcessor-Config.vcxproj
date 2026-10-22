@@ -117,10 +117,12 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClInclude Include="Resource.h" />
     <ClInclude Include="VpTheme.h" />
     <ClInclude Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ChartData.h" />
     <ClInclude Include="..\VideoProcessor-ChartCore\ColourChart.h" />
     <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveChart.h" />
     <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveProvider.h" />
     <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveRuntime.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ToneProfileRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="VideoProcessorConfig.rc" />
