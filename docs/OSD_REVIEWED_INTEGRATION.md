@@ -1,6 +1,6 @@
 # Reviewed OSD integration
 
-This change integrates the original work from PRs #173, #174 and #178 onto
+This change integrates the original work from PRs #173, #174, #175 and #178 onto
 `v1.4.02-beta` after the reviewed #183/#184 raster stack. The original author
 commits remain in the integration history.
 
@@ -37,6 +37,33 @@ HDR diagnostics preserve their values through aligned continuation rows.
 Units are stated in the HDR row labels. Optional detail markers with no value
 allocate no row. The native panel retains equal outer padding.
 
+## CIH physical size compensation
+
+`[general] scale_osd: true` enables screen-relative sizing. The General
+checkbox is labelled **Scale OSD with screen geometry**. Omission remains
+false and preserves existing sizing.
+
+The reference is the configured Screen fitted into the output, including VP
+Renderer's anamorphic mapping, before content fitting, movie crop or software
+zoom. Stats use `1.25 * referenceHeight / 2160`; their inset uses
+`40 * referenceHeight / 2160`. VP Renderer profile and sweep banners use the
+same screen reference with their existing typography baselines. Placement
+still follows the visible picture and can shrink an oversized panel to fit.
+
+For a 3840x2160 raster, a 2.35:1 screen has 1634.043 reference lines rather
+than 2160. The 0.756501 size factor cancels the 1.321875 optical enlargement
+needed to retain the physical height of a 16:9 screen. A height-limited fit on
+a wider raster can retain the same reference height for both screen aspects;
+it already fills that height and needs no inferred extra zoom compensation.
+Anamorphic horizontal squeeze is handled separately, once, for width and
+horizontal insets.
+
+This inference assumes the lens is adjusted so each configured Screen profile
+has the same physical height. Resolution and aspect ratio do not establish
+inches or report an arbitrary lens position. Actual projected appearance still
+needs a projector check. In madVR, physical screen dimensions are mapped into
+its OSD coordinate system rather than treating a fitted child window as a
+second optical zoom. Unavailable or unsupported mappings preserve legacy size.
 ## Regression coverage
 
 The native test project registers these suites alongside the existing raster,
