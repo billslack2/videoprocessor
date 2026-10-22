@@ -37,7 +37,10 @@ REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 	try
 	{
 		const timingclocktime_t now = m_timingClock.TimingClockNow();
-		const REFERENCE_TIME rt = (now * 10000000) / m_ticksPerSecond;
+		// Keep the wide intermediate: a 1 MHz hardware clock exceeds the
+		// old multiply-before-divide limit after about 10.7 days. Zero rounding
+		// preserves the existing truncation and hardware-clock timeline.
+		const REFERENCE_TIME rt = llMulDiv(now, 10000000LL, m_ticksPerSecond, 0);
 		m_lastReturnedTime.store(rt, std::memory_order_relaxed);
 		return rt;
 	}

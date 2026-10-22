@@ -179,4 +179,8 @@
   <ItemGroup>
     <ClCompile Include="MadVROsdSizingTests.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CaptureClockConversionTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="DirectShowTimingClockTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>
