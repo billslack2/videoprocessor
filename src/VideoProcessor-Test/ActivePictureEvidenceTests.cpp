@@ -2118,24 +2118,26 @@ namespace VideoProcessorTest
 
         TEST_METHOD(GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible)
         {
+            using namespace AlphaSourceCrop;
             for(bool p210:{false,true})
             for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int samplerDrift:{-3,0,3})
             for(int scenario=-2;scenario<13;++scenario) {
                 LoggedRelocatedCaptionFixture f(p210,true);
-                f.base.top=f.observation.pictureTop=276;
-                f.base.aspectRatio=3840.0/(1884-276);
+                f.base.top=f.observation.pictureTop=276+samplerDrift;
+                f.base.aspectRatio=3840.0/(1884-f.base.top);
                 f.frame.FillRectangle(0,274,3840,276,64);
                 f.BuildRealComposition();
                 auto guarded=ScopePresentation(3840,2160,268,1892);
                 f.composition=FitSubtitleToVisiblePicture(f.composition,
                     {guarded.left,guarded.top,guarded.right,guarded.bottom},20);
                 Assert::IsTrue(f.composition.valid);
-                Assert::AreEqual(276,f.composition.pictureTop,L"Guard rows are visible display context, not physical subtitle ownership.");
+                Assert::AreEqual(276+samplerDrift,f.composition.pictureTop,L"Guard rows are visible display context, not physical subtitle ownership.");
                 Assert::AreEqual(1884,f.composition.pictureBottom);
                 Assert::AreEqual(268,f.composition.displayPictureTop);
                 Assert::AreEqual(1892,f.composition.displayPictureBottom);
                 if(scenario==4)guarded=ScopePresentation(3840,2160,280,1880);
-                if(scenario==5)guarded=ScopePresentation(3840,2160,266,1892);
+                if(scenario==5)guarded=ScopePresentation(3840,2160,260,1892);
                 if(scenario==6)guarded.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
                 f.observation.sharedPicture.required=true;
                 f.observation.sharedPicture.identity=f.observation.identity;
@@ -2177,6 +2179,91 @@ namespace VideoProcessorTest
                         f.observation.identity,raw);
                     Assert::IsTrue(projected.qualified);
                     Assert::AreEqual(268,projected.currentBounds.top);Assert::AreEqual(1892,projected.currentBounds.bottom);
+                    Input crop;
+                    crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+                    crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                    crop.geometry=guarded;crop.frameSourceGeneration=crop.geometrySourceGeneration=selectedIdentity.transportGeneration;
+                    crop.frameSourceSequence=selectedIdentity.acceptedSequence;
+                    crop.framePresentationEpoch=selectedIdentity.viewportGeneration;
+                    crop.rasterWidth=3840;crop.rasterHeight=2160;
+                    crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
+                    crop.frameLocalPresentationRetentionEvaluated=projected.retention.analysisValid;
+                    crop.frameLocalPresentationRetentionSafe=projected.retention.excludedBandsPixelSafe;
+                    Assert::IsFalse(Evaluate(crop).applyCrop,L"The raw subtitle observation cannot acquire Scope.");
+                    crop.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(prepared,selectedIdentity,guarded);
+                    Assert::IsTrue(crop.preparedSubtitle.available);
+                    for(bool refinementPending:{false,true})
+                    for(int veto=0;veto<13;++veto) {
+                        auto current=crop;
+                        current.barCropRefinementPending=refinementPending;
+                        current.latestObservationIsProvisional=!refinementPending;
+                        current.latestObservationClassification=refinementPending ?
+                            ActivePictureClassification::BAR_CROP_TRUSTED : ActivePictureClassification::PROVISIONAL;
+                        if(veto==1)++current.frameSourceSequence;
+                        if(veto==2)++current.frameSourceGeneration;
+                        if(veto==3)++current.framePresentationEpoch;
+                        if(veto==4)current.geometry.top+=2;
+                        if(veto==5)current.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+                        if(veto==6)current.sharedGeometryAvailable=false;
+                        if(veto==7)current.frameLocalPresentationRetentionSafe=false;
+                        if(veto==8)current.currentVisibleBoundsAvailable=true;
+                        if(veto==9)current.classification=ActivePictureClassification::PROVISIONAL;
+                        if(veto==10)current.latestObservationClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                        if(veto==11)current.fullRasterPresentationAuthoritative=true;
+                        if(veto==12)current.frameLocalPresentationRetentionEvaluated=false;
+                        const auto admission=AdmitCropPresentation({},current,Evaluate(current),current.framePresentationEpoch);
+                        Assert::AreEqual(veto==0,admission.presentation.applyCrop,L"Only this exact prepared native source can acquire without a clean scene.");
+                        if(veto==0) {
+                            Assert::IsFalse(admission.blocked);
+                            PresentationRecoveryInput recovery;
+                            recovery.crop=current;recovery.candidate=Evaluate(current);
+                            recovery.presentationEpoch=current.framePresentationEpoch;
+                            recovery.previous.active=true;recovery.previous.trustedCrop=guarded;
+                            recovery.previous.sourceGeneration=current.frameSourceGeneration;
+                            recovery.previous.presentationEpoch=current.framePresentationEpoch;
+                            recovery.previous.startedSourceSequence=current.frameSourceSequence-1;
+                            recovery.measurementCurrent=recovery.retentionEvaluated=recovery.excludedBandsPixelSafe=true;
+                            recovery.retentionSourceGeneration=current.frameSourceGeneration;
+                            recovery.retentionSourceSequence=current.frameSourceSequence;
+                            recovery.retentionBounds=guarded;recovery.nearBlackEvaluated=true;
+                            recovery.observationAvailable=true;recovery.observation=guarded;
+                            recovery.observation.bottom=2028; // Raw subtitle envelope remains outside native Scope.
+                            const auto resolved=EvaluatePresentationRecovery(recovery);
+                            Assert::IsTrue(resolved.released && !resolved.state.active);
+                            const auto pipeline=AdmitCropPresentation({},current,resolved.presentation,current.framePresentationEpoch);
+                            Assert::IsFalse(pipeline.blocked);Assert::IsTrue(pipeline.presentation.applyCrop);
+                            auto rawRecovery=recovery;rawRecovery.crop.preparedSubtitle={};
+                            Assert::IsTrue(EvaluatePresentationRecovery(rawRecovery).state.active,
+                                L"Without the exact prepared source the raw subtitle still blocks ordinary recovery.");
+                            for(int recoveryVeto=0;recoveryVeto<5;++recoveryVeto) {
+                                auto blocked=recovery;
+                                if(recoveryVeto==0)++blocked.crop.frameSourceSequence;
+                                if(recoveryVeto==1)++blocked.presentationEpoch;
+                                if(recoveryVeto==2)blocked.crop.presentationFailOpen=true;
+                                if(recoveryVeto==3)blocked.crop.movingPictureTransition=true;
+                                if(recoveryVeto==4)blocked.crop.nearBlackEpisodeFullRaster=true;
+                                Assert::IsFalse(EvaluatePresentationRecovery(blocked).released,
+                                    L"Prepared cleanup cannot retire another source or independent presentation owner.");
+                            }
+                            VerticalInspectionBridgeInput inspection;
+                            inspection.sourceGeneration=current.frameSourceGeneration;
+                            inspection.sourceSequence=current.frameSourceSequence;
+                            inspection.presentationEpoch=current.framePresentationEpoch;
+                            inspection.trustedBase=guarded;
+                            inspection.previous.active=inspection.previous.failOpenLatched=true;
+                            inspection.previous.trustedBase=guarded;
+                            inspection.previous.sourceGeneration=current.frameSourceGeneration;
+                            inspection.previous.presentationEpoch=current.framePresentationEpoch;
+                            inspection.containedRetentionResolved=HasCurrentPreparedSubtitlePresentation(current);
+                            Assert::IsFalse(UpdateVerticalInspectionBridge(inspection).state.failOpenLatched);
+                            Assert::AreEqual(268,admission.presentation.sourceBounds.top);
+                            Assert::AreEqual(1892,admission.presentation.sourceBounds.bottom);
+                            auto unowned=admission.presentation;unowned.owner=DecisionOwner::OUTWARD_FIT;
+                            Assert::IsTrue(AdmitCropPresentation({},current,unowned,current.framePresentationEpoch).blocked);
+                            Assert::IsTrue(AdmitCropPresentation({},current,admission.presentation,current.framePresentationEpoch+1).blocked);
+                        }
+                    }
                     const auto physical=f.base;
                     // The same cue may arrive with alternating physical and
                     // guarded packet snapshots. No proof may leak across them.
@@ -2193,11 +2280,11 @@ namespace VideoProcessorTest
                         const auto nextRaw=EvaluateActivePicturePresentationRetention(f.Source(),nextBase);
                         const auto next=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),nextRaw,nextInput);
                         Assert::IsTrue(next.qualified,L"Each current packet must prove its own physical/display relationship.");
-                        Assert::AreEqual(276,f.composition.pictureTop);Assert::AreEqual(1884,f.composition.pictureBottom);
+                        Assert::AreEqual(276+samplerDrift,f.composition.pictureTop);Assert::AreEqual(1884,f.composition.pictureBottom);
                         Assert::IsFalse(next.renewsHold);
                     }
                 }
-                Assert::AreEqual(276,f.observation.pictureTop);Assert::AreEqual(1884,f.observation.pictureBottom);
+                Assert::AreEqual(276+samplerDrift,f.observation.pictureTop);Assert::AreEqual(1884,f.observation.pictureBottom);
             }
         }
 
