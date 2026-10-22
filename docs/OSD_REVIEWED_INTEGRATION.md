@@ -72,6 +72,7 @@ OSDs had different physical sizes, so they cannot both serve as a single
 25%-larger reference. The real 578x888 panel fits these two screen areas
 without shrinking; smaller available pictures or longer panels may still
 trigger the existing containment limit.
+
 This inference assumes the lens is adjusted so each configured Screen profile
 has the same physical height. Resolution and aspect ratio do not establish
 inches or report an arbitrary lens position. Actual projected appearance still
