@@ -3,6 +3,8 @@
 #include <SubtitleCutPaste.h>
 #include <SubtitleTemporalFill.h>
 #include <SubtitleCutPasteShader.h>
+#include <SubtitleBackingLip.h>
+#include <SubtitleBackingPresentation.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/gpu.h>
 #include <cstdint>
@@ -1817,6 +1819,126 @@ struct SubtitleShaderGpuFixture {
                 L"prepared cleanup must preserve unrelated picture");
         }
     }
+    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction) {
+        const auto mirror=[&](SubtitleBoxRect r) {
+            return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
+        };
+        SubtitleCutPasteGeometry base;
+        base.valid=true;base.source=mirror({22,50,42,58});base.content=mirror({26,51,38,57});
+        base.glyphLines[0]=base.content;base.layoutContent=base.content;
+        base.destination=mirror({20,32,44,44});base.pictureTop=16;base.pictureBottom=48;
+        base.displayPictureLeft=0;base.displayPictureRight=64;base.displayPictureTop=16;base.displayPictureBottom=48;
+        base.placementLimits={0,16,64,48};base.fromTopBar=top;
+        base.roundedCorners=false;base.extendToBar=true;
+        const SubtitleBoxPadding padding{6,2,2};
+        const SubtitleGeneratedGrayStyle style;
+        base=ApplySubtitleTextReduction(base,reduction,padding,false,false);
+        SubtitleBoxPreview preview;preview.available=true;preview.policyGeneration=7;preview.continuityGeneration=8;
+        preview.current.identity={2,2,2,83416,2,3,4};preview.current.width=preview.current.height=64;
+        preview.current.pictureTop=16;preview.current.pictureBottom=48;preview.current.analyzed=preview.current.barAuthority=true;
+        auto& text=preview.current.text;text.detected=true;text.cue=15;text.observations=20;
+        text.lineCount=1;text.bounds=text.anchor=text.lineBounds[0]=base.content;
+        text.signature.fill(0x55);text.anchorSignature.fill(0x55);text.lineSignatures[0].fill(0x55);
+        SubtitleLayoutAnchor finalAnchor;
+        base=finalAnchor.Consume(base,text,preview,padding,4,false);
+        Assert::IsTrue(base.valid && !base.pictureCapture.Valid() && !base.pictureIntrusion && !base.generatedCleanup.Valid());
+        const auto original=base;
+        base=PreserveExtendedSubtitleBackingWidth(base,padding,true);
+        Assert::AreEqual(24,base.destination.right-base.destination.left,
+            L"Explicit extension keeps the original twelve-pixel glyph envelope plus both native paddings, at every reduction.");
+        Assert::AreEqual(original.glyphScale,base.glyphScale);Assert::AreEqual(original.glyphTranslateX,base.glyphTranslateX);
+        Assert::AreEqual(original.glyphTranslateY,base.glyphTranslateY);
+        // Geometry-to-shader integration isolates a trusted finite proof here;
+        // the separate native proof suite validates the detector, pixels and budgets.
+        CurrentSubtitleBackingLipProof proof;proof.valid=true;proof.identity=preview.current.identity;
+        proof.policyGeneration=7;proof.continuityGeneration=8;proof.width=proof.height=64;
+        proof.pictureTop=16;proof.pictureBottom=48;proof.fromTopBar=top;
+        proof.measured=proof.cleanup=proof.blackInterior=mirror({20,45,44,48});
+        const auto geometry=ApplyCurrentSubtitleBackingLip(base,proof,preview.current.identity,7,8);
+        Assert::IsTrue(geometry.generatedCleanup.Valid() && !geometry.pictureCapture.Valid() && !geometry.pictureIntrusion);
+        Assert::AreEqual(base.source.left,geometry.source.left);Assert::AreEqual(base.source.right,geometry.source.right);
+        Assert::AreEqual(base.content.left,geometry.content.left);Assert::AreEqual(base.content.right,geometry.content.right);
+        for(int i=0;i<3;++i) {
+            Assert::AreEqual(base.glyphLines[i].top,geometry.glyphLines[i].top);
+            Assert::AreEqual(base.glyphLines[i].bottom,geometry.glyphLines[i].bottom);
+        }
+        std::vector<uint8_t> pixels(64*64*4,255);
+        auto upload=[&](bool lip) {
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                const auto inside=[&](SubtitleBoxRect r) {return x>=r.left && x<r.right && y>=r.top && y<r.bottom;};
+                const bool glyph=inside(geometry.content);
+                const uint8_t value=glyph?250:lip&&inside(proof.measured)?0:y>=16&&y<48?80:0;
+                const size_t i=(y*64+x)*4;pixels[i]=pixels[i+1]=pixels[i+2]=value;
+            }
+            pl_tex_transfer_params transfer{};transfer.tex=inputTexture;transfer.ptr=pixels.data();
+            Assert::IsTrue(pl_tex_upload(device->gpu,&transfer));
+        };
+        const auto target=[&](pl_tex texture) {
+            pl_frame output{};output.num_planes=1;output.planes[0].texture=texture;output.planes[0].components=4;
+            for(int c=0;c<4;++c)output.planes[0].component_mapping[c]=c;
+            output.repr=pl_color_repr_rgb;output.repr.alpha=PL_ALPHA_NONE;
+            output.color=input.color;output.color.transfer=PL_COLOR_TRC_LINEAR;output.crop={0,0,64,64};return output;
+        };
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        auto beforeTarget=target(allOutput),afterTarget=target(splitOutput);
+        upload(true);pl_frame clean{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,false,SubtitleCompositionPhase::CleanupOnly));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
+        const auto before=ReadLinear(allOutput),after=ReadLinear(splitOutput);
+        for(int y=16;y<48;++y)for(int x=0;x<64;++x)for(int c=0;c<3;++c) {
+            const auto& lip=proof.measured;const bool inside=x>=lip.left&&x<lip.right&&y>=lip.top&&y<lip.bottom;
+            if(inside) {
+                const float value=Pixel(after,x,y)[c];
+                // Both modes reconstruct the vacated native picture. Black mode owns only the relocated backdrop color.
+                const bool repaired=value>0.02f;
+                if(!repaired) {
+                    const auto message=std::wstring(L"lip cleanup mode=")+std::to_wstring(mode)+L" top="+std::to_wstring(top)+
+                        L" reduction="+std::to_wstring(reduction)+L" x="+std::to_wstring(x)+L" y="+std::to_wstring(y)+
+                        L" channel="+std::to_wstring(c)+L" value="+std::to_wstring(value)+
+                        L" before="+std::to_wstring(Pixel(before,x,y)[c]);
+                    Logger::WriteMessage(message.c_str());Assert::IsTrue(repaired,message.c_str());
+                }
+            }
+            else Assert::IsTrue(std::abs(Pixel(before,x,y)[c]-Pixel(after,x,y)[c])<0.005f,
+                L"Fresh lip proof cannot modify unrelated native picture pixels.");
+        }
+        for(int y=geometry.content.top;y<geometry.content.bottom;++y)
+            for(int x=geometry.content.left;x<geometry.content.right;++x)
+                Assert::IsTrue(Pixel(after,x,y)[0]<0.001f,L"Original bar glyph erasure remains the unchanged exact content path.");
+        pl_frame layer{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,false,SubtitleCompositionPhase::LayerOnly));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;stagingParams.format=layerTexture->params.format;
+        stagingParams.blit_dst=true;stagingParams.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&stagingParams);Assert::IsNotNull(staging);
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;pl_tex_blit(device->gpu,&copy);
+        const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        const int centerY=(geometry.destination.top+geometry.destination.bottom)/2;
+        for(int x=geometry.destination.left+1;x<geometry.destination.right-1;++x)
+            Assert::IsTrue(Pixel(layerPixels,x,centerY)[3]>0.999f,L"Reduced text must retain the original-size opaque backing span.");
+        Assert::IsTrue(Pixel(layerPixels,3,32)[3]<0.001f);
+        if(mode==3)for(int c=0;c<3;++c) {
+            // The layer stores source-transfer RGB, while style colors are linear.
+            const float linear=style.color[c];
+            const float expected=linear<=0.0031308f?12.92f*linear:1.055f*std::pow(linear,1.0f/2.4f)-0.055f;
+            Assert::IsTrue(std::abs(Pixel(layerPixels,geometry.destination.left+1,centerY)[c]-expected)<0.001f,
+                L"Black mode reconstructs the old lip while the relocated backdrop keeps its configured color.");
+        }
+        auto nextIdentity=preview.current.identity;++nextIdentity.acceptedSequence;++nextIdentity.sourceFrameNumber;
+        nextIdentity.captureTimestamp+=41708;upload(false);
+        const auto noLip=ApplyCurrentSubtitleBackingLip(base,proof,nextIdentity,7,8);
+        Assert::IsFalse(noLip.generatedCleanup.Valid());
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,noLip,mode,input.color.transfer,style,false,SubtitleCompositionPhase::CleanupOnly));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
+        const auto freshBefore=ReadLinear(allOutput),freshAfter=ReadLinear(splitOutput);
+        for(int y=proof.measured.top;y<proof.measured.bottom;++y)for(int x=proof.measured.left;x<proof.measured.right;++x)
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(Pixel(freshBefore,x,y)[c]-Pixel(freshAfter,x,y)[c])<0.005f,
+                L"A next source with no lip cannot reuse the old source cleanup or erase its current picture.");
+    }
     void Run(int backgroundMode,bool overlap=false,bool narrow=false,bool cover=false) {
         auto geometry=Geometry(overlap,narrow);
         if(cover) {
@@ -2013,6 +2135,11 @@ public:
         Assert::IsTrue(snapshot.debandEnabled);
         Assert::AreEqual(3,snapshot.debandParams.iterations);
         Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
+    }
+    TEST_METHOD(FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        for(int mode:{3,5})for(bool top:{false,true})for(int reduction:{0,50,75})
+            rgb.VerifyFreshBackingLipCleanupAndOriginalWidth(mode,top,reduction);
     }
     TEST_METHOD(PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint) {
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);

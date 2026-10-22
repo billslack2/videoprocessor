@@ -58,6 +58,8 @@
 #include <SubtitleBoxDetector.h>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
+#include <SubtitleBackingLip.h>
+#include <SubtitleBackingPresentation.h>
 #include <SubtitleMeasurementWorker.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <SubtitleCutPasteShader.h>
@@ -4516,6 +4518,9 @@ struct LibplaceboVideoRenderer::Impl
     SubtitlePictureAuthority subtitleSharedPicture;
     SubtitleCutPasteGeometry subtitleLoggedLayout;
     uint64_t subtitleLayoutCue=0;
+    const char* subtitleLipLogReason="not-evaluated";
+    SubtitleBoxRect subtitleLipLogCleanup;
+    uint64_t subtitleLipLogTick=0;
 	SubtitleBoxResult subtitleBoxResult;
     SubtitleCutPastePresentation subtitleCutPastePresentation;
     const pl_hook* subtitleCutPasteHook = nullptr;
@@ -13852,6 +13857,41 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
                 move=subtitleLayoutAnchor.Consume(move,subtitleBoxResult,*subtitlePreview,
                     safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground);
+                // Display backing width is independent of reduced letters. Keep
+                // both decorations outside the stable glyph/layout caches.
+                move=PreserveExtendedSubtitleBackingWidth(move,safeSubtitlePadding,
+                    !activeSettings.subtitleFloatBackground);
+                if(move.valid && !move.generatedCleanup.Valid() &&
+                    (subtitleCutPasteBackground==3 || subtitleCutPasteBackground==5)) {
+                    const auto lipStarted=SteadyClock::now();
+                    auto lipSource=analysisSource;
+                    lipSource.generation=subtitleIdentity.transportGeneration;
+                    const auto lip=ProveCurrentSubtitleBackingLip(lipSource,*subtitlePreview,
+                        subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
+                        localBoundaryContinuityGeneration);
+                    move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    const double lipMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-lipStarted).count();
+                    subtitlePerf.consumeMs+=lipMs;
+                    subtitlePerf.consumePeak=(std::max)(subtitlePerf.consumePeak,cost+lipMs);
+                    const auto now=GetTickCount64();
+                    const auto& prior=subtitleLipLogCleanup;
+                    const bool changed=std::strcmp(subtitleLipLogReason,lip.reason)!=0 ||
+                        prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
+                        prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
+                    if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d",
+                            sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
+                            move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
+                            lipMs,
+                            lip.measured.left,lip.measured.top,lip.measured.right,lip.measured.bottom,
+                            move.generatedCleanup.left,move.generatedCleanup.top,
+                            move.generatedCleanup.right,move.generatedCleanup.bottom,lip.cornerPixels,
+                            subtitlePreview->current.pendingRefresh?1:0);
+                        subtitleLipLogTick=now;subtitleLipLogReason=lip.reason;
+                        subtitleLipLogCleanup=move.generatedCleanup;
+                    }
+                }
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
                     return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;

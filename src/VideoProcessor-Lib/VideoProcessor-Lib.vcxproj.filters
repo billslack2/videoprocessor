@@ -10,6 +10,12 @@
     <ClInclude Include="SubtitleCutPaste.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SubtitleBackingLip.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SubtitleBackingPresentation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="SubtitleCutPasteShader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
