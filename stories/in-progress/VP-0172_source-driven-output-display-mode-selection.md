@@ -2,29 +2,30 @@
 
 ## Status
 
-In Progress (2026-10-21; software merge readiness verified with VP-0200;
-projector-on qualification pending). Current combined integration is
-[PR #184](https://github.com/billslack2/videoprocessor/pull/184), clean head
-`921791d0768a18df4087cbc09a97110bd609aefc` on current beta
-`71043e192b658c433dc8d888632f4740d1e61b01` (`v1.4.02-beta`).
-The reviewed #181 layer `3a8f8a08` contains twelve backend/cadence/DPI regressions
-and passed the complete 2,948 native tests, plus four focused Config checks.
-The final #181/#183 combined head adds fourteen OSD cache/font/bitmap tests and
-passed 378 targeted regressions plus the same four Config checks. All 26 added
-tests were discovered and passed on that final head. Both clean x64 Release
-solution builds succeeded; no failures/skips in the stated test selections.
-The complete native suite was not rerun on the final combined head.
+In Progress (2026-10-21; reviewed software merged with VP-0200;
+projector-on qualification pending). [PR #184](https://github.com/billslack2/videoprocessor/pull/184)
+is merged and pushed to `v1.4.02-beta` at
+`acb0cf6f4c5e9bce045cade13e7822b6f4f2a810`, with verified parents
+`71043e192b658c433dc8d888632f4740d1e61b01` and tested combined head
+`921791d0768a18df4087cbc09a97110bd609aefc`. The remote merge tree exactly
+matches that tested head. GitHub marks #181 merged; original fork #183 remains
+open, with its commits and upstream review changes already included in #184.
 
-The reviewed stack addresses stale raster cache lifetime, all swapchain size
-publication paths and native-panel clipping while keeping OSD polling free of
-new display-driver queries. #181 routing and consecutive read-back verification
-use shared production helpers exercised by tests. The original #183 fork was
-not modified after automatic approval rejected the fork push; all original
-author commits and review changes are in upstream #184. Use #184 as the single
-integration candidate. It is MERGEABLE; no beta merge, deployment or active
-config/state edit has occurred. See the
-[review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md) for exact
-source/binary/test pins and remaining physical-display acceptance.
+The reviewed #181 layer `3a8f8a08` contains twelve backend/cadence/DPI regressions
+and passed all 2,948 native tests plus four focused Config checks. The combined
+head adds fourteen OSD cache/font/bitmap tests and passed 378 targeted regressions
+plus the same four Config checks. All 26 new tests passed on the final head.
+Both clean x64 Release solution builds succeeded; no failures/skips in those
+test selections. The complete native suite was not rerun on the final head,
+and no tests were rerun for this unchanged-tree merge.
+
+The merged stack addresses stale raster cache lifetime, swapchain size
+publication and native-panel clipping while keeping OSD polling free of new
+display-driver queries. Routing and consecutive read-back verification use
+shared production helpers exercised by tests. Source history preserves both
+original PRs. No deployment or active config/state edit was performed for this
+merge. See the [review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md)
+for exact pins, merge verification and remaining physical-display acceptance.
 
 ## Successful tester run (2026-10-21)
 

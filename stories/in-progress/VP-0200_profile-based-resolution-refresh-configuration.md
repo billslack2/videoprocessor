@@ -2,25 +2,25 @@
 
 ## Status
 
-In Progress (2026-10-21; software review and regression validation complete;
-projector-on acceptance pending). The merge-ready upstream integration is
-[PR #184](https://github.com/billslack2/videoprocessor/pull/184), clean head
-`921791d0768a18df4087cbc09a97110bd609aefc` on fetched current beta
-`71043e192b658c433dc8d888632f4740d1e61b01` (`v1.4.02-beta`, PR #182 included).
-It preserves #181/#183 history and adds fixes for stale raster snapshots,
-recreated swapchain dimensions and clipped OSD annotations. All 26 added tests
-passed. The #181 layer `3a8f8a08` passed all 2,948 native tests; the final
-combined head passed 378 targeted regressions and four Config checks. Both
-clean x64 Release solution builds passed. The final combined head did not run
-the entire 2,948-test suite again.
+In Progress (2026-10-21; reviewed software merged into beta;
+projector-on acceptance pending). [PR #184](https://github.com/billslack2/videoprocessor/pull/184)
+is merged and pushed to `v1.4.02-beta` at
+`acb0cf6f4c5e9bce045cade13e7822b6f4f2a810`. Its parents are the verified beta
+`71043e192b658c433dc8d888632f4740d1e61b01` and tested combined head
+`921791d0768a18df4087cbc09a97110bd609aefc`. The fetched remote merge tree is
+byte-for-byte the tested source tree (`770923e6e1330f32388711e9949ec474ed81490c`).
 
-#181 is updated to `3a8f8a086339d75951a6cebd57fe8c3647ad0251` on current beta.
-Original fork #183 remains at `1669ee64`; its review fixes live in #184 after
-automatic approval rejected writing to that fork. #184 is the single tested
-integration candidate into beta. GitHub reports MERGEABLE and no advertised
-CI checks; no merge or deployment has occurred. Source/worktree pins, exact
-coverage and remaining hardware limits are in the
-[review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md).
+The merge preserves #181/#183 history and review fixes for stale raster
+snapshots, recreated swapchain dimensions and clipped OSD annotations. All 26
+added tests passed. The #181 layer `3a8f8a08` passed all 2,948 native tests;
+the final combined head passed 378 targeted regressions and four Config checks.
+Both clean x64 Release solution builds passed. The final combined head did not
+run the entire 2,948-test suite again; no tests were rerun for this unchanged-tree
+merge. GitHub also marks #181 merged. Original fork #183 remains open at
+`1669ee64`; its original commits and upstream review fixes are included in #184,
+so it does not need a second merge. No deployment or active configuration/state
+edit was performed for this merge. Source/build/test pins and merge verification
+are in the [review evidence](../assets/VP-0200/pr181-pr183-review-20261021.md).
 
 Previous operator deployment (2026-10-20): implementation is in `codex/vp-0200-display-tab`
 in `E:\codex\videoprocessor\vp-0200-display-tab`, based on the then-current beta
