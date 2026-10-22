@@ -1460,6 +1460,40 @@ void testEveryPageRoundTrips()
         QStringLiteral("Ctrl+Alt+P"), "Show profiles shortcut did not reload");
 }
 
+void testOsdScreenGeometryScalingRoundTrips()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto* control = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.scale_osd"));
+        require(!control->isChecked(), "OSD scaling must remain opt-in when omitted");
+        require(control->text() == QStringLiteral("Scale OSD with screen geometry"),
+            "OSD scaling label does not describe its screen reference");
+        require(control->toolTip().contains(QStringLiteral("CIH")) &&
+            control->toolTip().contains(QStringLiteral("optical zoom")),
+            "OSD scaling does not explain the CIH assumption");
+        control->setChecked(true);
+        save(window);
+    }
+    require(readBytes(path).contains("scale_osd: true"),
+        "Enabling OSD screen scaling did not persist");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto* control = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.scale_osd"));
+        require(control->isChecked(), "Enabled OSD scaling did not reload");
+        control->setChecked(false);
+        save(window);
+    }
+    require(readBytes(path).contains("scale_osd: false"),
+        "Disabling OSD screen scaling did not persist");
+    ConfigEditorWindow reloaded(path, 0, true);
+    require(!requireControl<QCheckBox>(reloaded,
+        QStringLiteral("config.general.scale_osd"))->isChecked(),
+        "Disabled OSD scaling did not reload");
+}
 void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
 {
     QTemporaryDir directory;
@@ -7146,6 +7180,7 @@ int main(int argc, char** argv)
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);
     failures += run("every page round trips", testEveryPageRoundTrips);
+    failures += run("OSD screen geometry scaling round trips", testOsdScreenGeometryScalingRoundTrips);
     failures += run("renderer section tabs stay synchronized during rapid clicks",
         testRendererSectionTabsRemainSynchronizedDuringRapidClicks);
     failures += run("empty Standard shaders can create first shader",

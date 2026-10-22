@@ -3515,6 +3515,30 @@ namespace VideoProcessorTest
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 
+        TEST_METHOD(ScaleOsdBooleanIsValidatedAndRestartsEitherRenderer)
+        {
+            CachedConfigTestFile temporaryFile;
+            for (const char* value : { "true", "false", "on", "off", "2", "screen" })
+            {
+                {
+                    std::ofstream file(temporaryFile.path, std::ios::out | std::ios::trunc);
+                    Assert::IsTrue(file.is_open());
+                    file << "[general]\nscale_osd: " << value << "\n";
+                    file.close();
+                    Assert::IsFalse(file.fail());
+                }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(temporaryFile.path, ConfigFile::ReadPolicy::Fresh));
+                std::string error;
+                const bool valid = std::string(value) != "2" && std::string(value) != "screen";
+                Assert::AreEqual(valid, MainConfigSchema::Validate(config, error));
+                if (!valid)
+                    Assert::IsTrue(error.find("scale_osd") != std::string::npos);
+            }
+            for (const bool directShow : { false, true })
+                Assert::IsTrue(ConfigurationApplyPolicy::Action::RestartRenderer ==
+                    ConfigurationApplyPolicy::ClassifyChange({ "general", "scale_osd" }, directShow));
+        }
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{
 			CachedConfigTestFile temporaryFile;

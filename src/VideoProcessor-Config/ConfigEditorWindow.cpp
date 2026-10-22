@@ -4693,10 +4693,10 @@ QWidget* ConfigEditorWindow::createStartupPage()
 	});
 	sourceForm->addRow(QStringLiteral("Profile display"),
 		profileChangeDisplay);
-	auto* scaleOsd = bindCheckField(QStringLiteral("Scale OSD with resolution"),
+	auto* scaleOsd = bindCheckField(QStringLiteral("Scale OSD with screen geometry"),
 		QStringLiteral("general"), QStringLiteral("scale_osd"));
 	scaleOsd->setToolTip(QStringLiteral(
-		"Keep the stats OSD the same apparent size at every output resolution: 25% larger than native at 4K, about 37% smaller at 1080p. Unticked, it is drawn at its native size, so it looks twice as large at 1080p as at 4K. VP Renderer only."));
+		"Size the OSD from the active Screen aspect ratio and output resolution. For constant-image-height (CIH) projection, this compensates the optical zoom used to fill the screen. Movie cropping and software zoom do not change the reference size. Applies to VP Renderer overlays and madVR stats. Unticked, existing sizing is preserved."));
 	sourceForm->addRow(QString(), scaleOsd);
 
     auto* input = new QWidget;
