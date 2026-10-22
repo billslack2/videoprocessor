@@ -17,6 +17,8 @@ struct CurrentSubtitleBackingLipProof
     bool fromTopBar=false;
     SubtitleBoxRect measured,cleanup,blackInterior;
     size_t samples=0,cornerPixels=0;
+    unsigned closureSamples=0,closureDark=0,closureLongestDarkRun=0;
+    bool attachmentSeamClipped=false;
     unsigned roundingRows=0;
 };
 
@@ -132,7 +134,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     Row first,last;
     int rows=0,commonLeft=0,commonRight=source.width,minLeft=source.width,maxRight=0;
     size_t rowBodyPixels=0;
-    bool closed=false;
+    bool closed=false,seamNeedsCorroboration=false;
     for(int depth=0;depth<=depthLimit;++depth){
         const int y=allTop?current.pictureTop+depth:current.pictureBottom-1-depth;
         if(y<current.pictureTop || y>=current.pictureBottom)break;
@@ -141,11 +143,30 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             if(!rows)return reject("lip-no-attached-black-backing");
             const int left=last.left+6,right=last.right-6;
             if(left>=right)return reject("lip-top-closure-too-narrow");
+            // The backing body remains exhaustively black. The adjacent
+            // OUTSIDE row is scene content and can contain small shadows.
+            // Require distributed contrast, without adding that row to cleanup
+            // or searching past an ambiguous closure into more picture.
+            std::array<unsigned,8> binTotal{},binBright{};
+            unsigned darkRun=0;bool closureEndsBright=true;
             for(int x=left;x<right;++x){
                 AnalysisLumaSample value;if(!sample(x,y,value))break;
-                if(value.luma<=darkLimit)return reject("lip-top-closure-occluded");
+                const int bin=(std::min)(7,int(int64_t(x-left)*8/(right-left)));
+                ++binTotal[bin];++result.closureSamples;
+                if(value.luma<=darkLimit){
+                    ++result.closureDark;++darkRun;
+                    if(x==left || x==right-1)closureEndsBright=false;
+                    result.closureLongestDarkRun=(std::max)(result.closureLongestDarkRun,darkRun);
+                }else{++binBright[bin];darkRun=0;}
             }
             if(exhausted || failedRead)break;
+            const unsigned maxDarkRun=unsigned((std::min)({32,(std::max)(3,glyphHeight/3),
+                (std::max)(3,(right-left)/32)}));
+            if(!closureEndsBright || result.closureDark*10>result.closureSamples || result.closureLongestDarkRun>maxDarkRun)
+                return reject("lip-top-closure-occluded");
+            for(size_t bin=0;bin<binTotal.size();++bin)
+                if(!binTotal[bin] || binBright[bin]*3<binTotal[bin]*2)
+                    return reject("lip-top-closure-support-localized");
             closed=true;break;
         }
         if(depth==depthLimit)return reject("lip-depth-search-limit");
@@ -162,12 +183,39 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(exhausted || failedRead)break;
         if(left<=searchLeft || right>=searchRight)return reject("lip-side-search-limit");
         if(left>glyphs.left || right<glyphs.right)return reject("lip-black-span-does-not-cover-glyphs");
+        bool finiteFlanks=true;
         for(int distance=0;distance<3;++distance){
             AnalysisLumaSample a,b;
             if(!sample(left-1-distance,y,a) || !sample(right+distance,y,b))break;
-            if(a.luma<=darkLimit || b.luma<=darkLimit)return reject("lip-flank-occluded");
+            finiteFlanks &= a.luma>darkLimit && b.luma>darkLimit;
         }
         if(exhausted || failedRead)break;
+        if(!finiteFlanks){
+            // Only the raster row immediately adjoining the physical bar may
+            // touch unrelated scene black. It supplies no horizontal envelope.
+            // All further rows must have the original strict finite flanks.
+            if(rows)return reject("lip-flank-occluded");
+            seamNeedsCorroboration=true;
+        }
+        if(rows==1 && seamNeedsCorroboration){
+            // The next independently finite row may NARROW the seam rectangle,
+            // never enlarge it into the attached scene. Its retained pixels
+            // were already exhaustively black/neutral on the previous row.
+            const int maximumSeamContact=(std::max)(1,glyphHeight/4);
+            if(left<first.left || right>first.right || left-first.left>maximumSeamContact ||
+                first.right-right>maximumSeamContact)
+                return reject("lip-attachment-seam-unbounded");
+            for(int x=left;x<right;++x){
+                AnalysisLumaSample value;if(!sample(x,first.y,value))break;
+                if(value.luma>darkLimit || (x>=left+6 && x<right-6 &&
+                    (std::abs(int(value.chromaU)-512)>32 || std::abs(int(value.chromaV)-512)>32)))
+                    return reject("lip-attachment-seam-body-mismatch");
+            }
+            if(exhausted || failedRead)break;
+            first.left=last.left=left;first.right=last.right=right;
+            commonLeft=minLeft=left;commonRight=maxRight=right;
+            rowBodyPixels=size_t(right-left);result.attachmentSeamClipped=true;
+        }
         if(rows){
             const int maximumRowInset=(std::max)(1,glyphHeight/8);
             if(left<last.left || right>last.right || left-last.left>maximumRowInset ||
@@ -189,7 +237,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     if(exhausted)return reject("lip-work-budget");
     if(failedRead)return reject("lip-native-sample-unavailable");
     if(!closed)return reject("lip-top-closure-unavailable");
-    if(rows<2)return reject("lip-insufficient-native-row-support");
+    if(rows<(seamNeedsCorroboration?3:2))return reject("lip-insufficient-native-row-support");
     result.blackInterior={commonLeft,allTop?current.pictureTop:last.y,commonRight,
         allTop?last.y+1:current.pictureBottom};
     if(!result.blackInterior.Valid())return reject("lip-no-common-cleanup-interior");
@@ -214,22 +262,36 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
 // current source owns cleanup; the caller never writes this value into a cache.
 inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     SubtitleCutPasteGeometry geometry,const CurrentSubtitleBackingLipProof& proof,
-    const ActivePictureFrameIdentity& expectedIdentity,uint64_t policy,uint64_t continuity)
+    const ActivePictureFrameIdentity& expectedIdentity,uint64_t policy,uint64_t continuity,
+    const char** applicationReason=nullptr)
 {
+    const auto reject=[&](const char* why){if(applicationReason)*applicationReason=why;return geometry;};
     const auto contains=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b){return a.Valid() && b.Valid() &&
         b.left>=a.left && b.top>=a.top && b.right<=a.right && b.bottom<=a.bottom;};
+    if(!geometry.valid || !proof.valid)return reject("lip-application-unavailable");
+    if(geometry.generatedCleanup.Valid() || geometry.cleanupLimit.Valid())
+        return reject("lip-application-existing-cleanup");
+    if(!SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
+        proof.policyGeneration!=policy || proof.continuityGeneration!=continuity)
+        return reject("lip-application-context-mismatch");
+    // A retained glyph anchor can preserve the opposite picture edge while
+    // current independent measurements vary there by a pixel. Cleanup belongs
+    // to its exact cue-side edge and must fit BOTH physical picture intervals.
+    // It never updates either edge, the glyph anchor, or the AR owner's crop.
     const SubtitleBoxRect picture{0,proof.pictureTop,proof.width,proof.pictureBottom};
-    if(!geometry.valid || geometry.generatedCleanup.Valid() || geometry.cleanupLimit.Valid() || !proof.valid ||
-        !SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
-        proof.policyGeneration!=policy || proof.continuityGeneration!=continuity ||
-        proof.width<1 || proof.height<1 || proof.pictureTop<0 || proof.pictureBottom>proof.height ||
-        proof.pictureTop>=proof.pictureBottom || geometry.pictureTop!=proof.pictureTop ||
-        geometry.pictureBottom!=proof.pictureBottom || geometry.fromTopBar!=proof.fromTopBar ||
-        !contains(picture,proof.cleanup) || !contains(proof.measured,proof.blackInterior) ||
+    const SubtitleBoxRect composedPicture{0,geometry.pictureTop,proof.width,geometry.pictureBottom};
+    if(proof.width<1 || proof.height<1 || proof.pictureTop<0 || proof.pictureBottom>proof.height ||
+        !picture.Valid() || geometry.pictureTop<0 || geometry.pictureBottom>proof.height ||
+        !composedPicture.Valid() || geometry.fromTopBar!=proof.fromTopBar ||
+        (proof.fromTopBar?geometry.pictureTop!=proof.pictureTop:geometry.pictureBottom!=proof.pictureBottom) ||
+        !contains(picture,proof.cleanup) || !contains(composedPicture,proof.cleanup))
+        return reject("lip-application-physical-binding-mismatch");
+    if(!contains(proof.measured,proof.blackInterior) ||
         proof.cleanup.left!=proof.measured.left || proof.cleanup.top!=proof.measured.top ||
         proof.cleanup.right!=proof.measured.right || proof.cleanup.bottom!=proof.measured.bottom ||
         (proof.fromTopBar?proof.measured.top!=proof.pictureTop:proof.measured.bottom!=proof.pictureBottom))
-        return geometry;
+        return reject("lip-application-invalid-cleanup");
     geometry.generatedCleanup=proof.cleanup;
+    if(applicationReason)*applicationReason="lip-current-cleanup-applied";
     return geometry;
 }

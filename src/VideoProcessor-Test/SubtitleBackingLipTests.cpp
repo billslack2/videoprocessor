@@ -608,5 +608,233 @@ public:
         }
     }
 
+    TEST_METHOD(LipApplyToleratesOnlyTheOppositePhysicalEdgeWhenCleanupFitsBothPictures) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
+            Frame frame(6,format,top);const auto lip=frame.Lip(30);const auto cue=Acquire(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(proof.valid);const auto base=Geometry(cue);
+            for(int delta:{-1,1}) {
+                auto g=base;
+                if(top)g.pictureBottom+=delta;else g.pictureTop+=delta;
+                const SubtitleBoxRect visible{0,g.pictureTop,frame.width,g.pictureBottom};
+                const SubtitleBoxRect measured{0,proof.pictureTop,frame.width,proof.pictureBottom};
+                Assert::IsTrue(Contains(visible,proof.cleanup) && Contains(measured,proof.cleanup));
+                const auto result=ApplyCurrentSubtitleBackingLip(g,proof,Identity(2),7,8);
+                std::ostringstream diagnostic;diagnostic<<"opposite-edge top="<<top<<" delta="<<delta
+                    <<" source="<<g.pictureTop<<":"<<g.pictureBottom<<" proof="<<proof.pictureTop<<":"<<proof.pictureBottom;
+                Logger::WriteMessage(diagnostic.str().c_str());
+                Assert::IsTrue(Contains(result.generatedCleanup,lip),
+                    L"One-pixel opposite-edge jitter cannot discard an exact-current lip attached to the unchanged cue-side physical plane.");
+                AssertGeometryExceptCleanup(g,result);
+                Assert::IsFalse(base.generatedCleanup.Valid());
+            }
+        }
+    }
+    TEST_METHOD(LipApplyStillRequiresExactCueSideIdentityAndPolicyAfterOppositeEdgeRelaxation) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::P210,top);frame.Lip(30);const auto cue=Acquire(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(proof.valid);const auto base=Geometry(cue);
+            for(int fault=0;fault<9;++fault) {
+                auto g=base;auto expected=Identity(2);uint64_t policy=7,continuity=8;
+                // The unrelated edge mismatch is deliberately present in
+                // every fault, so it cannot bypass the cue-side or epoch gates.
+                if(top)--g.pictureBottom;else --g.pictureTop;
+                if(fault==0) {if(top)--g.pictureTop;else --g.pictureBottom;}
+                if(fault==1) {if(top)++g.pictureTop;else ++g.pictureBottom;}
+                if(fault==2)++expected.acceptedSequence;
+                if(fault==3)++expected.sourceFrameNumber;
+                if(fault==4)++expected.captureTimestamp;
+                if(fault==5)++expected.analysisDomainKey;
+                if(fault==6)++policy;if(fault==7)++continuity;
+                if(fault==8)g.fromTopBar=!g.fromTopBar;
+                const auto result=ApplyCurrentSubtitleBackingLip(g,proof,expected,policy,continuity);
+                std::ostringstream diagnostic;diagnostic<<"cue-side-binding top="<<top<<" fault="<<fault;
+                Logger::WriteMessage(diagnostic.str().c_str());
+                Assert::IsFalse(result.generatedCleanup.Valid());AssertGeometryExceptCleanup(g,result);
+            }
+        }
+    }
+    TEST_METHOD(LipApplyRejectsInvalidOrPartialPictureIntervalsAndPreservesExistingCleanup) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::P210,top);frame.Lip(30);const auto cue=Acquire(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(proof.valid);const auto base=Geometry(cue);
+            for(int fault=0;fault<9;++fault) {
+                auto g=base;auto p=proof;
+                if(fault==0) {if(top)g.pictureBottom=frame.height+1;else g.pictureTop=-1;}
+                if(fault==1) {if(top)g.pictureBottom=g.pictureTop;else g.pictureTop=g.pictureBottom;}
+                if(fault==2) {if(top)g.pictureBottom=g.pictureTop-1;else g.pictureTop=g.pictureBottom+1;}
+                if(fault==3) {
+                    // Valid intervals with a positive intersection are still
+                    // insufficient when they clip even one proved cleanup row.
+                    if(top)g.pictureBottom=p.cleanup.bottom-1;else g.pictureTop=p.cleanup.top+1;
+                    Assert::IsTrue(g.pictureTop<g.pictureBottom);
+                }
+                if(fault==4)g.generatedCleanup=p.cleanup;
+                if(fault==5)g.generatedCleanup={10,500,20,510};
+                if(fault==6)g.cleanupLimit={0,384,frame.width,1776};
+                if(fault==7) {
+                    // A cleanup rectangle outside its independently measured
+                    // picture is not rescued by a larger composition interval.
+                    if(top) {
+                        p.pictureBottom=p.cleanup.bottom-1;g.pictureBottom=1776;
+                    } else {
+                        p.pictureTop=p.cleanup.top+1;g.pictureTop=384;
+                    }
+                }
+                if(fault==8)p.cleanup={};
+                const auto result=ApplyCurrentSubtitleBackingLip(g,p,Identity(2),7,8);
+                std::ostringstream diagnostic;diagnostic<<"cleanup-interval top="<<top<<" fault="<<fault;
+                Logger::WriteMessage(diagnostic.str().c_str());
+                Assert::IsTrue(Same(g.generatedCleanup,result.generatedCleanup));AssertGeometryExceptCleanup(g,result);
+            }
+        }
+    }
+    static void PaintAttachmentSceneContact(Frame& frame,int contact,bool right,int rows=1) {
+        const int edge=(right?416:224)*frame.scale;
+        for(int row=0;row<rows;++row) {
+            const int y=frame.pictureBottom-1-row;
+            frame.Fill(right?SubtitleBoxRect{edge,y,edge+contact,y+1}:
+                SubtitleBoxRect{edge-contact,y,edge,y+1},frame.floor);
+            // A separated scene pixel breaks the three-pixel exterior flank.
+            // Only depth one may corroborate and clip this physical seam.
+            frame.Pixel(right?edge+contact+1:edge-contact-2,y,frame.floor);
+        }
+    }
+    TEST_METHOD(ClosureAllowsBoundedOneToThreeNativePixelSceneShadowsWithoutErasingThem) {
+        for(int scale:{1,6})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+            for(bool top:{false,true})for(int darkPixels:{1,2,3}) {
+                Frame frame(scale,format,top);const int depth=scale==1?4:30;
+                const auto lip=frame.Lip(depth);const int closureY=frame.pictureBottom-depth-1;
+                const int left=250*scale+1;
+                frame.Fill({left,closureY,left+darkPixels,closureY+1},frame.floor);
+                const auto shadow=frame.Rect({left,closureY,left+darkPixels,closureY+1});
+                const auto cue=Acquire(frame);
+                const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+                LogProof(proof,frame,"tiny-outside-closure-shadow");Assert::IsTrue(proof.valid);
+                Assert::IsTrue(Same(lip,proof.cleanup));Assert::IsFalse(Contains(proof.cleanup,shadow));
+                Assert::IsTrue(proof.closureDark==unsigned(darkPixels) && proof.closureLongestDarkRun==unsigned(darkPixels));
+                const auto repaired=ApplyCurrentSubtitleBackingLip(Geometry(cue),proof,Identity(2),7,8);
+                Assert::IsTrue(Same(lip,repaired.generatedCleanup));
+                Assert::IsFalse(Contains(repaired.generatedCleanup,shadow),L"Outside scene detail can corroborate closure without becoming owned cleanup.");
+            }
+    }
+    TEST_METHOD(UhdDistributedClosureShadowsAndOneRowSceneContactKeepTheExactFiniteLip) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
+            Frame frame(6,format,top);const auto lip=frame.Lip(30);PaintAttachmentSceneContact(frame,16,false);
+            const int left=1344+6,width=1152-12,y=frame.pictureBottom-31;
+            unsigned totalDark=0;
+            for(int bin=0;bin<8;++bin) {
+                const int begin=left+width*bin/8,end=left+width*(bin+1)/8;
+                const int count=bin<7?9:12,x=begin+(end-begin)/3;
+                frame.Fill({x,y,x+count,y+1},frame.floor);totalDark+=count;
+            }
+            Assert::AreEqual(unsigned(75),totalDark);
+            const auto cue=Acquire(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            LogProof(proof,frame,"6.6-percent-closure-plus-seam");Assert::IsTrue(proof.valid);
+            Assert::IsTrue(proof.attachmentSeamClipped && Same(proof.measured,lip) && Same(proof.cleanup,lip));
+            Assert::IsTrue(proof.closureSamples==1140 && proof.closureDark==75 && proof.closureLongestDarkRun==12);
+            Assert::IsTrue(proof.cornerPixels==0,L"Unowned attachment contact must not be counted as an owned rounded corner.");
+            const auto outside=frame.Rect({1328,frame.pictureBottom-1,1344,frame.pictureBottom});
+            Assert::IsFalse(Contains(proof.cleanup,outside));
+        }
+    }
+    TEST_METHOD(ClosureRejectsLocalizedUnboundedOrExcessiveShadowsAndAFalseBodyClosure) {
+        for(int scale:{1,6})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+            for(bool top:{false,true})for(int fault=0;fault<5;++fault) {
+                Frame frame(scale,format,top);const int depth=scale==1?4:30;
+                frame.Lip(depth);const int left=224*scale+6,width=192*scale-12,y=frame.pictureBottom-depth-1;
+                const int binOne=left+width/8;
+                if(fault==0) {
+                    // Less than ten percent globally, but more than one third
+                    // of a single bin; each separate run remains short.
+                    const int runs=scale==1?3:6,length=scale==1?3:10,gap=scale==1?2:4;
+                    for(int i=0;i<runs;++i) {
+                        const int x=binOne+2+i*(length+gap);frame.Fill({x,y,x+length,y+1},frame.floor);
+                    }
+                }
+                if(fault==1)frame.Pixel(left,y,frame.floor); // Not bright-bounded at the closure edge.
+                if(fault==2) {
+                    const int length=scale==1?6:32;
+                    frame.Fill({binOne+2,y,binOne+2+length,y+1},frame.floor);
+                }
+                if(fault==3)frame.Pixel(320*scale,frame.pictureBottom-(scale==1?2:16),300);
+                if(fault==4)for(int bin=0;bin<8;++bin) {
+                    const int begin=left+width*bin/8,end=left+width*(bin+1)/8;
+                    const int length=scale==1?3:16,x=begin+(end-begin)/3;
+                    frame.Fill({x,y,x+length,y+1},frame.floor);
+                }
+                const auto cue=Acquire(frame);
+                const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+                std::ostringstream diagnostic;diagnostic<<"closure-negative scale="<<scale<<" top="<<top<<" fault="<<fault
+                    <<" reason="<<proof.reason<<" dark="<<proof.closureDark<<" samples="<<proof.closureSamples;
+                Logger::WriteMessage(diagnostic.str().c_str());Assert::IsFalse(proof.valid);
+            }
+    }
+    TEST_METHOD(FirstAttachmentSeamUsesDepthOneBoundsAndNeverErasesItsSceneContact) {
+        for(int scale:{1,6})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+            for(bool top:{false,true})for(bool right:{false,true}) {
+                Frame frame(scale,format,top);const int depth=scale==1?4:30,contact=scale==1?2:16;
+                const auto lip=frame.Lip(depth);PaintAttachmentSceneContact(frame,contact,right);
+                const auto cue=Acquire(frame);
+                const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+                LogProof(proof,frame,"bounded-first-native-seam");Assert::IsTrue(proof.valid);
+                Assert::IsTrue(proof.attachmentSeamClipped && Same(proof.measured,lip) && Same(proof.cleanup,lip));
+                Assert::IsTrue(Same(proof.blackInterior,lip) && proof.cornerPixels==0);
+                const int edge=(right?416:224)*scale;
+                const auto contactBounds=frame.Rect(right?
+                    SubtitleBoxRect{edge,frame.pictureBottom-1,edge+contact,frame.pictureBottom}:
+                    SubtitleBoxRect{edge-contact,frame.pictureBottom-1,edge,frame.pictureBottom});
+                Assert::IsFalse(Contains(proof.cleanup,contactBounds));
+                const auto base=Geometry(cue),result=ApplyCurrentSubtitleBackingLip(base,proof,Identity(2),7,8);
+                AssertGeometryExceptCleanup(base,result);Assert::IsTrue(Same(result.generatedCleanup,lip));
+                Assert::IsFalse(Contains(result.generatedCleanup,contactBounds));
+            }
+    }
+    TEST_METHOD(AttachmentSeamRejectsLaterContactInsufficientBodyAndUnboundedOrDamagedRetainedPixels) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true})
+            for(int fault=0;fault<6;++fault) {
+                if(fault==5 && format==Format::Rgb)continue; // Planar UV-only contamination is tested independently of luma.
+                Frame frame(6,format,top);frame.Lip(fault==1?2:30);
+                PaintAttachmentSceneContact(frame,fault==2?32:16,false,fault==0?2:1);
+                if(fault==3) {
+                    // Rebuild a seam with no broad first-row run; a wider
+                    // depth-one span cannot be claimed from the old row.
+                    frame.Fill({1328,frame.pictureBottom-1,1344,frame.pictureBottom},300);
+                    frame.Fill({1336,frame.pictureBottom-2,1344,frame.pictureBottom-1},frame.floor);
+                    frame.Pixel(1342,frame.pictureBottom-1,frame.floor);
+                }
+                if(fault==4)frame.Pixel(1918,frame.pictureBottom-1,300);
+                if(fault==5)frame.Chroma({1918,frame.pictureBottom-1,1920,frame.pictureBottom},420,610);
+                const auto cue=Acquire(frame);
+                const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+                std::ostringstream diagnostic;diagnostic<<"seam-negative format="<<int(format)<<" top="<<top<<" fault="<<fault
+                    <<" reason="<<proof.reason<<" samples="<<proof.samples;
+                Logger::WriteMessage(diagnostic.str().c_str());Assert::IsFalse(proof.valid);
+            }
+    }
+    TEST_METHOD(ClosureAndAttachmentRechecksRemainInsideTheExactCallerBudget) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::DecodedDv,top);const auto lip=frame.Lip(30);PaintAttachmentSceneContact(frame,16,false);
+            const int left=1350,width=1140,y=frame.pictureBottom-31;
+            for(int bin=0;bin<8;++bin) {
+                const int begin=left+width*bin/8,end=left+width*(bin+1)/8;
+                const int length=bin<7?9:12,x=begin+(end-begin)/3;frame.Fill({x,y,x+length,y+1},frame.floor);
+            }
+            const auto cue=Acquire(frame);
+            const auto full=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(full.valid && Same(full.cleanup,lip) && full.attachmentSeamClipped);
+            Assert::IsTrue(full.samples>32768 && full.samples<=65536);
+            for(size_t cap:{size_t(1),size_t(1500),size_t(2500),full.samples-1}) {
+                const auto limited=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,cap);
+                Assert::IsFalse(limited.valid);Assert::IsTrue(limited.samples<=cap);
+                Assert::IsTrue(std::string(limited.reason)=="lip-work-budget");
+            }
+            const auto exact=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,full.samples);
+            Assert::IsTrue(exact.valid && exact.samples==full.samples && Same(exact.cleanup,lip));
+        }
+    }
 };
 }

@@ -13869,8 +13869,9 @@ struct LibplaceboVideoRenderer::Impl
                     const auto lip=ProveCurrentSubtitleBackingLip(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration);
+                    const char* lipApplicationReason=nullptr;
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
-                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,&lipApplicationReason);
                     const double lipMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-lipStarted).count();
                     subtitlePerf.consumeMs+=lipMs;
                     subtitlePerf.consumePeak=(std::max)(subtitlePerf.consumePeak,cost+lipMs);
@@ -13880,14 +13881,17 @@ struct LibplaceboVideoRenderer::Impl
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
                             lip.measured.left,lip.measured.top,lip.measured.right,lip.measured.bottom,
                             move.generatedCleanup.left,move.generatedCleanup.top,
                             move.generatedCleanup.right,move.generatedCleanup.bottom,lip.cornerPixels,
-                            subtitlePreview->current.pendingRefresh?1:0);
+                            subtitlePreview->current.pendingRefresh?1:0,lipApplicationReason,
+                            lip.pictureTop,lip.pictureBottom,move.pictureTop,move.pictureBottom,
+                            lip.closureDark,lip.closureSamples,lip.closureLongestDarkRun,
+                            lip.attachmentSeamClipped?1:0);
                         subtitleLipLogTick=now;subtitleLipLogReason=lip.reason;
                         subtitleLipLogCleanup=move.generatedCleanup;
                     }
