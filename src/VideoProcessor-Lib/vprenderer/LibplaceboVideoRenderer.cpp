@@ -18289,6 +18289,26 @@ releaseDriftBaseRetention =
 			overlayCount = 0;
 			target.overlays = nullptr;
 			target.num_overlays = 0;
+            const float overlayOutputHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+            auto overlayScreen = frameScreen; // Includes the selected temporal packet's stable screen fit.
+            const auto validScreenRect = [](const AnamorphicPresentation::Screen& screen) {
+                return screen.valid && NativeStatsOverlayPlacement::Rect{
+                    static_cast<float>(screen.rect.left), static_cast<float>(screen.rect.top),
+                    static_cast<float>(screen.rect.right), static_cast<float>(screen.rect.bottom) }.IsValid();
+            };
+            if (!validScreenRect(overlayScreen)) {
+                // Black/fallback presentations can have no movie layout. Refit
+                // from the full output and current screen profile, never from
+                // the movie destination crop or its software zoom.
+                overlayScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+                    configuredScreenAspect, anamorphicScale,
+                    { 0.0, 0.0, static_cast<double>(baseTarget.planes[0].texture->params.w),
+                        static_cast<double>(baseTarget.planes[0].texture->params.h) },
+                    ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
+            }
+            const float overlayScreenHeight = validScreenRect(overlayScreen)
+                ? static_cast<float>(overlayScreen.rect.bottom - overlayScreen.rect.top) : overlayOutputHeight;
+            const bool scaleOsd = activeSettings.scaleOsd;
 		if (statsOverlayTexture)
 		{
 			pl_overlay& overlay = overlays[overlayCount];
@@ -18310,22 +18330,16 @@ releaseDriftBaseRetention =
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0,
 				target.crop.x1, target.crop.y1 };
-			// The stats panel is a fixed-size bitmap, so size it as a
-			// share of the output instead: 1.25x its native size on a 2160-line
-			// output, and the same proportion on 1080p or any other height. The
-			// inset follows the same proportion.
-			constexpr float kStatsOverlayScaleAt2160 = 1.25f;
-			const float statsOverlayOutputScale = dstHeight / 2160.0f;
-			const bool scaleOsd = activeSettings.scaleOsd;
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::Place(
-					pictureRect, outputRect,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
-					static_cast<float>(statsOverlayTexture->params.h),
-					scaleOsd ?
-						NativeStatsOverlayPlacement::kDefaultInsetPixels * statsOverlayOutputScale :
-						NativeStatsOverlayPlacement::kDefaultInsetPixels,
-					scaleOsd ? kStatsOverlayScaleAt2160 * statsOverlayOutputScale : 1.0f);
+            // Screen fit supplies the relative physical CIH size. Movie fit,
+            // source crop and software zoom affect only anchoring/containment.
+            const auto sizing = NativeStatsOverlayPlacement::ResolveStatsSizing(
+                scaleOsd, overlayScreenHeight, dstHeight);
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale) : sizing.insetPixels;
+            const NativeStatsOverlayPlacement::Result placement = NativeStatsOverlayPlacement::Place(
+                pictureRect, outputRect,
+                AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
+                static_cast<float>(statsOverlayTexture->params.h), sizing.insetPixels, sizing.scale, horizontalInset);
 			overlayPart.dst = {
 				placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
@@ -18349,7 +18363,7 @@ releaseDriftBaseRetention =
 			if (placementChanged)
 			{
 				DebugLog::Log(
-					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.0f clamped=%d fallback=%d",
+					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.2f horizontal_inset=%.2f screen_height=%.2f requested_scale=%.4f screen_scaled=%d clamped=%d fallback=%d",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(nlsGeometryGeneration),
@@ -18364,7 +18378,7 @@ releaseDriftBaseRetention =
 					placement.scale,
 					placement.panel.left, placement.panel.top,
 					placement.panel.right, placement.panel.bottom,
-					NativeStatsOverlayPlacement::kDefaultInsetPixels,
+					sizing.insetPixels, horizontalInset, overlayScreenHeight, sizing.scale, scaleOsd ? 1 : 0,
 					placement.insetClamped ? 1 : 0,
 					placement.usedOutputFallback ? 1 : 0);
 				lastStatsOverlayPlacement = placement;
@@ -18394,11 +18408,14 @@ releaseDriftBaseRetention =
 				0.0f, 0.0f, dstWidth, dstHeight };
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::PlaceTopRight(
-					pictureRect, outputRect,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
-					static_cast<float>(sweepOverlayTexture->params.h));
+            const auto sizing = NativeStatsOverlayPlacement::ResolveSweepSizing(
+                scaleOsd, overlayScreenHeight, dstHeight);
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale) : sizing.insetPixels;
+            const NativeStatsOverlayPlacement::Result placement =
+                NativeStatsOverlayPlacement::PlaceTopRight(pictureRect, outputRect,
+                    AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
+                    static_cast<float>(sweepOverlayTexture->params.h), sizing.insetPixels, sizing.scale, horizontalInset);
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
 			if (!hasSweepOverlayPlacement ||
@@ -18462,22 +18479,18 @@ releaseDriftBaseRetention =
 				outputRect.top - cropOriginY,
 				outputRect.right - cropOriginX,
 				outputRect.bottom - cropOriginY };
-			const float profileScale =
-				NativeStatsOverlayPlacement::ProfileOverlayScale(
-					visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight);
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::PlaceTopLeft(
-					cropLocalPicture, cropLocalOutput,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) *
-						profileScale,
-					static_cast<float>(profileOverlayTexture->params.h) *
-						profileScale,
-					NativeStatsOverlayPlacement::ProfileOverlayTopInset(
-						visiblePicture.IsValid() ? visiblePicture.Height() :
-							dstHeight),
-					NativeStatsOverlayPlacement::ProfileOverlayLeftInset(
-						visiblePicture.IsValid() ? visiblePicture.Height() :
-							dstHeight));
+            const float visibleHeight = visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight;
+            const auto sizing = NativeStatsOverlayPlacement::ResolveProfileSizing(
+                scaleOsd, overlayScreenHeight, dstHeight, visibleHeight);
+            const float profileScale = sizing.scale;
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale)
+                : NativeStatsOverlayPlacement::ProfileOverlayLeftInset(visibleHeight);
+            const NativeStatsOverlayPlacement::Result placement =
+                NativeStatsOverlayPlacement::PlaceTopLeft(cropLocalPicture, cropLocalOutput,
+                    AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) * profileScale,
+                    static_cast<float>(profileOverlayTexture->params.h) * profileScale,
+                    sizing.insetPixels, horizontalInset, 1.0f, scaleOsd ? horizontalInset : -1.0f);
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
 			NativeStatsOverlayPlacement::Result absolutePlacement = placement;
