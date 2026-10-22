@@ -170,4 +170,10 @@
   <ItemGroup><ClCompile Include="LocalBoundaryRefinementTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
   <ItemGroup><ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
   <ItemGroup><ClCompile Include="ActivePictureMeasurementCacheTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="OutputOsdTelemetryCacheTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="HdrStatusTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="OsdInputColorInfoTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="StatsOverlayLayoutTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>

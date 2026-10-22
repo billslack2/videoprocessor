@@ -594,4 +594,14 @@
     <ClCompile Include="RememberedEdgeReturn.cpp" />
   </ItemGroup>
   <ItemGroup><ClInclude Include="LocalBoundaryRefinement.h" /><ClCompile Include="LocalBoundaryRefinement.cpp" /></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vprenderer\OutputOsdTelemetryCache.h" />
+    <ClInclude Include="vprenderer\FrameHdrStatus.h" />
+    <ClInclude Include="HdrOsdFormatting.h" />
+    <ClInclude Include="StatsOverlayLayout.h" />
+    <ClInclude Include="OsdInputColorInfo.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="OsdTelemetryText.h" />
+  </ItemGroup>
 </Project>
