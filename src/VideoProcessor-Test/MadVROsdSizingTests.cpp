@@ -23,11 +23,11 @@ TEST_CLASS(MadVROsdSizingTests)
         return mapping;
     }
     static NativeStatsOverlayPlacement::StatsSizing Size(const MadVROsdSizing::Mapping& mapping,
-        bool enabled, bool configured, double aspect)
+        bool enabled, bool configured, double aspect, float sizePercent = 100.0f)
     {
         const auto screen = MadVROsdSizing::Resolve(mapping, configured, aspect);
         return NativeStatsOverlayPlacement::ResolveStatsSizing(enabled && screen.valid,
-            screen.fittedHeight, screen.outputHeight);
+            screen.fittedHeight, screen.outputHeight, sizePercent);
     }
 public:
     TEST_METHOD(FullscreenOpticalZoomPreservesProjectedStatsSizeAndInset)
@@ -40,6 +40,70 @@ public:
             const double zoom = 2.35 / (16.0 / 9.0);
             Assert::AreEqual(double(standard.scale), scope.scale * zoom, 0.00001);
             Assert::AreEqual(double(standard.insetPixels), scope.insetPixels * zoom, 0.00001);
+        }
+    }
+    TEST_METHOD(CalibratedActualStatsPanelMatchesPhysicalSizeAndOldScopeEnlargement)
+    {
+        const auto mapping=Fullscreen();const auto flatScreen=MadVROsdSizing::Resolve(mapping,true,16.0/9.0);
+        const auto scopeScreen=MadVROsdSizing::Resolve(mapping,true,2.35);Assert::IsTrue(flatScreen.valid&&scopeScreen.valid);
+        const NativeStatsOverlayPlacement::Rect output{0,0,3840,2160};
+        const NativeStatsOverlayPlacement::Rect flat{0,0,3840,flatScreen.fittedHeight};
+        const float scopeTop=(scopeScreen.outputHeight-scopeScreen.fittedHeight)*.5f;
+        const NativeStatsOverlayPlacement::Rect scope{0,scopeTop,3840,scopeTop+scopeScreen.fittedHeight};
+        const auto oldScope=NativeStatsOverlayPlacement::Place(scope,output,578,888);
+        const auto flatSize=Size(mapping,true,true,16.0/9.0,132.1875f),scopeSize=Size(mapping,true,true,2.35,132.1875f);
+        const auto flatPanel=NativeStatsOverlayPlacement::Place(flat,output,578,888,flatSize.insetPixels,flatSize.scale);
+        const auto scopePanel=NativeStatsOverlayPlacement::Place(scope,output,578,888,scopeSize.insetPixels,scopeSize.scale);
+        Assert::IsFalse(oldScope.insetClamped||flatPanel.insetClamped||scopePanel.insetClamped);
+        Assert::IsTrue(oldScope.panel.IsValid()&&flatPanel.panel.IsValid()&&scopePanel.panel.IsValid());
+        Assert::AreEqual(1.0f,oldScope.scale);Assert::AreEqual(1.25f,scopePanel.scale,.000001f);
+        Assert::AreEqual(1.65234375f,flatPanel.scale,.000001f);
+        Assert::AreEqual(1110.0f,scopePanel.panel.Height(),.001f);
+        Assert::AreEqual(1467.28125f,flatPanel.panel.Height(),.001f);
+        const float opticalZoom=flatScreen.fittedHeight/scopeScreen.fittedHeight;
+        Assert::AreEqual(flatPanel.panel.Height(),scopePanel.panel.Height()*opticalZoom,.001f);
+        Assert::AreEqual(flatPanel.panel.Width(),scopePanel.panel.Width()*opticalZoom,.001f);
+        Assert::AreEqual(1.25f,(scopePanel.panel.Height()*opticalZoom)/(oldScope.panel.Height()*opticalZoom),.000001f);
+        Assert::AreEqual(1.25f,(scopePanel.panel.Width()*opticalZoom)/(oldScope.panel.Width()*opticalZoom),.000001f);
+        Assert::AreEqual(flat.right-flatPanel.panel.right,(scope.right-scopePanel.panel.right)*opticalZoom,.001f);
+        Assert::AreEqual(flat.bottom-flatPanel.panel.bottom,(scope.bottom-scopePanel.panel.bottom)*opticalZoom,.001f);
+        const auto omitted=Size(mapping,true,true,2.35),explicitDefault=Size(mapping,true,true,2.35,100);
+        Assert::AreEqual(omitted.scale,explicitDefault.scale);Assert::AreEqual(omitted.insetPixels,explicitDefault.insetPixels);
+    }
+    TEST_METHOD(CalibratedWindowedDpiAndNlsCanvasesMatchActualPhysicalPanel)
+    {
+        for(double dpi:{1.0,1.25,1.5,2.0})for(bool nls:{false,true})
+        {
+            auto mapping=Fullscreen();mapping.fullscreen=false;
+            mapping.logicalHostWidth/=dpi;mapping.logicalHostHeight/=dpi;
+            mapping.logicalChildWidth=mapping.osdWidth=mapping.logicalHostWidth;
+            mapping.logicalChildHeight=mapping.osdHeight=nls?mapping.logicalHostWidth/2.35:mapping.logicalHostHeight;
+            const auto screen=MadVROsdSizing::Resolve(mapping,true,2.35);Assert::IsTrue(screen.valid);
+            const auto sizing=Size(mapping,true,true,2.35,132.1875f);
+            const NativeStatsOverlayPlacement::Rect output{0,0,float(mapping.osdWidth),float(mapping.osdHeight)};
+            const float top=nls?0.0f:(output.Height()-screen.fittedHeight)*.5f;
+            const NativeStatsOverlayPlacement::Rect picture{0,top,output.right,top+screen.fittedHeight};
+            const auto panel=NativeStatsOverlayPlacement::Place(picture,output,578,888,sizing.insetPixels,sizing.scale);
+            Assert::IsTrue(panel.panel.IsValid());Assert::IsFalse(panel.insetClamped);
+            Assert::AreEqual(1110.0,double(panel.panel.Height())*dpi,.002);
+            Assert::AreEqual(722.5,double(panel.panel.Width())*dpi,.002);
+            Assert::AreEqual(40.0,double(picture.right-panel.panel.right)*dpi,.002);
+            Assert::AreEqual(40.0,double(picture.bottom-panel.panel.bottom)*dpi,.002);
+        }
+    }
+    TEST_METHOD(PersonalCalibrationIsIgnoredWhenDisabledOrCoordinateMappingInvalid)
+    {
+        for(float percent:{50.0f,132.1875f,250.0f})
+        {
+            const auto disabled=Size(Fullscreen(),false,true,2.35,percent);
+            Assert::AreEqual(1.0f,disabled.scale);Assert::AreEqual(40.0f,disabled.insetPixels);
+            auto invalid=Fullscreen();invalid.unmaskedOutputHeight=0;
+            const auto unavailable=Size(invalid,true,true,2.35,percent);
+            Assert::AreEqual(1.0f,unavailable.scale);Assert::AreEqual(40.0f,unavailable.insetPixels);
+            const NativeStatsOverlayPlacement::Rect output{0,0,3840,2160};
+            const auto old=NativeStatsOverlayPlacement::Place(output,output,578,888);
+            const auto panel=NativeStatsOverlayPlacement::Place(output,output,578,888,disabled.insetPixels,disabled.scale);
+            Assert::AreEqual(old.panel.left,panel.panel.left);Assert::AreEqual(old.panel.top,panel.panel.top);
         }
     }
     TEST_METHOD(OutputResolutionChangesRasterUnitsButKeepsRelativePhysicalSize)
