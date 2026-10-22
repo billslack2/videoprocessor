@@ -30,6 +30,7 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QDoubleValidator>
+#include <QDoubleSpinBox>
 #include <QRegularExpressionValidator>
 #include <QStandardItemModel>
 #include <QButtonGroup>
@@ -102,6 +103,7 @@
 #include <algorithm>
 #include <functional>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <map>
@@ -4698,6 +4700,36 @@ QWidget* ConfigEditorWindow::createStartupPage()
 	scaleOsd->setToolTip(QStringLiteral(
 		"Size the OSD from the active Screen aspect ratio and output resolution. For constant-image-height (CIH) projection, this compensates the optical zoom used to fill the screen. Movie cropping and software zoom do not change the reference size. Applies to VP Renderer overlays and madVR stats. Unticked, existing sizing is preserved."));
 	sourceForm->addRow(QString(), scaleOsd);
+
+    auto* statsOsdSize = new QDoubleSpinBox;
+    statsOsdSize->setObjectName(controlName(QStringLiteral("general"),
+        QStringLiteral("stats_osd_size_percent")));
+    statsOsdSize->setAccessibleName(QStringLiteral("Stats OSD size"));
+    statsOsdSize->setDecimals(4);
+    statsOsdSize->setRange(50.0, 250.0);
+    statsOsdSize->setSingleStep(5.0);
+    statsOsdSize->setSuffix(QStringLiteral("%"));
+    statsOsdSize->setKeyboardTracking(false);
+    statsOsdSize->setToolTip(QStringLiteral(
+        "100% is the baseline automatic CIH size. Increase this percentage to enlarge the stats OSD while keeping its projected size consistent between Screen profiles. Only affects stats; profile and sweep notices keep their own sizes. Requires Scale OSD with screen geometry."));
+    bool statsSizeOk = false;
+    const double configuredStatsSize = value(QStringLiteral("general"),
+        QStringLiteral("stats_osd_size_percent")).toDouble(&statsSizeOk);
+    statsOsdSize->setValue(statsSizeOk && std::isfinite(configuredStatsSize) &&
+        configuredStatsSize >= 50.0 && configuredStatsSize <= 250.0
+        ? configuredStatsSize : 100.0);
+    statsOsdSize->setEnabled(scaleOsd->isChecked());
+    connect(scaleOsd, &QCheckBox::toggled, statsOsdSize, &QWidget::setEnabled);
+    connect(statsOsdSize, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+        [this, statsOsdSize](double percent)
+    {
+        if (!document_) return;
+        document_->SetKnown("general", "stats_osd_size_percent",
+            QString::number(percent, 'f', 4).toStdString());
+        editOrder_[statsOsdSize->objectName()] = ++editSerial_;
+        markDirty();
+    });
+    sourceForm->addRow(QStringLiteral("Stats OSD size"), statsOsdSize);
 
     auto* input = new QWidget;
     auto* inputForm = new QFormLayout(input);

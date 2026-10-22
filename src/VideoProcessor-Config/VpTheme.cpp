@@ -279,7 +279,7 @@ QString VpTheme::StyleSheet()
         }
         QTabBar::tab:disabled { color: #63798c; background: #101923; }
         QTabBar[sectionTabs="true"] { background: #0b121b; }
-        QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QListWidget {
+        QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QListWidget {
             min-height: 26px;
             color: #e8f1f8;
             background: #0b1520;
@@ -288,11 +288,11 @@ QString VpTheme::StyleSheet()
             selection-background-color: #197cc3;
             selection-color: #ffffff;
         }
-        QLineEdit, QSpinBox { padding: 2px 7px; }
+        QLineEdit, QSpinBox, QDoubleSpinBox { padding: 2px 7px; }
         QLineEdit[invalid="true"] { border: 1px solid #e0645b; background: #27181b; }
         QComboBox { padding: 2px 35px 2px 9px; }
         QComboBox:hover { border-color: #639ac4; }
-        QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
+        QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
         QPlainTextEdit:focus, QListWidget:focus, QTableWidget:focus {
             border: 1px solid #2a93df;
         }
@@ -305,7 +305,7 @@ QString VpTheme::StyleSheet()
             selection-background-color: #173c59;
             selection-color: #f4fbff;
         }
-        QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {
+        QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
             color: #7f95a8;
             background: #111b25;
             border-color: #2c4053;

@@ -95,6 +95,7 @@ output_display.restore_previous_mode	output-display-mode-policy	Display profiles
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
 general.profile_change_display_seconds	general-profile-change-display	General display	no
 general.scale_osd	general-scale-osd	General display	no
+general.stats_osd_size_percent	general-stats-osd-size	General display	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
 vprenderer.subtitles.<variant>.subtitle_script_hint	subtitle-script-hint	Subtitles	no
