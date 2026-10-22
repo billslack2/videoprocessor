@@ -3523,7 +3523,7 @@ namespace VideoProcessorTest
                 {
                     std::ofstream file(temporaryFile.path, std::ios::out | std::ios::trunc);
                     Assert::IsTrue(file.is_open());
-                    file << "[general]\nscale_osd: " << value << "\n";
+                    file << "[general]\nscale_osd: " << value << "\n[vprenderer]\nquality: high\n";
                     file.close();
                     Assert::IsFalse(file.fail());
                 }
