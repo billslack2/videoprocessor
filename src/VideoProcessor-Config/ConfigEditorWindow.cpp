@@ -5409,8 +5409,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Auto keeps the current desktop resolution and selects a safe "
             "refresh rate. Advanced chooses the first available mode from "
-            "your ordered list that matches the source cadence. If none matches, "
-            "the first available allowed mode is used. One entry means fixed output.")));
+            "your ordered list that matches the source cadence. Exact cadence "
+            "multiples and divisors follow, then other available allowed modes "
+            "in list order. One entry means fixed output.")));
 
         outputDisplayAdvancedFields = new QWidget;
         auto* advancedLayout = new QVBoxLayout(outputDisplayAdvancedFields);
@@ -5591,6 +5592,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 const auto& choice = choices.front();
                 const QString reason = configured.size() == 1 ? QStringLiteral("fixed output; only allowed mode") :
+                    choice.exactCadenceRatio ? QStringLiteral("exact cadence multiple or divisor") :
                     choice.configuredFallback ? QStringLiteral("first available allowed mode; source cadence differs") :
                     choice.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
                     QStringLiteral("exact or tight cadence match") :

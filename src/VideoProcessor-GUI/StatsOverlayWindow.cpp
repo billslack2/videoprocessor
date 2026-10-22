@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <DisplayRasterInfo.h>
 #include <OsdTimingPolicy.h>
 #include "StatsOverlayWindow.h"
 #include <algorithm>
@@ -493,10 +494,14 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		y += lineHeight;
 	}
 
-	// Resolution
-	line.Format(TEXT("Resolution:       %-s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+    const auto resolution=DisplayRasterInfo::ResolutionLines(
+        static_cast<LPCTSTR>(m_stats.resolution),static_cast<LPCTSTR>(m_stats.outputMode));
+    for(size_t row=0;row<resolution.size();++row)
+    {
+        line.Format(row==0 ? TEXT("Resolution:       %s") : TEXT("%s"),resolution[row].c_str());
+        DrawText(hdc,line,PADDING,y);
+        y+=lineHeight;
+    }
 
 	if (m_stats.isAlphaRenderer)
 	{
@@ -970,6 +975,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
+    lineCount+=DisplayRasterInfo::ResolutionLines(
+        static_cast<LPCTSTR>(stats.resolution),static_cast<LPCTSTR>(stats.outputMode)).size()-1;
 	if (stats.renderLoadKnown)
 		lineCount += 4;
 	if (!stats.outputSweep.IsEmpty())

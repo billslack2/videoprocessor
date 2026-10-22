@@ -26,17 +26,19 @@ public:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
     // Register and create this window
-    void Create(HMONITOR hmon, HWND parentWindow);
-    void CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow);
+    void Create(HMONITOR hmon, HWND parentWindow, bool physicalCoordinates = false);
+    void CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow, bool physicalCoordinates = false);
 
     // Get the window handler
     HWND GetHWND() const { return m_hwnd; }
+    bool UsesPhysicalCoordinates() const { return m_physicalCoordinates; }
 
 protected:
 
     LRESULT __forceinline HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam);
 
     HWND m_hwnd = nullptr;
+    bool m_physicalCoordinates = false;
 
     void OnClose();
 };

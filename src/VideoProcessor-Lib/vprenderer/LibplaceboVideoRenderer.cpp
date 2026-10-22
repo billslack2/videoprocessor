@@ -11,6 +11,8 @@
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
 #include <DisplayMonitorInventory.h>
+#include <DisplayWindowGeometry.h>
+#include <DisplayRasterInfo.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -3317,19 +3319,32 @@ namespace
 		UINT32 targetWidth = 0;
 		UINT32 targetHeight = 0;
 		DISPLAYCONFIG_RATIONAL refreshRate{};
+        DISPLAYCONFIG_TARGET_MODE targetMode{};
+        DISPLAYCONFIG_SCALING scaling = DISPLAYCONFIG_SCALING_IDENTITY;
+        bool hasTargetMode = false;
 	};
 
-	bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
-		const CurrentDisplayMode& second)
-	{
-		return first.sourceWidth == second.sourceWidth &&
-			first.sourceHeight == second.sourceHeight &&
-			first.targetWidth == second.targetWidth &&
-			first.targetHeight == second.targetHeight &&
-			DisplayRefreshRatesEquivalentForRestore(
-				{ first.refreshRate.Numerator, first.refreshRate.Denominator },
-				{ second.refreshRate.Numerator, second.refreshRate.Denominator });
-	}
+    DisplayOutputModeState ModeState(const CurrentDisplayMode& mode)
+    {
+        DisplayOutputScan scan = DisplayOutputScan::Progressive;
+        if (mode.hasTargetMode)
+        {
+            switch (mode.targetMode.targetVideoSignalInfo.scanLineOrdering)
+            {
+            case DISPLAYCONFIG_SCANLINE_ORDERING_PROGRESSIVE: break;
+            case DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_UPPERFIELDFIRST: scan = DisplayOutputScan::InterlacedUpper; break;
+            case DISPLAYCONFIG_SCANLINE_ORDERING_INTERLACED_LOWERFIELDFIRST: scan = DisplayOutputScan::InterlacedLower; break;
+            default: scan = DisplayOutputScan::Unknown; break;
+            }
+        }
+        return {mode.sourceWidth, mode.sourceHeight, mode.targetWidth, mode.targetHeight,
+            {mode.refreshRate.Numerator, mode.refreshRate.Denominator}, scan, mode.hasTargetMode};
+    }
+    bool DisplayModesEquivalentForRestore(const CurrentDisplayMode& first,
+        const CurrentDisplayMode& second)
+    {
+        return DisplayOutputModeMatches(ModeState(first), ModeState(second));
+    }
 
 	UINT32 SourceModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
 	{
@@ -3346,6 +3361,7 @@ namespace
 	bool ReadCurrentDisplayMode(const std::wstring& displayDeviceName,
 		CurrentDisplayMode& current)
 	{
+        current = {};
 		std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 		std::vector<DISPLAYCONFIG_MODE_INFO> modes;
 		UINT32 pathCount = 0, modeCount = 0;
@@ -3360,26 +3376,26 @@ namespace
 		current.sourceWidth = modes[sourceIndex].sourceMode.width;
 		current.sourceHeight = modes[sourceIndex].sourceMode.height;
 		const UINT32 targetIndex = TargetModeIndex(path);
-		if (targetIndex != DISPLAYCONFIG_PATH_MODE_IDX_INVALID && targetIndex < modeCount &&
-			modes[targetIndex].infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)
-		{
-			current.targetWidth = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cx;
-			current.targetHeight = modes[targetIndex].targetMode.targetVideoSignalInfo.activeSize.cy;
-		}
-		if (current.targetWidth == 0 || current.targetHeight == 0)
-		{
-			current.targetWidth = current.sourceWidth;
-			current.targetHeight = current.sourceHeight;
-		}
-		current.refreshRate = path.targetInfo.refreshRate;
-		return current.sourceWidth > 0 && current.sourceHeight > 0 &&
-			current.refreshRate.Numerator > 0 && current.refreshRate.Denominator > 0;
-	}
+		if (targetIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || targetIndex >= modeCount ||
+            modes[targetIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_TARGET) return false;
+        current.targetMode = modes[targetIndex].targetMode;
+        current.hasTargetMode = true;
+        current.scaling = path.targetInfo.scaling;
+        const auto& signal = current.targetMode.targetVideoSignalInfo;
+        current.targetWidth = signal.activeSize.cx;
+        current.targetHeight = signal.activeSize.cy;
+        current.refreshRate = signal.vSyncFreq;
+        // Never infer wire raster from desktop raster: GPU scaling can make
+        // them different, which is precisely what complete-mode verification checks.
+        return current.sourceWidth > 0 && current.sourceHeight > 0 &&
+            current.targetWidth > 0 && current.targetHeight > 0 &&
+            current.refreshRate.Numerator > 0 && current.refreshRate.Denominator > 0;
+    }
 
 	LONG ApplyDisplayOutputMode(std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
 		std::vector<DISPLAYCONFIG_MODE_INFO>& modes, UINT32 pathCount,
 		UINT32 modeCount, size_t pathIndex, UINT32 width, UINT32 height,
-		const DISPLAYCONFIG_RATIONAL& refreshRate)
+		const DISPLAYCONFIG_RATIONAL& refreshRate, const CurrentDisplayMode* restore = nullptr)
 	{
 		DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
 		const UINT32 sourceIndex = SourceModeIndex(path);
@@ -3390,16 +3406,103 @@ namespace
 		modes[sourceIndex].sourceMode.height = height;
 		path.targetInfo.refreshRate = refreshRate;
 		// Keep the display topology and source path, supply the requested desktop
-		// raster, and let CCD select the matching available target timing. A stale
-		// target-mode entry would override the requested refresh just as it does
-		// for the existing refresh-only transition.
-		if ((path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
-			path.targetInfo.targetModeInfoIdx = DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID;
-		else
-			path.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+		// raster, and let CCD select target timing for a new refresh. Restore uses
+        // the captured target timing/scaling instead of letting the driver pick
+        // a different wire raster for an originally GPU-scaled desktop.
+        if (restore && restore->hasTargetMode)
+        {
+            UINT32 targetIndex = TargetModeIndex(paths[pathIndex]);
+            if (targetIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID || targetIndex >= modeCount ||
+                modes[targetIndex].infoType != DISPLAYCONFIG_MODE_INFO_TYPE_TARGET)
+            {
+                targetIndex = modeCount++;
+                modes.resize(modeCount);
+                modes[targetIndex] = {};
+                modes[targetIndex].infoType = DISPLAYCONFIG_MODE_INFO_TYPE_TARGET;
+                modes[targetIndex].adapterId = paths[pathIndex].targetInfo.adapterId;
+                modes[targetIndex].id = paths[pathIndex].targetInfo.id;
+            }
+            modes[targetIndex].targetMode = restore->targetMode;
+            paths[pathIndex].targetInfo.scaling = restore->scaling;
+            if ((paths[pathIndex].flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
+                paths[pathIndex].targetInfo.targetModeInfoIdx = targetIndex;
+            else paths[pathIndex].targetInfo.modeInfoIdx = targetIndex;
+        }
+        else if ((path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
+            path.targetInfo.targetModeInfoIdx = DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID;
+        else path.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
 		return SetDisplayConfig(pathCount, paths.data(), modeCount, modes.data(),
 			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
 	}
+
+    LONG ApplyGdiOutputMode(const std::wstring& device, const CurrentDisplayMode& desired, bool& selectorFound)
+    {
+        selectorFound = false;
+        DEVMODEW selected{};
+        double bestDifference = (std::numeric_limits<double>::max)();
+        for (DWORD index = 0; index < 16384; ++index)
+        {
+            DEVMODEW candidate{};
+            candidate.dmSize = sizeof(candidate);
+            if (!EnumDisplaySettingsW(device.c_str(), index, &candidate)) break;
+            if (candidate.dmBitsPerPel != 32 || (candidate.dmDisplayFlags & DM_INTERLACED) != 0 ||
+                candidate.dmPelsWidth != desired.sourceWidth || candidate.dmPelsHeight != desired.sourceHeight ||
+                candidate.dmDisplayFrequency <= 1) continue;
+            const auto rate = GdiRefreshRate(candidate.dmDisplayFrequency);
+            const DisplayRefreshRational requested{desired.refreshRate.Numerator, desired.refreshRate.Denominator};
+            if (!DisplayRefreshRatesEquivalentForRestore(rate, requested)) continue;
+            const double difference = std::fabs(DisplayRefreshRateHz(rate) - DisplayRefreshRateHz(requested));
+            if (difference < bestDifference) { selected = candidate; bestDifference = difference; }
+            if (difference == 0.0) break;
+        }
+        if (!selected.dmSize) return DISP_CHANGE_BADMODE;
+        selectorFound = true;
+        // Choose the enumerated GDI selector (59, not rounded 60, for 59.94).
+        // Do not write the persistent display database or request a mode reset.
+        DEVMODEW request{};
+        request.dmSize = sizeof(request);
+        request.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY | DM_BITSPERPEL | DM_DISPLAYFLAGS;
+        request.dmPelsWidth = selected.dmPelsWidth;
+        request.dmPelsHeight = selected.dmPelsHeight;
+        request.dmDisplayFrequency = selected.dmDisplayFrequency;
+        request.dmBitsPerPel = selected.dmBitsPerPel;
+        request.dmDisplayFlags = selected.dmDisplayFlags;
+        DEVMODEW current{};
+        current.dmSize = sizeof(current);
+        if (EnumDisplaySettingsW(device.c_str(), ENUM_CURRENT_SETTINGS, &current))
+        {
+            if (current.dmFields & DM_POSITION)
+            { request.dmFields |= DM_POSITION; request.dmPosition = current.dmPosition; }
+            if (current.dmFields & DM_DISPLAYORIENTATION)
+            { request.dmFields |= DM_DISPLAYORIENTATION; request.dmDisplayOrientation = current.dmDisplayOrientation; }
+        }
+        return ChangeDisplaySettingsExW(device.c_str(), &request, nullptr, CDS_FULLSCREEN, nullptr);
+    }
+
+    LONG ApplyCompleteOutputMode(const std::wstring& device, const CurrentDisplayMode& desired,
+        const CurrentDisplayMode& before, bool restoring, const char*& route)
+    {
+        const bool rasterChange = DisplayOutputModeChangesRaster(ModeState(before), ModeState(desired));
+        if (DisplayOutputModePrefersGdi(ModeState(before), ModeState(desired)))
+        {
+            route = "GDI-full-mode";
+            bool selectorFound = false;
+            const LONG result = ApplyGdiOutputMode(device, desired, selectorFound);
+            if (selectorFound) return result;
+            // DXGI can expose custom fractional timings without a GDI integer
+            // selector. Preserve the CCD route for those, with the same strict
+            // source/target verification and rollback as every other attempt.
+        }
+        route = restoring ? "CCD-restore-target-timing" :
+            rasterChange ? "CCD-no-GDI-selector" : "CCD-refresh-only";
+        std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+        std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+        UINT32 pathCount = 0, modeCount = 0;
+        size_t pathIndex = 0;
+        if (!QueryDisplayPath(device, paths, modes, pathCount, modeCount, pathIndex)) return ERROR_NOT_FOUND;
+        return ApplyDisplayOutputMode(paths, modes, pathCount, modeCount, pathIndex,
+            desired.sourceWidth, desired.sourceHeight, desired.refreshRate, restoring ? &desired : nullptr);
+    }
 
 	class ScopedDisplayRefreshRate
 	{
@@ -3441,6 +3544,7 @@ namespace
 
 		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
 		{
+            InvalidateOutputRaster();
 			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
             if (!settings.outputDisplayMonitor.empty())
@@ -3620,25 +3724,35 @@ namespace
 				rankedRates.size(), RefreshRateHz(m_originalRefreshRate));
 		}
 
+        DisplayRasterInfo::Snapshot OutputRaster() const { return m_outputRaster.Read(); }
+        void InvalidateOutputRaster() { m_outputRaster.Invalidate(); }
+        void ForgetDrawnRaster() { m_outputRaster.ClearDrawn(); }
+        void RecordDrawnRaster(int width, int height) { m_outputRaster.RecordDrawn(width,height); }
+        // Called only at renderer safe points, never from OSD/UI polling. Also
+        // covers Auto/Never and changes initiated outside VP's mode transaction.
+        void ObserveOutputRaster(HWND window)
+        {
+            const auto generation=m_outputRaster.Generation();
+            CurrentDisplayMode mode{};
+            const bool queried=ReadCurrentDisplayMode(DisplayDeviceNameForWindow(window),mode);
+            if(m_outputRaster.PublishObservation(generation,queried,ModeState(mode)))
+                DebugLog::Log("libplacebo output raster observation: source=%ux%u target=%ux%u@%.6f",
+                    mode.sourceWidth,mode.sourceHeight,mode.targetWidth,mode.targetHeight,RefreshRateHz(mode.refreshRate));
+        }
+
 	private:
+        void RecordVerifiedOutputMode(const CurrentDisplayMode& mode)
+        { m_outputRaster.RecordMode(ModeState(mode)); }
+
 		bool VerifyCurrentDisplayMode(const CurrentDisplayMode& expected,
 			CurrentDisplayMode& observed) const
 		{
-			unsigned int consecutiveMatches = 0;
+			DisplayOutputModeVerifier verifier(ModeState(expected));
 			const ULONGLONG deadline = GetTickCount64() + 2500;
 			do
 			{
 				const bool queried = ReadCurrentDisplayMode(m_displayDeviceName, observed);
-				const bool matches = queried &&
-					observed.sourceWidth == expected.sourceWidth &&
-					observed.sourceHeight == expected.sourceHeight &&
-					observed.targetWidth == expected.targetWidth &&
-					observed.targetHeight == expected.targetHeight &&
-					DisplayRefreshRatesEquivalentForRestore(
-						{ observed.refreshRate.Numerator, observed.refreshRate.Denominator },
-						{ expected.refreshRate.Numerator, expected.refreshRate.Denominator });
-				consecutiveMatches = matches ? consecutiveMatches + 1 : 0;
-				if (consecutiveMatches >= 2) return true;
+                if (verifier.Observe(queried, ModeState(observed))) return true;
 				Sleep(50);
 			}
 			while (GetTickCount64() < deadline);
@@ -3733,7 +3847,8 @@ namespace
 				const DisplayOutputModeChoice& candidate = rankedModes[attempt];
 				DebugLog::Log("libplacebo output-mode candidate: input=%.6f Hz mode=%s rate_path=%s attempt=%zu/%zu available=%zu",
 					contentRate, FormatDisplayOutputMode(candidate.mode).c_str(),
-					candidate.configuredFallback ? "configured-order-fallback" :
+					candidate.exactCadenceRatio ? "exact-cadence-ratio" :
+                    candidate.configuredFallback ? "configured-order-fallback" :
                     candidate.ratePath == DisplayRefreshModeSelectionPath::ExactOrClose ?
 						"exact-or-close" : "closest-in-range",
 					attempt + 1, rankedModes.size(), availableModes.size());
@@ -3755,6 +3870,7 @@ namespace
 					m_restoreOnStop = settings.restorePreviousDisplayMode;
 					DebugLog::Log("libplacebo output-mode candidate already active: %s",
 						FormatDisplayOutputMode(candidate.mode).c_str());
+					RecordVerifiedOutputMode(currentMode);
 					RunRefreshRateCommand(settings,
 						RefreshRateHz(currentMode.refreshRate));
 					PublishEvent("refresh.confirmed",
@@ -3764,33 +3880,17 @@ namespace
 						RefreshRateHz(m_originalDisplayMode.refreshRate));
 					return;
 				}
-				std::vector<DISPLAYCONFIG_PATH_INFO> paths;
-				std::vector<DISPLAYCONFIG_MODE_INFO> modes;
-				UINT32 pathCount = 0, modeCount = 0;
-				size_t pathIndex = 0;
-				if (!QueryDisplayPath(m_displayDeviceName, paths, modes,
-					pathCount, modeCount, pathIndex))
-				{
-					DebugLog::Log("libplacebo output-mode candidate skipped: active display path disappeared");
-					break;
-				}
 				const DISPLAYCONFIG_RATIONAL rate = {
-					candidate.mode.refreshRate.numerator,
-					candidate.mode.refreshRate.denominator };
-				const LONG result = ApplyDisplayOutputMode(paths, modes,
-					pathCount, modeCount, pathIndex, candidate.mode.width,
-					candidate.mode.height, rate);
-				if (result != ERROR_SUCCESS)
-				{
-					DebugLog::Log("libplacebo output-mode candidate rejected: mode=%s error=%ld",
-						FormatDisplayOutputMode(candidate.mode).c_str(), result);
-					continue;
-				}
-				CurrentDisplayMode expected{ candidate.mode.width,
-					candidate.mode.height, candidate.mode.width,
-					candidate.mode.height, rate };
+                    candidate.mode.refreshRate.numerator, candidate.mode.refreshRate.denominator };
+                CurrentDisplayMode expected{candidate.mode.width, candidate.mode.height,
+                    candidate.mode.width, candidate.mode.height, rate};
+                const char* route = "unselected";
+                InvalidateOutputRaster();
+                const LONG result = ApplyCompleteOutputMode(m_displayDeviceName, expected, currentMode, false, route);
+                DebugLog::Log("libplacebo output-mode API: mode=%s route=%s result=%ld",
+                    FormatDisplayOutputMode(candidate.mode).c_str(), route, result);
 				CurrentDisplayMode actual{};
-				if (VerifyCurrentDisplayMode(expected, actual))
+				if (result == ERROR_SUCCESS && VerifyCurrentDisplayMode(expected, actual))
 				{
 					m_changed = !DisplayModesEquivalentForRestore(
 						actual, m_originalDisplayMode);
@@ -3808,27 +3908,26 @@ namespace
 						actual.targetWidth, actual.targetHeight,
 						RefreshRateHz(actual.refreshRate),
 						m_restoreOnStop ? 1 : 0);
+					RecordVerifiedOutputMode(actual);
 					RunRefreshRateCommand(settings, RefreshRateHz(actual.refreshRate));
 					PublishEvent("refresh.applied", RefreshRateHz(actual.refreshRate),
 						RefreshRateHz(rate), RefreshRateHz(m_originalDisplayMode.refreshRate));
 					return;
 				}
-				DebugLog::Log("libplacebo output-mode candidate unverified: requested=%s actual=%ux%u@%.6f; restoring previous full mode",
-					FormatDisplayOutputMode(candidate.mode).c_str(), actual.targetWidth,
-					actual.targetHeight, RefreshRateHz(actual.refreshRate));
-				std::vector<DISPLAYCONFIG_PATH_INFO> restorePaths;
-				std::vector<DISPLAYCONFIG_MODE_INFO> restoreModes;
-				UINT32 restorePathCount = 0, restoreModeCount = 0;
-				size_t restorePathIndex = 0;
-				if (!QueryDisplayPath(m_displayDeviceName, restorePaths,
-					restoreModes, restorePathCount, restoreModeCount,
-					restorePathIndex) ||
-					ApplyDisplayOutputMode(restorePaths, restoreModes,
-						restorePathCount, restoreModeCount, restorePathIndex,
-						currentMode.sourceWidth,
-						currentMode.sourceHeight,
-						currentMode.refreshRate) != ERROR_SUCCESS ||
-					!VerifyCurrentDisplayMode(currentMode, actual))
+                if (result != ERROR_SUCCESS && ReadCurrentDisplayMode(m_displayDeviceName, actual) &&
+                    DisplayModesEquivalentForRestore(currentMode, actual))
+                {
+                    DebugLog::Log("libplacebo output-mode rejected without changing display: mode=%s route=%s error=%ld",
+                        FormatDisplayOutputMode(candidate.mode).c_str(), route, result);
+                    continue;
+                }
+                DebugLog::Log("libplacebo output-mode candidate unverified: requested=%s route=%s error=%ld actual_source=%ux%u actual_target=%ux%u@%.6f; restoring previous full mode",
+                    FormatDisplayOutputMode(candidate.mode).c_str(), route, result,
+                    actual.sourceWidth, actual.sourceHeight, actual.targetWidth, actual.targetHeight,
+                    RefreshRateHz(actual.refreshRate));
+                const char* rollbackRoute = "unselected";
+                const LONG rollbackResult = ApplyCompleteOutputMode(m_displayDeviceName, currentMode, actual, true, rollbackRoute);
+                if (rollbackResult != ERROR_SUCCESS || !VerifyCurrentDisplayMode(currentMode, actual))
 				{
 					m_changed = true;
 					m_advancedModeActive = true;
@@ -3836,6 +3935,10 @@ namespace
 					DebugLog::Log("libplacebo output-mode candidate rollback failed; previous full display mode remains unverified");
 					return;
 				}
+                DebugLog::Log("libplacebo output-mode rollback verified: route=%s source=%ux%u target=%ux%u@%.6f",
+                    rollbackRoute, actual.sourceWidth, actual.sourceHeight, actual.targetWidth, actual.targetHeight,
+                    RefreshRateHz(actual.refreshRate));
+				RecordVerifiedOutputMode(actual);
 				m_changed = !DisplayModesEquivalentForRestore(
 					currentMode, m_originalDisplayMode);
 			}
@@ -3900,6 +4003,7 @@ namespace
 				return true;
 			}
 
+            InvalidateOutputRaster();
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
 			UINT32 pathCount = 0;
@@ -3918,12 +4022,11 @@ namespace
 
 			if (m_advancedModeActive)
 			{
-				const LONG restoreResult = ApplyDisplayOutputMode(paths, modes,
-					pathCount, modeCount, pathIndex,
-					m_originalDisplayMode.sourceWidth,
-					m_originalDisplayMode.sourceHeight,
-					m_originalDisplayMode.refreshRate);
 				CurrentDisplayMode actual{};
+                if (!ReadCurrentDisplayMode(m_displayDeviceName, actual)) return false;
+                const char* restoreRoute = "unselected";
+                const LONG restoreResult = ApplyCompleteOutputMode(m_displayDeviceName,
+                    m_originalDisplayMode, actual, true, restoreRoute);
 				if (restoreResult != ERROR_SUCCESS ||
 					!VerifyCurrentDisplayMode(m_originalDisplayMode, actual))
 				{
@@ -3937,9 +4040,10 @@ namespace
 						m_restoreFailureCount);
 					return false;
 				}
-				DebugLog::Log("libplacebo output-mode restore verified: %ux%u@%.6f",
-					actual.targetWidth, actual.targetHeight,
+				DebugLog::Log("libplacebo output-mode restore verified: route=%s %ux%u@%.6f",
+                    restoreRoute, actual.targetWidth, actual.targetHeight,
 					RefreshRateHz(actual.refreshRate));
+				RecordVerifiedOutputMode(actual);
 				RunRefreshRateCommand(m_refreshCommandSettings,
 					RefreshRateHz(actual.refreshRate));
 				PublishEvent("refresh.restored", RefreshRateHz(actual.refreshRate),
@@ -4044,6 +4148,7 @@ namespace
 		RendererSettings m_refreshCommandSettings;
 		std::function<void(const std::string&, double, double, double)> m_eventSink;
 		std::set<std::string> m_publishedTransitions;
+        DisplayRasterInfo::Cache m_outputRaster;
 	};
 }
 
@@ -5312,6 +5417,7 @@ struct LibplaceboVideoRenderer::Impl
 			"VP Renderer retirement: external state refresh=%s nvidia=%s",
 			refreshRestored ? "restored" : "pending",
 			nvidiaRestored ? "restored" : "pending");
+        displayRefreshRate.InvalidateOutputRaster();
 		return refreshRestored && nvidiaRestored;
 	}
 
@@ -6946,7 +7052,7 @@ struct LibplaceboVideoRenderer::Impl
 			FreeLibrary(dwmApi);
 		RECT client{};
 		RECT screen{};
-		GetClientRect(videoHwnd, &client);
+		DisplayWindowGeometry::ClientRect(videoHwnd, &client);
 		GetWindowRect(videoHwnd, &screen);
 		MONITORINFO monitorInfo{ sizeof(monitorInfo) };
 		const HMONITOR monitor = MonitorFromWindow(
@@ -7035,7 +7141,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (!d3d11 || !d3d11->device)
 			return false;
 		RECT client{};
-		if (!GetClientRect(videoHwnd, &client))
+		if (!DisplayWindowGeometry::ClientRect(videoHwnd, &client))
 			return false;
 		CComQIPtr<IDXGIDevice> dxgiDevice(d3d11->device);
 		CComPtr<IDXGIAdapter> adapter;
@@ -7531,6 +7637,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool suppressLimited,
 		const char* trigger)
 	{
+        displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
         pl_swapchain_destroy(&swapchain);
 		ReleaseVpOwnedSwapchain();
@@ -7591,7 +7698,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		ApplySwapchainColorHint();
 		RECT client{};
-		if (!GetClientRect(videoHwnd, &client))
+		if (!DisplayWindowGeometry::ClientRect(videoHwnd, &client))
 		{
 			markUnavailable("failed to query the render window during swapchain recreation");
 			return false;
@@ -7608,6 +7715,7 @@ struct LibplaceboVideoRenderer::Impl
 				height);
 			return false;
 		}
+        displayRefreshRate.RecordDrawnRaster(width,height);
 		ConfigureSwapchainOutput(trigger);
 		return true;
 	}
@@ -8105,7 +8213,7 @@ struct LibplaceboVideoRenderer::Impl
 				LibplaceboOutput::TargetTransfer::SWAPCHAIN);
 
 		RECT client{};
-		if (!GetClientRect(videoHwnd, &client))
+		if (!DisplayWindowGeometry::ClientRect(videoHwnd, &client))
 			throw std::runtime_error("Failed to query libplacebo render window size");
 		int width = std::max<LONG>(1, client.right - client.left);
 		int height = std::max<LONG>(1, client.bottom - client.top);
@@ -8125,9 +8233,21 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log(
 				"libplacebo refresh-rate switch skipped: presentation=embedded-child reason=display-global timing belongs to top-level presentation surfaces");
 		}
+        RECT settledClient{};
+        if (DisplayWindowGeometry::ClientRect(videoHwnd, &settledClient))
+        {
+            width = std::max<LONG>(1, settledClient.right - settledClient.left);
+            height = std::max<LONG>(1, settledClient.bottom - settledClient.top);
+            if (!pl_swapchain_resize(swapchain, &width, &height))
+                throw std::runtime_error("Failed to resize libplacebo swapchain after display-mode selection");
+            DebugLog::Log("libplacebo post-mode geometry: client=%ldx%ld swapchain=%dx%d",
+                settledClient.right - settledClient.left, settledClient.bottom - settledClient.top, width, height);
+            displayRefreshRate.RecordDrawnRaster(width,height);
+        }
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
 		ConfigureAndFallback("initialize");
+        displayRefreshRate.ObserveOutputRaster(videoHwnd);
 
 		renderer = pl_renderer_create(log, d3d11->gpu);
 		if (!renderer)
@@ -12307,7 +12427,7 @@ struct LibplaceboVideoRenderer::Impl
 			nlsDecision;
 		RECT outputClient{};
 		double outputPanelAspect = 0.0;
-		if (GetClientRect(videoHwnd, &outputClient) &&
+		if (DisplayWindowGeometry::ClientRect(videoHwnd, &outputClient) &&
 			outputClient.right > outputClient.left &&
 			outputClient.bottom > outputClient.top)
 		{
@@ -14042,6 +14162,7 @@ struct LibplaceboVideoRenderer::Impl
             } else if (!pl_swapchain_resize(swapchain,&temporalOutputWidth,&temporalOutputHeight))
                 return true;
             if (temporalOutputWidth<=0 || temporalOutputHeight<=0) return true;
+            displayRefreshRate.RecordDrawnRaster(temporalOutputWidth,temporalOutputHeight);
             const auto foldContract=[&](uint64_t value) {
                 temporalOutputContract^=value; temporalOutputContract*=1099511628211ULL;
             };
@@ -19459,8 +19580,9 @@ releaseDriftBaseRetention =
 		if (!swapchain)
 			return;
 
+        displayRefreshRate.ForgetDrawnRaster();
 		RECT client{};
-		if (!GetClientRect(videoHwnd, &client))
+		if (!DisplayWindowGeometry::ClientRect(videoHwnd, &client))
 			return;
 		int width = std::max<LONG>(1, client.right - client.left);
 		int height = std::max<LONG>(1, client.bottom - client.top);
@@ -19468,6 +19590,9 @@ releaseDriftBaseRetention =
 			DebugLog::Log("libplacebo: swapchain resize failed (%d x %d)", width, height);
 		else
 		{
+            DebugLog::Log("libplacebo resize geometry: client=%ldx%ld swapchain=%dx%d",
+                client.right - client.left, client.bottom - client.top, width, height);
+            displayRefreshRate.RecordDrawnRaster(width,height);
 			ConfigureAndFallback("resize");
 		}
 	}
@@ -20942,7 +21067,11 @@ void LibplaceboVideoRenderer::OnPaint()
 void LibplaceboVideoRenderer::OnDisplayChange()
 {
 	if (m_impl)
+    {
+        m_impl->displayRefreshRate.InvalidateOutputRaster();
 		m_impl->RenegotiateOutput();
+        m_impl->Resize(m_videoHwnd);
+    }
 }
 
 
@@ -21259,6 +21388,10 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				m_impl->lastSdrGammaDecision.actualTarget));
 		value += gamma;
 	}
+    // Cache-only on the OSD thread. Read-back is refreshed at initialization
+    // and deferred display notifications; geometry comes from successful resizes.
+    value += DisplayRasterInfo::FormatDetails(m_impl->displayRefreshRate.OutputRaster()).c_str();
+
 	details = CString(value);
 	return true;
 }
@@ -23584,6 +23717,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::memory_order_acq_rel))
 			{
 				m_impl->RetryAutoLimitedCandidate("deferred display change");
+                m_impl->displayRefreshRate.ObserveOutputRaster(m_videoHwnd);
 			}
 			m_impl->ApplyPendingProfileSettingsLocked();
 			ApplyPendingShaderSelectionLocked();

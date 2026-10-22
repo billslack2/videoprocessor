@@ -504,6 +504,31 @@ std::vector<DisplayOutputModeChoice> RankDisplayOutputModesForInput(
 					[&mode](const DisplayOutputModeChoice& existing)
 						{ return DisplayOutputModesExactlyEqual(existing.mode, mode); }))
 				result.push_back({ mode, rate.path, rate.doubledRate });
+    struct CadenceRatioMode { DisplayOutputMode mode; uint64_t factor; bool multiple; };
+    std::vector<CadenceRatioMode> related;
+    if (!interlaced || input.numerator <= (std::numeric_limits<uint32_t>::max)() / 2)
+    {
+        const uint64_t sourceNumerator = uint64_t(input.numerator) * (interlaced ? 2 : 1);
+        for (const auto& mode : configured)
+        {
+            if (!IsDisplayModeAvailable(mode, available) || !mode.refreshRate.numerator || !mode.refreshRate.denominator ||
+                std::any_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
+                    { return DisplayOutputModesExactlyEqual(existing.mode, mode); })) continue;
+            const uint64_t a = uint64_t(mode.refreshRate.numerator) * input.denominator;
+            const uint64_t b = sourceNumerator * mode.refreshRate.denominator;
+            const bool multiple = a >= b;
+            const uint64_t larger = multiple ? a : b, smaller = multiple ? b : a;
+            if (smaller && larger % smaller == 0)
+                related.push_back({mode, larger / smaller, multiple});
+        }
+    }
+    std::stable_sort(related.begin(), related.end(), [](const CadenceRatioMode& a, const CadenceRatioMode& b)
+    {
+        if (a.multiple != b.multiple) return a.multiple;
+        return a.factor < b.factor;
+    });
+    for (const auto& item : related)
+        result.push_back({item.mode, DisplayRefreshModeSelectionPath::None, false, false, true});
     for (const auto& mode : configured)
         if (IsDisplayModeAvailable(mode, available) &&
             std::none_of(result.begin(), result.end(), [&](const DisplayOutputModeChoice& existing)
@@ -698,4 +723,37 @@ const char* ToString(DisplayRefreshRateReason reason)
 		return "compensation factor is unexplained without a nominal cross-check";
 	default: return "unknown";
 	}
+}
+
+bool DisplayOutputModeMatches(const DisplayOutputModeState& expected,
+    const DisplayOutputModeState& observed)
+{
+    const bool scanMatches = expected.scan == DisplayOutputScan::Progressive ?
+        observed.scan != DisplayOutputScan::InterlacedUpper && observed.scan != DisplayOutputScan::InterlacedLower :
+        expected.scan == observed.scan;
+    return observed.targetKnown && expected.refreshRate.numerator && expected.refreshRate.denominator &&
+        observed.refreshRate.numerator && observed.refreshRate.denominator && expected.sourceWidth && expected.sourceHeight &&
+        expected.targetWidth && expected.targetHeight &&
+        expected.sourceWidth == observed.sourceWidth && expected.sourceHeight == observed.sourceHeight &&
+        expected.targetWidth == observed.targetWidth && expected.targetHeight == observed.targetHeight &&
+        scanMatches && DisplayRefreshRatesEquivalentForRestore(expected.refreshRate, observed.refreshRate);
+}
+bool DisplayOutputModeChangesRaster(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired)
+{
+    return desired.sourceWidth != before.sourceWidth || desired.sourceHeight != before.sourceHeight ||
+        desired.targetWidth != before.targetWidth || desired.targetHeight != before.targetHeight;
+}
+bool DisplayOutputModePrefersGdi(const DisplayOutputModeState& before,
+    const DisplayOutputModeState& desired)
+{
+    return desired.sourceWidth && desired.sourceHeight &&
+        desired.sourceWidth == desired.targetWidth && desired.sourceHeight == desired.targetHeight &&
+        DisplayOutputModeChangesRaster(before, desired);
+}
+bool DisplayOutputModeVerifier::Observe(bool querySucceeded, const DisplayOutputModeState& observed)
+{
+    if (!querySucceeded || !DisplayOutputModeMatches(expected_, observed)) consecutive_ = 0;
+    else if (consecutive_ < 2) ++consecutive_;
+    return consecutive_ >= 2;
 }
