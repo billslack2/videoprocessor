@@ -11,6 +11,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SubtitleHandoffTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="SubtitleBackingLipTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SubtitleCutPasteTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
