@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-22). Implemented and pushed clean source commit `6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b`; draft [PR #188](https://github.com/billslack2/videoprocessor/pull/188) targets `v1.4.02-beta`. Complete x64 Release solution build passed and all 1,299 final targeted policy tests passed. Independent review and live startup/subtitle playback acceptance remain pending. No merge, deployment, configuration change or player restart performed.
+Review (2026-10-22). Implemented and pushed clean source commit `6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b`; draft [PR #188](https://github.com/billslack2/videoprocessor/pull/188) targets `v1.4.02-beta`. Complete x64 Release solution build passed and all 1,299 final targeted policy tests passed. Independent review and live startup/subtitle playback acceptance remain pending. PR #188 remains unmerged. User-requested local deployment of clean combined source `05e59c91` completed on 2026-10-22 after 1,563 targeted tests passed, retaining installed `620b7d95` fixes; configuration unchanged and player left stopped.
 
 ## Readiness review
 
@@ -32,3 +32,9 @@ Startup reveal now waits for consistent native/display bounds across at least th
 Current pixel, source, viewport, geometry, native-authority and independent presentation-owner vetoes remain enforced. Production-policy tests cover initial admission with a prepared subtitle, pending refinement, active recovery and raw subtitle extent outside the native base, plus stale/unsafe cases.
 
 [Validation evidence](../assets/VP-0201/startup-subtitle-20261022/README.md) includes final test results, failing baseline results, selected test classes and source/build hashes. The final coverage is the targeted 27-class suite; the earlier full native attempt was superseded and not completed. Live movie playback validation is the next acceptance step.
+
+## Local deployment â€” 2026-10-22
+
+Deployed clean combined commit `05e59c91e40bcde9f75167506044b7671aca8503` after a successful full x64 Release build, preserving all previously installed `620b7d95` clock and subtitle changes. Host plus stable/Beta renderer DLLs were backed up and their replacements verified against build SHA-256 records. No configuration files were changed; player was already stopped and remains stopped. Live acceptance remains pending.
+
+[Deployment, source and regression evidence](../assets/VP-0201/deploy-05e59c91-20261022/README.md).

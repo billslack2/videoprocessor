@@ -1,0 +1,53 @@
+﻿{
+    "sourceCommit":  "05e59c91e40bcde9f75167506044b7671aca8503",
+    "sourceBranch":  "codex/deploy-startup-subtitle-20261022",
+    "sourceTree":  "7dbd2de3ca10ba320aa5c47ac5eea9cb82b20157",
+    "featureCommit":  "6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b",
+    "preservedInstalledCommit":  "620b7d95e8decb64ab4472ebd302193ce8c91ce8",
+    "buildConfiguration":  "Release",
+    "architecture":  "x64",
+    "backupDirectory":  "C:\\Videoprocessor\\vp\\backup-before-vp0201-05e59c91-20261022-183530",
+    "files":  [
+                  {
+                      "Source":  "VideoProcessor-GUI.exe",
+                      "Destination":  "VideoProcessor.exe",
+                      "OldHash":  "640736B773E05AFA4A26DF5860EC447195D689B1857D486E271E37DAAE26511B",
+                      "NewHash":  "CBC5DAEA377CA5DB9AA2B77B9F7160C4BD005B7F31F3CB1BC7F29849E3CB600C"
+                  },
+                  {
+                      "Source":  "vprenderer\\VideoProcessorVPRenderer.dll",
+                      "Destination":  "vprenderer\\VideoProcessorVPRenderer.dll",
+                      "OldHash":  "1591AD8ABD425C1065818F3439B87B82C7ADB76E1D0B7CDB1597B8AD6CF58793",
+                      "NewHash":  "12B56FFD22DA9A0B14C74C76E8E974CAFB7BCF235E218003F08B95FE678BF193"
+                  },
+                  {
+                      "Source":  "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                      "Destination":  "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                      "OldHash":  "9D0C0834A29765D85B08EB7B963CF4B99B47C65FE84DD4D8AFC80A6C978434C4",
+                      "NewHash":  "5C9F52C1C04D0311C8350395F46951C83B22F952215323B016EBD97D834A7C14"
+                  }
+              ],
+    "configurationEdits":  [
+
+                           ],
+    "configurationBefore":  {
+                                "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg":  "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+                                "C:\\Videoprocessor\\vp\\VideoProcessor.cfg":  "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3",
+                                "C:\\Videoprocessor\\vp\\VideoProcessor.state":  "5D98C91F02A6785F84A5DCFB3FB818D5427A04B9309F9A67A4A55177352C6D5E",
+                                "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg":  "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+                                "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg":  "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+                            },
+    "configurationAfter":  {
+                               "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg":  "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+                               "C:\\Videoprocessor\\vp\\VideoProcessor.cfg":  "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3",
+                               "C:\\Videoprocessor\\vp\\VideoProcessor.state":  "5D98C91F02A6785F84A5DCFB3FB818D5427A04B9309F9A67A4A55177352C6D5E",
+                               "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg":  "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+                               "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg":  "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+                           },
+    "configurationUnchanged":  true,
+    "testsPassed":  1563,
+    "testResult":  "C:\\Users\\bslac\\Documents\\Codex\\2026-10-22\\befo\\work\\deploy-policy-tests\\vp-deploy-policy.trx",
+    "playerWasRunning":  false,
+    "playerStarted":  false,
+    "timestamp":  "2026-10-22T18:35:30.5229805-04:00"
+}
