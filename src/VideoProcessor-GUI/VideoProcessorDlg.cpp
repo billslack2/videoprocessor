@@ -19,6 +19,7 @@ static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.Update
 #include <ModernOperatorLayout.h>
 #include <WindowResizeLayout.h>
 #include <ModernOperatorStatusPolicy.h>
+#include <HdrOsdFormatting.h>
 
 #include <atlstr.h>
 #include <algorithm>
@@ -102,37 +103,10 @@ CString FormatHdrLuminance(double value)
 	return text;
 }
 
-// Stats OSD: whole nits from 100, two decimals from 1, five below, trailing
-// zeros dropped. A Dolby Vision range is 12-bit PQ codes, so its lowest codes
-// sit near 0.00001 nits and its peak is rarely a round number. The Measured
-// row passes 3 so its longest form fits the panel; the log keeps full precision.
-CString FormatOsdNits(double value, int subNitDecimals = 5)
-{
-	CString text;
-	if (value >= 100.0)
-		text.Format(_T("%.0f"), value);
-	else if (value >= 1.0)
-		text.Format(_T("%.2f"), value);
-	else
-		text.Format(_T("%.*f"), subNitDecimals, value);
-	if (text.Find(_T('.')) >= 0)
-	{
-		text.TrimRight(_T('0'));
-		text.TrimRight(_T('.'));
-	}
-	return text;
-}
-
 CString FormatOsdHdr10(double maxCll, double maxFall,
-	double masteringMin, double masteringMax)
+    double masteringMin, double masteringMax)
 {
-	CString text;
-	text.Format(_T("CLL %s FALL %s | M %s-%s"),
-		FormatOsdNits(maxCll).GetString(),
-		FormatOsdNits(maxFall).GetString(),
-		FormatOsdNits(masteringMin).GetString(),
-		FormatOsdNits(masteringMax).GetString());
-	return text;
+    return HdrOsdFormatting::Hdr10(maxCll, maxFall, masteringMin, masteringMax);
 }
 
 void LogRendererResourceCensus(uint32_t generation, const CString& renderer,
@@ -16481,17 +16455,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.eotf = inputColor.eotf.c_str();
 		stats.colorspace = inputColor.colorspace.c_str();
 
-		// Static HDR10 metadata as handed to the renderer (after any LLDV
-		// substitution). A renderer that reports its rendered frame replaces
-		// this below.
-		if (m_builtVideoState && m_builtVideoState->valid &&
-			m_builtVideoState->hdrData)
-		{
-			const HDRData& hdr = *m_builtVideoState->hdrData;
-			stats.hdr10 = FormatOsdHdr10(hdr.maxCll, hdr.maxFall,
-				hdr.masteringDisplayMinLuminance,
-				hdr.masteringDisplayMaxLuminance);
-		}
+        // Older plugins lack the optional per-frame HDR export. Their fallback
+        // must come from the same accepted input as EOTF/colorspace, never a
+        // pending/rejected candidate renderer configuration.
+        const HDRData* acceptedHdr = m_osdAcceptedInputColor.Hdr(
+            m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING);
+        if (acceptedHdr)
+            stats.hdr10 = FormatOsdHdr10(acceptedHdr->maxCll, acceptedHdr->maxFall,
+                acceptedHdr->masteringDisplayMinLuminance,
+                acceptedHdr->masteringDisplayMaxLuminance);
 
 		// Pixel Format
 		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
@@ -16640,42 +16612,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			dynamic_cast<const LibplaceboPluginVideoRenderer*>(m_videoRenderer.get());
 		if (libplaceboRenderer && libplaceboRenderer->GetHdrStatus(hdrStatus))
 		{
-			if (!hdrStatus.hdr)
-				stats.hdr10.Empty();
-			else if (hdrStatus.dolbyVision)
-				stats.hdr10.Format(_T("DV | M %s-%s"),
-					FormatOsdNits(hdrStatus.masteringMin).GetString(),
-					FormatOsdNits(hdrStatus.masteringMax).GetString());
-			else
-				stats.hdr10 = FormatOsdHdr10(hdrStatus.maxCll,
-					hdrStatus.maxFall, hdrStatus.masteringMin,
-					hdrStatus.masteringMax);
-
-			CString detected = _T("---");
-			if (!hdrStatus.peakDetectionEnabled)
-				detected = _T("off");
-			else if (hdrStatus.detectedValid)
-			{
-				// avg is the linear (FALL-style) average; a renderer whose
-				// libplacebo does not report it shows the peak alone.
-				detected.Format(_T("peak %s"),
-					FormatOsdNits(hdrStatus.detectedPeakNits, 3).GetString());
-				if (hdrStatus.detectedLinearAvgNits > 0.0)
-					detected.AppendFormat(_T(" / avg %s"),
-						FormatOsdNits(hdrStatus.detectedLinearAvgNits, 3).GetString());
-			}
-			// The combined form drops "nits" to fit the panel's fixed width.
-			// The scene average stays as authored (L1 is a PQ average).
-			if (hdrStatus.sceneValid)
-				stats.measuredHdr.Format(_T("%s | %s %s / %s"),
-					detected.GetString(),
-					hdrStatus.dolbyVision ? _T("L1") : _T("frame"),
-					FormatOsdNits(hdrStatus.scenePeakNits, 3).GetString(),
-					FormatOsdNits(hdrStatus.sceneAvgNits, 3).GetString());
-			else if (hdrStatus.detectedValid)
-				stats.measuredHdr = detected + _T(" nits");
-			else if (!hdrStatus.peakDetectionEnabled)
-				stats.measuredHdr = detected;
+            stats.hdr10 = HdrOsdFormatting::Static(hdrStatus);
+            stats.measuredHdr = HdrOsdFormatting::Measured(hdrStatus);
 		}
 		RendererRenderLoad renderLoad;
 		if (m_videoRenderer->GetRenderLoad(renderLoad))

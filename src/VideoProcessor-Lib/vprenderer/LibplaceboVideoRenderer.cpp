@@ -4609,15 +4609,13 @@ struct LibplaceboVideoRenderer::Impl
 	// can silently switch those counters to another output.
 	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
 	// Copy of the rendered frame's HDR luminance and libplacebo's
-	// peak-detection result; written by the render thread every 250 ms and
-	// on each Dolby Vision L1 change, read by the host.
+	// peak-detection result; written after each successful presentation.
+	// Diagnostic logging is independently rate limited.
 	mutable std::mutex hdrStatusMutex;
-	RendererHdrStatus hdrStatus;
-	bool hdrStatusPublished = false;
-	uint64_t hdrStatusNextTick = 0;
+	FrameHdrStatus::Publication hdrStatusPublication;
 	uint64_t hdrStatusNextLogTick = 0;
 	// The L1 minimum, maximum and average last seen; a change logs at once.
-	float hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
+	double hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -5382,6 +5380,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool RetireOutput()
 	{
 		osdTelemetry.Retire();
+        InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
             lookaheadMeasurementWorker.Stop();
@@ -6113,6 +6112,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		renderParams = projection.renderParams;
         ++pictureProcessingEpoch;
+        InvalidateHdrStatus();
 		colorMapParams = projection.colorMapParams;
 		peakDetectParams = projection.peakDetectParams;
 		sigmoidParams = projection.sigmoidParams;
@@ -6304,72 +6304,57 @@ struct LibplaceboVideoRenderer::Impl
 		return decision;
 	}
 
-	// Render thread only, after the frame's render call. `image` is the frame
-	// just handed to pl_render_image, so its colour metadata is exactly what
-	// libplacebo tone mapped from. With allow_delayed off, libplacebo has
-	// already read this frame's detection result while tone mapping it, so
-	// pl_renderer_get_hdr_metadata only copies the values it used.
-	void PublishHdrStatus(const pl_frame& image, bool rendered,
-		const DolbyVisionLuminanceStatus& dvLuminance, uint64_t sourceSequence)
+	void InvalidateHdrStatus(bool suspend = false)
 	{
-		if (!rendered)
-			return;
-		// A change of Dolby Vision L1 is published and logged on its own frame.
-		const bool l1 = image.repr.dovi != nullptr && dvLuminance.sceneAvailable;
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		if (suspend) hdrStatusPublication.Suspend();
+        else hdrStatusPublication.Invalidate();
+	}
+
+	uint64_t BeginHdrStatus(uint64_t sourceGeneration, uint64_t viewportEpoch,
+		EOTF transfer, ColorSpace primaries, bool discontinuity)
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		return hdrStatusPublication.Begin({ sourceGeneration, viewportEpoch,
+			pictureProcessingEpoch, static_cast<int>(transfer), static_cast<int>(primaries) }, discontinuity,
+            HasPendingProfileSettings() || resizePending.load(std::memory_order_acquire) ||
+            outputRenegotiationPending.load(std::memory_order_acquire));
+	}
+
+	// Publish only after successful presentation. The snapshot was captured at
+	// the source pass; temporal presentation may have processed later neighbours.
+	void PublishHdrStatus(RendererHdrStatus next, uint64_t token, bool rendered, bool submitted)
+	{
+		RendererHdrStatus previous;
+		bool previousAvailable = false;
+		{
+			std::lock_guard<std::mutex> lock(hdrStatusMutex);
+			previousAvailable = hdrStatusPublication.Snapshot(previous);
+			// Validate the token before changing throttle/log state. Reset/source
+			// changes can invalidate an in-flight render without taking renderMutex.
+			if (!hdrStatusPublication.CommitPresented(token, next, rendered, submitted)) return;
+		}
+		const bool changed = !previousAvailable || previous.hdr != next.hdr ||
+			previous.dolbyVision != next.dolbyVision ||
+			previous.peakDetectionEnabled != next.peakDetectionEnabled ||
+			previous.sceneValid != next.sceneValid || previous.detectedValid != next.detectedValid;
+		const bool l1 = next.dolbyVision && next.sceneValid;
 		const bool l1Changed = l1 &&
-			(dvLuminance.sceneMin != hdrStatusLoggedL1[0] ||
-				dvLuminance.sceneMax != hdrStatusLoggedL1[1] ||
-				dvLuminance.sceneAvg != hdrStatusLoggedL1[2]);
+			(next.sceneMinNits != hdrStatusLoggedL1[0] ||
+				next.scenePeakNits != hdrStatusLoggedL1[1] ||
+				next.sceneAvgNits != hdrStatusLoggedL1[2]);
 		const uint64_t now = GetTickCount64();
-		// The interval line keeps its own 2.5 s grid: neither the 250 ms
-		// publish gate nor an L1 line moves it.
 		const bool interval = now >= hdrStatusNextLogTick;
 		if (interval)
 		{
 			hdrStatusNextLogTick += 2500;
-			if (hdrStatusNextLogTick <= now)
-				hdrStatusNextLogTick = now + 2500;
+			if (hdrStatusNextLogTick <= now) hdrStatusNextLogTick = now + 2500;
 		}
-		if (now < hdrStatusNextTick && !l1Changed && !interval)
-			return;
-		hdrStatusNextTick = now + 250;
-
-		RendererHdrStatus next;
-		next.sourceSequence = sourceSequence;
-		const pl_hdr_metadata& hdr = image.color.hdr;
-		next.hdr = pl_color_transfer_is_hdr(image.color.transfer);
-		next.dolbyVision = image.repr.dovi != nullptr;
-		next.maxCll = hdr.max_cll;
-		next.maxFall = hdr.max_fall;
-		next.masteringMin = hdr.min_luma;
-		next.masteringMax = hdr.max_luma;
-		next.sceneValid = pl_hdr_metadata_contains(&hdr, PL_HDR_METADATA_CIE_Y);
-		if (next.sceneValid)
-		{
-			next.scenePeakNits = pl_hdr_rescale(
-				PL_HDR_PQ, PL_HDR_NITS, hdr.max_pq_y);
-			next.sceneAvgNits = pl_hdr_rescale(
-				PL_HDR_PQ, PL_HDR_NITS, hdr.avg_pq_y);
-			if (next.dolbyVision && dvLuminance.sceneAvailable)
-				next.sceneMinNits = dvLuminance.sceneMin;
-		}
-		next.peakDetectionEnabled = renderParams.peak_detect_params != nullptr;
-		pl_hdr_metadata detected{};
-		if (next.peakDetectionEnabled &&
-			pl_renderer_get_hdr_metadata(renderer, &detected))
-		{
-			next.detectedValid = true;
-			next.detectedPeakNits = pl_hdr_rescale(
-				PL_HDR_PQ, PL_HDR_NITS, detected.max_pq_y);
-			next.detectedAvgNits = pl_hdr_rescale(
-				PL_HDR_PQ, PL_HDR_NITS, detected.avg_pq_y);
-			next.detectedLinearAvgNits = detected.scene_avg;
-			next.detectedSceneMaxNits = detected.scene_max[0];
-		}
+		// Publication itself is a small CPU copy and must remain current, even
+		// within the old 250 ms gate. Only periodic diagnostic logging is gated.
 		if (next.hdr && (next.detectedValid || next.sceneValid) &&
-			(interval || l1Changed))
+			(interval || l1Changed || changed))
 		{
-			// The line's own prefix has whole seconds only.
 			SYSTEMTIME local{};
 			GetLocalTime(&local);
 			DebugLog::Log(
@@ -6377,42 +6362,33 @@ struct LibplaceboVideoRenderer::Impl
 				" scene_min_nits=%.6f detected_scene_max_nits=%.2f"
 				" reason=%s time=%04u-%02u-%02uT%02u:%02u:%02u.%03u source_frame=%llu",
 				next.dolbyVision ? 1 : 0,
-				!next.peakDetectionEnabled ? "off" :
-					next.detectedValid ? "valid" : "pending",
-				next.detectedPeakNits, next.detectedAvgNits,
-				next.detectedLinearAvgNits,
+				!next.peakDetectionEnabled ? "off" : next.detectedValid ? "valid" : "pending",
+				next.detectedPeakNits, next.detectedAvgNits, next.detectedLinearAvgNits,
 				!next.sceneValid ? "none" : next.dolbyVision ? "L1" : "frame",
-				next.scenePeakNits, next.sceneAvgNits,
-				next.sceneMinNits,
-				next.detectedSceneMaxNits,
-				!l1Changed ? "interval" : interval ? "interval,L1" : "L1",
-				local.wYear, local.wMonth, local.wDay,
-				local.wHour, local.wMinute, local.wSecond, local.wMilliseconds,
+				next.scenePeakNits, next.sceneAvgNits, next.sceneMinNits, next.detectedSceneMaxNits,
+				l1Changed ? (interval ? "interval,L1" : "L1") : changed ? "state" : "interval",
+				local.wYear, local.wMonth, local.wDay, local.wHour, local.wMinute,
+				local.wSecond, local.wMilliseconds,
 				static_cast<unsigned long long>(next.sourceSequence));
 		}
-		// Remembered even when not logged, so one change never bypasses the
-		// 250 ms publish interval on later frames.
-		if (l1Changed)
+		if (l1)
 		{
-			hdrStatusLoggedL1[0] = dvLuminance.sceneMin;
-			hdrStatusLoggedL1[1] = dvLuminance.sceneMax;
-			hdrStatusLoggedL1[2] = dvLuminance.sceneAvg;
+			hdrStatusLoggedL1[0] = next.sceneMinNits;
+			hdrStatusLoggedL1[1] = next.scenePeakNits;
+			hdrStatusLoggedL1[2] = next.sceneAvgNits;
 		}
-		std::lock_guard<std::mutex> lock(hdrStatusMutex);
-		hdrStatus = next;
-		hdrStatusPublished = true;
+		else std::fill(std::begin(hdrStatusLoggedL1), std::end(hdrStatusLoggedL1), -1.0f);
 	}
 
 	bool HdrStatusSnapshot(RendererHdrStatus& status) const
 	{
 		std::lock_guard<std::mutex> lock(hdrStatusMutex);
-		status = hdrStatus;
-		return hdrStatusPublished;
+		return hdrStatusPublication.Snapshot(status);
 	}
 
 	void LogHdrPeakAnalysisMetrics(
 		const HdrPeakAnalysisCrop::Decision& decision,
-		uint64_t sourceSequence, bool rendered)
+		uint64_t sourceSequence, bool rendered, const RendererHdrStatus& sourceHdr)
 	{
 		if (!hdrPeakAnalysisPictureOnly &&
 			!hdrPeakAnalysisMotionCompensation)
@@ -6426,21 +6402,17 @@ struct LibplaceboVideoRenderer::Impl
 		if (now < hdrPeakAnalysisNextTelemetryTick)
 			return;
 
-		pl_hdr_metadata metadata{};
-		const bool metadataAvailable = rendered &&
-			renderParams.peak_detect_params &&
-			pl_renderer_get_hdr_metadata(renderer, &metadata);
-		const float maxNits = metadataAvailable
-			? pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, metadata.max_pq_y)
-			: 0.0f;
-		const float averageNits = metadataAvailable
-			? pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, metadata.avg_pq_y)
-			: 0.0f;
+        const bool metadataAvailable = rendered && sourceHdr.detectedValid;
+        const float maxNits = metadataAvailable ? static_cast<float>(sourceHdr.detectedPeakNits) : 0.0f;
+        const float averageNits = metadataAvailable ? static_cast<float>(sourceHdr.detectedAvgNits) : 0.0f;
+        const float maxPq = metadataAvailable ? pl_hdr_rescale(PL_HDR_NITS, PL_HDR_PQ, maxNits) : 0.0f;
+        const float averagePq = metadataAvailable ? pl_hdr_rescale(PL_HDR_NITS, PL_HDR_PQ, averageNits) : 0.0f;
 		DebugLog::Log(
-			"libplacebo HDR analysis ROI metrics: interval_ms=%llu source_sequence=%llu frames=%llu restricted=%llu full_presentation=%llu fallback=%llu current_outcome=%s current_excluded_percent=%.3f rendered=%d metadata_available=%d detected_max_pq=%.6f detected_avg_pq=%.6f detected_max_nits=%.2f detected_avg_nits=%.2f",
+			"libplacebo HDR analysis ROI metrics: interval_ms=%llu source_sequence=%llu selected_source_sequence=%llu frames=%llu restricted=%llu full_presentation=%llu fallback=%llu current_outcome=%s current_excluded_percent=%.3f rendered=%d metadata_available=%d detected_max_pq=%.6f detected_avg_pq=%.6f detected_max_nits=%.2f detected_avg_nits=%.2f",
 			static_cast<unsigned long long>(
 				now - hdrPeakAnalysisIntervalStartedTick),
 			static_cast<unsigned long long>(sourceSequence),
+            static_cast<unsigned long long>(sourceHdr.sourceSequence),
 			static_cast<unsigned long long>(hdrPeakAnalysisFrames),
 			static_cast<unsigned long long>(
 				hdrPeakAnalysisRestrictedFrames),
@@ -6449,7 +6421,7 @@ struct LibplaceboVideoRenderer::Impl
 			HdrPeakAnalysisCrop::OutcomeName(decision.outcome),
 			decision.excludedFraction * 100.0,
 			rendered ? 1 : 0, metadataAvailable ? 1 : 0,
-			metadata.max_pq_y, metadata.avg_pq_y, maxNits, averageNits);
+			maxPq, averagePq, maxNits, averageNits);
 		hdrPeakAnalysisIntervalStartedTick = now;
 		hdrPeakAnalysisNextTelemetryTick = now + 5000;
 		hdrPeakAnalysisFrames = 0;
@@ -8416,6 +8388,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool supersededPendingSettings = pendingProfileIntent.Publish(
 			settings, settings.configuredScreenTarget,
 			viewportRequestSerial, viewportRequestNs);
+        InvalidateHdrStatus();
 		DebugLog::Log(
 			"libplacebo viewport settings queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -8997,6 +8970,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool supersededPendingSettings = pendingProfileIntent.Publish(
 			settings, settings.configuredScreenTarget,
 			viewportRequestSerial, viewportRequestNs);
+        InvalidateHdrStatus();
 		DebugLog::Log(
 			"libplacebo live profile update queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -9603,6 +9577,7 @@ struct LibplaceboVideoRenderer::Impl
     {
         startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
         presentationResetEpoch.Request(kind);
+        InvalidateHdrStatus(true);
     }
 
 	// Consumed after RenderLocked returns, so this frame's geometry references
@@ -12174,6 +12149,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
+        const uint64_t hdrPublicationToken=BeginHdrStatus(frameGeneration,viewportRequestSerial,
+            state.eotf,state.colorspace,videoFrame.IsSourceDiscontinuity());
         uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
         QueueNativeResetKind resetKind = QueueNativeResetKind::NONE;
         if (presentationResetEpoch.Consume(requestedResetEpoch, &resetKind))
@@ -12305,6 +12282,7 @@ struct LibplaceboVideoRenderer::Impl
 			// Clear the output itself: zero opponent-color samples are not RGB
 			// black, and skipping presentation would retain the last bad frame.
 			temporalRenderer.Clear();
+            InvalidateHdrStatus();
 			{
 				std::lock_guard<std::mutex> guard(ingressStatusMutex);
 				if (sourceLuminanceQueueGeneration == frameGeneration)
@@ -14263,6 +14241,9 @@ struct LibplaceboVideoRenderer::Impl
                     subtitleSourcePreparation.layerBounds);
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
+        // Capture metadata even while buffering; the selected output may be an
+        // older packet by the time a source pass is finally rendered.
+        temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
         bool temporalSkipPresentation = temporalRenderer.Active() && temporalRenderer.skipOutput;
         if (temporalRenderer.Active()) {
             if (!temporalLedgerWasActive || temporalLedgerGeneration!=frameGeneration ||
@@ -18573,6 +18554,7 @@ releaseDriftBaseRetention =
             DebugLog::Log("VP motion: %s delay_ms=%.3f source_hz=%.6f display_hz=%.6f",lastMotionStatus.c_str(),temporalRenderer.DelayMs(),captureRateHz,renderLoadDisplayRefreshHz.load());
         }
 		const SteadyClock::time_point renderStart = SteadyClock::now();
+        const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
 		PipelinePreparationScope preparing(libplaceboRenderStartedTick);
@@ -18659,9 +18641,10 @@ releaseDriftBaseRetention =
 			originalPrLastPasses.store(originalPrPasses,
 				std::memory_order_relaxed);
 		preparing.Complete();
-		LogHdrPeakAnalysisMetrics(
-			hdrPeakAnalysisDecision, sourceSequence, rendered);
-		PublishHdrStatus(renderImage, rendered, frameDvLuminance, sourceSequence);
+        RendererHdrStatus renderedHdrStatus;
+        if(rendered && !temporalRenderer.HdrStatusSnapshot(renderedHdrStatus))
+            renderedHdrStatus=FrameHdrStatus::Capture(directHdrSource,renderer,renderParams.peak_detect_params!=nullptr);
+        LogHdrPeakAnalysisMetrics(hdrPeakAnalysisDecision,sourceSequence,rendered,renderedHdrStatus);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
         if (!rendered && targetLutApplied)
@@ -18746,6 +18729,7 @@ releaseDriftBaseRetention =
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
+        PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
 		if (!rendered || !submitted)
 		{
 			frameGpuTiming.Reject();
@@ -19739,6 +19723,7 @@ releaseDriftBaseRetention =
 		osdTelemetry.InvalidateOutput();
         // A failed/deferred resize must not retain the previous DRAWN raster.
         displayRefreshRate.ForgetDrawnRaster();
+        InvalidateHdrStatus();
 	}
 
 	void RenegotiateOutput()
@@ -19746,6 +19731,7 @@ releaseDriftBaseRetention =
 		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		outputRenegotiationPending.store(true, std::memory_order_release);
 		osdTelemetry.InvalidateOutput();
+        InvalidateHdrStatus();
 	}
 
 	bool IsGpuFailed()
@@ -21316,6 +21302,10 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 	const uint64_t requestSerial =
 		m_viewportRequestSerial.fetch_add(
 			1, std::memory_order_relaxed) + 1;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->hdrStatusMutex);
+        m_impl->hdrStatusPublication.ResetForViewport(requestSerial);
+    }
 	m_configuredScreenActive.store(configured, std::memory_order_release);
 	DebugLog::Log(
 		"libplacebo viewport target selected: source=%s target=%s aspect=%.7f request=%llu",
@@ -24647,6 +24637,10 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 				m_impl->sourceLuminanceObserved = false;
 				m_impl->sourceLuminanceQueueGeneration = generation;
 			}
+			{
+                std::lock_guard<std::mutex> lock(m_impl->hdrStatusMutex);
+                m_impl->hdrStatusPublication.ResetForGeneration(generation);
+            }
 			m_impl->renderLoadMeter.ResetForGeneration(generation);
 			m_impl->coreRenderLoadMeter.ResetForGeneration(generation);
 			m_impl->originalPrRenderLoadMeter.ResetForGeneration(generation);

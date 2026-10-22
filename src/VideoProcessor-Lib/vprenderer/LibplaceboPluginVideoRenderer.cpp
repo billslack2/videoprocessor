@@ -571,7 +571,8 @@ bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) cons
 bool LibplaceboPluginVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
 {
 	status = {};
-	return m_getHdrStatus && m_getHdrStatus(m_renderer, &status);
+	return m_getHdrStatus && m_getHdrStatus(m_renderer, &status) &&
+        status.Supported();
 }
 
 

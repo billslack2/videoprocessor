@@ -72,7 +72,7 @@ VideoProcessorLibplaceboGetHdrStatus(
 	const IVideoRenderer* renderer,
 	RendererHdrStatus* status)
 {
-	if (!renderer || !status || status->size != sizeof(RendererHdrStatus))
+	if (!renderer || !status || !status->Supported())
 		return false;
 	return static_cast<const LibplaceboVideoRenderer*>(renderer)->GetHdrStatus(*status);
 }

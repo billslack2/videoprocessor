@@ -60,6 +60,7 @@ struct RendererHdrStatus
 	// Crosses the plugin boundary through an optional export rather than the
 	// renderer interface, so it carries its own layout check.
 	uint32_t size = sizeof(RendererHdrStatus);
+	uint32_t version = 1;
 	bool hdr = false;            // the frame's transfer is HDR
 	bool dolbyVision = false;    // the frame carries Dolby Vision metadata
 	double maxCll = 0.0;
@@ -84,7 +85,10 @@ struct RendererHdrStatus
 	// value to all three components). detectedPeakNits is this capped by the
 	// maximum of Y. Zero where detectedLinearAvgNits is zero.
 	double detectedSceneMaxNits = 0.0;
-	uint64_t sourceSequence = 0;       // capture frame counter of the picture
+	uint64_t sourceSequence = 0;       // selected capture packet, not newest ingress
+	uint64_t sourceGeneration = 0;
+	uint64_t processingEpoch = 0;
+	bool Supported() const { return size == sizeof(RendererHdrStatus) && version == 1; }
 };
 
 
