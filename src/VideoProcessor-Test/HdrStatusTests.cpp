@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/FrameHdrStatus.h>
+#include <vprenderer/DolbyVisionLuminancePolicy.h>
 #include <vprenderer/TemporalRenderer.h>
 #include <HdrOsdFormatting.h>
 #include <libplacebo/d3d11.h>
@@ -127,6 +128,50 @@ public:
         Assert::AreEqual(double(pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,.4f)),status.sceneAvgNits,1e-6);
         Assert::IsTrue(HdrOsdFormatting::Measured(status).Find(_T("L1"))>=0);
         Assert::IsTrue(HdrOsdFormatting::Measured(status).Find(_T("nits"))<0, L"Units are supplied by the shared OSD row label");
+    }
+    TEST_METHOD(ExplicitDolbyBlackL1RemainsPresentThroughProductionStatusAndFormatting)
+    {
+        auto frame=HdrFrame();pl_dovi_metadata dovi{};frame.repr.dovi=&dovi;
+        DolbyVisionTunnelFrameMetadata metadata;metadata.valid=true;metadata.sourceMaxPq=4095;
+        metadata.hasSceneMetadata=true; // Authored min/max/average are all black.
+        const auto luminance=DolbyVisionLuminancePolicy::Apply(metadata,frame.color.hdr);
+        Assert::IsTrue(luminance.sceneAvailable);
+        const auto black=FrameHdrStatus::Source(frame,42,luminance);
+        Assert::IsTrue(black.sceneValid&&black.dolbyVision);Assert::AreEqual(uint64_t(42),black.sourceSequence);
+        Assert::AreEqual(0.0,black.sceneMinNits);Assert::AreEqual(0.0,black.scenePeakNits);Assert::AreEqual(0.0,black.sceneAvgNits);
+        Assert::IsTrue(HdrOsdFormatting::Measured(black)==_T("off | L1 0 / 0"));
+        const auto waiting=FrameHdrStatus::WithDetection(black,true,nullptr);
+        Assert::IsTrue(HdrOsdFormatting::Measured(waiting)==_T("--- | L1 0 / 0"));
+        metadata.hasSceneMetadata=false;
+        const auto missing=DolbyVisionLuminancePolicy::Apply(metadata,frame.color.hdr);
+        Assert::IsFalse(missing.sceneAvailable);Assert::IsFalse(FrameHdrStatus::Source(frame,43,missing).sceneValid);
+        frame.repr.dovi=nullptr;Assert::IsFalse(FrameHdrStatus::Source(frame,44,luminance).sceneValid);
+    }
+    TEST_METHOD(DolbyTransitionToBlackPublishesChangedL1WithoutInventingMissingScene)
+    {
+        auto frame=HdrFrame();pl_dovi_metadata dovi{};frame.repr.dovi=&dovi;
+        DolbyVisionTunnelFrameMetadata metadata;metadata.valid=true;metadata.sourceMaxPq=4095;metadata.hasSceneMetadata=true;
+        metadata.sceneMinPq=16;metadata.sceneMaxPq=2800;metadata.sceneAvgPq=1600;
+        auto luminance=DolbyVisionLuminancePolicy::Apply(metadata,frame.color.hdr);
+        const auto bright=FrameHdrStatus::Source(frame,1,luminance);
+        FrameHdrStatus::Publication publication;const auto token=publication.Begin({1,2,3,4,5});
+        Assert::IsTrue(publication.CommitPresented(token,bright,true,true));
+        metadata.sceneMinPq=metadata.sceneMaxPq=metadata.sceneAvgPq=0;
+        luminance=DolbyVisionLuminancePolicy::Apply(metadata,frame.color.hdr);
+        const auto black=FrameHdrStatus::Source(frame,2,luminance);
+        Assert::IsTrue(publication.CommitPresented(token,black,true,true));RendererHdrStatus observed;
+        Assert::IsTrue(publication.Snapshot(observed));Assert::IsTrue(observed.sceneValid);
+        Assert::IsTrue(observed.dolbyVision&&(observed.sceneMinNits!=bright.sceneMinNits||
+            observed.scenePeakNits!=bright.scenePeakNits||observed.sceneAvgNits!=bright.sceneAvgNits),
+            L"The existing L1-change log predicate must see an authored transition to zero");
+        Assert::AreEqual(uint64_t(2),observed.sourceSequence);
+        Assert::IsTrue(HdrOsdFormatting::Measured(observed)==_T("off | L1 0 / 0"));
+        frame.color.hdr.max_pq_y=std::numeric_limits<float>::quiet_NaN();
+        Assert::IsFalse(FrameHdrStatus::Source(frame,3,luminance).sceneValid);
+        frame.color.hdr.max_pq_y=-.01f;Assert::IsFalse(FrameHdrStatus::Source(frame,4,luminance).sceneValid);
+        frame.color.hdr.max_pq_y=1.01f;Assert::IsFalse(FrameHdrStatus::Source(frame,5,luminance).sceneValid);
+        frame.color.hdr.max_pq_y=.2f;frame.color.hdr.avg_pq_y=.3f;
+        Assert::IsFalse(FrameHdrStatus::Source(frame,6,luminance).sceneValid);
     }
     TEST_METHOD(SdrCannotExposeHdrOrOldDetectionValues)
     {

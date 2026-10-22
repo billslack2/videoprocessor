@@ -37,8 +37,14 @@ namespace FrameHdrStatus
             result.masteringMin = hdr.min_luma;
             result.masteringMax = hdr.max_luma;
         }
-        result.sceneValid = std::isfinite(hdr.max_pq_y) && std::isfinite(hdr.avg_pq_y) &&
-            hdr.max_pq_y > 0.0f && hdr.max_pq_y <= 1.0f &&
+        // Zero PQ is also the generic missing-scene sentinel. Dolby Vision's
+        // explicit L1-presence flag distinguishes an authored black scene from
+        // missing metadata, including when both authored peak and average are zero.
+        const bool authoredScenePresent = hdr.max_pq_y > 0.0f ||
+            (result.dolbyVision && dv.sceneAvailable);
+        result.sceneValid = authoredScenePresent &&
+            std::isfinite(hdr.max_pq_y) && std::isfinite(hdr.avg_pq_y) &&
+            hdr.max_pq_y >= 0.0f && hdr.max_pq_y <= 1.0f &&
             hdr.avg_pq_y >= 0.0f && hdr.avg_pq_y <= hdr.max_pq_y;
         if (result.sceneValid)
         {
