@@ -197,7 +197,7 @@ namespace Tests
             const float flatH=ScreenRect(flat).Height(),scopeH=ScreenRect(scope).Height();
             const auto a=ResolveStatsSizing(true,flatH,2160),b=ResolveStatsSizing(true,scopeH,2160);
             Assert::AreEqual(2160.0f,flatH,.001f);Assert::AreEqual(float(3840.0/2.35),scopeH,.001f);
-            Assert::AreEqual(1.25f,a.scale,.00001f);Assert::AreEqual(.9456265f,b.scale,.00001f);
+            Assert::AreEqual(1.875f,a.scale,.00001f);Assert::AreEqual(1.4184397f,b.scale,.00001f);
             const float opticalZoom=flatH/scopeH;
             Assert::AreEqual(1.321875f,opticalZoom,.00001f);
             Assert::AreEqual(a.scale,b.scale*opticalZoom,.00001f);
@@ -212,8 +212,8 @@ namespace Tests
                 const Rect rect=ScreenRect(screen);const auto sizing=ResolveStatsSizing(true,rect.Height(),float(raster[1]));
                 const auto placement=Place(rect,{0,0,float(raster[0]),float(raster[1])},578,600,sizing.insetPixels,sizing.scale);
                 Contained(placement);Assert::IsFalse(placement.insetClamped);
-                Assert::AreEqual(600.0f*1.25f/2160.0f,placement.panel.Height()/rect.Height(),.000001f);
-                Assert::AreEqual(40.0f/2160.0f,(rect.bottom-placement.panel.bottom)/rect.Height(),.000001f);
+                Assert::AreEqual(600.0f*1.875f/2160.0f,placement.panel.Height()/rect.Height(),.000001f);
+                Assert::AreEqual(60.0f/2160.0f,(rect.bottom-placement.panel.bottom)/rect.Height(),.000001f);
             }
         }
 
@@ -252,14 +252,14 @@ namespace Tests
                     sizing.insetPixels,sizing.scale,AnamorphicPresentation::OverlayWidth(sizing.insetPixels,lens));
                 Contained(result);Assert::IsFalse(result.insetClamped);
                 Assert::AreEqual(578.0/600.0,result.panel.Width()*lens/result.panel.Height(),.000001);
-                Assert::AreEqual(600.0*1.25/2160.0,double(result.panel.Height()/rect.Height()),.000001);
+                Assert::AreEqual(600.0*1.875/2160.0,double(result.panel.Height()/rect.Height()),.000001);
                 Assert::AreEqual(double(rect.bottom-result.panel.bottom),(rect.right-result.panel.right)*lens,.001);
             }
             // A lens that fills this scope screen vertically needs no additional
             // CIH squeeze beyond the fitted screen height already used above.
             const auto lensScreen=ScreenFit(3840,2160,2.35,1.321875);
             Assert::AreEqual(2160.0f,ScreenRect(lensScreen).Height(),.001f);
-            Assert::AreEqual(1.25f,ResolveStatsSizing(true,ScreenRect(lensScreen).Height(),2160).scale,.000001f);
+            Assert::AreEqual(1.875f,ResolveStatsSizing(true,ScreenRect(lensScreen).Height(),2160).scale,.000001f);
         }
 
         TEST_METHOD(SweepAndProfileUseSameStableScreenGeometryFactor)
@@ -319,13 +319,13 @@ namespace Tests
         {
             const float nan=std::numeric_limits<float>::quiet_NaN(),inf=std::numeric_limits<float>::infinity();
             for(float bad:{0.0f,-1.0f,nan,inf}) {
-                const auto fallback=ResolveStatsSizing(true,bad,1080);Assert::AreEqual(.625f,fallback.scale);
-                Assert::AreEqual(20.0f,fallback.insetPixels);
-                const auto both=ResolveStatsSizing(true,bad,bad);Assert::AreEqual(1.25f,both.scale);
+                const auto fallback=ResolveStatsSizing(true,bad,1080);Assert::AreEqual(.9375f,fallback.scale);
+                Assert::AreEqual(30.0f,fallback.insetPixels);
+                const auto both=ResolveStatsSizing(true,bad,bad);Assert::AreEqual(1.875f,both.scale);
                 const auto disabled=ResolveStatsSizing(false,bad,bad);Assert::AreEqual(1.0f,disabled.scale);
             }
-            Assert::AreEqual(.625f,ResolveStatsSizing(true,2160,1080).scale);
-            Assert::AreEqual(.625f,ResolveStatsSizing(true,1080,nan).scale);
+            Assert::AreEqual(.9375f,ResolveStatsSizing(true,2160,1080).scale);
+            Assert::AreEqual(.9375f,ResolveStatsSizing(true,1080,nan).scale);
         }
 
         TEST_METHOD(PlacementRejectsNonfiniteRectsAndDimensions)
@@ -360,6 +360,66 @@ namespace Tests
             const auto placed=Place(tiny,output,578,600,sizing.insetPixels,sizing.scale);Contained(placed);
             Assert::IsTrue(placed.insetClamped);Assert::IsTrue(placed.scale<sizing.scale);
             Assert::AreEqual(578.0f/600.0f,placed.panel.Width()/placed.panel.Height(),.00001f);
+        }
+
+        TEST_METHOD(RebasedDefaultMatchesExplicitOld150ForActualPlacedStatsPanel)
+        {
+            const Rect output{0,0,3840,2160};
+            const Rect flat=ScreenRect(ScreenFit(3840,2160,16.0/9.0));
+            const Rect scope=ScreenRect(ScreenFit(3840,2160,2.35));
+            Result flatPanel,scopePanel;
+            for(const Rect screen:std::array<Rect,2>{{flat,scope}}) {
+                const auto omitted=ResolveStatsSizing(true,screen.Height(),2160);
+                const auto old150=ResolveStatsSizing(true,screen.Height(),2160,150);
+                const auto panel=Place(screen,output,578,888,omitted.insetPixels,omitted.scale);
+                const auto reference=Place(screen,output,578,888,old150.insetPixels,old150.scale);
+                Contained(panel);Assert::IsFalse(panel.insetClamped);
+                Assert::AreEqual(reference.panel.Width(),panel.panel.Width());
+                Assert::AreEqual(reference.panel.Height(),panel.panel.Height());
+                Assert::AreEqual(reference.panel.right,panel.panel.right);
+                Assert::AreEqual(reference.panel.bottom,panel.panel.bottom);
+                if(screen.Height()==flat.Height())flatPanel=panel;else scopePanel=panel;
+            }
+            Assert::AreEqual(1.875f,flatPanel.scale,.000001f);
+            Assert::AreEqual(1665.0f,flatPanel.panel.Height(),.001f);
+            const float opticalZoom=flat.Height()/scope.Height();
+            Assert::AreEqual(flatPanel.panel.Height(),scopePanel.panel.Height()*opticalZoom,.001f);
+            Assert::AreEqual(flatPanel.panel.Width(),scopePanel.panel.Width()*opticalZoom,.001f);
+            Assert::AreEqual(flat.bottom-flatPanel.panel.bottom,(scope.bottom-scopePanel.panel.bottom)*opticalZoom,.001f);
+        }
+
+        TEST_METHOD(WholeUi100MapsToOld150CalibrationWithoutRetuningExplicitSavedValues)
+        {
+            Assert::AreEqual(100.0f,ToDisplayStatsSizePercent(150));
+            Assert::AreEqual(150.0f,FromDisplayStatsSizePercent(100));
+            Assert::AreEqual(25.0f,ToDisplayStatsSizePercent(37.5f));
+            Assert::AreEqual(37.5f,FromDisplayStatsSizePercent(25));
+            Assert::AreEqual(250.0f,ToDisplayStatsSizePercent(375));
+            Assert::AreEqual(375.0f,FromDisplayStatsSizePercent(250));
+            Assert::AreEqual(100.0f/1.5f,ToDisplayStatsSizePercent(100),.00001f);
+            Assert::AreEqual(88.125f,ToDisplayStatsSizePercent(132.1875f),.00001f);
+            for(float raw:{50.0f,100.0f,132.1875f,150.0f,250.0f})
+                Assert::AreEqual(raw,FromDisplayStatsSizePercent(ToDisplayStatsSizePercent(raw)),.0001f);
+            const float nan=std::numeric_limits<float>::quiet_NaN(),inf=std::numeric_limits<float>::infinity();
+            for(float badRaw:{0.0f,37.499f,375.001f,nan,inf})Assert::AreEqual(100.0f,ToDisplayStatsSizePercent(badRaw));
+            for(float badUi:{0.0f,24.999f,250.001f,nan,inf})Assert::AreEqual(150.0f,FromDisplayStatsSizePercent(badUi));
+            const Rect output{0,0,3840,2160},scope=ScreenRect(ScreenFit(3840,2160,2.35));
+            const auto uiSizing=ResolveStatsSizing(true,scope.Height(),2160,FromDisplayStatsSizePercent(100));
+            const auto oldSizing=ResolveStatsSizing(true,scope.Height(),2160,150);
+            const auto uiPanel=Place(scope,output,578,888,uiSizing.insetPixels,uiSizing.scale);
+            const auto oldPanel=Place(scope,output,578,888,oldSizing.insetPixels,oldSizing.scale);
+            Contained(uiPanel);Assert::AreEqual(oldPanel.panel.Width(),uiPanel.panel.Width());
+            Assert::AreEqual(oldPanel.panel.Height(),uiPanel.panel.Height());
+        }
+
+        TEST_METHOD(ExplicitLegacy100CalibrationRetainsItsPreviousPhysicalDimensions)
+        {
+            const Rect output{0,0,3840,2160};const Rect scope=ScreenRect(ScreenFit(3840,2160,2.35));
+            const auto sizing=ResolveStatsSizing(true,scope.Height(),2160,100);
+            const auto panel=Place(scope,output,578,888,sizing.insetPixels,sizing.scale);Contained(panel);
+            Assert::IsFalse(panel.insetClamped);Assert::AreEqual(.9456265f,panel.scale,.00001f);
+            Assert::AreEqual(888.0f*.9456265f,panel.panel.Height(),.002f);
+            Assert::AreEqual(40.0f*(scope.Height()/2160.0f),scope.bottom-panel.panel.bottom,.001f);
         }
 
         TEST_METHOD(PersonalCalibrationUsesActualStatsBitmapAndOldScopePhysicalBaseline)
@@ -419,19 +479,19 @@ namespace Tests
 
         TEST_METHOD(PersonalSizePercentValidatesFiniteBoundsAndKeepsDefault)
         {
-            Assert::AreEqual(50.0f,NormalizeStatsSizePercent(50));Assert::AreEqual(250.0f,NormalizeStatsSizePercent(250));
+            Assert::AreEqual(37.5f,NormalizeStatsSizePercent(37.5f));Assert::AreEqual(375.0f,NormalizeStatsSizePercent(375));
             Assert::AreEqual(132.1875f,NormalizeStatsSizePercent(132.1875f));
             const float nan=std::numeric_limits<float>::quiet_NaN(),inf=std::numeric_limits<float>::infinity();
-            const auto omitted=ResolveStatsSizing(true,1634,2160),explicitDefault=ResolveStatsSizing(true,1634,2160,100);
+            const auto omitted=ResolveStatsSizing(true,1634,2160),explicitDefault=ResolveStatsSizing(true,1634,2160,150);
             Assert::AreEqual(omitted.scale,explicitDefault.scale);Assert::AreEqual(omitted.insetPixels,explicitDefault.insetPixels);
-            for(float invalid:{-1.0f,0.0f,49.999f,250.001f,nan,inf,-inf}) {
-                Assert::AreEqual(100.0f,NormalizeStatsSizePercent(invalid));
+            for(float invalid:{-1.0f,0.0f,37.499f,375.001f,nan,inf,-inf}) {
+                Assert::AreEqual(150.0f,NormalizeStatsSizePercent(invalid));
                 const auto fallback=ResolveStatsSizing(true,1634,2160,invalid);
                 Assert::AreEqual(omitted.scale,fallback.scale);Assert::AreEqual(omitted.insetPixels,fallback.insetPixels);
             }
-            const auto minimum=ResolveStatsSizing(true,2160,2160,50),maximum=ResolveStatsSizing(true,2160,2160,250);
-            Assert::AreEqual(.625f,minimum.scale);Assert::AreEqual(20.0f,minimum.insetPixels);
-            Assert::AreEqual(3.125f,maximum.scale);Assert::AreEqual(100.0f,maximum.insetPixels);
+            const auto minimum=ResolveStatsSizing(true,2160,2160,37.5f),maximum=ResolveStatsSizing(true,2160,2160,375);
+            Assert::AreEqual(.46875f,minimum.scale);Assert::AreEqual(15.0f,minimum.insetPixels);
+            Assert::AreEqual(4.6875f,maximum.scale);Assert::AreEqual(150.0f,maximum.insetPixels);
         }
 
         TEST_METHOD(PersonalSizePreferenceIsIgnoredWhenScalingIsDisabled)

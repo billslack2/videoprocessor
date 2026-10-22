@@ -55,7 +55,6 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSpinBox>
-#include <QDoubleSpinBox>
 #include <QSlider>
 #include <QStandardItemModel>
 #include <QSplitter>
@@ -1503,31 +1502,37 @@ void testStatsOsdSizeDefaultsAndOptInState()
         ConfigEditorWindow window(path, 0, true);
         auto* scale = requireControl<QCheckBox>(window,
             QStringLiteral("config.general.scale_osd"));
-        auto* size = requireControl<QDoubleSpinBox>(window,
+        auto* size = requireControl<QSpinBox>(window,
             QStringLiteral("config.general.stats_osd_size_percent"));
-        require(size->value() == 100.0, "Omitted stats size must use the 100% automatic baseline");
-        require(size->minimum() == 50.0 && size->maximum() == 250.0 && size->decimals() == 4,
-            "Stats size must support the documented range and four decimal places");
-        require(size->suffix() == QStringLiteral("%") && size->singleStep() == 5.0,
-            "Stats size does not expose percent units and useful increments");
+        require(size->value() == 100, "Omitted stats size must use the new standard 100% size");
+        require(size->minimum() == 25 && size->maximum() == 250,
+            "Stats size must expose the documented whole-percent range");
+        require(size->text() == QStringLiteral("100%") && size->singleStep() == 5,
+            "Stats size must display whole percent units and useful increments");
         require(size->accessibleName() == QStringLiteral("Stats OSD size"),
             "Stats size accessibility label is missing");
         require(size->toolTip().contains(QStringLiteral("100%")) &&
-            size->toolTip().contains(QStringLiteral("baseline")) &&
+            size->toolTip().contains(QStringLiteral("standard")) &&
             size->toolTip().contains(QStringLiteral("Screen profiles")),
-            "Stats size does not explain its automatic geometry reference");
+            "Stats size does not explain its standard geometry reference");
         require(!scale->isChecked() && !size->isEnabled(),
             "Stats size must be disabled while geometry scaling is off");
         scale->setChecked(true);
         require(size->isEnabled(), "Enabling geometry scaling did not enable stats size");
+        const QString images = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+        if (!images.isEmpty())
+        {
+            window.resize(1040, 760); window.show(); window.selectPage(0);
+            QApplication::processEvents(); window.grab().save(images + "/stats-osd-standard-size.png");
+        }
         save(window);
     }
     require(!readBytes(path).contains("stats_osd_size_percent:"),
         "Displaying the default stats percentage must not create a configuration override");
     ConfigEditorWindow reloaded(path, 0, true);
-    auto* size = requireControl<QDoubleSpinBox>(reloaded,
+    auto* size = requireControl<QSpinBox>(reloaded,
         QStringLiteral("config.general.stats_osd_size_percent"));
-    require(size->value() == 100.0 && size->isEnabled(),
+    require(size->value() == 100 && size->isEnabled(),
         "Omitted stats size or enabled geometry did not reload correctly");
 }
 
@@ -1544,51 +1549,97 @@ void testStatsOsdSizePrecisionAndCommentsSurviveDisableSaveAndReload()
     file.close();
     {
         ConfigEditorWindow window(path, 0, true);
-        auto* size = requireControl<QDoubleSpinBox>(window,
+        auto* size = requireControl<QSpinBox>(window,
             QStringLiteral("config.general.stats_osd_size_percent"));
-        require(size->value() == 132.1875 && size->isEnabled(),
-            "Configured 132.1875% stats size lost precision on load");
-        const QString images = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
-        if (!images.isEmpty())
-        {
-            window.resize(1040, 760); window.show(); window.selectPage(0);
-            QApplication::processEvents(); window.grab().save(images + "/stats-osd-size.png");
-        }
-        size->setValue(125.0);
+        require(size->value() == 88 && size->text() == QStringLiteral("88%") && size->isEnabled(),
+            "Legacy fractional calibration must display as a rounded whole UI percentage");
+        requireControl<QSpinBox>(window,
+            QStringLiteral("config.general.profile_change_display_seconds"))->setValue(7);
+        save(window);
+    }
+    require(readBytes(path).contains("stats_osd_size_percent: 132.1875 # Preserve size comment"),
+        "An unrelated edit rewrote the exact saved fractional calibration");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto* size = requireControl<QSpinBox>(window,
+            QStringLiteral("config.general.stats_osd_size_percent"));
+        require(size->value() == 88, "Legacy fractional calibration changed on reopen");
+        size->setValue(125);
         auto* scale = requireControl<QCheckBox>(window,
             QStringLiteral("config.general.scale_osd"));
         scale->setChecked(false);
-        require(!size->isEnabled() && size->value() == 125.0,
-            "Disabling geometry must keep the saved stats-size preference");
+        require(!size->isEnabled() && size->value() == 125,
+            "Disabling geometry must keep the stats-size preference");
         save(window);
     }
     const QByteArray saved = readBytes(path);
-    require(saved.contains("stats_osd_size_percent: 125.0000 # Preserve size comment"),
-        "Stats size edit did not persist its value and inline comment");
+    require(saved.contains("stats_osd_size_percent: 187.5 # Preserve size comment"),
+        "UI 125% must persist legacy calibration 187.5 and its inline comment");
     require(saved.contains("scale_osd: false # Preserve geometry comment") &&
         saved.contains("# Keep the operator's setup notes") &&
         saved.contains("fullscreen: false # Keep unrelated fullscreen preference"),
         "Stats size edit changed unrelated values or comments");
     {
         ConfigEditorWindow reloaded(path, 0, true);
-        auto* size = requireControl<QDoubleSpinBox>(reloaded,
+        auto* size = requireControl<QSpinBox>(reloaded,
             QStringLiteral("config.general.stats_osd_size_percent"));
-        require(size->value() == 125.0 && !size->isEnabled(),
-            "Disabled stats size did not survive save and reopen");
+        require(size->value() == 125 && !size->isEnabled(),
+            "Disabled whole-percent stats size did not survive save and reopen");
         auto* scale = requireControl<QCheckBox>(reloaded,
             QStringLiteral("config.general.scale_osd"));
         scale->setChecked(true);
-        require(size->isEnabled() && size->value() == 125.0,
+        require(size->isEnabled() && size->value() == 125,
             "Re-enabling geometry did not restore the stats-size preference");
-        size->setValue(132.1875);
+        size->setValue(100);
         save(reloaded);
     }
     ConfigEditorWindow finalReload(path, 0, true);
-    require(requireControl<QDoubleSpinBox>(finalReload,
-        QStringLiteral("config.general.stats_osd_size_percent"))->value() == 132.1875,
-        "Four-decimal stats size did not survive edit, save and reopen");
-    require(readBytes(path).contains("stats_osd_size_percent: 132.1875 # Preserve size comment"),
-        "Re-enabled stats size lost its four-decimal value or comment");
+    require(requireControl<QSpinBox>(finalReload,
+        QStringLiteral("config.general.stats_osd_size_percent"))->value() == 100,
+        "Edited standard stats size did not survive save and reopen");
+    require(readBytes(path).contains("stats_osd_size_percent: 150 # Preserve size comment"),
+        "UI 100% must write legacy calibration 150 without unnecessary decimal places");
+}
+
+void testStatsOsdSizeLegacyStandardAndWholePercentEndpoints()
+{
+    for (const QByteArray calibration : {QByteArray("150"),QByteArray("150.0000")})
+    {
+        QTemporaryDir directory;
+        const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create legacy-standard size fixture");
+        file.write("[general]\nscale_osd: true\nstats_osd_size_percent: " + calibration +
+            " # Keep exact legacy value\n"); file.close();
+        {
+            ConfigEditorWindow window(path, 0, true);
+            auto* size = requireControl<QSpinBox>(window,
+                QStringLiteral("config.general.stats_osd_size_percent"));
+            require(size->value() == 100 && size->text() == QStringLiteral("100%"),
+                "Legacy 150 calibration must display as new standard 100%");
+            requireControl<QSpinBox>(window,
+                QStringLiteral("config.general.profile_change_display_seconds"))->setValue(7);
+            save(window);
+        }
+        require(readBytes(path).contains("stats_osd_size_percent: " + calibration +
+            " # Keep exact legacy value"), "Unmodified standard calibration spelling was rewritten");
+        for (const int display : {25,250})
+        {
+            {
+                ConfigEditorWindow window(path, 0, true);
+                requireControl<QSpinBox>(window,
+                    QStringLiteral("config.general.stats_osd_size_percent"))->setValue(display);
+                save(window);
+            }
+            const QByteArray expected = display == 25 ? QByteArray("37.5") : QByteArray("375");
+            require(readBytes(path).contains("stats_osd_size_percent: " + expected +
+                " # Keep exact legacy value"), "Whole-percent endpoint persisted the wrong legacy calibration");
+            ConfigEditorWindow reloaded(path, 0, true);
+            require(requireControl<QSpinBox>(reloaded,
+                QStringLiteral("config.general.stats_osd_size_percent"))->value() == display,
+                "Whole-percent endpoint did not reopen correctly");
+        }
+    }
 }
 
 void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
@@ -7280,6 +7331,7 @@ int main(int argc, char** argv)
     failures += run("OSD screen geometry scaling round trips", testOsdScreenGeometryScalingRoundTrips);
     failures += run("Stats OSD size defaults and opt-in state", testStatsOsdSizeDefaultsAndOptInState);
     failures += run("Stats OSD size precision comments disable and reload", testStatsOsdSizePrecisionAndCommentsSurviveDisableSaveAndReload);
+    failures += run("Stats OSD size legacy standard and whole-percent endpoints", testStatsOsdSizeLegacyStandardAndWholePercentEndpoints);
     failures += run("renderer section tabs stay synchronized during rapid clicks",
         testRendererSectionTabsRemainSynchronizedDuringRapidClicks);
     failures += run("empty Standard shaders can create first shader",

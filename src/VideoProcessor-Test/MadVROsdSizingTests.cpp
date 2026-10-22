@@ -23,7 +23,7 @@ TEST_CLASS(MadVROsdSizingTests)
         return mapping;
     }
     static NativeStatsOverlayPlacement::StatsSizing Size(const MadVROsdSizing::Mapping& mapping,
-        bool enabled, bool configured, double aspect, float sizePercent = 100.0f)
+        bool enabled, bool configured, double aspect, float sizePercent = NativeStatsOverlayPlacement::kDefaultStatsSizePercent)
     {
         const auto screen = MadVROsdSizing::Resolve(mapping, configured, aspect);
         return NativeStatsOverlayPlacement::ResolveStatsSizing(enabled && screen.valid,
@@ -41,6 +41,27 @@ public:
             Assert::AreEqual(double(standard.scale), scope.scale * zoom, 0.00001);
             Assert::AreEqual(double(standard.insetPixels), scope.insetPixels * zoom, 0.00001);
         }
+    }
+    TEST_METHOD(RebasedMadvrDefaultEqualsExplicitOld150AndRetainsOpticalInvariance)
+    {
+        const auto mapping=Fullscreen();const NativeStatsOverlayPlacement::Rect output{0,0,3840,2160};
+        NativeStatsOverlayPlacement::Result flatPanel,scopePanel;
+        for(double aspect:{16.0/9.0,2.35}) {
+            const auto screen=MadVROsdSizing::Resolve(mapping,true,aspect);Assert::IsTrue(screen.valid);
+            const float top=(screen.outputHeight-screen.fittedHeight)*.5f;
+            const NativeStatsOverlayPlacement::Rect picture{0,top,3840,top+screen.fittedHeight};
+            const auto omitted=Size(mapping,true,true,aspect),old150=Size(mapping,true,true,aspect,150);
+            const auto panel=NativeStatsOverlayPlacement::Place(picture,output,578,888,omitted.insetPixels,omitted.scale);
+            const auto reference=NativeStatsOverlayPlacement::Place(picture,output,578,888,old150.insetPixels,old150.scale);
+            Assert::IsTrue(panel.panel.IsValid());Assert::IsFalse(panel.insetClamped);
+            Assert::AreEqual(reference.panel.Width(),panel.panel.Width());Assert::AreEqual(reference.panel.Height(),panel.panel.Height());
+            Assert::AreEqual(reference.panel.right,panel.panel.right);Assert::AreEqual(reference.panel.bottom,panel.panel.bottom);
+            if(aspect==2.35)scopePanel=panel;else flatPanel=panel;
+        }
+        Assert::AreEqual(1.875f,flatPanel.scale,.000001f);Assert::AreEqual(1665.0f,flatPanel.panel.Height(),.001f);
+        const double opticalZoom=2.35/(16.0/9.0);
+        Assert::AreEqual(double(flatPanel.panel.Height()),scopePanel.panel.Height()*opticalZoom,.001);
+        Assert::AreEqual(double(flatPanel.panel.Width()),scopePanel.panel.Width()*opticalZoom,.001);
     }
     TEST_METHOD(CalibratedActualStatsPanelMatchesPhysicalSizeAndOldScopeEnlargement)
     {
@@ -67,7 +88,7 @@ public:
         Assert::AreEqual(1.25f,(scopePanel.panel.Width()*opticalZoom)/(oldScope.panel.Width()*opticalZoom),.000001f);
         Assert::AreEqual(flat.right-flatPanel.panel.right,(scope.right-scopePanel.panel.right)*opticalZoom,.001f);
         Assert::AreEqual(flat.bottom-flatPanel.panel.bottom,(scope.bottom-scopePanel.panel.bottom)*opticalZoom,.001f);
-        const auto omitted=Size(mapping,true,true,2.35),explicitDefault=Size(mapping,true,true,2.35,100);
+        const auto omitted=Size(mapping,true,true,2.35),explicitDefault=Size(mapping,true,true,2.35,150);
         Assert::AreEqual(omitted.scale,explicitDefault.scale);Assert::AreEqual(omitted.insetPixels,explicitDefault.insetPixels);
     }
     TEST_METHOD(CalibratedWindowedDpiAndNlsCanvasesMatchActualPhysicalPanel)

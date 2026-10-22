@@ -3542,16 +3542,17 @@ namespace VideoProcessorTest
         }
         TEST_METHOD(StatsOsdSizePercentValidatesSharedRendererIngressAndRestarts)
         {
-            Assert::AreEqual(100.0f, StatsOsdSettings::ReadSizePercent(nullptr));
+            Assert::AreEqual(150.0f, StatsOsdSettings::ReadSizePercent(nullptr));
             CachedConfigTestFile temporaryFile;
             struct Sample { const char* value; bool valid; float expected; };
             const Sample samples[] = {
-                {nullptr, true, 100.0f}, {"100", true, 100.0f},
+                {nullptr, true, 150.0f}, {"100", true, 100.0f},
                 {"132.1875", true, 132.1875f}, {"125", true, 125.0f},
-                {"50", true, 50.0f}, {"250", true, 250.0f},
-                {"49.9999", false, 100.0f}, {"250.000001", false, 100.0f},
-                {"-1", false, 100.0f}, {"nan", false, 100.0f},
-                {"inf", false, 100.0f}, {"large", false, 100.0f}
+                {"50", true, 50.0f}, {"250", true, 250.0f}, {"150.0000", true, 150.0f},
+                {"37.5", true, 37.5f}, {"375", true, 375.0f}, {"187.5", true, 187.5f},
+                {"37.499999", false, 150.0f}, {"375.000001", false, 150.0f},
+                {"-1", false, 150.0f}, {"nan", false, 150.0f},
+                {"inf", false, 150.0f}, {"large", false, 150.0f}
             };
             for (const auto& sample : samples)
             {
@@ -3576,6 +3577,22 @@ namespace VideoProcessorTest
             for (const bool directShow : {false, true})
                 Assert::IsTrue(ConfigurationApplyPolicy::Action::RestartRenderer ==
                     ConfigurationApplyPolicy::ClassifyChange({"general", "stats_osd_size_percent"}, directShow));
+        }
+        TEST_METHOD(StatsOsdWholePercentUiUsesRebasedDefaultAndSharedParsing)
+        {
+            Assert::AreEqual(100, StatsOsdSettings::UiPercentFromCalibration(150.0f));
+            Assert::AreEqual(67, StatsOsdSettings::UiPercentFromCalibration(100.0f));
+            Assert::AreEqual(88, StatsOsdSettings::UiPercentFromCalibration(132.1875f));
+            Assert::AreEqual(25, StatsOsdSettings::UiPercentFromCalibration(37.5f));
+            Assert::AreEqual(250, StatsOsdSettings::UiPercentFromCalibration(375.0f));
+            Assert::AreEqual(150.0f, StatsOsdSettings::CalibrationFromUiPercent(100));
+            Assert::AreEqual(187.5f, StatsOsdSettings::CalibrationFromUiPercent(125));
+            Assert::AreEqual(37.5f, StatsOsdSettings::CalibrationFromUiPercent(25));
+            Assert::AreEqual(375.0f, StatsOsdSettings::CalibrationFromUiPercent(250));
+            Assert::AreEqual(150.0f, StatsOsdSettings::ParseSizePercent(""));
+            Assert::AreEqual(150.0f, StatsOsdSettings::ParseSizePercent("invalid"));
+            Assert::AreEqual(150.0f, StatsOsdSettings::ParseSizePercent("300:2"));
+            Assert::AreEqual(132.1875f, StatsOsdSettings::ParseSizePercent(" 132.1875 "));
         }
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{

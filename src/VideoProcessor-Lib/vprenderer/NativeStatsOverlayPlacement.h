@@ -8,9 +8,15 @@
 namespace NativeStatsOverlayPlacement
 {
 	constexpr float kDefaultInsetPixels = 40.0f;
-	constexpr float kDefaultStatsSizePercent = 100.0f;
-	constexpr float kMinimumStatsSizePercent = 50.0f;
-	constexpr float kMaximumStatsSizePercent = 250.0f;
+	constexpr int kDefaultStatsDisplayPercent = 100;
+    constexpr int kMinimumStatsDisplayPercent = 25;
+    constexpr int kMaximumStatsDisplayPercent = 250;
+    // Persisted calibration retains its original units. UI100% is the former
+    // calibration150%, so existing explicit settings keep their physical size.
+    constexpr float kStatsSizeCalibrationPerDisplayPercent = 1.5f;
+    constexpr float kDefaultStatsSizePercent = kDefaultStatsDisplayPercent * kStatsSizeCalibrationPerDisplayPercent;
+	constexpr float kMinimumStatsSizePercent = kMinimumStatsDisplayPercent * kStatsSizeCalibrationPerDisplayPercent;
+	constexpr float kMaximumStatsSizePercent = kMaximumStatsDisplayPercent * kStatsSizeCalibrationPerDisplayPercent;
 	constexpr float kProfileOverlayInsetPixels = 30.0f;
 	constexpr float kProfileOverlayAdditionalLeftInsetReferencePixels = 30.0f;
 	constexpr float kProfileOverlayAdditionalTopInsetReferencePixels = 30.0f;
@@ -75,6 +81,15 @@ namespace NativeStatsOverlayPlacement
             ? value : kDefaultStatsSizePercent;
     }
 
+    inline float ToDisplayStatsSizePercent(float calibration)
+    {
+        return NormalizeStatsSizePercent(calibration) / kStatsSizeCalibrationPerDisplayPercent;
+    }
+
+    inline float FromDisplayStatsSizePercent(float display)
+    {
+        return NormalizeStatsSizePercent(display * kStatsSizeCalibrationPerDisplayPercent);
+    }
 	inline StatsSizing ResolveStatsSizing(bool enabled, float screenHeight, float outputHeight,
         float sizePercent = kDefaultStatsSizePercent)
 	{
