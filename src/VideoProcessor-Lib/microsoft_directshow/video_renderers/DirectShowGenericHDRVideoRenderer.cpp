@@ -11,6 +11,10 @@
 #include <MadVRShaderTransactionPolicy.h>
 
 #include "DirectShowViewportPlacement.h"
+#include "MadVROsdSizing.h"
+#include "MadVROsdRefresh.h"
+#include <microsoft_directshow/MadVRRuntimeInterfaces.h>
+#include <DisplayWindowGeometry.h>
 
 #include <dvdmedia.h>
 
@@ -252,8 +256,59 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 	const NativeStatsOverlayPlacement::Rect picture{
 		static_cast<float>(active.left), static_cast<float>(active.top),
 		static_cast<float>(active.right), static_cast<float>(active.bottom) };
+	MadVROsdSizing::Screen osdScreen;
+	if (m_scaleStatsOsd && !m_osdAnamorphicUnsupported && m_videoWindow)
+	{
+		// The existing m_renderBox dimensions and the COM child rectangle are
+		// observed on this same graph thread. Read monitor/host bounds under a
+		// physical-coordinate scope; changing DPI must not enlarge the bitmap.
+		LONG childX = 0, childY = 0, childWidth = 0, childHeight = 0;
+		if (SUCCEEDED(m_videoWindow->GetWindowPosition(
+			&childX, &childY, &childWidth, &childHeight)))
+		{
+			DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates;
+			RECT host{};
+			MONITORINFO monitorInfo{};
+			monitorInfo.cbSize = sizeof(monitorInfo);
+			const HMONITOR monitor = MonitorFromWindow(m_videoHwnd, MONITOR_DEFAULTTONEAREST);
+			if (GetWindowRect(m_videoHwnd, &host) && monitor &&
+				GetMonitorInfo(monitor, &monitorInfo))
+			{
+				MadVROsdSizing::Mapping mapping;
+				mapping.monitorWidth = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
+				mapping.monitorHeight = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
+				mapping.physicalHostWidth = host.right - host.left;
+				mapping.physicalHostHeight = host.bottom - host.top;
+				mapping.logicalHostWidth = m_renderBoxWidth;
+				mapping.logicalHostHeight = m_renderBoxHeight;
+				mapping.logicalChildWidth = childWidth;
+				mapping.logicalChildHeight = childHeight;
+				mapping.osdWidth = output.Width();
+				mapping.osdHeight = output.Height();
+				mapping.fullscreen = IsVideoHostFullscreen();
+				if (mapping.fullscreen)
+				{
+					CComPtr<IMadVRInfo> info;
+					SIZE displayMode{};
+					if (SUCCEEDED(m_pRenderer->QueryInterface(__uuidof(IMadVRInfo),
+						reinterpret_cast<void**>(&info))) &&
+						SUCCEEDED(info->GetSize("displayModeSize", &displayMode)))
+					{
+						mapping.unmaskedOutputWidth = displayMode.cx;
+						mapping.unmaskedOutputHeight = displayMode.cy;
+					}
+				}
+				osdScreen = MadVROsdSizing::Resolve(mapping,
+					m_nlsTargetAspect > 0.0, m_nlsTargetAspect);
+			}
+		}
+	}
+	const auto sizing = NativeStatsOverlayPlacement::ResolveStatsSizing(
+		m_scaleStatsOsd && osdScreen.valid, osdScreen.fittedHeight, osdScreen.outputHeight);
 	const auto placement = NativeStatsOverlayPlacement::Place(
-		picture, output, static_cast<float>(width), static_cast<float>(height));
+		picture, output, static_cast<float>(width), static_cast<float>(height),
+		sizing.insetPixels, sizing.scale);
+
 	if (!placement.panel.IsValid())
 		return;
 	const int bitmapWidth = std::max(1, static_cast<int>(std::lround(placement.panel.Width())));
@@ -321,10 +376,12 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 		std::fabs(placement.scale - m_lastOsdScale) > 0.001f;
 	if (placementChanged)
 	{
-		DebugLog::Log("madVR OSD: gen=%llu full=%ld,%ld-%ld,%ld active=%ld,%ld-%ld,%ld bitmap=%dx%d scale=%.3f panel=%d,%d inset_clamped=%d",
+		DebugLog::Log("madVR OSD: gen=%llu full=%ld,%ld-%ld,%ld active=%ld,%ld-%ld,%ld bitmap=%dx%d scale=%.3f panel=%d,%d inset_clamped=%d configured_scale=%d coordinate_mapping=%d screen_height=%.3f nominal_scale=%.3f inset=%.3f anamorphic_unsupported=%d",
 			static_cast<unsigned long long>(m_rendererGeneration), full.left, full.top,
 			full.right, full.bottom, active.left, active.top, active.right, active.bottom,
-			bitmapWidth, bitmapHeight, placement.scale, x, y, placement.insetClamped ? 1 : 0);
+			bitmapWidth, bitmapHeight, placement.scale, x, y, placement.insetClamped ? 1 : 0,
+			m_scaleStatsOsd ? 1 : 0, osdScreen.valid ? 1 : 0, osdScreen.fittedHeight,
+			sizing.scale, sizing.insetPixels, m_osdAnamorphicUnsupported ? 1 : 0);
 		m_lastOsdFullRect = full;
 		m_lastOsdActiveRect = active;
 		m_lastOsdScale = placement.scale;
@@ -1300,8 +1357,16 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 
 	activeState.Empty();
 	rendererRestartRequired = false;
-	const RendererProfileConfig::ResolvedViewport& viewport =
-		snapshot.viewport;
+	// Snapshot configuration is immutable and publication already belongs to
+	// the graph owner; no worker reads the GUI's mutable configuration object.
+	m_scaleStatsOsd = false;
+	if (snapshot.configuration)
+		snapshot.configuration->TryGetBool("general", "scale_osd", m_scaleStatsOsd);
+	const RendererProfileConfig::ResolvedViewport& viewport = snapshot.viewport;
+	// DirectShow does not implement VP's anamorphic presentation transform.
+	// Do not apply only half of that transform to an otherwise native madVR OSD.
+	m_osdAnamorphicUnsupported = !std::isfinite(viewport.anamorphicScale.value) ||
+		std::fabs(viewport.anamorphicScale.value - 1.0) > 0.0001;
 	// madVR owns the physical display and exposes no reliable panel geometry to
 	// VP. An explicit application viewport is therefore required; absence means
 	// native geometry rather than the former hard-coded 16:9 assumption.
@@ -1351,6 +1416,17 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 		viewport.subtitlePaddingPixels,
 		static_cast<unsigned long long>(m_viewportGeneration),
 		rendererRestartRequired ? 1 : 0);
+	if (m_osdServices)
+	{
+		m_hasLoggedOsdPlacement = false;
+		// A screen shortcut can be used while paused. Reapply the cached native
+		// bitmap after placement, then ask madVR to redraw the paused frame.
+		ApplyNativeStatsOverlayOnGraphThread();
+		const HRESULT redraw = MadVROsdRefresh::RedrawPaused(m_pRenderer);
+		if (FAILED(redraw))
+			DebugLog::Log("madVR OSD: paused redraw command unavailable (0x%08lX); bitmap was reapplied", redraw);
+	}
+
 	return true;
 }
 
