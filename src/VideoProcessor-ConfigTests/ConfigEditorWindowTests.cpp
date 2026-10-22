@@ -7106,6 +7106,94 @@ void testSubtitleProfileTabRoundTrip()
 
 }
 
+void testSubtitleSurroundFillRoundTrip()
+{
+    QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write fill fixture");
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n[vprenderer.subtitles.Moved]\ntype: generated_gray\n# preserve comment\n");file.close();
+    // Settle existing profile migrations before testing the new optional field.
+    { ConfigEditorWindow migrating(path,0,true);save(migrating); }
+    ConfigEditorWindow window(path,0,true);
+    auto* fill=requireControl<QComboBox>(window,"config.vprenderer.subtitles.cleanup_fill");
+    require(fill->currentData().toString()=="mirror","Legacy default changed");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading fill default dirtied config");
+    selectData(fill,"surround");save(window);
+    ConfigEditorWindow reopened(path,0,true);
+    auto* restored=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.cleanup_fill");
+    require(restored->currentData().toString()=="surround","Surround fill did not persist");
+    require(restored->currentText()=="Blend surrounding picture","User-facing fill label missing");
+    require(readBytes(path).contains("# preserve comment"),"Saving fill removed user comment");
+    for(const auto& available:{"mirror","stretch","surround"})
+        require(restored->findData(QString::fromUtf8(available))>=0,"Supported fill option disappeared");
+    require(restored->count()==3 && restored->findData("temporal")<0,
+        "Temporal is still offered as a reconstruction fill");
+}
+
+void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
+{
+    for (const QByteArray legacy : {QByteArray("cleanup_fill: temporal\n"),
+        QByteArray("cleanup_fill: TeMpOrAl\n"), QByteArray("temporal_fill: true\n")})
+    {
+        QTemporaryDir dir; const QString path=dir.filePath("VideoProcessor.cfg");
+        QFile file(path); require(file.open(QIODevice::WriteOnly),"Cannot write legacy fill fixture");
+        file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+            "[vprenderer.subtitles.Legacy]\ntype: generated_gray\n# keep legacy fill until explicitly changed\n");
+        file.write(legacy);
+        file.write("[vprenderer.subtitles.Inherited]\ntype: generated_gray\n");
+        // The older boolean is local to this profile; explicit cleanup_fill
+        // values use the normal default-profile inheritance path.
+        if (legacy.startsWith("temporal_fill")) file.write(legacy);
+        file.write("[vprenderer.subtitles.Modern]\ntype: generated_gray\ncleanup_fill: surround\n");
+        file.close();
+        { ConfigEditorWindow migrating(path,0,true); save(migrating); }
+        const QByteArray settled=readBytes(path);
+        ConfigEditorWindow window(path,0,true);
+        auto* list=requireControl<QListWidget>(window,"config.vprenderer.subtitles.profiles");
+        auto* fill=requireControl<QComboBox>(window,"config.vprenderer.subtitles.cleanup_fill");
+        auto* view=qobject_cast<QListView*>(fill->view());
+        require(view!=nullptr,"Fill popup is not a list view");
+        const auto checkLegacy=[&] {
+            require(fill->currentData().toString().compare("temporal",Qt::CaseInsensitive)==0,
+                "Loading a saved temporal fill silently changed its value");
+            const int current=fill->currentIndex();
+            require(!(fill->model()->flags(fill->model()->index(current,0)) & Qt::ItemIsEnabled)
+                && view->isRowHidden(current),"Retired fill can still be selected in the popup");
+            require(fill->currentText()=="Saved legacy fill - choose a replacement",
+                "Saved retired fill is not explained");
+            require(fill->count()==4,"Legacy fill placeholders accumulated");
+            for (const auto* value : {"mirror","stretch","surround"}) {
+                const int index=fill->findData(value);
+                require(index>=0 && !view->isRowHidden(index) &&
+                    (fill->model()->flags(fill->model()->index(index,0)) & Qt::ItemIsEnabled),
+                    "Supported fill is hidden or disabled");
+            }
+        };
+        checkLegacy();
+        for (int repeat=0;repeat<3;++repeat) {
+            list->setCurrentRow(1); checkLegacy();
+            list->setCurrentRow(2);
+            require(fill->count()==3 && fill->currentData().toString()=="surround",
+                "Legacy placeholder leaked into another profile");
+            list->setCurrentRow(0); checkLegacy();
+        }
+        require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),
+            "Inspecting legacy fill dirtied settings");
+        require(readBytes(path)==settled,"Inspecting legacy fill rewrote settings");
+        requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_blur_px")->setText("4");
+        save(window);
+        require(readBytes(path).replace("\r\n","\n").contains(legacy) &&
+            readBytes(path).contains("# keep legacy fill until explicitly changed"),
+            "An unrelated edit changed the saved legacy fill or comment");
+        for (const auto* replacement : {"mirror","stretch","surround"}) {
+            selectData(fill,replacement); save(window);
+            ConfigEditorWindow reopened(path,0,true);
+            auto* restored=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.cleanup_fill");
+            require(restored->count()==3 && restored->currentData().toString()==replacement,
+                "Explicit replacement fill did not survive save/reopen");
+        }
+    }
+}
+
 void testSubtitleBackgroundShapeRoundTripAndVisibility()
 {
     QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
@@ -7300,6 +7388,8 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("subtitle surrounding fill round trip", testSubtitleSurroundFillRoundTrip);
+    failures += run("subtitle retired temporal fill preserves saved profiles", testSubtitleRetiredTemporalFillPreservesSavedProfiles);
     failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);
     failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);

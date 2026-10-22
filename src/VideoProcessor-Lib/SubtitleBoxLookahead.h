@@ -160,7 +160,7 @@ public:
             current.scriptHint==m_current.scriptHint && current.optimizationMode==m_current.optimizationMode &&
             current.nearBarDistance==m_current.nearBarDistance && current.sharedPicture.Matches(m_current.sharedPicture) &&
             SameCueResult(current.text,m_current.text) && SameCueResult(accepted,m_accepted) &&
-            accepted.detected && !accepted.held && !accepted.revised && !accepted.workLimit && accepted.cue!=0;
+            accepted.detected && !accepted.held && !accepted.confirmationPending && !accepted.revised && !accepted.workLimit && accepted.cue!=0;
     }
 private:
     friend class SubtitleBoxPresentation;
@@ -169,7 +169,7 @@ private:
     }
     static bool SameCueResult(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
         if(a.cue!=b.cue || a.observations!=b.observations || a.lineCount!=b.lineCount ||
-            a.detected!=b.detected || a.held!=b.held || a.revised!=b.revised || a.workLimit!=b.workLimit ||
+            a.detected!=b.detected || a.held!=b.held || a.confirmationPending!=b.confirmationPending || a.revised!=b.revised || a.workLimit!=b.workLimit ||
             a.capturePanelMeasured!=b.capturePanelMeasured ||
             a.nearBarEligibilityMeasured!=b.nearBarEligibilityMeasured || a.nearBarEligible!=b.nearBarEligible ||
             a.topSearchComplete!=b.topSearchComplete || a.bottomSearchComplete!=b.bottomSearchComplete ||
@@ -233,7 +233,7 @@ namespace SubtitleBoxLookahead
         SubtitleBarTrackingReference result;
         if (!observation.analyzed || observation.discontinuity ||
             observation.glyphLocalTop || observation.glyphLocalBottom ||
-            !HasBarEvidence(observation)) return result;
+            !HasBarEvidence(observation) || observation.text.confirmationPending) return result;
         result.identity = observation.identity;
         result.width = observation.width; result.height = observation.height;
         result.pictureTop = observation.barEvidence.captionBackedTop?0:observation.pictureTop;
@@ -1296,7 +1296,7 @@ namespace SubtitleBoxLookahead
     inline bool IsCompletePictureGlyphAcquisitionSource(const SubtitleBoxObservation& source)
     {
         return source.analyzed && !source.analysisRefresh && !source.pendingRefresh &&
-            !source.discontinuity && source.text.detected && !source.text.held &&
+            !source.discontinuity && source.text.detected && !source.text.held && !source.text.confirmationPending &&
             !source.text.workLimit && HasBarEvidence(source) && source.ink &&
             source.ink->rawEvidenceComplete && source.identity.acceptedSequence!=0;
     }
@@ -1377,6 +1377,159 @@ namespace SubtitleBoxLookahead
         return ConfirmPictureGlyphAcquisitionPair(preview.current,pending,false);
     }
 
+    struct CurrentOwnedContractionProof
+    {
+        bool valid=false;
+        const char* reason="not-eligible";
+        size_t ownedSamples=0,inspectedSamples=0;
+        SubtitleBoxRect referenceBounds,currentBounds;
+    };
+    // Retain only a suffix contraction of acquired glyphs. Current extraction
+    // stays current; neither raw scene ink nor the old removed suffix is owned.
+    inline CurrentOwnedContractionProof ProveCurrentOwnedContraction(
+        const SubtitleBoxObservation& reference,const SubtitleBoxObservation& current,
+        size_t maxSamples=65536)
+    {
+        CurrentOwnedContractionProof result;
+        result.referenceBounds=reference.text.bounds;result.currentBounds=current.text.bounds;
+        const auto reject=[&](const char* why){result.reason=why;return result;};
+        const auto complete=[](const SubtitleBoxObservation& o){
+            return o.analyzed && !o.discontinuity && !o.pendingRefresh && !o.analysisRefresh &&
+                !o.glyphLocalTop && !o.glyphLocalBottom && o.barAuthority &&
+                !o.barTrackingAuthority && !o.currentAnchorUsesTrackedEdge &&
+                o.barEvidence.available && !o.barEvidence.captionBackedTop &&
+                !o.barEvidence.captionBackedBottom && !o.barEvidence.topRevalidatedAtReference &&
+                !o.barEvidence.topRevalidatedNearby && !o.barEvidence.bottomRevalidatedAtReference &&
+                !o.barEvidence.bottomRevalidatedNearby && o.independentBarAnalysis &&
+                !o.text.diagnosticPictureGlyphProofRequired && o.text.bounds.Valid() &&
+                o.text.bounds.left>=0 && o.text.bounds.top>=0 &&
+                o.text.bounds.right<=o.width && o.text.bounds.bottom<=o.height &&
+                !o.text.held && !o.text.confirmationPending && !o.text.workLimit && o.text.detected &&
+                o.text.nearBarEligibilityMeasured && o.text.nearBarEligible &&
+                o.pictureTop==o.barEvidence.top && o.pictureBottom==o.barEvidence.bottom &&
+                o.pictureTop>0 && o.pictureBottom<o.height && o.pictureTop<o.pictureBottom &&
+                o.ink && o.ink->rawEvidenceComplete && o.ink->paletteValid;
+        };
+        if(!complete(reference) || !complete(current) || reference.ink==current.ink)
+            return reject("contraction-current-proof-incomplete");
+        if(!SameContext(reference,current) || reference.optimizationMode!=current.optimizationMode ||
+            reference.policyGeneration!=current.policyGeneration ||
+            reference.continuityGeneration!=current.continuityGeneration ||
+            reference.pictureTop!=current.pictureTop || reference.pictureBottom!=current.pictureBottom ||
+            !reference.identity.acceptedSequence ||
+            current.identity.acceptedSequence<=reference.identity.acceptedSequence ||
+            current.identity.sourceFrameNumber<=reference.identity.sourceFrameNumber ||
+            current.identity.captureTimestamp<=reference.identity.captureTimestamp)
+            return reject("contraction-context-or-source-change");
+        // Current glyph ownership cannot authorize larger cleanup or card
+        // capture. Empty original footprints remain empty for this handoff.
+        const auto contained=[&](const SubtitleBoxRect& before,const SubtitleBoxRect& after){
+            return !after.Valid() || (before.Valid() && after.left>=0 && after.top>=0 &&
+                after.right<=current.width && after.bottom<=current.height &&
+                after.left>=before.left && after.top>=before.top &&
+                after.right<=before.right && after.bottom<=before.bottom);
+        };
+        if(reference.text.capturePanelMeasured!=current.text.capturePanelMeasured ||
+            !contained(reference.text.sourcePanel,current.text.sourcePanel) ||
+            !contained(reference.text.provenSourcePanel,current.text.provenSourcePanel) ||
+            !contained(reference.text.capturePanel,current.text.capturePanel))
+            return reject("contraction-source-footprint-grew");
+        for(int line=0;line<3;++line)
+            if(!contained(reference.text.linePanels[line],current.text.linePanels[line]) ||
+                !contained(reference.text.lineCapturePanels[line],current.text.lineCapturePanels[line]))
+                return reject("contraction-line-footprint-grew");
+        const auto& old=*reference.ink;const auto& now=*current.ink;
+        const size_t words=(size_t(old.width)*old.height+63)/64;
+        if(old.width<1 || old.height<1 || old.width>960 || old.height>540 || old.step<1 || old.step>8 ||
+            old.width!=now.width || old.height!=now.height || old.step!=now.step ||
+            old.width!=(reference.width+old.step-1)/old.step ||
+            old.height!=(reference.height+old.step-1)/old.step ||
+            old.sourceRows.size()!=size_t(old.height) || old.sourceRows!=now.sourceRows ||
+            old.rawInk.size()!=words || now.rawInk.size()!=words ||
+            old.ownedInk.size()!=words || now.ownedInk.size()!=words ||
+            old.sourceRows.empty() || old.sourceRows.front()<0 || old.sourceRows.back()>=reference.height || !std::is_sorted(old.sourceRows.begin(),old.sourceRows.end()) ||
+            std::adjacent_find(old.sourceRows.begin(),old.sourceRows.end())!=old.sourceRows.end())
+            return reject("contraction-grid-unavailable");
+        if(reference.text.lineCount<1 || reference.text.lineCount>3 ||
+            current.text.lineCount!=reference.text.lineCount)
+            return reject("contraction-row-count-changed");
+        size_t area=0;bool contracted=false;
+        for(int line=0;line<reference.text.lineCount;++line){
+            const auto& a=reference.text.lineBounds[line];const auto& b=current.text.lineBounds[line];
+            if(!a.Valid() || !b.Valid() || a.left<0 || a.top<0 || a.right>reference.width ||
+                a.bottom>reference.height || b.left!=a.left || b.top!=a.top || b.bottom!=a.bottom || b.right>a.right)
+                return reject("contraction-slot-changed");
+            contracted|=b.right<a.right;
+            // Match the compositor's CURRENT per-line antialias capture fringe.
+            const int firstX=(std::max)(0,a.left-(old.step-1)-2)/old.step;
+            const int lastX=((std::min)(reference.width,a.right+2)+old.step-1)/old.step;
+            const int firstY=int(std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),
+                (std::max)(0,a.top-(old.step-1)))-old.sourceRows.begin());
+            const int lastY=int(std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),a.bottom)-old.sourceRows.begin());
+            area+=size_t(lastX-firstX)*size_t(lastY-firstY);
+        }
+        if(!contracted)return reject("contraction-not-a-suffix");
+        // All ROI probes count, including empty cells and flood neighbours.
+        // Reject obviously oversized work before allocating a component grid.
+        if(!maxSamples || area>maxSamples/2)return reject("contraction-work-budget");
+        const auto spend=[&](){if(result.inspectedSamples>=maxSamples)return false;++result.inspectedSamples;return true;};
+        for(int line=0;line<reference.text.lineCount;++line){
+            const auto& a=reference.text.lineBounds[line];const auto& b=current.text.lineBounds[line];
+            const int left=(std::max)(0,a.left-(old.step-1)-2)/old.step;
+            const int right=((std::min)(reference.width,a.right+2)+old.step-1)/old.step;
+            const int top=int(std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),
+                (std::max)(0,a.top-(old.step-1)))-old.sourceRows.begin());
+            const int bottom=int(std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),a.bottom)-old.sourceRows.begin());
+            const int retainedRight=((std::min)(current.width,b.right+2)+old.step-1)/old.step;
+            const int w=right-left,h=bottom-top;
+            std::vector<uint8_t> visited(size_t(w)*h,0);std::vector<int> component;
+            unsigned currentOwned=0;
+            for(int y=top;y<bottom;++y)for(int x=left;x<retainedRight;++x){
+                if(!spend())return reject("contraction-work-budget");
+                const bool before=old.Get(x,y,true),after=now.Get(x,y,true);
+                if(before!=after)return reject(after?"contraction-new-owned-ink":"contraction-retained-glyph-missing");
+                if(old.Get(x,y)!=now.Get(x,y))return reject("contraction-retained-raw-ink-changed");
+                if(after){if(!now.Get(x,y))return reject("contraction-owned-pixel-absent");++currentOwned;++result.ownedSamples;}
+            }
+            if(!currentOwned)return reject("contraction-current-owned-empty");
+            // The current cleanup can still span the acquired card. Its
+            // removed glyph suffix must therefore be genuinely ink-free.
+            for(int y=top;y<bottom;++y)for(int x=retainedRight;x<right;++x){
+                if(!spend())return reject("contraction-work-budget");
+                if(now.Get(x,y))return reject("contraction-removed-suffix-has-current-ink");
+            }
+            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x){
+                if(!spend())return reject("contraction-work-budget");
+                const size_t start=size_t(y-top)*w+x-left;
+                if(visited[start] || !old.Get(x,y,true))continue;
+                visited[start]=1;component.clear();component.push_back(int(start));
+                int minX=x,maxX=x,minY=y,maxY=y;
+                for(size_t at=0;at<component.size();++at){
+                    const int cx=left+component[at]%w,cy=top+component[at]/w;
+                    minX=(std::min)(minX,cx);maxX=(std::max)(maxX,cx);
+                    minY=(std::min)(minY,cy);maxY=(std::max)(maxY,cy);
+                    for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){
+                        if(!spend())return reject("contraction-work-budget");
+                        const int nx=cx+dx,ny=cy+dy;
+                        if(nx<left || nx>=right || ny<top || ny>=bottom || !old.Get(nx,ny,true))continue;
+                        const size_t next=size_t(ny-top)*w+nx-left;
+                        if(!visited[next]){visited[next]=1;component.push_back(int(next));}
+                    }
+                }
+                if(minX<retainedRight && maxX>=retainedRight)
+                    return reject("contraction-bisects-acquired-component");
+                if(minX>=retainedRight)continue;
+                // Rectangular capture also sees holes and unowned raw pixels.
+                // Exact old/current agreement inside each retained component's
+                // envelope prevents a novel raw stroke from borrowing ownership.
+                for(int yy=minY;yy<=maxY;++yy)for(int xx=minX;xx<=maxX;++xx){
+                    if(!spend())return reject("contraction-work-budget");
+                    if(old.Get(xx,yy)!=now.Get(xx,yy))return reject("contraction-glyph-interior-changed");
+                }
+            }
+        }
+        result.valid=true;result.reason="current-owned-suffix-contraction";return result;
+    }
     inline bool BackedPartialInkAtReference(const SubtitleBoxObservation& reference,
         const SubtitleBoxObservation& current)
     {
@@ -1803,9 +1956,11 @@ public:
         m_hasPrevious = false; m_bridgedFrames = 0;
         m_diagnosticWeakMs=0;m_decisionReason="reset";m_referenceSamples=0;m_referenceRefresh="reset";m_refreshedReference={};
         m_weakTemplateMilliseconds = 0; m_weakTemplateExhausted = false;
+        m_handoffResult={};m_handoffSources=0;m_handoffActive=false;
+        m_handoffMilliseconds=0;m_handoffReason="reset";m_handoffProof={};
     }
     bool HasAcceptedSourceTemplate() const {
-        return m_hasPrevious && m_result.detected && m_inkReference.ink &&
+        return m_hasPrevious && !m_handoffActive && m_result.detected && !m_result.confirmationPending && m_inkReference.ink &&
             m_previous.available && m_previous.current.analyzed &&
             m_previous.current.text.detected &&
             SubtitleBoxLookahead::SameContext(m_previous.current,m_inkReference);
@@ -1820,6 +1975,9 @@ public:
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
+    unsigned HandoffSources() const { return m_handoffSources; }
+    const char* HandoffReason() const { return m_handoffReason; }
+    const SubtitleBoxLookahead::CurrentOwnedContractionProof& HandoffProof() const { return m_handoffProof; }
     SubtitleBarTrackingReference BarTrackingReferenceFor(
         const ActivePictureFrameIdentity& next, int width, int height,
         uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
@@ -1928,7 +2086,7 @@ public:
         if (m_hasPrevious && SameAnalysisFrameIdentity(m_previous.current.identity,preview.current.identity) &&
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration &&
-            m_previous.current.scriptHint==preview.current.scriptHint) return m_result;
+            m_previous.current.scriptHint==preview.current.scriptHint) return m_handoffActive?m_handoffResult:m_result;
         if(cueContinuation && m_hasPrevious && m_result.detected &&
             cueContinuation->Matches(preview.current.identity,preview.policyGeneration,
                 preview.continuityGeneration,preview.current.sharedPicture.bounds) &&
@@ -2174,6 +2332,44 @@ public:
         m_pendingPictureGlyphAcquisition=keepPendingPictureGlyphCandidate ?
             preview.current : SubtitleBoxObservation{};
         m_hasPendingPictureGlyphAcquisition=keepPendingPictureGlyphCandidate;
+        // A complete current suffix may outlive the old cue's final glyphs by
+        // one queued confirmation. Display only those CURRENT acquired-owned
+        // strokes, without rewriting the original reference or lending a seed.
+        m_handoffReason="not-required";m_handoffProof={};
+        m_handoffProof.referenceBounds=m_inkReference.text.bounds;
+        m_handoffProof.currentBounds=preview.current.text.bounds;
+        if(!result.detected && !same && m_hasPrevious && m_result.detected &&
+            !m_result.held && !m_result.revised && !m_result.confirmationPending &&
+            (m_handoffActive || m_result.observations>=2 || (m_previous.matchingFrames>=2 && m_previous.currentLinesConfirmed)) &&
+            m_inkReference.ink && m_expansionEvidence.empty()) {
+            m_handoffReason="contraction-context-or-budget";
+            m_handoffProof.reason=m_handoffReason;
+            const bool fresh=preview.current.identity.acceptedSequence==
+                    m_previous.current.identity.acceptedSequence+1 &&
+                m_previous.current.identity.sourceFrameNumber!=UINT64_MAX &&
+                preview.current.identity.sourceFrameNumber==m_previous.current.identity.sourceFrameNumber+1 &&
+                preview.current.identity.captureTimestamp>m_previous.current.identity.captureTimestamp &&
+                preview.policyGeneration==preview.current.policyGeneration &&
+                preview.continuityGeneration==preview.current.continuityGeneration;
+            if(fresh && holdMs>0 && m_handoffSources<2 &&
+                m_handoffMilliseconds+frameMs<=holdMs+0.000001) {
+                const auto proof=SubtitleBoxLookahead::ProveCurrentOwnedContraction(m_inkReference,preview.current);
+                m_handoffReason=proof.reason;m_handoffProof=proof;
+                if(proof.valid) {
+                    auto provisional=preview.current.text;
+                    provisional.bounds=m_result.bounds;provisional.cue=m_result.cue;
+                    provisional.observations=0;provisional.held=false;provisional.revised=false;
+                    provisional.confirmationPending=true;
+                    ++m_handoffSources;m_handoffMilliseconds+=frameMs;
+                    m_handoffResult=provisional;m_handoffActive=true;
+                    m_previous=preview;m_hasPrevious=true;
+                    m_decisionReason="current-owned-suffix-contraction";
+                    m_diagnosticWeakMs=m_handoffMilliseconds;
+                    return provisional;
+                }
+            }
+        }
+        m_handoffActive=false;m_handoffResult={};
         const bool bridged=!result.detected && CanBridge(preview);
         if (bridged) {
             result=m_result; result.held=true; result.revised=false;
@@ -2288,6 +2484,12 @@ public:
             m_acceptedCueSeedCertificate.m_valid=true;
             m_acceptedCueSeedCertificate.m_current=preview.current;
             m_acceptedCueSeedCertificate.m_accepted=result;
+        }
+        // Only ordinary strong acceptance starts a fresh handoff allowance.
+        // Weak/held/unknown results cannot restart the original two-source cap.
+        if(result.detected && !result.held && !result.confirmationPending && !weakTemplateEligible &&
+            !bridged && !templateHeld && (currentTemplatePixelsMatch || !same)) {
+            m_handoffSources=0;m_handoffMilliseconds=0;
         }
         m_previous = preview;
         // Keep only accepted cue evidence as the temporal reference. Rejected
@@ -2725,6 +2927,12 @@ private:
     double m_weakTemplateMilliseconds = 0.0;
     bool m_weakTemplateExhausted = false;
     SubtitleBoxResult m_result;
+    SubtitleBoxResult m_handoffResult;
+    unsigned m_handoffSources=0;
+    bool m_handoffActive=false;
+    double m_handoffMilliseconds=0;
+    const char* m_handoffReason="reset";
+    SubtitleBoxLookahead::CurrentOwnedContractionProof m_handoffProof;
     SubtitleBarTrackingReference m_barTrackingReference;
     uint64_t m_nextCue = 0;
     bool m_hasPrevious = false;
@@ -2780,15 +2988,16 @@ public:
         } else if(m_gapMs>500.0) m_lastVisible={};
         event.changed=(!m_hasPrevious && (observed || visible)) || event.detectorLost || event.detectorRegained ||
             event.outputLost || event.outputRegained || event.holdStarted || event.holdEnded || event.cueChanged ||
-            m_previous.pendingRefresh!=current.pendingRefresh;
+            m_previous.pendingRefresh!=current.pendingRefresh || m_confirmationPending!=result.confirmationPending;
         event.losses=m_losses;event.flashes=m_flashes;
         m_previous=current;m_previous.ink.reset();m_hasPrevious=true;
         m_observed=observed;m_visible=visible;m_held=result.held;m_cue=result.cue;
+        m_confirmationPending=result.confirmationPending;
         return event;
     }
 private:
     SubtitleBoxObservation m_previous,m_lastVisible;
-    bool m_hasPrevious=false,m_observed=false,m_visible=false,m_held=false;
+    bool m_hasPrevious=false,m_observed=false,m_visible=false,m_held=false,m_confirmationPending=false;
     uint64_t m_cue=0,m_losses=0,m_flashes=0;
     double m_gapMs=0;
 };

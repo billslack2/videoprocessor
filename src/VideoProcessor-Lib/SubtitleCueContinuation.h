@@ -16,7 +16,7 @@ public:
         const auto reject=[&](const char* reason) {m_lastSeedReason=reason;return false;};
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.analysisRefresh)
             return reject("observation-not-current");
-        if(!c.text.detected || c.text.held || c.text.workLimit || !accepted.detected || accepted.held ||
+        if(!c.text.detected || c.text.held || c.text.confirmationPending || c.text.workLimit || !accepted.detected || accepted.held || accepted.confirmationPending ||
             accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3)
             return reject("cue-not-strong");
         if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete)
@@ -110,6 +110,7 @@ public:
     bool AdvanceVerified(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,const AnalysisLumaSource& source,
         const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=65536) {
         const auto& c=preview.current;
+        if(accepted.confirmationPending){Reset();return false;}
         if(!m_valid)return false;
         SubtitleCueContinuation ownership;ownership.valid=true;ownership.accepted=m_reference.text;
         if(!ownership.MatchesCue(accepted)) {Reset();return false;}

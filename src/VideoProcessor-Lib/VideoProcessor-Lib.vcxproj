@@ -262,6 +262,8 @@
     <ClInclude Include="SubtitleCueContinuation.h" />
     <ClInclude Include="SubtitleCueContinuationProof.h" />
     <ClInclude Include="SubtitleCutPaste.h" />
+    <ClInclude Include="SubtitleBackingLip.h" />
+    <ClInclude Include="SubtitleBackingPresentation.h" />
     <ClInclude Include="SubtitleCutPasteShader.h" />
     <ClInclude Include="SubtitleBarEvidence.h" />
     <ClInclude Include="SubtitleLocalGlyphProof.h" />
