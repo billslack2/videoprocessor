@@ -82,8 +82,12 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClCompile Include="AppMain.cpp" />
     <ClCompile Include="ConfigEditorWindow.cpp" />
     <ClCompile Include="VpTheme.cpp" />
-    <ClCompile Include="ToneCurveModel.cpp" />
-    <ClCompile Include="ToneCurveRuntime.cpp" />
+    <ClCompile Include="..\VideoProcessor-ChartCore\ToneCurveModel.cpp">
+      <ObjectFileName>$(IntDir)ToneCurveModel.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\VideoProcessor-ChartCore\ToneCurveRuntime.cpp">
+      <ObjectFileName>$(IntDir)ToneCurveRuntime.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp">
       <ObjectFileName>$(IntDir)ConfigEditorCore.obj</ObjectFileName>
     </ClCompile>
@@ -103,11 +107,7 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ToneMappingControl.h" />
-    <ClInclude Include="ColourChart.h" />
     <ClInclude Include="ToneChartPanel.h" />
-    <ClInclude Include="ToneCurveChart.h" />
-    <ClInclude Include="ToneCurveProvider.h" />
-    <ClInclude Include="ToneCurveRuntime.h" />
     <ClInclude Include="ToneGuiRules.h" />
     <ClInclude Include="ToneProfileFile.h" />
     <ClInclude Include="InlineColorPicker.h" />
@@ -117,6 +117,10 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClInclude Include="Resource.h" />
     <ClInclude Include="VpTheme.h" />
     <ClInclude Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ColourChart.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveChart.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveProvider.h" />
+    <ClInclude Include="..\VideoProcessor-ChartCore\ToneCurveRuntime.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="VideoProcessorConfig.rc" />
