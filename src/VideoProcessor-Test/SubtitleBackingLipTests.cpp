@@ -186,6 +186,100 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
 public:
+    TEST_METHOD(CurrentOutlineSurvivesSceneFlankAndClosureNoiseWithoutMoving) {
+        for(bool top:{false,true})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb}) {
+            Frame frame(1,format,top);frame.Lip(8,true);auto cue=Acquire(frame);
+            SubtitleBackingLipContinuity continuity;
+            auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            LogProof(first,frame,"outline-acquire");Assert::IsTrue(first.valid && !first.revalidatedOutline);
+            // One dark exterior point defeated strict closure; a small dark
+            // object touching a side defeated monotone/flank acquisition.
+            frame.Pixel(232,frame.pictureBottom-9,frame.floor);
+            frame.Fill({416,frame.pictureBottom-5,421,frame.pictureBottom-3},frame.floor);
+            for(uint64_t seq=3;seq<20;++seq) {
+                auto current=frame.Measure(seq);auto preview=Resolve({current});
+                const auto text=cue.tracker.Consume(preview);
+                auto proof=continuity.Consume(frame.Source(),preview,text,Identity(seq),7,8);
+                LogProof(proof,frame,"outline-current");
+                Assert::IsTrue(proof.valid && proof.revalidatedOutline);
+                Assert::IsTrue(Same(first.cleanup,proof.cleanup));
+                Assert::IsTrue(SameAnalysisFrameIdentity(proof.identity,Identity(seq)));
+                Assert::IsTrue(proof.samples<=65536);
+                const auto geometry=Geometry(cue);
+                AssertGeometryExceptCleanup(geometry,ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(seq),7,8));
+            }
+        }
+    }
+    TEST_METHOD(CurrentOutlineAntialiasCollarIsBoundedInsideTheMeasuredMask) {
+        for(bool top:{false,true})for(int depth:{1,2,3}) {
+            Frame native(2,Format::P210,top);native.Lip(16,true);auto cue=Acquire(native);
+            SubtitleBackingLipContinuity continuity;
+            const auto first=continuity.Consume(native.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid);
+            native.Fill({448,584,448+depth,585},300);
+            auto p=Resolve({native.Measure(3)});const auto accepted=cue.tracker.Consume(p);
+            const auto next=continuity.Consume(native.Source(),p,accepted,Identity(3),7,8);
+            if(depth<=2) {
+                Assert::IsTrue(next.valid && next.revalidatedOutline);
+                Assert::IsTrue(Same(first.cleanup,next.cleanup));
+                for(int y=next.blackInterior.top;y<next.blackInterior.bottom;++y)
+                    for(int x=next.blackInterior.left;x<next.blackInterior.right;++x) {
+                        AnalysisLumaSample v;Assert::IsTrue(native.Source().Sample(x,y,v));
+                        Assert::IsTrue(v.luma<=native.floor+4,L"AA collar is not certified black interior");
+                    }
+            } else Assert::IsFalse(next.valid,L"Three-pixel intrusion reaches the strict current body");
+        }
+    }
+    TEST_METHOD(CurrentOutlineRejectsBrightOrColoredBodyEvenWithUnchangedGlyphs) {
+        for(bool top:{false,true})for(bool colored:{false,true}) {
+            Frame frame(1,Format::P210,top);frame.Lip(8,true);auto cue=Acquire(frame);
+            SubtitleBackingLipContinuity continuity;
+            Assert::IsTrue(continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8).valid);
+            if(colored)frame.Chroma({300,290,302,291},700,512);
+            else frame.Pixel(300,290,500);
+            auto preview=Resolve({frame.Measure(3)});const auto text=cue.tracker.Consume(preview);
+            const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8);
+            Assert::IsFalse(proof.valid);Assert::AreEqual("lip-outline-body-changed",proof.reason);
+        }
+    }
+    TEST_METHOD(CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure) {
+        for(int failure=0;failure<5;++failure) {
+            Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
+            Assert::IsTrue(continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8).valid);
+            auto preview=cue.preview;preview.current.identity=Identity(3);auto text=cue.accepted;
+            if(failure==0)text.detected=false;
+            if(failure==1)text.held=true;
+            if(failure==2)preview.current.barTrackingAuthority=true;
+            if(failure==3)frame.Fill({215,280,425,288},frame.floor);
+            const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8,failure==4?16:65536);
+            Assert::IsFalse(proof.valid);
+            frame.Fill({215,280,425,288},300);
+            preview=cue.preview;preview.current.identity=Identity(4);
+            const auto next=continuity.Consume(frame.Source(),preview,cue.accepted,Identity(4),7,8);
+            Assert::IsTrue(next.valid && !next.revalidatedOutline,L"failure must retire the remembered outline");
+        }
+    }
+    TEST_METHOD(CurrentOutlineRetiresOnCuePolicyEpochAndSequenceChanges) {
+        for(int change=0;change<10;++change) {
+            Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
+            Assert::IsTrue(continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8).valid);
+            auto preview=cue.preview;auto text=cue.accepted;auto id=Identity(3);
+            uint64_t policy=7,epoch=8;
+            if(change==0)++text.cue;
+            if(change==1){text.signature[0]^=1;preview.current.text.signature=text.signature;}
+            if(change==2)++id.sourceFormatGeneration;
+            if(change==3)++id.viewportGeneration;
+            if(change==4)++id.rendererGeneration;
+            if(change==5)++id.analysisDomainKey;
+            if(change==6){++policy;preview.policyGeneration=preview.current.policyGeneration=policy;}
+            if(change==7){++epoch;preview.continuityGeneration=preview.current.continuityGeneration=epoch;}
+            if(change==8)id=Identity(11);
+            if(change==9)continuity.Reset();
+            preview.current.identity=id;
+            const auto proof=continuity.Consume(frame.Source(),preview,text,id,policy,epoch);
+            Assert::IsTrue(proof.valid && !proof.revalidatedOutline,L"fresh proof may acquire, but old authority cannot cross a reset");
+        }
+    }
     TEST_METHOD(ExplicitBarBackingRetainsOriginalGlyphWidthAfterTextReduction) {
         const SubtitleBoxPadding padding{73,60,25};
         for(bool top:{false,true})for(int reduction:{0,50,75}) {

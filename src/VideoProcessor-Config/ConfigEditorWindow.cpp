@@ -6927,11 +6927,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         number(QStringLiteral("Background blur"),QStringLiteral("subtitle_generated_gray_blur_px"),0,30,QStringLiteral("source pixels"));
         number(QStringLiteral("Brightness limit"),QStringLiteral("subtitle_generated_gray_max_luminance"),0.01,1,QStringLiteral("linear 0.01–1"));
         auto* cleanupFill=addChoice(QStringLiteral("Old subtitle area fill"),QStringLiteral("cleanup_fill"),
-            {QStringLiteral("mirror"),QStringLiteral("stretch"),QStringLiteral("temporal")},false);
+            {QStringLiteral("mirror"),QStringLiteral("stretch"),QStringLiteral("temporal"),QStringLiteral("surround")},false);
         cleanupFill->setItemText(0,QStringLiteral("Mirror nearby picture"));
         cleanupFill->setItemText(1,QStringLiteral("Stretch clean picture"));
         cleanupFill->setItemText(2,QStringLiteral("Temporal clean frame"));
-        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Temporal uses a matching clean frame and also falls back to mirror."));
+        cleanupFill->setItemText(3,QStringLiteral("Blend surrounding picture"));
+        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Temporal uses a matching clean frame and also falls back to mirror. Blend surrounding picture combines stretched and mirrored samples from clean edges around the removed area. Black bars and subtitle pixels are excluded; hidden detail is approximated."));
         form = addCollapsibleSection(QStringLiteral("hdr_analysis"),
             QStringLiteral("HDR analysis"), QStringLiteral("Protect HDR analysis from subtitles in every processing style."), false);
 		pictureOnlyHdrAnalysis = addBoolean(

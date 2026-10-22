@@ -23,7 +23,7 @@ namespace Tests
         int subtitleRoundedCorners = 0;
         int subtitleFloatBackground = 0;
         int subtitleTemporalFill = 0;
-        int subtitleStretchFill = 0;
+        int subtitleSpatialFill = 0;
         int scopeSubtitleFit = 0;
         int configuredScreenAspect = 0;
         int configuredScreenTarget = 0;
@@ -67,7 +67,7 @@ namespace Tests
             out << s.subtitleRoundedCorners << '|';
             out << s.subtitleFloatBackground << '|';
             out << s.subtitleTemporalFill << '|';
-            out << s.subtitleStretchFill << '|';
+            out << s.subtitleSpatialFill << '|';
             out << s.scopeSubtitleFit << '|';
             out << s.configuredScreenAspect << '|';
             out << s.configuredScreenTarget << '|';
@@ -109,7 +109,7 @@ namespace Tests
         {
             using S = SubtitleUpdateSettingsFixture;
             const S before;
-            int S::* fields[] = {&S::subtitleCutPasteBackground,&S::subtitleGeneratedGray,&S::subtitleBoxPadding,&S::subtitlePaddingPolicy,&S::subtitleMode,&S::subtitleMoveInset,&S::subtitleTextReductionPercent,&S::subtitleRoundedCorners,&S::subtitleFloatBackground,&S::subtitleTemporalFill,&S::subtitleStretchFill,&S::scopeSubtitleFit,&S::scopeSubtitleHoldMs,&S::scopeSubtitleEngageDriftMs,&S::scopeSubtitleReleaseDriftMs,&S::scopeSubtitlePaddingPixels,&S::scopeSubtitleTargetBufferPixels,&S::hdrPeakAnalysisPictureOnly,&S::hdrPeakAnalysisMotionCompensation,&S::hdrPeakAnalysisHeightPercent,&S::hdrPeakAnalysisPosition};
+            int S::* fields[] = {&S::subtitleCutPasteBackground,&S::subtitleGeneratedGray,&S::subtitleBoxPadding,&S::subtitlePaddingPolicy,&S::subtitleMode,&S::subtitleMoveInset,&S::subtitleTextReductionPercent,&S::subtitleRoundedCorners,&S::subtitleFloatBackground,&S::subtitleTemporalFill,&S::subtitleSpatialFill,&S::scopeSubtitleFit,&S::scopeSubtitleHoldMs,&S::scopeSubtitleEngageDriftMs,&S::scopeSubtitleReleaseDriftMs,&S::scopeSubtitlePaddingPixels,&S::scopeSubtitleTargetBufferPixels,&S::hdrPeakAnalysisPictureOnly,&S::hdrPeakAnalysisMotionCompensation,&S::hdrPeakAnalysisHeightPercent,&S::hdrPeakAnalysisPosition};
             for (const auto field : fields)
             {
                 auto after = before;
