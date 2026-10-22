@@ -6927,12 +6927,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         number(QStringLiteral("Background blur"),QStringLiteral("subtitle_generated_gray_blur_px"),0,30,QStringLiteral("source pixels"));
         number(QStringLiteral("Brightness limit"),QStringLiteral("subtitle_generated_gray_max_luminance"),0.01,1,QStringLiteral("linear 0.01–1"));
         auto* cleanupFill=addChoice(QStringLiteral("Old subtitle area fill"),QStringLiteral("cleanup_fill"),
-            {QStringLiteral("mirror"),QStringLiteral("stretch"),QStringLiteral("temporal"),QStringLiteral("surround")},false);
+            {QStringLiteral("mirror"),QStringLiteral("stretch"),QStringLiteral("surround")},false);
         cleanupFill->setItemText(0,QStringLiteral("Mirror nearby picture"));
         cleanupFill->setItemText(1,QStringLiteral("Stretch clean picture"));
-        cleanupFill->setItemText(2,QStringLiteral("Temporal clean frame"));
-        cleanupFill->setItemText(3,QStringLiteral("Blend surrounding picture"));
-        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Temporal uses a matching clean frame and also falls back to mirror. Blend surrounding picture combines stretched and mirrored samples from clean edges around the removed area. Black bars and subtitle pixels are excluded; hidden detail is approximated."));
+        cleanupFill->setItemText(2,QStringLiteral("Blend surrounding picture"));
+        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Blend surrounding picture combines stretched and mirrored samples from clean edges around the removed area. Black bars and subtitle pixels are excluded; hidden detail is approximated."));
         form = addCollapsibleSection(QStringLiteral("hdr_analysis"),
             QStringLiteral("HDR analysis"), QStringLiteral("Protect HDR analysis from subtitles in every processing style."), false);
 		pictureOnlyHdrAnalysis = addBoolean(
@@ -7681,6 +7680,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             else
             {
                 auto* combo = qobject_cast<QComboBox*>(field.widget);
+                const bool subtitleCleanupFill =
+                    sectionPrefix == QStringLiteral("vprenderer.subtitles") &&
+                    field.key == QStringLiteral("cleanup_fill");
+                const bool retiredSubtitleFill = subtitleCleanupFill &&
+                    configured.compare(QStringLiteral("temporal"), Qt::CaseInsensitive) == 0;
+                // Keep saved legacy behavior intact, but never offer it as a
+                // selectable fill. Remove the previous profile's placeholder.
+                if (subtitleCleanupFill)
+                    for (int candidate = combo->count() - 1; candidate >= 0; --candidate)
+                        if (combo->itemData(candidate).toString().compare(
+                            QStringLiteral("temporal"), Qt::CaseInsensitive) == 0)
+                            combo->removeItem(candidate);
                 const int autoIndex = combo->findData(QStringLiteral("AUTO"),
                     Qt::UserRole, Qt::MatchFixedString);
                 // A VP Renderer root profile already has an explicit quality
@@ -7768,6 +7779,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
                             model->item(combo->count() - 1)->setEnabled(false);
                     index = combo->count() - 1;
+                }
+                if (retiredSubtitleFill)
+                {
+                    // A disabled, hidden current-value placeholder avoids both
+                    // silent migration and reintroducing Temporal in the popup.
+                    combo->setItemText(index, QStringLiteral("Saved legacy fill - choose a replacement"));
+                    if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
+                        model->item(index)->setEnabled(false);
+                    if (auto* view = qobject_cast<QListView*>(combo->view()))
+                        view->setRowHidden(index, true);
                 }
                 combo->setCurrentIndex(index);
             }
