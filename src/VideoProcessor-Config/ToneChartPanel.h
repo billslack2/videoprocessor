@@ -1,4 +1,5 @@
 #pragma once
+#include "../VideoProcessor-ChartCore/ChartData.h"
 #include "../VideoProcessor-ChartCore/ColourChart.h"
 #include "../VideoProcessor-ChartCore/ToneCurveChart.h"
 #include "../VideoProcessor-ChartCore/ToneCurveProvider.h"
@@ -138,7 +139,7 @@ public:
             row->setContentsMargins(0, 0, 0, 0);
             row->setSpacing(6);
             row->addWidget(new QLabel(QStringLiteral("Scene:")));
-            const auto& scenes = Scenes(set == 0);
+            const auto& scenes = ChartData::Scenes(set == 0);
             for (size_t i = 0; i < scenes.size(); ++i)
             {
                 auto* button = new QPushButton(QString::fromLatin1(scenes[i].name));
@@ -373,8 +374,8 @@ private:
         displays->addWidget(new QLabel(QStringLiteral("Display:")));
         for (int i = 0; i < 3; ++i)
         {
-            auto* button = new QPushButton(QString::fromLatin1(kDisplayNames[i]));
-            button->setObjectName(QStringLiteral("toneCharts.display.%1").arg(QString::fromLatin1(kDisplayNames[i])));
+            auto* button = new QPushButton(QString::fromLatin1(ChartData::kDisplayNames[i]));
+            button->setObjectName(QStringLiteral("toneCharts.display.%1").arg(QString::fromLatin1(ChartData::kDisplayNames[i])));
             button->setCheckable(true);
             button->setChecked(i == display_);
             button->setToolTip(QStringLiteral("The display the Colour charts imagine. Not VP's target primaries setting."));
@@ -393,10 +394,10 @@ private:
         zones->setContentsMargins(0, 0, 0, 0);
         zones->setSpacing(6);
         zones->addWidget(new QLabel(QStringLiteral("Show colours in:")));
-        for (int i = 0; i < kZoneCount; ++i)
+        for (int i = 0; i < ChartData::kZoneCount; ++i)
         {
-            auto* button = new QPushButton(QString::fromLatin1(kZoneNames[i]));
-            button->setObjectName(QStringLiteral("toneCharts.zone.%1").arg(QString::fromLatin1(kZoneNames[i])));
+            auto* button = new QPushButton(QString::fromLatin1(ChartData::kZoneNames[i]));
+            button->setObjectName(QStringLiteral("toneCharts.zone.%1").arg(QString::fromLatin1(ChartData::kZoneNames[i])));
             button->setCheckable(true);
             button->setChecked(i == zone_);
             connect(button, &QPushButton::clicked, this, [this, i] { zone_ = i; redraw(); });
@@ -479,101 +480,19 @@ private:
         const QString& editedName, const QColor& editedColor,
         const std::vector<std::tuple<QString, QColor, ToneCurveProvider::Request>>& others)
     {
-        const auto& functions = ToneCurveProvider::Registered();
         for (size_t i = 0; i < displayButtons_.size(); ++i)
             displayButtons_[i]->setChecked(static_cast<int>(i) == display_);
         for (size_t i = 0; i < zoneButtons_.size(); ++i)
             zoneButtons_[i]->setChecked(static_cast<int>(i) == zone_);
-        // The zone, from the edited profile's scene: Shadows halfway in PQ from
-        // the scene's floor to the knee, Mid-tones the knee, Bright and
-        // Highlights a third and two thirds of the way on to the peak.
-        const double kneePq = result.kneePq, peakPq = (std::max)(result.scenePeakPq, kneePq);
-        const double zonePq[kZoneCount - 1] = { (result.inputMinPq + kneePq) / 2.0, kneePq,
-            kneePq + (peakPq - kneePq) / 3.0, kneePq + (peakPq - kneePq) * 2.0 / 3.0 };
-        const double zoneNits = zone_ == kZoneCount - 1 ? request.scenePeakNits : functions.pqToNits(zonePq[zone_]);
+        const double zoneNits = ChartData::ZoneNits(request, result, zone_);
         zoneNote_->setText(QStringLiteral("strongest channel at %1 nits").arg(ToneCurveChart::Nits(zoneNits)));
-        if (!functions.colour || !functions.corners) { map_->clear(); sweep_->clear(); hue_->clear(); return; }
-        const auto display = static_cast<ToneCurveProvider::Gamut>(display_);
         ColourChart::Data map, sweep;
-        if (!functions.corners(display, map.display) ||
-            !functions.corners(ToneCurveProvider::Gamut::Rec709, map.rec709) ||
-            !functions.corners(ToneCurveProvider::Gamut::Bt2020, map.bt2020))
+        if (!ChartData::Colour(request, zoneNits, display_, zone_, patch_, editedName, editedColor,
+            defaultChip_->isChecked(), others, map, sweep))
         { map_->clear(); sweep_->clear(); hue_->clear(); return; }
-        map.displayName = QString::fromLatin1(kDisplayNames[display_]);
-        map.mapNits = sweep.mapNits = zoneNits;
-        map.mapLabel = sweep.mapLabel = QString::fromLatin1(kZoneNames[zone_]);
-        sweep.patch = patch_;
-        std::vector<ToneCurveProvider::ColourSample> mapSamples, sweepSamples;
-        for (size_t i = 0; i < ToneCurveProvider::Patches().size(); ++i)
-            mapSamples.push_back({ i, zoneNits });
-        // From 0.1 nits to the scene peak (or the mastering peak without
-        // detection), evenly in PQ, the sweep's scale.
-        const double bottomPq = functions.nitsToPq(0.1), topPq = functions.nitsToPq((std::max)(request.scenePeakNits, 10.0));
-        constexpr int kSweep = 96;
-        for (int i = 0; i <= kSweep; ++i)
-        {
-            const double nits = functions.pqToNits(bottomPq + (topPq - bottomPq) * i / kSweep);
-            sweep.sweepNits.push_back(nits);
-            sweepSamples.push_back({ patch_, nits });
-        }
-        const auto add = [&](const QString& name, const QColor& color, bool bold, bool dashed,
-            const ToneCurveProvider::Request& from, bool libplaceboDefault) {
-            ColourChart::Series onMap{ name, color, bold, dashed, {} }, onSweep = onMap;
-            std::wstring ignored;
-            if (!functions.colour(from, libplaceboDefault, display, mapSamples, onMap.points, ignored) ||
-                !functions.colour(from, libplaceboDefault, display, sweepSamples, onSweep.points, ignored))
-                return false;
-            map.series.push_back(std::move(onMap));
-            sweep.series.push_back(std::move(onSweep));
-            return true;
-        };
-        // The edited profile first: the map links its points to the rings.
-        if (!add(editedName, editedColor, true, false, request, false)) { map_->clear(); sweep_->clear(); hue_->clear(); return; }
-        if (defaultChip_->isChecked())
-            add(QStringLiteral("Default"), QColor(QStringLiteral("#e8a93b")), false, true, request, true);
-        for (const auto& [name, color, other] : others)
-            add(name, color, false, false, other, false);
-        map.sweepNits = sweep.sweepNits;
         hue_->setData(map);
         map_->setData(std::move(map));
         sweep_->setData(std::move(sweep));
-    }
-
-    static constexpr const char* kDisplayNames[3] = { "Rec.709", "P3-D65", "BT.2020" };
-    static constexpr int kSamples = 360;
-
-    // A scene the charts imagine, in nits. Measured scenes are a mix of
-    // brightnesses, its brightest part the peak, for a source mastered at
-    // `mastering`; peak detection measures both of its averages from the mix.
-    // The shares are a stand-in until real scenes are measured. Static scenes
-    // have only the InfoFrame mastering peak (0: none, read as 10000).
-    struct Scene
-    {
-        const char* name;
-        std::vector<ToneCurveProvider::ScenePart> mix;
-        double mastering;
-
-        double peak() const
-        {
-            if (mix.empty())
-                return mastering > 0 ? mastering : 10000.0;
-            double brightest = 0.0;
-            for (const auto& part : mix)
-                brightest = (std::max)(brightest, part.nits);
-            return brightest;
-        }
-    };
-    static const std::vector<Scene>& Scenes(bool measured)
-    {
-        static const std::vector<Scene> withDetection = {
-            { "Dark", { { 0.98, 1.7 }, { 0.02, 200 } }, 1000 },
-            { "Mid", { { 0.97, 13 }, { 0.03, 600 } }, 1000 },
-            { "Bright", { { 0.95, 51 }, { 0.05, 1000 } }, 1000 },
-            { "Very bright", { { 0.90, 120 }, { 0.10, 1000 } }, 1000 },
-            { "Hot master", { { 0.95, 50 }, { 0.05, 1300 } }, 1000 } };
-        static const std::vector<Scene> withoutDetection = {
-            { "1000 nits", {}, 1000 }, { "4000 nits", {}, 4000 }, { "No metadata", {}, 0 } };
-        return measured ? withDetection : withoutDetection;
     }
 
     static QLabel* heading(const QString& text)
@@ -612,16 +531,12 @@ private:
         sceneRows_[1 - set]->hide();
         for (size_t i = 0; i < sceneButtons_[set].size(); ++i)
             sceneButtons_[set][i]->setChecked(i == sceneIndex_[set]);
-        const Scene& scene = Scenes(set == 0)[sceneIndex_[set]];
-        request.scenePeakNits = scene.peak();
-        request.sceneMix = scene.mix;
-        request.masteringPeakNits = scene.mastering;
-        request.sourcePq.resize(kSamples + 1);
-        for (int i = 0; i <= kSamples; ++i) request.sourcePq[i] = static_cast<double>(i) / kSamples;
+        const ChartData::Scene& scene = ChartData::Scenes(set == 0)[sceneIndex_[set]];
+        ChartData::PlaceInScene(scene, request);
 
         ToneCurveChart::Data chart;
         std::wstring error;
-        if (!functions.sample(request, chart.result, error))
+        if (!ChartData::Tone(request, chart, error))
         {
             showUnavailable(QStringLiteral("Charts need VP Renderer's files. %1")
                 .arg(error.empty() ? QString() : QStringLiteral("Missing: %1").arg(QString::fromStdWString(error))));
@@ -630,17 +545,6 @@ private:
         unavailable_->hide();
         tabs_->show();
 
-        chart.sourcePq = request.sourcePq;
-        chart.targetPq = functions.nitsToPq(request.targetNits);
-        chart.sceneAverage = request.sceneAverageKnown;
-        chart.pqToNits = functions.pqToNits;
-        for (double nits : { 0.1, 1.0, 10.0, 100.0, 400.0, 1000.0, 4000.0, 10000.0 })
-            chart.xTicks.emplace_back(functions.nitsToPq(nits), ToneCurveChart::Nits(nits));
-        for (double nits : { 0.1, 1.0, 10.0, 25.0, 50.0, 75.0, 100.0, 150.0, 200.0, 300.0,
-            400.0, 600.0, 1000.0, 2000.0, 4000.0 })
-            if (nits < request.targetNits * 0.95)
-                chart.yTicks.emplace_back(functions.nitsToPq(nits), ToneCurveChart::Nits(nits));
-        chart.yTicks.emplace_back(chart.targetPq, ToneCurveChart::Nits(request.targetNits));
         // Compared profiles, as the page resolves them now. One whose profile
         // is gone is dropped; the edited profile is drawn bold, in its chip's
         // colour, from the page's live values.
@@ -667,16 +571,9 @@ private:
                 }
                 ToneCurveProvider::Request other = compared.fromFile ?
                     sources_.valuesRequest(compared.values) : sources_.profileRequest(compared.section);
-                other.scenePeakNits = request.scenePeakNits;
-                other.sceneMix = request.sceneMix;
-                other.masteringPeakNits = request.masteringPeakNits;
-                other.sourcePq = request.sourcePq;
+                ChartData::ShareScene(request, other);
                 others.emplace_back(compared.name, compared.color, other);
-                ToneCurveProvider::Result result;
-                std::wstring ignored;
-                if (functions.sample(other, result, ignored))
-                    chart.compares.push_back({ compared.name, compared.color, result.profilePq,
-                        functions.nitsToPq(other.targetNits) });
+                ChartData::AddCompare(compared.name, compared.color, other, chart);
             }
         }
         tone_->setData(chart);
@@ -733,8 +630,6 @@ private:
     ColourChart* hue_ = nullptr;
     std::vector<QPushButton*> displayButtons_;
     int display_ = 1;          // P3-D65
-    static constexpr int kZoneCount = 5;
-    static constexpr const char* kZoneNames[kZoneCount] = { "Shadows", "Mid-tones", "Bright", "Highlights", "Peak" };
     int zone_ = 1;             // Mid-tones
     std::vector<QPushButton*> zoneButtons_;
     QLabel* zoneNote_ = nullptr;
