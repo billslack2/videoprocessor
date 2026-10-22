@@ -876,7 +876,7 @@ namespace
         bool subtitleRoundedCorners = true;
         bool subtitleFloatBackground = false;
         bool subtitleTemporalFill = false;
-        bool subtitleStretchFill = false;
+        int subtitleSpatialFill = 0; // 0 mirror, 1 stretch, 2 blended surroundings
         SubtitlePreviewMode subtitleMode = SubtitlePreviewMode::None;
         std::map<std::string,std::string> subtitleProfileSettings;
         bool subtitleProfileSelected = false;
@@ -1025,7 +1025,7 @@ namespace
             << static_cast<int>(settings.subtitleMode) << '|' << settings.subtitleMoveInset << '|'
             << settings.subtitleTextReductionPercent << '|'
             << settings.subtitleRoundedCorners << '|' << settings.subtitleFloatBackground << '|'
-            << settings.subtitleTemporalFill << '|' << settings.subtitleStretchFill << '|'
+            << settings.subtitleTemporalFill << '|' << settings.subtitleSpatialFill << '|'
             << settings.subtitleDetectionOptimization << '|' << static_cast<int>(settings.subtitleScriptHint) << '|'
             << settings.subtitleNearBarDistance << '|' << settings.subtitleHoldMs << '|';
         }
@@ -2694,7 +2694,7 @@ namespace
                     const auto cleanupFill=ConfigFile::NormalizeName(get("cleanup_fill"));
                     if(!cleanupFill.empty()) {
                         settings.subtitleTemporalFill=cleanupFill=="temporal";
-                        settings.subtitleStretchFill=cleanupFill=="stretch";
+                        settings.subtitleSpatialFill=cleanupFill=="surround"?2:cleanupFill=="stretch"?1:0;
                     } else RendererProfileConfig::ParseBoolean(get("temporal_fill"),settings.subtitleTemporalFill);
                     settings.subtitleMode=type=="black"?SubtitlePreviewMode::BlackBackground:
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;
@@ -4514,6 +4514,7 @@ struct LibplaceboVideoRenderer::Impl
     std::array<AnalysisLumaSample,32*18> subtitleTemporalSamples{};
     SubtitlePaddingGuard subtitlePaddingGuard;
     SubtitleLayoutAnchor subtitleLayoutAnchor;
+    SubtitleBackingLipContinuity subtitleBackingLipContinuity;
     ActivePictureBounds scopeSubtitleAnalysisBounds;
     SubtitlePictureAuthority subtitleSharedPicture;
     SubtitleCutPasteGeometry subtitleLoggedLayout;
@@ -5403,7 +5404,7 @@ struct LibplaceboVideoRenderer::Impl
 			pl_mpv_user_shader_destroy(&nlsHook);
             pl_mpv_user_shader_destroy(&subtitleCutPasteHook);
             subtitleCutPasteHookFailed = false;
-            subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset();
+            subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
 			temporalRenderer.Clear();
             pl_renderer_destroy(&renderer);
 			pl_lut_free(&displayLut);
@@ -8675,7 +8676,7 @@ struct LibplaceboVideoRenderer::Impl
         changed(current.subtitleRoundedCorners != next.subtitleRoundedCorners, "rounded_corners");
         changed(current.subtitleFloatBackground != next.subtitleFloatBackground, "background_edge");
         changed(current.subtitleTemporalFill != next.subtitleTemporalFill, "cleanup_fill");
-        changed(current.subtitleStretchFill != next.subtitleStretchFill, "cleanup_fill");
+        changed(current.subtitleSpatialFill != next.subtitleSpatialFill, "cleanup_fill");
         changed(current.subtitleMode != next.subtitleMode, "subtitle_type");
         changed(current.subtitleHoldMs != next.subtitleHoldMs, "subtitle_hold_ms");
         changed(current.subtitleNearBarDistance != next.subtitleNearBarDistance,"subtitle_near_bar_px");
@@ -9120,7 +9121,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitlePendingGuard.Reset();
                 subtitlePaddingGuard.Reset();
                 subtitleCutPastePresentation.Reset();
-                subtitleLayoutAnchor.Reset();
+                subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
                 lastRenderedCaptionAnchor = {};
                 captionConfirmationHold = {};
                 DebugLog::Log("Alpha subtitle presentation update: AR authority, history and admission preserved; subtitle placement refreshed; viewport=%llu",
@@ -9643,7 +9644,7 @@ struct LibplaceboVideoRenderer::Impl
         subtitleStabilityTelemetry.Reset();
         subtitlePaddingGuard.Reset();
         subtitleCutPastePresentation.Reset();
-        subtitleLayoutAnchor.Reset();
+        subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
         subtitleTemporalValid = false;
         subtitleTemporalCleanFrames = 0;
     }
@@ -13861,12 +13862,15 @@ struct LibplaceboVideoRenderer::Impl
                 // both decorations outside the stable glyph/layout caches.
                 move=PreserveExtendedSubtitleBackingWidth(move,safeSubtitlePadding,
                     !activeSettings.subtitleFloatBackground);
+                if(!move.valid || move.generatedCleanup.Valid() ||
+                    (subtitleCutPasteBackground!=3 && subtitleCutPasteBackground!=5))
+                    subtitleBackingLipContinuity.Reset();
                 if(move.valid && !move.generatedCleanup.Valid() &&
                     (subtitleCutPasteBackground==3 || subtitleCutPasteBackground==5)) {
                     const auto lipStarted=SteadyClock::now();
                     auto lipSource=analysisSource;
                     lipSource.generation=subtitleIdentity.transportGeneration;
-                    const auto lip=ProveCurrentSubtitleBackingLip(lipSource,*subtitlePreview,
+                    const auto lip=subtitleBackingLipContinuity.Consume(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration);
                     const char* lipApplicationReason=nullptr;
@@ -13949,7 +13953,7 @@ struct LibplaceboVideoRenderer::Impl
                     }
                     else if (subtitleCutPasteHook && BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
 						subtitleCutPasteBackground, image.color.transfer,
-                        activeSettings.subtitleGeneratedGray,activeSettings.subtitleStretchFill,
+                        activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
                         temporalSubtitleComposition?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All))
                     {
                         pl_frame composed{};
@@ -13965,7 +13969,7 @@ struct LibplaceboVideoRenderer::Impl
                             pl_frame layer{};
                             subtitleHookBound=BindSubtitleCutPasteHook(subtitleCutPasteHook,move,
                                 subtitleCutPasteBackground,image.color.transfer,
-                                activeSettings.subtitleGeneratedGray,activeSettings.subtitleStretchFill,
+                                activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
                                 SubtitleCompositionPhase::LayerOnly) &&
                                 ComposeSubtitleLayerBeforeCrop(renderer,d3d11->gpu,image,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,layer,
@@ -14017,7 +14021,7 @@ struct LibplaceboVideoRenderer::Impl
                     }
                 }
             }
-            else { subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
+            else { subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
             const bool subtitleVisible=subtitleBoxResult.detected &&
                 (!subtitleCutPasteTest || subtitleHookBound);
             const auto transition=subtitleStabilityTelemetry.Observe(subtitlePreview->current,
@@ -14162,7 +14166,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
+        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
 
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
@@ -14210,13 +14214,13 @@ struct LibplaceboVideoRenderer::Impl
                     }
                     const auto geometry=relocatedSubtitle;
                     const auto style=activeSettings.subtitleGeneratedGray;
-                    const bool stretch=activeSettings.subtitleStretchFill;
+                    const int spatialFill=activeSettings.subtitleSpatialFill;
                     const int background=subtitleCutPasteBackground;
                     const bool hasCue=subtitleCompositionSucceeded;
                     // Varying inputs are values. Renderer/scratch lifetime ends
                     // only after packets are cleared. Temporal copies the scratch
                     // output immediately, before the next field reuses it.
-                    subtitleSourcePreparation.nativePrepare=[this,geometry,style,stretch,
+                    subtitleSourcePreparation.nativePrepare=[this,geometry,style,spatialFill,
                         background,hasCue,layerBounds,donor,subtitleSourceProcessing](const pl_frame& field,
                         const pl_deinterlace_params& deinterlace,pl_frame& clean,
                         pl_tex& layer,pl_rect2d& bounds) {
@@ -14224,7 +14228,7 @@ struct LibplaceboVideoRenderer::Impl
                         layer=nullptr;bounds={};
                         if(hasCue && (!subtitleCutPasteHook ||
                             !BindSubtitleCutPasteHook(subtitleCutPasteHook,geometry,background,
-                                field.color.transfer,style,stretch,SubtitleCompositionPhase::CleanupOnly)))return false;
+                                field.color.transfer,style,spatialFill,SubtitleCompositionPhase::CleanupOnly)))return false;
                         if(!RenderSubtitleFullRaster(renderer,d3d11->gpu,field,
                             hasCue?subtitleCutPasteHook:nullptr,&subtitleCompositionTexture,clean,
                             true,static_cast<bool>(donor),false,&deinterlace,&subtitleSourceProcessing))return false;
@@ -14245,7 +14249,7 @@ struct LibplaceboVideoRenderer::Impl
                             glyphSource.field=PL_FIELD_NONE;glyphSource.first_field=PL_FIELD_NONE;
                             glyphSource.prev=nullptr;glyphSource.next=nullptr;
                             if(!BindSubtitleCutPasteHook(subtitleCutPasteHook,geometry,background,
-                                field.color.transfer,style,stretch,SubtitleCompositionPhase::LayerOnly) ||
+                                field.color.transfer,style,spatialFill,SubtitleCompositionPhase::LayerOnly) ||
                                 !ComposeSubtitleLayerBeforeCrop(renderer,d3d11->gpu,glyphSource,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,ignored,
                                     nullptr,&subtitleSourceProcessing))return false;
