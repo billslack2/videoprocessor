@@ -1,0 +1,13 @@
+# VP-0201 validation â€” 2026-10-22
+
+Source: [6f12ff91](https://github.com/billslack2/videoprocessor/commit/6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b), based on current remote beta `3746d59e`. Draft [PR #188](https://github.com/billslack2/videoprocessor/pull/188) targets `v1.4.02-beta` and is mergeable. Independent code review and live playback acceptance remain pending.
+
+The final complete x64 Release solution build passed (13 warnings, zero errors). Final targeted native suite: **1,299 passed, zero failed/skipped**, across the 27 classes listed in `vp-final-test-classes.txt`. Complete results are retained in `vp-final-policy.trx.gz`. Baseline startup regressions (2) and guarded-subtitle regression (1) failed before the policy changes; their original TRX results are included.
+
+Tests exercise consistent startup shape across three distinct selected sources spanning 250 ms, startup flicker, repeated submissions, changed poses/contexts, bounded timeout, and legacy/manual framing. UHD P010/P210 Black/Reconstruction fixtures cover outward guards plus independent sampler drift, current subtitle composition through evaluation/recovery/admission with no previous crop admission, pending refinement, stale overlay inspection, and raw subtitle envelopes still outside the picture. Source/epoch/geometry, visible pixels, absent native authority, failed proof and independent full-raster/transition/fail-open owners remain vetoes.
+
+The first full native run was superseded after recovery coverage was added; it was intentionally stopped after 1,342 passing tests and no reported failures. The final successful run is the explicitly targeted 27-class suite, not the entire native suite. Earlier build attempts exposed a fixture namespace error (corrected) and cached `LNK1103` debug-information corruption; rebuilding the native test target resolved the cache failure. The final build and tests completed successfully afterward.
+
+No binaries were packaged or deployed, no active configuration was changed and playback was not restarted. Test binaries were built from the exact source tree committed above; their embedded build identity still records the pre-commit dirty working-tree build. They are internal test artifacts, not a release.
+
+Tracker audit: all 220 unique canonical IDs match the index and registry, with folder/index workflow states agreeing case-insensitively. Existing format exceptions are VP-0088 and VP-0168 (`In progress` capitalization), and VP-0070 (missing canonical `## Status` heading; folder/index and narrative say Blocked). Recorded for a deliberate formatting repair; no unrelated story state was changed.

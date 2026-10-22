@@ -1,0 +1,98 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="62474ccb-5617-4c5b-8fbd-54e68266d35f" name="bslac@DESKTOP-3G35SCJ 2026-10-22 17:45:44" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-22T17:45:44.9173085-04:00" queuing="2026-10-22T17:45:44.9173085-04:00" start="2026-10-22T17:45:43.5483509-04:00" finish="2026-10-22T17:45:44.9403290-04:00" />
+  <TestSettings name="default" id="d116faf2-1d39-461e-9f72-f229b01ea792">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-22_17_45_44" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="0c212625-e78a-4037-b2b3-db2ab4278675" testId="0917db60-dfc0-7986-11a5-64c34b663e09" testName="GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible" computerName="DESKTOP-3G35SCJ" duration="00:00:01.0460855" startTime="2026-10-22T17:45:43.8481085-04:00" endTime="2026-10-22T17:45:44.8941940-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0c212625-e78a-4037-b2b3-db2ab4278675">
+      <Output>
+        <StdOut>Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure&#xD;
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure&#xD;
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=physical-base-mismatch</StdOut>
+        <ErrorInfo>
+          <Message>Assert failed. Expected:&lt;1&gt; Actual:&lt;0&gt; - Guarded subtitle scenario=-2 P210=0 mode=2 reason=physical-base-mismatch</Message>
+          <StackTrace>	at VideoProcessorTest::ActivePictureEvidenceTests::GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible() in E:\codex\videoprocessor\ar-startup-subtitle-acquisition-20261022\src\VideoProcessor-Test\ActivePictureEvidenceTests.cpp:line 2174</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible" storage="e:\codex\videoprocessor\ar-startup-subtitle-acquisition-20261022\src\videoprocessor-test\x64\release\videoprocessor-test.dll" id="0917db60-dfc0-7986-11a5-64c34b663e09">
+      <Execution id="0c212625-e78a-4037-b2b3-db2ab4278675" />
+      <TestMethod codeBase="E:\codex\videoprocessor\ar-startup-subtitle-acquisition-20261022\src\VideoProcessor-Test\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.ActivePictureEvidenceTests" name="VideoProcessorTest::ActivePictureEvidenceTests::GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="0917db60-dfc0-7986-11a5-64c34b663e09" executionId="0c212625-e78a-4037-b2b3-db2ab4278675" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="1" executed="1" passed="0" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure&#xD;
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure&#xD;
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure&#xD;
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable&#xD;
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=physical-base-mismatch&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

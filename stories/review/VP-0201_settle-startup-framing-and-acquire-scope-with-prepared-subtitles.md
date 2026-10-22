@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-22). Investigating scope/full-raster flashes before startup framing settles, and scope acquisition waiting for a subtitle-free scene despite successful reconstruction/relocation.
+Review (2026-10-22). Implemented and pushed clean source commit `6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b`; draft [PR #188](https://github.com/billslack2/videoprocessor/pull/188) targets `v1.4.02-beta`. Complete x64 Release solution build passed and all 1,299 final targeted policy tests passed. Independent review and live startup/subtitle playback acceptance remain pending. No merge, deployment, configuration change or player restart performed.
 
 ## Readiness review
 
@@ -24,3 +24,11 @@ Add regressions for transient startup poses, repeats, context changes and guarde
 ## Tracker audit
 
 Canonical files and index each contained 219 matching unique IDs; maximum root VP-0200 and registry agreed. Assigned VP-0201; no duplicate IDs, missing rows or count mismatch.
+
+## Implementation and validation
+
+Startup reveal now waits for consistent native/display bounds across at least three selected sources over 250 ms; the existing three-second fallback remains. Prepared subtitle proof accommodates the existing three-row independent edge tolerance alongside the native outward guard. An exact current successful composition may present an independently trusted native Scope base, resolve stale inspection and finish presentation recovery while the raw subtitle remains visible in source analysis. This does not modify raw detector evidence or supply native geometry votes.
+
+Current pixel, source, viewport, geometry, native-authority and independent presentation-owner vetoes remain enforced. Production-policy tests cover initial admission with a prepared subtitle, pending refinement, active recovery and raw subtitle extent outside the native base, plus stale/unsafe cases.
+
+[Validation evidence](../assets/VP-0201/startup-subtitle-20261022/README.md) includes final test results, failing baseline results, selected test classes and source/build hashes. The final coverage is the targeted 27-class suite; the earlier full native attempt was superseded and not completed. Live movie playback validation is the next acceptance step.

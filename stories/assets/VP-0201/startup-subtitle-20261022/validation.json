@@ -1,0 +1,126 @@
+{
+  "source_commit": "6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b",
+  "source_tree": "769b12b55e0445061c3d4d84e9ddab27236830bb",
+  "base_commit": "3746d59e6c51b6056d8eef8443e0039fba978dcb",
+  "pull_request": "https://github.com/billslack2/videoprocessor/pull/188",
+  "build": {
+    "configuration": "Release",
+    "platform": "x64",
+    "result": "passed",
+    "log": "C:\\Users\\bslac\\Documents\\Codex\\2026-10-22\\befo\\work\\vp-complete-build.log",
+    "sha256": "53cded1821963c1731828cf633eaa4256ac0804051cd533ac0d55211c53ac288"
+  },
+  "native_targeted": {
+    "counters": {
+      "total": "1299",
+      "executed": "1299",
+      "passed": "1299",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "result_sha256": "5c10227670b264bb55ea589e02c9abcf1b5030d87662bbb4a9c9430841522401",
+    "classes": [
+      "StartupPresentationReadinessTests",
+      "AlphaSourceCropPolicyTests",
+      "ActivePictureEvidenceTests",
+      "SubtitleTranslationReversalTests",
+      "RetainedScopeUnknownPresentationTests",
+      "SubmittedNativeFillRetentionTests",
+      "PresentationEnvelopeCompositionTests",
+      "NearBlackNativeBoundaryRecoveryTests",
+      "MovingPictureTransitionTests",
+      "LookaheadOutwardProofTests",
+      "PictureTransitionHandoffTests",
+      "FitLookaheadDiagnosticTests",
+      "InwardCaptionEvidenceTests",
+      "ActivePictureTransitionModelTests",
+      "ActivePictureDecisionTimelineTests",
+      "FullRasterLookaheadTests",
+      "SparseEntryEpisodeRecoveryTests",
+      "SparseBoundaryCropExperimentTests",
+      "SparseBoundaryTransitionExperimentTests",
+      "SidePictureDiagnosticsTests",
+      "NativeRgbAnalysisTests",
+      "AnalysisRecoveryParityTests",
+      "AnalysisRecoveryDvTests",
+      "ActivePictureMeasurementCacheTests",
+      "SubtitleBoxLookaheadTests",
+      "SubtitleBoxDetectorTests",
+      "SubtitleOpaqueCardRefinementTests"
+    ]
+  },
+  "baseline_startup": {
+    "total": "2",
+    "executed": "2",
+    "passed": "0",
+    "failed": "2",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "baseline_subtitle_guard": {
+    "total": "1",
+    "executed": "1",
+    "passed": "0",
+    "failed": "1",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "test_binary_sha256": "8db1fa32f54b76a78465f1ca38ee8b6a4b1c7cd5d2a1908c683a7f78f24d6212",
+  "tracker_audit_before": {
+    "canonical_count": 220,
+    "indexed_count": 220,
+    "highest_root": 201,
+    "mismatches": [],
+    "preexisting_status_format_anomalies": [
+      [
+        "VP-0088",
+        "In Progress",
+        "In Progress",
+        "In progress (2026-08-31). The VP Renderer already collected presenter-tied"
+      ],
+      [
+        "VP-0168",
+        "In Progress",
+        "In progress",
+        "In progress (2026-09-30). Implementation started from the current"
+      ],
+      [
+        "VP-0070",
+        "Blocked",
+        "Blocked",
+        "missing ## Status"
+      ]
+    ]
+  }
+}

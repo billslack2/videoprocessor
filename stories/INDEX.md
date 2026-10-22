@@ -260,7 +260,7 @@ they must not contain requirements that are absent from this file.
 | VP-0199 | Backlog | Remove residual subtitle backing at the picture boundary for small fonts |
 
 | VP-0200 | In Progress | Profile-based resolution and refresh-rate configuration |
-| VP-0201 | In Progress | Settle startup framing and acquire scope with prepared subtitles |
+| VP-0201 | Review | Settle startup framing and acquire scope with prepared subtitles |
 
 ## Codex story workflow
 
