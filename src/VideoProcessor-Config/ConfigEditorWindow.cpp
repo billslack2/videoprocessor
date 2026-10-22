@@ -16,6 +16,7 @@
 #include "ToneMappingControl.h"
 #include "ToneChartPanel.h"
 #include "ToneProfileFile.h"
+#include "../VideoProcessor-ChartCore/ToneProfileRequest.h"
 #include "ToneGuiRules.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationIdentity.h>
@@ -7056,35 +7057,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // A chart request from any source of one profile's values: the edited
         // profile, another profile, or an exported profile file.
         const auto requestFrom = [](const std::function<QString(const char*)>& get) {
-            ToneCurveProvider::Request request;
-            const auto choice = [&](const char* name, const char* fallback) {
-                const QString chosen = get(name).toLower();
-                return (chosen.isEmpty() ? QString::fromLatin1(fallback) : chosen).toStdString();
-            };
-            request.toneMapping = choice("tone_mapping", "auto");
-            request.peakDetection = choice("peak_detection", "auto");
-            const std::string peak = request.peakDetection != "auto" ? request.peakDetection : "high_quality";
-            request.sceneAverageKnown = peak != "off";
-            ToneMappingTuning::Read([&](const char* name, std::string& raw) {
-                raw = get(name).toStdString();
-                return !raw.empty();
-            }, request.toneTuning);
-            const QString dynamicTarget = get("dynamic_target");
-            RendererProfileConfig::ParseBoolean((dynamicTarget.isEmpty() ?
-                RenderingBuiltInDefault(QStringLiteral("dynamic_target")) : dynamicTarget).toStdString(),
-                request.dynamicTarget);
-            request.gamutMapping = choice("gamut_mapping", "auto");
-            const QString overflow = get("custom_tone_mapping");
-            RendererProfileConfig::ParseBoolean((overflow.isEmpty() ?
-                RenderingBuiltInDefault(QStringLiteral("custom_tone_mapping")) : overflow).toStdString(),
-                request.gamutOverflowCorrection);
-            double white = 0.0, black = HdrTargetLuminance::DefaultBlack;
-            request.targetNits = HdrTargetLuminance::ParseWhite(get("sdr_target_nits").toStdString(), white) ?
-                white : 203.0;
-            const QString blackText = get("sdr_black_nits").toLower();
-            if (!blackText.isEmpty()) HdrTargetLuminance::ParseBlack(blackText.toStdString(), request.targetNits, black);
-            request.blackNits = black;
-            return request;
+            return ToneProfileRequest::From(get, RenderingBuiltInDefault);
         };
         const auto toneRequest = [this, inheritedTone, toneDrag, plannedTone, plan = renderingFreezePlan, requestFrom] {
             *plannedTone = plan ? plan() : std::vector<RenderingFreezeWrite>{};
