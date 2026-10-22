@@ -583,7 +583,7 @@ namespace RendererProfileConfig
             if (key == "hdr_peak_analysis_height_percent") { int n=0; return ParseInteger(value,MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,n); }
             if (key == "hdr_peak_analysis_position") return IsChoice(value,{"top","center","bottom"});
             if (key == "rounded_corners" || key == "temporal_fill") return IsBoolean(value);
-            if (key == "cleanup_fill") return IsChoice(value, { "mirror", "stretch", "temporal" });
+            if (key == "cleanup_fill") return IsChoice(value, { "mirror", "stretch", "temporal", "surround" });
             if (key == "background_edge") return IsChoice(value, { "extend", "float" });
             if (key == "text_reduction_percent") { int n=0; return ParseInteger(value,0,75,n); }
             if (key == "minimum_headroom_pixels") { int n=0; return ParseInteger(value,0,200,n); }

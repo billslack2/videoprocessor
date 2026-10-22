@@ -7106,6 +7106,27 @@ void testSubtitleProfileTabRoundTrip()
 
 }
 
+void testSubtitleSurroundFillRoundTrip()
+{
+    QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write fill fixture");
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n[vprenderer.subtitles.Moved]\ntype: generated_gray\n# preserve comment\n");file.close();
+    // Settle existing profile migrations before testing the new optional field.
+    { ConfigEditorWindow migrating(path,0,true);save(migrating); }
+    ConfigEditorWindow window(path,0,true);
+    auto* fill=requireControl<QComboBox>(window,"config.vprenderer.subtitles.cleanup_fill");
+    require(fill->currentData().toString()=="mirror","Legacy default changed");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading fill default dirtied config");
+    selectData(fill,"surround");save(window);
+    ConfigEditorWindow reopened(path,0,true);
+    auto* restored=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.cleanup_fill");
+    require(restored->currentData().toString()=="surround","Surround fill did not persist");
+    require(restored->currentText()=="Blend surrounding picture","User-facing fill label missing");
+    require(readBytes(path).contains("# preserve comment"),"Saving fill removed user comment");
+    for(const auto& existing:{"mirror","stretch","temporal"})
+        require(restored->findData(QString::fromUtf8(existing))>=0,"Legacy fill option disappeared");
+}
+
 void testSubtitleBackgroundShapeRoundTripAndVisibility()
 {
     QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
@@ -7300,6 +7321,7 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("subtitle surrounding fill round trip", testSubtitleSurroundFillRoundTrip);
     failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);
     failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);

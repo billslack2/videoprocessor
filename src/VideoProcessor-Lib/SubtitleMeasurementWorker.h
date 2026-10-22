@@ -503,7 +503,7 @@ public:
             preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
             !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
-            !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
+            !accepted.detected || accepted.confirmationPending || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
             !covers(preview.current.text) || (!resolvedCovers && !certifiedExistingCue && !consumedCertificate)) {
             return Reject("accepted-seed-incomplete");
         }

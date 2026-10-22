@@ -2603,6 +2603,14 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(SubtitleSpatialCleanupModesValidateWithoutChangingLegacyChoices)
+        {
+            std::string expected;
+            for(const auto value:{"mirror","stretch","temporal","surround"})
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","cleanup_fill",value,expected));
+            for(const auto value:{"","unknown","surrounding","2"})
+                Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","cleanup_fill",value,expected));
+        }
         TEST_METHOD(SubtitleBackgroundLayoutDefaultsValidationAndLiveProfilePolicy)
         {
             std::string expected;

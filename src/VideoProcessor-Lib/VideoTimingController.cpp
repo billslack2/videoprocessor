@@ -114,12 +114,8 @@ VideoReferenceTime VideoTimingController::ClockToReferenceTime(
 {
 	if (ticksPerSecond == 0)
 		return 0;
-	const uint64_t maxSafeValue =
-		static_cast<uint64_t>((std::numeric_limits<int64_t>::max)()) /
-		kReferenceTimeTicksPerSecond;
-	if (timestamp > maxSafeValue)
-		return static_cast<VideoReferenceTime>(
-			(timestamp / ticksPerSecond) * kReferenceTimeTicksPerSecond);
+	// The 128-bit product keeps the existing nearest-tick rounding at any
+	// hardware uptime; a whole-second fallback would collapse frame starts.
 	return static_cast<VideoReferenceTime>(
 		U64_MulDiv(timestamp, kReferenceTimeTicksPerSecond, ticksPerSecond));
 }

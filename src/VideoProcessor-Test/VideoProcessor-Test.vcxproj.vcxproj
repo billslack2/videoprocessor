@@ -191,6 +191,8 @@
     <ClCompile Include="SubtitleBoxDetectorTests.cpp" />
     <ClCompile Include="SubtitleOpaqueCardRefinementTests.cpp" />
     <ClCompile Include="SubtitleBoxLookaheadTests.cpp" />
+    <ClCompile Include="SubtitleHandoffTests.cpp" />
+    <ClCompile Include="SubtitleBackingLipTests.cpp" />
     <ClCompile Include="AnalysisRecoveryParityTests.cpp" />
     <ClCompile Include="AnalysisRecoveryDvTests.cpp" />
     <ClCompile Include="SubtitleMeasurementWorkerTests.cpp" />
@@ -312,6 +314,8 @@
 	<ClCompile Include="DirectShowEpochPrimePolicyTests.cpp" />
     <ClCompile Include="LiveOutputTraceTests.cpp" />
     <ClCompile Include="VideoTimingControllerTests.cpp" />
+	<ClCompile Include="CaptureClockConversionTests.cpp" />
+	<ClCompile Include="DirectShowTimingClockTests.cpp" />
 	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
 	<ClCompile Include="DirectShowFrameDelivererTests.cpp" />
 	<ClCompile Include="DirectShowDeliveryOutcomeTests.cpp" />
