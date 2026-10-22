@@ -8,6 +8,9 @@
 namespace NativeStatsOverlayPlacement
 {
 	constexpr float kDefaultInsetPixels = 40.0f;
+	constexpr float kDefaultStatsSizePercent = 100.0f;
+	constexpr float kMinimumStatsSizePercent = 50.0f;
+	constexpr float kMaximumStatsSizePercent = 250.0f;
 	constexpr float kProfileOverlayInsetPixels = 30.0f;
 	constexpr float kProfileOverlayAdditionalLeftInsetReferencePixels = 30.0f;
 	constexpr float kProfileOverlayAdditionalTopInsetReferencePixels = 30.0f;
@@ -66,11 +69,21 @@ namespace NativeStatsOverlayPlacement
 		return outputValid ? outputHeight : 2160.0f;
 	}
 
-	inline StatsSizing ResolveStatsSizing(bool enabled, float screenHeight, float outputHeight)
+    inline float NormalizeStatsSizePercent(float value)
+    {
+        return std::isfinite(value) && value >= kMinimumStatsSizePercent && value <= kMaximumStatsSizePercent
+            ? value : kDefaultStatsSizePercent;
+    }
+
+	inline StatsSizing ResolveStatsSizing(bool enabled, float screenHeight, float outputHeight,
+        float sizePercent = kDefaultStatsSizePercent)
 	{
 		if (!enabled) return {};
 		const float geometryScale = ScreenReferenceHeight(screenHeight, outputHeight) / 2160.0f;
-		return { 1.25f * geometryScale, kDefaultInsetPixels * geometryScale };
+        // Personal size preference is independent of inferred CIH geometry and
+        // applies only to the Ctrl+I stats panel. Insets share the same factor.
+        const float personalScale = NormalizeStatsSizePercent(sizePercent) / 100.0f;
+		return { 1.25f * geometryScale * personalScale, kDefaultInsetPixels * geometryScale * personalScale };
 	}
 
 	inline StatsSizing ResolveSweepSizing(bool enabled, float screenHeight, float outputHeight)
