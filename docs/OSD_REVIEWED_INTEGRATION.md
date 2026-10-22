@@ -61,9 +61,9 @@ horizontal insets.
 This inference assumes the lens is adjusted so each configured Screen profile
 has the same physical height. Resolution and aspect ratio do not establish
 inches or report an arbitrary lens position. Actual projected appearance still
-needs a projector check. In madVR, physical screen dimensions are mapped into
+needs a projector check. Windowed mode uses the host rendering canvas as its reference, before an NLS child fit. In madVR, screen pixel geometry is mapped into
 its OSD coordinate system rather than treating a fitted child window as a
-second optical zoom. Unavailable or unsupported mappings preserve legacy size.
+second optical zoom. Fullscreen masking uses an independent unmasked display-mode size for that mapping. Unavailable mappings or an unsupported VP anamorphic lens preserve legacy size.
 ## Regression coverage
 
 The native test project registers these suites alongside the existing raster,

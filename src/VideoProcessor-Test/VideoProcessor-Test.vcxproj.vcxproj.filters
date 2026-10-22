@@ -176,4 +176,7 @@
     <ClCompile Include="OsdInputColorInfoTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="StatsOverlayLayoutTests.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="MadVROsdSizingTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>
