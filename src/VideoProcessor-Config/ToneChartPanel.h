@@ -1,7 +1,7 @@
 #pragma once
-#include "ColourChart.h"
-#include "ToneCurveChart.h"
-#include "ToneCurveProvider.h"
+#include "../VideoProcessor-ChartCore/ColourChart.h"
+#include "../VideoProcessor-ChartCore/ToneCurveChart.h"
+#include "../VideoProcessor-ChartCore/ToneCurveProvider.h"
 #include "ToneProfileFile.h"
 #include <QEvent>
 #include <QFileDialog>
