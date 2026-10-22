@@ -117,6 +117,7 @@ static_assert(WM_MESSAGE_RENDERER_ACTION_EVENT !=
 #define PROFILE_CHANGE_OVERLAY_TIMER_ID 15
 #define ASPECT_OSD_TIMER_ID 16
 #define ANALYSIS_DIAGNOSTIC_STATUS_TIMER_ID 17
+#define FULLSCREEN_ACTIVATION_TIMER_ID 20
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
@@ -590,6 +591,8 @@ protected:
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
+	bool m_fullscreenActivationPending = false;
+	bool m_fullscreenActivationAttempted = false;
 
 	//
 	// Program data
