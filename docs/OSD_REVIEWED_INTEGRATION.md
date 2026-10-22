@@ -45,8 +45,8 @@ false and preserves existing sizing.
 
 The reference is the configured Screen fitted into the output, including VP
 Renderer's anamorphic mapping, before content fitting, movie crop or software
-zoom. Stats use `1.25 * referenceHeight / 2160 * sizePercent / 100`; their inset uses
-`40 * referenceHeight / 2160 * sizePercent / 100`. VP Renderer profile and sweep banners use the
+zoom. Stats use `1.25 * referenceHeight / 2160 * storedCalibration / 100`; their inset uses
+`40 * referenceHeight / 2160 * storedCalibration / 100`. VP Renderer profile and sweep banners use the
 same screen reference with their existing typography baselines. Placement
 still follows the visible picture and can shrink an oversized panel to fit.
 
@@ -58,20 +58,28 @@ it already fills that height and needs no inferred extra zoom compensation.
 Anamorphic horizontal squeeze is handled separately, once, for width and
 horizontal insets.
 
-The General **Stats OSD size** control stores
-`[general] stats_osd_size_percent` (50–250, default 100). It adjusts only the
-Ctrl+I stats panel and its edge inset while screen scaling is enabled. A
-stored preference is retained while scaling is disabled. 100% keeps the
-existing screen-scaled baseline; it does not mean native bitmap size.
+The General **Stats OSD size** control uses whole percentages from 25 to 250,
+with 100% as the standard size. That standard is the same physical size that
+was previously labelled 150%; the CIH geometry algorithm is unchanged.
 
-For a 3840x2160 output and a 2.35:1 Scope lens position, **132.1875%** makes
-the stats scale 1.25 in Scope and 1.65234375 in 16:9. With the corresponding
-1.321875 optical zoom, both have the same projected dimensions, and both
-are 25% larger than the old unscaled Scope OSD. The old 16:9 and Scope
-OSDs had different physical sizes, so they cannot both serve as a single
-25%-larger reference. The real 578x888 panel fits these two screen areas
-without shrinking; smaller available pictures or longer panels may still
-trigger the existing containment limit.
+The stored `[general] stats_osd_size_percent` key retains its legacy calibration
+units for compatibility. Its valid range is now 37.5–375 and its omitted default
+is 150. Config shows stored calibration divided by 1.5, rounded to the nearest
+whole UI percentage. An actual size edit saves UI percentage multiplied by 1.5:
+100% saves 150, 125% saves 187.5, 25% saves 37.5 and 250% saves 375. Opening Config or
+saving unrelated edits preserves an existing exact calibration and its comments;
+for example 132.1875 displays 88% but is not rounded in the file. A stored preference
+is retained while scaling is disabled. This control adjusts only the Ctrl+I stats
+panel and its edge inset, leaving profile and sweep notice sizes unchanged.
+
+At the standard size on a 3840x2160 output, stats scale is 1.875 in 16:9 and about
+1.41844 in 2.35:1 Scope. The corresponding 1.321875 optical zoom makes their
+projected dimensions equal. An explicit older calibration remains meaningful:
+132.1875 still gives 1.25 in Scope and 1.65234375 in 16:9, preserving its prior
+25%-larger-than-old-unscaled-Scope reference. The old 16:9 and Scope OSDs had
+different physical sizes, so they cannot both serve as a single 25%-larger
+reference. Smaller available pictures or longer panels may still trigger the
+existing containment limit.
 
 This inference assumes the lens is adjusted so each configured Screen profile
 has the same physical height. Resolution and aspect ratio do not establish

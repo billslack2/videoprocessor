@@ -119,7 +119,7 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("persist_profile_selection"),
 			ConfigSchema::Integer("profile_change_display_seconds", 0, 60),
 			ConfigSchema::Boolean("scale_osd"),
-            ConfigSchema::Number("stats_osd_size_percent", 50.0, 250.0)
+            ConfigSchema::Number("stats_osd_size_percent", 37.5, 375.0)
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
