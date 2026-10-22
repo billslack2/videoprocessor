@@ -15988,6 +15988,9 @@ releaseDriftBaseRetention =
                 !leftBarContentActive && !rightBarContentActive &&
                 !detectorLeftExpansion && !detectorRightExpansion;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
+            if (relocatedCaptionQualified)
+                cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
+                    displayCaptionProof,subtitleIdentity,cropInput.geometry);
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
 			if (automaticSourceCrop && !fixedCropAspectConfigured && !nlsRequested &&
@@ -16191,7 +16194,10 @@ releaseDriftBaseRetention =
 				!verticalFailOpen && !outwardExpansionInvalid &&
 				AlphaSourceCrop::CanResolveContainedInspectionRetention(
 					scopeVerticalInspectionBridge, recoveryInput);
-			if (currentContainedInspectionRetention)
+            const bool preparedSubtitlePresentationSafe=
+                AlphaSourceCrop::HasCurrentPreparedSubtitlePresentation(cropInput);
+			if (currentContainedInspectionRetention ||
+                (preparedSubtitlePresentationSafe && !verticalFailOpen && !outwardExpansionInvalid))
 				cropInput.presentationFailOpen = false;
 			const bool pictureConfirmationPending =
 				AlphaSourceCrop::HasCurrentPictureTransitionHandoff(cropInput);
@@ -16215,7 +16221,7 @@ releaseDriftBaseRetention =
 				verticalFitConfirmationPending || verticalTranslationActive ||
 				verticalFitActive;
 			inspectionInput.samplingRetentionResolved = currentSamplingRetention;
-			inspectionInput.containedRetentionResolved = currentContainedInspectionRetention || AlphaSourceCrop::NearBlackEpisodeResolvesInspection(episodeDecision);
+			inspectionInput.containedRetentionResolved = currentContainedInspectionRetention || preparedSubtitlePresentationSafe || AlphaSourceCrop::NearBlackEpisodeResolvesInspection(episodeDecision);
 			inspectionInput.cropAuthorityResolved = effectiveLatestSupportsCrop;
 			inspectionInput.fullRasterAuthorityResolved =
 				latestActivePictureEvidenceClassification ==

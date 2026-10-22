@@ -4363,6 +4363,21 @@ namespace AlphaSourceCrop
 			result.state = {};
 			return result;
 		}
+        // The raw observation can still contain the subtitle which this exact
+        // source packet already erased. It cannot deadlock recovery behind the
+        // caption. Keep every independent full-raster/transition/fail-open veto.
+        if (HasCurrentPreparedSubtitlePresentation(crop) &&
+            input.presentationEpoch==crop.framePresentationEpoch &&
+            !crop.nearBlackEpisodeFullRaster && !crop.movingPictureTransition &&
+            !HasCurrentPictureTransitionHandoff(crop) && !crop.presentationFailOpen &&
+            input.candidate.applyCrop && input.candidate.owner==DecisionOwner::TRUSTED_CROP &&
+            !input.candidate.outwardExpanded && !input.candidate.verticallyTranslated &&
+            SameBounds(input.candidate.sourceBounds,crop.geometry))
+        {
+            result.ended=result.released=result.state.active;
+            result.state={};result.gates=RECOVERY_OK;
+            return result;
+        }
 		// A submitted-scope continuity proof is current-frame pixel evidence for an
 		// already displayed crop. It resolves stale withdrawal/full-raster recovery
 		// immediately; it does not admit a new crop or override positive full authority.
@@ -5460,6 +5475,25 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(previous.trustedCrop, input.geometry);
 	}
 
+    bool HasCurrentPreparedSubtitlePresentation(const Input& input)
+    {
+        const auto& proof=input.preparedSubtitle;
+        return proof.available && input.sharedGeometryAvailable &&
+            input.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            input.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            input.geometrySourceGeneration==input.frameSourceGeneration &&
+            input.frameSourceGeneration && input.frameSourceSequence &&
+            proof.sourceGeneration==input.frameSourceGeneration &&
+            proof.sourceSequence==input.frameSourceSequence &&
+            proof.presentationEpoch==input.framePresentationEpoch &&
+            SameTrustedCropContract(proof.nativeBase,input.geometry) &&
+            input.geometry.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            input.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            !input.fullRasterPresentationAuthoritative &&
+            input.frameLocalPresentationRetentionEvaluated && input.frameLocalPresentationRetentionSafe &&
+            !input.currentVisibleBoundsAvailable;
+    }
+
 	CropPresentationAdmissionDecision AdmitCropPresentation(
 		const CropPresentationAdmissionState& previous,
 		const Input& input, const Decision& candidate,
@@ -5494,7 +5528,11 @@ namespace AlphaSourceCrop
 		const bool retentionOnly = candidate.owner != DecisionOwner::TRUSTED_CROP &&
 			candidate.owner != DecisionOwner::OUTWARD_FIT &&
 			candidate.owner != DecisionOwner::VERTICAL_TRANSLATION;
-		if ((!input.latestObservationSupportsCrop || retentionOnly) && !previouslyPresented)
+		if (((!input.latestObservationSupportsCrop || retentionOnly) &&
+             !(HasCurrentPreparedSubtitlePresentation(input) &&
+               input.preparedSubtitle.presentationEpoch==presentationEpoch &&
+               candidate.owner==DecisionOwner::TRUSTED_CROP &&
+               SameBounds(candidate.sourceBounds,input.geometry))) && !previouslyPresented)
 		{
 			result.blocked = true;
 			result.presentation = {};
@@ -6353,6 +6391,7 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
+            !HasCurrentPreparedSubtitlePresentation(input) &&
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
 			!nearBlackEpisodeRetention &&
@@ -6482,6 +6521,11 @@ namespace AlphaSourceCrop
 				? "bounded outward fit and same-size vertical translation accepted"
 				: "same-size vertical presentation translation accepted";
 		}
+        else if (!decision.outwardExpanded && HasCurrentPreparedSubtitlePresentation(input))
+        {
+            decision.owner=DecisionOwner::TRUSTED_CROP;
+            decision.reason="current prepared subtitle permits trusted native presentation";
+        }
 		else if (boundedVerticalEngageBaseRetention)
 		{
 			decision.owner = DecisionOwner::ENGAGE_BASE;
