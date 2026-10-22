@@ -312,6 +312,8 @@
 	<ClCompile Include="DirectShowEpochPrimePolicyTests.cpp" />
     <ClCompile Include="LiveOutputTraceTests.cpp" />
     <ClCompile Include="VideoTimingControllerTests.cpp" />
+	<ClCompile Include="CaptureClockConversionTests.cpp" />
+	<ClCompile Include="DirectShowTimingClockTests.cpp" />
 	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
 	<ClCompile Include="DirectShowFrameDelivererTests.cpp" />
 	<ClCompile Include="DirectShowDeliveryOutcomeTests.cpp" />
