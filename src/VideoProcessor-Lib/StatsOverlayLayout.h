@@ -12,11 +12,11 @@
 namespace StatsOverlayLayout
 {
 // 62 Consolas columns at 9 px plus equal 10 px horizontal padding.
-inline constexpr int Width = 578;
-inline constexpr int Padding = 10;
-inline constexpr int LineHeight = 20;
-inline constexpr int SectionGap = 4;
-inline constexpr int LabelColumns = 18;
+constexpr int Width = 578;
+constexpr int Padding = 10;
+constexpr int LineHeight = 20;
+constexpr int SectionGap = 4;
+constexpr int LabelColumns = 18;
 
 struct Row
 {
