@@ -13695,7 +13695,8 @@ struct LibplaceboVideoRenderer::Impl
                 activeSettings.subtitleHoldMs,subtitleFrameMs,
                 subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                 subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
-            if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
+            if(subtitleBoxResult.confirmationPending)subtitleCueContinuation.Reset();
+            else if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
                 if(!subtitleCueContinuation.Remember(currentSubtitlePreview,subtitleBoxResult,nlsGeometry,analysisSource))
                     subtitleCueContinuation.AdvanceVerified(currentSubtitlePreview,subtitleBoxResult,
                         analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
@@ -13750,7 +13751,7 @@ struct LibplaceboVideoRenderer::Impl
                 !currentSubtitlePreview.current.pendingRefresh &&
                 currentText.detected && !currentText.workLimit &&
                 currentText.nearBarEligibilityMeasured && currentText.nearBarEligible &&
-                subtitleBoxResult.detected && !subtitleBoxResult.held &&
+                subtitleBoxResult.detected && !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
                 subtitleBoxResult.observations >= 1 &&
                 subtitleBoxResult.bounds.Valid() && currentText.bounds.Valid())
             {
@@ -13807,7 +13808,7 @@ struct LibplaceboVideoRenderer::Impl
             }
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
-            if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
+            if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
@@ -13979,7 +13980,8 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleBoxResult,subtitleVisible,subtitleFrameMs);
             if(transition.changed) {
                 const auto& box=subtitleBoxResult.bounds;
-                DebugLog::Log("SUBTITLE STABILITY: frame=%llu cue=%llu detector=%d visible=%d held=%d reason=%s hold_ms=%d weak_ms=%.1f detector_lost=%d detector_regained=%d output_lost=%d output_regained=%d suspected_flash=%d gap_ms=%.1f hold_start=%d hold_end=%d cue_changed=%d losses=%llu flashes=%llu lookahead=%u matching=%u lines_confirmed=%d analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d move_valid=%d box=%d,%d-%d,%d",
+                const auto& handoff=subtitleBoxPresentation.HandoffProof();
+                DebugLog::Log("SUBTITLE STABILITY: frame=%llu cue=%llu detector=%d visible=%d held=%d reason=%s hold_ms=%d weak_ms=%.1f detector_lost=%d detector_regained=%d output_lost=%d output_regained=%d suspected_flash=%d gap_ms=%.1f hold_start=%d hold_end=%d cue_changed=%d losses=%llu flashes=%llu lookahead=%u matching=%u lines_confirmed=%d analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d move_valid=%d box=%d,%d-%d,%d confirmation_pending=%d handoff_sources=%u handoff_reason=%s handoff_owned=%zu handoff_inspected=%zu handoff_old=%d,%d-%d,%d handoff_current=%d,%d-%d,%d",
                     sourceSequence,subtitleBoxResult.cue,subtitlePreview->current.text.detected?1:0,
                     subtitleVisible?1:0,subtitleBoxResult.held?1:0,subtitleBoxPresentation.DecisionReason(),
                     activeSettings.subtitleHoldMs,subtitleBoxPresentation.WeakHoldMilliseconds(),
@@ -13993,7 +13995,11 @@ struct LibplaceboVideoRenderer::Impl
                     subtitlePreview->current.text.diagnosticComponentCount,
                     subtitlePreview->current.text.diagnosticNearBarGap,
                     subtitlePreview->current.text.diagnosticNearBarGapInferred?1:0,
-                    subtitleMoveValid?1:0,box.left,box.top,box.right,box.bottom);
+                    subtitleMoveValid?1:0,box.left,box.top,box.right,box.bottom,
+                    subtitleBoxResult.confirmationPending?1:0,subtitleBoxPresentation.HandoffSources(),subtitleBoxPresentation.HandoffReason(),
+                    handoff.ownedSamples,handoff.inspectedSamples,
+                    handoff.referenceBounds.left,handoff.referenceBounds.top,handoff.referenceBounds.right,handoff.referenceBounds.bottom,
+                    handoff.currentBounds.left,handoff.currentBounds.top,handoff.currentBounds.right,handoff.currentBounds.bottom);
             }
             subtitleBoxPeakMs = std::max(subtitleBoxPeakMs,cost);
             subtitleBoxDetectedFrames += !cadenceRepeat && subtitleBoxResult.detected;

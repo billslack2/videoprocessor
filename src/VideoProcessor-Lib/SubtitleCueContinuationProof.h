@@ -34,7 +34,7 @@ struct SubtitleCueContinuation {
         return Matches(current,policy,continuity,base) && MatchesCue(text);
     }
     bool MatchesCue(const SubtitleBoxResult& text) const {
-        if(!valid || !text.detected || text.cue!=accepted.cue || text.lineCount!=accepted.lineCount ||
+        if(!valid || !text.detected || text.confirmationPending || accepted.confirmationPending || text.cue!=accepted.cue || text.lineCount!=accepted.lineCount ||
             !SameRect(text.bounds,accepted.bounds) || !SameRect(text.sourcePanel,accepted.sourcePanel) ||
             !SameRect(text.capturePanel,accepted.capturePanel) || text.capturePanelMeasured!=accepted.capturePanelMeasured)
             return false;

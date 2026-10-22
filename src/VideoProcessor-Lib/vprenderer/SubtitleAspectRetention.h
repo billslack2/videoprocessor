@@ -264,6 +264,8 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(glyphLocal && !preparedErasureOnly)
         return reject("glyph-local-evidence-is-not-ar-proof");
     const auto& accepted=*input.accepted;
+    if(accepted.confirmationPending && !preparedErasureOnly)
+        return reject("provisional-caption-is-not-semantic-proof");
     const auto& move=*input.composition;
     const auto& base=input.physicalBase;
     const auto* continuation=input.continuation;
@@ -495,7 +497,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     result.status=QualifiedSubtitlePresentationStatus::Qualified;
     result.qualified=true;
     result.preparedErasureOnly=preparedErasureOnly;
-    result.renewsHold=!preparedErasureOnly && !observation.pendingRefresh && !continuation;
+    result.renewsHold=!preparedErasureOnly && !accepted.confirmationPending && !observation.pendingRefresh && !continuation;
     result.reason=preparedErasureOnly ? "current-prepared-caption-erasure" :
         continuation ? "current-owned-continuing-caption" : "current-owned-relocated-caption";
     return result;
