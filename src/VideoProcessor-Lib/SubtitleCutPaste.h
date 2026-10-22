@@ -674,6 +674,29 @@ public:
             Reset();return {};
         }
         const auto& current=preview.current;
+        if(text.confirmationPending) {
+            // Temporary CURRENT glyphs must not borrow the remembered source
+            // card, capture rectangle or cleanup. Only placement is retained.
+            if(current.discontinuity || current.pendingRefresh || current.analysisRefresh ||
+                !current.text.detected || current.text.held || current.text.workLimit)return {};
+            auto currentText=current.text;currentText.cue=text.cue;
+            currentText.confirmationPending=false;
+            SubtitleCutPastePresentation fresh;
+            auto next=fresh.Consume(currentText,preview,padding,gap,nullptr,nullptr);
+            const bool sameSlot=m_geometry.valid && next.valid && m_cue==text.cue &&
+                m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+                m_padding==padding && m_gap==gap &&
+                SubtitleBoxLookahead::SameContext(m_reference,current) &&
+                m_geometry.pictureTop==current.pictureTop && m_geometry.pictureBottom==current.pictureBottom;
+            if(sameSlot) {
+                next.destination=m_geometry.destination;
+                next.layoutContent=m_geometry.layoutContent;
+                next.layoutCoverage=m_geometry.layoutCoverage;
+                next.pictureIntrusion|=m_geometry.pictureIntrusion;
+            }
+            m_backingReason="current-owned-contraction-only";
+            return next;
+        }
         const bool glyphLocal=current.glyphLocalTop || current.glyphLocalBottom;
         const int physicalTolerance=(std::max)(
             SubtitleBoxDetector::SamplingStep(current.width,current.height),

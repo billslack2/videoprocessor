@@ -76,6 +76,8 @@ struct SubtitleBoxResult
     int lineCount = 0;
     bool detected = false;
     bool held = false;
+    // Current glyph presentation only; never a strong acquisition/lease seed.
+    bool confirmationPending = false;
     bool revised = false;
     bool workLimit = false;
     // Detector-owned admission; measured means callers must not substitute
