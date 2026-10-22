@@ -27,6 +27,10 @@ struct StatsData
 	CString displayRefreshRateStatus; // warming, quarantined, or unavailable
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
+	CString dtmProfile;        // active Rendering / DTM profile, e.g., "Rich"
+	CString hdr10;             // static metadata of the rendered frame, or "DV | M min-max"
+	CString measuredHdr;       // libplacebo peak detection, e.g., "peak 612 / avg 38 nits",
+	                           // then any scene values the frame carries ("| L1 900 / 120")
 	CString pixelFormat;       // e.g., "P010"
 	CString viewport;          // e.g., "cinema (2.35:1)"
 	CString rendererName;      // selected presentation backend
@@ -255,7 +259,10 @@ private:
 	StatsData m_stats;
 
 	// Bitmap constants - shared 20px native OSD typography.
-	static const int WINDOW_WIDTH = 540;     // Fit compact output-contract diagnostics
+	// Fit compact output-contract diagnostics: the left padding, then 63
+	// Consolas columns (9 px each) - the longest row (62, Measured with
+	// 10000-nit peaks) and one column clear on the right.
+	static const int WINDOW_WIDTH = 577;
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 20;
 	static const int ALPHA_LINE_HEIGHT = 20;

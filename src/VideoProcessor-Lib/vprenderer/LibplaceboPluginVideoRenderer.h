@@ -109,8 +109,13 @@ public:
 		double& currentUs, double& avg10s, double& max10s) const override;
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 
+	// HDR luminance for the stats OSD, through the plugin's optional export.
+	// False when the plugin lacks it or has not rendered a frame yet.
+	bool GetHdrStatus(RendererHdrStatus& status) const;
+
 private:
 	IVideoRenderer* m_renderer = nullptr;
 	void (__cdecl *m_destroyRenderer)(IVideoRenderer*) = nullptr;
 	uint32_t (__cdecl *m_startupReadiness)(IVideoRenderer*, StartupPresentation::SnapshotV1*) = nullptr;
+	bool (__cdecl *m_getHdrStatus)(const IVideoRenderer*, RendererHdrStatus*) = nullptr;
 };
