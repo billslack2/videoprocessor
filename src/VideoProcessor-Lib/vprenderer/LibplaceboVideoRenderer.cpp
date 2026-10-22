@@ -823,7 +823,7 @@ namespace
 		std::vector<DisplayOutputMode> allowedDisplayModes;
 		std::string outputDisplayProfile;
         std::string outputDisplayMonitor;
-		// [general] scale_osd: size the stats OSD as a share of the output.
+		// [general] scale_osd: size OSDs from the stable fitted screen geometry.
 		bool scaleOsd = false;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
