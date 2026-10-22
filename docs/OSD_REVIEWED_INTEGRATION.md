@@ -45,8 +45,8 @@ false and preserves existing sizing.
 
 The reference is the configured Screen fitted into the output, including VP
 Renderer's anamorphic mapping, before content fitting, movie crop or software
-zoom. Stats use `1.25 * referenceHeight / 2160`; their inset uses
-`40 * referenceHeight / 2160`. VP Renderer profile and sweep banners use the
+zoom. Stats use `1.25 * referenceHeight / 2160 * sizePercent / 100`; their inset uses
+`40 * referenceHeight / 2160 * sizePercent / 100`. VP Renderer profile and sweep banners use the
 same screen reference with their existing typography baselines. Placement
 still follows the visible picture and can shrink an oversized panel to fit.
 
@@ -58,6 +58,20 @@ it already fills that height and needs no inferred extra zoom compensation.
 Anamorphic horizontal squeeze is handled separately, once, for width and
 horizontal insets.
 
+The General **Stats OSD size** control stores
+`[general] stats_osd_size_percent` (50–250, default 100). It adjusts only the
+Ctrl+I stats panel and its edge inset while screen scaling is enabled. A
+stored preference is retained while scaling is disabled. 100% keeps the
+existing screen-scaled baseline; it does not mean native bitmap size.
+
+For a 3840x2160 output and a 2.35:1 Scope lens position, **132.1875%** makes
+the stats scale 1.25 in Scope and 1.65234375 in 16:9. With the corresponding
+1.321875 optical zoom, both have the same projected dimensions, and both
+are 25% larger than the old unscaled Scope OSD. The old 16:9 and Scope
+OSDs had different physical sizes, so they cannot both serve as a single
+25%-larger reference. The real 578x888 panel fits these two screen areas
+without shrinking; smaller available pictures or longer panels may still
+trigger the existing containment limit.
 This inference assumes the lens is adjusted so each configured Screen profile
 has the same physical height. Resolution and aspect ratio do not establish
 inches or report an arbitrary lens position. Actual projected appearance still

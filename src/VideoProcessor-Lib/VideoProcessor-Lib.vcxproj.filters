@@ -737,4 +737,5 @@
     <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdSizing.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdRefresh.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
+  <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
 </Project>

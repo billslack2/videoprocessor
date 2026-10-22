@@ -15,6 +15,7 @@
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
+#include <vprenderer/StatsOsdSettings.h>
 #include <QueueConfiguration.h>
 #include <QueueProfileRestartPolicy.h>
 #include <ProfileChangeOverlay.h>
@@ -3538,6 +3539,43 @@ namespace VideoProcessorTest
             for (const bool directShow : { false, true })
                 Assert::IsTrue(ConfigurationApplyPolicy::Action::RestartRenderer ==
                     ConfigurationApplyPolicy::ClassifyChange({ "general", "scale_osd" }, directShow));
+        }
+        TEST_METHOD(StatsOsdSizePercentValidatesSharedRendererIngressAndRestarts)
+        {
+            Assert::AreEqual(100.0f, StatsOsdSettings::ReadSizePercent(nullptr));
+            CachedConfigTestFile temporaryFile;
+            struct Sample { const char* value; bool valid; float expected; };
+            const Sample samples[] = {
+                {nullptr, true, 100.0f}, {"100", true, 100.0f},
+                {"132.1875", true, 132.1875f}, {"125", true, 125.0f},
+                {"50", true, 50.0f}, {"250", true, 250.0f},
+                {"49.9999", false, 100.0f}, {"250.000001", false, 100.0f},
+                {"-1", false, 100.0f}, {"nan", false, 100.0f},
+                {"inf", false, 100.0f}, {"large", false, 100.0f}
+            };
+            for (const auto& sample : samples)
+            {
+                {
+                    std::ofstream file(temporaryFile.path, std::ios::out | std::ios::trunc);
+                    Assert::IsTrue(file.is_open());
+                    file << "[general]\nscale_osd: true\n";
+                    if (sample.value) file << "stats_osd_size_percent: " << sample.value << "\n";
+                    file << "[vprenderer]\nquality: high\n";
+                    file.close();
+                    Assert::IsFalse(file.fail());
+                }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(temporaryFile.path, ConfigFile::ReadPolicy::Fresh));
+                std::string error;
+                Assert::AreEqual(sample.valid, MainConfigSchema::Validate(config, error),
+                    std::wstring(error.begin(), error.end()).c_str());
+                Assert::AreEqual(sample.expected, StatsOsdSettings::ReadSizePercent(&config), 0.00001f);
+                if (!sample.valid)
+                    Assert::IsTrue(error.find("stats_osd_size_percent") != std::string::npos);
+            }
+            for (const bool directShow : {false, true})
+                Assert::IsTrue(ConfigurationApplyPolicy::Action::RestartRenderer ==
+                    ConfigurationApplyPolicy::ClassifyChange({"general", "stats_osd_size_percent"}, directShow));
         }
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{

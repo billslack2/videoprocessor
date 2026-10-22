@@ -44,6 +44,7 @@
 #include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/StatsOsdSettings.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
@@ -825,6 +826,7 @@ namespace
         std::string outputDisplayMonitor;
 		// [general] scale_osd: size OSDs from the stable fitted screen geometry.
 		bool scaleOsd = false;
+        float statsOsdSizePercent = NativeStatsOverlayPlacement::kDefaultStatsSizePercent;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -967,7 +969,7 @@ namespace
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
 				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
-		stream << '|' << settings.scaleOsd << '|' << settings.quality << '|'
+		stream << '|' << settings.scaleOsd << '|' << settings.statsOsdSizePercent << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.customToneMapping << '|'
@@ -2167,6 +2169,7 @@ namespace
 		activeRule.clear();
 		if (!config.IsLoaded()) return settings;
 		config.TryGetBool("general", "scale_osd", settings.scaleOsd);
+        settings.statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(&config);
         TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         TryGetDisplayBool(config, "subtitle_cut_paste_test", settings.subtitleCutPasteTest);
         std::string subtitleBackground;
@@ -18333,7 +18336,7 @@ releaseDriftBaseRetention =
             // Screen fit supplies the relative physical CIH size. Movie fit,
             // source crop and software zoom affect only anchoring/containment.
             const auto sizing = NativeStatsOverlayPlacement::ResolveStatsSizing(
-                scaleOsd, overlayScreenHeight, dstHeight);
+                scaleOsd, overlayScreenHeight, dstHeight, activeSettings.statsOsdSizePercent);
             const float horizontalInset = scaleOsd
                 ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale) : sizing.insetPixels;
             const NativeStatsOverlayPlacement::Result placement = NativeStatsOverlayPlacement::Place(
@@ -18363,7 +18366,7 @@ releaseDriftBaseRetention =
 			if (placementChanged)
 			{
 				DebugLog::Log(
-					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.2f horizontal_inset=%.2f screen_height=%.2f requested_scale=%.4f screen_scaled=%d clamped=%d fallback=%d",
+					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.2f horizontal_inset=%.2f screen_height=%.2f requested_scale=%.4f size_percent=%.4f screen_scaled=%d clamped=%d fallback=%d",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(nlsGeometryGeneration),
@@ -18378,7 +18381,7 @@ releaseDriftBaseRetention =
 					placement.scale,
 					placement.panel.left, placement.panel.top,
 					placement.panel.right, placement.panel.bottom,
-					sizing.insetPixels, horizontalInset, overlayScreenHeight, sizing.scale, scaleOsd ? 1 : 0,
+					sizing.insetPixels, horizontalInset, overlayScreenHeight, sizing.scale, activeSettings.statsOsdSizePercent, scaleOsd ? 1 : 0,
 					placement.insetClamped ? 1 : 0,
 					placement.usedOutputFallback ? 1 : 0);
 				lastStatsOverlayPlacement = placement;

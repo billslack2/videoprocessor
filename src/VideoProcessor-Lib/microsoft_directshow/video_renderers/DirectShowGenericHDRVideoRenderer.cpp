@@ -12,6 +12,7 @@
 
 #include "DirectShowViewportPlacement.h"
 #include "MadVROsdSizing.h"
+#include <vprenderer/StatsOsdSettings.h>
 #include "MadVROsdRefresh.h"
 #include <microsoft_directshow/MadVRRuntimeInterfaces.h>
 #include <DisplayWindowGeometry.h>
@@ -304,7 +305,7 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 		}
 	}
 	const auto sizing = NativeStatsOverlayPlacement::ResolveStatsSizing(
-		m_scaleStatsOsd && osdScreen.valid, osdScreen.fittedHeight, osdScreen.outputHeight);
+		m_scaleStatsOsd && osdScreen.valid, osdScreen.fittedHeight, osdScreen.outputHeight, m_statsOsdSizePercent);
 	const auto placement = NativeStatsOverlayPlacement::Place(
 		picture, output, static_cast<float>(width), static_cast<float>(height),
 		sizing.insetPixels, sizing.scale);
@@ -376,12 +377,12 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 		std::fabs(placement.scale - m_lastOsdScale) > 0.001f;
 	if (placementChanged)
 	{
-		DebugLog::Log("madVR OSD: gen=%llu full=%ld,%ld-%ld,%ld active=%ld,%ld-%ld,%ld bitmap=%dx%d scale=%.3f panel=%d,%d inset_clamped=%d configured_scale=%d coordinate_mapping=%d screen_height=%.3f nominal_scale=%.3f inset=%.3f anamorphic_unsupported=%d",
+		DebugLog::Log("madVR OSD: gen=%llu full=%ld,%ld-%ld,%ld active=%ld,%ld-%ld,%ld bitmap=%dx%d scale=%.3f panel=%d,%d inset_clamped=%d configured_scale=%d coordinate_mapping=%d screen_height=%.3f nominal_scale=%.3f inset=%.3f size_percent=%.4f anamorphic_unsupported=%d",
 			static_cast<unsigned long long>(m_rendererGeneration), full.left, full.top,
 			full.right, full.bottom, active.left, active.top, active.right, active.bottom,
 			bitmapWidth, bitmapHeight, placement.scale, x, y, placement.insetClamped ? 1 : 0,
 			m_scaleStatsOsd ? 1 : 0, osdScreen.valid ? 1 : 0, osdScreen.fittedHeight,
-			sizing.scale, sizing.insetPixels, m_osdAnamorphicUnsupported ? 1 : 0);
+			sizing.scale, sizing.insetPixels, m_statsOsdSizePercent, m_osdAnamorphicUnsupported ? 1 : 0);
 		m_lastOsdFullRect = full;
 		m_lastOsdActiveRect = active;
 		m_lastOsdScale = placement.scale;
@@ -1360,6 +1361,7 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 	// Snapshot configuration is immutable and publication already belongs to
 	// the graph owner; no worker reads the GUI's mutable configuration object.
 	m_scaleStatsOsd = false;
+	m_statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(snapshot.configuration.get());
 	if (snapshot.configuration)
 		snapshot.configuration->TryGetBool("general", "scale_osd", m_scaleStatsOsd);
 	const RendererProfileConfig::ResolvedViewport& viewport = snapshot.viewport;
