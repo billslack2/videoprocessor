@@ -178,6 +178,7 @@ namespace
 				if (sceneMin > 4095 || sceneMax > 4095 || sceneAvg > 4095)
 					return false;
 				parsed.hasSceneMetadata = true;
+				parsed.sceneMinPq = sceneMin;
 				parsed.sceneMaxPq = sceneMax;
 				parsed.sceneAvgPq = sceneAvg;
 			}

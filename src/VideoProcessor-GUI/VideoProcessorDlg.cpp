@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <OsdTelemetryText.h>
 #include <DisplayMonitorInventory.h>
 #include <DisplayWindowGeometry.h>
 #include "BackendInputConfig.h"
@@ -18,6 +19,7 @@ static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.Update
 #include <ModernOperatorLayout.h>
 #include <WindowResizeLayout.h>
 #include <ModernOperatorStatusPolicy.h>
+#include <HdrOsdFormatting.h>
 
 #include <atlstr.h>
 #include <algorithm>
@@ -99,6 +101,12 @@ CString FormatHdrLuminance(double value)
 	if (text[text.GetLength() - 1] == _T('.'))
 		text += _T('0');
 	return text;
+}
+
+CString FormatOsdHdr10(double maxCll, double maxFall,
+    double masteringMin, double masteringMax)
+{
+    return HdrOsdFormatting::Hdr10(maxCll, maxFall, masteringMin, masteringMax);
 }
 
 void LogRendererResourceCensus(uint32_t generation, const CString& renderer,
@@ -6430,6 +6438,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	assert(m_rendererState != newRendererState);
 	const RendererState oldRendererState = m_rendererState;
 	m_rendererState = newRendererState;
+	if (newRendererState == RendererState::RENDERSTATE_STOPPED ||
+		newRendererState == RendererState::RENDERSTATE_FAILED)
+		m_osdAcceptedInputColor.Reset();
 
 	switch (newRendererState)
 	{
@@ -9461,6 +9472,7 @@ void CVideoProcessorDlg::RenderStart()
 
 	m_windowedVideoWindow.SetWindowTextW(TEXT("Starting..."));
 	m_rendererState = RendererState::RENDERSTATE_STARTING;
+	m_osdAcceptedInputColor.Reset();
 	// Internal renderers are deliberately listed beside registered renderers,
 	// but do not construct or register a DirectShow graph.
 #if defined(_WIN64)
@@ -9502,7 +9514,7 @@ void CVideoProcessorDlg::RenderStart()
 			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
 
 			if (m_captureDeviceVideoState)
-				m_videoRenderer->OnVideoState(m_builtVideoState);
+				PushRendererVideoState();
 
 			m_videoRenderer->Build();
 			m_videoRenderer->SetQueueFramePolicy(
@@ -9669,7 +9681,7 @@ void CVideoProcessorDlg::RenderStart()
 		ApplyUnifiedProfileSnapshot(profileSnapshot, false);
 
 		if (m_captureDeviceVideoState)
-			m_videoRenderer->OnVideoState(m_builtVideoState);
+			PushRendererVideoState();
 
 		m_videoRenderer->Build();
 		m_videoRenderer->SetQueueFramePolicy(
@@ -9788,7 +9800,7 @@ void CVideoProcessorDlg::RenderStart()
 			}
 
 			if (m_captureDeviceVideoState)
-				m_videoRenderer->OnVideoState(m_builtVideoState);
+				PushRendererVideoState();
 
 			m_videoRenderer->Build();
 			m_videoRenderer->SetQueueFramePolicy(
@@ -9913,6 +9925,7 @@ void CVideoProcessorDlg::RenderStop()
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_rendererState = RendererState::RENDERSTATE_STOPPING;
+	m_osdAcceptedInputColor.Reset();
 
 	const std::shared_ptr<RendererIngressState> ingress =
 		m_rendererIngressState;
@@ -11542,6 +11555,20 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 	return false;
 }
 
+bool CVideoProcessorDlg::PushRendererVideoState()
+{
+    if (!m_videoRenderer || m_rendererState == RendererState::RENDERSTATE_STOPPING)
+    {
+        m_osdAcceptedInputColor.Reset();
+        return false;
+    }
+    VideoStateComPtr submitted = m_builtVideoState;
+    m_osdAcceptedInputColor.Reset();
+    const bool accepted = m_videoRenderer->OnVideoState(submitted);
+    m_osdAcceptedInputColor.Publish(submitted, accepted);
+    return accepted;
+}
+
 bool CVideoProcessorDlg::BuildPushVideoState()
 {
 	const bool hadPreviousEffectiveState =
@@ -12021,6 +12048,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer stopping; state retained for next graph")));
+		m_osdAcceptedInputColor.Reset();
 		logLldvEffectiveState("state-retained-while-stopping");
 		return true;
 	}
@@ -12029,7 +12057,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	if (m_videoRenderer)
 	{
 		const bool rendererAcceptedState =
-			m_videoRenderer->OnVideoState(m_builtVideoState);
+			PushRendererVideoState();
 		PublishActiveProfileStatus();
 
 		if (!rendererAcceptedState)
@@ -12055,6 +12083,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer unavailable; state retained for next graph")));
+		m_osdAcceptedInputColor.Reset();
 		logLldvEffectiveState("state-retained-renderer-unavailable");
 		return true;
 	}
@@ -16417,14 +16446,46 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.sceneTimingElapsedSeconds = sceneTimingElapsedSeconds;
 		stats.sceneTimingReady = sceneTimingReady;
 
-		// EOTF
-		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
+		// Candidates retained for a replacement graph are not the live input.
+		// During a rejected update or teardown keep the wire observation explicit
+		// while marking effective renderer color information unavailable.
+		const auto inputColor = m_osdAcceptedInputColor.Describe(
+			m_captureDeviceVideoState,
+			m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING);
+		stats.eotf = inputColor.eotf.c_str();
+		stats.colorspace = inputColor.colorspace.c_str();
 
-		// Colorspace
-		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
+        // Older plugins lack the optional per-frame HDR export. Their fallback
+        // must come from the same accepted input as EOTF/colorspace, never a
+        // pending/rejected candidate renderer configuration.
+        const HDRData* acceptedHdr = m_osdAcceptedInputColor.Hdr(
+            m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING);
+        if (acceptedHdr)
+            stats.hdr10 = FormatOsdHdr10(acceptedHdr->maxCll, acceptedHdr->maxFall,
+                acceptedHdr->masteringDisplayMinLuminance,
+                acceptedHdr->masteringDisplayMaxLuminance);
 
 		// Pixel Format
 		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
+	}
+
+	// Active Rendering / DTM profile ("display" group, [vprenderer.<name>]),
+	// shown by its configured label when it has one, as the profile overlay does.
+	if (const auto snapshot = m_profileRuntime.GetSnapshot())
+	{
+		const auto display = snapshot->effectiveSelections.find("display");
+		if (display != snapshot->effectiveSelections.end() &&
+			!display->second.empty())
+		{
+			std::string name = RendererProfileConfig::FormatSelection(display->second);
+			std::string label;
+			if (snapshot->configuration &&
+				snapshot->configuration->TryGetString(
+					"vprenderer." + name, "label", label) &&
+				!ConfigFile::Trim(label).empty())
+				name = ConfigFile::Trim(label);
+			stats.dtmProfile = CString(name.c_str());
+		}
 	}
 
 	// Renderer settings and capture metrics
@@ -16542,6 +16603,18 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			m_videoRenderer->GetPresentationTimingStatus(
 				stats.presentationTimingStatus);
 		}
+		// HDR10 and Measured from the frame libplacebo last tone mapped. A
+		// frame with Dolby Vision metadata has no CLL/FALL; its scene values
+		// (L1) are appended to libplacebo's own detection, which may still
+		// run beside them.
+		RendererHdrStatus hdrStatus;
+		const auto* libplaceboRenderer =
+			dynamic_cast<const LibplaceboPluginVideoRenderer*>(m_videoRenderer.get());
+		if (libplaceboRenderer && libplaceboRenderer->GetHdrStatus(hdrStatus))
+		{
+            stats.hdr10 = HdrOsdFormatting::Static(hdrStatus);
+            stats.measuredHdr = HdrOsdFormatting::Measured(hdrStatus);
+		}
 		RendererRenderLoad renderLoad;
 		if (m_videoRenderer->GetRenderLoad(renderLoad))
 		{
@@ -16589,16 +16662,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				m_processCpuUsage.WindowPeakPercent();
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
-		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&
-			sameStatsTelemetryGeneration)
-		{
-			stats.outputMode = m_lastStatsData->outputMode;
-		}
-		if (!m_videoRenderer->GetDisplayLutInfo(stats.displayLut) &&
-			sameStatsTelemetryGeneration)
-		{
-			stats.displayLut = m_lastStatsData->displayLut;
-		}
+
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
@@ -16625,11 +16689,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.activeShaderRule = m_videoRenderer->ActiveShaderRule();
 		stats.activeShaders = m_videoRenderer->ActiveShaders();
 	}
-	// A graph reset can briefly make the renderer non-rendering while the same
-	// renderer and host generation still own the output contract. Do not let
-	// that diagnostics-only interval erase the last negotiated OSD value.
-	if (stats.outputMode.IsEmpty() && sameStatsTelemetryGeneration)
-		stats.outputMode = m_lastStatsData->outputMode;
+	// These getters read renderer-owned cached telemetry even while a graph
+	// temporarily stops rendering. A handled empty result is authoritative
+	// invalidation; only unsupported getters may use same-generation fallback.
+	const bool outputHandled = m_videoRenderer &&
+		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
+	const bool lutHandled = m_videoRenderer &&
+		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);
+	OsdTelemetryText::ApplyFallback(stats.outputMode, outputHandled,
+		sameStatsTelemetryGeneration, m_lastStatsData ? &m_lastStatsData->outputMode : nullptr);
+	OsdTelemetryText::ApplyFallback(stats.displayLut, lutHandled,
+		sameStatsTelemetryGeneration, m_lastStatsData ? &m_lastStatsData->displayLut : nullptr);
 
 	// Capture device frame counts
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)

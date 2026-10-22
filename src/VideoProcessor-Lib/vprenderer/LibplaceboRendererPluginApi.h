@@ -60,3 +60,11 @@ inline StartupPresentation::QueryStatus QueryOptionalStartupReadiness(
     return status == StartupPresentation::QueryStatus::Available && StartupPresentation::Supported(snapshot)
         ? status : StartupPresentation::QueryStatus::Unsupported;
 }
+// Optional, outside the API version: the executable looks it up by name and
+// shows no renderer HDR status when a plugin lacks it. The status checks its
+// own layout through RendererHdrStatus::size.
+static constexpr const char* VP_LIBPLACEBO_HDR_STATUS_EXPORT =
+	"VideoProcessorLibplaceboGetHdrStatus";
+using VideoProcessorLibplaceboGetHdrStatusFn = bool (__cdecl *)(
+	const IVideoRenderer* renderer,
+	RendererHdrStatus* status);

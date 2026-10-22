@@ -48,6 +48,50 @@ enum RendererState
 const TCHAR* ToString(const RendererState rendererState);
 
 
+// HDR luminance for the picture being tone mapped, in nits. The static and
+// scene values are what the frame handed to pl_render_image carries, so they
+// follow any LLDV substitution or Dolby Vision metadata without knowing about
+// either. The detected values are libplacebo's own peak detection
+// (pl_renderer_get_hdr_metadata). When the frame carries its own scene
+// peak/average, libplacebo tone maps from those; the stable renderer's
+// libplacebo then stops measuring, the beta renderer's keeps measuring.
+struct RendererHdrStatus
+{
+	// Crosses the plugin boundary through an optional export rather than the
+	// renderer interface, so it carries its own layout check.
+	uint32_t size = sizeof(RendererHdrStatus);
+	uint32_t version = 1;
+	bool hdr = false;            // the frame's transfer is HDR
+	bool dolbyVision = false;    // the frame carries Dolby Vision metadata
+	double maxCll = 0.0;
+	double maxFall = 0.0;
+	double masteringMin = 0.0;
+	double masteringMax = 0.0;
+	bool sceneValid = false;     // the frame carries its own scene peak/average
+	double scenePeakNits = 0.0;
+	double sceneAvgNits = 0.0;
+	bool peakDetectionEnabled = false;
+	bool detectedValid = false;
+	double detectedPeakNits = 0.0;
+	double detectedAvgNits = 0.0;       // PQ average of Y: what places the knee
+	// Linear average of maxRGB (libplacebo's scene_avg, the HDR10 FALL
+	// definition), smoothed like the peak. Zero when the renderer's libplacebo
+	// does not report it, as the stable renderer's 7.360.1 does not.
+	double detectedLinearAvgNits = 0.0;
+	// Dolby Vision L1 scene minimum. libplacebo takes no scene minimum, so
+	// this is the stream's value only; zero unless scene values come from L1.
+	double sceneMinNits = 0.0;
+	// libplacebo's detected maxRGB peak (scene_max; libplacebo writes the same
+	// value to all three components). detectedPeakNits is this capped by the
+	// maximum of Y. Zero where detectedLinearAvgNits is zero.
+	double detectedSceneMaxNits = 0.0;
+	uint64_t sourceSequence = 0;       // selected capture packet, not newest ingress
+	uint64_t sourceGeneration = 0;
+	uint64_t processingEpoch = 0;
+	bool Supported() const { return size == sizeof(RendererHdrStatus) && version == 1; }
+};
+
+
 /**
  * Renderer callback
  */

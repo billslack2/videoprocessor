@@ -129,6 +129,8 @@ public:
 		double& captureToTargetMs) const override;
 	bool GetPresentationTimingStatus(CString& status) const override;
 	bool GetRenderLoad(RendererRenderLoad& load) const override;
+	// Reached through the plugin's HDR status export, not IRenderer.
+	bool GetHdrStatus(RendererHdrStatus& status) const;
 	void SetRenderLoadDisplayRefreshRate(double refreshRateHz) override;
 	bool SupportsNativeStatsOverlay() const override { return true; }
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
@@ -234,6 +236,8 @@ private:
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
 	void ApplyPendingShaderSelectionLocked();
+	bool FormatOutputModeInfoLocked(CString& details) const;
+	void RefreshOsdCacheLocked();
 	IRendererCallback& m_callback;
 	const uint32_t m_callbackGeneration;
 	HWND m_videoHwnd = nullptr;

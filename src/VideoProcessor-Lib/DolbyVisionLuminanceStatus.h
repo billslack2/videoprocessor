@@ -9,6 +9,7 @@ struct DolbyVisionLuminanceStatus
     bool sceneAvailable = false;
     float sourceMin = 0;
     float sourceMax = 0;
+    float sceneMin = 0;
     float sceneMax = 0;
     float sceneAvg = 0;
 };

@@ -1,5 +1,6 @@
 #pragma once
 #include <MotionConfig.h>
+#include <vprenderer/FrameHdrStatus.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/gpu.h>
 #include <libplacebo/shaders/custom.h>
@@ -64,6 +65,7 @@ private:
         };
         struct Processed {
             pl_frame frame{};
+            RendererHdrStatus hdrStatus{};
             pl_tex texture=nullptr;
             pl_rect2df sourceCrop{},targetCrop{},peakCrop{};
             pl_color_space targetColor{};
@@ -81,6 +83,8 @@ private:
         std::array<Processed,2> processed{};
         NativePrepare nativePrepare;
         bool hasSubtitle=false;
+        RendererHdrStatus hdrSource{};
+        bool hdrSourceAvailable=false;
         pl_dovi_metadata dovi{};
         pl_frame frame{};
         pl_tex subtitle=nullptr;
@@ -123,6 +127,8 @@ public:
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
     ProcessingStatistics processingStatistics;
+    RendererHdrStatus lastHdrStatus{};
+    bool lastHdrStatusAvailable=false;
 public:
     std::vector<double> outputs;
     double currentPts=0,outputPts=0;
@@ -131,6 +137,16 @@ public:
     uint64_t lastSubtitleSequence=0;
     size_t HistoryDepth() const { return history.size(); }
     bool CompositionEnabled() const { return composition; }
+    bool HdrStatusSnapshot(RendererHdrStatus& result) const {
+        result=lastHdrStatus;return lastHdrStatusAvailable;
+    }
+    bool AnnotateHdrSource(uint64_t sequence,const pl_frame& frame,
+        const DolbyVisionLuminanceStatus& dv={}) {
+        if(history.empty()||history.back()->sequence!=sequence)return false;
+        auto& packet=*history.back();
+        packet.hdrSource=FrameHdrStatus::Source(frame,sequence,dv);
+        packet.hdrSourceAvailable=true;return true;
+    }
     bool NativeCompositionRequired() const { return composition&&interlaced&&Active(); }
     bool CompositionOutputReady() const {
         if(!composition||!Active())return true;
@@ -168,7 +184,7 @@ public:
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
     void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
-    void Clear(){submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
+    void Clear(){lastHdrStatusAvailable=false;lastHdrStatus={};submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
@@ -252,7 +268,7 @@ public:
         if(history.size()==8){stored=std::move(history.front());history.pop_front();}
         else stored=std::make_unique<Stored>();
         stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
-        stored->nativePrepare={};stored->hasSubtitle=false;
+        stored->nativePrepare={};stored->hasSubtitle=false;stored->hdrSourceAvailable=false;
         for(auto& field:stored->prepared)field.valid=false;
         for(auto& field:stored->processed)field.valid=false;
         stored->subtitleBounds={};
@@ -653,6 +669,9 @@ public:
             pl_renderer_reset_errors(sourceRenderer,nullptr);
             sourceRendererEpoch=epoch;
         }
+        // Preserve authored metadata before inference supplies fallback values.
+        const auto hdrSource=packet.hdrSourceAvailable?packet.hdrSource:
+            FrameHdrStatus::Source(input,packet.sequence);
         pl_frames_infer(sourceRenderer,&input,&destination);
         const float black[3]={0,0,0};
         pl_frame_clear(gpu,&destination,black);
@@ -663,6 +682,9 @@ public:
         processing.dither_params=nullptr;processing.error_diffusion=nullptr;
         processing.blend_params=nullptr;
         if(!pl_render_image(sourceRenderer,&input,&destination,&processing))return false;
+        cached.hdrStatus=FrameHdrStatus::Capture(hdrSource,sourceRenderer,
+            processing.peak_detect_params!=nullptr);
+        cached.hdrStatus.processingEpoch=epoch;
         cached.frame=destination;
         cached.frame.lut=nullptr;cached.frame.icc=nullptr;cached.frame.profile={};
         cached.frame.overlays=nullptr;cached.frame.num_overlays=0;
@@ -679,12 +701,14 @@ public:
     }
     bool RenderProcessed(pl_renderer renderer,const pl_frame& source,
         const pl_frame& target,pl_render_params& params,uint64_t epoch) {
+        lastHdrStatusAvailable=false;lastHdrStatus={};
         if(composition&&!PreflightCompositionOutput())return false;
         const Stored* selected=nullptr;
         for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
         const auto entries=NativeEntriesForOutput();
         std::vector<const pl_frame*> frames;
         std::vector<uint64_t> signatures;
+        std::vector<RendererHdrStatus> hdrStatuses;
         using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
         std::vector<Timestamp> timestamps;
         std::array<std::array<bool,2>,8> used{};
@@ -695,6 +719,7 @@ public:
             if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
             used[entry.index][entry.field]=true;
             frames.push_back(&processed->frame);signatures.push_back(processed->signature);
+            hdrStatuses.push_back(processed->hdrStatus);
             timestamps.push_back(static_cast<Timestamp>(entry.offset));
         }
         if(frames.empty())return false;
@@ -749,7 +774,14 @@ public:
             size_t current=0;for(size_t i=0;i<frames.size();++i)if(timestamps[i]<=1e-6)current=i;
             rendered=pl_render_image(renderer,frames[current],&destination,&presentation);
         }
-        if(rendered)++processingStatistics.outputRenders;
+        if(rendered) {
+            ++processingStatistics.outputRenders;
+            // The output cue is the latest included source at/before the output
+            // timestamp, exactly as in the non-mixing presentation selection.
+            // Its snapshot survives later neighbour renders and cache reuse.
+            size_t cue=0;for(size_t i=0;i<timestamps.size();++i)if(timestamps[i]<=1e-6)cue=i;
+            lastHdrStatus=hdrStatuses[cue];lastHdrStatusAvailable=true;
+        }
         // Keep only the active filter support. Raw history remains available
         // for deinterlacing and geometry guards; float output caches are bounded.
         for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]) {
@@ -770,6 +802,7 @@ public:
     bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,
         pl_render_params& params,uint64_t epoch=0) {
         lastSubmittedField=PL_FIELD_NONE;
+        lastHdrStatusAvailable=false;lastHdrStatus={};
         if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
         return RenderProcessed(renderer,source,target,params,epoch);

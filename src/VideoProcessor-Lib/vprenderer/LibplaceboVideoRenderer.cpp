@@ -13,6 +13,7 @@
 #include <DisplayMonitorInventory.h>
 #include <DisplayWindowGeometry.h>
 #include <DisplayRasterInfo.h>
+#include <vprenderer/OutputOsdTelemetryCache.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -43,6 +44,7 @@
 #include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/StatsOsdSettings.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
@@ -822,6 +824,9 @@ namespace
 		std::vector<DisplayOutputMode> allowedDisplayModes;
 		std::string outputDisplayProfile;
         std::string outputDisplayMonitor;
+		// [general] scale_osd: size OSDs from the stable fitted screen geometry.
+		bool scaleOsd = false;
+        float statsOsdSizePercent = NativeStatsOverlayPlacement::kDefaultStatsSizePercent;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -964,7 +969,7 @@ namespace
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
 				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
-		stream << '|' << settings.quality << '|'
+		stream << '|' << settings.scaleOsd << '|' << settings.statsOsdSizePercent << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.customToneMapping << '|'
@@ -2163,6 +2168,8 @@ namespace
 		RendererSettings settings;
 		activeRule.clear();
 		if (!config.IsLoaded()) return settings;
+		config.TryGetBool("general", "scale_osd", settings.scaleOsd);
+        settings.statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(&config);
         TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         TryGetDisplayBool(config, "subtitle_cut_paste_test", settings.subtitleCutPasteTest);
         std::string subtitleBackground;
@@ -4553,6 +4560,9 @@ struct LibplaceboVideoRenderer::Impl
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
 	std::string displayLutStatus = "Disabled";
+	OutputOsdTelemetryCache osdTelemetry;
+	// Render-thread-only throttle. Lifecycle changes force a fresh publication.
+	ULONGLONG osdCacheTick = 0;
 	std::string displayLutPath;
 	std::string displayLutConstrainedBaseDirectory;
 	std::string displayLutTarget = "none";
@@ -4604,6 +4614,14 @@ struct LibplaceboVideoRenderer::Impl
 	// infer a render budget from DXGI frame-statistics counters alone: drivers
 	// can silently switch those counters to another output.
 	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
+	// Copy of the rendered frame's HDR luminance and libplacebo's
+	// peak-detection result; written after each successful presentation.
+	// Diagnostic logging is independently rate limited.
+	mutable std::mutex hdrStatusMutex;
+	FrameHdrStatus::Publication hdrStatusPublication;
+	uint64_t hdrStatusNextLogTick = 0;
+	// The L1 minimum, maximum and average last seen; a change logs at once.
+	double hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -5367,6 +5385,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	bool RetireOutput()
 	{
+		osdTelemetry.Retire();
+        InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
             lookaheadMeasurementWorker.Stop();
@@ -6098,6 +6118,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		renderParams = projection.renderParams;
         ++pictureProcessingEpoch;
+        InvalidateHdrStatus();
 		colorMapParams = projection.colorMapParams;
 		peakDetectParams = projection.peakDetectParams;
 		sigmoidParams = projection.sigmoidParams;
@@ -6289,9 +6310,91 @@ struct LibplaceboVideoRenderer::Impl
 		return decision;
 	}
 
+	void InvalidateHdrStatus(bool suspend = false)
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		if (suspend) hdrStatusPublication.Suspend();
+        else hdrStatusPublication.Invalidate();
+	}
+
+	uint64_t BeginHdrStatus(uint64_t sourceGeneration, uint64_t viewportEpoch,
+		EOTF transfer, ColorSpace primaries, bool discontinuity)
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		return hdrStatusPublication.Begin({ sourceGeneration, viewportEpoch,
+			pictureProcessingEpoch, static_cast<int>(transfer), static_cast<int>(primaries) }, discontinuity,
+            HasPendingProfileSettings() || resizePending.load(std::memory_order_acquire) ||
+            outputRenegotiationPending.load(std::memory_order_acquire));
+	}
+
+	// Publish only after successful presentation. The snapshot was captured at
+	// the source pass; temporal presentation may have processed later neighbours.
+	void PublishHdrStatus(RendererHdrStatus next, uint64_t token, bool rendered, bool submitted)
+	{
+		RendererHdrStatus previous;
+		bool previousAvailable = false;
+		{
+			std::lock_guard<std::mutex> lock(hdrStatusMutex);
+			previousAvailable = hdrStatusPublication.Snapshot(previous);
+			// Validate the token before changing throttle/log state. Reset/source
+			// changes can invalidate an in-flight render without taking renderMutex.
+			if (!hdrStatusPublication.CommitPresented(token, next, rendered, submitted)) return;
+		}
+		const bool changed = !previousAvailable || previous.hdr != next.hdr ||
+			previous.dolbyVision != next.dolbyVision ||
+			previous.peakDetectionEnabled != next.peakDetectionEnabled ||
+			previous.sceneValid != next.sceneValid || previous.detectedValid != next.detectedValid;
+		const bool l1 = next.dolbyVision && next.sceneValid;
+		const bool l1Changed = l1 &&
+			(next.sceneMinNits != hdrStatusLoggedL1[0] ||
+				next.scenePeakNits != hdrStatusLoggedL1[1] ||
+				next.sceneAvgNits != hdrStatusLoggedL1[2]);
+		const uint64_t now = GetTickCount64();
+		const bool interval = now >= hdrStatusNextLogTick;
+		if (interval)
+		{
+			hdrStatusNextLogTick += 2500;
+			if (hdrStatusNextLogTick <= now) hdrStatusNextLogTick = now + 2500;
+		}
+		// Publication itself is a small CPU copy and must remain current, even
+		// within the old 250 ms gate. Only periodic diagnostic logging is gated.
+		if (next.hdr && (next.detectedValid || next.sceneValid) &&
+			(interval || l1Changed || changed))
+		{
+			SYSTEMTIME local{};
+			GetLocalTime(&local);
+			DebugLog::Log(
+				"HDR luminance: dv=%d detection=%s detected_peak_nits=%.2f detected_avg_pq_nits=%.4f detected_avg_linear_nits=%.4f scene=%s scene_peak_nits=%.2f scene_avg_nits=%.4f"
+				" scene_min_nits=%.6f detected_scene_max_nits=%.2f"
+				" reason=%s time=%04u-%02u-%02uT%02u:%02u:%02u.%03u source_frame=%llu",
+				next.dolbyVision ? 1 : 0,
+				!next.peakDetectionEnabled ? "off" : next.detectedValid ? "valid" : "pending",
+				next.detectedPeakNits, next.detectedAvgNits, next.detectedLinearAvgNits,
+				!next.sceneValid ? "none" : next.dolbyVision ? "L1" : "frame",
+				next.scenePeakNits, next.sceneAvgNits, next.sceneMinNits, next.detectedSceneMaxNits,
+				l1Changed ? (interval ? "interval,L1" : "L1") : changed ? "state" : "interval",
+				local.wYear, local.wMonth, local.wDay, local.wHour, local.wMinute,
+				local.wSecond, local.wMilliseconds,
+				static_cast<unsigned long long>(next.sourceSequence));
+		}
+		if (l1)
+		{
+			hdrStatusLoggedL1[0] = next.sceneMinNits;
+			hdrStatusLoggedL1[1] = next.scenePeakNits;
+			hdrStatusLoggedL1[2] = next.sceneAvgNits;
+		}
+		else std::fill(std::begin(hdrStatusLoggedL1), std::end(hdrStatusLoggedL1), -1.0f);
+	}
+
+	bool HdrStatusSnapshot(RendererHdrStatus& status) const
+	{
+		std::lock_guard<std::mutex> lock(hdrStatusMutex);
+		return hdrStatusPublication.Snapshot(status);
+	}
+
 	void LogHdrPeakAnalysisMetrics(
 		const HdrPeakAnalysisCrop::Decision& decision,
-		uint64_t sourceSequence, bool rendered)
+		uint64_t sourceSequence, bool rendered, const RendererHdrStatus& sourceHdr)
 	{
 		if (!hdrPeakAnalysisPictureOnly &&
 			!hdrPeakAnalysisMotionCompensation)
@@ -6305,21 +6408,17 @@ struct LibplaceboVideoRenderer::Impl
 		if (now < hdrPeakAnalysisNextTelemetryTick)
 			return;
 
-		pl_hdr_metadata metadata{};
-		const bool metadataAvailable = rendered &&
-			renderParams.peak_detect_params &&
-			pl_renderer_get_hdr_metadata(renderer, &metadata);
-		const float maxNits = metadataAvailable
-			? pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, metadata.max_pq_y)
-			: 0.0f;
-		const float averageNits = metadataAvailable
-			? pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, metadata.avg_pq_y)
-			: 0.0f;
+        const bool metadataAvailable = rendered && sourceHdr.detectedValid;
+        const float maxNits = metadataAvailable ? static_cast<float>(sourceHdr.detectedPeakNits) : 0.0f;
+        const float averageNits = metadataAvailable ? static_cast<float>(sourceHdr.detectedAvgNits) : 0.0f;
+        const float maxPq = metadataAvailable ? pl_hdr_rescale(PL_HDR_NITS, PL_HDR_PQ, maxNits) : 0.0f;
+        const float averagePq = metadataAvailable ? pl_hdr_rescale(PL_HDR_NITS, PL_HDR_PQ, averageNits) : 0.0f;
 		DebugLog::Log(
-			"libplacebo HDR analysis ROI metrics: interval_ms=%llu source_sequence=%llu frames=%llu restricted=%llu full_presentation=%llu fallback=%llu current_outcome=%s current_excluded_percent=%.3f rendered=%d metadata_available=%d detected_max_pq=%.6f detected_avg_pq=%.6f detected_max_nits=%.2f detected_avg_nits=%.2f",
+			"libplacebo HDR analysis ROI metrics: interval_ms=%llu source_sequence=%llu selected_source_sequence=%llu frames=%llu restricted=%llu full_presentation=%llu fallback=%llu current_outcome=%s current_excluded_percent=%.3f rendered=%d metadata_available=%d detected_max_pq=%.6f detected_avg_pq=%.6f detected_max_nits=%.2f detected_avg_nits=%.2f",
 			static_cast<unsigned long long>(
 				now - hdrPeakAnalysisIntervalStartedTick),
 			static_cast<unsigned long long>(sourceSequence),
+            static_cast<unsigned long long>(sourceHdr.sourceSequence),
 			static_cast<unsigned long long>(hdrPeakAnalysisFrames),
 			static_cast<unsigned long long>(
 				hdrPeakAnalysisRestrictedFrames),
@@ -6328,7 +6427,7 @@ struct LibplaceboVideoRenderer::Impl
 			HdrPeakAnalysisCrop::OutcomeName(decision.outcome),
 			decision.excludedFraction * 100.0,
 			rendered ? 1 : 0, metadataAvailable ? 1 : 0,
-			metadata.max_pq_y, metadata.avg_pq_y, maxNits, averageNits);
+			maxPq, averagePq, maxNits, averageNits);
 		hdrPeakAnalysisIntervalStartedTick = now;
 		hdrPeakAnalysisNextTelemetryTick = now + 5000;
 		hdrPeakAnalysisFrames = 0;
@@ -7228,6 +7327,7 @@ struct LibplaceboVideoRenderer::Impl
 	}
 	void ConfigureSwapchainOutput(const char* trigger)
 	{
+		osdTelemetry.InvalidateOutput();
 		using namespace LibplaceboOutput;
 		LogPresentationTarget(trigger);
 
@@ -7637,6 +7737,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool suppressLimited,
 		const char* trigger)
 	{
+		osdTelemetry.InvalidateOutput();
         displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
         pl_swapchain_destroy(&swapchain);
@@ -7792,16 +7893,23 @@ struct LibplaceboVideoRenderer::Impl
 		return separator == std::string::npos ? path : path.substr(separator + 1);
 	}
 
+	void SetDisplayLutStatus(std::string status)
+	{
+		displayLutStatus = std::move(status);
+		osdTelemetry.PublishLut(displayLutStatus);
+	}
+
 	void DetachDisplayLut(const std::string& status)
 	{
 		pl_lut_free(&displayLut);
 		displayLutParsed = false;
-		displayLutStatus = status;
+		SetDisplayLutStatus(status);
 	}
 
 	void LoadDisplayLut(const RendererSettings& settings,
 		bool preserveSameContractOnFailure = false)
 	{
+		osdTelemetry.InvalidateLut();
         calibrationStatusAvailable = false;
 		std::string candidatePath;
 		std::string candidateTarget = "none";
@@ -7873,8 +7981,8 @@ struct LibplaceboVideoRenderer::Impl
 				sameContract, preserveSameContractOnFailure) ==
 				LibplaceboCalibrationLut::ReloadFailureAction::RETAIN_LAST_KNOWN_GOOD)
 			{
-				displayLutStatus = std::string("Active (reload rejected: ") +
-					reason + ")";
+				SetDisplayLutStatus(std::string("Active (reload rejected: ") +
+					reason + ")");
 				DebugLog::Log(
 					"display calibration LUT reload rejected (%s): file=%s; retaining last-known-good signature=%016llX",
 					reason, candidatePath.c_str(),
@@ -7905,7 +8013,7 @@ struct LibplaceboVideoRenderer::Impl
 			displayLutPath.c_str(), displayLutTarget.c_str(),
 			displayLut->size[0], result.fileBytes,
 			static_cast<unsigned long long>(displayLut->signature));
-		displayLutStatus = "Loaded";
+		SetDisplayLutStatus("Loaded");
 	}
 
 	void MaybeReloadDisplayLut()
@@ -7937,7 +8045,7 @@ struct LibplaceboVideoRenderer::Impl
 		DebugLog::Log(
 			"display: LUT render failed; disabling %s for this renderer instance and continuing without a LUT",
 			displayLutPath.c_str());
-		displayLutStatus = "Rejected: render error";
+		SetDisplayLutStatus("Rejected: render error");
 		displayLutParsed = false;
 		pl_lut_free(&displayLut);
 	}
@@ -7960,7 +8068,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (displayLutStatus != label.str() &&
 			displayLutStatus.rfind("Active (reload rejected:", 0) != 0)
 		{
-			displayLutStatus = label.str();
+			SetDisplayLutStatus(label.str());
 			DebugLog::Log(
 				"display calibration LUT active: file=%s target=%s dimensions=%d^3 signature=%016llX stage=target/normalized/post-DTM-gamma/pre-range reference=%s/%s/%.1f range_after_lut=%s bit_depth_independent=1 tone_mapping=%s gamut_mapping=%s peak_detection=%s",
 				displayLutPath.c_str(),
@@ -8286,6 +8394,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool supersededPendingSettings = pendingProfileIntent.Publish(
 			settings, settings.configuredScreenTarget,
 			viewportRequestSerial, viewportRequestNs);
+        InvalidateHdrStatus();
 		DebugLog::Log(
 			"libplacebo viewport settings queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -8867,6 +8976,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool supersededPendingSettings = pendingProfileIntent.Publish(
 			settings, settings.configuredScreenTarget,
 			viewportRequestSerial, viewportRequestNs);
+        InvalidateHdrStatus();
 		DebugLog::Log(
 			"libplacebo live profile update queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -8882,6 +8992,7 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		}
 
+		osdTelemetry.InvalidateOutput();
 		const bool lutChanged =
             LibplaceboCalibrationLut::InputContractKey(activeSettings.hdrToneMapTargetGamma, activeSettings.sdrLutInputGamma, activeSettings.sdrInputTransfer) !=
                 LibplaceboCalibrationLut::InputContractKey(settings.hdrToneMapTargetGamma, settings.sdrLutInputGamma, settings.sdrInputTransfer) ||
@@ -9472,6 +9583,7 @@ struct LibplaceboVideoRenderer::Impl
     {
         startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
         presentationResetEpoch.Request(kind);
+        InvalidateHdrStatus(true);
     }
 
 	// Consumed after RenderLocked returns, so this frame's geometry references
@@ -12043,6 +12155,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
+        const uint64_t hdrPublicationToken=BeginHdrStatus(frameGeneration,viewportRequestSerial,
+            state.eotf,state.colorspace,videoFrame.IsSourceDiscontinuity());
         uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
         QueueNativeResetKind resetKind = QueueNativeResetKind::NONE;
         if (presentationResetEpoch.Consume(requestedResetEpoch, &resetKind))
@@ -12174,6 +12288,7 @@ struct LibplaceboVideoRenderer::Impl
 			// Clear the output itself: zero opponent-color samples are not RGB
 			// black, and skipping presentation would retain the last bad frame.
 			temporalRenderer.Clear();
+            InvalidateHdrStatus();
 			{
 				std::lock_guard<std::mutex> guard(ingressStatusMutex);
 				if (sourceLuminanceQueueGeneration == frameGeneration)
@@ -14132,6 +14247,9 @@ struct LibplaceboVideoRenderer::Impl
                     subtitleSourcePreparation.layerBounds);
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
+        // Capture metadata even while buffering; the selected output may be an
+        // older packet by the time a source pass is finally rendered.
+        temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
         bool temporalSkipPresentation = temporalRenderer.Active() && temporalRenderer.skipOutput;
         if (temporalRenderer.Active()) {
             if (!temporalLedgerWasActive || temporalLedgerGeneration!=frameGeneration ||
@@ -18174,6 +18292,26 @@ releaseDriftBaseRetention =
 			overlayCount = 0;
 			target.overlays = nullptr;
 			target.num_overlays = 0;
+            const float overlayOutputHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+            auto overlayScreen = frameScreen; // Includes the selected temporal packet's stable screen fit.
+            const auto validScreenRect = [](const AnamorphicPresentation::Screen& screen) {
+                return screen.valid && NativeStatsOverlayPlacement::Rect{
+                    static_cast<float>(screen.rect.left), static_cast<float>(screen.rect.top),
+                    static_cast<float>(screen.rect.right), static_cast<float>(screen.rect.bottom) }.IsValid();
+            };
+            if (!validScreenRect(overlayScreen)) {
+                // Black/fallback presentations can have no movie layout. Refit
+                // from the full output and current screen profile, never from
+                // the movie destination crop or its software zoom.
+                overlayScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+                    configuredScreenAspect, anamorphicScale,
+                    { 0.0, 0.0, static_cast<double>(baseTarget.planes[0].texture->params.w),
+                        static_cast<double>(baseTarget.planes[0].texture->params.h) },
+                    ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
+            }
+            const float overlayScreenHeight = validScreenRect(overlayScreen)
+                ? static_cast<float>(overlayScreen.rect.bottom - overlayScreen.rect.top) : overlayOutputHeight;
+            const bool scaleOsd = activeSettings.scaleOsd;
 		if (statsOverlayTexture)
 		{
 			pl_overlay& overlay = overlays[overlayCount];
@@ -18195,11 +18333,16 @@ releaseDriftBaseRetention =
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0,
 				target.crop.x1, target.crop.y1 };
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::Place(
-					pictureRect, outputRect,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
-					static_cast<float>(statsOverlayTexture->params.h));
+            // Screen fit supplies the relative physical CIH size. Movie fit,
+            // source crop and software zoom affect only anchoring/containment.
+            const auto sizing = NativeStatsOverlayPlacement::ResolveStatsSizing(
+                scaleOsd, overlayScreenHeight, dstHeight, activeSettings.statsOsdSizePercent);
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale) : sizing.insetPixels;
+            const NativeStatsOverlayPlacement::Result placement = NativeStatsOverlayPlacement::Place(
+                pictureRect, outputRect,
+                AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
+                static_cast<float>(statsOverlayTexture->params.h), sizing.insetPixels, sizing.scale, horizontalInset);
 			overlayPart.dst = {
 				placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
@@ -18223,7 +18366,7 @@ releaseDriftBaseRetention =
 			if (placementChanged)
 			{
 				DebugLog::Log(
-					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.0f clamped=%d fallback=%d",
+					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.2f horizontal_inset=%.2f screen_height=%.2f requested_scale=%.4f size_percent=%.4f screen_scaled=%d clamped=%d fallback=%d",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(nlsGeometryGeneration),
@@ -18238,7 +18381,7 @@ releaseDriftBaseRetention =
 					placement.scale,
 					placement.panel.left, placement.panel.top,
 					placement.panel.right, placement.panel.bottom,
-					NativeStatsOverlayPlacement::kDefaultInsetPixels,
+					sizing.insetPixels, horizontalInset, overlayScreenHeight, sizing.scale, activeSettings.statsOsdSizePercent, scaleOsd ? 1 : 0,
 					placement.insetClamped ? 1 : 0,
 					placement.usedOutputFallback ? 1 : 0);
 				lastStatsOverlayPlacement = placement;
@@ -18268,11 +18411,14 @@ releaseDriftBaseRetention =
 				0.0f, 0.0f, dstWidth, dstHeight };
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::PlaceTopRight(
-					pictureRect, outputRect,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
-					static_cast<float>(sweepOverlayTexture->params.h));
+            const auto sizing = NativeStatsOverlayPlacement::ResolveSweepSizing(
+                scaleOsd, overlayScreenHeight, dstHeight);
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale) : sizing.insetPixels;
+            const NativeStatsOverlayPlacement::Result placement =
+                NativeStatsOverlayPlacement::PlaceTopRight(pictureRect, outputRect,
+                    AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
+                    static_cast<float>(sweepOverlayTexture->params.h), sizing.insetPixels, sizing.scale, horizontalInset);
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
 			if (!hasSweepOverlayPlacement ||
@@ -18336,22 +18482,18 @@ releaseDriftBaseRetention =
 				outputRect.top - cropOriginY,
 				outputRect.right - cropOriginX,
 				outputRect.bottom - cropOriginY };
-			const float profileScale =
-				NativeStatsOverlayPlacement::ProfileOverlayScale(
-					visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight);
-			const NativeStatsOverlayPlacement::Result placement =
-				NativeStatsOverlayPlacement::PlaceTopLeft(
-					cropLocalPicture, cropLocalOutput,
-					AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) *
-						profileScale,
-					static_cast<float>(profileOverlayTexture->params.h) *
-						profileScale,
-					NativeStatsOverlayPlacement::ProfileOverlayTopInset(
-						visiblePicture.IsValid() ? visiblePicture.Height() :
-							dstHeight),
-					NativeStatsOverlayPlacement::ProfileOverlayLeftInset(
-						visiblePicture.IsValid() ? visiblePicture.Height() :
-							dstHeight));
+            const float visibleHeight = visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight;
+            const auto sizing = NativeStatsOverlayPlacement::ResolveProfileSizing(
+                scaleOsd, overlayScreenHeight, dstHeight, visibleHeight);
+            const float profileScale = sizing.scale;
+            const float horizontalInset = scaleOsd
+                ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale)
+                : NativeStatsOverlayPlacement::ProfileOverlayLeftInset(visibleHeight);
+            const NativeStatsOverlayPlacement::Result placement =
+                NativeStatsOverlayPlacement::PlaceTopLeft(cropLocalPicture, cropLocalOutput,
+                    AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) * profileScale,
+                    static_cast<float>(profileOverlayTexture->params.h) * profileScale,
+                    sizing.insetPixels, horizontalInset, 1.0f, scaleOsd ? horizontalInset : -1.0f);
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
 			NativeStatsOverlayPlacement::Result absolutePlacement = placement;
@@ -18442,6 +18584,7 @@ releaseDriftBaseRetention =
             DebugLog::Log("VP motion: %s delay_ms=%.3f source_hz=%.6f display_hz=%.6f",lastMotionStatus.c_str(),temporalRenderer.DelayMs(),captureRateHz,renderLoadDisplayRefreshHz.load());
         }
 		const SteadyClock::time_point renderStart = SteadyClock::now();
+        const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
 		PipelinePreparationScope preparing(libplaceboRenderStartedTick);
@@ -18528,8 +18671,10 @@ releaseDriftBaseRetention =
 			originalPrLastPasses.store(originalPrPasses,
 				std::memory_order_relaxed);
 		preparing.Complete();
-		LogHdrPeakAnalysisMetrics(
-			hdrPeakAnalysisDecision, sourceSequence, rendered);
+        RendererHdrStatus renderedHdrStatus;
+        if(rendered && !temporalRenderer.HdrStatusSnapshot(renderedHdrStatus))
+            renderedHdrStatus=FrameHdrStatus::Capture(directHdrSource,renderer,renderParams.peak_detect_params!=nullptr);
+        LogHdrPeakAnalysisMetrics(hdrPeakAnalysisDecision,sourceSequence,rendered,renderedHdrStatus);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
         if (!rendered && targetLutApplied)
@@ -18614,6 +18759,7 @@ releaseDriftBaseRetention =
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
+        PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
 		if (!rendered || !submitted)
 		{
 			frameGpuTiming.Reject();
@@ -19604,12 +19750,18 @@ releaseDriftBaseRetention =
 		// them from the window/UI thread; coalesce to the next render safe point.
 		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		resizePending.store(true, std::memory_order_release);
+		osdTelemetry.InvalidateOutput();
+        // A failed/deferred resize must not retain the previous DRAWN raster.
+        displayRefreshRate.ForgetDrawnRaster();
+        InvalidateHdrStatus();
 	}
 
 	void RenegotiateOutput()
 	{
 		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		outputRenegotiationPending.store(true, std::memory_order_release);
+		osdTelemetry.InvalidateOutput();
+        InvalidateHdrStatus();
 	}
 
 	bool IsGpuFailed()
@@ -21180,6 +21332,10 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 	const uint64_t requestSerial =
 		m_viewportRequestSerial.fetch_add(
 			1, std::memory_order_relaxed) + 1;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->hdrStatusMutex);
+        m_impl->hdrStatusPublication.ResetForViewport(requestSerial);
+    }
 	m_configuredScreenActive.store(configured, std::memory_order_release);
 	DebugLog::Log(
 		"libplacebo viewport target selected: source=%s target=%s aspect=%.7f request=%llu",
@@ -21229,16 +21385,44 @@ uint64_t LibplaceboVideoRenderer::DroppedFrameCount() const
 
 bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 {
-	if (!m_impl)
-	{
-		details.Empty();
-		return false;
-	}
+    details.Empty();
+    if (!m_impl) return false;
+    const auto value = m_impl->osdTelemetry.ReadOutput(m_impl->renderMutex,
+        [&]() -> std::string {
+            if (!m_implInitialized.load(std::memory_order_acquire) ||
+                m_impl->outputResourcesRetired ||
+                m_impl->resizePending.load(std::memory_order_acquire) ||
+                m_impl->outputRenegotiationPending.load(std::memory_order_acquire))
+                return {};
+            CString output;
+            FormatOutputModeInfoLocked(output);
+            return CStringA(output).GetString();
+        }, [&]() { return m_impl->displayRefreshRate.OutputRaster(); });
+    details = CString(CStringA(value.c_str()));
+    // Empty means invalidated/unknown, and must clear the host's previous row.
+    return true;
+}
 
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
+void LibplaceboVideoRenderer::RefreshOsdCacheLocked()
+{
+    // Capture before checking pending flags: a concurrent UI invalidation must
+    // not let this old render state adopt the new publication generation.
+    const auto generation = m_impl->osdTelemetry.OutputGeneration();
+    if (!m_implInitialized.load(std::memory_order_acquire) ||
+        m_impl->outputResourcesRetired ||
+        m_impl->resizePending.load(std::memory_order_acquire) ||
+        m_impl->outputRenegotiationPending.load(std::memory_order_acquire)) return;
+    const ULONGLONG now = GetTickCount64();
+    if (m_impl->osdTelemetry.HasOutput() && now - m_impl->osdCacheTick < 250)
+        return;
+    CString outputMode;
+    FormatOutputModeInfoLocked(outputMode);
+    m_impl->osdTelemetry.PublishOutput(generation, CStringA(outputMode).GetString());
+    m_impl->osdCacheTick = now;
+}
+
+bool LibplaceboVideoRenderer::FormatOutputModeInfoLocked(CString& details) const
+{
 	auto requestPresentation = [](LibplaceboOutput::PresentationRequest value)
 	{
 		switch (value)
@@ -21388,9 +21572,8 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				m_impl->lastSdrGammaDecision.actualTarget));
 		value += gamma;
 	}
-    // Cache-only on the OSD thread. Read-back is refreshed at initialization
-    // and deferred display notifications; geometry comes from successful resizes.
-    value += DisplayRasterInfo::FormatDetails(m_impl->displayRefreshRate.OutputRaster()).c_str();
+    // Raster annotations are assembled from the current small snapshot in the
+    // getter, never baked into the cached output contract string.
 
 	details = CString(value);
 	return true;
@@ -21533,18 +21716,11 @@ bool LibplaceboVideoRenderer::RequestRenderedOutputCapture(CString& status)
 
 bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 {
-	if (!m_impl)
-	{
-		details.Empty();
-		return false;
-	}
-
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
-	return true;
+    details.Empty();
+    if (!m_impl) return false;
+    const auto value = m_impl->osdTelemetry.ReadLut();
+    details = CString(CStringA(value.c_str()));
+    return true;
 }
 
 bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
@@ -21608,6 +21784,15 @@ bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 	// reads `settling` and `gpuValid` to decide what to print; whether a
 	// sample happens to be in the window is not the caller's question.
 	return load.supported;
+}
+
+
+bool LibplaceboVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
+{
+	status = {};
+	if (!m_impl)
+		return false;
+	return m_impl->HdrStatusSnapshot(status);
 }
 
 
@@ -23194,6 +23379,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_impl->renderConfiguredScreenActive =
 					m_impl->configuredScreenTarget;
 				m_implInitialized.store(true, std::memory_order_release);
+                RefreshOsdCacheLocked();
 			}
 			// A graph stop/run may follow an HDMI re-sync while retaining this
 			// renderer instance. Emit libplacebo's resolved view at the real render-
@@ -23720,6 +23906,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 m_impl->displayRefreshRate.ObserveOutputRaster(m_videoHwnd);
 			}
 			m_impl->ApplyPendingProfileSettingsLocked();
+            RefreshOsdCacheLocked();
 			ApplyPendingShaderSelectionLocked();
             // Query the same immutable queued analysis interpretation used by
             // subtitle priming. This is metadata preparation, never a pixel scan.
@@ -24113,6 +24300,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_frameQueue.size(),
 					static_cast<unsigned long long>(m_activePictureTimeline.LookaheadPolicyGeneration()));
 			}
+			RefreshOsdCacheLocked();
 		}
 
 		if (cadenceRepeat)
@@ -24479,6 +24667,10 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 				m_impl->sourceLuminanceObserved = false;
 				m_impl->sourceLuminanceQueueGeneration = generation;
 			}
+			{
+                std::lock_guard<std::mutex> lock(m_impl->hdrStatusMutex);
+                m_impl->hdrStatusPublication.ResetForGeneration(generation);
+            }
 			m_impl->renderLoadMeter.ResetForGeneration(generation);
 			m_impl->coreRenderLoadMeter.ResetForGeneration(generation);
 			m_impl->originalPrRenderLoadMeter.ResetForGeneration(generation);

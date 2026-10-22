@@ -152,4 +152,8 @@ private:
 	RECT m_lastOsdFullRect{};
 	RECT m_lastOsdActiveRect{};
 	float m_lastOsdScale = 0.0f;
+	// Graph-owner-only values copied from the immutable application snapshot.
+	bool m_scaleStatsOsd = false;
+	float m_statsOsdSizePercent = 100.0f;
+	bool m_osdAnamorphicUnsupported = false;
 };

@@ -62,6 +62,7 @@ struct DolbyVisionTunnelFrameMetadata
     uint16_t sourceMinPq = 0;
     uint16_t sourceMaxPq = 0;
     bool hasSceneMetadata = false;
+    uint16_t sceneMinPq = 0;
     uint16_t sceneMaxPq = 0;
     uint16_t sceneAvgPq = 0;
 };

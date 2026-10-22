@@ -114,6 +114,12 @@ vprenderer.report_bt2020_to_display	true
 vprenderer.report_bt2020_to_display	false
 general.switch_refresh_rate	true
 general.switch_refresh_rate	false
+general.scale_osd	true
+general.scale_osd	false
+general.stats_osd_size_percent	50
+general.stats_osd_size_percent	100
+general.stats_osd_size_percent	132.1875
+general.stats_osd_size_percent	250
 vprenderer.viewport.<variant>.automatic_crop	true
 vprenderer.viewport.<variant>.automatic_crop	false
 vprenderer.viewport.<variant>.vertical_alignment	top

@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <atlstr.h>
 #include <ProfileChangeOverlay.h>
+#include <StatsOverlayLayout.h>
 #include <mutex>
 #include <vector>
 
@@ -27,6 +28,10 @@ struct StatsData
 	CString displayRefreshRateStatus; // warming, quarantined, or unavailable
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
+	CString dtmProfile;        // active Rendering / DTM profile, e.g., "Rich"
+	CString hdr10;             // static metadata of the rendered frame, or "DV | M min-max"
+	CString measuredHdr;       // libplacebo peak detection, e.g., "peak 612 / avg 38 nits",
+	                           // then any scene values the frame carries ("| L1 900 / 120")
 	CString pixelFormat;       // e.g., "P010"
 	CString viewport;          // e.g., "cinema (2.35:1)"
 	CString rendererName;      // selected presentation backend
@@ -216,6 +221,9 @@ public:
 	StatsOverlayWindow();
 	~StatsOverlayWindow();
 
+	// One row list is the source of truth for native drawing and bitmap height.
+	static std::vector<StatsOverlayLayout::Row> BuildStatsRows(const StatsData& stats);
+
 	// Resources for renderer-owned bitmap presentation; no overlay HWND.
 	void Destroy();
 
@@ -237,14 +245,8 @@ private:
 	bool Initialize();
 
 	// Drawing
-	void DrawStats(HDC hdc);
-	void DrawText(HDC hdc, const CString& text, int x, int y);
-	int CalculateRequiredHeight(const StatsData& stats) const;
-
-	// Formatting helpers
-	CString FormatQueueStatus();
-
-	int m_windowHeight;
+	void DrawStats(HDC hdc, const std::vector<StatsOverlayLayout::Row>& rows,
+		bool alphaRenderer);
 
 	// Fonts
 	HFONT m_font;
@@ -254,11 +256,10 @@ private:
 	std::mutex m_statsMutex;
 	StatsData m_stats;
 
-	// Bitmap constants - shared 20px native OSD typography.
-	static const int WINDOW_WIDTH = 540;     // Fit compact output-contract diagnostics
-	static const int PADDING = 10;
-	static const int LINE_HEIGHT = 20;
-	static const int ALPHA_LINE_HEIGHT = 20;
+	static constexpr int WINDOW_WIDTH = StatsOverlayLayout::Width;
+	static constexpr int PADDING = StatsOverlayLayout::Padding;
+	static constexpr int LINE_HEIGHT = StatsOverlayLayout::LineHeight;
+	static constexpr int ALPHA_LINE_HEIGHT = StatsOverlayLayout::LineHeight;
 
 	// Colors - MadVR style with 15% darker background and bright white text
 	static const COLORREF BACKGROUND_COLOR = RGB(43, 43, 43);  // 15% darker than RGB(50,50,50)

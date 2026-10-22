@@ -723,4 +723,19 @@
     <ClInclude Include="AnalysisDiagnosticHooks.h"><Filter>Header Files</Filter></ClInclude>
     <ClCompile Include="AnalysisDiagnosticTrace.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vprenderer\OutputOsdTelemetryCache.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\FrameHdrStatus.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="HdrOsdFormatting.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="StatsOverlayLayout.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="OsdInputColorInfo.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="OsdTelemetryText.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdSizing.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdRefresh.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
 </Project>

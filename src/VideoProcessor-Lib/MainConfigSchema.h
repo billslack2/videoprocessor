@@ -117,7 +117,9 @@ namespace MainConfigSchema
 			ConfigSchema::Choice("switch_refresh_rate",
 				{ "true", "false", "never", "fullscreen_only", "full_screen_only", "always" }),
 			ConfigSchema::Boolean("persist_profile_selection"),
-			ConfigSchema::Integer("profile_change_display_seconds", 0, 60)
+			ConfigSchema::Integer("profile_change_display_seconds", 0, 60),
+			ConfigSchema::Boolean("scale_osd"),
+            ConfigSchema::Number("stats_osd_size_percent", 50.0, 250.0)
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))

@@ -42,6 +42,9 @@ namespace DolbyVisionLuminancePolicy
         {
             hdr.max_pq_y = static_cast<float>(dm.sceneMaxPq) / 4095.0f;
             hdr.avg_pq_y = static_cast<float>(dm.sceneAvgPq) / 4095.0f;
+            // libplacebo has no scene minimum; it is kept for the log only.
+            status.sceneMin = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS,
+                static_cast<float>(dm.sceneMinPq) / 4095.0f);
             status.sceneMax = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, hdr.max_pq_y);
             status.sceneAvg = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, hdr.avg_pq_y);
         }
