@@ -5773,6 +5773,15 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 	else
 	{
 		m_fullscreenEntryTransitionPending = false;
+		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
+		m_fullscreenActivationPending = false;
+		m_fullscreenActivationAttempted = false;
+	}
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		!m_fullscreenActivationPending && !m_fullscreenActivationAttempted)
+	{
+		m_fullscreenActivationPending =
+			SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 5000, nullptr) != 0;
 	}
 
 	if (m_fullscreenRetargetPending)
@@ -11089,28 +11098,14 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
 		monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom,
 		rectAfter.left, rectAfter.top, rectAfter.right, rectAfter.bottom);
-	// Fullscreen is an explicit VP presentation transition. Activate its native
-	// surface now, while the transition is current, so keyboard shortcuts keep
-	// working immediately after the video expands. The later placement timer is
-	// intentionally passive; it must not steal focus after the operator has
-	// moved to another application.
-	if ((!configurationEditor || !::IsWindowVisible(configurationEditor)) &&
-		fullscreenHwnd && ::IsWindow(fullscreenHwnd))
+	// Give the fullscreen host and renderer five seconds to settle, then make
+	// one focus attempt for this fullscreen session. Display-change placement
+	// uses a different timer and cannot postpone or repeat activation.
+	if (!m_fullscreenActivationPending && !m_fullscreenActivationAttempted)
 	{
-		::ShowWindow(fullscreenHwnd, SW_RESTORE);
-		::BringWindowToTop(fullscreenHwnd);
-		const BOOL activated = ::SetForegroundWindow(fullscreenHwnd);
-		::SetFocus(fullscreenHwnd);
-		DebugLog::Log(
-			"Fullscreen presentation activation: target=%p requested=%d foreground=%p acquired=%d",
-			reinterpret_cast<void*>(fullscreenHwnd), activated ? 1 : 0,
-			reinterpret_cast<void*>(::GetForegroundWindow()),
-			::GetForegroundWindow() == fullscreenHwnd ? 1 : 0);
+		m_fullscreenActivationPending =
+			SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 5000, nullptr) != 0;
 	}
-
-	// One normal delayed focus pass gives the renderer and the shell time to
-	// finish fullscreen creation. It corrects placement only; activation above
-	// remains the one user-initiated fullscreen focus handoff.
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 }
 
@@ -11139,6 +11134,12 @@ void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 		return;
 	if (m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
 		m_rendererTargetHwnd = nullptr;
+	if (!m_rendererFullscreenCheck.GetCheck())
+	{
+		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
+		m_fullscreenActivationPending = false;
+		m_fullscreenActivationAttempted = false;
+	}
 	delete m_fullScreenVideoWindow;
 	m_fullScreenVideoWindow = nullptr;
 }
@@ -14728,6 +14729,8 @@ void CVideoProcessorDlg::OnClose()
 	m_wantToTerminate = true;
 	m_configurationRpcServer.Stop();
 	KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
+	KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
+	m_fullscreenActivationPending = false;
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(false);
 	DebugLog::Log(
@@ -15118,9 +15121,42 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 	
-	// Correct fullscreen placement after the shell/display settles. The direct
-	// fullscreen transition already activated the presentation target; this
-	// host-only timer must never take keyboard focus later.
+	if (nIDEvent == FULLSCREEN_ACTIVATION_TIMER_ID)
+	{
+		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
+		if (!m_fullscreenActivationPending)
+			return;
+		if (!m_rendererFullscreenCheck.GetCheck() || m_wantToTerminate)
+		{
+			m_fullscreenActivationPending = false;
+			m_fullscreenActivationAttempted = false;
+			return;
+		}
+		if (!m_fullScreenVideoWindow ||
+			!::IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			// A renderer restart can briefly replace the host at the deadline.
+			m_fullscreenActivationPending =
+				SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 250, nullptr) != 0;
+			return;
+		}
+		m_fullscreenActivationPending = false;
+		m_fullscreenActivationAttempted = true;
+		const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+		::ShowWindow(fullscreenHwnd, SW_RESTORE);
+		::BringWindowToTop(fullscreenHwnd);
+		const BOOL activated = ::SetForegroundWindow(fullscreenHwnd);
+		::SetFocus(fullscreenHwnd);
+		DebugLog::Log(
+			"Fullscreen delayed activation: target=%p requested=%d foreground=%p acquired=%d",
+			reinterpret_cast<void*>(fullscreenHwnd), activated ? 1 : 0,
+			reinterpret_cast<void*>(::GetForegroundWindow()),
+			::GetForegroundWindow() == fullscreenHwnd ? 1 : 0);
+		return;
+	}
+
+	// Correct fullscreen placement after the shell/display settles. This
+	// display-change timer never takes keyboard focus.
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
 	{
         DisplayWindowGeometry::PhysicalCoordinates physicalCoordinates(
