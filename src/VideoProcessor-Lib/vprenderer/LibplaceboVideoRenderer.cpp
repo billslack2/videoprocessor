@@ -13,6 +13,7 @@
 #include <DisplayMonitorInventory.h>
 #include <DisplayWindowGeometry.h>
 #include <DisplayRasterInfo.h>
+#include <vprenderer/OutputOsdTelemetryCache.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -4553,14 +4554,9 @@ struct LibplaceboVideoRenderer::Impl
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
 	std::string displayLutStatus = "Disabled";
-	// The render thread holds renderMutex through Present, so the UI's
-	// try_lock can miss every tick for a whole session. It republishes the
-	// OSD strings here, under their own lock, for the UI to fall back on.
-	mutable std::mutex osdCacheMutex;
-	bool osdCacheValid = false;
+	OutputOsdTelemetryCache osdTelemetry;
+	// Render-thread-only throttle. Lifecycle changes force a fresh publication.
 	ULONGLONG osdCacheTick = 0;
-	CString osdOutputMode;
-	CString osdDisplayLut;
 	std::string displayLutPath;
 	std::string displayLutConstrainedBaseDirectory;
 	std::string displayLutTarget = "none";
@@ -5385,6 +5381,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	bool RetireOutput()
 	{
+		osdTelemetry.Retire();
 		if (!outputResourcesRetired)
 		{
             lookaheadMeasurementWorker.Stop();
@@ -7352,6 +7349,7 @@ struct LibplaceboVideoRenderer::Impl
 	}
 	void ConfigureSwapchainOutput(const char* trigger)
 	{
+		osdTelemetry.InvalidateOutput();
 		using namespace LibplaceboOutput;
 		LogPresentationTarget(trigger);
 
@@ -7761,6 +7759,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool suppressLimited,
 		const char* trigger)
 	{
+		osdTelemetry.InvalidateOutput();
         displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
         pl_swapchain_destroy(&swapchain);
@@ -7916,16 +7915,23 @@ struct LibplaceboVideoRenderer::Impl
 		return separator == std::string::npos ? path : path.substr(separator + 1);
 	}
 
+	void SetDisplayLutStatus(std::string status)
+	{
+		displayLutStatus = std::move(status);
+		osdTelemetry.PublishLut(displayLutStatus);
+	}
+
 	void DetachDisplayLut(const std::string& status)
 	{
 		pl_lut_free(&displayLut);
 		displayLutParsed = false;
-		displayLutStatus = status;
+		SetDisplayLutStatus(status);
 	}
 
 	void LoadDisplayLut(const RendererSettings& settings,
 		bool preserveSameContractOnFailure = false)
 	{
+		osdTelemetry.InvalidateLut();
         calibrationStatusAvailable = false;
 		std::string candidatePath;
 		std::string candidateTarget = "none";
@@ -7997,8 +8003,8 @@ struct LibplaceboVideoRenderer::Impl
 				sameContract, preserveSameContractOnFailure) ==
 				LibplaceboCalibrationLut::ReloadFailureAction::RETAIN_LAST_KNOWN_GOOD)
 			{
-				displayLutStatus = std::string("Active (reload rejected: ") +
-					reason + ")";
+				SetDisplayLutStatus(std::string("Active (reload rejected: ") +
+					reason + ")");
 				DebugLog::Log(
 					"display calibration LUT reload rejected (%s): file=%s; retaining last-known-good signature=%016llX",
 					reason, candidatePath.c_str(),
@@ -8029,7 +8035,7 @@ struct LibplaceboVideoRenderer::Impl
 			displayLutPath.c_str(), displayLutTarget.c_str(),
 			displayLut->size[0], result.fileBytes,
 			static_cast<unsigned long long>(displayLut->signature));
-		displayLutStatus = "Loaded";
+		SetDisplayLutStatus("Loaded");
 	}
 
 	void MaybeReloadDisplayLut()
@@ -8061,7 +8067,7 @@ struct LibplaceboVideoRenderer::Impl
 		DebugLog::Log(
 			"display: LUT render failed; disabling %s for this renderer instance and continuing without a LUT",
 			displayLutPath.c_str());
-		displayLutStatus = "Rejected: render error";
+		SetDisplayLutStatus("Rejected: render error");
 		displayLutParsed = false;
 		pl_lut_free(&displayLut);
 	}
@@ -8084,7 +8090,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (displayLutStatus != label.str() &&
 			displayLutStatus.rfind("Active (reload rejected:", 0) != 0)
 		{
-			displayLutStatus = label.str();
+			SetDisplayLutStatus(label.str());
 			DebugLog::Log(
 				"display calibration LUT active: file=%s target=%s dimensions=%d^3 signature=%016llX stage=target/normalized/post-DTM-gamma/pre-range reference=%s/%s/%.1f range_after_lut=%s bit_depth_independent=1 tone_mapping=%s gamut_mapping=%s peak_detection=%s",
 				displayLutPath.c_str(),
@@ -9006,6 +9012,7 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		}
 
+		osdTelemetry.InvalidateOutput();
 		const bool lutChanged =
             LibplaceboCalibrationLut::InputContractKey(activeSettings.hdrToneMapTargetGamma, activeSettings.sdrLutInputGamma, activeSettings.sdrInputTransfer) !=
                 LibplaceboCalibrationLut::InputContractKey(settings.hdrToneMapTargetGamma, settings.sdrLutInputGamma, settings.sdrInputTransfer) ||
@@ -19729,12 +19736,16 @@ releaseDriftBaseRetention =
 		// them from the window/UI thread; coalesce to the next render safe point.
 		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		resizePending.store(true, std::memory_order_release);
+		osdTelemetry.InvalidateOutput();
+        // A failed/deferred resize must not retain the previous DRAWN raster.
+        displayRefreshRate.ForgetDrawnRaster();
 	}
 
 	void RenegotiateOutput()
 	{
 		startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
 		outputRenegotiationPending.store(true, std::memory_order_release);
+		osdTelemetry.InvalidateOutput();
 	}
 
 	bool IsGpuFailed()
@@ -21354,38 +21365,40 @@ uint64_t LibplaceboVideoRenderer::DroppedFrameCount() const
 
 bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 {
-	if (!m_impl)
-	{
-		details.Empty();
-		return false;
-	}
-
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (guard.owns_lock())
-		return FormatOutputModeInfoLocked(details);
-	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
-	if (!m_impl->osdCacheValid)
-		return false;
-	details = m_impl->osdOutputMode;
-	return true;
+    details.Empty();
+    if (!m_impl) return false;
+    const auto value = m_impl->osdTelemetry.ReadOutput(m_impl->renderMutex,
+        [&]() -> std::string {
+            if (!m_implInitialized.load(std::memory_order_acquire) ||
+                m_impl->outputResourcesRetired ||
+                m_impl->resizePending.load(std::memory_order_acquire) ||
+                m_impl->outputRenegotiationPending.load(std::memory_order_acquire))
+                return {};
+            CString output;
+            FormatOutputModeInfoLocked(output);
+            return CStringA(output).GetString();
+        }, [&]() { return m_impl->displayRefreshRate.OutputRaster(); });
+    details = CString(CStringA(value.c_str()));
+    // Empty means invalidated/unknown, and must clear the host's previous row.
+    return true;
 }
 
 void LibplaceboVideoRenderer::RefreshOsdCacheLocked()
 {
-	// Caller holds renderMutex. A few hundred ms of staleness is invisible
-	// on a 1 Hz OSD and keeps the string formatting off most frames.
-	const ULONGLONG now = GetTickCount64();
-	if (m_impl->osdCacheValid && now - m_impl->osdCacheTick < 250)
-		return;
-	CString outputMode;
-	FormatOutputModeInfoLocked(outputMode);
-	const CString displayLut(CStringA(m_impl->displayLutStatus.c_str()));
-	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
-	m_impl->osdOutputMode = outputMode;
-	m_impl->osdDisplayLut = displayLut;
-	m_impl->osdCacheTick = now;
-	m_impl->osdCacheValid = true;
+    // Capture before checking pending flags: a concurrent UI invalidation must
+    // not let this old render state adopt the new publication generation.
+    const auto generation = m_impl->osdTelemetry.OutputGeneration();
+    if (!m_implInitialized.load(std::memory_order_acquire) ||
+        m_impl->outputResourcesRetired ||
+        m_impl->resizePending.load(std::memory_order_acquire) ||
+        m_impl->outputRenegotiationPending.load(std::memory_order_acquire)) return;
+    const ULONGLONG now = GetTickCount64();
+    if (m_impl->osdTelemetry.HasOutput() && now - m_impl->osdCacheTick < 250)
+        return;
+    CString outputMode;
+    FormatOutputModeInfoLocked(outputMode);
+    m_impl->osdTelemetry.PublishOutput(generation, CStringA(outputMode).GetString());
+    m_impl->osdCacheTick = now;
 }
 
 bool LibplaceboVideoRenderer::FormatOutputModeInfoLocked(CString& details) const
@@ -21539,9 +21552,8 @@ bool LibplaceboVideoRenderer::FormatOutputModeInfoLocked(CString& details) const
 				m_impl->lastSdrGammaDecision.actualTarget));
 		value += gamma;
 	}
-    // Cache-only on the OSD thread. Read-back is refreshed at initialization
-    // and deferred display notifications; geometry comes from successful resizes.
-    value += DisplayRasterInfo::FormatDetails(m_impl->displayRefreshRate.OutputRaster()).c_str();
+    // Raster annotations are assembled from the current small snapshot in the
+    // getter, never baked into the cached output contract string.
 
 	details = CString(value);
 	return true;
@@ -21684,24 +21696,11 @@ bool LibplaceboVideoRenderer::RequestRenderedOutputCapture(CString& status)
 
 bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 {
-	if (!m_impl)
-	{
-		details.Empty();
-		return false;
-	}
-
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (guard.owns_lock())
-	{
-		details = CString(CStringA(m_impl->displayLutStatus.c_str()));
-		return true;
-	}
-	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
-	if (!m_impl->osdCacheValid)
-		return false;
-	details = m_impl->osdDisplayLut;
-	return true;
+    details.Empty();
+    if (!m_impl) return false;
+    const auto value = m_impl->osdTelemetry.ReadLut();
+    details = CString(CStringA(value.c_str()));
+    return true;
 }
 
 bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
@@ -23360,6 +23359,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_impl->renderConfiguredScreenActive =
 					m_impl->configuredScreenTarget;
 				m_implInitialized.store(true, std::memory_order_release);
+                RefreshOsdCacheLocked();
 			}
 			// A graph stop/run may follow an HDMI re-sync while retaining this
 			// renderer instance. Emit libplacebo's resolved view at the real render-
@@ -23886,6 +23886,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 m_impl->displayRefreshRate.ObserveOutputRaster(m_videoHwnd);
 			}
 			m_impl->ApplyPendingProfileSettingsLocked();
+            RefreshOsdCacheLocked();
 			ApplyPendingShaderSelectionLocked();
             // Query the same immutable queued analysis interpretation used by
             // subtitle priming. This is metadata preparation, never a pixel scan.
