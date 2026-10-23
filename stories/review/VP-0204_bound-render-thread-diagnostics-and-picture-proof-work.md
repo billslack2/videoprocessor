@@ -2,39 +2,38 @@
 
 ## Status
 
-In Progress
+Review
 
-Reopened 2026-10-22 for the user's authorized small fullscreen-focus readiness
-addition to existing PR #192. The user requested building and deploying once
-this addition is ready. Implementation continues on the same branch/worktree
-from clean source `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8`; the root session
-re-fetched the current/default beta and confirmed `v1.4.02-beta` remains at
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. No new story ID is needed for this
-explicitly requested addition. Previous completed work and measurements remain
-recorded below; new build/test and deployment evidence are pending.
-
-Implemented and pushed as source commit
-`3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8` on
+Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) remains
+unmerged at feature head `d0dbd5a27142d193e6e1c9182a05f32a67948c24` on
 `codex/render-thread-jitter-20261022` in
-`E:\codex\videoprocessor\render-thread-jitter-20261022`.
-Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) targets
-`v1.4.02-beta` from verified baseline
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`: two implementation commits, 31 files.
-LUT Apply-only PR #191 and VP-0203 remain separate and untouched.
+`E:\codex\videoprocessor\render-thread-jitter-20261022`. It targets freshly
+verified current/default beta `v1.4.02-beta` at
+`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. LUT Apply-only PR #191 and VP-0203
+remain separate and untouched. VP-0111 remains Backlog.
 
-The final committed-source x64 Release solution build passed with zero errors
-and zero warnings. After the measurement-driven checkpoint correction, final
-native validation passed 1,023/1,023 tests; the isolated measurement DLL also
-passed. The unchanged current-beta Windows Config suite has 108
-registered tests: 104 passed and four unrelated failures were confirmed on clean
-baseline `fcc33fc`. The two extra Config tests in LUT PR #191 are excluded from
-this branch; this result is not a 110-test run.
+The authorized local deployment uses clean, pushed integration commit
+`c3da9ecd1e20518835a22399e39bec6d79a1b20d` on
+`codex/render-jitter-deploy-20261022` in
+`E:\codex\videoprocessor\render-jitter-deploy-20261022`. It preserves the
+installed `6e53a6e735ec0b896e0aff28cf243af3a0e02a42` startup/subtitle fixes while
+adding PR #192. The seven-file difference from the PR head was verified as the
+retained installed delta; this integration build is not the unmodified PR tree.
 
-The earlier diagnostics/proof implementation passed its recorded review gates.
-Fullscreen readiness implementation and independent review are now active.
-Deployment is authorized after successful x64 Release validation; no deployment,
-player restart, configuration change, or live-input timing acceptance has occurred
-in this follow-up yet.
+The full committed-source x64 Release solution build passed with zero errors
+and 69 reported warnings. Native validation passed 1,225/1,225 tests, including
+ten new fullscreen session tests; two focused Config checks passed. The prior
+unchanged current-beta full Config run remains 104/108 with all four failures
+independently reproduced on clean baseline. That historical full-suite result
+is not a new full Config run on the deployment source.
+
+Deployment and restart completed 2026-10-22 with binary hash verification,
+backup and unchanged active configuration. The installed host/renderer report
+clean `c3da9ecd` identities. A real fullscreen startup revealed generation 1 at
+23:13:35 and acquired foreground and keyboard focus at 23:13:37. PR review and
+broader user field validation remain open. The observed logger contention loss
+requires review before merge. No controlled live before/after jitter improvement
+is established.
 
 ## Fullscreen readiness addition (2026-10-22)
 
@@ -44,26 +43,104 @@ focus attempt with `requested=0 acquired=0`. Source review identifies a separate
 lifecycle gap: the one-shot five-second activation opportunity can arrive before
 the current fullscreen presentation has successfully revealed.
 
-Implement a small pure session helper binding the current revealed fullscreen
-HWND and renderer generation. Keep the original five-second deadline measured
-from fullscreen entry. If readiness arrives later, its event releases the one
-activation opportunity; use the existing readiness/timer events rather than a
-polling loop. Consume the opportunity once, including when Windows denies it.
-Suppress windowed, superseded-generation and shutdown targets. Preserve the
-existing visible-Config and foreground activation policy, with truthful result
-logging. General renderer-restart focus reclamation remains outside this change.
+Implemented a pure GUI-owned session helper binding the current revealed
+fullscreen HWND and renderer generation. It retains the original five-second
+deadline from fullscreen entry. A later validated reveal schedules the remaining
+one-shot immediately against that deadline; there is no 250 ms retry loop. The
+opportunity is consumed before the native call, including on Windows denial.
+Windowed, superseded-generation and shutdown targets cannot activate. The
+existing one-shot native foreground API behavior remains; general renderer-
+restart focus reclamation and new configurable shortcut policy are outside it.
 
-Focused deterministic tests must cover readiness before/after the deadline,
-stale HWND/generation, repeated events, one denied attempt, windowed mode and
-shutdown. Independently review GUI integration and run the appropriate full
-Release/native validation before the authorized paired host/renderer deployment.
-Back up and hash-verify the versioned pair and preserve active configuration.
-Live fullscreen activation observations remain a separate acceptance result.
+Ten deterministic tests cover readiness before/after the deadline, stale timers,
+HWND/generation changes, repeated events, denial, windowed mode and shutdown.
+Independent GUI review found no blocker: reveal scheduling follows shield release
+and retarget completion; same-session renderer reconstruction retains the attempt
+state, while true exit/shutdown cancels it. Readiness guards avoid transient flags
+that could clear without another reveal and strand the opportunity. These tests
+establish session logic; the recorded live startup separately establishes one
+successful Windows foreground grant.
 
 [VP-0111](../backlog/VP-0111_configurable-foreground-shortcuts-and-focus-restoration.md)
 remains Backlog for the broader configurable shortcut/focus-return behavior.
 [VP-0118](../done/VP-0118_make-alt-enter-enter-fullscreen-from-inactive-startup-request.md)
 remains Done for fullscreen toggle state and Right Alt normalization.
+
+## Authorized deployment and live fullscreen verification
+
+Final integration evidence is under
+`E:\codex\videoprocessor\render-jitter-deploy-20261022\artifacts\vp-0204`:
+`validation-summary.json`, `deployment-receipt.json`,
+`deployment-transcript.txt`, `release-deployment.log`, and
+`test-results/deployment-native.trx`. The receipt pins both feature and deployed
+source, build mode, process arguments, previous/new PID, backup and hashes.
+
+- Full solution x64 Release: passed, 0 errors and 69 warnings; warning provenance
+  has not been independently classified as baseline-only.
+- Native deployment suite: 1,225 executed, 1,225 passed, zero failed.
+- Focused Config checks: `warm reveal grants foreground permission` and
+  `normal window architecture has no lease polling`, both passed.
+- Backup: `C:\Videoprocessor\vp\backup-vp0204-c3da9ecd-20261022`, containing the
+  three binaries/sidecars plus configuration, state and log evidence.
+- Old PID 42236 closed gracefully without forced termination; PID 5800 started
+  with the same elevated launch intent, VP Renderer (Beta), fullscreen true,
+  windowed-fullscreen false, noui false and start-minimized true. The existing
+  Config process (PID 73936) remained alive.
+- Active `VideoProcessor.cfg` SHA-256 before and after is identical:
+  `DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3`.
+
+The three deployed binaries match the built Release artifacts:
+
+| Deployed file | SHA-256 |
+| --- | --- |
+| `VideoProcessor.exe` | `4B6C15D7727096412C366A95A6D9EC273C6678138B02149952A5E99C404010DF` |
+| `vprenderer/VideoProcessorVPRenderer.dll` | `1C1163B4075BE8B3F8EB8BE9A57362BE349499EB62A0962E2A28DE25D0D01BB5` |
+| `vprenderer-beta/VideoProcessorVPRendererBeta.dll` | `1272C7B16D5800A20DA3FE2148AC124477CB3C19CEE6F5AA50C3E49102F69DF8` |
+
+`C:\Videoprocessor\vp\logs\vp.log` records clean host/renderer build identities
+at 23:13:25/23:13:32. At 23:13:35, generation 1 revealed target
+`0000000010C7009C` with `fullscreen_intent=1` and swapchain-submitted evidence.
+At 23:13:37 the matching delayed activation logged `requested=1 acquired=1`,
+foreground and keyboard focus both equal to that target, and `overdue_ms=15`.
+This confirms one real activation after reveal; it is not a guarantee that
+Windows grants every future focus request or evidence of reduced playback jitter.
+
+## Passive post-deployment observation and Review follow-up
+
+Read-only aggregation of the installed `c3da9ecd` session covers 2026-10-22
+23:13:50-23:15:50 local time, with 60 observed performance windows / 120.062
+reported seconds / 7,197 submissions. Artifacts beside the deployment receipt:
+`live-postdeploy-summary.json`, `live-postdeploy-analysis.txt`,
+`live-postdeploy-window.log`, and `live-postdeploy-aggregate.py`.
+
+- Active work wall mean/peak: 4.173/8.428 ms; preparation 3.736/5.785 ms;
+  render 0.295/3.486 ms; swap 6.678/7.413 ms, including intentional pacing.
+  These are wall durations, not render-thread CPU execution times.
+- Zero reported deadline/source/display-period overruns, renderer/capacity/
+  cadence drops, cadence repeats or backlog-recovery events. Worker submitted/
+  completed 7,197/7,197, with zero failed/cancelled/contended/full and queue
+  snapshot maximum zero. Preview completed 7,196 of 7,197 observed attempts.
+- Exact worker measurement imports: 6,941 with 16 rejects; render-side global,
+  picture and darkness each report 5,636 hits / 5,646 requests / 10 scans.
+  Worker scan work still consumes resources outside these render-side counters.
+- Process CPU mean was 3.718% of the 16-logical-processor machine, with maximum
+  reported sample 4.880%. This is whole-process, whole-machine-normalized CPU.
+- NVIDIA telemetry reports zero actual driver calls in this SDR session;
+  real-driver slow-call handling has not been validated by this observation.
+
+**Review follow-up before merge: logger diagnostic loss.** During the same
+120-second reporting interval, the logger accepted/processed 3,163 records and
+dropped 459 on producer-lock contention: 12.673% of attempted records, with zero
+queue-full drops and zero truncation. The intentional nonblocking admission
+protects producers but demonstrably loses diagnostic evidence in normal playback.
+Review that retention/contention tradeoff before merging PR #192; do not describe
+the transport as lossless or infer completeness from an empty queue. Mean flush
+was 48.975 microseconds and lifetime peak was 274 microseconds in these reports.
+
+These are observed-record aggregates; missing diagnostics are not reconstructed.
+The input was not a controlled, content-matched replay against the older build.
+This interval establishes ongoing playback and active counters, not a causal
+improvement in jitter or the absence of every unlogged event.
 
 ## Implemented behavior and independent review
 
@@ -151,13 +228,13 @@ Artifacts are under
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Final committed-source full solution x64 Release build | Source `3f5dd8a1`; passed, 0 errors, 0 warnings | `measurements/release-3f5dd8a1.log` |
-| Final native regression suite after direct-sampler correction | 1,023/1,023 passed | `measurements/results/dense-fix-native.trx`, `measurements/dense-fix-native.log` |
+| Pre-focus measurement-source full solution x64 Release build | Source `3f5dd8a1`; passed, 0 errors, 0 warnings | `measurements/release-3f5dd8a1.log` |
+| Pre-focus native regression suite after direct-sampler correction | 1,023/1,023 passed | `measurements/results/dense-fix-native.trx`, `measurements/dense-fix-native.log` |
 | Initial focused native suite | 1,021/1,021 passed | `native/focused.trx`, `native-tests.log` |
 | Isolated final measurement DLL | Passed | `measurements/analysis-final-run.log` |
 | Initial paired 4K fixture test | 1/1 passed; all evidence parity checks passed | `native/paired-4k.trx`, `paired-4k.log`, `paired-4k-summary.json` |
 | Prior Windows Qt Config suite; UI unchanged | 104 passed, 4 failed out of 108 | `config-tests.log` |
-| Final source/validation manifest | Exact source `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8`, native 1,023/1,023 and isolated 1/1 | `validation-summary.json` |
+| Historical pre-focus source/validation manifest | Exact source `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8`, native 1,023/1,023 and isolated 1/1; final integration manifest is above | `validation-summary.json` |
 | Additional UI baseline comparison | Both cases fail identically on clean baseline and feature; each exit 1 | `config-baseline-comparison.log`, `config-baseline-comparison-results.json` |
 
 The warmed paired test covers 15 synthetic 3840x2160 fixtures: P010, P210 and
@@ -191,7 +268,8 @@ Diagnostic interpretation and ownership are documented in source
 `docs/VP-0204_RENDER_THREAD_WORK.md`. `VP async log telemetry`,
 `NVIDIA BT.2020 worker`, `Alpha optional proof budget`, and
 `VP source measurement interval` provide low-rate evidence for later controlled
-runtime comparison. Deployment and active configuration remain untouched.
+runtime comparison. Those pre-focus measurements preceded the separately recorded
+authorized deployment above; active configuration remains unchanged.
 
 ## Objective and scope
 
@@ -226,10 +304,10 @@ the following four findings together in one separate reviewable PR:
   owns shader preparation. Shader compilation architecture, screenshot readback,
   new GPU-context owners, capture transport, and broad renderer extraction are
   outside this task.
-- The user authorized build and deployment after the fullscreen addition is
-  validated. Record paired Release build/hash/backup and restart evidence before
-  claiming deployment; active configuration/LUT edits are outside this addition.
-  Automated tests alone do not establish live playback timing acceptance.
+- The user authorized build and deployment after the fullscreen addition was
+  validated. Paired Release build/hash/backup and restart evidence is recorded
+  above; active configuration/LUT edits remain outside this addition. Automated
+  tests alone do not establish live playback timing acceptance.
 
 ## Readiness and source identity
 
@@ -317,3 +395,12 @@ rows, 202 roots and 21 children, with registry Last VP-0204 / Next VP-0205 / cou
 223. No duplicate, missing, orphan, child-order or state discrepancy was found.
 Known VP-0070/VP-0088/VP-0168 formatting exceptions remain untouched. VP-0204's
 file, exact In Progress status and index row move together; VP-0203 is unchanged.
+
+
+Post-deployment Review-transition audit after fetching origin/main
+`1492c875b25067f7fc9e49ee95a9e12a4e7bb4da` found 223 canonical files/index rows,
+202 roots and 21 children with registry Last VP-0204 / Next VP-0205 / count 223.
+No duplicate, missing, orphan, child-order or state discrepancy was found.
+Known VP-0070/VP-0088/VP-0168 status formatting remains untouched. VP-0204's
+file, exact Review status and index row move together; VP-0203 and the broader
+Backlog VP-0111 remain unchanged. PR #192 remains draft and unmerged.
