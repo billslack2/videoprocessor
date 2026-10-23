@@ -1,0 +1,13 @@
+  Passed LipApplyStillRequiresCurrentCoverageIdentityAndPolicy [214 ms]
+paused native backing valid=1 reason=current-finite-rounded-backing-lip native=383:1776 composed=382:1778 cleanup=1492,1746-2348,1776
+  Passed OptionalNativePausedBackingCaptureCleansGlyphFreePictureIntrusion [294 ms]
+  Passed CurrentBackingUsesNativePixelsInsideBothWiderAndNarrowerDisplayWindows [843 ms]
+  Passed LipApplyCannotReplaceExistingCleanupOrLeaveEitherCurrentPicture [15 ms]
+  Passed MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers [39 s]
+  Passed ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars [33 s]
+  Passed PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint [17 s]
+  Passed FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer [31 s]
+Test Run Successful.
+Total tests: 1002
+     Passed: 1002
+ Total time: 2.8427 Minutes

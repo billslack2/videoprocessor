@@ -1,0 +1,5 @@
+2026-10-23 17:29:58 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/31c5dfa92cb4474f3a948caa24d9edc144ba626e branch=codex/subtitle-backing-binding-20261023 dirty=0 build=v1.4.02-beta-31c5dfa
+2026-10-23 17:29:58 | Optional VP Renderer plugin loaded: API=28 path=C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll
+2026-10-23 17:29:58 | Optional VP Renderer plugin loaded: API=28 path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 17:30:06 | Configuration runtime settings published: renderer=VP Renderer (Beta) renderer_source=0 saved_renderer=VP Renderer (Beta) session_renderer=(none) accepted_renderer=(none) alpha_selected=1 conversion=1 directshow_conversion=1 vp_conversion=0 active_conversion=0 frame_offset=1 metadata=1 directshow=1 presentation_retained=1 video_only=0 fullscreen=1
+2026-10-23 17:30:06 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/31c5dfa92cb4474f3a948caa24d9edc144ba626e branch=codex/subtitle-backing-binding-20261023 dirty=0 build=v1.4.02-beta-31c5dfa

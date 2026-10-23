@@ -1,0 +1,20 @@
+{
+  "path": "E:\\codex\\diagnostics\\vp0207-paused-backing-20261023\\paused-native.bin",
+  "sha256": "9047EF0C5C2B0BFC938F0C530DAF2D7DE22DF660D96D2A96A0B42A25B1C1DAB3",
+  "bytes": 33177600,
+  "independentlyMeasuredBacking": [
+    1492,
+    1746,
+    2348,
+    1776
+  ],
+  "physicalPicture": [
+    383,
+    1776
+  ],
+  "displayedPicture": [
+    382,
+    1778
+  ],
+  "pixelsCommitted": false
+}
