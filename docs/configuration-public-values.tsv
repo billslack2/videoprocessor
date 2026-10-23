@@ -82,7 +82,9 @@ vprenderer.scaling.dithering	on
 vprenderer.dithering	off
 vprenderer.scaling.dithering	off
 vprenderer.display_bit_depth	AUTO
+vprenderer.display_bit_depth	output
 vprenderer.scaling.display_bit_depth	AUTO
+vprenderer.scaling.display_bit_depth	output
 vprenderer.display_bit_depth	8
 vprenderer.scaling.display_bit_depth	8
 vprenderer.display_bit_depth	10

@@ -129,8 +129,8 @@ QString RenderingBuiltInDefault(const QString& key)
     if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");
     if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
     if (key == QStringLiteral("sdr_black_nits")) return QString::number(HdrTargetLuminance::DefaultBlack);
-    if (key == QStringLiteral("contrast_recovery")) return QStringLiteral("Auto");
-    if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
+    if (const char* preset = QualityProfileMigration::PresetValue("high", key.toStdString()))
+        return QString::fromLatin1(preset);
     if (key == QStringLiteral("report_bt2020_to_display") ||
         key == QStringLiteral("output_diagnostics") ||
         key == QStringLiteral("diagnostic_disable_shader_cache") ||
@@ -1052,8 +1052,10 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateOutputDisplayProfiles();
-    migrateSeparatedRendererProfiles();
+    // Resolve legacy preset-dependent Auto before the editor separates fields
+    // from their owning Rendering profile and its Quality value.
     migrateProcessingToScaling();
+    migrateSeparatedRendererProfiles();
     migrateUnifiedColorOutputProfiles();
     migrateCalibrationProfiles();
     migrateViewportZoomProfiles();
@@ -1693,8 +1695,8 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateOutputDisplayProfiles();
-	migrateSeparatedRendererProfiles();
 	migrateProcessingToScaling();
+	migrateSeparatedRendererProfiles();
 	migrateUnifiedColorOutputProfiles();
 	migrateCalibrationProfiles();
 	migrateViewportZoomProfiles();
@@ -1907,9 +1909,9 @@ void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QStrin
     }
     else if (root == QStringLiteral("vprenderer.scaling"))
     {
-        // Moved from the Rendering seed with their settings.
-        set("display_bit_depth", "10");
-        set("dithering", "auto");
+        for (const auto& key : QualityProfileMigration::ScalingPresetKeys())
+            set(key.c_str(), QualityProfileMigration::PresetValue("high", key));
+        set("display_bit_depth", "output");
     }
     else if (root == QStringLiteral("vprenderer.color"))
     {
@@ -6786,12 +6788,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         field.key == QStringLiteral("diagnostic_disable_shader_cache") ||
                         field.widget->property("requiresExplicitValue").toBool() ||
                         field.widget->property("derivedSetting").toBool() ||
-                        !value(section, field.key).trimmed().isEmpty())
+                        (!value(section, field.key).trimmed().isEmpty() &&
+                         !(value(section, field.key).trimmed().compare("auto", Qt::CaseInsensitive) == 0 &&
+                           QualityProfileMigration::PresetValue("high", field.key.toStdString()))))
                         continue;
                     // Inherited at the last save: keep what it runs now.
                     const QString frozen = saved && saved != savedDefault &&
                         settingOf(*saved, field.key).isEmpty() ? inheritedValue(field.key) : QString();
-                    const QString written = frozen.isEmpty() ? unsetValue(field) : frozen;
+                    const char* preset = QualityProfileMigration::PresetValue("high", field.key.toStdString());
+                    const QString written = frozen.isEmpty() ||
+                        (preset && frozen.compare("auto", Qt::CaseInsensitive) == 0) ? unsetValue(field) : frozen;
                     if (!written.isEmpty()) writes.push_back({ section, field.key, written, !frozen.isEmpty() });
                 }
             }
@@ -6948,7 +6954,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QString::fromUtf8(descriptions[section]), false);
             // The peak-detection mode sits with the settings it governs.
             if (section == peakSection) {
-                peakDetection = addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("high_quality"), QStringLiteral("on"), QStringLiteral("off") });
+                peakDetection = addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("high_quality"), QStringLiteral("on"), QStringLiteral("off") });
                 peakDetection->setItemText(peakDetection->findData(QStringLiteral("on")),
                     QStringLiteral("Standard"));
                 addRendererAutoStatus(QStringLiteral("peak_detection"), peakDetection);
@@ -7239,7 +7245,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
 			QStringLiteral("on"), QStringLiteral("off") });
 		antiRinging->setToolTip(QStringLiteral(
-			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto is On."));
+			"Optional sigmoidization before upscaling. It reduces ringing artifacts; the default is On."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
         addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
         form->addRow(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
@@ -7280,7 +7286,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         dithering->setItemText(15, QStringLiteral("Error diffusion: Sierra 3"));
         dithering->setItemText(16, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
-            "Auto is Blue noise, libplacebo's default and "
+            "Blue noise is libplacebo's default and "
             "recommended mode. Ordered modes and White noise are alternate "
             "libplacebo methods. Error-diffusion modes require compute shaders "
             "and are substantially more expensive. The display-calibration LUT "
@@ -7288,14 +7294,20 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Dither target depth"),
             QStringLiteral("display_bit_depth"),
-            { QStringLiteral("AUTO"), QStringLiteral("10"), QStringLiteral("8") });
+            { QStringLiteral("output"), QStringLiteral("10"), QStringLiteral("8") });
+        displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("output")), QStringLiteral("Match output format"));
         displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("10")), QStringLiteral("10-bit"));
         displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("8")), QStringLiteral("8-bit"));
         displayBitDepth->setToolTip(QStringLiteral(
             "Dithering precision, clamped to the active surface depth. This does not configure GPU/HDMI bit depth or detect panel precision."));
         addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
-
-
+        // Legacy Auto remains accepted in configuration files and is migrated
+        // into an explicit preset choice. New edits choose the actual algorithm.
+        for (auto* choice : { upscaler, downscaler, antiRinging, debanding, dithering })
+        {
+            const int automatic = choice->findData(QStringLiteral("AUTO"), Qt::UserRole, Qt::MatchFixedString);
+            if (automatic >= 0) choice->removeItem(automatic);
+        }
     }
 
     else if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
@@ -7997,7 +8009,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             if (sectionPrefix == QStringLiteral("vprenderer"))
                 return RenderingBuiltInDefault(key);
-            if(sectionPrefix==QStringLiteral("vprenderer.scaling")&&key==QStringLiteral("chroma_upscaler"))return QStringLiteral("bicubic");
+            if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
+            {
+                if (key == QStringLiteral("chroma_upscaler")) return QStringLiteral("bicubic");
+                if (const char* preset = QualityProfileMigration::PresetValue("high", key.toStdString()))
+                    return QString::fromLatin1(preset);
+            }
             if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
                 if(key=="smooth_motion")return "off";
                 if(key=="frame_mixer")return "oversample";
@@ -8061,9 +8078,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (normalized == QStringLiteral("none") || normalized == QStringLiteral("ewa_lanczos"))
 				{
                     // These retired spellings resolve to the quality preset.
-                    // Keep Auto explicit instead of inheriting a parent's named filter.
-                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), "AUTO");
-                    raw = QStringLiteral("AUTO");
+                    // Keep the default explicit instead of inheriting a parent's named filter.
+                    raw = QString::fromLatin1(QualityProfileMigration::PresetValue("high", "downscaler"));
+                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), raw.toStdString());
 					markDirty();
 				}
 			}
@@ -8608,7 +8625,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             for (const RenderingFreezeWrite& write : plan())
                 if (write.section.compare(section, Qt::CaseInsensitive) == 0)
-                    settings.emplace_back(write.key, write.value);
+                {
+                    const auto existing = std::find_if(settings.begin(), settings.end(),
+                        [&](const auto& setting) { return setting.first == write.key; });
+                    if (existing != settings.end()) existing->second = write.value;
+                    else settings.emplace_back(write.key, write.value);
+                }
             return settings;
         };
         // His rename rules: names unique, and encoded in 64 characters or fewer.
