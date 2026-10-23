@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0206`
-- Next root story number: `VP-0207`
-- Total indexed items: 225
+- Last assigned root story: `VP-0207`
+- Next root story number: `VP-0208`
+- Total indexed items: 226
 
 ## Story locations
 
@@ -266,6 +266,7 @@ they must not contain requirements that are absent from this file.
 | VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |
 | VP-0205 | Review | Preserve useful lookahead with prepared proof and adaptive budgets |
 | VP-0206 | Done | Release retained scope for asymmetric full height picture |
+| VP-0207 | In Progress | Overlay fit stability and subtitle backing boundaries |
 
 ## Codex story workflow
 
