@@ -9,6 +9,7 @@
 #pragma once
 
 #include "DebugLogRetention.h"
+#include "DebugLogAsync.h"
 
 #include <fstream>
 #include <sstream>
@@ -17,10 +18,9 @@
 #include <mutex>
 #include <Windows.h>
 #include <string>
-#include <queue>
 #include <thread>
-#include <condition_variable>
 #include <atomic>
+#include <cstdio>
 
 
 /**
@@ -50,22 +50,26 @@ public:
 	template<typename... Args>
 	static void Log(const char* format, Args... args)
 	{
-			
-		if (true) {  // Changed from false to enable logging during HDMI resync debugging
-			// Format message immediately (fast operation)
-			char buffer[4096];
-			snprintf(buffer, sizeof(buffer), format, args...);
-			ExternalSink sink = GetExternalSink().load(std::memory_order_acquire);
-			if (sink)
-			{
-				sink(buffer);
-				return;
-			}
-
-			// Queue for background writing (non-blocking)
-			QueueMessage(buffer);
+		ExternalSink sink = GetExternalSink().load(std::memory_order_acquire);
+		if (!sink && !GetLoggingEnabled().load(std::memory_order_acquire))
+			return;
+		// Preserve printf and plugin callback lifetimes: pointer arguments cannot
+		// be deferred safely. Formatted output is capped at 4096 bytes; timestamp
+		// formatting and every file operation belong to the writer thread.
+		char buffer[4096];
+		const int length = std::snprintf(buffer, sizeof(buffer), format, args...);
+		buffer[sizeof(buffer) - 1] = '\0';
+		if (length < 0) buffer[0] = '\0';
+		if (sink)
+		{
+			sink(buffer);
+			return;
 		}
+		QueueMessage(buffer, length >= static_cast<int>(sizeof(buffer)));
 	}
+
+	using Metrics = DebugLogAsync::Metrics;
+	static Metrics GetMetrics() { return GetTransport().Snapshot(); }
 
 	/**
 	 * Get the full path to the log file for reference
@@ -101,9 +105,13 @@ public:
 			"VP log retention: using default 10 total files",
 		bool enhancedLogging = false)
 	{
-		std::lock_guard<std::mutex> lock(GetQueueMutex());
+		std::lock_guard<std::mutex> lock(GetLifecycleMutex());
 		if (!GetWriterThread().joinable())
 		{
+			GetLoggingEnabled().store(false, std::memory_order_release);
+			// Allocate/initialize bounded storage during startup, before producers
+			// can observe logging enabled and before any session file I/O.
+			auto& transport = GetTransport();
 			GetEnhancedLoggingEnabled().store(
 				enhancedLogging, std::memory_order_release);
 			std::vector<std::string> initializationDiagnostics;
@@ -139,8 +147,6 @@ public:
 				GetLoggingEnabled().store(false, std::memory_order_release);
 				return;
 			}
-			GetLoggingEnabled().store(true, std::memory_order_release);
-
 			std::ofstream file(logPath, std::ios::app);
 			if (file.is_open())
 			{
@@ -162,16 +168,19 @@ public:
 				file.close();
 			}
 			else
-				GetLoggingEnabled().store(false, std::memory_order_release);
+				return;
 
-			// Clear any pending messages from previous run
-			std::queue<LogMessage> emptyQueue;
-			std::swap(GetMessageQueue(), emptyQueue);
-
-			if (GetLoggingEnabled().load(std::memory_order_acquire))
+			transport.Open();
+			GetLoggingEnabled().store(true, std::memory_order_release);
+			try
 			{
-				GetShutdownFlag() = false;
 				GetWriterThread() = std::thread(WriterThreadProc);
+			}
+			catch (...)
+			{
+				GetLoggingEnabled().store(false, std::memory_order_release);
+				transport.Close();
+				throw;
 			}
 		}
 	}
@@ -181,16 +190,13 @@ public:
 	 */
 	static void Shutdown()
 	{
-		{
-			std::lock_guard<std::mutex> lock(GetQueueMutex());
-			GetShutdownFlag() = true;
-		}
-		GetConditionVariable().notify_one();
-
-		if (GetWriterThread().joinable())
-		{
-			GetWriterThread().join();
-		}
+		// Lifecycle callers may wait for disk completion. Producers never take
+		// this mutex, and closing admission guarantees every accepted record is
+		// drained before the writer exits.
+		std::lock_guard<std::mutex> lock(GetLifecycleMutex());
+		GetLoggingEnabled().store(false, std::memory_order_release);
+		GetTransport().Close();
+		if (GetWriterThread().joinable()) GetWriterThread().join();
 	}
 
 	// Extra telemetry artifacts are intentionally opt-in. Normal logging writes
@@ -201,149 +207,75 @@ public:
 	}
 
 private:
-	struct LogMessage
+	using Transport = DebugLogAsync::Transport<>;
+
+	static void QueueMessage(const char* message, bool truncated)
 	{
-		std::string message;
-		std::time_t timestamp;
-		
-		LogMessage(const std::string& msg) : message(msg), timestamp(std::time(nullptr)) {}
-	};
-
-	// Batch configuration
-	static constexpr size_t BATCH_SIZE = 50;              // Flush after 50 messages
-	static constexpr int FLUSH_INTERVAL_MS = 100;         // Or every 100ms, whichever comes first
-
-	static void QueueMessage(const std::string& message)
-	{
-		if (!GetLoggingEnabled().load(std::memory_order_acquire))
-			return;
-
-		{
-			std::lock_guard<std::mutex> lock(GetQueueMutex());
-			
-			// Prevent queue from growing too large (drop oldest messages)
-			if (GetMessageQueue().size() >= 1000)
-			{
-				GetMessageQueue().pop();
-			}
-			
-			GetMessageQueue().emplace(message);
-		}
-		GetConditionVariable().notify_one();
+		if (!GetLoggingEnabled().load(std::memory_order_acquire)) return;
+		GetTransport().TryPublish(message, std::time(nullptr), truncated);
 	}
+
+	struct FileSink
+	{
+		std::ofstream& file;
+		void Write(const Transport::Record& record)
+		{
+			struct tm local{};
+			localtime_s(&local, &record.timestamp);
+			file << std::put_time(&local, "%Y-%m-%d %H:%M:%S") <<
+				" | " << record.message << "\n";
+		}
+		void Flush() { file.flush(); }
+		void Report(const Metrics& metrics)
+		{
+			Transport::Record record;
+			record.timestamp = std::time(nullptr);
+			std::snprintf(record.message, sizeof(record.message),
+				"VP async log telemetry: enqueued=%llu processed=%llu dropped_full=%llu dropped_contended=%llu truncated=%llu queue=%llu high_water=%llu capacity=1000 flushes=%llu flush_total_us=%llu flush_peak_us=%llu overflow=drop_oldest contention=drop_newest",
+				static_cast<unsigned long long>(metrics.enqueued),
+				static_cast<unsigned long long>(metrics.processed),
+				static_cast<unsigned long long>(metrics.droppedFull),
+				static_cast<unsigned long long>(metrics.producerContentions),
+				static_cast<unsigned long long>(metrics.truncated),
+				static_cast<unsigned long long>(metrics.queueDepth),
+				static_cast<unsigned long long>(metrics.highWater),
+				static_cast<unsigned long long>(metrics.flushCount),
+				static_cast<unsigned long long>(metrics.flushTotalUs),
+				static_cast<unsigned long long>(metrics.flushPeakUs));
+			Write(record);
+		}
+	};
 
 	static void WriterThreadProc()
 	{
-		std::string logPath = GetLogFilePath();
-		
-		// Open file once for the entire session (append mode after initialization truncate)
-		std::ofstream file(logPath, std::ios::app);
+		std::ofstream file(GetLogFilePath(), std::ios::app);
 		if (!file.is_open())
 		{
-			// Can't write to log, just return
+			GetLoggingEnabled().store(false, std::memory_order_release);
+			GetTransport().Close();
 			return;
 		}
-
-		auto lastFlushTime = std::chrono::steady_clock::now();
-		size_t messagesSinceFlush = 0;
-
-		while (true)
-		{
-			std::unique_lock<std::mutex> lock(GetQueueMutex());
-			
-			// Wait for messages or shutdown signal with timeout for periodic flushing
-			auto waitResult = GetConditionVariable().wait_for(
-				lock,
-				std::chrono::milliseconds(FLUSH_INTERVAL_MS),
-				[]() {
-					return !GetMessageQueue().empty() || GetShutdownFlag();
-				}
-			);
-
-			// Process all pending messages
-			while (!GetMessageQueue().empty())
-			{
-				LogMessage msg = GetMessageQueue().front();
-				GetMessageQueue().pop();
-				
-				// Release lock while writing to file
-				lock.unlock();
-				
-				// Write to file (file is already open)
-				if (file.is_open())
-				{
-					struct tm tm;
-					localtime_s(&tm, &msg.timestamp);
-					
-					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | " << msg.message << "\n";
-					messagesSinceFlush++;
-
-					// Flush periodically to ensure data is written
-					if (messagesSinceFlush >= BATCH_SIZE)
-					{
-						file.flush();
-						messagesSinceFlush = 0;
-						lastFlushTime = std::chrono::steady_clock::now();
-					}
-				}
-				
-				// Re-acquire lock for next iteration
-				lock.lock();
-			}
-
-			// Flush if timeout occurred (periodic flush interval)
-			auto now = std::chrono::steady_clock::now();
-			if (file.is_open() && messagesSinceFlush > 0 &&
-				std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFlushTime).count() >= FLUSH_INTERVAL_MS)
-			{
-				file.flush();
-				messagesSinceFlush = 0;
-				lastFlushTime = now;
-			}
-
-			// Exit if shutdown requested and queue is empty
-			if (GetShutdownFlag() && GetMessageQueue().empty())
-			{
-				// Final flush and close
-				if (file.is_open())
-				{
-					file.flush();
-					file.close();
-				}
-				break;
-			}
-		}
+		FileSink sink{file};
+		GetTransport().Run(sink);
+		file.close(); // Also outside every producer bookkeeping section.
 	}
 
-	// Static member accessors (function-local statics for initialization safety)
-	static std::mutex& GetQueueMutex()
+	static Transport& GetTransport()
 	{
-		static std::mutex s_queueMutex;
-		return s_queueMutex;
+		static Transport transport;
+		return transport;
 	}
 
-	static std::queue<LogMessage>& GetMessageQueue()
+	static std::mutex& GetLifecycleMutex()
 	{
-		static std::queue<LogMessage> s_messageQueue;
-		return s_messageQueue;
-	}
-
-	static std::condition_variable& GetConditionVariable()
-	{
-		static std::condition_variable s_condVar;
-		return s_condVar;
+		static std::mutex mutex;
+		return mutex;
 	}
 
 	static std::thread& GetWriterThread()
 	{
-		static std::thread s_writerThread;
-		return s_writerThread;
-	}
-
-	static std::atomic<bool>& GetShutdownFlag()
-	{
-		static std::atomic<bool> s_shutdownFlag(false);
-		return s_shutdownFlag;
+		static std::thread writer;
+		return writer;
 	}
 
 	static std::atomic<ExternalSink>& GetExternalSink()
