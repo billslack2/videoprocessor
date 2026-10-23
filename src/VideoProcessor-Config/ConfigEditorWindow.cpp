@@ -7035,7 +7035,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             classicSection->setVisible(mode==QStringLiteral("classic"));
             appearanceSection->setVisible(mode==QStringLiteral("generated_gray") || mode==QStringLiteral("black"));
             reconstructionSection->setVisible(mode==QStringLiteral("generated_gray"));
-            commonForm->setRowVisible(scriptHint->parentWidget(),mode!=QStringLiteral("off"));
+            commonForm->setRowVisible(scriptHint,mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offset->parentWidget(),mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offZoomHold->parentWidget(),mode==QStringLiteral("off"));
         };
