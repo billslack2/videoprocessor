@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <map>
+#include <memory>
+#include <utility>
 
 #pragma warning(push)
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
@@ -35,7 +38,8 @@ namespace LibplaceboDisplayLut
 		INVALID_CUBE,
 		ONE_DIMENSIONAL,
 		UNSUPPORTED_DOMAIN,
-		UNSAFE_DIMENSIONS
+		UNSAFE_DIMENSIONS,
+		RENDER_FAILED
 	};
 
 	struct FileVersion
@@ -52,9 +56,8 @@ namespace LibplaceboDisplayLut
 		Rejection rejection = Rejection::NONE;
 		size_t fileBytes = 0;
 		uint64_t fileWriteTime = 0;
-		// Captured from the same handle whose bytes were parsed. Callers must use
-		// this observation, rather than probing the path again, when deciding
-		// whether a failed transactional reload needs another attempt.
+		// Captured from the same handle whose bytes were parsed, for diagnostics.
+		// A rejected file is retried only after an explicit configuration Apply.
 		FileVersion fileVersion;
 	};
 
@@ -67,4 +70,25 @@ namespace LibplaceboDisplayLut
 	FileVersion ProbeFileVersion(const std::string& path);
 	bool SameFileVersion(const FileVersion& left, const FileVersion& right);
 	const char* ShortReason(Rejection rejection);
+
+    // Render-owner-only immutable file snapshots. Ordinary profile changes reuse
+    // accepted bytes and rejected outcomes; only explicit Apply clears this cache.
+    class AppliedCache
+    {
+    public:
+        struct Entry
+        {
+            LoadResult result; // result.lut is a nonowning alias of owner.get().
+            std::shared_ptr<pl_custom_lut> owner;
+        };
+        using Snapshot = std::shared_ptr<const Entry>;
+        Snapshot Get(pl_log log, const std::string& path,
+            const std::string& constrainedBaseDirectory = {});
+        void RejectRender(const std::string& path,
+            const std::string& constrainedBaseDirectory);
+        void Clear() { entries_.clear(); }
+    private:
+        using Key = std::pair<std::string, std::string>;
+        std::map<Key, Snapshot> entries_;
+    };
 }

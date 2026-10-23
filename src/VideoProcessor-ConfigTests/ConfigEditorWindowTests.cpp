@@ -395,17 +395,25 @@ void selectData(QComboBox* combo, const QString& value)
     QCoreApplication::processEvents();
 }
 
+bool hasPendingConfigurationChanges(ConfigEditorWindow& window)
+{
+    return requireControl<QLabel>(window, QStringLiteral("configurationEffectSummary"))->text() !=
+        QStringLiteral("No pending changes");
+}
+
 void save(ConfigEditorWindow& window)
 {
     QPushButton* button = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
     require(button->isEnabled(), "Apply button was not enabled after an edit");
+    if (!hasPendingConfigurationChanges(window)) return;
     button->click();
     QCoreApplication::processEvents();
     const QString status = requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text();
     require(status.startsWith(QStringLiteral("Changes saved")) ||
         status.startsWith(QStringLiteral("Configuration created safely")),
         (std::string("Apply did not save: ") + status.toStdString()).c_str());
-    require(!button->isEnabled(), "Apply did not complete successfully");
+    require(button->isEnabled() && !hasPendingConfigurationChanges(window),
+        "Apply did not save and remain available for calibration LUT reload");
 }
 
 void testSubtitleDiagnosticSurvivesConfigSaveAndReopen()
@@ -2055,7 +2063,7 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
             saved.contains("hdr_tone_map_target_gamma: 2.4") && saved.contains("# SDR gamma update:"),
             "Beta normalization or its report did not persist");
         ConfigEditorWindow reloaded(path, 0, true);
-        require(!requireControl<QPushButton>(reloaded, "applyConfiguration")->isEnabled(), "Migration repeats on reload");
+        require(!hasPendingConfigurationChanges(reloaded), "Migration repeats on reload");
     }
 
 }
@@ -2144,7 +2152,7 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
         "Fallback editing switched mode or left the fallback inaccessible");
     require(display->isEnabled() && response->isEnabled(), "Runtime attachment blocked editing fallback settings");
     fallback->click();
-    require(!requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(), "Opening fallback marked the config dirty");
+    require(!hasPendingConfigurationChanges(window), "Opening fallback marked the config dirty");
     require(readBytes(path) == beforeLive, "Changing live status or opening fallback rewrote configuration");
     vp->click();
     require(response->currentData().toString() == "2.4" && display->currentData().toString() == "2.2" &&
@@ -4671,7 +4679,7 @@ void testMissingConfigurationCanBeCreatedFromEditor()
         "Apply did not create the missing VideoProcessor.cfg");
     require(status->text().contains(QStringLiteral("created safely"),
         Qt::CaseInsensitive), "First save did not report configuration creation");
-    require(!apply->isEnabled(),
+    require(!hasPendingConfigurationChanges(window),
         "First save left the newly created configuration dirty");
     ConfigFile parsed;
     require(parsed.Load(path.toStdString()), "Generated config could not be reloaded");
@@ -4679,6 +4687,190 @@ void testMissingConfigurationCanBeCreatedFromEditor()
     std::vector<std::string> warnings;
     require(RendererConfigView(parsed).Validate(error, warnings), "Generated renderer config is invalid");
     require(warnings.empty(), "Generated configuration warns about its own policy location");
+}
+
+void testCleanApplyNotifiesWithoutSaving()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    save(window); // Settle fixture migrations before observing clean Apply.
+    require(!hasPendingConfigurationChanges(window), "Fixture did not settle before clean Apply");
+    require(requireControl<QPushButton>(window,
+        "config.vprenderer.color.calibration_lut.open_folder")->toolTip().contains(
+            QStringLiteral("Changes to LUT files take effect when you press Apply. Files are not monitored during playback.")),
+        "The LUT help does not explain explicit Apply-only reloads");
+    const QByteArray original = readBytes(path);
+    const QStringList filesBefore = QDir(directory.path()).entryList(QDir::Files);
+    const QString eventName = QStringLiteral("Local\\VideoProcessor.ConfigTests.Apply.%1.%2")
+        .arg(GetCurrentProcessId()).arg(GetTickCount64());
+    struct TestHandle
+    {
+        HANDLE value;
+        ~TestHandle() { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); }
+    } notification{CreateEventW(nullptr, FALSE, FALSE,
+        eventName.toStdWString().c_str())};
+    require(notification.value != nullptr, "Cannot create the isolated Apply notification event");
+    window.setApplyNotificationEventForTesting(eventName);
+    // Deny replacement and writes: a clean Apply must still notify successfully.
+    TestHandle protectedConfig{CreateFileW(path.toStdWString().c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+    require(protectedConfig.value != INVALID_HANDLE_VALUE, "Cannot protect the clean configuration");
+    FILETIME writeBefore{};
+    require(GetFileTime(protectedConfig.value, nullptr, nullptr, &writeBefore) != FALSE,
+        "Cannot inspect the clean configuration timestamp");
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    window.show();
+    QApplication::processEvents();
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        require(apply->isEnabled(), "Clean Apply was unavailable");
+        apply->click();
+        QApplication::processEvents();
+        require(WaitForSingleObject(notification.value, 0) == WAIT_OBJECT_0,
+            "Clean Apply did not notify VideoProcessor");
+        require(WaitForSingleObject(notification.value, 0) == WAIT_TIMEOUT,
+            "The isolated Apply event did not auto-reset");
+        require(window.isVisible() && !hasPendingConfigurationChanges(window),
+            "Clean Apply closed the editor or manufactured unsaved changes");
+        require(requireControl<QLabel>(window, "configurationStatus")->text().contains(
+            QStringLiteral("calibration LUT reload requested")),
+            "Clean Apply did not describe the explicit LUT request");
+    }
+    requireControl<QPushButton>(window, "okConfiguration")->click();
+    QApplication::processEvents();
+    require(!window.isVisible() && WaitForSingleObject(notification.value, 0) == WAIT_TIMEOUT,
+        "Clean OK notified VideoProcessor instead of only closing");
+    window.show();
+    QApplication::processEvents();
+    auto* fullscreen = requireControl<QCheckBox>(window, "config.general.fullscreen");
+    fullscreen->setChecked(!fullscreen->isChecked());
+    require(hasPendingConfigurationChanges(window), "Cancel notification test did not edit the document");
+    requireControl<QPushButton>(window, "cancelConfiguration")->click();
+    QApplication::processEvents();
+    require(!window.isVisible() && WaitForSingleObject(notification.value, 0) == WAIT_TIMEOUT,
+        "Cancel notified VideoProcessor");
+    FILETIME writeAfter{};
+    require(GetFileTime(protectedConfig.value, nullptr, nullptr, &writeAfter) != FALSE &&
+        CompareFileTime(&writeBefore, &writeAfter) == 0 && readBytes(path) == original &&
+        QDir(directory.path()).entryList(QDir::Files) == filesBefore,
+        "Clean Apply, clean OK or Cancel rewrote the configuration or created a backup");
+}
+
+void testCleanRemoteApplyUsesUnchangedRpcCandidate()
+{
+    using namespace ConfigurationRpcProtocol;
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    {
+        ConfigEditorWindow local(path, 0, true);
+        save(local);
+    }
+    const std::string baseline = readBytes(path).toStdString();
+    WSADATA data{};
+    require(WSAStartup(MAKEWORD(2, 2), &data) == 0, "Cannot initialize the clean Apply RPC fixture");
+    struct WinsockCleanup { ~WinsockCleanup() { WSACleanup(); } } cleanup;
+    const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    require(listener != INVALID_SOCKET, "Cannot open the clean Apply RPC listener");
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    require(bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0 &&
+        listen(listener, 1) == 0, "Cannot listen for clean Apply RPC");
+    int addressBytes = sizeof(address);
+    require(getsockname(listener, reinterpret_cast<sockaddr*>(&address), &addressBytes) == 0,
+        "Cannot inspect the clean Apply RPC port");
+    std::atomic<bool> stop{false}, exactCandidate{false};
+    std::atomic<unsigned int> applies{0};
+    std::thread server([&]
+    {
+        const auto receiveExact = [](SOCKET client, uint8_t* bytes, size_t count)
+        {
+            while (count)
+            {
+                const int got = recv(client, reinterpret_cast<char*>(bytes), static_cast<int>(count), 0);
+                if (got <= 0) return false;
+                bytes += got; count -= got;
+            }
+            return true;
+        };
+        while (!stop.load())
+        {
+            fd_set readable; FD_ZERO(&readable); FD_SET(listener, &readable);
+            timeval timeout{0, 50000};
+            if (select(0, &readable, nullptr, nullptr, &timeout) <= 0) continue;
+            const SOCKET client = accept(listener, nullptr, nullptr);
+            if (client == INVALID_SOCKET) break;
+            const int clientTimeout = 1000;
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                reinterpret_cast<const char*>(&clientTimeout), sizeof(clientTimeout));
+            std::array<uint8_t, HeaderBytes> header{};
+            uint16_t operation = 0; uint32_t payloadBytes = 0;
+            if (!receiveExact(client, header.data(), header.size()) ||
+                !DecodeHeader(header.data(), header.size(), operation, payloadBytes))
+            { closesocket(client); continue; }
+            std::vector<uint8_t> payload(payloadBytes);
+            if (!receiveExact(client, payload.data(), payload.size()))
+            { closesocket(client); continue; }
+            Frame response; response.operation = operation | ResponseFlag;
+            if (operation == static_cast<uint16_t>(Operation::GetCapabilities))
+            {
+                Write16(response.payload, ConfigurationCompatibilityVersion);
+                WriteString(response.payload, "1.3.test");
+                for (int list = 0; list < 6; ++list) Write32(response.payload, 0);
+            }
+            else if (operation == static_cast<uint16_t>(Operation::GetConfig))
+            {
+                WriteString(response.payload, path.toStdString());
+                WriteString(response.payload, baseline);
+            }
+            else if (operation == static_cast<uint16_t>(Operation::ApplyConfig))
+            {
+                size_t cursor = 2;
+                std::string original, candidate;
+                exactCandidate = payload.size() >= 2 &&
+                    Read16(payload.data()) == ConfigurationCompatibilityVersion &&
+                    ReadString(payload, cursor, original) && ReadString(payload, cursor, candidate) &&
+                    cursor == payload.size() && original == baseline && candidate == baseline;
+                ++applies;
+                WriteString(response.payload, "Apply profiles live");
+                response.payload.push_back(1);
+            }
+            std::vector<uint8_t> wire; Encode(response, wire);
+            size_t sent = 0;
+            while (sent < wire.size())
+            {
+                const int count = send(client, reinterpret_cast<const char*>(wire.data() + sent),
+                    static_cast<int>(wire.size() - sent), 0);
+                if (count <= 0) break;
+                sent += count;
+            }
+            closesocket(client);
+        }
+        closesocket(listener);
+    });
+    struct StopServer
+    {
+        std::atomic<bool>& stop; std::thread& server;
+        ~StopServer() { stop = true; if (server.joinable()) server.join(); }
+    } join{stop, server};
+    ConfigEditorWindow remote(path, 0, true, {}, {}, "127.0.0.1", ntohs(address.sin_port));
+    require(!hasPendingConfigurationChanges(remote), "Remote baseline was not clean");
+    auto* apply = requireControl<QPushButton>(remote, "applyConfiguration");
+    require(apply->isEnabled(), "Clean remote Apply was unavailable");
+    apply->click();
+    require(applies.load() == 1 && exactCandidate.load(),
+        "Clean remote Apply did not send identical baseline and candidate through ApplyConfig");
+    require(apply->isEnabled() && !hasPendingConfigurationChanges(remote) &&
+        readBytes(path).toStdString() == baseline,
+        "Clean remote Apply changed the local file or dirtied the editor");
+    remote.show();
+    QApplication::processEvents();
+    requireControl<QPushButton>(remote, "okConfiguration")->click();
+    remote.show();
+    QApplication::processEvents();
+    requireControl<QPushButton>(remote, "cancelConfiguration")->click();
+    require(applies.load() == 1, "Clean remote OK or Cancel sent an Apply RPC");
 }
 
 void testApplyOkCancelContract()
@@ -4719,7 +4911,7 @@ void testApplyOkCancelContract()
             QStringLiteral("No pending changes"),
             (std::string("Initial migration save did not succeed: ") +
                 requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
-        require(!apply->isEnabled(), "Apply was enabled for a clean document");
+        require(apply->isEnabled(), "Clean Apply was unavailable for calibration LUT reload");
 
         QCheckBox* fullscreen = requireControl<QCheckBox>(window,
             QStringLiteral("config.general.fullscreen"));
@@ -4734,7 +4926,7 @@ void testApplyOkCancelContract()
         apply->click();
         QCoreApplication::processEvents();
         require(window.isVisible(), "Apply closed the editor");
-        require(!apply->isEnabled(), "Apply remained enabled after a successful save");
+        require(apply->isEnabled(), "Apply became unavailable after a successful save");
         require(effect->text() == QStringLiteral("No pending changes"),
             "The effect summary did not remain visible after Apply");
         require(requireControl<QLabel>(window,
@@ -4786,8 +4978,7 @@ void testApplyOkCancelContract()
         require(requireControl<QCheckBox>(window,
             QStringLiteral("config.general.fullscreen"))->isChecked() == initial,
             "Cancel retained the discarded working-copy value");
-        require(!requireControl<QPushButton>(window,
-            QStringLiteral("applyConfiguration"))->isEnabled(),
+        require(!hasPendingConfigurationChanges(window),
             "Cancel retained a dirty working copy");
     }
 
@@ -5079,7 +5270,7 @@ void testRemainingEffectSummaryPrecedence()
             "A queue-only edit did not report a queue reset");
         queueSize->setValue(originalQueueSize);
         require(effect->text() == QStringLiteral("No pending changes") &&
-            !apply->isEnabled(),
+            apply->isEnabled(),
             "Reverting a queue edit did not clear its pending effect");
 
         QCheckBox* logging = requireControl<QCheckBox>(window,
@@ -6491,7 +6682,7 @@ output_range: full
         "LUT domain changed on reload");
     require(requireControl<QCheckBox>(reloaded,"config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
         "Explicit pass-through changed on reload");
-    require(!requireControl<QPushButton>(reloaded, "applyConfiguration")->isEnabled(),
+    require(!hasPendingConfigurationChanges(reloaded),
         "Reload unexpectedly scheduled another migration");
     ConfigEditorCore::ConfigDocument unchanged;
     ConfigEditorCore::SaveResult result;
@@ -6829,7 +7020,7 @@ void testOfflineFileStillOffersTargets()
     fullscreen->setChecked(changed);
     require(apply->isEnabled(), "Local edit did not enable Apply");
     apply->click();
-    require(!apply->isEnabled(), "Local Apply did not save while VP was absent");
+    require(!hasPendingConfigurationChanges(window), "Local Apply did not save while VP was absent");
     ConfigEditorCore::ConfigDocument saved;
     std::wstring error;
     require(saved.Load(path.toStdWString(), error) &&
@@ -7121,7 +7312,7 @@ void testOffZoomHoldRoundTrip()
     auto* hint=requireControl<QComboBox>(window,"config.vprenderer.subtitles.subtitle_script_hint");
     require(!hint->isVisible(),"Off must not offer a glyph script hint");
     require(hold->text()=="2","Off zoom hold must default to two seconds");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading default Off hold dirtied configuration");
+    require(!hasPendingConfigurationChanges(window),"Loading default Off hold dirtied configuration");
     hold->setText("31");require(!hold->hasAcceptableInput(),"Off hold accepted an out-of-range value");
     hold->setText("5.25");require(hold->hasAcceptableInput(),"Off hold rejected fractional seconds");
     selectData(type,"classic");QApplication::processEvents();require(!hold->isVisible(),"Off hold leaked into Classic");
@@ -7154,7 +7345,7 @@ void testSubtitleSurroundFillRoundTrip()
     ConfigEditorWindow window(path,0,true);
     auto* fill=requireControl<QComboBox>(window,"config.vprenderer.subtitles.cleanup_fill");
     require(fill->currentData().toString()=="mirror","Legacy default changed");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading fill default dirtied config");
+    require(!hasPendingConfigurationChanges(window),"Loading fill default dirtied config");
     selectData(fill,"surround");save(window);
     ConfigEditorWindow reopened(path,0,true);
     auto* restored=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.cleanup_fill");
@@ -7214,7 +7405,7 @@ void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
                 "Legacy placeholder leaked into another profile");
             list->setCurrentRow(0); checkLegacy();
         }
-        require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),
+        require(!hasPendingConfigurationChanges(window),
             "Inspecting legacy fill dirtied settings");
         require(readBytes(path)==settled,"Inspecting legacy fill rewrote settings");
         requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_blur_px")->setText("4");
@@ -7236,14 +7427,18 @@ void testSubtitleBackgroundShapeRoundTripAndVisibility()
 {
     QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
     QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write subtitle shape fixture");
-    // Avoid the unrelated refresh-rate migration, which intentionally marks old configs dirty.
-    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n[vprenderer.subtitles.Moved]\ntype: generated_gray\n");file.close();
+    // Avoid unrelated refresh-rate and output-display migrations in this clean fixture.
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[output_display.Default]\nmonitor: auto\nmode_policy: auto\nrestore_previous_mode: true\n"
+        "[vprenderer.subtitles.Moved]\ntype: generated_gray\n");file.close();
     ConfigEditorWindow window(path,0,true);window.show();window.selectPage(19);QApplication::processEvents();
     auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
     auto* rounded=requireControl<QCheckBox>(window,"config.vprenderer.subtitles.rounded_corners");
     auto* edge=requireControl<QComboBox>(window,"config.vprenderer.subtitles.background_edge");
     require(rounded->isChecked() && edge->currentData().toString()=="extend","Shape defaults changed existing rounded extended behavior");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading shape defaults dirtied configuration");
+    require(!hasPendingConfigurationChanges(window),(QStringLiteral("Loading shape defaults dirtied configuration: summary=%1; status=%2")
+        .arg(requireControl<QLabel>(window,"configurationEffectSummary")->text(),
+            requireControl<QLabel>(window,"configurationStatus")->text()).toStdString()).c_str());
     rounded->setChecked(false);selectData(edge,"float");
     for(const auto& style:{"black","classic","off","generated_gray"}) {
         selectData(type,style);QApplication::processEvents();
@@ -7311,6 +7506,7 @@ void testSubtitleHdrLegacyFallbackAndSharedModes()
 {
     QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
     const QByteArray fixture="[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[output_display.Default]\nmonitor: auto\nmode_policy: auto\nrestore_previous_mode: true\n"
         "[vprenderer.zoom.First]\nautomatic_crop: true\nhdr_peak_analysis_picture_only: true\n"
         "hdr_peak_analysis_motion_compensation: false\nhdr_peak_analysis_height_percent: 68\n"
         "hdr_peak_analysis_position: bottom\n# keep the legacy owner until edited\n"
@@ -7324,11 +7520,13 @@ void testSubtitleHdrLegacyFallbackAndSharedModes()
     auto* height=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent");
     auto* position=requireControl<QComboBox>(window,"config.vprenderer.subtitles.hdr_peak_analysis_position");
     require(mode->currentData().toString()=="fixed" && height->text()=="68" && position->currentData().toString()=="bottom","Subtitle controls did not preserve legacy HDR settings");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading inherited HDR settings dirtied the profile");
+    require(!hasPendingConfigurationChanges(window),(QStringLiteral("Loading inherited HDR settings dirtied the profile: summary=%1; status=%2")
+        .arg(requireControl<QLabel>(window,"configurationEffectSummary")->text(),
+            requireControl<QLabel>(window,"configurationStatus")->text()).toStdString()).c_str());
     require(readBytes(path)==fixture,"Merely opening Subtitle HDR controls rewrote the old configuration");
     window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false,"vprenderer.zoom.Second",{}, {},"vprenderer.subtitles.First");
     require(mode->currentData().toString()=="automatic" && height->text()=="80" && position->currentData().toString()=="top","Live Zoom switch did not refresh inherited Subtitle HDR values");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Refreshing inherited HDR settings wrote overrides");
+    require(!hasPendingConfigurationChanges(window),"Refreshing inherited HDR settings wrote overrides");
     selectData(mode,"fixed");height->setText("77");
     auto* offset=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.offset_pixels");offset->setText("29");
     window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false,"vprenderer.zoom.First",{}, {},"vprenderer.subtitles.First");
@@ -7532,6 +7730,8 @@ int main(int argc, char** argv)
     failures += run("missing configuration can be created from editor",
         testMissingConfigurationCanBeCreatedFromEditor);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
+    failures += run("clean Apply notifies without saving", testCleanApplyNotifiesWithoutSaving);
+    failures += run("clean remote Apply uses unchanged RPC candidate", testCleanRemoteApplyUsesUnchangedRpcCandidate);
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
     failures += run("remote target switch keeps window responsive",
         testRemoteTargetSwitchKeepsWindowResponsive);
