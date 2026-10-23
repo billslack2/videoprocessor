@@ -8,6 +8,16 @@ Native threshold investigation is in progress on 2026-10-23 in the separate bran
 
 Controlled replay now confirms that the content-derived black cutoff directly causes the captured provisional geometry: cutoff 85 reproduces left bound 936, while isolated cutoffs 24/32 produce full-raster classification with full-extent support on both axes. This establishes the threshold cause for this frame, not an accepted global cutoff or completed presentation fix. The floor/cutoff math dates to `99addebdac523a648c918c311e3d81323f4110e1` on 2026-07-28 and is unchanged between deployments `e1996d67` and `24e0dd10`. The retained-scope policy and transition model are also byte-identical between beta `f7c7a820` and captured integration `24e0dd10`; this mechanism predates PR193.
 
+## Update and deployment authorization
+
+On 2026-10-23 the user authorized updating and deploying the correction. Story remains In Progress while root implements the qualified-reference behavior, completes the exact-source x64 Release build/regressions and prepares an integration preserving all installed24e changes. No production fix or completed deployment is claimed by this authorization update.
+
+Read-only preflight verified all three deployed runtime hashes and three Release/x64 sidecars against `24e0dd10`. PID68268 remains active with both renderer variants loaded; Config73936 and updater71340 are running. The prior deployment transaction refuses an active player and requires a fresh updater gate, all-target exclusive handles, verified current backups, rollback and final payload/config hash checks. The script must be repinned to the new clean tested integration rather than reused with its old24e receipt.
+
+Active VideoProcessor.cfg changed since the prior receipt; its current hash is `5A744303135CFB76315BCE58DCDC0ED704B695B5E0CC904D5CF06A345170F97E`. Preserve current user configuration and dependencies. Do not restore the old DE93 configuration or replace it with source examples. Preflight did not signal/stop/start any process, acquire deployment locks, capture pixels or modify runtime/configuration. Root handles the authorized lifecycle and deployment after validation.
+
+[Authorization preflight and integration preservation evidence](../assets/VP-0206/deployment-preflight-20261023/README.md).
+
 ## Objective
 
 Release an old scope presentation when current native evidence establishes genuine full-height picture despite asymmetric dark side scenery, including paused or seek-like repeated content. Preserve the detector's native authority boundary, safe subtitle and near-black behavior, immutable frame identity and bounded render-thread work.

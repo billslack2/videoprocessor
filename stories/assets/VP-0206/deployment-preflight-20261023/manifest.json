@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T12:57:09.351217-04:00",
+  "runtimeMutated": false,
+  "processesSignaled": false,
+  "files": [
+    {
+      "path": "deployment-preflight.json",
+      "bytes": 24297,
+      "sha256": "78ecfda56caa32b071a880fa9ad1a3d1048f9c20896fb51440874e7992c8afa9"
+    },
+    {
+      "path": "prior-integration-review.json",
+      "bytes": 14484,
+      "sha256": "015c10743cc6f7b1c69f3c89513b8dc37863de0c5b6af05fc27a4d2f1377f796"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3147,
+      "sha256": "fc91493f9a92a9e69978525bbd5610cf86a2988c4f0f7712a57ac1ab93d4eba7"
+    }
+  ]
+}

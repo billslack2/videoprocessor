@@ -1,0 +1,621 @@
+{
+  "checkedAt": "2026-10-23T12:55:51.2444428-04:00",
+  "readOnly": true,
+  "deploymentRoot": "C:\\Videoprocessor\\vp",
+  "deployedSource": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "retainedInstalledSource": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "featureSource": "a23c211877685fbe31223c9d9c246ccf3bea008f",
+  "runtimeFiles": [
+    {
+      "target": "VideoProcessor.exe",
+      "bytes": 3074560,
+      "lastWrite": "2026-10-23T11:47:02.4229834-04:00",
+      "sha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80",
+      "receiptSha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80",
+      "matches24eReceipt": true,
+      "runtimeRecord": null
+    },
+    {
+      "target": "VideoProcessor.exe.runtime.json",
+      "bytes": 220,
+      "lastWrite": "2026-10-23T11:47:02.4365024-04:00",
+      "sha256": "0D2ECF30FC0283E497B556154B37FEC75D25AF228D447323CC78305E308BF3FF",
+      "receiptSha256": "0D2ECF30FC0283E497B556154B37FEC75D25AF228D447323CC78305E308BF3FF",
+      "matches24eReceipt": true,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80"
+      }
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2525696,
+      "lastWrite": "2026-10-23T11:47:02.4391506-04:00",
+      "sha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99",
+      "receiptSha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99",
+      "matches24eReceipt": true,
+      "runtimeRecord": null
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "bytes": 220,
+      "lastWrite": "2026-10-23T11:47:02.4505572-04:00",
+      "sha256": "F8558E66805D22205C7044E00690AA0BE486AF990E306F261DA25C45FC0FCDB9",
+      "receiptSha256": "F8558E66805D22205C7044E00690AA0BE486AF990E306F261DA25C45FC0FCDB9",
+      "matches24eReceipt": true,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99"
+      }
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2525184,
+      "lastWrite": "2026-10-23T11:47:02.4534985-04:00",
+      "sha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE",
+      "receiptSha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE",
+      "matches24eReceipt": true,
+      "runtimeRecord": null
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "bytes": 220,
+      "lastWrite": "2026-10-23T11:47:02.4645131-04:00",
+      "sha256": "F2BF3516F1063DA67038C0FA6E800E20D2298D3037F2604494D98CB290708EED",
+      "receiptSha256": "F2BF3516F1063DA67038C0FA6E800E20D2298D3037F2604494D98CB290708EED",
+      "matches24eReceipt": true,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE"
+      }
+    }
+  ],
+  "allSixPayloadAndSidecarHashesMatch24eReceipt": true,
+  "configuration": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg",
+      "bytes": 707,
+      "lastWrite": "2026-08-12T16:06:58.0000000-04:00",
+      "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+      "priorReceiptSha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+      "changedSince24eReceipt": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg",
+      "bytes": 498,
+      "lastWrite": "2026-08-12T14:32:50.0000000-04:00",
+      "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+      "priorReceiptSha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+      "changedSince24eReceipt": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\INSTALL-MANIFEST.json",
+      "bytes": 23039,
+      "lastWrite": "2026-10-21T16:34:00.0000000-04:00",
+      "sha256": "D6B4965FF8D31077999F6F36E1F7107A25098D12E04B4AD4F8AE9FAE49416852",
+      "priorReceiptSha256": "D6B4965FF8D31077999F6F36E1F7107A25098D12E04B4AD4F8AE9FAE49416852",
+      "changedSince24eReceipt": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg",
+      "bytes": 513,
+      "lastWrite": "2026-08-12T12:37:00.0000000-04:00",
+      "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+      "priorReceiptSha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+      "changedSince24eReceipt": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\RELEASE-MANIFEST.json",
+      "bytes": 23918,
+      "lastWrite": "2026-09-19T13:57:58.6354292-04:00",
+      "sha256": "9E521D5266E658F756692F89ECE4B1E767F4A49AA9948F7F6B2401270517485F",
+      "priorReceiptSha256": "9E521D5266E658F756692F89ECE4B1E767F4A49AA9948F7F6B2401270517485F",
+      "changedSince24eReceipt": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "bytes": 18270,
+      "lastWrite": "2026-10-23T12:09:30.8727468-04:00",
+      "sha256": "5A744303135CFB76315BCE58DCDC0ED704B695B5E0CC904D5CF06A345170F97E",
+      "priorReceiptSha256": "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3",
+      "changedSince24eReceipt": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "bytes": 206,
+      "lastWrite": "2026-10-23T12:14:48.9738827-04:00",
+      "sha256": "B934FD15400486801A8B34C1D1D85D0D703295836D71F3439824ED3B045DA434",
+      "priorReceiptSha256": "B934FD15400486801A8B34C1D1D85D0D703295836D71F3439824ED3B045DA434",
+      "changedSince24eReceipt": false
+    }
+  ],
+  "dependencyInventoryScope": "Only direct DLL/EXE files in root, stable/Beta renderer, Config and Qt platforms; no backup/git/capture tree traversal.",
+  "dependencies": [
+    {
+      "path": "mfc140u.dll",
+      "bytes": 5653424,
+      "lastWrite": "2023-10-24T12:37:32.0000000-04:00",
+      "fileVersion": "14.29.30139.0 built by: vcwrkspc",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "msvcp140.dll",
+      "bytes": 643512,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    },
+    {
+      "path": "vcruntime140_1.dll",
+      "bytes": 50112,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "vcruntime140.dll",
+      "bytes": 178616,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "VideoProcessor.exe",
+      "bytes": 3074560,
+      "lastWrite": "2026-10-23T11:47:02.4229834-04:00",
+      "fileVersion": "0.0.0.0",
+      "sha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80"
+    },
+    {
+      "path": "VideoProcessorOutputProbe.exe",
+      "bytes": 31744,
+      "lastWrite": "2026-10-21T12:19:12.2669597-04:00",
+      "fileVersion": null,
+      "sha256": "CAC0FD7094B8CF9331CEA1585305E4F79F2725A7EBF0F94825D67D8445C9096C"
+    },
+    {
+      "path": "VideoProcessorUpdate.exe",
+      "bytes": 65024,
+      "lastWrite": "2026-10-21T16:33:28.0000000-04:00",
+      "fileVersion": "0.0.0.0",
+      "sha256": "DB99FFB243D7CE359357688F7AF17AA235D4ACC9D4D28CD0A4E83EC8CB6ABFDD"
+    },
+    {
+      "path": "vprenderer\\libdovi.dll",
+      "bytes": 1370085,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "vprenderer\\libgcc_s_seh-1.dll",
+      "bytes": 151732,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "vprenderer\\liblcms2-2.dll",
+      "bytes": 456345,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "vprenderer\\libplacebo-360.dll",
+      "bytes": 1939599,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "v7.360.1 (v7.360.1-3-g3f5bce24-dirty)",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "vprenderer\\libshaderc_shared.dll",
+      "bytes": 10448052,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "vprenderer\\libspirv-cross-c-shared.dll",
+      "bytes": 3396101,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "vprenderer\\libstdc++-6.dll",
+      "bytes": 2667040,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "vprenderer\\libwinpthread-1.dll",
+      "bytes": 65955,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "1, 0, 0, 0",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "vprenderer\\mfc140u.dll",
+      "bytes": 5653424,
+      "lastWrite": "2023-10-24T12:37:32.0000000-04:00",
+      "fileVersion": "14.29.30139.0 built by: vcwrkspc",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "vprenderer\\msvcp140.dll",
+      "bytes": 643512,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    },
+    {
+      "path": "vprenderer\\vcruntime140_1.dll",
+      "bytes": 50112,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "vprenderer\\vcruntime140.dll",
+      "bytes": 178616,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2525696,
+      "lastWrite": "2026-10-23T11:47:02.4391506-04:00",
+      "fileVersion": null,
+      "sha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99"
+    },
+    {
+      "path": "vprenderer\\vulkan-1.dll",
+      "bytes": 688755,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "Vulkan Loader - Dev Build",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "path": "vprenderer-beta\\libdovi.dll",
+      "bytes": 1370085,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "bytes": 151732,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "vprenderer-beta\\liblcms2-2.dll",
+      "bytes": 456345,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "vprenderer-beta\\libplacebo-377.dll",
+      "bytes": 1499232,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "v7.377.0 (v7.360.0-159-g8bccd657-dirty)",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+    },
+    {
+      "path": "vprenderer-beta\\libshaderc_shared.dll",
+      "bytes": 10448052,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "bytes": 3396101,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "vprenderer-beta\\libstdc++-6.dll",
+      "bytes": 2667040,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": null,
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "vprenderer-beta\\libwinpthread-1.dll",
+      "bytes": 65955,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "1, 0, 0, 0",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2525184,
+      "lastWrite": "2026-10-23T11:47:02.4534985-04:00",
+      "fileVersion": null,
+      "sha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE"
+    },
+    {
+      "path": "vprenderer-beta\\vulkan-1.dll",
+      "bytes": 688755,
+      "lastWrite": "2026-10-21T16:22:12.0000000-04:00",
+      "fileVersion": "Vulkan Loader - Dev Build",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "path": "config\\mfc140u.dll",
+      "bytes": 5653424,
+      "lastWrite": "2023-10-24T12:37:32.0000000-04:00",
+      "fileVersion": "14.29.30139.0 built by: vcwrkspc",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "config\\msvcp140_1.dll",
+      "bytes": 35768,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "206C931BF90FDAD8816DE3B5E2EF80B2BCAA9406C89ECC05FE6FDDFFE251E982"
+    },
+    {
+      "path": "config\\msvcp140_2.dll",
+      "bytes": 274872,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "D50D7883F20D1DC6191768D3746F52DD9CAC89C346FFAED5BE1F110C2F34A838"
+    },
+    {
+      "path": "config\\msvcp140.dll",
+      "bytes": 643512,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    },
+    {
+      "path": "config\\opengl32sw.dll",
+      "bytes": 20639888,
+      "lastWrite": "2022-11-28T07:04:26.0000000-05:00",
+      "fileVersion": null,
+      "sha256": "B04DE4541863BC7D8879040A78889C4849C1B1DA2784C4630F734C146C2998CE"
+    },
+    {
+      "path": "config\\Qt6Core.dll",
+      "bytes": 6159496,
+      "lastWrite": "2025-03-17T10:18:06.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+    },
+    {
+      "path": "config\\Qt6Gui.dll",
+      "bytes": 9285768,
+      "lastWrite": "2025-03-17T10:18:14.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "CA9F20D9B59D5BC321A87005B926B853EBCD6A2394823E14D3C8B5FC5702FA8C"
+    },
+    {
+      "path": "config\\Qt6Network.dll",
+      "bytes": 1755784,
+      "lastWrite": "2025-03-17T10:18:18.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "2C2F65C70989646F06D668883C031F06FAC3F8DE1F459278C94CC50DFE89988D"
+    },
+    {
+      "path": "config\\Qt6Svg.dll",
+      "bytes": 528520,
+      "lastWrite": "2025-03-17T23:47:46.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "EFAF94C5C757A430EC5B89FC209089B14171B5CCE945DB961C32264F1CC99F80"
+    },
+    {
+      "path": "config\\Qt6Widgets.dll",
+      "bytes": 6500488,
+      "lastWrite": "2025-03-17T10:18:42.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "D34EF78B3D3B5506EE8279CE6EFBFC263D773B74860AF76E66B0715346897A3A"
+    },
+    {
+      "path": "config\\vcruntime140_1.dll",
+      "bytes": 50112,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "config\\vcruntime140.dll",
+      "bytes": 178616,
+      "lastWrite": "2026-07-14T14:29:44.0000000-04:00",
+      "fileVersion": "14.51.36247.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "config\\VideoProcessorConfig.exe",
+      "bytes": 1865728,
+      "lastWrite": "2026-10-22T18:51:23.0015743-04:00",
+      "fileVersion": null,
+      "sha256": "1AA06A4ABA494E0CA1650DD0D686A68CCBFC58B5E34991EED541A657BCC148A3"
+    },
+    {
+      "path": "config\\VideoProcessorConfigDiscovery.dll",
+      "bytes": 360960,
+      "lastWrite": "2026-10-22T18:50:47.1147827-04:00",
+      "fileVersion": null,
+      "sha256": "2A5B0ABFBBB79B1006B8E13E81A0B734BD2A3A38922C2269804AE17FD6543734"
+    },
+    {
+      "path": "config\\platforms\\qoffscreen.dll",
+      "bytes": 109192,
+      "lastWrite": "2025-03-17T10:20:14.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "733D193144FB9C8A00B6D5E96C730668C86AEF16DB63754914D11E135D56E5A2"
+    },
+    {
+      "path": "config\\platforms\\qwindows.dll",
+      "bytes": 907912,
+      "lastWrite": "2025-03-17T10:20:18.0000000-04:00",
+      "fileVersion": "6.8.3.0",
+      "sha256": "12577A7C4F2230BBEA53F279573D7E3D1A08D631197855481E1E1580F61BB877"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 73936,
+      "parent": 75924,
+      "name": "VideoProcessorConfig.exe",
+      "path": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "command": "\"C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe\" --config \"C:\\Videoprocessor\\vp\\VideoProcessor.cfg\" --discover --background",
+      "created": "2026-10-22T18:53:37.6492770-04:00"
+    },
+    {
+      "pid": 71340,
+      "parent": 51356,
+      "name": "VideoProcessorUpdate.exe",
+      "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\Updates\\560efc405b95d39dcfa66b3eba8574b3bb9bf3ea20cd3fda64e5beefc47d0c98\\runner\\90a8d221ce464ae8b2790eccc55fe286\\VideoProcessorUpdate.exe",
+      "command": "\"C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\Updates\\560efc405b95d39dcfa66b3eba8574b3bb9bf3ea20cd3fda64e5beefc47d0c98\\runner\\90a8d221ce464ae8b2790eccc55fe286\\VideoProcessorUpdate.exe\" --worker --root \"C:\\Videoprocessor\\vp\" --background --service",
+      "created": "2026-10-23T00:16:16.2918600-04:00"
+    },
+    {
+      "pid": 68268,
+      "parent": 13200,
+      "name": "VideoProcessor.exe",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "command": "\"C:\\Videoprocessor\\vp\\VideoProcessor.exe\" ",
+      "created": "2026-10-23T12:02:12.4331760-04:00"
+    }
+  ],
+  "loadedDeploymentModules": [
+    {
+      "name": "VideoProcessor.exe",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "name": "MSVCP140.dll",
+      "path": "C:\\Videoprocessor\\vp\\MSVCP140.dll"
+    },
+    {
+      "name": "mfc140u.dll",
+      "path": "C:\\Videoprocessor\\vp\\mfc140u.dll"
+    },
+    {
+      "name": "VCRUNTIME140_1.dll",
+      "path": "C:\\Videoprocessor\\vp\\VCRUNTIME140_1.dll"
+    },
+    {
+      "name": "VCRUNTIME140.dll",
+      "path": "C:\\Videoprocessor\\vp\\VCRUNTIME140.dll"
+    },
+    {
+      "name": "VideoProcessorVPRenderer.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "name": "libplacebo-360.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll"
+    },
+    {
+      "name": "libgcc_s_seh-1.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll"
+    },
+    {
+      "name": "libstdc++-6.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll"
+    },
+    {
+      "name": "liblcms2-2.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll"
+    },
+    {
+      "name": "libdovi.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll"
+    },
+    {
+      "name": "vulkan-1.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll"
+    },
+    {
+      "name": "libspirv-cross-c-shared.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll"
+    },
+    {
+      "name": "libshaderc_shared.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll"
+    },
+    {
+      "name": "libwinpthread-1.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll"
+    },
+    {
+      "name": "VideoProcessorVPRendererBeta.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "name": "libplacebo-377.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-377.dll"
+    }
+  ],
+  "moduleInspectionError": null,
+  "priorBackup": "C:\\Videoprocessor\\vp\\backup-vp0205-24e0dd10-20261023-114702-242",
+  "priorBackupEntries": [
+    {
+      "path": "deployment-receipt.json",
+      "bytes": 4306
+    },
+    {
+      "path": "VideoProcessor.exe",
+      "bytes": 3197440
+    },
+    {
+      "path": "VideoProcessor.exe.runtime.json",
+      "bytes": 220
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2542592
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "bytes": 220
+    },
+    {
+      "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2542080
+    },
+    {
+      "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "bytes": 220
+    }
+  ],
+  "priorDeploymentScript": "E:\\codex\\videoprocessor\\vp-0205-deploy-20261023\\artifacts\\vp-0205-deploy\\deploy-verified-runtime.ps1",
+  "priorDeploymentScriptSha256": "8E956BBA50700D035D1B0D8C220AA5BBA855DB630A2AFE3B0641CEA0A120797D",
+  "gateReview": {
+    "scriptPinsOld24eSourceAndReceipt": true,
+    "requiresNewPinnedValidatedReleaseReceipt": true,
+    "updaterLockPath": "C:\\Videoprocessor\\vp\\.vp-update.lock",
+    "updaterLockMode": "OpenOrCreate,ReadWrite,FileShare.Read",
+    "rejectsActiveDeploymentPlayerBeforeReplacement": true,
+    "exclusivePayloadHandlesBeforeAnyReplacement": "FileAccess.ReadWrite,FileShare.None for all six payload/sidecars",
+    "backupBeforeReplacement": true,
+    "backupHashesVerified": true,
+    "rollbackWhileHoldingHandles": true,
+    "configHashesRechecked": true,
+    "threePayloadHashesRechecked": true,
+    "preflightAcquiredUpdaterGate": false,
+    "preflightOpenedExclusiveRuntimeHandles": false,
+    "preflightStoppedOrStartedProcesses": false
+  },
+  "readyForReplacementNow": false,
+  "replacementBlocker": "Player PID68268 is active; the verified deployment script deliberately refuses replacement until playback exits and all target handles can be held exclusively. Updater gate must be reacquired at transaction time."
+}
