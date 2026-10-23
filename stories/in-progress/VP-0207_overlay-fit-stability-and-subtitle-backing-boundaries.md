@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -66,3 +66,7 @@ Deployed 81cc9853 log, 15:22:25–26, sees lower overlay rows spanning 1806..206
 - Deployed the clean Release host, standard/beta renderers, Config executable and Config discovery DLL together; all five deployed hashes match their build runtime records. Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-timebar-6168c11e-20261023-153901`. Configuration hashes unchanged; no active settings edits. VP relaunched as PID 78088, and fresh host/renderer logs both confirm commit 6168c11e with dirty=0.
 - Evidence: `stories/assets/VP-0207/deployment-6168c11e-20261023` includes receipt, startup identity, pre-fix raw detection lines and the isolated UI screenshot. No captured movie pixels committed.
 - Remains Review for the user's paused scrub-bar replay; live incident resolution is not yet claimed. Not merged. Earlier full 3,153-test validation remains specific to 5ab30a23.
+
+## Off settings clarification — 2026-10-23
+
+User clarifies Off must detect rendered content in black bars without glyph or script hints. Hide the script-hint control for Off while preserving its value for subtitle-processing styles; verify the Off content path is independent of glyph detection. Continuing the authorized test deployment iteration.
