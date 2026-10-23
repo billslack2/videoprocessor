@@ -9,7 +9,7 @@ with admission based on measured presentation headroom.
 
 Implementation on separate draft [PR #193](https://github.com/billslack2/videoprocessor/pull/193),
 2026-10-23. The canonical
-[VP-0205 story](https://github.com/billslack2/videoprocessor/blob/main/stories/in-progress/VP-0205_preserve-useful-lookahead-with-prepared-proof-and-adaptive-budgets.md)
+[VP-0205 story](https://github.com/billslack2/videoprocessor/blob/main/stories/review/VP-0205_preserve-useful-lookahead-with-prepared-proof-and-adaptive-budgets.md)
 tracks acceptance and outstanding live qualification.
 
 The branch starts from the discovered current/default beta `v1.4.02-beta` at
@@ -148,8 +148,49 @@ deadlines. Whole outward-window tests exercise three distinct sources, cold
 raw/retention dependencies, raw completion after priming, zero-foreground proof,
 first-source identity, no-change/invalid outcomes and obsolete-slot isolation.
 
-Final Release build, native results and controlled three-source measurements are
-recorded below when complete. Live capture A/B, actual displayed-frame adoption,
-GPU pressure, and sustained playback queue/memory tails require field validation;
-synthetic CPU fixture timing cannot establish those outcomes. No deployment or
-configuration change is part of this PR.
+Runtime source `be23c69ffb41bf54d3e112f37692a607d593930b` passed the full x64
+Release solution build, including standard and beta renderer variants. It follows
+a successful clean serial solution Rebuild at `19767f74`. All 1,801 selected
+native regressions passed (zero errors/skips/failures); the native DLL and analysis
+library hashes are identical across those builds. Independent threading and
+principal reviews found no remaining blocker. Initial incremental PDB corruption
+was resolved by the clean Rebuild. Nonfatal conversion/shadow warnings remain.
+
+## Controlled three-source results
+
+The final clean `be23c69f` harness passed all 15 synthetic owned 4K fixtures:
+P010/P210/BGRA8, with three separate allocations and source identities 100–102.
+There are six valid expansion fixtures, three unchanged and six invalid/dark or
+caption cases. Each path rotates 101 trials per fixture and checks full retention
+fields, certificate decision and effective first-source identity. P010/P210 use
+explicit synthetic planar adapters; BGRA uses the production preparation factory.
+
+| Valid expansion delivery | Valid / attempted | Foreground p50 range | Foreground p95 range |
+| --- | ---: | ---: | ---: |
+| Three direct retention scans, 2 ms ticket | 606 / 606 | 0.6034–0.8653 ms | 0.7874–1.1064 ms |
+| Ready cache + certificate, zero new scans | 606 / 606 | 0.0039–0.0043 ms | 0.0158–0.0197 ms |
+
+The direct 3/4 ms paths also delivered 606/606 valid proofs. Across all outcomes,
+direct completion was 1382/1515 at 2 ms, 1512/1515 at 3 ms and 1515/1515 at 4 ms;
+ready-only completion was 1515/1515. Cancellations here occur in negative/no-change
+cases, so this fixture set does **not** demonstrate a useful-proof completion
+improvement from raising the cap. It demonstrates lower foreground cost with
+identical completed decisions, including delivery with zero new-pixel allowance.
+
+The work still costs CPU before delivery. A complete cold outward worker request
+computes three raw and three retention inputs: valid-fixture median service costs
+1.1404–1.1977 ms. Warm exact reuse costs 0.0086–0.0097 ms, with zero new scans.
+Across all fixtures cold median service ranges 1.1404–4.2720 ms, maximum 5.1730 ms.
+Worker service, internal snapshot wall time and observed-ready time are separate.
+Observed-ready is dominated by roughly 15–16 ms Windows timer scheduling: the
+harness requests `Sleep(1)`, which does not guarantee a 1 ms wakeup. Those polling
+results cannot estimate production dispatch latency. Fixture/raw/darkness setup
+is excluded equally from direct and cache delivery, and worker cost is reported
+separately. There is no live renderer, timeline adoption or GPU timing in this run.
+
+[Reproducible harness, raw trials and provenance](https://github.com/billslack2/videoprocessor/tree/main/stories/assets/VP-0205/proof-delivery)
+and [native/Release validation](https://github.com/billslack2/videoprocessor/tree/main/stories/assets/VP-0205/validation)
+are preserved with the story. Live capture A/B, actual displayed-frame adoption,
+GPU pressure, and sustained playback queue/memory tails remain qualification work.
+Synthetic CPU timing cannot establish those outcomes. No deployment or configuration
+change is part of this PR.
