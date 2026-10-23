@@ -2,38 +2,43 @@
 
 ## Status
 
-In Progress
+Review
 
-Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) remains
-unmerged at feature head `d0dbd5a27142d193e6e1c9182a05f32a67948c24` on
-`codex/render-thread-jitter-20261022` in
-`E:\codex\videoprocessor\render-thread-jitter-20261022`. It targets freshly
-verified current/default beta `v1.4.02-beta` at
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. LUT Apply-only PR #191 and VP-0203
-remain separate and untouched. VP-0111 remains Backlog.
+Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is unmerged
+at `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a` (the PR branch remains
+`codex/render-thread-jitter-20261022`; the logging worktree is
+`E:\codex\videoprocessor\log-memory-20261022` on `codex/log-memory-20261022`).
+Its verified current/default beta base is `v1.4.02-beta` at
+`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. PR #191 / VP-0203 and broad
+foreground-policy VP-0111 remain separate and unchanged.
 
-The authorized local deployment uses clean, pushed integration commit
-`c3da9ecd1e20518835a22399e39bec6d79a1b20d` on
-`codex/render-jitter-deploy-20261022` in
-`E:\codex\videoprocessor\render-jitter-deploy-20261022`. It preserves the
-installed `6e53a6e735ec0b896e0aff28cf243af3a0e02a42` startup/subtitle fixes while
-adding PR #192. The seven-file difference from the PR head was verified as the
-retained installed delta; this integration build is not the unmodified PR tree.
+The user's memory-queue follow-up is implemented, tested and deployed. The earlier
+try-lock contention-drop design is superseded by preallocated atomic pool
+publication, 256-record batched output and 250 ms routine flush coalescing. The
+fixed queue plus writer buffers consume 36,065,472 bytes (34.4 MiB). Ordinary
+contention cannot discard a record; actual pool exhaustion rejects/counts a new
+record while accepted records retain ownership until drained. Process/transport
+identity and writer bytes/calls/failures/latency are now reported.
 
-The full committed-source x64 Release solution build passed with zero errors
-and 69 reported warnings. Native validation passed 1,225/1,225 tests, including
-ten new fullscreen session tests; two focused Config checks passed. The prior
-unchanged current-beta full Config run remains 104/108 with all four failures
-independently reproduced on clean baseline. That historical full-suite result
-is not a new full Config run on the deployment source.
+Clean pushed deployment integration `e1996d67e42df7ee0ba63e2fc7577a43d132af48`
+on `codex/render-jitter-deploy-20261022` preserves the exact installed seven-file
+startup/subtitle delta. Stable patch ID versus the feature head is still
+`5b5c15e4e0d5cf0fd6bb483eb37b254603e56fde`. The clean full-LTCG x64 Release
+rebuild passed (0 errors, 69 warnings), and **1230/1230** relevant native tests
+passed. Matching player, standard renderer and genuine Beta renderer are deployed
+with sidecars and verified hashes; active configuration is unchanged and Config
+remains running. Latest player PID: 55448.
 
-Deployment and restart completed 2026-10-22 with binary hash verification,
-backup and unchanged active configuration. The installed host/renderer report
-clean `c3da9ecd` identities. A real fullscreen startup revealed generation 1 at
-23:13:35 and acquired foreground and keyboard focus at 23:13:37. PR review and
-broader user field validation remain open. The observed logger contention loss
-requires review before merge. No controlled live before/after jitter improvement
-is established.
+Controlled v142 contention tests retained **32000/32000** records; sparse batching
+reduced writer sink calls **150 -> 13**, flushes **27 -> 12**, preserving the same
+76800 payload bytes. A production formatter/file-sink run retained all 150 records
+at 50 messages/s and emitted about 26.6 KB/s, with zero write failures. New live
+startup has no active input: the 124 s idle writer observation has zero reported
+losses/errors but does not validate sustained playback or a new fullscreen focus
+attempt. Earlier successful fullscreen focus evidence is retained below as
+historical evidence on `c3da9ecd`; its focus source is unchanged by this revision.
+No causal live jitter A/B improvement is claimed. Human PR review and field
+validation remain open.
 
 ## Fullscreen readiness addition (2026-10-22)
 
@@ -420,3 +425,70 @@ remain counted. Validate concurrent retention, stalled producer/writer isolation
 shutdown and restart, producer latency, bounded memory and actual write/flush
 volume. Update PR #192 and rebuild/deploy its tested Release integration while
 preserving the installed startup/subtitle delta and active configuration.
+
+
+## Memory-queue follow-up validation and deployment (2026-10-23)
+
+- Feature `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`; deployment
+  `e1996d67e42df7ee0ba63e2fc7577a43d132af48`. Both are clean and pushed.
+- Native final TRX: 1230 executed/passed, zero failed/skipped. Includes real
+  reservation pause, independent producer/consumer progress, close during admitted
+  publication, 3200-message no-loss concurrency, 32000-offer recycling/accounting,
+  blocked writes/flushes, actual-full rejection, reopen, full-sized production
+  byte formatting and partial-batch coalescing. Existing crop/motion/focus suites
+  also pass. No claim of a newly repeated full Config suite; prior baseline
+  104/108 and two focused Config checks remain historical evidence.
+- The preliminary incremental build's LNK1318/LNK1103 compiler PDB failures are
+  preserved in `release.log`. The first broad test run exposed a partial-batch
+  timing path. It was corrected, then a clean full-LTCG Release rebuild and the
+  final complete selected native suite passed. This was investigated and fixed,
+  not a blind rerun. Release optimizations remain enabled.
+- Matched-toolset x64 v142 /O2 contention harness: ten 3200-record trials with
+  eight producers, 8192-slot capacity in both designs. Old try-lock retained
+  4983/32000 (27017 contention drops); new pool retained 32000/32000 with zero
+  full/contention drops. Median trial p99: old 0.9 us, new 2.6 us; maximum observed
+  call: old 11.7 us, new 163.7 us. These wall times include scheduling/competition
+  and do not establish a per-thread latency bound. Old admission often returned
+  faster because it discarded the record.
+- Controlled sparse stream: 150 records / 76800 bytes / about 3 s in both
+  transports, all retained; writer sink calls 150 -> 13; flushes 27 -> 12.
+  These are sink/API call counts, not physical disk operations.
+- Separate production formatter/file sink at 50 messages/s with 511-byte messages:
+  all 150 retained over 3.015 s, 13 writes / 12 flushes, 80100 formatted bytes and
+  80250 on-disk bytes including Windows newline expansion (~26.6 KB/s). Writer
+  work 1467 us total / 545 us peak; flush work 237 us total / 73 us peak; producer
+  p99/max including timestamp capture 21.5/45.7 us. Pool high-water 14 and zero
+  write failures. Preserving more messages can increase byte volume versus the
+  lossy prototype; batching reduces calls, not information volume.
+- Deployment completed 2026-10-22 23:59:42 local. The old player was already
+  closed cleanly (its log shows system close/normal shutdown at 23:41:15); this
+  deployment did not terminate any existing process. New player PID 55448,
+  Config PID 73936 retained. Startup intent remains Beta/fullscreen/normal UI,
+  minimized controls. Both optional plugins load API 28; host clean source is
+  `e1996d67`. Capture input is inactive, so no renderer build-reveal/focus event
+  or sustained-playback result is invented for this run.
+- Backup:
+  `C:\Videoprocessor\vp\backup-vp0204-logs-e1996d67-20261022-235942`.
+  Includes all three previous binaries and sidecars, active config, state and
+  prior log. No active configuration edits. Before/after config SHA256 remains
+  `DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3`.
+- Verified deployed SHA256:
+  - host `A9FB14B26D0D1CAB321BBABE06B80EFB31BE430535100B210AA8DE8C83C4C017`
+  - standard renderer `C7BAF83BD1A241FC03E0DECED2F640B761ACF1F5C940B61718E4F036FD9C94F6`
+  - Beta renderer `F3844E5A569E1A58DBCF125C313FEDED305126148200C3210C0B9B1DB7EEA0E8`
+- Idle observation 2026-10-23 00:00:14 -> 00:02:18 (124 s), identified PID 55448 /
+  transport 00007FF68DCE3570: 5 admissions/processed, zero full/contention drops,
+  truncations or write failures; 29 writes/flushes, 13727 formatted bytes. This
+  low-load result is not a playback benchmark. Lifetime pool high-water 63/8192,
+  configured buffer budget 36065472 bytes. Writer/flush lifetime peaks 334/96 us.
+- All latest receipts, final and failed TRX/build logs, reproducible benchmark
+  C++/CSV/toolchain records, production-sink results, raw idle snapshot/identified
+  stream and aggregate parser are under
+  `E:\codex\videoprocessor\render-jitter-deploy-20261022\artifacts\vp-0204\log-memory\`.
+  Start with `validation-summary.json`, `deployment-receipt.json`,
+  `benchmark-v142-summary.json`, `production-benchmark.json`, and
+  `live-idle-summary.json`. Older parent-folder evidence remains historical.
+- The prior contention-loss and untagged-transport review findings are resolved
+  in the implementation and deterministic/controlled tests. Active-playback
+  follow-up remains appropriate when input is available; do not infer a live
+  jitter reduction or real-driver NVAPI-stall qualification from the idle run.
