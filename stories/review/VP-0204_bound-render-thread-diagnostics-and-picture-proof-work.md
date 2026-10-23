@@ -129,13 +129,17 @@ reported seconds / 7,197 submissions. Artifacts beside the deployment receipt:
   real-driver slow-call handling has not been validated by this observation.
 
 **Review follow-up before merge: logger diagnostic loss.** During the same
-120-second reporting interval, the logger accepted/processed 3,163 records and
-dropped 459 on producer-lock contention: 12.673% of attempted records, with zero
-queue-full drops and zero truncation. The intentional nonblocking admission
+120-second reporting interval, endpoint deltas of the observed reported writer
+stream show 3,163 accepted/processed records and 459 producer-lock contention
+drops: 12.673% of that stream's attempted records, with zero queue-full drops
+and zero truncation. All 25 reports increase monotonically, without observed
+reset/interleaving. The prefix lacks a module/transport identity, so this is not
+proven to be an application-global loss rate. The intentional nonblocking admission
 protects producers but demonstrably loses diagnostic evidence in normal playback.
-Review that retention/contention tradeoff before merging PR #192; do not describe
-the transport as lossless or infer completeness from an empty queue. Mean flush
-was 48.975 microseconds and lifetime peak was 274 microseconds in these reports.
+Review that retention/contention tradeoff and add attributable transport identity
+before merging PR #192; do not describe the transport as lossless or infer
+completeness from an empty queue. Mean flush was 48.975 microseconds and lifetime
+peak was 274 microseconds in these reports.
 
 These are observed-record aggregates; missing diagnostics are not reconstructed.
 The input was not a controlled, content-matched replay against the older build.
