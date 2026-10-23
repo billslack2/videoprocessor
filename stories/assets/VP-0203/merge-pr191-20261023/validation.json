@@ -1,0 +1,46 @@
+{
+  "pr": 191,
+  "head": "b7d30e0d6dff0d57d88e650489768a34c71e356e",
+  "beta": "73acf650739401cdfdfccf2e111290b3265299e2",
+  "release_build": "passed",
+  "native": {
+    "passed": 165,
+    "failed": 0
+  },
+  "focused_config": {
+    "passed": 9,
+    "failed": 0
+  },
+  "initial_full_config": {
+    "failed": 6,
+    "resolved_nonbaseline_in_focused_reruns": true,
+    "concurrent_ui_interference": 3,
+    "passed": 105,
+    "stale_object": 1,
+    "baseline_failures": 2
+  },
+  "deployment": false,
+  "live_acceptance": "not performed",
+  "hashes": [
+    {
+      "path": "VideoProcessorConfig.exe",
+      "sha256": "E3D42F34EEAAD53C596B5EE5DCD8CE253A0D618800CCA10426389D647A8B6D5E"
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "9C5AD0675C0E18087845EF0B0C5FA87E5FB5ED5D41FD48E5408A41B1F62C51C7"
+    },
+    {
+      "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "48B54C5C33FF4EBFA449A6C76CFCEB3FB2117C5461893E955E24E4ED505273B5"
+    },
+    {
+      "path": "VideoProcessor-Test.dll",
+      "sha256": "E113CDBAF7D2ADB83BAA9A34D28B6D3A9F0D1F1738B645492FAA0D914A3F1362"
+    },
+    {
+      "path": "VideoProcessorConfigTests.exe",
+      "sha256": "06B21FFA5F5C1DACDCB604238B1C2843BCF979A35FA46AE67235E470AE092910"
+    }
+  ]
+}

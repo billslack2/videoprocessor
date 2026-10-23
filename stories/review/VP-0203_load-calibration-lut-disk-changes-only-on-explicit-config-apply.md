@@ -4,25 +4,36 @@
 
 Review
 
-Implementation is committed and pushed as
-`462901a13fbfc294f65c262014834d98d2f6da04` on
-`codex/lut-explicit-apply-20261022` in
-`E:\codex\videoprocessor\lut-explicit-apply-20261022`.
-Draft [PR #191](https://github.com/billslack2/videoprocessor/pull/191) targets
-`v1.4.02-beta`, from verified baseline
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. Source is clean. The implementation
-is ready for PR review; it is not merged or accepted for live playback yet.
+[PR #191](https://github.com/billslack2/videoprocessor/pull/191) was merged into
+`v1.4.02-beta` on 2026-10-23 as
+[`f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b`](https://github.com/billslack2/videoprocessor/commit/f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b),
+with user authorization. Tested integration head
+`b7d30e0d6dff0d57d88e650489768a34c71e356e` starts from freshly fetched beta
+`73acf650739401cdfdfccf2e111290b3265299e2` and retains the merged #194/#195 changes.
+The original LUT implementation remains `462901a13fbfc294f65c262014834d98d2f6da04`.
 
-Full x64 Release solution build passed. Native focused tests passed 162/162;
-the dedicated seven applied-cache regressions passed 7/7. The Windows Config
-suite selected 110 tests: 108 passed and two unrelated UI tests failed. Both
-failures reproduce with the same result on clean baseline `fcc33fc`; details
-and evidence are below. No LUT-scope regression is attributed to those failures,
-and no unrelated UI fix is included.
+- Full x64 Release solution build passed, including the host and both renderer variants.
+- All **165/165** selected native LUT, plugin, GPU/output, startup-readiness and OSD-cache tests passed.
+- All **9/9** focused Windows Config tests passed: clean local/remote Apply,
+  Apply/OK/Cancel, Off hold, subtitle profile/surround round trips, and the three
+  foreground/dropdown checks affected by overlapping diagnostic UI runs.
+- The initial full Config run passed 105/111. Two documented baseline failures
+  remain (`two-column cards share row height` and `primary discovery selectors
+  open on field click`). One stale test object retained the old Off assertion;
+  recompilation resolved it. Three foreground-sensitive checks failed while
+  another diagnostic UI process was running; serialized reruns passed. No full
+  Config-suite pass is claimed.
+- The Off test now checks pending document changes instead of Apply-button
+  availability: clean Apply is intentionally available for external LUT reloads.
+- No deployment, restart, active-configuration edit, or live-input acceptance was
+  performed. API 29 requires matching host/renderer binaries on later deployment.
+  #192 and #193 remain separate and unmerged. Keep this story in Review pending
+  live Apply/OK playback acceptance.
 
-No deployment, player restart, active configuration edit, or live-input runtime
-acceptance is requested or claimed. Merge review and any later authorized live
-Apply/OK playback validation remain outstanding.
+[Merge validation, hashes and test evidence](../assets/VP-0203/merge-pr191-20261023/validation.json)
+are preserved beside the native TRX and Config logs. Local complete build logs
+remain in `E:\codex\videoprocessor\pr191-merge-20261023\artifacts\pr191-merge`.
+Earlier feature-only validation and its baseline investigations are retained below.
 
 ## Implemented behavior and validation evidence
 
