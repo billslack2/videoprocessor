@@ -1,9 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
-User accepted the paused native backing correction at 31c5dfa9. Advanced-subtitle HDR-history and transparent-overlay corrections are deployed for live testing at clean Release source 3a1e1050 in draft PR #196. All 1137 selected native/GPU regressions and both settings round trips passed. The accepted Off fit is unchanged; the new flashing/edge incident awaits live replay.
+User confirms the thin destination-overlay lines are gone at 3a1e1050, but reports the original black subtitle backing intrusion is visible again. Investigating transparent reconstruction cleanup in a clean current-beta worktree based at f4f5e138 with the existing PR #196 changes integrated. The HDR flashing fix still awaits explicit live confirmation.
 
 Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -142,3 +142,9 @@ Investigation found non-temporal subtitle preparation shares the final renderer 
 - Source work began at remote beta 73acf650. Beta advanced during validation with explicit calibration-LUT apply work; this comparison deployment retains the previously deployed baseline. PR #196 remains draft and merges cleanly; a newer-beta integration needs an exact merged build before later merge/release. No merge authorized for these follow-ups.
 - Earlier incremental builds caught unmigrated helper callers and corrupt debug-information linking; callers were repaired and a clean Rebuild completed before final validation. Preliminary GPU checks passed at dc178ea1; final results above apply to 3a1e1050.
 - Remains Review for Clear / Yellow replay with Smooth Motion off. Acceptance of the previous native-cap correction is separate from this new flashing/edge fix.
+
+## Transparent cleanup regression - 2026-10-23
+
+User: small lines seem gone, but black occlusion into the picture is back. Preserved deployed 3a1e1050 log at E:\codex\diagnostics\vp0207-clear-cleanup-20261023\vp-snapshot.log. Many frames prove/apply the 30-row cap (for example 1318,1746-2522,1776), interspersed with current-context-unavailable and closure-occluded failures. Clear / Yellow uses generated reconstruction with zero opacity/blur/border opacity and stretch cleanup. Investigating full neutral composition and independent picture repair, rather than treating edge-test acceptance as cleanup acceptance.
+
+GitHub latest beta/default was freshly queried and fetched: v1.4.02-beta at f4f5e138. New clean source worktree E:\codex\videoprocessor\subtitle-clear-cleanup-20261023 starts there; prior PR #196 source 3a1e1050 merged cleanly for continuation. Existing worktrees preserved. No configuration edits.
