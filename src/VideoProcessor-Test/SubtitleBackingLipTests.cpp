@@ -250,7 +250,7 @@ public:
             if(failure==0)text.detected=false;
             if(failure==1)text.held=true;
             if(failure==2)preview.current.barTrackingAuthority=true;
-            if(failure==3)frame.Fill({215,280,425,288},frame.floor);
+            if(failure==3)frame.Fill({215,245,425,288},frame.floor);
             const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8,failure==4?16:65536);
             Assert::IsFalse(proof.valid);
             frame.Fill({215,280,425,288},300);
@@ -437,7 +437,9 @@ public:
             if(fault==0)frame.Fill({200,frame.pictureBottom-4,416,frame.pictureBottom},64);
             if(fault==1)frame.Fill({224,frame.pictureBottom-4,440,frame.pictureBottom},64);
             if(fault==2)frame.Fill({224,frame.pictureBottom-30,416,frame.pictureBottom},64);
-            if(fault==3)frame.Fill({270,frame.pictureBottom-5,300,frame.pictureBottom-4},64);
+            // Scenery contact persists beyond the bounded collar; a short
+            // attached shadow is covered by the positive collar regression.
+            if(fault==3)frame.Fill({270,frame.pictureBottom-20,300,frame.pictureBottom-4},64);
             if(fault==4) {
                 // An expanding coat/rock shoulder, not a bounded rounded card.
                 frame.Fill({210,frame.pictureBottom-3,430,frame.pictureBottom-2},64);
@@ -835,6 +837,46 @@ public:
             Assert::IsFalse(Contains(proof.cleanup,outside));
         }
     }
+    TEST_METHOD(RoundedBackingAboveTextMayNarrowInsideLowerGlyphProjection) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::P010,top);auto cue=Acquire(frame);
+            int glyphRight=0;
+            for(int i=0;i<cue.accepted.lineCount;++i)glyphRight=(std::max)(glyphRight,cue.accepted.lineBounds[i].right);
+            const int right=glyphRight+12,edge=frame.pictureBottom-30;
+            frame.Fill({1344,edge,right,frame.pictureBottom},frame.floor);
+            // The top three rounded rows step inward, entirely ABOVE glyphs.
+            for(int row=0;row<3;++row)
+                frame.Fill({right-(3-row)*8,edge+row,right,edge+row+1},300);
+            cue=Acquire(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            LogProof(proof,frame,"rounded-glyph-projection");Assert::IsTrue(proof.valid);
+            Assert::AreEqual(right,proof.measured.right);
+            Assert::AreEqual(size_t(48),proof.cornerPixels);
+        }
+    }
+    TEST_METHOD(BoundedPictureCollarProvesBackingWithoutErasingAttachedSceneShadow) {
+        for(bool top:{false,true})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb}) {
+            Frame frame(6,format,top);const auto lip=frame.Lip(30);
+            const int edge=frame.pictureBottom-31;
+            // Wider than the old 32-pixel run limit, and directly attached.
+            frame.Fill({1500,edge-3,1636,edge+1},frame.floor);
+            const auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
+            const auto proof=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            LogProof(proof,frame,"bounded-shadow-collar");Assert::IsTrue(proof.valid);
+            Assert::IsTrue(Same(lip,proof.cleanup));
+            const auto next=Resolve({frame.Measure(3)});const auto text=cue.accepted;
+            const auto rechecked=continuity.Consume(frame.Source(),next,text,Identity(3),7,8);
+            Assert::IsTrue(rechecked.valid && rechecked.revalidatedOutline);
+            Assert::IsTrue(Same(lip,rechecked.cleanup));
+            const auto applied=ApplyCurrentSubtitleBackingLip(Geometry(cue),proof,Identity(2),7,8);
+            Assert::IsTrue(Same(lip,applied.generatedCleanup));
+            // The collar remains outside removal, even when it contains black.
+            const auto shadow=frame.Rect({1500,edge-3,1636,edge+1});
+            Assert::IsFalse(Contains(applied.generatedCleanup,shadow));
+            const auto capped=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,proof.samples-1);
+            Assert::IsFalse(capped.valid);Assert::IsTrue(capped.samples<=proof.samples-1);
+        }
+    }
     TEST_METHOD(ClosureRejectsLocalizedUnboundedOrExcessiveShadowsAndAFalseBodyClosure) {
         for(int scale:{1,6})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
             for(bool top:{false,true})for(int fault=0;fault<5;++fault) {
@@ -846,19 +888,19 @@ public:
                     // of a single bin; each separate run remains short.
                     const int runs=scale==1?3:6,length=scale==1?3:10,gap=scale==1?2:4;
                     for(int i=0;i<runs;++i) {
-                        const int x=binOne+2+i*(length+gap);frame.Fill({x,y,x+length,y+1},frame.floor);
+                        const int x=binOne+2+i*(length+gap);frame.Fill({x,y-32,x+length,y+1},frame.floor);
                     }
                 }
-                if(fault==1)frame.Pixel(left,y,frame.floor); // Not bright-bounded at the closure edge.
+                if(fault==1)frame.Fill({left,y-32,left+1,y+1},frame.floor); // Not bright-bounded at the closure edge.
                 if(fault==2) {
                     const int length=scale==1?6:32;
-                    frame.Fill({binOne+2,y,binOne+2+length,y+1},frame.floor);
+                    frame.Fill({binOne+2,y-32,binOne+2+length,y+1},frame.floor);
                 }
                 if(fault==3)frame.Pixel(320*scale,frame.pictureBottom-(scale==1?2:16),300);
                 if(fault==4)for(int bin=0;bin<8;++bin) {
                     const int begin=left+width*bin/8,end=left+width*(bin+1)/8;
                     const int length=scale==1?3:16,x=begin+(end-begin)/3;
-                    frame.Fill({x,y,x+length,y+1},frame.floor);
+                    frame.Fill({x,y-32,x+length,y+1},frame.floor);
                 }
                 const auto cue=Acquire(frame);
                 const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);

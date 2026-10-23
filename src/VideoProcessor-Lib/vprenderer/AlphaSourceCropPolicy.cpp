@@ -1280,6 +1280,16 @@ namespace AlphaSourceCrop
 			return state;
 		}
 
+		// Once FIT has revealed controls, a changing one-edge classification must
+		// not zoom back in underneath them. Refresh from fresh occupancy while
+		// preserving the bounded per-edge extents; NONE still expires normally.
+		if (previousActiveByHold && state.action == VerticalBarPresentationAction::FIT &&
+			current.action == VerticalBarPresentationAction::TRANSLATE)
+		{
+			current.action = VerticalBarPresentationAction::FIT;
+			current.translationPixels = 0.0f;
+		}
+
 		if (current.action == VerticalBarPresentationAction::FIT)
 		{
 			if (previousOwnsSample &&
@@ -5772,7 +5782,17 @@ namespace AlphaSourceCrop
         if (previousSameContext && input.nativeCropAvailable &&
             input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
             SameTrustedCropContract(input.nativeCrop, result.crop) &&
-            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE) &&
+            // Pending placement may already have displayed a safe outward
+            // envelope. Remember that exact submitted view across analysis gaps,
+            // without renewing native AR or accepting a proposed-only envelope.
+            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE ||
+             ((input.selectedOwner == DecisionOwner::TRANSLATION_CONFIRMATION ||
+               input.selectedOwner == DecisionOwner::FIT_CONFIRMATION) &&
+              input.selectedAdmission.available &&
+              input.selectedAdmission.sourceGeneration == input.sourceGeneration &&
+              input.selectedAdmission.presentationEpoch == input.presentationEpoch &&
+              input.selectedAdmission.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+              SameTrustedCropContract(input.selectedAdmission.trustedCrop,result.crop))) &&
             ValidBounds(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
             CropEdgesAreChromaAligned(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
             ContainedBounds(input.submittedBounds, result.crop) &&

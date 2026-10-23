@@ -133,6 +133,45 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(!source.Sample(x,y,value)){failedRead=true;return false;}
         return true;
     };
+    // A scene shadow can touch the immediate outside row of a finite card.
+    // Search a bounded collar into picture content for the same distributed
+    // closure. These probes NEVER enlarge the removal rectangle or skip a
+    // nonblack pixel in its body. All reads share the caller's work budget.
+    const auto closure=[&](int left,int right,int edgeY) {
+        if(left>=right)return false;
+        const int limit=(std::min)(32,(std::max)(1,glyphHeight/2));
+        for(int offset=0;offset<=limit;offset=offset==0?1:offset*2) {
+            const int y=edgeY+(allTop?offset:-offset);
+            if(y<current.pictureTop || y>=current.pictureBottom)break;
+            std::array<unsigned,8> total{},bright{};
+            unsigned run=0;bool endsBright=true;
+            result.closureSamples=result.closureDark=result.closureLongestDarkRun=0;
+            for(int x=left;x<right;++x) {
+                AnalysisLumaSample value;
+                if(!sample(x,y,value))return false;
+                const int bin=(std::min)(7,int(int64_t(x-left)*8/(right-left)));
+                ++total[bin];++result.closureSamples;
+                if(value.luma<=darkLimit) {
+                    ++result.closureDark;++run;
+                    if(x==left || x==right-1)endsBright=false;
+                    result.closureLongestDarkRun=(std::max)(result.closureLongestDarkRun,run);
+                } else {++bright[bin];run=0;}
+            }
+            const unsigned maxRun=unsigned((std::min)({32,(std::max)(3,glyphHeight/3),
+                (std::max)(3,(right-left)/32)}));
+            bool supported=endsBright && result.closureDark*10<=result.closureSamples &&
+                result.closureLongestDarkRun<=maxRun;
+            for(size_t bin=0;bin<total.size();++bin)
+                supported &= total[bin] && bright[bin]*3>=total[bin]*2;
+            if(supported)return true;
+            // An interior bright hole is not a card boundary. A collar may
+            // corroborate an already mostly exposed edge, never search past
+            // an ambiguous black row or a shadow reaching either endpoint.
+            if(offset==0 && (!endsBright ||
+                (result.closureSamples-result.closureDark)*3<result.closureSamples*2))return false;
+        }
+        return false;
+    };
     auto candidateEpoch=candidate?candidate->identity:ActivePictureFrameIdentity{};
     candidateEpoch.acceptedSequence=expectedIdentity.acceptedSequence;
     candidateEpoch.sourceFrameNumber=expectedIdentity.sourceFrameNumber;
@@ -193,25 +232,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         const int closureY=allTop?last.bottom:last.top-1;
         if(closureY<current.pictureTop || closureY>=current.pictureBottom)
             return reject("lip-outline-closure-unavailable");
-        std::array<unsigned,8> total{},bright{};unsigned run=0;
         const int left=last.left+6,right=last.right-6;
-        if(left>=right)return reject("lip-outline-closure-unavailable");
-        for(int x=left;x<right;++x) {
-            AnalysisLumaSample value;
-            if(!sample(x,closureY,value))return reject(exhausted?"lip-work-budget":"lip-native-sample-unavailable");
-            const int bin=(std::min)(7,int(int64_t(x-left)*8/(right-left)));
-            ++total[bin];++result.closureSamples;
-            if(value.luma<=darkLimit) {
-                ++result.closureDark;++run;
-                result.closureLongestDarkRun=(std::max)(result.closureLongestDarkRun,run);
-            } else {++bright[bin];run=0;}
-        }
         if(leftBright*2<candidate->bodyRowCount || rightBright*2<candidate->bodyRowCount ||
-            result.closureDark*10>result.closureSamples ||
-            result.closureLongestDarkRun>unsigned((std::min)({32,(std::max)(3,glyphHeight/3),(std::max)(3,(right-left)/32)})))
-            return reject("lip-outline-boundary-occluded");
-        for(size_t bin=0;bin<total.size();++bin)
-            if(!total[bin] || bright[bin]*3<total[bin]*2)return reject("lip-outline-boundary-localized");
+            !closure(left,right,closureY))
+            return reject(exhausted?"lip-work-budget":failedRead?"lip-native-sample-unavailable":"lip-outline-boundary-occluded");
         result.measured=candidate->measured;result.cleanup=candidate->cleanup;
         // Recompute from the original row outline each time; do not repeatedly
         // shrink an already revalidated intersection, or certify the AA collar.
@@ -242,26 +266,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             // OUTSIDE row is scene content and can contain small shadows.
             // Require distributed contrast, without adding that row to cleanup
             // or searching past an ambiguous closure into more picture.
-            std::array<unsigned,8> binTotal{},binBright{};
-            unsigned darkRun=0;bool closureEndsBright=true;
-            for(int x=left;x<right;++x){
-                AnalysisLumaSample value;if(!sample(x,y,value))break;
-                const int bin=(std::min)(7,int(int64_t(x-left)*8/(right-left)));
-                ++binTotal[bin];++result.closureSamples;
-                if(value.luma<=darkLimit){
-                    ++result.closureDark;++darkRun;
-                    if(x==left || x==right-1)closureEndsBright=false;
-                    result.closureLongestDarkRun=(std::max)(result.closureLongestDarkRun,darkRun);
-                }else{++binBright[bin];darkRun=0;}
-            }
-            if(exhausted || failedRead)break;
-            const unsigned maxDarkRun=unsigned((std::min)({32,(std::max)(3,glyphHeight/3),
-                (std::max)(3,(right-left)/32)}));
-            if(!closureEndsBright || result.closureDark*10>result.closureSamples || result.closureLongestDarkRun>maxDarkRun)
+            if(!closure(left,right,y)) {
+                if(exhausted || failedRead)break;
                 return reject("lip-top-closure-occluded");
-            for(size_t bin=0;bin<binTotal.size();++bin)
-                if(!binTotal[bin] || binBright[bin]*3<binTotal[bin]*2)
-                    return reject("lip-top-closure-support-localized");
+            }
             closed=true;break;
         }
         if(depth==depthLimit)return reject("lip-depth-search-limit");
@@ -277,7 +285,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         }
         if(exhausted || failedRead)break;
         if(left<=searchLeft || right>=searchRight)return reject("lip-side-search-limit");
-        if(left>glyphs.left || right<glyphs.right)return reject("lip-black-span-does-not-cover-glyphs");
+        // Rounded corners above the text need not cover every lower glyph's
+        // horizontal projection. The bar-attached row must cover all glyphs;
+        // later rows remain bounded by the measured monotone card outline.
+        if(!rows && (left>glyphs.left || right<glyphs.right))
+            return reject("lip-black-span-does-not-cover-glyphs");
         bool finiteFlanks=true;
         for(int distance=0;distance<3;++distance){
             AnalysisLumaSample a,b;

@@ -8729,11 +8729,12 @@ namespace Tests
 			Assert::IsTrue(decision.authoritative);
 		}
 
-		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
+		TEST_METHOD(FreshOneEdgeOverlayKeepsHeldFitUntilItsBoundedRelease)
 		{
 			VerticalBarPresentationUpdateInput update;
 			update.previous.action = VerticalBarPresentationAction::FIT;
 			update.previous.detectedTop = 80;
+			update.previous.detectedBottom = 2080;
 			update.previous.lastDetectionTick = 1000;
 			update.previous.sourceSequence = 40;
 			update.current.action = VerticalBarPresentationAction::TRANSLATE;
@@ -8744,11 +8745,33 @@ namespace Tests
 			update.currentSourceSequence = 41;
 			update.holdMs = 2000;
 			update.translationEnabled = true;
-			const auto state = UpdateVerticalBarPresentation(update);
-			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::TRANSLATE),
-				static_cast<int>(state.action));
-			Assert::AreEqual(104, state.detectedTop);
+			auto state = UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(state.action));
+			Assert::AreEqual(80, state.detectedTop);
+			Assert::AreEqual(2080, state.detectedBottom);
+			// A newly appearing control can grow the envelope immediately.
+			update.previous=state;update.currentSourceSequence=42;update.currentTick=1200;
+			update.upperContentTop=60;
+			state=UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(60,state.detectedTop);
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(state.action));
+			// Repeated source samples do not renew the hold.
+			update.previous=state;update.currentTick=1300;
+			state=UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(uint64_t(1200),state.lastDetectionTick);
+			// A completed negative releases only after the existing timer.
+			update.previous=state;update.current={};update.upperContent=false;
+			update.currentTick=1500;update.currentSourceSequence=43;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
+			update.currentTick=3201;update.currentSourceSequence=44;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::NONE),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
+			// A genuinely expired FIT may adopt fresh one-edge placement.
+			update.current.action=VerticalBarPresentationAction::TRANSLATE;
+			update.current.translationPixels=-75.0f;update.upperContent=true;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
 		}
 
 		TEST_METHOD(LiveOverlayAndAspectMetadataTimelineProducesStableFinalGeometry)
@@ -15243,6 +15266,39 @@ input.currentNativeBounds = crop.geometry;
             Assert::IsTrue(held.expanded && !held.currentPixelExtent);
             Assert::AreEqual(2040,held.presentation.sourceBounds.bottom);
             Assert::AreEqual(1880,held.nativeCrop.bottom);
+        }
+        TEST_METHOD(DisplayedPendingOverlayEnvelopeSurvivesAnalysisGapWithoutRenewingNativeAr)
+        {
+            for(auto owner:{DecisionOwner::TRANSLATION_CONFIRMATION,DecisionOwner::FIT_CONFIRMATION}) {
+                auto input=Uncertain();Visible(input,280,2040);
+                auto commit=CommitInput(input,QualifiedVisible(input));
+                commit.selectedOwner=owner;
+                commit.selectedAdmission.available=true;
+                commit.selectedAdmission.trustedCrop=commit.nativeCrop;
+                commit.selectedAdmission.sourceGeneration=commit.sourceGeneration;
+                commit.selectedAdmission.presentationEpoch=commit.presentationEpoch;
+                const auto nativeSequence=commit.previous.lastSubmittedSourceSequence;
+                commit.frameSubmitted=false;
+                Assert::IsFalse(CommitSubmittedNativeScopeAnchor(commit).submittedEnvelopeAvailable);
+                commit.frameSubmitted=true;
+                input.submittedScopeAnchor=CommitSubmittedNativeScopeAnchor(commit);
+                Assert::IsTrue(input.submittedScopeAnchor.submittedEnvelopeAvailable);
+                Assert::AreEqual(nativeSequence,input.submittedScopeAnchor.lastSubmittedSourceSequence);
+                ++input.crop.frameSourceSequence;input.crop.currentVisibleBoundsAvailable=false;
+                const auto retained=Resolve(input);
+                Assert::IsTrue(retained.expanded);
+                Assert::AreEqual(2040,retained.presentation.sourceBounds.bottom);
+                Assert::AreEqual(1880,retained.nativeCrop.bottom);
+                for(int bad=0;bad<5;++bad) {
+                    auto mismatch=commit;
+                    if(bad==0)++mismatch.selectedAdmission.sourceGeneration;
+                    if(bad==1)++mismatch.selectedAdmission.presentationEpoch;
+                    if(bad==2)mismatch.selectedAdmission.available=false;
+                    if(bad==3)mismatch.selectedAdmission.trustedCrop.top+=2;
+                    if(bad==4)mismatch.previous={};
+                    Assert::IsFalse(CommitSubmittedNativeScopeAnchor(mismatch).submittedEnvelopeAvailable);
+                }
+            }
         }
         TEST_METHOD(ExpandedPresentationCannotManufactureFirstNativeAnchor)
         {
