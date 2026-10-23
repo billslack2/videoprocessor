@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-22). Implemented and pushed clean source commit `6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b`; draft [PR #188](https://github.com/billslack2/videoprocessor/pull/188) targets `v1.4.02-beta`. Complete x64 Release solution build passed and all 1,299 final targeted policy tests passed. Independent review and live startup/subtitle playback acceptance remain pending. PR #188 remains unmerged. User-requested local deployment of clean combined source `05e59c91` completed on 2026-10-22 after 1,563 targeted tests passed, retaining installed `620b7d95` fixes; configuration unchanged and player left stopped.
+Review (2026-10-23). User-authorized [PR #188](https://github.com/billslack2/videoprocessor/pull/188) merged into `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8` after retesting against current beta `fcc33fc9`. The exact integration head `5d3db5f230b05dab3e0b8e1a7b59218ff81c9a80` passed a full x64 Release solution build, all 1,563 targeted native tests and two Config saved-profile checks; the fetched merge tree is identical. Live startup/subtitle playback acceptance remains unreported. Prior deployment `05e59c91` is recorded below; no deployment or configuration changes were made by this merge request.
 
 ## Readiness review
 
@@ -38,3 +38,9 @@ Current pixel, source, viewport, geometry, native-authority and independent pres
 Deployed clean combined commit `05e59c91e40bcde9f75167506044b7671aca8503` after a successful full x64 Release build, preserving all previously installed `620b7d95` clock and subtitle changes. Host plus stable/Beta renderer DLLs were backed up and their replacements verified against build SHA-256 records. No configuration files were changed; player was already stopped and remains stopped. Live acceptance remains pending.
 
 [Deployment, source and regression evidence](../assets/VP-0201/deploy-05e59c91-20261022/README.md).
+
+## Beta merge — 2026-10-23
+
+User requested merge. The pinned merge workflow detected that beta advanced to `fcc33fc9` with the clock, subtitle and Config-picker updates. Rebuilt and retested the clean combination at `5d3db5f2` rather than accepting the moved base without validation. All 1,563 targeted native checks and the two relevant Config checks passed. PR #188 merged at `f7c7a820`; its first parent and exact source tree were verified against the tested pins. No GitHub checks were reported or bypassed.
+
+[Merge and validation evidence](../assets/VP-0201/merge-f7c7a820-20261023/README.md). Story remains Review pending live playback acceptance; this source merge did not redeploy binaries or alter configuration.

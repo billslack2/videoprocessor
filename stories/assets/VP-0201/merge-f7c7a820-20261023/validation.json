@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-23",
+  "repository": "billslack2/videoprocessor",
+  "pull_request": "https://github.com/billslack2/videoprocessor/pull/188",
+  "state": "MERGED",
+  "mergedAt": "2026-10-23T04:27:58Z",
+  "original_feature_commit": "6f12ff913b51fbedbf9cc0c3a6610bb45a588a5b",
+  "previous_base": "3746d59e6c51b6056d8eef8443e0039fba978dcb",
+  "validated_base": "fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02",
+  "tested_head": "5d3db5f230b05dab3e0b8e1a7b59218ff81c9a80",
+  "merge_commit": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "merged_tree": "6e1b76cb3cf94e079ae8965b5cf8dcb41967c4cc",
+  "tested_tree_matches_merge": true,
+  "build": {
+    "configuration": "Release",
+    "platform": "x64",
+    "passed": true,
+    "log": "C:\\Users\\bslac\\Documents\\Codex\\2026-10-22\\befo\\work\\vp-merge188-build.log",
+    "sha256": "c14c0c50389f1d1a63f19f91825c3959d47f8360b665cea42e47cabffa76bb67"
+  },
+  "native_counters": {
+    "total": "1563",
+    "executed": "1563",
+    "passed": "1563",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "native_result_sha256": "c86751957330e3bfb2ba8611f9e675eff971488f98636f0e15b5ecd3b3bb08a8",
+  "config_checks": [
+    {
+      "name": "subtitle surrounding fill round trip",
+      "passed": true,
+      "sha256": "322b90cf1865f5d810be8bb47c530f70508c3138a338ddcfcfad3efb6656add4"
+    },
+    {
+      "name": "subtitle retired temporal fill preserves saved profiles",
+      "passed": true,
+      "sha256": "e9ce8266cad736913981bea32d30055f522ba8255cb7a36503204f78bfed5d7f"
+    }
+  ],
+  "github_status_checks": [],
+  "deployment_performed_this_request": false
+}
