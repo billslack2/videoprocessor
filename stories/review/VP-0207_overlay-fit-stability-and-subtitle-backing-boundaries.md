@@ -1,9 +1,11 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
-User accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
+Follow-up backing correction f93438ed is deployed for Ben-Hur replay in draft PR #196. The one-pixel current-measurement/composition binding dropout is reproduced and covered by native/GPU regressions; live acceptance remains pending. Prior Off fitting remains accepted.
+
+Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -102,3 +104,12 @@ The accepted tested deployment remains the clean Release source 6608b736 with re
 ## Subtitle backing flash reopened — 2026-10-23
 
 User reports intermittent subtitle occlusion flashing during Ben-Hur after accepting the Off navigation fit. Reopened the unresolved backing portion; the merged Off improvement remains accepted. Preserved runtime 6608b736 logs under E:\codex\diagnostics\vp0207-backing-flash-20261023-1632. At 16:31:21–22, same cue 12 frames 1653 and 1669 have valid finite backing proof but application rejects physical 383..1777 or 384..1777 against composed 384..1776; neighboring frames apply cleanup. Frames 1659/1660/1668 also reject acquisition at the shifted edge. Current beta is 73acf650. Clean source worktree E:\codex\videoprocessor\subtitle-backing-binding-20261023, branch codex/subtitle-backing-binding-20261023. Readiness: exact current proof, stable layout and local application boundary are identified; reproduce one-pixel visible-edge clipping with current native pixel checks, stale/context/geometry negatives and GPU reconstruction regression. No change to Off fitting is planned.
+
+## Current visible backing edge correction — 2026-10-23
+
+- Source f93438edb1adcd97c716ccd66086f9130d17ac39 on codex/subtitle-backing-binding-20261023, based on the freshly fetched current beta 73acf650, pushed to draft PR #196: https://github.com/billslack2/videoprocessor/pull/196. Prior PR #195 remains merged; this follow-up is not merged.
+- Current proof receives local composition after stable layout. When its cue-side edge excludes one row inside the independently measured current picture, exhaustive finite-strip probing uses that visible interval. It cannot widen beyond current evidence or tolerate larger changes. Every current body/closure/flank pixel remains checked; Apply keeps its exact cue-side identity/policy/binding checks. Failed current proof still resets continuity; layout and native AR ownership are untouched. Additional diagnostics include raw measured bounds and visible-edge clipping.
+- Regression reproduces the unchanged same-cue strip with one-pixel raw edge alternation at 384/1776 in 4K, across P010, P210, decoded DV and RGB, at both bars. Confirms complete stable cleanup, unchanged layout, no cache mutation, and current-pixel rejection after a bright body pixel or missing strip. Negative cases reject widening, larger changes, wrong geometry, stale frames, policy and continuity.
+- Clean x64 Release solution Rebuild passed. All **1,005 selected native/GPU tests passed**, including all three new regressions, the prior 695-test coverage and additional lookahead, measurement worker, cut/paste and actual GPU shader tests. GPU cases cover black/reconstruction alpha, measured/clipped backing, prepared erasure, the fresh backing lip and surround reconstruction. Both Qt Off zoom hold and subtitle profile round-trip tests passed. Logs in the source worktree: build-backing-visible-edge-clean.log, test-backing-edge-new.log, test-backing-visible-edge.log, test-backing-edge-off-ui.log, test-backing-edge-subtitle-ui.log. Final TRX: TestResults/backing-visible-edge.trx. No full suite rerun is claimed at this revision.
+- Continued the authorized test deployment: host and standard/beta renderers backed up and replaced together from the successful Release build. All three deployed SHA-256 hashes match build records. Startup confirms host and beta renderer f93438ed with dirty=0, PID 65292. Existing Config binaries/open editor preserved; no active configuration edits, and hashes unchanged after launch. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-backing-binding-f93438ed-20261023-164515.
+- Evidence: stories/assets/VP-0207/deployment-f93438ed-20261023 includes receipt, startup identity, same-cue incident lines and validation summary. Complete log snapshot remains in E:\codex\diagnostics\vp0207-backing-flash-20261023-1632; no movie pixels committed. Review remains pending the user's live Ben-Hur replay, particularly whether the narrow occluding strip still flashes during a single cue.

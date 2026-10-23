@@ -1,0 +1,15 @@
+  Passed VisibleLipProofRejectsWideningLargeEdgeChangesAndWrongContext [132 ms]
+  Passed VisibleEdgeClippingStillRequiresExactCurrentBodyPixels [271 ms]
+  Passed CurrentVisibleLipSurvivesOnePixelMeasuredCueSideExpansion [583 ms]
+  Passed BlackAndReconstructionLayersPreserveAlphaAndComposition [1 m 34 s]
+  Passed MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers [15 s]
+  Passed ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars [16 s]
+  Passed PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint [15 s]
+  Passed FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer [15 s]
+  Passed SurroundFillPreservesSplitCompositionAndTransferFunctions [1 m 2 s]
+  Passed SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars [15 s]
+  Passed SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors [7 s]
+Test Run Successful.
+Total tests: 1005
+     Passed: 1005
+ Total time: 4.5140 Minutes
