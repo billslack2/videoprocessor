@@ -13,7 +13,7 @@
 // Increment whenever the factory signature or any shared interface vtable
 // or shared snapshot layout changes. The executable and optional renderer DLL are deployed separately,
 // so this is the fail-closed ABI boundary for a mismatched pair.
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 28;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 29;
 static constexpr const char* VP_LIBPLACEBO_FLAVOR_EXPORT = "VideoProcessorLibplaceboIsBeta";
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";
@@ -42,7 +42,7 @@ using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
     AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
     AnalysisDiagnosticTrace::FrameCaptureActiveCallback);
 
-// Optional V1 side-channel. Its absence preserves API-28 reveal behavior; it
+// Optional V1 side-channel. Its absence preserves API-29 reveal behavior; it
 // changes neither the factory nor any existing shared interface/snapshot.
 static constexpr const char* VP_LIBPLACEBO_STARTUP_READINESS_EXPORT =
     "VideoProcessorLibplaceboGetStartupPresentationReadinessV1";

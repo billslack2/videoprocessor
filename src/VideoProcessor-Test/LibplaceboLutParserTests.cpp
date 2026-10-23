@@ -1436,7 +1436,7 @@ namespace VideoProcessorTest
 			Assert::IsNull(result.lut);
 		}
 
-		TEST_METHOD(PartialSamePathReplacementRetainsThenRetriesFinalCube)
+		TEST_METHOD(RawLoaderReportsPartialAndCompletedSamePathVersionsForDiagnostics)
 		{
 			TemporaryFile file;
 			file.Write(Valid3dCube);
@@ -1459,7 +1459,7 @@ namespace VideoProcessorTest
 			file.Write(Green3dCube);
 			const FileVersion completed = ProbeFileVersion(file.Path());
 			Assert::IsFalse(SameFileVersion(partial.fileVersion, completed),
-				L"Completion after a partial write must schedule another reload");
+				L"File versions describe parsed bytes for diagnostics; they do not schedule automatic reloads");
 			LoadResult replacement = Load(nullptr, file.Path());
 			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
 				static_cast<int>(replacement.status));
@@ -1469,6 +1469,175 @@ namespace VideoProcessorTest
 			Free(initial);
 		}
 
+        TEST_METHOD(AppliedCacheKeepsSamePathSnapshotUntilExplicitApplyEvenWithSameFileVersion)
+        {
+            TemporaryFile file;
+            file.Write(Valid3dCube);
+            AppliedCache cache;
+            const auto accepted = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(accepted->result.status));
+            Assert::IsNotNull(accepted->owner.get());
+            Assert::IsTrue(accepted->result.lut == accepted->owner.get());
+            const uint64_t signature = accepted->owner->signature;
+            const FileVersion originalVersion = ProbeFileVersion(file.Path());
+            Assert::IsTrue(originalVersion.available);
+
+            // Keep both file length and modification time unchanged: Apply must
+            // still read replacement bytes, and ordinary selection must not.
+            std::string replacement = Valid3dCube;
+            const size_t sample = replacement.find("0.0 0.0 0.0\n");
+            Assert::IsTrue(sample != std::string::npos);
+            replacement.replace(sample, strlen("0.0 0.0 0.0\n"), "0.0 1.0 0.0\n");
+            file.Write(replacement.c_str());
+            HANDLE handle = CreateFileA(file.Path().c_str(), FILE_WRITE_ATTRIBUTES,
+                0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            Assert::IsTrue(handle != INVALID_HANDLE_VALUE);
+            FILETIME originalWriteTime{};
+            originalWriteTime.dwLowDateTime = static_cast<DWORD>(originalVersion.fileWriteTime);
+            originalWriteTime.dwHighDateTime = static_cast<DWORD>(originalVersion.fileWriteTime >> 32);
+            const bool restored = SetFileTime(handle, nullptr, nullptr, &originalWriteTime) != FALSE;
+            CloseHandle(handle);
+            Assert::IsTrue(restored);
+            Assert::IsTrue(SameFileVersion(originalVersion, ProbeFileVersion(file.Path())));
+
+            const auto ordinarySelection = cache.Get(nullptr, file.Path());
+            Assert::IsTrue(ordinarySelection == accepted,
+                L"Ordinary profile selection must keep the accepted immutable snapshot");
+            Assert::AreEqual(signature, ordinarySelection->owner->signature);
+            cache.Clear(); // Explicit configuration Apply begins a new snapshot epoch.
+            const auto applied = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(applied->result.status));
+            Assert::IsTrue(applied != accepted);
+            Assert::AreNotEqual(signature, applied->owner->signature,
+                L"Explicit Apply must read replacement bytes without relying on version changes");
+            Assert::AreEqual(signature, accepted->owner->signature,
+                L"A retained active snapshot must outlive cache replacement");
+        }
+
+        TEST_METHOD(AppliedCacheReusesBothPathsWhenProfilesReturnToEarlierSelection)
+        {
+            TemporaryFile first;
+            TemporaryFile second;
+            first.Write(Valid3dCube);
+            second.Write(Green3dCube);
+            AppliedCache cache;
+            const auto firstSelection = cache.Get(nullptr, first.Path());
+            const auto secondSelection = cache.Get(nullptr, second.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(firstSelection->result.status));
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(secondSelection->result.status));
+            Assert::AreNotEqual(firstSelection->owner->signature, secondSelection->owner->signature);
+
+            first.Write("incomplete edited first LUT");
+            second.Write("incomplete edited second LUT");
+            Assert::IsTrue(cache.Get(nullptr, first.Path()) == firstSelection,
+                L"A to B to A must reuse the previously accepted A bytes");
+            Assert::IsTrue(cache.Get(nullptr, second.Path()) == secondSelection,
+                L"Returning to B must not implicitly reload edited bytes either");
+        }
+
+        TEST_METHOD(AppliedCacheInvalidExplicitReloadDoesNotDestroyActiveLastGoodSnapshot)
+        {
+            TemporaryFile file;
+            file.Write(Valid3dCube);
+            AppliedCache cache;
+            auto active = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(active->result.status));
+            const uint64_t signature = active->owner->signature;
+            std::weak_ptr<pl_custom_lut> activeOwner = active->owner;
+
+            file.Write("incomplete replacement");
+            cache.Clear();
+            const auto rejected = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::REJECTED), static_cast<int>(rejected->result.status));
+            Assert::IsNull(rejected->result.lut);
+            Assert::IsNull(rejected->owner.get());
+            Assert::IsFalse(activeOwner.expired());
+            Assert::AreEqual(signature, active->owner->signature,
+                L"The renderer may retain the exact-contract active Cube after reload rejection");
+            Assert::IsTrue(cache.Get(nullptr, file.Path()) == rejected,
+                L"A different contract must see the latest rejected outcome, not stale accepted bytes");
+            active.reset();
+            Assert::IsTrue(activeOwner.expired(),
+                L"The old Cube must be released when its final active snapshot is released");
+        }
+
+        TEST_METHOD(AppliedCacheRepairedRejectedFileRequiresAnotherExplicitApply)
+        {
+            TemporaryFile file;
+            file.Write("unfinished cube");
+            AppliedCache cache;
+            const auto rejected = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::REJECTED), static_cast<int>(rejected->result.status));
+            file.Write(Valid3dCube);
+            const auto ordinarySelection = cache.Get(nullptr, file.Path());
+            Assert::IsTrue(ordinarySelection == rejected,
+                L"Repairing a file must not make ordinary profile changes retry a rejected load");
+            Assert::IsNull(ordinarySelection->owner.get());
+            cache.Clear();
+            const auto applied = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(applied->result.status));
+            Assert::IsNotNull(applied->owner.get());
+        }
+
+        TEST_METHOD(AppliedCacheSeparatesPathContainmentContracts)
+        {
+            TemporaryDirectory containingDirectory;
+            TemporaryDirectory unrelatedDirectory;
+            const std::string path = containingDirectory.Write("calibration.cube", Valid3dCube);
+            AppliedCache cache;
+            const auto unconstrained = cache.Get(nullptr, path);
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(unconstrained->result.status));
+            const auto rejected = cache.Get(nullptr, path, unrelatedDirectory.Path());
+            Assert::AreEqual(static_cast<int>(Status::REJECTED), static_cast<int>(rejected->result.status));
+            Assert::AreEqual(static_cast<int>(Rejection::PATH_OUTSIDE_BASE), static_cast<int>(rejected->result.rejection));
+            Assert::IsNull(rejected->owner.get());
+            const auto constrained = cache.Get(nullptr, path, containingDirectory.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(constrained->result.status));
+            Assert::AreEqual(unconstrained->owner->signature, constrained->owner->signature);
+            Assert::IsTrue(cache.Get(nullptr, path) == unconstrained);
+            Assert::IsTrue(cache.Get(nullptr, path, unrelatedDirectory.Path()) == rejected,
+                L"A cached acceptance under another base must not bypass the rejected containment contract");
+        }
+
+        TEST_METHOD(AppliedCacheRenderRejectionRequiresExplicitApplyAndKeepsOldSnapshotsAlive)
+        {
+            TemporaryFile file;
+            file.Write(Valid3dCube);
+            AppliedCache cache;
+            const auto oldSnapshot = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(oldSnapshot->result.status));
+            const uint64_t signature = oldSnapshot->owner->signature;
+            file.Write(Green3dCube);
+            cache.RejectRender(file.Path(), {});
+            const auto rejected = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::REJECTED), static_cast<int>(rejected->result.status));
+            Assert::AreEqual(static_cast<int>(Rejection::RENDER_FAILED), static_cast<int>(rejected->result.rejection));
+            Assert::IsNull(rejected->result.lut);
+            Assert::IsNull(rejected->owner.get());
+            Assert::AreEqual(signature, oldSnapshot->owner->signature,
+                L"Replacing a cache outcome must not mutate or free an existing frame snapshot");
+            Assert::IsTrue(cache.Get(nullptr, file.Path()) == rejected);
+            cache.Clear();
+            const auto retried = cache.Get(nullptr, file.Path());
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE), static_cast<int>(retried->result.status));
+            Assert::AreNotEqual(signature, retried->owner->signature);
+        }
+
+        TEST_METHOD(AppliedCacheRenderRejectionDoesNotLoadAnUnseenPath)
+        {
+            TemporaryDirectory directory;
+            const std::string path = directory.Path() + "\\not-yet-created.cube";
+            AppliedCache cache;
+            cache.RejectRender(path, directory.Path());
+            const auto rejected = cache.Get(nullptr, path, directory.Path());
+            Assert::AreEqual(static_cast<int>(Rejection::RENDER_FAILED), static_cast<int>(rejected->result.rejection),
+                L"Recording a render rejection must not replace it with a file-read outcome");
+            directory.Write("not-yet-created.cube", Valid3dCube);
+            Assert::IsTrue(cache.Get(nullptr, path, directory.Path()) == rejected);
+            cache.Clear();
+            Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+                static_cast<int>(cache.Get(nullptr, path, directory.Path())->result.status));
+        }
 		TEST_METHOD(FileLargerThanLimitIsRejectedBeforeParsing)
 		{
 			TemporaryFile file;
@@ -1514,7 +1683,7 @@ namespace VideoProcessorTest
 				Rejection::READ_FAILED, Rejection::PATH_OUTSIDE_BASE,
 				Rejection::INVALID_CUBE,
 				Rejection::ONE_DIMENSIONAL, Rejection::UNSUPPORTED_DOMAIN,
-				Rejection::UNSAFE_DIMENSIONS })
+				Rejection::UNSAFE_DIMENSIONS, Rejection::RENDER_FAILED })
 			{
 				const std::string reason = ShortReason(rejection);
 				Assert::IsFalse(reason.empty());

@@ -277,7 +277,7 @@ namespace VideoProcessorTest
             query.queryStatus = QueryStatus::Busy; query.now = 10000;
             Assert::IsFalse(gate.Evaluate(query).release);
             Assert::AreEqual(unsigned(QueryStatus::Unsupported),unsigned(QueryOptionalStartupReadiness(FutureQuery,unused,snapshot)));
-            Assert::AreEqual(uint32_t(28),VP_LIBPLACEBO_PLUGIN_API_VERSION);
+            Assert::AreEqual(uint32_t(29),VP_LIBPLACEBO_PLUGIN_API_VERSION);
         }
         TEST_METHOD(WaitingGeometryDoesNotAdvanceCoordinatedShieldReleaseState)
         {

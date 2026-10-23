@@ -81,6 +81,7 @@ public:
 		bool& liveResetRequired) override;
 	bool CycleSubtitlePreviewMode(SubtitlePreviewMode& mode) override;
 	void ResetSubtitlePreviewMode() override;
+	void RequestCalibrationLutReload() override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
