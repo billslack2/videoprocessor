@@ -1,0 +1,16 @@
+2026-10-23 15:47:04 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/b099cd8db071d44f69bd8942cfe6f7d2a9ccb59e branch=codex/subtitle-overlay-stability-20261023 dirty=0 build=v1.4.02-beta-b099cd8
+2026-10-23 15:47:05 | VP Renderer plugin probe: path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 15:47:05 | Optional VP Renderer plugin loaded: API=28 path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 15:47:05 | Renderer order: render.2 = VP Renderer (Beta)
+2026-10-23 15:47:05 | Renderer queue control selected: hard capacity=32 source=queue_size
+2026-10-23 15:47:12 | Renderer queue control selected: hard capacity=32 source=queue_size
+2026-10-23 15:47:12 | Configuration runtime settings published: renderer=VP Renderer (Beta) renderer_source=0 saved_renderer=VP Renderer (Beta) session_renderer=(none) accepted_renderer=(none) alpha_selected=1 conversion=1 directshow_conversion=1 vp_conversion=0 active_conversion=0 frame_offset=1 metadata=1 directshow=1 presentation_retained=1 video_only=0 fullscreen=1
+2026-10-23 15:47:12 | Renderer handoff audit: phase=successor-selected generation=1 renderer=VP Renderer (Beta) backend=vp-renderer target=0000000009AF0ECE target_revision=1 fullscreen_host=0000000009AF0ECE fullscreen_intent=1 previous_renderer=
+2026-10-23 15:47:12 | Renderer transition: process=60072 generation=1 event=black-suppressed reason=renderer-start renderer=VP Renderer (Beta) target=0000000009AF0ECE
+2026-10-23 15:47:12 | DISPLAY_STATE transition renderer=VP Renderer (Beta) generation=1 directshow_overrides nominal_range=0 transfer=0 matrix=0 primaries=0; video_conversion=0
+2026-10-23 15:47:12 | DISPLAY_STATE pid=60072 tid=85676 seq=1 tick=1202553625 phase=host-before-create begin renderer=VP Renderer (Beta) instance=000000D579EF89E8 hwnd=0000000009AF0ECE read_only=1 wire_state=unverified
+2026-10-23 15:47:12 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/b099cd8db071d44f69bd8942cfe6f7d2a9ccb59e branch=codex/subtitle-overlay-stability-20261023 dirty=0 build=v1.4.02-beta-b099cd8
+2026-10-23 15:47:12 | DISPLAY_STATE pid=60072 tid=85676 seq=2 tick=1202553625 phase=host-ready begin renderer=VP Renderer (Beta) instance=000000D579EF89E8 hwnd=0000000009AF0ECE read_only=1 wire_state=unverified
+2026-10-23 15:47:12 | libplacebo GPU shader cache enabled: memory limit=256 MiB object limit=64 MiB path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorShaderCache.bin
+2026-10-23 15:47:12 | Renderer accepted for configuration fallback: renderer=VP Renderer (Beta) generation=1
+2026-10-23 15:47:12 | Post-start reset skipped: renderer=VP Renderer (Beta) backend=Alpha reason=fresh-queue-and-swapchain transition=routine-start action=reveal-on-first-live-frame

@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -70,3 +70,11 @@ Deployed 81cc9853 log, 15:22:25–26, sees lower overlay rows spanning 1806..206
 ## Off settings clarification — 2026-10-23
 
 User clarifies Off must detect rendered content in black bars without glyph or script hints. Hide the script-hint control for Off while preserving its value for subtitle-processing styles; verify the Off content path is independent of glyph detection. Continuing the authorized test deployment iteration.
+
+## Off content-only settings and deployment — 2026-10-23
+
+- Source b099cd8db071d44f69bd8942cfe6f7d2a9ccb59e, pushed to draft PR #195. Off hides the entire Subtitle script hint row while retaining Hold zoom for. Switching to Classic or either advanced style restores the saved hint. Hidden values survive save/reopen; no active configuration edits were needed.
+- Verified the existing Off path measures luma content and occupied rows in black bars, independently of glyph or script hints. Runtime detection and advanced reconstruction are unchanged by this UI correction.
+- x64 Release solution Build passed at the clean final commit. Qt Off zoom hold round trip and subtitle profile tab round trip both passed. The first run caught an incorrect form-row target; corrected it before the final passing run. Final logs: build-off-content-only-final.log, test-off-content-ui-final.log and test-off-content-subtitle-ui-final.log in the source worktree. Visually verified Off using a separate fixture. Earlier 670 native regressions apply to 6168c11e; no native implementation changed in this follow-up.
+- Updated the ongoing authorized test deployment with matching host, standard/beta renderers, Config executable and Config discovery DLL. All five SHA-256 hashes match Release x64 build records. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-off-content-b099cd8d-20261023-154704. Configuration hashes unchanged after launch; configuration edits: none. Runtime startup confirms host and renderer both b099cd8d with dirty=0; beta renderer selected, PID 60072.
+- Receipt, startup identity and isolated UI screenshot: stories/assets/VP-0207/deployment-b099cd8d-20261023. No movie pixels included. Remains Review for the user's live paused control-bar test. Not merged.
