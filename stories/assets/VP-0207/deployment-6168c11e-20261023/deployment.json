@@ -1,0 +1,56 @@
+{
+  "commit": "6168c11e57d1aa8236fde53362c3d4cd9e24e5a3",
+  "configuration": "Release",
+  "architecture": "x64",
+  "focusedNativeTestsPassed": 670,
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip"
+  ],
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-timebar-6168c11e-20261023-153901",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "9A77826584783048AEDDF6D1F7A1014A21616F46B7B74462A7ED9AEBFE5E013B",
+      "previousSha256": "4648F1C2A7B18F2D940C757728F1B39F7A97F67DE588582BD1B35F43E1DE44EC"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "CB3C061C81C6A80524D959825D811449135C00CE55A988F74D199CBA9CAC6894",
+      "previousSha256": "A2431B1864C695D6D57EF7346BE3295C4A7C1E32BD00746CDC54740B0EA4AC19"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "B3555405151E68C60868DDD7513C9FCFE3E774E68035F5187F00F89EC431A648",
+      "previousSha256": "A96E9EB629A9C5D7AFD06D10FF5A1761E9DDA945D2FA6BA4F36D8E7C59C62C84"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\VideoProcessorConfig.exe",
+      "target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "relative": "config\\VideoProcessorConfig.exe",
+      "sha256": "C5103772F23C7FE14CF32B80D08A34A34D4E9414ADFACB23DAA71B3AE3636467",
+      "previousSha256": "1AA06A4ABA494E0CA1650DD0D686A68CCBFC58B5E34991EED541A657BCC148A3"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "relative": "config\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "7B6BA8AA7981B2A2A945031D15EF5DAB513DA6F4B073ADC9FC178CBD4CF4738D",
+      "previousSha256": "2A5B0ABFBBB79B1006B8E13E81A0B734BD2A3A38922C2269804AE17FD6543734"
+    }
+  ],
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3",
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+  },
+  "verifiedAt": "2026-10-23T15:39:02.7427085-04:00"
+}

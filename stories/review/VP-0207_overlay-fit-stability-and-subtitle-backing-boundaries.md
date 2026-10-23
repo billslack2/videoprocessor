@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -56,3 +56,13 @@ User confirmed flashing improved. Off must zoom out only to the bounded union of
 User reports scrub line/time labels still clipped while its preview thumbnail is visible; 16:9 comparison exposes the complete controls. User requests Off retain the bounded zoom-out for about two seconds, configurable in the UI as Hold zoom for. Advanced reconstruction remains accepted.
 
 Deployed 81cc9853 log, 15:22:25–26, sees lower overlay rows spanning 1806..2068 with peak 1760 samples. The bounding depth flips overlay_bottom from true to false although the UI is a thin line plus separated labels. This disqualifies current UI FIT ownership. Investigating actual occupied-row density rather than treating intervening black as picture. Current beta remains dfd34ea6.
+
+## Scrub-control footprint and Off zoom hold — 2026-10-23
+
+- Source `6168c11e57d1aa8236fde53362c3d4cd9e24e5a3`, pushed to draft PR #195. Off now uses actual occupied-row support when classifying a bar overlay; black gaps between the scrub line and labels no longer make that sparse UI appear to be continuous picture fill. Its complete bounding rectangle is still retained for rendering. Classic/advanced classification is unchanged.
+- Pixel regression uses a 3840x2160 native P010 frame with picture 384..1776, wide line 1806..1826 and separated labels 2046..2068. Confirms 42 occupied rows across a 262-row bounding span, successful independent UI FIT ownership, full bounded extent, cache preservation and two-second release hold. Mirrored top-bar and continuous-picture negative cases are included.
+- Off profile control **Hold zoom for** (`off_zoom_hold_seconds`), default 2 seconds, accepts 0..30 seconds independently of Classic's timer. Runtime reads the selected Off value, and existing hold/extent lifetimes use it. UI control appears only for Off.
+- Clean x64 Release solution Rebuild passed. **670 focused native tests passed**, plus Qt **Off zoom hold round trip** and existing **subtitle profile tab round trip** passed. Tests cover default/range/schema, independent timers, hidden controls in other styles, comment preservation, save/reopen and prior subtitle/aspect behavior. Logs: `build-timebar-hold-clean.log`, `test-timebar-hold-native.log`, `test-timebar-hold-ui.log`, `test-timebar-subtitle-ui.log` in the source worktree. Native TRX: `TestResults/timebar-hold-native.trx`. New UI visually verified using an isolated fixture; screenshot is fixture UI, not user configuration.
+- Deployed the clean Release host, standard/beta renderers, Config executable and Config discovery DLL together; all five deployed hashes match their build runtime records. Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-timebar-6168c11e-20261023-153901`. Configuration hashes unchanged; no active settings edits. VP relaunched as PID 78088, and fresh host/renderer logs both confirm commit 6168c11e with dirty=0.
+- Evidence: `stories/assets/VP-0207/deployment-6168c11e-20261023` includes receipt, startup identity, pre-fix raw detection lines and the isolated UI screenshot. No captured movie pixels committed.
+- Remains Review for the user's paused scrub-bar replay; live incident resolution is not yet claimed. Not merged. Earlier full 3,153-test validation remains specific to 5ab30a23.
