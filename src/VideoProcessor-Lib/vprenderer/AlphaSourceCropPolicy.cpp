@@ -455,6 +455,17 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+    VerticalBarContentDecision SelectVerticalBarContentPresentation(
+        VerticalBarContentDecision observed, bool translationEnabled)
+    {
+        if (!translationEnabled && observed.action == VerticalBarPresentationAction::TRANSLATE)
+        {
+            observed.action = VerticalBarPresentationAction::FIT;
+            observed.translationPixels = 0.0f;
+        }
+        return observed;
+    }
+
 	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
 		const VerticalTranslationConfirmationInput& input)
 	{

@@ -129,6 +129,13 @@ namespace AlphaSourceCrop
 	VerticalBarContentDecision EvaluateVerticalBarContent(
 		const VerticalBarContentInput& input);
 
+    // Off reveals measured content by fitting its bounded envelope. Select that
+    // action BEFORE confirmation: a changing UI extent is not a Classic motion
+    // target. Classic and advanced styles keep their existing shared translation.
+    VerticalBarContentDecision SelectVerticalBarContentPresentation(
+        VerticalBarContentDecision observed, bool translationEnabled);
+
+
 	// Subtitle extent often grows over the first few decoded frames. Confirm a
 	// new or larger translation on three consecutive dense analysis samples before
 	// exposing it to the presentation interpolator. This is deliberately based

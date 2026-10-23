@@ -6766,7 +6766,8 @@ struct LibplaceboVideoRenderer::Impl
 					confirmationInput;
 				confirmationInput.previous =
 					scopeSubtitleTranslationConfirmation;
-				confirmationInput.observed = verticalDecision;
+                confirmationInput.observed = AlphaSourceCrop::SelectVerticalBarContentPresentation(
+                    verticalDecision, scopeSubtitleFit);
 				confirmationInput.acceptedTranslationActive =
 					previousOwnsCurrentAnalysis &&
 					scopeVerticalBarPresentation.action ==
