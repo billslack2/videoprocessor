@@ -80,8 +80,8 @@ Configured lookahead depth is unchanged. Preparation selects the union of the
 configured preview and the first three distinct future sources needed by outward
 proof. Raw, subtitle, prepared-component and outward jobs use separate bounded
 workers. Queued jobs prefer nearer sources, and obsolete requests cannot publish
-into replacement slots. Render-thread submission uses try-locks and never waits
-for a worker. Shutdown joins workers after presentation/conversion retirement.
+into replacement slots. New raw/component/outward-worker admission uses try-locks and never waits
+for job completion. Existing subtitle submission retains its short queue mutex. Shutdown joins workers after presentation/conversion retirement.
 
 Each queued source retains immutable raw/global/darkness measurements. Prepared
 pixel-component priming requires an established bar-crop base; full-raster inward
@@ -119,9 +119,9 @@ Qualified foreground allowance is the reachable display-boundary lead less
 `max(2 ms, 1.25 * (CPU tail + GPU tail))`. CPU and GPU maxima use eight fixed
 250 ms buckets (about two seconds). New-source CPU cost is tracked independently
 of cheaper repeated outputs. CPU/GPU overlap can make this sum conservative.
-There is no universal 2 or 4 ms qualified ceiling. Unknown/stale timing falls back
-to at most 1 ms; repeated outputs, backlog and unstable presentation get no new
-foreground ticket. The deadline is fixed and cannot roll into the next interval.
+There is no universal 2 or 4 ms qualified ceiling. Unknown/stale/unstable timing falls back
+to at most 1 ms; repeated outputs and backlog get no new foreground ticket.
+Discontinuity, resize and output renegotiation also suppress new foreground scans. The deadline is fixed and cannot roll into the next interval.
 
 Only existing nonblocking D3D11 timing results feed the GPU estimate. Source and
 viewport epoch fencing rejects old samples, and confidence requires an actual
