@@ -2645,6 +2645,27 @@ namespace VideoProcessorTest
                 Assert::IsTrue(ConfigurationApplyPolicy::ClassifyChange({"vprenderer.subtitles.Shape",key})==ConfigurationApplyPolicy::Action::ApplyProfiles);
         }
 
+        TEST_METHOD(OffZoomHoldIsIndependentBoundedAndDefaultsToTwoSeconds)
+        {
+            std::string expected;
+            Assert::AreEqual(uint64_t(2000),RendererProfileConfig::ResolveOffZoomHoldMs({}));
+            for(const char* value:{"0","0.25","2","5.5","30"}) {
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","off_zoom_hold_seconds",value,expected));
+                CachedConfigTestFile fixture;
+                { std::ofstream file(fixture.path);file<<"[vprenderer.subtitles.Off]\ntype: off\noff_zoom_hold_seconds: "<<value<<"\nsubtitle_hold_seconds: 7\n"; }
+                ConfigFile config;Assert::IsTrue(config.Load(fixture.path));RendererProfileConfig::Model model;std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config,model,error));
+                const auto& settings=model.profiles.at("subtitles.off").settings;
+                double seconds=0;Assert::IsTrue(DisplayRuleExpression::ParseNumber(value,seconds));
+                Assert::AreEqual(uint64_t(std::llround(seconds*1000)),RendererProfileConfig::ResolveOffZoomHoldMs(settings));
+            }
+            for(const char* value:{"-1","31","nan","inf","two",""}) {
+                Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","off_zoom_hold_seconds",value,expected));
+                Assert::AreEqual(uint64_t(2000),RendererProfileConfig::ResolveOffZoomHoldMs({{"off_zoom_hold_seconds",value}}));
+            }
+            Assert::IsTrue(ConfigurationApplyPolicy::ClassifyChange({"vprenderer.subtitles.Off","off_zoom_hold_seconds"})==ConfigurationApplyPolicy::Action::ApplyProfiles);
+        }
+
         TEST_METHOD(SubtitleTextReductionIsOptionalBoundedAndMovedProfileOnly)
         {
             std::string expected;

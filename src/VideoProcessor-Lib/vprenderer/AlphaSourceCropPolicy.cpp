@@ -456,8 +456,21 @@ namespace AlphaSourceCrop
 	}
 
     VerticalBarContentDecision SelectVerticalBarContentPresentation(
-        VerticalBarContentDecision observed, bool translationEnabled)
+        VerticalBarContentDecision observed, bool translationEnabled,
+        const VerticalBarContentInput* current)
     {
+        if (!translationEnabled && current)
+        {
+            // A wide scrub line plus separated labels has a tall bounding box,
+            // but very few occupied rows. Only Off uses this visibility route;
+            // Classic and moved subtitle styles preserve their existing policy.
+            auto footprint = *current;
+            if (footprint.upperOccupiedRows > 0 && footprint.upperOccupiedRows <= footprint.upperOccupiedDepth)
+                footprint.upperOccupiedDepth = footprint.upperOccupiedRows;
+            if (footprint.lowerOccupiedRows > 0 && footprint.lowerOccupiedRows <= footprint.lowerOccupiedDepth)
+                footprint.lowerOccupiedDepth = footprint.lowerOccupiedRows;
+            observed = EvaluateVerticalBarContent(footprint);
+        }
         if (!translationEnabled && observed.action == VerticalBarPresentationAction::TRANSLATE)
         {
             observed.action = VerticalBarPresentationAction::FIT;

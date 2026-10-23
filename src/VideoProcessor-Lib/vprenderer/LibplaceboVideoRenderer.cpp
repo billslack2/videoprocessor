@@ -2700,6 +2700,8 @@ namespace
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;
                     const bool classicStyle=settings.subtitleProfileSelected && (type.empty() || type=="classic");
                     settings.scopeSubtitleFit=classicStyle || SubtitlePreviewOverridesClassicHandling(settings.subtitleMode);
+                    if (!settings.scopeSubtitleFit)
+                        settings.scopeSubtitleHoldMs=RendererProfileConfig::ResolveOffZoomHoldMs(values);
                     int n=0;
                     if(settings.scopeSubtitleFit) {
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_HOLD_MS;
@@ -6743,12 +6745,16 @@ struct LibplaceboVideoRenderer::Impl
 				verticalInput.lowerBarPixels =
 					height - scopeSubtitlePictureBottom;
 				verticalInput.sampledColumns = sampledColumns;
+                verticalInput.upperOccupiedRows = content.upperOccupiedRows;
+                verticalInput.lowerOccupiedRows = content.lowerOccupiedRows;
 				verticalInput.topTranslationHeld = topHoldActive;
 				verticalInput.bottomTranslationHeld = lowerHoldActive;
 				verticalInput.upperRequiredShift = upperRequiredShift;
 				verticalInput.lowerRequiredShift = lowerRequiredShift;
 				AlphaSourceCrop::VerticalBarContentDecision verticalDecision =
 					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
+                verticalDecision = AlphaSourceCrop::SelectVerticalBarContentPresentation(
+                    verticalDecision, scopeSubtitleFit, &verticalInput);
 				if (analysisCompleted)
 					*analysisCompleted = true;
                 scopeCurrentVerticalContent=verticalInput;
@@ -6766,8 +6772,7 @@ struct LibplaceboVideoRenderer::Impl
 					confirmationInput;
 				confirmationInput.previous =
 					scopeSubtitleTranslationConfirmation;
-                confirmationInput.observed = AlphaSourceCrop::SelectVerticalBarContentPresentation(
-                    verticalDecision, scopeSubtitleFit);
+                confirmationInput.observed = verticalDecision;
 				confirmationInput.acceptedTranslationActive =
 					previousOwnsCurrentAnalysis &&
 					scopeVerticalBarPresentation.action ==
@@ -6888,7 +6893,7 @@ struct LibplaceboVideoRenderer::Impl
 					{
 						lastScopeVerticalOverlayPolicy = policy.str();
 						DebugLog::Log(
-							"Alpha vertical bar content: sequence=%llu generation=%llu top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d decision=%s translation_confirm=%u/%u fit_confirm=%u/%u",
+							"Alpha vertical bar content: sequence=%llu generation=%llu top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d occupied_rows=%d/%d decision=%s translation_confirm=%u/%u fit_confirm=%u/%u",
 							static_cast<unsigned long long>(sourceSequence),
 							static_cast<unsigned long long>(source->generation),
 							upperContent ? 1 : 0, upperOverlayLike ? 1 : 0,
@@ -6897,6 +6902,7 @@ struct LibplaceboVideoRenderer::Impl
 							lowerContent ? 1 : 0, lowerOverlayLike ? 1 : 0,
 							lowerContentTop, lowerContentBottom,
 							lowerMaximumContentSamples,
+							content.upperOccupiedRows, content.lowerOccupiedRows,
 							actionLabel,
 							scopeSubtitleTranslationConfirmation.confirmations,
 							AlphaSourceCrop::

@@ -102,6 +102,8 @@ namespace AlphaSourceCrop
 		bool lowerContent = false;
 		int upperOccupiedDepth = 0;
 		int lowerOccupiedDepth = 0;
+        // Current sampled row support; black gaps between UI rows are excluded.
+        int upperOccupiedRows = 0, lowerOccupiedRows = 0;
 		int upperPeakSamples = 0;
 		int lowerPeakSamples = 0;
 		int upperBarPixels = 0;
@@ -133,7 +135,8 @@ namespace AlphaSourceCrop
     // action BEFORE confirmation: a changing UI extent is not a Classic motion
     // target. Classic and advanced styles keep their existing shared translation.
     VerticalBarContentDecision SelectVerticalBarContentPresentation(
-        VerticalBarContentDecision observed, bool translationEnabled);
+        VerticalBarContentDecision observed, bool translationEnabled,
+        const VerticalBarContentInput* current = nullptr);
 
 
 	// Subtitle extent often grows over the first few decoded frames. Confirm a
