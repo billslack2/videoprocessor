@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vprenderer/Bt2020SignalController.h>
+#include <vprenderer/Bt2020SignalWorker.h>
 #include <DebugLog.h>
 #include <nvapi.h>
 #include <chrono>
@@ -68,67 +68,26 @@ private:
     bool initialized = false;
 };
 
-// One serialized worker owns NVAPI calls. Delays never sleep on the render/UI
-// thread and continue even if capture pauses while the projector changes mode.
+// The service owns the backend and every NVAPI call on one worker, including
+// final restoration and unload. Render/UI queries read a cached publication.
 class NvidiaBt2020Reporter
 {
 public:
-    NvidiaBt2020Reporter() : controller(backend) {}
+    using Diagnostics = Bt2020Signal::WorkerService<NvidiaBt2020Backend>::Snapshot;
     ~NvidiaBt2020Reporter()
     {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            stopping = true;
-        }
-        wake.notify_all();
-        if (worker.joinable()) worker.join();
-        if (!controller.Retire())
+        if (!service.Stop())
             DebugLog::Log("NVIDIA BT.2020 report: final disengagement failed; external state unverified");
     }
     void Request(const std::string& display, bool enabled, bool restart)
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        controller.Request(display, enabled, Now(), restart);
-        if (!worker.joinable()) worker = std::thread([this] { Run(); });
-        wake.notify_all();
-    }
-    bool IsActive() const
-    { std::lock_guard<std::mutex> lock(mutex); return controller.IsActive(); }
-    bool IsReadbackVerified() const
-    { std::lock_guard<std::mutex> lock(mutex); return controller.IsVerified(); }
-    bool Failed() const
-    { std::lock_guard<std::mutex> lock(mutex); return controller.Failed(); }
-    std::string Status() const
-    { std::lock_guard<std::mutex> lock(mutex); return controller.Status(); }
-    bool Restore()
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        return controller.Retire();
-    }
-    void AbandonPendingRestoreForShutdown()
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        controller.Abandon();
-    }
+    { service.Request(display, enabled, restart); }
+    bool IsActive() const { return service.IsActive(); }
+    bool IsReadbackVerified() const { return service.IsReadbackVerified(); }
+    bool Failed() const { return service.Failed(); }
+    std::string Status() const { return service.Status(); }
+    Diagnostics Snapshot() const { return service.ReadSnapshot(); }
+    bool Restore() { return service.Restore(); }
+    void AbandonPendingRestoreForShutdown() { service.AbandonPendingRestoreForShutdown(); }
 private:
-    static uint64_t Now()
-    {
-        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count());
-    }
-    void Run()
-    {
-        std::unique_lock<std::mutex> lock(mutex);
-        while (!stopping)
-        {
-            controller.Pump(Now());
-            wake.wait_for(lock, std::chrono::milliseconds(50));
-        }
-    }
-    NvidiaBt2020Backend backend;
-    Bt2020Signal::Controller<NvidiaBt2020Backend> controller;
-    mutable std::mutex mutex;
-    std::condition_variable wake;
-    std::thread worker;
-    bool stopping = false;
+    Bt2020Signal::WorkerService<NvidiaBt2020Backend> service;
 };

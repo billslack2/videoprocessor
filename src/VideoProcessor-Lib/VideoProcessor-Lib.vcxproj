@@ -168,6 +168,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="FullscreenActivation.h" />
     <ClInclude Include="StartupPresentationReadiness.h" />
     <ClInclude Include="vprenderer\QueueNativeContinuity.h" />
     <ClInclude Include="ToneMappingTuning.h" />
@@ -196,6 +197,9 @@
     <ClInclude Include="ConfigurationDiscovery.h" />
     <ClInclude Include="ConfigSchema.h" />
     <ClInclude Include="DebugLog.h" />
+    <ClInclude Include="DebugLogAsync.h" />
+    <ClInclude Include="AnalysisEvaluationBudget.h" />
+    <ClInclude Include="vprenderer\Bt2020SignalWorker.h" />
     <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
@@ -611,4 +615,12 @@
     <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdRefresh.h" />
   </ItemGroup>
   <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h" /></ItemGroup>
+  <ItemGroup>
+
+    <ClInclude Include="vprenderer\PreparedPictureEvidence.h" />
+    <ClInclude Include="vprenderer\LookaheadPerformanceWindow.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vprenderer\PreparedOutwardWindow.h" />
+  </ItemGroup>
 </Project>

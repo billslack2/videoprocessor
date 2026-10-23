@@ -81,6 +81,174 @@ namespace Tests
     TEST_CLASS(InwardCaptionEvidenceTests)
     {
     public:
+        TEST_METHOD(NominatedCaptionPixelProofMatchesLegacyPathAndNeedsCurrentHistory)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame; frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto reference=NominateInwardCaptionReference(source,raw,history.imax,history.model);
+            Assert::IsTrue(reference.valid);
+            Assert::IsTrue(InwardCaptionReferenceIsCurrent(reference,history.imax,history.model));
+            const auto legacy=InspectInwardCaptionEvidence(source,raw,history.imax,history.model);
+            const auto prepared=InspectInwardCaptionEvidence(source,raw,reference);
+            Assert::IsTrue(legacy.valid && prepared.valid);
+            Assert::AreEqual(legacy.picture.trustedBounds.top,prepared.picture.trustedBounds.top);
+            Assert::AreEqual(legacy.picture.trustedBounds.bottom,prepared.picture.trustedBounds.bottom);
+            Assert::AreEqual(legacy.protectedBounds.top,prepared.protectedBounds.top);
+            Assert::AreEqual(legacy.protectedBounds.bottom,prepared.protectedBounds.bottom);
+            Assert::IsTrue(legacy.picture.axisEvidence==prepared.picture.axisEvidence);
+            CaptionReturnHistory unknown(false);
+            Assert::IsFalse(InwardCaptionReferenceIsCurrent(reference,history.imax,unknown.model),
+                L"A completed pixel result cannot import remembered history into a different live model.");
+            auto changedBase=history.imax; ++changedBase.top;
+            Assert::IsFalse(InwardCaptionReferenceIsCurrent(reference,changedBase,history.model));
+            auto changedRemembered=reference; ++changedRemembered.remembered.top;
+            Assert::IsFalse(InwardCaptionReferenceIsCurrent(changedRemembered,history.imax,history.model));
+        }
+
+        TEST_METHOD(CheapCaptionNominationCannotSubstituteForFreshPixelProof)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame; frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            // Keep the old raw observation, then replace current pixels with
+            // black. Nomination intentionally reads geometry/history only.
+            frame.Rectangle(0,0,320,180,64);
+            const auto reference=NominateInwardCaptionReference(source,raw,history.imax,history.model);
+            Assert::IsTrue(reference.valid);
+            Assert::IsFalse(InspectInwardCaptionEvidence(source,raw,reference).valid,
+                L"A known format and old raw metadata cannot prove current picture pixels.");
+        }
+
+        TEST_METHOD(PreparedCaptionStillRejectsConnectedPictureAndMismatchedCandidate)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame; frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto reference=NominateInwardCaptionReference(source,raw,history.imax,history.model);
+            Assert::IsTrue(reference.valid);
+            auto wrong=reference; ++wrong.candidate.top;
+            Assert::IsFalse(InspectInwardCaptionEvidence(source,raw,wrong).valid);
+            frame.Rectangle(0,158,320,174,300);
+            Assert::IsFalse(InspectInwardCaptionEvidence(source,raw,reference).valid,
+                L"History nomination cannot turn connected picture growth into isolated caption evidence.");
+        }
+
+        TEST_METHOD(NominationPreservesLegacyValidCasesAcrossFormatsAndPixelFailures)
+        {
+            for (bool native : { false,true })
+                for (int fault=0; fault<7; ++fault)
+                {
+                    CaptionReturnHistory history(fault!=5);
+                    CaptionReturnPixels frame; frame.Caption();
+                    auto base=history.imax;
+                    switch (fault)
+                    {
+                    case 1: frame.Rectangle(110,162,210,168,64); break;
+                    case 2: frame.Rectangle(0,0,320,180,64); break;
+                    case 3: frame.Rectangle(110,8,210,18,700); break;
+                    case 4: frame.Rectangle(0,158,320,174,300); break;
+                    case 6: base.left=2; break;
+                    }
+                    const auto source=frame.Source(native);
+                    const auto raw=ExtractActivePictureEvidence(source);
+                    const auto legacy=InspectInwardCaptionEvidence(source,raw,base,history.model);
+                    const auto reference=NominateInwardCaptionReference(source,raw,base,history.model);
+                    if (legacy.valid)
+                        Assert::IsTrue(reference.valid,
+                            L"A cheap negative nomination must never remove a formerly valid caption proof.");
+                    const auto prepared=reference.valid
+                        ? InspectInwardCaptionEvidence(source,raw,reference) : InwardCaptionEvidence{};
+                    Assert::IsTrue(prepared.valid==legacy.valid);
+                    if (legacy.valid)
+                    {
+                        Assert::AreEqual(legacy.picture.trustedBounds.top,prepared.picture.trustedBounds.top);
+                        Assert::AreEqual(legacy.picture.trustedBounds.bottom,prepared.picture.trustedBounds.bottom);
+                        Assert::AreEqual(legacy.protectedBounds.top,prepared.protectedBounds.top);
+                        Assert::AreEqual(legacy.protectedBounds.bottom,prepared.protectedBounds.bottom);
+                    }
+                }
+        }
+
+        TEST_METHOD(NominationRetainsTolerantHistorySelectionSeparatelyFromExactPixelCandidate)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels cleanScope,cleanImax(6,174),frame; frame.Caption();
+            auto shifted=ExtractActivePictureEvidence(cleanScope.Source());
+            ++shifted.trustedBounds.top; ++shifted.trustedBounds.bottom;
+            shifted.proposedBounds=shifted.trustedBounds;
+            ActivePictureTransitionModel model;
+            for (uint64_t sequence=1; sequence<=4; ++sequence)
+                model.Observe(MakeActivePictureObservation(shifted,sequence,24));
+            const auto imax=ExtractActivePictureEvidence(cleanImax.Source());
+            for (uint64_t sequence=5; sequence<=8; ++sequence)
+                model.Observe(MakeActivePictureObservation(imax,sequence,24));
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto legacy=InspectInwardCaptionEvidence(source,raw,history.imax,model);
+            const auto reference=NominateInwardCaptionReference(source,raw,history.imax,model);
+            Assert::IsTrue(legacy.valid && reference.valid);
+            Assert::IsTrue(reference.candidate.top!=reference.remembered.top,
+                L"A tolerant history lookup must not be replaced with exact candidate/history equality.");
+            Assert::IsTrue(InwardCaptionReferenceIsCurrent(reference,history.imax,model));
+            const auto prepared=InspectInwardCaptionEvidence(source,raw,reference);
+            Assert::IsTrue(prepared.valid);
+            Assert::AreEqual(legacy.picture.trustedBounds.top,prepared.picture.trustedBounds.top);
+            Assert::AreEqual(legacy.picture.trustedBounds.bottom,prepared.picture.trustedBounds.bottom);
+            Assert::AreEqual(legacy.protectedBounds.top,prepared.protectedBounds.top);
+            Assert::AreEqual(legacy.protectedBounds.bottom,prepared.protectedBounds.bottom);
+        }
+        TEST_METHOD(CancelledPreparedCaptionPublishesNoPartialProtectionAndCanRetry)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame; frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto reference=NominateInwardCaptionReference(source,raw,history.imax,history.model);
+            Assert::IsTrue(reference.valid);
+            AnalysisEvaluationBudget budget([](void*) { return true; },nullptr);
+            Assert::ExpectException<AnalysisEvaluationCancelled>([&] {
+                (void)InspectInwardCaptionEvidence(source,raw,reference,&budget);
+            });
+            Assert::IsTrue(InwardCaptionReferenceIsCurrent(reference,history.imax,history.model));
+            Assert::IsTrue(InspectInwardCaptionEvidence(source,raw,reference).valid);
+        }
+        TEST_METHOD(CancelledOptionalInwardCaptionProofLeavesNoAuthorityAndMandatoryRetrySucceeds)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame;frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            size_t total=0;
+            AnalysisEvaluationBudget counting([](void* context) {
+                ++*static_cast<size_t*>(context);return false;
+            },&total);
+            const auto expected=InspectInwardCaptionEvidence(source,raw,history.imax,history.model,&counting);
+            Assert::IsTrue(expected.valid && total>4);
+            std::array<size_t,2> clock{{0,total/2}};
+            AnalysisEvaluationBudget budget([](void* context) {
+                auto& state=*static_cast<std::array<size_t,2>*>(context);
+                return ++state[0]>=state[1];
+            },&clock);
+            InwardCaptionEvidence cancelled;
+            bool threw=false;
+            try { cancelled=InspectInwardCaptionEvidence(source,raw,history.imax,history.model,&budget); }
+            catch (const AnalysisEvaluationCancelled&) { threw=true; }
+            Assert::IsTrue(threw && budget.Cancelled());
+            Assert::IsFalse(cancelled.valid);
+            Assert::IsFalse(cancelled.picture.available);
+            const auto retry=InspectInwardCaptionEvidence(source,raw,history.imax,history.model);
+            Assert::IsTrue(retry.valid);
+            Assert::AreEqual(expected.picture.trustedBounds.top,retry.picture.trustedBounds.top);
+            Assert::AreEqual(expected.picture.trustedBounds.bottom,retry.picture.trustedBounds.bottom);
+            Assert::AreEqual(expected.protectedBounds.top,retry.protectedBounds.top);
+            Assert::AreEqual(expected.protectedBounds.bottom,retry.protectedBounds.bottom);
+            Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL);
+        }
+
         TEST_METHOD(RawCaptionStillBlocksInwardProofAndOldBaseMissesItsPixels)
         {
             CaptionReturnHistory history;

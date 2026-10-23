@@ -170,6 +170,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FullscreenActivationTests.cpp" />
     <ClCompile Include="StartupPresentationReadinessTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
@@ -269,6 +270,8 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="DebugLogRetentionTests.cpp" />
+    <ClCompile Include="DebugLogAsyncTests.cpp" />
+    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" />
     <ClCompile Include="AnalysisDiagnosticTraceTests.cpp" />
     <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
@@ -355,5 +358,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MadVROsdSizingTests.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+
+    <ClCompile Include="LookaheadPerformanceWindowTests.cpp" />
+    <ClCompile Include="PreparedPictureEvidenceTests.cpp" />
+    <ClCompile Include="OptionalAnalysisWorkerTests.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="PreparedOutwardWindowTests.cpp" />
   </ItemGroup>
 </Project>

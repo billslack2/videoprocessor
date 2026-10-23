@@ -50,6 +50,7 @@ public:
 		uint64_t sourceSequence = 0;
 		uint64_t submissionSerial = 0;
 		uint64_t lagFrames = 0;
+        int64_t issuedQpc = 0;
 		double milliseconds = 0.0;
 		double sourceUploadMilliseconds = 0.0;
 		double overlayUploadMilliseconds = 0.0;
@@ -135,6 +136,8 @@ public:
 			return false;
 		}
 
+        LARGE_INTEGER issued{};
+        if (!QueryPerformanceCounter(&issued) || issued.QuadPart<=0) return false;
 		++m_renderOrdinal;
 		Slot& slot = m_slots[m_write];
 		slot.pending = false;
@@ -144,6 +147,7 @@ public:
 		slot.sourceSequence = sourceSequence;
 		slot.submissionSerial = 0;
 		slot.ordinal = m_renderOrdinal;
+        slot.issuedQpc = issued.QuadPart;
 		slot.stageCount = 0;
 		slot.stageCollectionValid = true;
 		context->Begin(slot.disjoint);
@@ -307,6 +311,7 @@ public:
 		sample.sourceSequence = slot.sourceSequence;
 		sample.submissionSerial = slot.submissionSerial;
 		sample.lagFrames = m_renderOrdinal - slot.ordinal;
+        sample.issuedQpc = slot.issuedQpc;
 		sample.milliseconds = milliseconds;
 		sample.sourceUploadMilliseconds = sourceUploadMilliseconds;
 		sample.overlayUploadMilliseconds = overlayUploadMilliseconds;
@@ -346,6 +351,7 @@ private:
 		uint64_t sourceSequence = 0;
 		uint64_t submissionSerial = 0;
 		uint64_t ordinal = 0;
+        int64_t issuedQpc = 0;
 		bool pending = false;
 		bool outcomeKnown = false;
 		bool accepted = false;
