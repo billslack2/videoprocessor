@@ -81,6 +81,39 @@ namespace Tests
     TEST_CLASS(InwardCaptionEvidenceTests)
     {
     public:
+        TEST_METHOD(CancelledOptionalInwardCaptionProofLeavesNoAuthorityAndMandatoryRetrySucceeds)
+        {
+            CaptionReturnHistory history;
+            CaptionReturnPixels frame;frame.Caption();
+            const auto source=frame.Source();
+            const auto raw=ExtractActivePictureEvidence(source);
+            size_t total=0;
+            AnalysisEvaluationBudget counting([](void* context) {
+                ++*static_cast<size_t*>(context);return false;
+            },&total);
+            const auto expected=InspectInwardCaptionEvidence(source,raw,history.imax,history.model,&counting);
+            Assert::IsTrue(expected.valid && total>4);
+            std::array<size_t,2> clock{{0,total/2}};
+            AnalysisEvaluationBudget budget([](void* context) {
+                auto& state=*static_cast<std::array<size_t,2>*>(context);
+                return ++state[0]>=state[1];
+            },&clock);
+            InwardCaptionEvidence cancelled;
+            bool threw=false;
+            try { cancelled=InspectInwardCaptionEvidence(source,raw,history.imax,history.model,&budget); }
+            catch (const AnalysisEvaluationCancelled&) { threw=true; }
+            Assert::IsTrue(threw && budget.Cancelled());
+            Assert::IsFalse(cancelled.valid);
+            Assert::IsFalse(cancelled.picture.available);
+            const auto retry=InspectInwardCaptionEvidence(source,raw,history.imax,history.model);
+            Assert::IsTrue(retry.valid);
+            Assert::AreEqual(expected.picture.trustedBounds.top,retry.picture.trustedBounds.top);
+            Assert::AreEqual(expected.picture.trustedBounds.bottom,retry.picture.trustedBounds.bottom);
+            Assert::AreEqual(expected.protectedBounds.top,retry.protectedBounds.top);
+            Assert::AreEqual(expected.protectedBounds.bottom,retry.protectedBounds.bottom);
+            Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL);
+        }
+
         TEST_METHOD(RawCaptionStillBlocksInwardProofAndOldBaseMissesItsPixels)
         {
             CaptionReturnHistory history;

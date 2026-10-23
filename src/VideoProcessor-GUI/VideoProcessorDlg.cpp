@@ -5774,14 +5774,12 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 	{
 		m_fullscreenEntryTransitionPending = false;
 		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
-		m_fullscreenActivationPending = false;
-		m_fullscreenActivationAttempted = false;
+		m_fullscreenActivation.Cancel();
 	}
-	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
-		!m_fullscreenActivationPending && !m_fullscreenActivationAttempted)
+	if (m_rendererFullscreenCheck.GetCheck())
 	{
-		m_fullscreenActivationPending =
-			SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 5000, nullptr) != 0;
+		m_fullscreenActivation.Arm(GetTickCount64());
+		ScheduleFullscreenActivation();
 	}
 
 	if (m_fullscreenRetargetPending)
@@ -10865,6 +10863,15 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			m_rendererResetTransitionActive = false;
 		}
 	}
+	// The existing validated reveal releases the pending one-shot for the
+	// current host/generation, even if startup took longer than five seconds.
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
+	{
+		m_fullscreenActivation.OnRevealed(
+			reinterpret_cast<uintptr_t>(m_rendererTargetHwnd), generation);
+		ScheduleFullscreenActivation();
+	}
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
 		"renderer=%S target=%p fullscreen_host=%p fullscreen_intent=%d "
@@ -11101,11 +11108,8 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	// Give the fullscreen host and renderer five seconds to settle, then make
 	// one focus attempt for this fullscreen session. Display-change placement
 	// uses a different timer and cannot postpone or repeat activation.
-	if (!m_fullscreenActivationPending && !m_fullscreenActivationAttempted)
-	{
-		m_fullscreenActivationPending =
-			SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 5000, nullptr) != 0;
-	}
+	m_fullscreenActivation.Arm(GetTickCount64());
+	ScheduleFullscreenActivation();
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 }
 
@@ -11126,6 +11130,17 @@ HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
     return fallback;
 }
 
+void CVideoProcessorDlg::ScheduleFullscreenActivation()
+{
+	if (!m_fullscreenActivation.Pending())
+		return;
+	const UINT delay = static_cast<UINT>(
+		m_fullscreenActivation.DelayMs(GetTickCount64()));
+	if (!SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, delay, nullptr))
+		DebugLog::Log("Fullscreen delayed activation: event=timer-failed error=%lu", GetLastError());
+}
+
+
 void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 {
 	assert(m_fullScreenVideoWindow);
@@ -11137,8 +11152,7 @@ void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 	if (!m_rendererFullscreenCheck.GetCheck())
 	{
 		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
-		m_fullscreenActivationPending = false;
-		m_fullscreenActivationAttempted = false;
+		m_fullscreenActivation.Cancel();
 	}
 	delete m_fullScreenVideoWindow;
 	m_fullScreenVideoWindow = nullptr;
@@ -14730,7 +14744,7 @@ void CVideoProcessorDlg::OnClose()
 	m_configurationRpcServer.Stop();
 	KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
 	KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
-	m_fullscreenActivationPending = false;
+	m_fullscreenActivation.Cancel();
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(false);
 	DebugLog::Log(
@@ -15124,34 +15138,49 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == FULLSCREEN_ACTIVATION_TIMER_ID)
 	{
 		KillTimer(FULLSCREEN_ACTIVATION_TIMER_ID);
-		if (!m_fullscreenActivationPending)
-			return;
-		if (!m_rendererFullscreenCheck.GetCheck() || m_wantToTerminate)
+		const HWND target = m_fullScreenVideoWindow ?
+			m_fullScreenVideoWindow->GetHWND() : nullptr;
+		const uint32_t generation = m_rendererGeneration.load();
+		const bool ready = target && ::IsWindow(target) &&
+			m_rendererTargetHwnd == target && m_videoRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer->HasPresentedLiveFrame() &&
+			!m_fullscreenRetargetPending && !m_rendererRetirementPending &&
+			!m_wantToRestartRenderer && !m_rendererResetTransitionActive &&
+			!m_rendererFirstFrameRevealPendingGeneration &&
+			!m_rendererTransitionWindow.IsVisible();
+		const auto decision = m_fullscreenActivation.Evaluate(GetTickCount64(),
+			m_rendererFullscreenCheck.GetCheck() != FALSE, m_wantToTerminate,
+			reinterpret_cast<uintptr_t>(target), generation, ready);
+		if (decision == FullscreenActivation::Decision::WaitDelay)
+			ScheduleFullscreenActivation();
+		if (decision == FullscreenActivation::Decision::WaitReady)
 		{
-			m_fullscreenActivationPending = false;
-			m_fullscreenActivationAttempted = false;
-			return;
+			// Keep intent; only a validated reveal schedules another wake.
+			DebugLog::Log(
+				"Fullscreen delayed activation: event=await-reveal target=%p generation=%u "
+				"ready=%d retarget=%d shield=%d reveal_pending=%u",
+				target, generation, ready ? 1 : 0, m_fullscreenRetargetPending ? 1 : 0,
+				m_rendererTransitionWindow.IsVisible() ? 1 : 0,
+				m_rendererFirstFrameRevealPendingGeneration);
 		}
-		if (!m_fullScreenVideoWindow ||
-			!::IsWindow(m_fullScreenVideoWindow->GetHWND()))
-		{
-			// A renderer restart can briefly replace the host at the deadline.
-			m_fullscreenActivationPending =
-				SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, 250, nullptr) != 0;
+		if (decision != FullscreenActivation::Decision::Activate)
 			return;
-		}
-		m_fullscreenActivationPending = false;
-		m_fullscreenActivationAttempted = true;
-		const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
-		::ShowWindow(fullscreenHwnd, SW_RESTORE);
-		::BringWindowToTop(fullscreenHwnd);
-		const BOOL activated = ::SetForegroundWindow(fullscreenHwnd);
-		::SetFocus(fullscreenHwnd);
+		const HWND foregroundBefore = ::GetForegroundWindow();
+		DWORD foregroundProcess = 0;
+		::GetWindowThreadProcessId(foregroundBefore, &foregroundProcess);
+		::ShowWindow(target, SW_RESTORE);
+		::BringWindowToTop(target);
+		const BOOL activated = ::SetForegroundWindow(target);
+		::SetFocus(target);
+		const HWND foregroundAfter = ::GetForegroundWindow();
 		DebugLog::Log(
-			"Fullscreen delayed activation: target=%p requested=%d foreground=%p acquired=%d",
-			reinterpret_cast<void*>(fullscreenHwnd), activated ? 1 : 0,
-			reinterpret_cast<void*>(::GetForegroundWindow()),
-			::GetForegroundWindow() == fullscreenHwnd ? 1 : 0);
+			"Fullscreen delayed activation: event=attempt target=%p generation=%u "
+			"requested=%d foreground_before=%p foreground_process=%lu "
+			"foreground=%p acquired=%d focus=%p overdue_ms=%llu",
+			target, generation, activated ? 1 : 0, foregroundBefore, foregroundProcess,
+			foregroundAfter, foregroundAfter == target ? 1 : 0, ::GetFocus(),
+			static_cast<unsigned long long>(GetTickCount64() - m_fullscreenActivation.Deadline()));
 		return;
 	}
 
