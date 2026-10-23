@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -78,3 +78,6 @@ User clarifies Off must detect rendered content in black bars without glyph or s
 - x64 Release solution Build passed at the clean final commit. Qt Off zoom hold round trip and subtitle profile tab round trip both passed. The first run caught an incorrect form-row target; corrected it before the final passing run. Final logs: build-off-content-only-final.log, test-off-content-ui-final.log and test-off-content-subtitle-ui-final.log in the source worktree. Visually verified Off using a separate fixture. Earlier 670 native regressions apply to 6168c11e; no native implementation changed in this follow-up.
 - Updated the ongoing authorized test deployment with matching host, standard/beta renderers, Config executable and Config discovery DLL. All five SHA-256 hashes match Release x64 build records. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-off-content-b099cd8d-20261023-154704. Configuration hashes unchanged after launch; configuration edits: none. Runtime startup confirms host and renderer both b099cd8d with dirty=0; beta renderer selected, PID 60072.
 - Receipt, startup identity and isolated UI screenshot: stories/assets/VP-0207/deployment-b099cd8d-20261023. No movie pixels included. Remains Review for the user's live paused control-bar test. Not merged.
+## Off navigation fit still missing — 2026-10-23
+
+User reports Off still fails to zoom out for visible navigation/time controls. Runtime b099cd8d detects bottom content at 1806..2068, including 190 occupied rows, but current UI ownership still requires overlay-like shape. Investigate the complete measurement, confirmation, recovery and submitted presentation path; Off must accommodate measured bar content independently of glyph or UI shape classification.
