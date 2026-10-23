@@ -17,16 +17,40 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace DebugLogAsync
 {
-    // Deterministic contention injection, with no production logger test hook.
+    // Pause a real reservation before publication, using the production
+    // reservation/publication operations rather than a producer mutex hook.
     struct TransportTestAccess
     {
         template<size_t C, size_t L, size_t B>
-        static std::unique_lock<std::mutex> Lock(Transport<C, L, B>& transport)
+        static void* Reserve(Transport<C, L, B>& queue) { return queue.ReserveRecord(); }
+        template<size_t C, size_t L, size_t B>
+        static void Publish(Transport<C, L, B>& queue, void* node, const char* text)
         {
-            return std::unique_lock<std::mutex>(transport.m_mutex);
+            queue.PublishReserved(static_cast<typename Transport<C, L, B>::Node*>(node), text, 1, false);
         }
     };
 }
+
+struct DebugLogTestAccess
+{
+    static size_t WriteMaximumBatch(const std::string& path)
+    {
+        using Queue = DebugLogAsync::Transport<>;
+        auto batch = std::make_unique<std::array<Queue::Record, Queue::BatchCapacity>>();
+        for (auto& record : *batch)
+        {
+            std::memset(record.message, 'x', sizeof(record.message) - 1);
+            record.message[sizeof(record.message) - 1] = '\0';
+            record.length = static_cast<uint32_t>(sizeof(record.message) - 1);
+            record.timestamp = 1700000000;
+        }
+        std::ofstream file(path, std::ios::binary);
+        DebugLog::FileSink sink(file);
+        const size_t bytes = sink.WriteBatch(batch->data(), batch->size());
+        sink.Flush();
+        return bytes;
+    }
+};
 
 namespace
 {
@@ -37,8 +61,14 @@ namespace
         std::vector<DebugLogAsync::Metrics> reports;
         unsigned int flushes = 0;
         void Write(const typename Queue::Record& record) { records.push_back(record); }
+        size_t WriteBatch(const typename Queue::Record* batch, size_t count)
+        {
+            size_t bytes = 0;
+            for (size_t i = 0; i < count; ++i) { Write(batch[i]); bytes += batch[i].length + 1; }
+            return bytes;
+        }
         void Flush() { ++flushes; }
-        void Report(const DebugLogAsync::Metrics& metrics) { reports.push_back(metrics); }
+        size_t Report(const DebugLogAsync::Metrics& metrics) { reports.push_back(metrics); return 0; }
     };
 
     enum class BlockPoint { Write, Flush };
@@ -64,10 +94,10 @@ namespace
         {
             if (!released.exchange(true)) resume.set_value();
         }
-        void Write(const typename Queue::Record& record)
+        size_t WriteBatch(const typename Queue::Record* records, size_t count)
         {
             Pause(BlockPoint::Write);
-            RecordingSink<Queue>::Write(record);
+            return RecordingSink<Queue>::WriteBatch(records, count);
         }
         void Flush()
         {
@@ -174,7 +204,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(std::time_t(123456), sink.records[0].timestamp);
         }
 
-        TEST_METHOD(OverflowPreservesBoundedDropOldestPolicyAndMetrics)
+        TEST_METHOD(OnlyRealCapacityExhaustionDropsAndPreservesAcceptedRecords)
         {
             using Queue = DebugLogAsync::Transport<3, 32, 2>;
             Queue queue;
@@ -182,50 +212,64 @@ namespace VideoProcessorTest
             for (int index = 0; index < 5; ++index)
             {
                 const std::string text = std::to_string(index);
-                Assert::IsTrue(queue.TryPublish(text.c_str(), index));
+                Assert::AreEqual(index < 3, queue.TryPublish(text.c_str(), index));
             }
             const auto before = queue.Snapshot();
             Assert::AreEqual(uint64_t(3), before.highWater);
             Assert::AreEqual(uint64_t(3), before.queueDepth);
+            Assert::AreEqual(uint64_t(3), before.poolHighWater);
             Assert::AreEqual(uint64_t(2), before.droppedFull);
             queue.Close();
             RecordingSink<Queue> sink;
             queue.Run(sink);
-            Assert::AreEqual(static_cast<size_t>(3), sink.records.size());
+            Assert::AreEqual(size_t(3), sink.records.size());
             for (size_t index = 0; index < 3; ++index)
-                Assert::AreEqual(std::to_string(index + 2), std::string(sink.records[index].message));
+                Assert::AreEqual(std::to_string(index), std::string(sink.records[index].message));
             const auto after = queue.Snapshot();
-            Assert::AreEqual(after.enqueued, after.processed + after.droppedFull);
+            Assert::AreEqual(after.enqueued, after.processed);
+            Assert::AreEqual(uint64_t(0), after.poolInUse);
             Assert::AreEqual(uint64_t(0), after.queueDepth);
         }
 
-        TEST_METHOD(ContendedProducerDropsBeforeBookkeepingLockIsReleased)
+        TEST_METHOD(PausedProducerDoesNotBlockOtherPublicationOrDrain)
         {
-            using Queue = DebugLogAsync::Transport<4, 32, 2>;
+            using Queue = DebugLogAsync::Transport<4, 64, 2>;
             Queue queue;
             queue.Open();
-            std::promise<void> locked, release;
-            auto lockedFuture = locked.get_future();
-            auto releaseFuture = release.get_future();
-            std::thread holder([&] {
-                auto lock = DebugLogAsync::TransportTestAccess::Lock(queue);
-                locked.set_value();
-                releaseFuture.wait();
-            });
-            lockedFuture.wait();
-            auto producer = std::async(std::launch::async, [&queue] {
-                return queue.TryPublish("must-drop", 1);
-            });
-            const bool finishedBeforeRelease =
-                producer.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
-            release.set_value();
-            holder.join();
-            const bool accepted = producer.get();
-            Assert::IsTrue(finishedBeforeRelease, L"Producer waited on the logger mutex");
-            Assert::IsFalse(accepted);
-            Assert::AreEqual(uint64_t(1), queue.Snapshot().producerContentions);
-            Assert::AreEqual(uint64_t(0), queue.Snapshot().enqueued);
+            void* held = DebugLogAsync::TransportTestAccess::Reserve(queue);
+            Assert::IsNotNull(held);
+            BlockingSink<Queue> sink(BlockPoint::Write);
+            auto entered = sink.entered.get_future();
+            ConsumerGuard<Queue> consumer(queue, sink);
+            const bool accepted = queue.TryPublish("independent producer", 2);
+            const bool drainedBeforeRelease = entered.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+            DebugLogAsync::TransportTestAccess::Publish(queue, held, "delayed producer");
+            consumer.Finish();
+            Assert::IsTrue(accepted && drainedBeforeRelease);
+            Assert::AreEqual(size_t(2), sink.records.size());
+            Assert::AreEqual(std::string("independent producer"), std::string(sink.records[0].message));
+            Assert::AreEqual(std::string("delayed producer"), std::string(sink.records[1].message));
+            Assert::AreEqual(uint64_t(0), queue.Snapshot().producerContentions);
+            Assert::AreEqual(uint64_t(0), queue.Snapshot().droppedFull);
+        }
+
+        TEST_METHOD(ShutdownWaitsForAlreadyReservedProducerAndDrainsItsMessage)
+        {
+            using Queue = DebugLogAsync::Transport<4, 64, 2>;
+            Queue queue;
+            queue.Open();
+            void* held = DebugLogAsync::TransportTestAccess::Reserve(queue);
             queue.Close();
+            RecordingSink<Queue> sink;
+            auto consumer = std::async(std::launch::async, [&] { queue.Run(sink); });
+            const bool stayedAlive = consumer.wait_for(std::chrono::milliseconds(30)) == std::future_status::timeout;
+            Assert::IsFalse(queue.TryPublish("after shutdown", 3));
+            DebugLogAsync::TransportTestAccess::Publish(queue, held, "admitted before close");
+            consumer.get();
+            Assert::IsTrue(stayedAlive);
+            Assert::AreEqual(size_t(1), sink.records.size());
+            Assert::AreEqual(std::string("admitted before close"), std::string(sink.records[0].message));
+            Assert::AreEqual(uint64_t(0), queue.Snapshot().poolInUse);
         }
 
         TEST_METHOD(SlowDiskWriteCannotBlockProducersOrGrowTheQueue)
@@ -240,22 +284,23 @@ namespace VideoProcessorTest
             ConsumerGuard<Queue> consumer(queue, sink);
             const bool paused = entered.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
             auto producers = std::async(std::launch::async, [&queue] {
-                bool accepted = true;
+                size_t accepted = 0;
                 for (int index = 0; index < 12; ++index)
-                    accepted = queue.TryPublish("while-disk-is-blocked", index + 3) && accepted;
+                    if (queue.TryPublish("while-disk-is-blocked", index + 3)) ++accepted;
                 return accepted;
             });
             const bool completedBeforeDisk =
                 producers.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
             const auto blockedMetrics = queue.Snapshot();
             consumer.Finish();
-            const bool accepted = producers.get();
-            Assert::IsTrue(paused && completedBeforeDisk && accepted);
+            const size_t accepted = producers.get();
+            Assert::IsTrue(paused && completedBeforeDisk);
+            Assert::AreEqual(size_t(4), accepted);
             Assert::AreEqual(uint64_t(4), blockedMetrics.queueDepth);
             Assert::AreEqual(uint64_t(4), blockedMetrics.highWater);
             Assert::AreEqual(uint64_t(8), blockedMetrics.droppedFull);
             const auto final = queue.Snapshot();
-            Assert::AreEqual(final.enqueued, final.processed + final.droppedFull);
+            Assert::AreEqual(final.enqueued, final.processed);
             Assert::AreEqual(uint64_t(0), final.producerContentions);
         }
 
@@ -324,13 +369,101 @@ namespace VideoProcessorTest
             queue.Run(sink);
             const auto metrics = queue.Snapshot();
             Assert::AreEqual(accepted.load(), metrics.enqueued);
-            Assert::AreEqual(uint64_t(1600), metrics.enqueued + metrics.producerContentions);
-            Assert::AreEqual(metrics.enqueued, metrics.processed + metrics.droppedFull);
+            Assert::AreEqual(uint64_t(1600), metrics.enqueued + metrics.droppedFull);
+            Assert::AreEqual(uint64_t(0), metrics.producerContentions);
+            Assert::AreEqual(metrics.enqueued, metrics.processed);
             Assert::AreEqual(uint64_t(16), metrics.highWater);
             Assert::AreEqual(static_cast<size_t>(16), sink.records.size());
             std::set<std::string> unique;
             for (const auto& record : sink.records) unique.insert(record.message);
             Assert::AreEqual(sink.records.size(), unique.size());
+        }
+
+        TEST_METHOD(SimultaneousProducersRetainEveryRecordWhenPoolHasRoom)
+        {
+            using Queue = DebugLogAsync::Transport<4096, 64, 256>;
+            auto queue = std::make_unique<Queue>();
+            queue->Open();
+            std::atomic<bool> start{false};
+            std::atomic<uint64_t> rejected{0};
+            std::vector<std::thread> producers;
+            for (int thread = 0; thread < 8; ++thread)
+                producers.emplace_back([&, thread] {
+                    while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+                    for (int item = 0; item < 400; ++item)
+                    {
+                        const std::string text = std::to_string(thread) + ":" + std::to_string(item);
+                        if (!queue->TryPublish(text.c_str(), item)) ++rejected;
+                    }
+                });
+            start.store(true, std::memory_order_release);
+            for (auto& producer : producers) producer.join();
+            queue->Close();
+            RecordingSink<Queue> sink;
+            queue->Run(sink);
+            Assert::AreEqual(uint64_t(0), rejected.load());
+            Assert::AreEqual(size_t(3200), sink.records.size());
+            std::set<std::string> unique;
+            int previous[8] = {-1,-1,-1,-1,-1,-1,-1,-1};
+            for (const auto& record : sink.records)
+            {
+                unique.insert(record.message);
+                int thread = -1, item = -1;
+                sscanf_s(record.message, "%d:%d", &thread, &item);
+                Assert::IsTrue(thread >= 0 && thread < 8 && item == previous[thread] + 1);
+                previous[thread] = item;
+            }
+            Assert::AreEqual(size_t(3200), unique.size());
+            Assert::AreEqual(uint64_t(0), queue->Snapshot().poolInUse);
+        }
+
+        TEST_METHOD(ConcurrentConsumerRecyclesNodesWithoutLosingOrDuplicatingAcceptedMessages)
+        {
+            using Queue = DebugLogAsync::Transport<64, 64, 16>;
+            Queue queue;
+            queue.Open();
+            RecordingSink<Queue> sink;
+            std::thread consumer([&] { queue.Run(sink); });
+            std::atomic<uint64_t> accepted{0}, rejected{0};
+            std::vector<std::thread> producers;
+            for (int thread = 0; thread < 8; ++thread)
+                producers.emplace_back([&, thread] {
+                    for (int item = 0; item < 4000; ++item)
+                    {
+                        const std::string text = std::to_string(thread) + ":" + std::to_string(item);
+                        if (queue.TryPublish(text.c_str(), item)) ++accepted; else ++rejected;
+                    }
+                });
+            for (auto& producer : producers) producer.join();
+            queue.Close(); consumer.join();
+            Assert::AreEqual(accepted.load(), uint64_t(sink.records.size()));
+            Assert::AreEqual(uint64_t(32000), accepted.load() + rejected.load());
+            Assert::AreEqual(rejected.load(), queue.Snapshot().droppedFull);
+            std::set<std::string> unique;
+            for (const auto& record : sink.records) unique.insert(record.message);
+            Assert::AreEqual(sink.records.size(), unique.size());
+            Assert::IsTrue(queue.Snapshot().poolHighWater <= 64);
+            Assert::AreEqual(uint64_t(0), queue.Snapshot().poolInUse);
+        }
+
+        TEST_METHOD(SparseTrafficCoalescesWritesAndFlushesWithBoundedScratch)
+        {
+            using Queue = DebugLogAsync::Transport<128, 64, 64>;
+            Queue queue;
+            queue.Open();
+            RecordingSink<Queue> sink;
+            std::thread consumer([&] { queue.Run(sink); });
+            for (int i = 0; i < 20; ++i)
+            {
+                queue.TryPublish("sparse record", i);
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            queue.Close(); consumer.join();
+            const auto metrics = queue.Snapshot();
+            Assert::AreEqual(size_t(20), sink.records.size());
+            Assert::IsTrue(metrics.writeCount <= 3, L"Sparse records should be written in coalesced batches");
+            Assert::IsTrue(metrics.flushCount <= 2, L"Sparse traffic should not flush for each record");
+            Assert::IsTrue(metrics.memoryBytes < 32 * 1024, L"Configured test queue and scratch budget grew unexpectedly");
         }
 
         TEST_METHOD(ReopeningStartsAnIndependentSessionWithResetMetrics)
@@ -371,6 +504,17 @@ namespace VideoProcessorTest
             Assert::AreEqual(std::string(4095, 'a'), forwardedLog);
         }
 
+        TEST_METHOD(ProductionFileSinkWritesOneCompleteMaximumSizedBatch)
+        {
+            TemporaryLogDirectory directory;
+            const size_t bytes = DebugLogTestAccess::WriteMaximumBatch(directory.Path("vp.log"));
+            const auto content = Contents(directory.Path("vp.log"));
+            Assert::AreEqual(size_t((19 + 3 + 4095 + 1) * 256), bytes);
+            Assert::AreEqual(bytes, content.size());
+            Assert::AreEqual(size_t(256), size_t(std::count(content.begin(), content.end(), '\n')));
+            Assert::AreEqual(std::string(4095, 'x'), content.substr(22, 4095));
+        }
+
         TEST_METHOD(TransportAppendPreservesRotatedAndUnrelatedLogFiles)
         {
             TemporaryLogDirectory directory;
@@ -387,9 +531,14 @@ namespace VideoProcessorTest
             {
                 std::ofstream file;
                 explicit FileSink(const std::string& path) : file(path, std::ios::app) {}
-                void Write(const Queue::Record& record) { file << record.message << '\n'; }
+                size_t WriteBatch(const Queue::Record* records, size_t count)
+                {
+                    size_t bytes = 0;
+                    for (size_t i = 0; i < count; ++i) { file << records[i].message << '\n'; bytes += records[i].length + 1; }
+                    return bytes;
+                }
                 void Flush() { file.flush(); }
-                void Report(const DebugLogAsync::Metrics&) {}
+                size_t Report(const DebugLogAsync::Metrics&) { return 0; }
             } sink(directory.Path("vp.log"));
             queue.Run(sink);
             sink.file.close();
