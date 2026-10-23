@@ -7312,7 +7312,7 @@ void testOffZoomHoldRoundTrip()
     auto* hint=requireControl<QComboBox>(window,"config.vprenderer.subtitles.subtitle_script_hint");
     require(!hint->isVisible(),"Off must not offer a glyph script hint");
     require(hold->text()=="2","Off zoom hold must default to two seconds");
-    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading default Off hold dirtied configuration");
+    require(!hasPendingConfigurationChanges(window),"Loading default Off hold dirtied configuration");
     hold->setText("31");require(!hold->hasAcceptableInput(),"Off hold accepted an out-of-range value");
     hold->setText("5.25");require(hold->hasAcceptableInput(),"Off hold rejected fractional seconds");
     selectData(type,"classic");QApplication::processEvents();require(!hold->isVisible(),"Off hold leaked into Classic");
