@@ -1,0 +1,38 @@
+{
+  "commit": "5ab30a23f7e463ab520d65b1e6a5e71d87437ebb",
+  "configuration": "Release",
+  "architecture": "x64",
+  "testsPassed": 3153,
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-5ab30a23-20261023-145959",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "5EC734DC230EE513604A664A45C03ED05F6D6EF625D43DDD24BF60E7F1DA5D36",
+      "previousSha256": "02FC483780F72949D86265A3C9C24B615DC4D99B1BD5D8C7DCD06229A6200109"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "8F42E2A367AB667DFA7C7ABCA3B04399EDC7A54898FA0C6F1892D4C0BC697546",
+      "previousSha256": "18429D306553BF48B2EBAACCCB9791ACD9BC7528BF15A8F3319CF330598962B4"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "4B041A399CF5AB29BADC1CAB789F3538BDE10B434DB48BC481FFE6A63487F858",
+      "previousSha256": "F206D0647823C58D8D7ABCD47FD6912FDA1C44073F6315C8C750FC2939F10889"
+    }
+  ],
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3",
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+  },
+  "verifiedAt": "2026-10-23T14:59:59.7482019-04:00"
+}

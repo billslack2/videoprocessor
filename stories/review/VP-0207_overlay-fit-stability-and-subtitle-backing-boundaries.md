@@ -30,4 +30,10 @@ Deployed log identifies host 4d1d62d0. Current logs repeatedly reject finite bac
 
 ## Remaining review
 
-Not merged or deployed. Active runtime and configuration were not modified by this task. Replay the user's paused subtitle toggle and playback time-bar interaction after an authorized deployment; live incident resolution is not yet claimed.
+Not merged. Deployed for user testing on 2026-10-23 as recorded below. Replay the user's paused subtitle toggle and playback time-bar interaction; live incident resolution is not yet claimed.
+
+## Test deployment — 2026-10-23
+
+User authorized: deploy it to test. Deployed clean x64 Release commit `5ab30a23f7e463ab520d65b1e6a5e71d87437ebb` to `C:\Videoprocessor\vp`. Backed up and replaced the host, standard renderer, and beta renderer together. Verified all three deployed SHA-256 values against their build runtime records. Configuration hashes remained unchanged before and after launch; no configuration edits.
+
+Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-5ab30a23-20261023-145959`. Host launched with working directory `C:\Videoprocessor\vp` as PID 22084. Fresh runtime logs confirm host and renderer both use the intended commit with `dirty=0` and the configured beta renderer was selected. Receipt and startup evidence: `stories/assets/VP-0207/deployment-5ab30a23-20261023`. Story remains Review pending the user's live test.
