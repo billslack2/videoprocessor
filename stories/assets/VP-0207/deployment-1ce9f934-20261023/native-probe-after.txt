@@ -1,0 +1,2 @@
+initial valid=1 reason=current-finite-rounded-backing-lip height=79 cleanup=1492,1746-2348,1776
+two-row caption-backed jitter: fresh_valid=0 retained_valid=1 reason=current-revalidated-backing-outline cleanup=1492,1746-2348,1776

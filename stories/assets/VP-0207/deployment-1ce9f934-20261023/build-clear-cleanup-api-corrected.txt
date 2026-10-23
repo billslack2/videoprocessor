@@ -1,0 +1,6 @@
+MSBuild version 18.7.8+1ac568fee for .NET Framework
+EXEC : warning : Cannot find any version of the dxcompiler.dll and dxil.dll. [E:\codex\videoprocessor\subtitle-clear-cleanup-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\subtitle-clear-cleanup-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+EXEC : warning : Cannot find any version of the dxcompiler.dll and dxil.dll. [E:\codex\videoprocessor\subtitle-clear-cleanup-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\subtitle-clear-cleanup-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+RendererTransitionModelTests.obj : fatal error LNK1103: debugging information corrupt; recompile module [E:\codex\videoprocessor\subtitle-clear-cleanup-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]

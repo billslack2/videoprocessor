@@ -1,0 +1,58 @@
+{
+  "sourceCommit": "1ce9f934da111e46562cfe20f486bce9f4f7e6dd",
+  "branch": "codex/subtitle-clear-cleanup-20261023",
+  "integrationBaseAtStart": "f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b",
+  "previousFeatureIntegrated": "3a1e105075b6d1d75c0b56aafa20a948fbef652e",
+  "build": {
+    "configuration": "Release",
+    "architecture": "x64",
+    "target": "Rebuild",
+    "exitCode": 0,
+    "log": "E:\\codex\\videoprocessor\\subtitle-clear-cleanup-20261023\\build-clear-cleanup-api-clean.log"
+  },
+  "selectedNativeTests": {
+    "total": "1078",
+    "executed": "1078",
+    "passed": "1078",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "requiredRegressionTests": [
+    "SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs",
+    "TransparentLayersPreservePictureAtEveryPanelEdge",
+    "OptionalNativePausedBackingCaptureCleansGlyphFreePictureIntrusion",
+    "KnownBackingSurvivesCaptionPlaneJitterWithoutBorrowingCropAuthority",
+    "RememberedBackingClosureToleratesSmallCurrentShadowWithoutGrowingCleanup",
+    "TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination"
+  ],
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip",
+    "clean Apply notifies without saving",
+    "clean remote Apply uses unchanged RPC candidate"
+  ],
+  "previousFailure": {
+    "commit": "35481d9210fd48075dc81b981715bc287f9a2ce6",
+    "total": 1078,
+    "passed": 1077,
+    "failed": "ConfigFileTests::LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics",
+    "cause": "Current beta header uses API 29 but its existing test expected 28. Corrected the test to 29 and covered RequestCalibrationLutReload. No production ABI change."
+  },
+  "buildRepairs": "Corrected the new test callback name after a compiler error. Incremental linking reported LNK1103; clean final Rebuild passed.",
+  "deploymentBackup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-clear-cleanup-1ce9f934-20261023-185955",
+  "configurationEdits": [],
+  "diagnosticSnapshot": "E:\\codex\\diagnostics\\vp0207-clear-cleanup-20261023\\vp-snapshot.log",
+  "capturedMoviePixelsCommitted": false,
+  "liveAcceptance": "User confirms thin destination lines gone at 3a1e1050. Original black-cap recurrence and HDR flashing await live replay at this new revision."
+}

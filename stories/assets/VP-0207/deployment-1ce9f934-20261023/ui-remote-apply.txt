@@ -1,0 +1,2 @@
+START clean remote Apply uses unchanged RPC candidate
+PASS clean remote Apply uses unchanged RPC candidate
