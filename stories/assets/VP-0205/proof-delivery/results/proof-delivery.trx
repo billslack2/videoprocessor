@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="d0a63311-5c4e-4fa4-afd3-4032d34caa66" name="bslac@DESKTOP-3G35SCJ 2026-10-23 10:57:08" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-23T10:57:08.4808764-04:00" queuing="2026-10-23T10:57:08.4808764-04:00" start="2026-10-23T10:55:53.8896632-04:00" finish="2026-10-23T10:57:08.4996287-04:00" />
+  <TestSettings name="default" id="92470809-84d8-4812-9572-cfde82a1e4a8">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-23_10_57_08" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="5b75eda8-c4f9-4650-a6c8-8e9e003dfbb9" testId="2df8c617-1647-7d9f-feb5-d939b4cdeaab" testName="ThreeDistinctOwnedFramesDeliverTheSameCertificate" computerName="DESKTOP-3G35SCJ" duration="00:01:14.3911582" startTime="2026-10-23T10:55:54.0705947-04:00" endTime="2026-10-23T10:57:08.4617529-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5b75eda8-c4f9-4650-a6c8-8e9e003dfbb9">
+      <Output>
+        <StdOut>Completed15 three-distinct-owned4K fixtures,101rotated trials; actual prepared component worker cost separate; all completed direct/cache certificate and retention parity passed. No renderer replay or live adoption claim.</StdOut>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="ThreeDistinctOwnedFramesDeliverTheSameCertificate" storage="e:\codex\videoprocessor\vp-0205-lookahead-workahead\artifacts\vp-0205\proof-delivery\bin\vp0205proofdeliverymeasurements.dll" id="2df8c617-1647-7d9f-feb5-d939b4cdeaab">
+      <Execution id="5b75eda8-c4f9-4650-a6c8-8e9e003dfbb9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0205-lookahead-workahead\artifacts\vp-0205\proof-delivery\bin\VP0205ProofDeliveryMeasurements.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="ProofDeliveryMeasurements.MatchedPreparedProofDelivery" name="ProofDeliveryMeasurements::MatchedPreparedProofDelivery::ThreeDistinctOwnedFramesDeliverTheSameCertificate" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="2df8c617-1647-7d9f-feb5-d939b4cdeaab" executionId="5b75eda8-c4f9-4650-a6c8-8e9e003dfbb9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="1" executed="1" passed="1" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>Completed15 three-distinct-owned4K fixtures,101rotated trials; actual prepared component worker cost separate; all completed direct/cache certificate and retention parity passed. No renderer replay or live adoption claim.&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

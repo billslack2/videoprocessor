@@ -1,0 +1,22 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <PropertyGroup Condition="'$(ProjectName)'=='VideoProcessor-Test'">
+  <TargetName>VP0205ProofDeliveryMeasurements</TargetName>
+  <WholeProgramOptimization>false</WholeProgramOptimization>
+  <OutDir>$(MSBuildThisFileDirectory)bin\</OutDir>
+  <IntDir>$(MSBuildThisFileDirectory)obj\</IntDir>
+ </PropertyGroup>
+ <ItemDefinitionGroup Condition="'$(ProjectName)'=='VideoProcessor-Test'">
+  <Link><LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration><GenerateDebugInformation>false</GenerateDebugInformation></Link>
+  <PostBuildEvent><Command></Command></PostBuildEvent>
+ </ItemDefinitionGroup>
+ <Target Name="UseOnlyVP0205ProofDeliverySource" BeforeTargets="PrepareForBuild" Condition="'$(ProjectName)'=='VideoProcessor-Test'">
+  <ItemGroup>
+   <ClCompile Remove="@(ClCompile)"/>
+   <ClCompile Include="$(MSBuildThisFileDirectory)proof_delivery_measurements.cpp">
+    <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    <LanguageStandard>stdcpp17</LanguageStandard>
+    <AdditionalIncludeDirectories>$(SolutionDir)src\VideoProcessor-Test;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+   </ClCompile>
+  </ItemGroup>
+ </Target>
+</Project>

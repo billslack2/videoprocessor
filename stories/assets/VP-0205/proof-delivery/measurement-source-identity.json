@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-10-23T10:55:52.0676707-04:00",
+  "head": "be23c69ffb41bf54d3e112f37692a607d593930b",
+  "status": null,
+  "method": "Isolated cache-component/certificate benchmark; no renderer replay; project-reference builds disabled",
+  "sourceFiles": [
+    {
+      "path": "src\\VideoProcessor-Lib\\ActivePictureEvidence.cpp",
+      "sha256": "823CEE862C8BC6208F7E1DDFF227D69B091D9B0B9F1E8FF53530019E752ADF51",
+      "lastWrite": "2026-10-23T09:48:23.9956632-04:00"
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\vprenderer\\PreparedPictureEvidence.h",
+      "sha256": "58E0C81BDB55B4E60A68EDBB2FD3ED1270D80A76FAAD9A080D0CFF0CD1FC9A5E",
+      "lastWrite": "2026-10-23T10:38:17.5620194-04:00"
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\vprenderer\\PreparedOutwardWindow.h",
+      "sha256": "7F64D67236BC3DF4D799AC2A97708FBBC816A4DED45FA885A2595155D67AE31E",
+      "lastWrite": "2026-10-23T10:21:47.0109132-04:00"
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\vprenderer\\BufferedPictureExpansion.cpp",
+      "sha256": "53048F2380387E7F2DEBC28BAEC08EAB32A3D5D44B1345365095D10C288C535E",
+      "lastWrite": "2026-10-23T08:58:15.6095979-04:00"
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\AnalysisEvaluationBudget.h",
+      "sha256": "51484D3A107558DD689633123F172243D13C2D16E6AD445459CF4BA45EB21E8C",
+      "lastWrite": "2026-10-23T09:48:23.9407826-04:00"
+    },
+    {
+      "path": "x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "4F884203BEA1058EB09319723EC517DD85BFA5F3AA84CA1190498A355305E144",
+      "lastWrite": "2026-10-23T10:39:12.4240041-04:00"
+    }
+  ],
+  "measurementDll": {
+    "path": "E:\\codex\\videoprocessor\\vp-0205-lookahead-workahead\\artifacts\\vp-0205\\proof-delivery\\bin\\VP0205ProofDeliveryMeasurements.dll",
+    "sha256": "E5A5425C0DA2DD3802A9160CCF50D9FCB5B801B476ADA85CF389ADCE34DF3571"
+  },
+  "harnessSource": {
+    "path": "measured-source/proof_delivery_measurements.cpp",
+    "sha256": "24af1123565a6011c4057ddf4600d9c584a73f10ceb8f592e2cc6f5ad672e181"
+  },
+  "postRunCommentCorrection": {
+    "measuredSourcePreserved": true,
+    "correctedSource": "proof_delivery_measurements.cpp",
+    "correctedSha256": "62ad79cf44d4a5d1e721fe978b22643baa79905d0552a02a8c26fadd02efd7c1",
+    "change": "Comment-only Sleep(1) quantization clarification; no executable statements changed, no measurement rerun, measured DLL/library and numerical data unchanged.",
+    "measuredDllSha256": "E5A5425C0DA2DD3802A9160CCF50D9FCB5B801B476ADA85CF389ADCE34DF3571"
+  }
+}

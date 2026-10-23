@@ -1,0 +1,230 @@
+# VP-0205: Preserve useful lookahead with prepared proof and adaptive budgets
+
+## Status
+
+Review
+
+Implementation is ready for code/build/test review in separate draft
+[PR #193](https://github.com/billslack2/videoprocessor/pull/193). Runtime source is
+`be23c69ffb41bf54d3e112f37692a607d593930b` (prepared-proof implementation
+`19767f74d5a6e7cfb2509abcf2a051227502c9a6`, followed by the reviewed guard
+avoiding unused full-raster retention priming). The discovered integration base
+remains `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
+
+- Published PR head: `a23c211877685fbe31223c9d9c246ccf3bea008f`; the last
+  two commits change documentation only after the tested runtime `be23c69f`.
+- Branch: `codex/vp-0205-lookahead-workahead` in
+  `E:\codex\videoprocessor\vp-0205-lookahead-workahead`.
+- Clean serial x64 Release solution Rebuild at `19767f74` passed; the final
+  full solution Release Build at `be23c69f` also passed, including both renderer
+  variants. Native test DLL and analysis-library hashes are identical across
+  those builds. Exact source/binary hashes are preserved with validation evidence.
+- All 1,801 selected native regressions passed, with zero errors/skips/failures,
+  including exact-key cache, cancellation, cold whole-window dispatch,
+  raw-completion-after-prime, zero-foreground delivery, cadence/phase/GPU issue-age,
+  caption/refinement, first-source and D3D subtitle-composition cases.
+- Independent threading-architect and principal-engineer reviews found no
+  remaining correctness/lock-order blocker. Their final guards preserve an
+  existing certificate across a missing consecutive sample, skip unused caption
+  waiting when independent subtitle proof is accepted, reject stale GPU queries
+  using actual issue age, and avoid no-consumer full-raster component priming.
+- Proposed decision: retain draft for live capture/GPU-pressure qualification;
+  do not merge/release based on synthetic CPU delivery timings alone. No
+  deployment or configuration changes were made for this story.
+
+## Objective
+
+Preserve lookahead as a core picture-quality feature: valid crop and caption
+proof should be available for its first eligible displayed source frame. Retain
+configured lookahead depth while reducing avoidable repeated scans, discarded
+completed work, and deadline cancellations. Protect presentation timing with
+measured admission rather than treating the existing 2 ms ceiling as an optimum.
+
+## Evidence
+
+The existing 1 ms unknown-phase allowance and 2 ms qualified-phase ceiling predate
+PR #192. That PR adds cooperative cancellation inside expensive helpers. Late
+cancellation can discard earlier completed observations in the same invocation;
+consuming the selected source loses its first-frame opportunity. Independent raw
+measurements, subtitle work, outward-worker results, and temporal interpolation
+continue outside that synchronous ticket.
+
+The preserved 2026-10-22 capture has 16,165 observed 23.976-to-23.976 Hz attempts,
+13,745 completed calls and 2,432 optional deadline overruns. Twelve windows contain
+576 attempts with zero completions, about 1.202 s of accumulated optional work,
+and zero reported source/display-period exceedances. At 59.94-to-59.94 Hz,
+50,249 of 50,250 calls completed, with three optional overruns. These are retained
+log observations, not a complete quality/adoption rate or evidence of dropped
+presentation frames. No 24-to-60 Hz performance windows were captured.
+
+At 24 Hz, sampled post-reserve headroom has median 2.368 ms and p95 4.246 ms.
+The 2 ms ceiling binds in 286/376 qualified budget reports. Those rate-limited
+samples do not mean the entire 41.7 ms source period is available for analysis.
+
+A separate x64 Release retention-helper sweep completed 1356/1515 trials at 2 ms,
+1512/1515 at 3 ms and 1515/1515 at 4 ms. It uses 15 synthetic owned 4K fixtures,
+101 rotated trials per allowance, three evaluations of the same fixture and
+precomputed raw/global/darkness measurements. It establishes a completion cliff
+for that helper, not a safe 4 ms budget for full playback.
+
+Existing expansion tests demonstrate first-frame adoption with sufficient
+lookahead versus three source intervals later in one conservative fallback
+fixture, approximately 125 ms at 24 Hz. A completed cached outward proof can also
+validate at zero synchronous allowance. Completed previews can still have short
+ready prefixes or be rejected by stable-reference checks; neither a completion
+count nor worker completion alone establishes useful adoption.
+
+## Readiness review
+
+Current beta already has bounded raw/subtitle/outward workers, immutable source
+ownership and exact-source timeline admission. Display timing is CPU-wall/phase
+evidence rather than a GPU completion guarantee; mandatory-cost tails and new
+source/repeat separation must therefore remain conservative. The helper budget
+and exact-worker-import prerequisites in PR #192 are known and can be included
+selectively without its unrelated runtime changes. Worker code will remain pure
+CPU measurement; timeline/authority mutation stays on the render thread. Native
+regressions and matched synthetic/replay measurements can prove identity,
+publication, cancellation and scheduling contracts. Live GPU/capture coverage
+will be reported separately. No configuration migration or UI redesign is needed.
+
+## Implemented design
+
+1. Keep configured lookahead depth. Raw preparation additionally covers the
+   three distinct future sources required by outward proof. Four independent
+   bounded workers keep raw/subtitle/proof work from waiting on each other;
+   nearer queued sources may replace only farther pending work. New raw/component/
+   outward admission uses try-locks and never waits for job completion. Existing
+   subtitle submission retains its short queue mutex; no worker join is added
+   to frame publication.
+2. Retain immutable raw/global/darkness measurements and complete base-relative
+   retention/contrast/caption components. Each source cache has two entries per
+   component kind; exact frame/storage/ownership/domain/generation/base and
+   caption nomination keys isolate replacement contexts and stale completions.
+   Complete negatives are reusable; pending/cancelled work is not evidence.
+3. Submit an entire three-source outward request even when dependencies are
+   cold. It reuses exact ready raw/retention results or computes/publishes them
+   itself without another render pass. Concurrent cold fallback can duplicate
+   bounded work; explicit reuse/fallback counters and measurements expose it.
+4. Consume completed components before new scans. Later cancellation retains
+   unrelated complete work. Zero foreground allowance can still consume cached
+   proof; a miss never enters a foreground evaluator. Pending eligible caption
+   evidence stops the publishable prefix without casting a provisional final
+   vote. Only the first three consecutive complete samples replace expansion
+   authority. Existing live native-pixel/owner/model checks remain authoritative.
+5. Qualified tickets use actual reachable display lead less
+   `max(2 ms, 1.25 * (CPU tail + GPU tail))`, with eight fixed 250 ms buckets.
+   New-source CPU cost survives cheap repeats. Exact epoch/viewport and actual
+   GPU query issue age qualify timing; stale/unknown/unstable timing caps at 1 ms,
+   repeats/backlog admit no new scans, and a ticket never moves its own deadline.
+   CPU/GPU overlap makes the reserve conservative; selected-stage GPU sums are
+   not end-to-end Present/scanout completion or a future deadline guarantee.
+6. Fixed aggregate telemetry separates selected/ready/required depth, stage
+   cache/work/cancellation, complete work retained after cancellation, async
+   ready/late/invalid/no-change/stale, raw/retention fallback/reuse, publication,
+   actual adoption/rejection and source lead. Reporting uses the existing
+   two-second path. Retained counts represent events, not unique source frames.
+
+## Acceptance criteria
+
+- [x] Existing configured lookahead depth remains intact. Reduced ready-prefix
+      depth is explicit in telemetry and cannot masquerade as full-horizon proof.
+- [x] Valid prepared evidence supports earliest-eligible-frame outward/inward
+      transitions, full-raster return, caption protection and subtitle continuity.
+- [x] Render publication never waits for workers. Queue/memory and obsolete-job
+      behavior remain bounded, including cancellation, restart and shutdown.
+- [x] Reuse requires immutable pixel ownership, exact source/storage interpretation,
+      frame identity, analysis domain and transport/format/viewport/policy/continuity
+      generations. Base-relative certificates additionally match bounds, relevant
+      owner/subtitle context and history revision.
+- [x] Partial scans cannot become black, clearance or crop authority. Current-pixel,
+      owner and live-model validation remain authoritative; stable-reference safety
+      is not weakened to improve adoption counts.
+- [x] A later helper cancellation retains unrelated complete measurements safely;
+      overlapping windows reuse completed proof while its full dependency key remains
+      current and do not cast duplicate temporal votes.
+- [ ] An adaptive allowance respects actual presentation deadlines and conservative
+      mandatory-cost reserves for both new and repeated outputs, with explicit
+      fallback when timing evidence is unavailable or overloaded.
+- [ ] Matched measurements demonstrate useful ready/adopted proof and transition
+      timing alongside CPU/GPU/presentation tails, deadline misses, worker cost,
+      queue depth and memory. Completion percentage alone is insufficient.
+
+## Validation and remaining qualification
+
+The native/Release implementation contracts above passed. Matched live replay,
+actual displayed-source adoption and sustained GPU-pressure/queue/memory tails
+remain outstanding; the last two acceptance criteria remain open for that reason.
+
+
+Use deterministic native tests and matched source-sequence replay for first-frame
+crop/caption decisions, cached proof at zero allowance, late-helper cancellation,
+overlapping-window reuse, duplicate-vote prevention and identity/context
+invalidation. Cover dark/dense scenes, caption boundaries, full-raster returns,
+P010/P210/BGRA, restart/resize/policy changes and sustained overload. Exercise
+23.976/24/25/30/50/59.94/60 Hz and source/display conversion including 24-to-60 Hz.
+Record controlled comparisons on clean x64 Release builds, plus live presentation
+validation under GPU pressure. Separate already-missed output opportunities from
+analysis-caused misses and distinguish new-source from repeated-output tails.
+
+## Dependencies and scope
+
+VP-0204 / [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is a
+separate unmerged draft at `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`. Its
+cooperative helper budget, exact-worker imports and telemetry contracts are
+explicit analysis prerequisites. Include only the necessary analysis support in
+this implementation and reconcile with its final APIs when beta accepts it. The
+branch starts at current beta and does not carry PR #192's logging, NVIDIA or
+fullscreen changes; no blanket dependency merge is part of this work.
+
+Related: VP-0124 safe outward lookahead, VP-0082 buffered active-picture lookahead,
+and VP-0070 subtitle safety. This story excludes LUT, focus, logging transport,
+NVIDIA, queue-depth expansion, settings deployment and release packaging changes.
+
+## Evidence and tracker audit
+
+- [Captured playback aggregates](../assets/VP-0205/capture-summary.json).
+- [Helper budget results](../assets/VP-0205/helper-budget-summary.json),
+  [raw trials](../assets/VP-0205/helper-budget-sweep.csv),
+  [recorded fixture source](../assets/VP-0205/lookahead_budget_sweep.cpp) and
+  [source provenance and limitations](../assets/VP-0205/measurement-provenance.json).
+- [Source design](https://github.com/billslack2/videoprocessor/blob/codex/vp-0205-lookahead-workahead/docs/VP-0205_LOOKAHEAD_WORK.md)
+  records the implemented design and final validation. Full Release build logs,
+  hashes, native result summary and controlled three-source proof-delivery
+  evidence are linked below. Initial local MSBuild reference-metadata and lambda
+  capture errors were corrected; an incremental v142 PDB link failure was resolved
+  by the successful clean serial Rebuild. Nonfatal conversion/shadow warnings remain.
+- ID audit before allocation: 223 canonical items and 223 index rows, maximum
+  root VP-0204, next unused VP-0205; no duplicate/orphan ID or registry conflict.
+  Existing historical status paragraphs were compared by normalized state prefix.
+  VP-0070 has no standard `## Status` heading, while its folder/index say Blocked;
+  VP-0168 retains historical lowercase state spelling. Decision: record these
+  pre-existing formatting anomalies and leave unrelated stories unchanged.
+
+## Implementation measurements (2026-10-23)
+
+The final clean `be23c69f` controlled harness passed 15 three-distinct-owned4K
+fixtures and full retention/certificate parity. Six expansion fixtures delivered
+606/606 valid proofs on each direct 2/3/4 ms path and ready-only zero-new-pixel
+path, with effective first source 100 and final observation 102. Ready-only
+foreground median range is 0.0039–0.0043 ms (p95 0.0158–0.0197 ms), versus direct
+2 ms-path median 0.6034–0.8653 ms (p95 0.7874–1.1064 ms).
+
+Across all outcomes direct completion is 1382/1515 at2ms, 1512/1515 at3ms and
+1515/1515 at4ms; ready-only is1515/1515. The shortfall is confined to negative /
+no-change fixtures, so this run does not demonstrate increased useful-proof
+completion from a larger cap. Historical helper sweeps above have different
+fixtures/methods and must not be treated as a matched production comparison.
+
+A cold complete outward worker computes3raw +3retention inputs: valid-proof
+median service1.1404–1.1977ms; warm reuse0.0086–0.0097ms with zero new scans.
+All-fixture cold medians1.1404–4.272ms, maximum5.173ms. Worker CPU cost is moved /
+reused, not eliminated. Observed-ready latency is dominated by roughly15–16ms
+Windows timer scheduling despite requested Sleep(1); it cannot estimate production
+dispatch latency. P010/P210 use synthetic planar adapters. This is CPU proof
+preparation/delivery, not live displayed-source adoption, GPU qualification or
+full renderer replay.
+
+- [Relocatable harness, raw CSV and complete provenance](../assets/VP-0205/proof-delivery/README.txt).
+- [Controlled result summary](../assets/VP-0205/proof-delivery/proof-delivery-results.json).
+- [Final Release source/binary hashes](../assets/VP-0205/validation/release-validation-final.json).
+- [Native test result summary](../assets/VP-0205/validation/native-validation.json).

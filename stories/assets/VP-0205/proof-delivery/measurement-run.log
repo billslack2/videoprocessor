@@ -1,0 +1,12 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Completed15 three-distinct-owned4K fixtures,101rotated trials; actual prepared component worker cost separate; all completed direct/cache certificate and retention parity passed. No renderer replay or live adoption claim.
+  Passed ThreeDistinctOwnedFramesDeliverTheSameCertificate [1 m 14 s]
+Results File: E:\codex\videoprocessor\vp-0205-lookahead-workahead\artifacts\vp-0205\proof-delivery\results\proof-delivery.trx
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.2428 Minutes

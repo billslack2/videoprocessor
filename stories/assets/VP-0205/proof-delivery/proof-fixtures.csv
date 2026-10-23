@@ -1,0 +1,16 @@
+format,pattern,classification,expected_valid,reason,failed_sample,first_sequence,last_sequence,unique_backings,fixture_prepare_ms_including_pixels_raw_reference,domain_key,range,source_format_generation,transport_generation,policy,continuity
+P010-synthetic,bright-expansion,valid-expansion,1,proof-ready,-1,100,102,3,66.977300,42240,2,17,7,31,37
+P010-synthetic,textured-expansion,valid-expansion,1,proof-ready,-1,100,102,3,70.716900,42240,2,17,7,31,37
+P010-synthetic,scope-no-change,no-change,0,sample-evidence,0,100,102,3,72.492000,42240,2,17,7,31,37
+P010-synthetic,dark-textured,invalid-evidence,0,sample-evidence,0,100,102,3,68.960600,42240,2,17,7,31,37
+P010-synthetic,sparse-caption,no-change,0,sample-evidence,0,100,102,3,73.105700,42240,2,17,7,31,37
+P210-synthetic,bright-expansion,valid-expansion,1,proof-ready,-1,100,102,3,72.492200,42241,2,17,7,31,37
+P210-synthetic,textured-expansion,valid-expansion,1,proof-ready,-1,100,102,3,78.376100,42241,2,17,7,31,37
+P210-synthetic,scope-no-change,no-change,0,sample-evidence,0,100,102,3,79.698100,42241,2,17,7,31,37
+P210-synthetic,dark-textured,invalid-evidence,0,sample-evidence,0,100,102,3,75.678900,42241,2,17,7,31,37
+P210-synthetic,sparse-caption,no-change,0,sample-evidence,0,100,102,3,78.673200,42241,2,17,7,31,37
+BGRA8-native,bright-expansion,valid-expansion,1,proof-ready,-1,100,102,3,84.898200,14386119724083866163,1,17,7,31,37
+BGRA8-native,textured-expansion,valid-expansion,1,proof-ready,-1,100,102,3,89.899200,14386119724083866163,1,17,7,31,37
+BGRA8-native,scope-no-change,no-change,0,sample-evidence,0,100,102,3,93.348300,14386119724083866163,1,17,7,31,37
+BGRA8-native,dark-textured,invalid-evidence,0,sample-evidence,0,100,102,3,86.639900,14386119724083866163,1,17,7,31,37
+BGRA8-native,sparse-caption,no-change,0,sample-evidence,0,100,102,3,90.399600,14386119724083866163,1,17,7,31,37

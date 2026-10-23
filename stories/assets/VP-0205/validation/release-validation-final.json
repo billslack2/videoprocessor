@@ -1,0 +1,40 @@
+{
+  "source": "be23c69ffb41bf54d3e112f37692a607d593930b",
+  "workingTree": [],
+  "configuration": "x64 Release",
+  "buildCommand": "MSBuild.exe VideoProcessor.sln /t:Build /m:1 /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3 /v:minimal /nologo",
+  "exitCode": 0,
+  "recordedAtUtc": "2026-10-23T14:55:40.903391+00:00",
+  "buildLogSha256": "C8A1071C5D7DC399C113926E236FC973B2850141BC1D1852CAF391E19A573617",
+  "outputs": [
+    {
+      "path": "x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "3F9F57DB4E244C064833EE57409B1B76257BBA1C3113B5C58887279F8E1571B6",
+      "bytes": 3063808
+    },
+    {
+      "path": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "F87A2C4C0B9104E5E1B15607CE1A3B45521121B881CE0764F278884047A3ECA8",
+      "bytes": 2535936
+    },
+    {
+      "path": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "C20D1CF3E14F3332C89FBE0F93D978E5DB16757E22E27EC6043E235F4E192A98",
+      "bytes": 2535424
+    },
+    {
+      "path": "x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "9FFEB6039BFF65F47983F4471E40C31FC9B26D8420F5ACF8901378EDBC394278",
+      "bytes": 13067264
+    },
+    {
+      "path": "x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "4F884203BEA1058EB09319723EC517DD85BFA5F3AA84CA1190498A355305E144",
+      "bytes": 125480944
+    }
+  ],
+  "qualification": "Local build/native/synthetic validation only; not deployed; live GPU-pressure and displayed-frame qualification pending",
+  "cleanRebuildSource": "19767f74d5a6e7cfb2509abcf2a051227502c9a6",
+  "cleanRebuildLogSha256": "8ED6369ADA290772BCAAFE884A3E69BEF459659EE02FC28EE330397689535734",
+  "testModuleAndAnalysisLibraryUnchangedFrom1801TestPass": true
+}

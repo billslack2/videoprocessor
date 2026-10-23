@@ -1,0 +1,25 @@
+Saved proof-delivery-results.json; fixtures 15 valid 6
+P010-synthetic bright-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.621200 0.792900 1.008100 1.048100
+P010-synthetic bright-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.558400 0.825300 1.028400 1.200000
+P010-synthetic bright-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.531500 0.799700 0.936500 0.987800
+P010-synthetic bright-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.004000 0.016900 0.024500 0.027900
+P010-synthetic textured-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.663900 0.850000 0.895900 1.022600
+P010-synthetic textured-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.604300 0.836300 0.877300 1.222500
+P010-synthetic textured-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.534800 0.817000 0.839700 0.892800
+P010-synthetic textured-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.004100 0.018600 0.019000 0.020600
+P210-synthetic bright-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.603400 0.787400 0.889200 0.937900
+P210-synthetic bright-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.527400 0.804500 0.869300 0.875400
+P210-synthetic bright-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.521400 0.782000 0.871100 1.424700
+P210-synthetic bright-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.003900 0.017500 0.022900 0.023300
+P210-synthetic textured-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.641700 0.803300 0.949000 1.015500
+P210-synthetic textured-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.558900 0.804800 0.838400 1.088900
+P210-synthetic textured-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.549100 0.839800 1.025000 1.073600
+P210-synthetic textured-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.003900 0.015800 0.016900 0.019500
+BGRA8-native bright-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.807200 0.996700 1.220300 1.241800
+BGRA8-native bright-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.714500 0.947100 1.021200 1.210400
+BGRA8-native bright-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.709700 0.967800 1.044700 1.056600
+BGRA8-native bright-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.004300 0.017400 0.019800 0.033000
+BGRA8-native textured-expansion direct-cooperative 2.000000 complete 101 valid 101 p50/p95/p99/max 0.865300 1.106400 1.265500 1.294500
+BGRA8-native textured-expansion direct-cooperative 3.000000 complete 101 valid 101 p50/p95/p99/max 0.763500 1.070900 1.153300 1.267800
+BGRA8-native textured-expansion direct-cooperative 4.000000 complete 101 valid 101 p50/p95/p99/max 0.744400 1.042600 1.174200 1.185300
+BGRA8-native textured-expansion ready-cache-only 0.000000 complete 101 valid 101 p50/p95/p99/max 0.004200 0.019700 0.023600 0.023800

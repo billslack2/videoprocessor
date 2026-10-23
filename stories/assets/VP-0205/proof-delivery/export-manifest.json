@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T11:05:47.7837189-04:00",
+  "sourceHead": "be23c69ffb41bf54d3e112f37692a607d593930b",
+  "laterDocumentationHead": "a23c211877685fbe31223c9d9c246ccf3bea008f",
+  "measuredOriginalCppSha256": "24af1123565a6011c4057ddf4600d9c584a73f10ceb8f592e2cc6f5ad672e181",
+  "commentCorrectedCppSha256": "62ad79cf44d4a5d1e721fe978b22643baa79905d0552a02a8c26fadd02efd7c1",
+  "measuredDllSha256": "E5A5425C0DA2DD3802A9160CCF50D9FCB5B801B476ADA85CF389ADCE34DF3571",
+  "releaseLibrarySha256": "4F884203BEA1058EB09319723EC517DD85BFA5F3AA84CA1190498A355305E144",
+  "validation": {
+    "allSixNumericalCsvHashesUnchanged": true,
+    "measuredOriginalCppHashVerified": true,
+    "correctedCppHashVerified": true,
+    "cppNonCommentNonWhitespaceTextIdentical": true,
+    "measurementDllHashVerified": true,
+    "releaseLibraryHashVerified": true,
+    "measurementRerunAfterErratum": false,
+    "binaryOutputsIncluded": false
+  },
+  "pollingErratum": "Sleep(1) requested 1ms; observed-ready medians near 15-16ms are dominated by Windows timer/scheduling quantization and cannot estimate production dispatch latency; no 1ms upper bound.",
+  "files": [
+    {
+      "path": "measured-source/proof_delivery_measurements.cpp",
+      "bytes": 35506,
+      "sha256": "24af1123565a6011c4057ddf4600d9c584a73f10ceb8f592e2cc6f5ad672e181"
+    },
+    {
+      "path": "measured-source/proof-delivery-hook.targets",
+      "bytes": 1242,
+      "sha256": "385d6ddfe42f54dba3e2e86b6d67dea2c5667ef8bf533af92791c57b576ceb23"
+    },
+    {
+      "path": "measured-source/README.txt",
+      "bytes": 4219,
+      "sha256": "ee207599c9c225bb1326512788bc4d3e5550277dd986e596636757ba917c0d43"
+    },
+    {
+      "path": "measured-source/run-after-release.ps1",
+      "bytes": 6151,
+      "sha256": "65849f2bb35f22cece3f87cb1d26c03e394edc3bed30d4f5f0720a440ce72663"
+    },
+    {
+      "path": "measured-source/summarize-proof-delivery.py",
+      "bytes": 2727,
+      "sha256": "e56f2e592fae4a1e3154c7e38943eaca91ed7183fa1bef316fe0626b6aa3280e"
+    },
+    {
+      "path": "measurement-build.log",
+      "bytes": 169,
+      "sha256": "62332913d18a1de85ead7bd39bf9c90b27a7b9415f031d9c3ea327b72ddba29a"
+    },
+    {
+      "path": "measurement-run.log",
+      "bytes": 634,
+      "sha256": "e68c54fe0263d3b07bdb8d6ddd411a53b2d773c52beae0115027ee314119ce24"
+    },
+    {
+      "path": "measurement-source-identity.json",
+      "bytes": 2578,
+      "sha256": "8a67909df1f386d799b93ed46ad01fa84972fa647d0bc416a5974772a7ab6b44"
+    },
+    {
+      "path": "proof_delivery_measurements.cpp",
+      "bytes": 35590,
+      "sha256": "62ad79cf44d4a5d1e721fe978b22643baa79905d0552a02a8c26fadd02efd7c1"
+    },
+    {
+      "path": "proof-delivery-hook.targets",
+      "bytes": 1242,
+      "sha256": "385d6ddfe42f54dba3e2e86b6d67dea2c5667ef8bf533af92791c57b576ceb23"
+    },
+    {
+      "path": "proof-delivery-raw.csv",
+      "bytes": 758448,
+      "sha256": "8f69cdd03989089c895849ba3330bd2c05483ce39c1b8be6adad40025822799e"
+    },
+    {
+      "path": "proof-delivery-results.json",
+      "bytes": 115782,
+      "sha256": "ee24649f9b0c0a0785f1dd2de747b072913100b8ef0c5218b8796c47bba6182c"
+    },
+    {
+      "path": "proof-delivery-summary.csv",
+      "bytes": 14354,
+      "sha256": "8d2613a4fe5bf543cc0cc3f7435f7424ff85371bcbd4f72e770598ec13940b83"
+    },
+    {
+      "path": "proof-fixtures.csv",
+      "bytes": 1865,
+      "sha256": "255d2b5e0407107a976fc6979cd9863b62f41a674d269d211a3f5e44825fde35"
+    },
+    {
+      "path": "proof-precompute-summary.csv",
+      "bytes": 3629,
+      "sha256": "87662bf1f1b13c723a0f82aa620df34abd6a6a5b4a95078f96a990433dad0808"
+    },
+    {
+      "path": "README.txt",
+      "bytes": 5098,
+      "sha256": "487f2dd70cc7583463e4266ad3cb83f8cfbc31b97cf877a9ccdfa055d5fb9d81"
+    },
+    {
+      "path": "results/proof-delivery.trx",
+      "bytes": 3204,
+      "sha256": "32638d4d185058a21433684eb8c28874b45ffec8e315dc14f48d345558d82d19"
+    },
+    {
+      "path": "run-after-release.ps1",
+      "bytes": 6151,
+      "sha256": "65849f2bb35f22cece3f87cb1d26c03e394edc3bed30d4f5f0720a440ce72663"
+    },
+    {
+      "path": "summarize-proof-delivery.py",
+      "bytes": 2844,
+      "sha256": "0e5c904e91518abc077e613a2d1ea2842eb25fabc5fadb380d54f4e259a0766b"
+    },
+    {
+      "path": "summary-console.txt",
+      "bytes": 3316,
+      "sha256": "33200169dea5bbe15e9b136b73d95eaa3fb7c471b91564947691118d8b9d8d3a"
+    },
+    {
+      "path": "whole-window-worker-raw.csv",
+      "bytes": 318893,
+      "sha256": "c20a5e48e235ee203ffa0389cec5c44837b3ce8c75974e8120fdee708056f432"
+    },
+    {
+      "path": "whole-window-worker-summary.csv",
+      "bytes": 7940,
+      "sha256": "7dd9ccd823fa8428628f44c1d573efa9f84f7c93ef3f86c10209c4e5a824b828"
+    }
+  ]
+}
