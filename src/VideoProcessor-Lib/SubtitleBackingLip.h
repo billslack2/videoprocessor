@@ -120,18 +120,15 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             composition->pictureTop<0 || composition->pictureBottom>source.height ||
             composition->pictureTop>=composition->pictureBottom)
             return reject("lip-composition-context-unavailable");
-        const int inward=allTop?composition->pictureTop-current.pictureTop:
-            current.pictureBottom-composition->pictureBottom;
-        // Stable layout may exclude one raster row from the measured picture.
-        // Prove only its visible cue-side interval, never extend into an
-        // independently unmeasured bar or relax Apply's exact edge binding.
-        if(inward<0 || inward>1)
-            return reject("lip-composition-edge-not-contained");
-        if(allTop)result.pictureTop=composition->pictureTop;
-        else result.pictureBottom=composition->pictureBottom;
+        // Native bars own backing detection; stable display geometry only
+        // limits which proved pixels are visible. Neither interval may enlarge
+        // the current cleanup proof into unmeasured picture or subtitle glyphs.
+        result.pictureTop=(std::max)(current.pictureTop,composition->pictureTop);
+        result.pictureBottom=(std::min)(current.pictureBottom,composition->pictureBottom);
         if(result.pictureTop>=result.pictureBottom)
             return reject("lip-composition-context-unavailable");
-        result.compositionEdgeClipped=inward!=0;
+        result.compositionEdgeClipped=allTop?result.pictureTop!=current.pictureTop:
+            result.pictureBottom!=current.pictureBottom;
     }
     const int glyphHeight=SubtitleTypicalLineHeight(accepted);
     const int gap=allTop?result.pictureTop-glyphs.bottom:glyphs.top-result.pictureBottom;
@@ -404,16 +401,15 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     if(!SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
         proof.policyGeneration!=policy || proof.continuityGeneration!=continuity)
         return reject("lip-application-context-mismatch");
-    // A retained glyph anchor can preserve the opposite picture edge while
-    // current independent measurements vary there by a pixel. Cleanup belongs
-    // to its exact cue-side edge and must fit BOTH physical picture intervals.
-    // It never updates either edge, the glyph anchor, or the AR owner's crop.
+    // Current native pixels own backing proof. The displayed picture may be
+    // wider than that independent physical interval; it supplies no new cleanup
+    // authority. Every proved cleanup pixel must fit BOTH picture intervals.
+    // Neither edge, the glyph anchor, nor the AR owner's crop is changed.
     const SubtitleBoxRect picture{0,proof.pictureTop,proof.width,proof.pictureBottom};
     const SubtitleBoxRect composedPicture{0,geometry.pictureTop,proof.width,geometry.pictureBottom};
     if(proof.width<1 || proof.height<1 || proof.pictureTop<0 || proof.pictureBottom>proof.height ||
         !picture.Valid() || geometry.pictureTop<0 || geometry.pictureBottom>proof.height ||
         !composedPicture.Valid() || geometry.fromTopBar!=proof.fromTopBar ||
-        (proof.fromTopBar?geometry.pictureTop!=proof.pictureTop:geometry.pictureBottom!=proof.pictureBottom) ||
         !contains(picture,proof.cleanup) || !contains(composedPicture,proof.cleanup))
         return reject("lip-application-physical-binding-mismatch");
     if(!contains(proof.measured,proof.blackInterior) ||
