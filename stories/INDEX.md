@@ -263,7 +263,7 @@ they must not contain requirements that are absent from this file.
 | VP-0201 | Review | Settle startup framing and acquire scope with prepared subtitles |
 | VP-0202 | Done | Prevent long-uptime DirectShow reference-clock overflow |
 | VP-0203 | Review | Load calibration LUT disk changes only on explicit Config Apply |
-| VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |
+| VP-0204 | In Progress | Bound render-thread diagnostics and picture-proof work |
 
 ## Codex story workflow
 

@@ -2,7 +2,16 @@
 
 ## Status
 
-Review
+In Progress
+
+Reopened 2026-10-22 for the user's authorized small fullscreen-focus readiness
+addition to existing PR #192. The user requested building and deploying once
+this addition is ready. Implementation continues on the same branch/worktree
+from clean source `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8`; the root session
+re-fetched the current/default beta and confirmed `v1.4.02-beta` remains at
+`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. No new story ID is needed for this
+explicitly requested addition. Previous completed work and measurements remain
+recorded below; new build/test and deployment evidence are pending.
 
 Implemented and pushed as source commit
 `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8` on
@@ -21,9 +30,40 @@ registered tests: 104 passed and four unrelated failures were confirmed on clean
 baseline `fcc33fc`. The two extra Config tests in LUT PR #191 are excluded from
 this branch; this result is not a 110-test run.
 
-Ready for PR review. No merge, deployment, player restart, active configuration
-change, or live-input timing acceptance is claimed. Runtime jitter comparison
-requires separate authorized deployment and observation of the new counters.
+The earlier diagnostics/proof implementation passed its recorded review gates.
+Fullscreen readiness implementation and independent review are now active.
+Deployment is authorized after successful x64 Release validation; no deployment,
+player restart, configuration change, or live-input timing acceptance has occurred
+in this follow-up yet.
+
+## Fullscreen readiness addition (2026-10-22)
+
+Prior fullscreen focus work in PR #186 is already merged and installed. The
+active `C:\Videoprocessor\vp\logs\vp.log` entry at 22:09:37 records the delayed
+focus attempt with `requested=0 acquired=0`. Source review identifies a separate
+lifecycle gap: the one-shot five-second activation opportunity can arrive before
+the current fullscreen presentation has successfully revealed.
+
+Implement a small pure session helper binding the current revealed fullscreen
+HWND and renderer generation. Keep the original five-second deadline measured
+from fullscreen entry. If readiness arrives later, its event releases the one
+activation opportunity; use the existing readiness/timer events rather than a
+polling loop. Consume the opportunity once, including when Windows denies it.
+Suppress windowed, superseded-generation and shutdown targets. Preserve the
+existing visible-Config and foreground activation policy, with truthful result
+logging. General renderer-restart focus reclamation remains outside this change.
+
+Focused deterministic tests must cover readiness before/after the deadline,
+stale HWND/generation, repeated events, one denied attempt, windowed mode and
+shutdown. Independently review GUI integration and run the appropriate full
+Release/native validation before the authorized paired host/renderer deployment.
+Back up and hash-verify the versioned pair and preserve active configuration.
+Live fullscreen activation observations remain a separate acceptance result.
+
+[VP-0111](../backlog/VP-0111_configurable-foreground-shortcuts-and-focus-restoration.md)
+remains Backlog for the broader configurable shortcut/focus-return behavior.
+[VP-0118](../done/VP-0118_make-alt-enter-enter-fullscreen-from-inactive-startup-request.md)
+remains Done for fullscreen toggle state and Right Alt normalization.
 
 ## Implemented behavior and independent review
 
@@ -186,8 +226,10 @@ the following four findings together in one separate reviewable PR:
   owns shader preparation. Shader compilation architecture, screenshot readback,
   new GPU-context owners, capture transport, and broad renderer extraction are
   outside this task.
-- No deployment, player restart, configuration/LUT edits, or acceptance of live
-  playback timing is implied by software implementation and automated tests.
+- The user authorized build and deployment after the fullscreen addition is
+  validated. Record paired Release build/hash/backup and restart evidence before
+  claiming deployment; active configuration/LUT edits are outside this addition.
+  Automated tests alone do not establish live playback timing acceptance.
 
 ## Readiness and source identity
 
@@ -267,3 +309,11 @@ Measurement follow-up remains in Review. After fetching origin/main
 no new identity/state discrepancies. Exact Review status and index row remain
 aligned. VP-0203 and historical formatting exceptions are unchanged. Source is
 pushed clean at the updated PR head; no deployment or configuration edit occurred.
+
+
+Fullscreen follow-up reactivation audit after fetching origin/main
+`f31313a5398442f1d399d586087316751745dc3b` found the same 223 canonical files/index
+rows, 202 roots and 21 children, with registry Last VP-0204 / Next VP-0205 / count
+223. No duplicate, missing, orphan, child-order or state discrepancy was found.
+Known VP-0070/VP-0088/VP-0168 formatting exceptions remain untouched. VP-0204's
+file, exact In Progress status and index row move together; VP-0203 is unchanged.
