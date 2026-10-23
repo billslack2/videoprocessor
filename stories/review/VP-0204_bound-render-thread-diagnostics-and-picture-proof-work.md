@@ -117,7 +117,7 @@ Artifacts are under
 | Isolated final measurement DLL | Passed | `measurements/analysis-final-run.log` |
 | Initial paired 4K fixture test | 1/1 passed; all evidence parity checks passed | `native/paired-4k.trx`, `paired-4k.log`, `paired-4k-summary.json` |
 | Prior Windows Qt Config suite; UI unchanged | 104 passed, 4 failed out of 108 | `config-tests.log` |
-| Initial source/validation manifest | Exact source `ead594028431e4c1c43b5886e4da437a8f066444` and baseline-proof paths | `validation-summary.json` |
+| Final source/validation manifest | Exact source `3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8`, native 1,023/1,023 and isolated 1/1 | `validation-summary.json` |
 | Additional UI baseline comparison | Both cases fail identically on clean baseline and feature; each exit 1 | `config-baseline-comparison.log`, `config-baseline-comparison-results.json` |
 
 The warmed paired test covers 15 synthetic 3840x2160 fixtures: P010, P210 and
