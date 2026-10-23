@@ -2,18 +2,82 @@
 
 ## Status
 
-In Progress
+Review
 
-Implementation starts 2026-10-22 on `codex/lut-explicit-apply-20261022` in
-`E:\codex\videoprocessor\lut-explicit-apply-20261022`, from verified remote
-beta `v1.4.02-beta` at `fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`.
-Readiness review below is complete. No implementation commit or validation result
-is claimed yet; the next action is the narrow Apply-only reload change and its
-same-path regression coverage.
+Implementation is committed and pushed as
+`462901a13fbfc294f65c262014834d98d2f6da04` on
+`codex/lut-explicit-apply-20261022` in
+`E:\codex\videoprocessor\lut-explicit-apply-20261022`.
+Draft [PR #191](https://github.com/billslack2/videoprocessor/pull/191) targets
+`v1.4.02-beta`, from verified baseline
+`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. Source is clean. The implementation
+is ready for PR review; it is not merged or accepted for live playback yet.
 
-Created 2026-10-22 from the authorized render-thread stall review follow-up.
-Implementation is authorized; deployment, player restart, and changes to active
-user configuration or LUT files are not authorized by this story.
+Full x64 Release solution build passed. Native focused tests passed 162/162;
+the dedicated seven applied-cache regressions passed 7/7. The Windows Config
+suite selected 110 tests: 108 passed and two unrelated UI tests failed. Both
+failures reproduce with the same result on clean baseline `fcc33fc`; details
+and evidence are below. No LUT-scope regression is attributed to those failures,
+and no unrelated UI fix is included.
+
+No deployment, player restart, active configuration edit, or live-input runtime
+acceptance is requested or claimed. Merge review and any later authorized live
+Apply/OK playback validation remain outstanding.
+
+## Implemented behavior and validation evidence
+
+- Playback no longer polls LUT file versions or hot-reloads edited files.
+  Cached parsed and rejected outcomes are reused for routine profile evaluation.
+- Explicit Config Apply/OK carries a durable reload serial to the render-owner
+  safe point, including unchanged accepted settings and same-path file edits.
+  A failed compatible reload retains the valid active LUT until a candidate
+  validates; actual disable and incompatible-contract handling remain safe.
+- Local clean Apply notifies without writing the configuration. Remote clean
+  Apply uses the unchanged RPC candidate. Apply/OK/Cancel and invalid-config
+  regression checks passed. Host/plugin API is version 29 for explicit intent.
+- Configuration help and focused reload diagnostics describe the new policy.
+
+Validation artifacts are under
+`E:\codex\videoprocessor\lut-explicit-apply-20261022\artifacts\vp-0203`:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Full solution x64 Release build | Passed; 0 errors, 10 warnings | `release-final-build.log` |
+| Final ConfigTests-only x64 Release rebuild after fixture edits | Passed | `ui-diagnostic-build.log` |
+| Focused native LUT/GPU/output/plugin/startup/OSD suite | 162/162 passed | `native/lut-apply-native.trx`, `native-tests-console.log` |
+| Dedicated applied-cache regressions | 7/7 passed | `cache/lut-cache-only.trx`, `cache-tests-console.log` |
+| Windows Qt Config suite | 110 selected; 108 passed, 2 baseline-confirmed failures | `ui-windows-final-tests.log` |
+| Source identity and consolidated result | Commit `462901a13fbfc294f65c262014834d98d2f6da04` | `validation.json` |
+
+The two UI failures are:
+
+1. `two-column cards share row height`: `Missing card: Display`.
+2. `primary discovery selectors open on field click`:
+   `Missing control: config.general.fullscreen_monitor_name`.
+
+Both were independently reproduced with `QT_QPA_PLATFORM=windows` against a
+successfully built ConfigTests-only x64 Release executable from clean detached
+baseline `fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`, without source edits. Each
+individual test returned exit code 1. Baseline evidence is under
+`E:\codex\videoprocessor\render-thread-audit-20261022\artifacts\vp-0203-baseline`:
+`source-identity.txt`, `config-tests-build.log`,
+`two-column-cards-baseline-test.log`, `primary-discovery-baseline-test.log`,
+and the saved exit-code/validation summary files. Baseline executable SHA-256:
+`958D987565A1533CD0621486243DE42FE50114ACE22910DBA16FAC680C508227`.
+
+Reproduction entry points use Visual Studio 18 Professional Developer PowerShell:
+
+```powershell
+MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3
+$env:QT_QPA_PLATFORM = 'windows'
+.\x64\Release\VideoProcessorConfigTests.exe --test 'two-column cards share row height'
+.\x64\Release\VideoProcessorConfigTests.exe --test 'primary discovery selectors open on field click'
+```
+
+The native TRX files retain the exact executed test names and outcomes; Windows
+suite logs retain each selected test's start and pass/fail result. These are
+software validation results. No hardware/live-input timing acceptance follows
+from them.
 
 ## User story
 
@@ -69,9 +133,10 @@ supply the implementation baseline; no historical local source HEAD is used.
 - The explicit configuration acceptance path must carry a reload intent through
   unchanged-settings optimization, rather than relying on a changed filename or
   a filesystem timestamp. Existing owner-thread resource lifetime is retained.
-- No new API, color-pipeline ordering change, background GPU-context owner, or
-  dependency upgrade is required. Focused same-path and lifecycle regressions
-  can prove the behavior. Actual playback timing is not claimed by static review.
+- No color-pipeline ordering change, background GPU-context owner, or dependency
+  upgrade is required. The implemented explicit Apply bridge extends the
+  host/plugin contract to API 29. Focused same-path and lifecycle regressions
+  prove the reload policy; actual playback timing is not claimed by static review.
 - Implementation worktree is clean at the recorded beta baseline:
   `E:\codex\videoprocessor\lut-explicit-apply-20261022`, branch
   `codex/lut-explicit-apply-20261022`.
@@ -106,3 +171,9 @@ exact `## Status` heading; VP-0088 and VP-0168 use `In progress` in status text,
 and VP-0168's index row uses the same noncanonical capitalization. Many older
 status paragraphs combine the state with narrative. This task changes only
 VP-0203 and its registry/index entries; it does not normalize historical records.
+
+Review-transition audit after fetching origin/main `ac858d1f` found 222 canonical
+records and 222 index rows (201 roots, 21 children). Registry Last VP-0203 /
+Next VP-0204 / count 222 matched; no new duplicate, missing, orphan, child-order,
+or semantic state discrepancy was found. Historical formatting exceptions above
+remain unchanged. VP-0203's file, exact status, and index row move together.

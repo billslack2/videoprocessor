@@ -262,7 +262,7 @@ they must not contain requirements that are absent from this file.
 | VP-0200 | In Progress | Profile-based resolution and refresh-rate configuration |
 | VP-0201 | Review | Settle startup framing and acquire scope with prepared subtitles |
 | VP-0202 | Done | Prevent long-uptime DirectShow reference-clock overflow |
-| VP-0203 | In Progress | Load calibration LUT disk changes only on explicit Config Apply |
+| VP-0203 | Review | Load calibration LUT disk changes only on explicit Config Apply |
 
 ## Codex story workflow
 
