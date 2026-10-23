@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T12:39:57.976683-04:00",
+  "nativePixelsIncluded": false,
+  "productionFixAccepted": false,
+  "files": [
+    {
+      "path": "ActivePictureEvidence-threshold-copy.cpp",
+      "bytes": 146972,
+      "sha256": "89bcd07aba5a9c74132ce3c1c1068a8d4d93d983a33b79e705e9a05a5c8b0d52"
+    },
+    {
+      "path": "native-distributions.json",
+      "bytes": 28459,
+      "sha256": "e95d941677ca89bcbf88dadf20a125426895a016efc165e2b272e994b581f915"
+    },
+    {
+      "path": "native-distributions.py",
+      "bytes": 4095,
+      "sha256": "d77584226c0cd2f6f8609888df086f4a63c6d5699a31fbf6620a206222562b0d"
+    },
+    {
+      "path": "production-baseline.json",
+      "bytes": 981,
+      "sha256": "db22953af0fbb486187e3f884ee0bd0c7abff4761b25b909689946ed23a44a10"
+    },
+    {
+      "path": "PROVENANCE.txt",
+      "bytes": 2158,
+      "sha256": "2047df2c41294520489cedbbe7c2eedb73732b3baf07a95fe894f21df1b6c91c"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2916,
+      "sha256": "51737227eb3776af765e24724b8fc48d443059193c2cacc1be7dc1caf6c67d8d"
+    },
+    {
+      "path": "retention-mask-probe.cpp",
+      "bytes": 3913,
+      "sha256": "4d7cd0a0865619bd1a66c9680b34f1aaa9dc2b87b4e63bfc6f021f8dfb80b9dd"
+    },
+    {
+      "path": "retention-mask-probe.vcxproj",
+      "bytes": 1650,
+      "sha256": "04d38561f67230a658191a7090d2db1d849258fa1dcb4c734b4f0fe69713324b"
+    },
+    {
+      "path": "retention-threshold-probe.vcxproj",
+      "bytes": 1729,
+      "sha256": "b8b9534580f30c26e062e0fd373016b9296f505e1b4a4f5f07e514c4a7f991f4"
+    },
+    {
+      "path": "source-provenance.json",
+      "bytes": 1494,
+      "sha256": "50be946fa7b2e9d1bd63810a625e2576530f85d7f798de53bb68f274b1fbf70c"
+    },
+    {
+      "path": "three-frame-threshold-sensitivity.json",
+      "bytes": 33929,
+      "sha256": "0b09f99e4d1dc55dfebb93b2e6945a8149dd2512627aa1f84b2acb685ac9cf5b"
+    },
+    {
+      "path": "threshold-sensitivity.csv",
+      "bytes": 1185,
+      "sha256": "760d747c9e46c5c11338e337724ab28f4e5739807ea0471ce6b07c108ad09089"
+    },
+    {
+      "path": "threshold-sensitivity.json",
+      "bytes": 22659,
+      "sha256": "62a9430ca398dc3629f0ae1b1e90480235d9ff14489e6a8a2f5d59353115e141"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+Native retention/threshold diagnostic probe, 2026-10-23
+Production source: 24e0dd10430e5140c06c1fa1bd106c9bbde61ef7, VP-0205 deployment integration.
+Production static Release library SHA256: EB712353D5993799A582AD7443325A084D76B8F4BAED6BE1AA422AB029636689.
+retention-mask-probe links the unmodified production Release library. It reads native captured metadata/owned bytes, evaluates raw/global/AR and retention against submitted base 0,274-3840,1886, prints exact distributed masks, then tests existing outward confirmation after resampling full-width/full-height strips.
+retention-threshold-probe additionally compiles a scratch copy of ActivePictureEvidence.cpp. It replaces only the two perimeter-derived floor/cutoff sites (raw extraction and presentation retention) with optional child-process environment overrides. It removes pch.h in the scratch copy and includes standard headers for independent compilation. No production source is modified.
+Threshold-only mode changes cutoff, leaving calculated floor metadata unchanged. Threshold-and-floor changes floor metadata to max(0,cutoff-24). Both are diagnostic sensitivity experiments, not deployed policy recommendations.
+At cutoff85 the scratch copy matches the production baseline. At24/32, all captured test frames classify FULL_RASTER_TRUSTED with FULL_EXTENT_SUPPORTED on both axes. At48 class is FULL_RASTER_TRUSTED but axes remain UNKNOWN; do not conflate class and per-axis proof.
+Three-frame matrix covers first, midpoint and last stored frame. These are offline measurement/classification results, not proof of final renderer transition/adoption or no framing regressions.
+Native-distributions.py uses the exact production decoded-DV sampler contract (little-endian16bit >>6, no rounding) and production lower-index quantile convention. It measures existing64-point-per-edge perimeter and6x48 candidate/retention grids. Original native pixel files remain at their capture path; artifacts contain aggregate numeric evidence only.
+Build: Visual Studio2019 Professional MSBuild, Release|x64, isolated artifact OutDir/IntDir. Runtime, config, playback and shared build outputs were not changed.

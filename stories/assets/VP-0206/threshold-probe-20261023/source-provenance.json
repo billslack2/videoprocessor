@@ -1,0 +1,31 @@
+{
+  "historicalIntroduction": "99addebdac523a648c918c311e3d81323f4110e1",
+  "historicalDate": "2026-07-28T11:55:35-04:00",
+  "historicalSubject": "VP-0040 trust bounded P010 bar evidence",
+  "priorDeployment": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "capturedDeployment": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "blackFloorAndThresholdSourceLinesUnchanged": true,
+  "sourceLines": [
+    "const int blackFloor = observedLow < 32 ? 0 :",
+    "const int blackThreshold = std::min(104, blackFloor + 24);",
+    "const int blackFloor = static_cast<int>(clean.lumaFloor);",
+    "const int blackThreshold = std::min(104, blackFloor + 24);",
+    "const int blackThreshold = std::min(104, floor + 24);",
+    "const int blackFloor = observedLow < 32 ? 0 :",
+    "const int blackThreshold = std::min(104, blackFloor + 24);",
+    "const int blackFloor = currentRetention.presentationBlackFloor;",
+    "const int blackThreshold = currentRetention.presentationBlackThreshold;",
+    "const int blackThreshold = raw.presentationBlackThreshold;"
+  ],
+  "productionLibrarySha256": "EB712353D5993799A582AD7443325A084D76B8F4BAED6BE1AA422AB029636689",
+  "probeExecutablesNotIncluded": [
+    {
+      "file": "retention-mask-probe.exe",
+      "sha256": "5a44efe66b190d884915226073e22353eb4df9e42de8f5793c5d258a6791583c"
+    },
+    {
+      "file": "retention-threshold-probe.exe",
+      "sha256": "88b269c91ed4a2e840eba4d89d8ac24f6b1dd140d371dcfb3414c638b1c76531"
+    }
+  ]
+}
