@@ -206,7 +206,7 @@ namespace AlphaSourceCrop
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
 		const VerticalBarContentDecision& observed,
-		uint64_t sourceSequence = 0);
+		uint64_t sourceSequence = 0, bool requireRepeatedSamples = true);
 
 	// A current provisional envelope which expands one or both vertical edges is
 	// eligible for trusted-base retention until the first dense sample. This
@@ -1785,7 +1785,7 @@ namespace AlphaSourceCrop
 
     enum class ConfirmedFitOwnershipOrigin : uint8_t
     {
-        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY
+        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY, CURRENT_BAR_CONTENT
     };
     // The approved envelope is built independently from current accepted
     // caption/UI evidence. A dense geometry/FIT completion is not ownership.
@@ -1797,6 +1797,7 @@ namespace AlphaSourceCrop
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         bool upperContent = false, lowerContent = false;
         bool upperOverlayLike = false, lowerOverlayLike = false;
+        int horizontalPadding = 0, verticalPadding = 0;
     };
     struct ConfirmedFitOwnershipEvidence
     {

@@ -6817,7 +6817,7 @@ struct LibplaceboVideoRenderer::Impl
 				const auto fitConfirmation =
 					AlphaSourceCrop::ConfirmVerticalFit(
 						scopeSubtitleFitConfirmation, verticalDecision,
-						sourceSequence);
+						sourceSequence, scopeSubtitleFit);
 				scopeSubtitleFitConfirmation = fitConfirmation.state;
 				if (fitConfirmation.pending)
 				{
@@ -6832,7 +6832,9 @@ struct LibplaceboVideoRenderer::Impl
 				else if (fitConfirmation.newlyAccepted)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar fit: sequence=%llu generation=%llu candidate accepted after %u consecutive dense samples",
+						scopeSubtitleFit
+                            ? "Alpha vertical bar fit: sequence=%llu generation=%llu candidate accepted after %u consecutive dense samples"
+                            : "Alpha vertical bar fit: sequence=%llu generation=%llu current Off bar content accepted; confirmation=%u",
 						static_cast<unsigned long long>(sourceSequence),
 						static_cast<unsigned long long>(source->generation),
 						AlphaSourceCrop::
@@ -16248,6 +16250,8 @@ releaseDriftBaseRetention =
                 proof.lowerContent=scopeCurrentVerticalContent.lowerContent;
                 proof.upperOverlayLike=scopeCurrentVerticalDecision.upperOverlayLike;
                 proof.lowerOverlayLike=scopeCurrentVerticalDecision.lowerOverlayLike;
+                proof.horizontalPadding=std::max(8,width/160)+scopeSubtitlePaddingPixels;
+                proof.verticalPadding=std::max(8,height/90)+scopeSubtitlePaddingPixels;
                 return captionPaddingBounded
                     ? AlphaSourceCrop::QualifyCaptionFitWithinPadding(proof,
                         std::max(8,width/160)+scopeSubtitlePaddingPixels,
@@ -16283,7 +16287,9 @@ releaseDriftBaseRetention =
                 const auto approved=AlphaSourceCrop::BuildPresentationEnvelope(ui);
                 if (approved.valid && approved.expanded)
                     recoveryInput.confirmedFitOwnership=qualifyFit(
-                        AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY,
+                        scopeSubtitleFit
+                            ? AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY
+                            : AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT,
                         approved.bounds,scopeCurrentVerticalBounds);
             }
 			// A current contained observation can retire only the obsolete inspection

@@ -494,6 +494,53 @@ namespace Tests
                 AssertBounds(IncidentScope(),ResolveIncident(input).sourceBounds);
             }
         }
+        TEST_METHOD(OffMeasuredBarContentReachesSubmittedScopeFitWithoutGlyphOrUiShape)
+        {
+            for(bool nearBlack:{false,true})for(bool top:{false,true})
+            {
+                auto input=UnknownIncident(200,nearBlack);
+                auto native=IncidentScope();native.top=384;native.bottom=1776;
+                native.aspectRatio=3840.0/1392.0;
+                input.crop.geometry=input.crop.verticalTranslationBase=native;
+                input.crop.currentVisibleBase=input.retentionBounds=native;
+                input.previousAdmission.trustedCrop=input.submittedScopeAnchor.crop=native;
+                const auto occupied=VisibleBounds(top?92:384,top?1776:2068);
+                PresentationEnvelopeGeometryInput envelope;envelope.trustedPicture=native;
+                envelope.observedContent=occupied;envelope.observedContentAvailable=true;
+                envelope.expandTop=top;envelope.expandBottom=!top;envelope.verticalPadding=24;
+                const auto approved=BuildPresentationEnvelope(envelope);
+                Assert::IsTrue(approved.valid && approved.expanded);
+                Assert::IsTrue(approved.bounds.top>0 && approved.bounds.bottom<2160);
+                SetFitCandidate(input,approved.bounds);
+                input.crop.currentVisibleBounds=approved.bounds;
+                auto proof=CaptionOwner(input,approved.bounds,occupied);
+                proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
+                proof.upperContent=top;proof.lowerContent=!top;proof.verticalPadding=24;
+                // Both shape flags remain false, exactly as the failed 190-row trace.
+                input.confirmedFitOwnership=QualifyConfirmedFitOwnership(proof);
+                Assert::IsTrue(input.confirmedFitOwnership.available);
+                const auto resolved=ResolveUncertainPicturePresentation(input,input.candidate);
+                AssertBounds(approved.bounds,resolved.presentation.sourceBounds);
+                const auto fill=ResolveFinalAspectLimitFill(ScreenFill(input,resolved));
+                Assert::IsFalse(fill.applied,L"Aspect-limit fill must not crop measured bar content");
+                auto admission=input.previousAdmission;
+                const auto anchor=Submit(input,resolved.presentation,admission);
+                Assert::IsTrue(anchor.submittedEnvelopeAvailable);
+                AssertBounds(approved.bounds,anchor.submittedEnvelope);
+                for(int fault=0;fault<7;++fault)
+                {
+                    auto invalid=proof;
+                    if(fault==0)invalid.current=false;
+                    if(fault==1)invalid.confirmed=false;
+                    if(fault==2)invalid.sourceSequence=0;
+                    if(fault==3)invalid.nativeBase.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                    if(fault==4)invalid.upperContent=invalid.lowerContent=false;
+                    if(fault==5)invalid.approvedBounds=VisibleBounds(0,2160);
+                    if(fault==6)invalid.evidenceBounds=VisibleBounds(384,1776);
+                    Assert::IsFalse(QualifyConfirmedFitOwnership(invalid).available);
+                }
+            }
+        }
         TEST_METHOD(SelectedUiFitSurvivesHeldSkippedAndRepeatedAnalysisWithoutGrowing)
         {
             auto input=UnknownIncident(200);

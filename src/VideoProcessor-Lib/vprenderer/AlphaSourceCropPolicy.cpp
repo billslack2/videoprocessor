@@ -461,15 +461,16 @@ namespace AlphaSourceCrop
     {
         if (!translationEnabled && current)
         {
-            // A wide scrub line plus separated labels has a tall bounding box,
-            // but very few occupied rows. Only Off uses this visibility route;
-            // Classic and moved subtitle styles preserve their existing policy.
-            auto footprint = *current;
-            if (footprint.upperOccupiedRows > 0 && footprint.upperOccupiedRows <= footprint.upperOccupiedDepth)
-                footprint.upperOccupiedDepth = footprint.upperOccupiedRows;
-            if (footprint.lowerOccupiedRows > 0 && footprint.lowerOccupiedRows <= footprint.lowerOccupiedDepth)
-                footprint.lowerOccupiedDepth = footprint.lowerOccupiedRows;
-            observed = EvaluateVerticalBarContent(footprint);
+            // Off reveals measured content regardless of its shape or glyphs.
+            // Retain the classifier flags for diagnostics and Classic only.
+            observed = EvaluateVerticalBarContent(*current);
+            if (observed.action != VerticalBarPresentationAction::FAIL_OPEN &&
+                ((current->upperContent && current->upperRequiredShift > 0.5f) ||
+                 (current->lowerContent && current->lowerRequiredShift > 0.5f)))
+            {
+                observed.action = VerticalBarPresentationAction::FIT;
+                observed.translationPixels = 0.0f;
+            }
         }
         if (!translationEnabled && observed.action == VerticalBarPresentationAction::TRANSLATE)
         {
@@ -693,12 +694,21 @@ namespace AlphaSourceCrop
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
 		const VerticalBarContentDecision& observed,
-		uint64_t sourceSequence)
+		uint64_t sourceSequence, bool requireRepeatedSamples)
 	{
 		VerticalFitConfirmationDecision decision;
 		decision.effective = observed;
 		if (observed.action != VerticalBarPresentationAction::FIT)
-			return decision;
+            return decision;
+        // Off already has a current pixel measurement around a trusted native
+        // picture. Reveal it immediately before AR can make that base provisional.
+        if (!requireRepeatedSamples && sourceSequence != 0)
+        {
+            decision.state.confirmations = VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+            decision.state.lastObservedSourceSequence = sourceSequence;
+            decision.newlyAccepted = previous.confirmations < VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+            return decision;
+        }
 		if (sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence &&
 			previous.confirmations != 0)
@@ -3866,7 +3876,8 @@ namespace AlphaSourceCrop
         const int width = native.rasterWidth, height = native.rasterHeight;
         if (!input.current || !input.confirmed || !input.sourceGeneration || !input.sourceSequence ||
             (input.origin != ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
-             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) ||
+             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY &&
+             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) ||
             !ValidBounds(native,width,height) || !HasAuthorityForCroppedAxes(native,width,height) ||
             !CropEdgesAreChromaAligned(native,width,height) ||
             !ValidBounds(approved,width,height) || !CropEdgesAreChromaAligned(approved,width,height) ||
@@ -3877,17 +3888,19 @@ namespace AlphaSourceCrop
         if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
             ContainedBounds(native,input.evidenceBounds))
             return result; // An inside-only cue cannot originate an outward FIT.
-        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY)
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
+            input.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT)
         {
-            // Keep Classic's non-glyph UI route, but require EVERY occupied
-            // expanding edge to be independently current and overlay-like.
+            // Every expanding edge must have independently current bar pixels.
+            // Classic additionally requires an overlay-like shape.
             // A mixed UI/picture pair cannot turn broad dense FIT into a caption.
             if (native.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
                 native.left != 0 || native.right != width ||
                 approved.left != native.left || approved.right != native.right ||
                 (!input.upperContent && !input.lowerContent) ||
-                (input.upperContent && !input.upperOverlayLike) ||
-                (input.lowerContent && !input.lowerOverlayLike) ||
+                (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY &&
+                    ((input.upperContent && !input.upperOverlayLike) ||
+                     (input.lowerContent && !input.lowerOverlayLike))) ||
                 (approved.top < native.top && !input.upperContent) ||
                 (approved.bottom > native.bottom && !input.lowerContent) ||
                 (input.upperContent && (input.evidenceBounds.top >= native.top ||
@@ -3895,6 +3908,20 @@ namespace AlphaSourceCrop
                 (input.lowerContent && (input.evidenceBounds.bottom <= native.bottom ||
                     approved.bottom <= native.bottom)))
                 return result;
+        }
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT)
+        {
+            PresentationEnvelopeGeometryInput measured;
+            measured.trustedPicture = native;
+            measured.observedContent = input.evidenceBounds;
+            measured.observedContentAvailable = true;
+            measured.expandTop = input.upperContent;
+            measured.expandBottom = input.lowerContent;
+            measured.horizontalPadding = input.horizontalPadding;
+            measured.verticalPadding = input.verticalPadding;
+            const auto bounded = BuildPresentationEnvelope(measured);
+            if (!bounded.valid || !bounded.expanded || !SameBounds(bounded.bounds, approved))
+                return result; // No authority beyond the measured content and padding.
         }
         result.available = true;
         result.origin = input.origin;
@@ -3940,7 +3967,8 @@ namespace AlphaSourceCrop
             return proof.available && input.crop.sharedGeometryAvailable &&
                 input.crop.geometrySourceGeneration == input.crop.frameSourceGeneration &&
                 (proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION ||
-                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) &&
+                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
+                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) &&
                 proof.sourceGeneration != 0 && proof.sourceSequence != 0 &&
                 proof.sourceGeneration == input.crop.frameSourceGeneration &&
                 proof.sourceSequence == input.crop.frameSourceSequence &&

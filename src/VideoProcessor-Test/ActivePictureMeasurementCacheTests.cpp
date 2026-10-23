@@ -365,7 +365,7 @@ namespace VideoProcessorTest
         TEST_METHOD(ScrubLineAndSeparatedTimeLabelsOwnCompleteBoundedOffFitAndReleaseHold)
         {
             using namespace AlphaSourceCrop;
-            for(bool top:{false,true})for(bool broad:{false,true}) {
+            for(bool top:{false,true})for(int shape:{0,1,2}) {
                 const int width=3840,height=2160;
                 auto pixels=std::make_shared<std::vector<uint16_t>>(size_t(width)*height*3/2,uint16_t(512<<6));
                 std::fill(pixels->begin(),pixels->begin()+size_t(width)*height,uint16_t(64<<6));
@@ -374,9 +374,10 @@ namespace VideoProcessorTest
                         (*pixels)[size_t(top?height-1-y:y)*width+x]=uint16_t(code<<6);
                 };
                 paint(0,384,width,1776,300);
-                if(broad)paint(128,1806,3712,2068,500);
+                if(shape==2)paint(128,1806,3712,2068,500);
                 else {
                     paint(128,1806,3712,1826,500);
+                    if(shape==1)paint(2700,1826,3470,1974,500); // Preview plus line and labels: 190 rows.
                     paint(2920,2046,3220,2068,700);paint(3470,2046,3650,2068,700);
                 }
                 AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels->data());
@@ -390,7 +391,7 @@ namespace VideoProcessorTest
                 const int first=top?measured.upperTop:measured.lowerTop;
                 const int last=top?measured.upperBottom:measured.lowerBottom;
                 const int occupied=top?measured.upperOccupiedRows:measured.lowerOccupiedRows;
-                Assert::AreEqual(262,last-first);Assert::AreEqual(broad?262:42,occupied);
+                Assert::AreEqual(262,last-first);Assert::AreEqual(shape==2?262:(shape==1?190:42),occupied);
                 VerticalBarContentInput input;input.sampledColumns=1800;
                 input.upperContent=measured.upper;input.lowerContent=measured.lower;
                 input.upperBarPixels=input.lowerBarPixels=384;
@@ -404,19 +405,26 @@ namespace VideoProcessorTest
                 const auto classic=SelectVerticalBarContentPresentation(legacy,true,&input);
                 Assert::IsFalse(top?classic.upperOverlayLike:classic.lowerOverlayLike);
                 const auto off=SelectVerticalBarContentPresentation(legacy,false,&input);
-                Assert::AreEqual(!broad,top?off.upperOverlayLike:off.lowerOverlayLike);
+                Assert::IsFalse(top?off.upperOverlayLike:off.lowerOverlayLike);
+                Assert::IsTrue(off.action==VerticalBarPresentationAction::FIT);
+                const auto immediate=ConfirmVerticalFit({},off,42,false);
+                Assert::IsFalse(immediate.pending);
+                Assert::IsTrue(immediate.effective.action==VerticalBarPresentationAction::FIT);
+                Assert::IsTrue(ConfirmVerticalFit({},classic,42).pending);
                 PresentationEnvelopeGeometryInput envelope;envelope.trustedPicture=native;envelope.observedContent=native;
                 envelope.observedContent.top=top?first:native.top;envelope.observedContent.bottom=top?native.bottom:last;
                 envelope.observedContentAvailable=true;envelope.expandTop=top;envelope.expandBottom=!top;envelope.verticalPadding=24;
                 const auto fitted=BuildPresentationEnvelope(envelope);Assert::IsTrue(fitted.valid && fitted.expanded);
-                ConfirmedFitOwnershipInput proof;proof.current=proof.confirmed=true;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+                ConfirmedFitOwnershipInput proof;proof.current=proof.confirmed=true;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
                 proof.nativeBase=native;proof.approvedBounds=fitted.bounds;proof.evidenceBounds=envelope.observedContent;
                 proof.sourceGeneration=17;proof.sourceSequence=42;proof.upperContent=top;proof.lowerContent=!top;
                 proof.upperOverlayLike=off.upperOverlayLike;proof.lowerOverlayLike=off.lowerOverlayLike;
-                Assert::AreEqual(!broad,QualifyConfirmedFitOwnership(proof).available);
-                if(broad)continue;
+                proof.verticalPadding=24;
+                Assert::IsTrue(QualifyConfirmedFitOwnership(proof).available);
+                proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+                Assert::IsFalse(QualifyConfirmedFitOwnership(proof).available, L"Classic keeps its overlay-shape requirement");
                 Assert::IsTrue(fitted.bounds.top>0 && fitted.bounds.bottom<height);
-                VerticalBarPresentationUpdateInput update;update.current=off;update.upperContent=top;update.lowerContent=!top;
+                VerticalBarPresentationUpdateInput update;update.current=immediate.effective;update.upperContent=top;update.lowerContent=!top;
                 update.upperContentTop=measured.upperTop;update.lowerContentBottom=measured.lowerBottom;
                 update.currentTick=1000;update.currentSourceSequence=42;update.holdMs=2000;update.translationEnabled=false;
                 update.previous=UpdateVerticalBarPresentation(update);
