@@ -162,7 +162,17 @@ namespace DebugLogAsync
                     lastFlush = Clock::now();
                 }
                 if (drainedAndClosed) return;
-                if (!count) WaitForSingleObject(m_wake, FlushIntervalMs);
+                if (count < BatchSize)
+                {
+                    // Coalesce after a partial batch too: a producer arriving
+                    // during a write must not turn sparse traffic into one write
+                    // per record. A full-batch/close event can wake us sooner.
+                    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        Clock::now() - lastFlush).count();
+                    const DWORD waitMs = needsFlush ? static_cast<DWORD>(
+                        elapsed < FlushIntervalMs ? FlushIntervalMs - elapsed : 1) : FlushIntervalMs;
+                    WaitForSingleObject(m_wake, waitMs);
+                }
             }
         }
 
