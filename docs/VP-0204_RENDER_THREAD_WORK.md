@@ -7,15 +7,22 @@ The explicit-Apply LUT work in PR #191 is separate.
 ## Behavior and ownership
 
 * Logging producers format the existing printf message into a fixed 4096-byte
-  record and try to admit it to a bounded 1000-record queue. They never wait
-  for the queue mutex. Contention drops the new record; a full queue discards
-  the oldest queued record, matching prior overflow behavior. The writer drains
-  at most 50 records per bookkeeping lock and performs all timestamp formatting,
-  file writes, reports and flushes after releasing it. Shutdown closes admission
-  before draining accepted records. Startup/shutdown may wait for file I/O;
-  ordinary producers do not. External plugin forwarding preserves its callback
-  contract. printf formatting remains on the caller because variadic pointer
-  arguments cannot safely outlive the call.
+  record, reserve one of 8192 preallocated nodes, and publish it through Windows
+  atomic sequenced lists. There is no producer queue mutex and no contention-drop
+  path. A paused producer owns only its reserved node; completed publications can
+  still drain. The writer detaches publications in FIFO order, copies up to 256
+  records to private scratch, returns nodes before I/O, and writes a combined
+  formatted byte buffer. Sparse traffic coalesces for up to 250 ms; routine flushes
+  are limited to that interval, with a final shutdown flush. Queue plus both writer
+  scratch buffers have an approximately 35 MiB fixed budget. Only actual pool
+  exhaustion rejects a new open-session record; already accepted records remain
+  owned until drained. Closing admission atomically retains outstanding producers
+  so shutdown cannot finish ahead of an admitted publication. Startup/shutdown
+  may wait for file I/O; ordinary producers never acquire an application mutex or
+  wait for the writer. Windows atomic primitives are nonblocking, not a guarantee
+  against OS scheduling delay or a strict per-thread latency bound. External
+  plugin forwarding retains its callback contract. printf formatting remains on
+  the caller because variadic pointer arguments cannot safely outlive the call.
 * The NVIDIA BT.2020 worker constructs, uses and destroys its backend/controller
   on one thread. Driver calls never hold the mailbox/status mutex. Requests
   coalesce to the latest target and carry a generation; obsolete read completions
@@ -43,9 +50,14 @@ The explicit-Apply LUT work in PR #191 is separate.
 
 ## Diagnostic interpretation
 
-`VP async log telemetry` writer summaries report admission/processing, full-queue drops,
-producer contention drops, depth/high-water, truncation and flush count/total/peak.
-These allow a stalled disk to be distinguished from high producer traffic.
+`VP async log telemetry` identifies process and transport and reports admission,
+processing, true pool-full rejection, queue/pool high-water, bounded storage bytes,
+truncation, combined write count/bytes/failures/time and flush count/time. The legacy
+`dropped_contended` field is always zero: publication no longer has a mutex.
+Write-byte counters include formatted timestamps, messages, newlines and writer
+reports; snapshots precede their own report write. These measure writer API calls
+and bytes, not physical disk operations. Buffering reduces calls/flushes; preserving
+more messages can increase total bytes versus the lossy prototype.
 
 `NVIDIA BT.2020 worker` accompanies existing render-load summaries. Request age,
 coalescing, obsolete completions, driver total/peak and active-call age can expose
@@ -103,3 +115,21 @@ record readiness deferrals and, on the one attempt, current generation, previous
 foreground process, requested/acquired result, keyboard focus and deadline delay.
 Ten deterministic session tests cover deadline/readiness order, stale messages,
 host/generation changes, cancellation and one-shot denial behavior.
+
+
+## Memory-queue revision after live contention loss
+
+The first deployed prototype reported 459 contention drops alongside 3163 accepted
+records over the observed monotonic writer stream, despite a high-water of only
+15/1000 records. This was admission loss, not exhausted memory or measured disk
+backpressure. The user's follow-up replaces that tradeoff rather than simply
+increasing the old mutex queue. Historical logger datasets in the measurement
+report describe the prototype; updated native/stress/latency and post-deployment
+write-volume evidence are recorded in PR #192 and the authoritative VP-0204 story.
+
+The implementation uses Windows' documented nonblocking sequenced list operations
+with aligned headers/nodes, instead of a bespoke ABA-prone pointer stack. Ownership
+moves free pool -> producer -> published list -> writer -> free pool. Detached
+list reversal uses a separate writer-private link. Shutdown's closed bit and
+in-flight producer count share one atomic, so a reserved record cannot arrive
+behind a completed final drain. See [Windows interlocked singly linked lists](https://learn.microsoft.com/en-us/windows/win32/sync/interlocked-singly-linked-lists).

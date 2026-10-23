@@ -207,6 +207,7 @@ public:
 	}
 
 private:
+	friend struct DebugLogTestAccess;
 	using Transport = DebugLogAsync::Transport<>;
 
 	static void QueueMessage(const char* message, bool truncated)
@@ -218,31 +219,67 @@ private:
 	struct FileSink
 	{
 		std::ofstream& file;
-		void Write(const Transport::Record& record)
+		std::unique_ptr<char[]> buffer{std::make_unique<char[]>(Transport::WriterBufferBytes)};
+		std::time_t cachedTimestamp = static_cast<std::time_t>(-1);
+		char timestampText[32]{};
+		bool haveTimestamp = false;
+		explicit FileSink(std::ofstream& output) : file(output) {}
+		size_t WriteBatch(const Transport::Record* records, size_t count)
 		{
-			struct tm local{};
-			localtime_s(&local, &record.timestamp);
-			file << std::put_time(&local, "%Y-%m-%d %H:%M:%S") <<
-				" | " << record.message << "\n";
+			size_t used = 0;
+			for (size_t index = 0; index < count; ++index)
+			{
+				const auto& record = records[index];
+				if (!haveTimestamp || record.timestamp != cachedTimestamp)
+				{
+					struct tm local{};
+					localtime_s(&local, &record.timestamp);
+					std::strftime(timestampText, sizeof(timestampText), "%Y-%m-%d %H:%M:%S", &local);
+					cachedTimestamp = record.timestamp;
+					haveTimestamp = true;
+				}
+				const size_t timestampLength = std::strlen(timestampText);
+				std::memcpy(buffer.get() + used, timestampText, timestampLength);
+				used += timestampLength;
+				std::memcpy(buffer.get() + used, " | ", 3); used += 3;
+				std::memcpy(buffer.get() + used, record.message, record.length); used += record.length;
+				buffer[used++] = '\n';
+			}
+			file.write(buffer.get(), static_cast<std::streamsize>(used));
+			return file.good() ? used : 0;
 		}
 		void Flush() { file.flush(); }
-		void Report(const Metrics& metrics)
+		size_t Report(const Metrics& metrics)
 		{
 			Transport::Record record;
 			record.timestamp = std::time(nullptr);
-			std::snprintf(record.message, sizeof(record.message),
-				"VP async log telemetry: enqueued=%llu processed=%llu dropped_full=%llu dropped_contended=%llu truncated=%llu queue=%llu high_water=%llu capacity=1000 flushes=%llu flush_total_us=%llu flush_peak_us=%llu overflow=drop_oldest contention=drop_newest",
+			const int length = std::snprintf(record.message, sizeof(record.message),
+				"VP async log telemetry: process=%lu transport=%p enqueued=%llu processed=%llu "
+				"dropped_full=%llu dropped_contended=0 truncated=%llu queue=%llu high_water=%llu "
+				"capacity=%llu memory_bytes=%llu pool_in_use=%llu pool_high_water=%llu "
+				"write_calls=%llu write_bytes=%llu write_failures=%llu write_total_us=%llu write_peak_us=%llu "
+				"flushes=%llu flush_total_us=%llu flush_peak_us=%llu overflow=drop_newest admission=atomic_pool batch=256 flush_interval_ms=250",
+				GetCurrentProcessId(), static_cast<void*>(&GetTransport()),
 				static_cast<unsigned long long>(metrics.enqueued),
 				static_cast<unsigned long long>(metrics.processed),
 				static_cast<unsigned long long>(metrics.droppedFull),
-				static_cast<unsigned long long>(metrics.producerContentions),
 				static_cast<unsigned long long>(metrics.truncated),
 				static_cast<unsigned long long>(metrics.queueDepth),
 				static_cast<unsigned long long>(metrics.highWater),
+				static_cast<unsigned long long>(metrics.capacity),
+				static_cast<unsigned long long>(metrics.memoryBytes),
+				static_cast<unsigned long long>(metrics.poolInUse),
+				static_cast<unsigned long long>(metrics.poolHighWater),
+				static_cast<unsigned long long>(metrics.writeCount),
+				static_cast<unsigned long long>(metrics.writeBytes),
+				static_cast<unsigned long long>(metrics.writeFailures),
+				static_cast<unsigned long long>(metrics.writeTotalUs),
+				static_cast<unsigned long long>(metrics.writePeakUs),
 				static_cast<unsigned long long>(metrics.flushCount),
 				static_cast<unsigned long long>(metrics.flushTotalUs),
 				static_cast<unsigned long long>(metrics.flushPeakUs));
-			Write(record);
+			record.length = length > 0 ? static_cast<uint32_t>((std::min)(length, static_cast<int>(sizeof(record.message) - 1))) : 0;
+			return WriteBatch(&record, 1);
 		}
 	};
 
