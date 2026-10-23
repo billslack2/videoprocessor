@@ -1,9 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+Done
 
-User confirms thin destination-overlay lines are gone at 3a1e1050. A correction for recurring black source-backing intrusion is deployed for live testing at clean Release source 1ce9f934, based on current beta f4f5e138 with draft PR #196 integrated. All 1078 selected native/GPU regressions and four settings tests passed. The backing recurrence and HDR flashing await explicit live confirmation.
+User authorized merging after the Clear / Yellow test deployment. PR #196 is merged into v1.4.02-beta as e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a. Its complete source tree exactly matches tested and deployed feature 1ce9f934. Clean x64 Release validation passed 1078 selected native/GPU tests and four settings checks. The earlier Off fitting changes were already merged through PR #195.
 
 Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -160,3 +160,12 @@ GitHub latest beta/default was freshly queried and fetched: v1.4.02-beta at f4f5
 - Successful clean x64 Release solution Rebuild at exact final source. All 1078 selected native/GPU tests passed with captured replay explicitly enabled. Four Qt checks passed: Off hold, subtitle profile save/reopen, clean Apply callback, and unchanged remote Apply RPC candidate. This is selected coverage, not a claimed full-suite run. The first selected run passed 1077/1078; its sole failure was a stale current-beta API-version expectation (28 versus header 29). Repaired that test and preserved both runs. A test callback typo and incremental debug-info linker failure were corrected before the successful clean Rebuild.
 - Matching host and standard/beta renderers deployed together, with hashes verified against Release build records and clean runtime startup identity. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-clear-cleanup-1ce9f934-20261023-185955. Active configuration edits: none; hashes unchanged after launch. Existing Config binaries/editor session preserved.
 - Evidence: stories/assets/VP-0207/deployment-1ce9f934-20261023. PR #196 remains draft and unmerged. Review is for live Clear / Yellow playback, including the previously reported HDR flashing with Smooth Motion off. Prior acceptance of the destination-edge fix does not constitute acceptance of this backing recurrence fix.
+
+## Accepted follow-up and merge - 2026-10-23
+
+- User requested: "merge this" after deployment of 1ce9f934da111e46562cfe20f486bce9f4f7e6dd. This authorizes merging the current subtitle follow-up. No additional live playback measurements were collected during the merge.
+- Refreshed GitHub default/latest beta: v1.4.02-beta, base f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b. Confirmed it is already an ancestor of the exact tested feature; no new integration changes or test rerun were needed.
+- Used the vp-release merge helper with pinned source/base for Prepare and Merge, reusing PR #196. Marked it ready and verified checks before merging. GitHub returned MERGED at 2026-10-23T23:40:57Z: https://github.com/billslack2/videoprocessor/pull/196.
+- Merge commit e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a; verified parents are f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b and 1ce9f934da111e46562cfe20f486bce9f4f7e6dd. The complete merged tree 25b7ac0884fbc3651ced332ce4102c25bb40229f exactly equals the tested feature tree. Existing selected native/GPU and four Qt test evidence therefore cover the merged code.
+- The running test deployment remains the verified feature build 1ce9f934da111e46562cfe20f486bce9f4f7e6dd; no rebuild, runtime replacement or configuration edits were performed for this merge. Prior deployment receipt and backup remain in stories/assets/VP-0207/deployment-1ce9f934-20261023.
+- VP-0207 is Done. Merge evidence: stories/assets/VP-0207/merge-196-20261023/merge.json. Earlier Review notes are historical validation state.

@@ -1,0 +1,28 @@
+{
+  "repository": "billslack2/videoprocessor",
+  "pullRequest": {
+    "baseRefName": "v1.4.02-beta",
+    "headRefOid": "1ce9f934da111e46562cfe20f486bce9f4f7e6dd",
+    "mergeCommit": {
+      "oid": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a"
+    },
+    "mergedAt": "2026-10-23T23:40:57Z",
+    "state": "MERGED",
+    "url": "https://github.com/billslack2/videoprocessor/pull/196"
+  },
+  "expectedBaseCommit": "f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b",
+  "testedFeatureCommit": "1ce9f934da111e46562cfe20f486bce9f4f7e6dd",
+  "mergeCommit": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "verifiedMergeParents": [
+    "f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b",
+    "1ce9f934da111e46562cfe20f486bce9f4f7e6dd"
+  ],
+  "featureTree": "25b7ac0884fbc3651ced332ce4102c25bb40229f",
+  "mergedTree": "25b7ac0884fbc3651ced332ce4102c25bb40229f",
+  "treesIdentical": true,
+  "validation": "stories/assets/VP-0207/deployment-1ce9f934-20261023/validation.json",
+  "mergeWorkflow": "C:\\Users\\bslac\\.codex\\skills\\vp-release\\scripts\\merge-vp.ps1",
+  "userAuthorization": "merge this",
+  "deploymentChanged": false,
+  "configurationEdits": []
+}
