@@ -2,7 +2,7 @@
 
 ## Status
 
-Review
+In Progress
 
 Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) remains
 unmerged at feature head `d0dbd5a27142d193e6e1c9182a05f32a67948c24` on
@@ -408,3 +408,15 @@ No duplicate, missing, orphan, child-order or state discrepancy was found.
 Known VP-0070/VP-0088/VP-0168 status formatting remains untouched. VP-0204's
 file, exact Review status and index row move together; VP-0203 and the broader
 Backlog VP-0111 remain unchanged. PR #192 remains draft and unmerged.
+
+
+## Memory-backed logging follow-up (2026-10-22)
+
+Implementation resumed at the user's request after the live admission-loss
+measurement. Replace producer try-lock/drop-on-contention with preallocated
+bounded record storage and atomic handoff; drain batches and throttle routine
+flushes on the writer. Memory budget may increase; real capacity exhaustion must
+remain counted. Validate concurrent retention, stalled producer/writer isolation,
+shutdown and restart, producer latency, bounded memory and actual write/flush
+volume. Update PR #192 and rebuild/deploy its tested Release integration while
+preserving the installed startup/subtitle delta and active configuration.
