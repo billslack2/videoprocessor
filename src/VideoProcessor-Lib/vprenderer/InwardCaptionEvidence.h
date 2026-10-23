@@ -15,5 +15,6 @@ namespace AlphaSourceCrop
     InwardCaptionEvidence InspectInwardCaptionEvidence(
         const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
         const ActivePictureBounds& establishedBase,
-        const ActivePictureTransitionModel& model);
+        const ActivePictureTransitionModel& model,
+        const AnalysisEvaluationBudget* budget = nullptr);
 }

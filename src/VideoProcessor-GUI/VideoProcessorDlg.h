@@ -9,6 +9,7 @@
 #pragma once
 #include <ConfigurationLiveApply.h>
 #include <StartupPresentationReadiness.h>
+#include <FullscreenActivation.h>
 
 
 
@@ -591,8 +592,7 @@ protected:
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
-	bool m_fullscreenActivationPending = false;
-	bool m_fullscreenActivationAttempted = false;
+	FullscreenActivation::Session m_fullscreenActivation;
 
 	//
 	// Program data
@@ -1023,6 +1023,7 @@ protected:
 	bool TryStartFullscreenRetarget();
 	void ClearFullscreenRetarget(bool restorePreviousTarget);
 	void FullScreenVideoWindowConstruct();
+	void ScheduleFullscreenActivation();
 	void FullScreenVideoWindowDestroy();
 	HMONITOR SelectFullscreenMonitor();
 	HWND GetRenderWindow();

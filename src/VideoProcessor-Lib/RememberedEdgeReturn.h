@@ -40,17 +40,20 @@ struct RememberedEdgeReturnShadowResult : RememberedEdgeReturnMetrics
 RememberedEdgeReturnShadowResult InspectRememberedEdgeReturnShadow(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination,
-    uint64_t sourceSequence, uint64_t tickMs);
+    uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget = nullptr);
 // Separate diagnostic envelope: retain two rows at each nominal edge, rounded
 // outward to even source coordinates (three rows when the nominal edge is odd).
 RememberedEdgeReturnShadowResult InspectRememberedEdgeReturnGuardedShadow(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination,
-    uint64_t sourceSequence, uint64_t tickMs);
+    uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget = nullptr);
 RememberedEdgeReturnResult InspectRememberedEdgeReturn(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination,
-    uint64_t sourceSequence, uint64_t tickMs);
+    uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 // Source views retain their originating generation domain. Inspection validates
 // that domain before normalizing a local copy; it never changes the caller's view.
@@ -81,12 +84,14 @@ struct RememberedEdgeReturnShadowWindowResult
 RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowWindow(
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture);
+    uint32_t configuredFuture, uint32_t actualFuture,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnGuardedShadowWindow(
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture);
+    uint32_t configuredFuture, uint32_t actualFuture,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 // Explicit opt-in authority. Nominal history geometry remains distinct from the
 // slightly larger verified presentation envelope. A certificate is current-frame
@@ -108,12 +113,14 @@ struct GuardedRememberedEdgeReturnCertificate
 RememberedEdgeReturnResult InspectGuardedRememberedEdgeReturn(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination,
-    uint64_t sourceSequence, uint64_t tickMs);
+    uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget = nullptr);
 GuardedRememberedEdgeReturnCertificate BuildGuardedRememberedEdgeReturnCertificate(
     const ActivePictureTransitionModel& model,
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture, uint64_t continuityGeneration);
+    uint32_t configuredFuture, uint32_t actualFuture, uint64_t continuityGeneration,
+    const AnalysisEvaluationBudget* budget = nullptr);
 bool ValidateAndAdoptGuardedRememberedEdgeReturn(
     ActivePictureTransitionModel& model,
     const GuardedRememberedEdgeReturnCertificate& certificate,
