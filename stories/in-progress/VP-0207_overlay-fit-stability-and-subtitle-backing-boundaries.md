@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -37,3 +37,7 @@ Not merged. Deployed for user testing on 2026-10-23 as recorded below. Replay th
 User authorized: deploy it to test. Deployed clean x64 Release commit `5ab30a23f7e463ab520d65b1e6a5e71d87437ebb` to `C:\Videoprocessor\vp`. Backed up and replaced the host, standard renderer, and beta renderer together. Verified all three deployed SHA-256 values against their build runtime records. Configuration hashes remained unchanged before and after launch; no configuration edits.
 
 Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-5ab30a23-20261023-145959`. Host launched with working directory `C:\Videoprocessor\vp` as PID 22084. Fresh runtime logs confirm host and renderer both use the intended commit with `dirty=0` and the configured beta renderer was selected. Receipt and startup evidence: `stories/assets/VP-0207/deployment-5ab30a23-20261023`. Story remains Review pending the user's live test.
+
+## Mode clarification — 2026-10-23
+
+User confirmed flashing improved. Off must zoom out only to the bounded union of rendered picture and overlay content, allowing black bars on every side; it must not require a stable Classic movement target or default to full raster. Classic moves the picture. Existing advanced reconstruction behavior is accepted and must remain unchanged. Continuing implementation on the same clean feature lineage; current remote beta remains dfd34ea6.
