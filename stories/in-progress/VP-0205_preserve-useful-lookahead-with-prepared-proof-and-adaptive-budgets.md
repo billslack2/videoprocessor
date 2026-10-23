@@ -2,21 +2,24 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Created 2026-10-23 at the user's request for a new story, branch, and separate MR.
-Runtime implementation has not started. The separate draft PR records the design,
-measurement evidence, acceptance criteria, and dependency on VP-0204 / PR #192.
+Implementation authorized by the user's `proceed` on 2026-10-23. Work continues
+on the existing separate branch and draft PR #193, freshly verified against
+current/default beta `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
+PR #192 remains unmerged. Only necessary picture-analysis prerequisite APIs may
+be reused explicitly; its logging, NVIDIA and fullscreen changes remain outside
+this story. Independent threading, proof-correctness and telemetry work is active.
 
 - Source branch: `codex/vp-0205-lookahead-workahead`.
 - Clean source worktree: `E:\codex\videoprocessor\vp-0205-lookahead-workahead`.
 - GitHub default and latest beta: `v1.4.02-beta`, discovered and fetched at
   `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
 - Separate draft [PR #193](https://github.com/billslack2/videoprocessor/pull/193),
-  open at `3946bb3a2bedf9552f2fd346013a11b0c4743f4c`; planning document only.
-- Next action: settle the measurement and worker-result contracts below, then
-  move this record and its index row to In Progress when runtime implementation
-  starts. Refresh beta and rebase against the final accepted PR #192 APIs first.
+  starts implementation from planning commit `3946bb3a2bedf9552f2fd346013a11b0c4743f4c`.
+- Next action: implement bounded prepared-proof reuse, independent completed-work
+  retention, adaptive presentation admission and useful-result telemetry; validate
+  with native tests, controlled measurements and an x64 Release build.
 
 ## Objective
 
@@ -59,6 +62,19 @@ fixture, approximately 125 ms at 24 Hz. A completed cached outward proof can als
 validate at zero synchronous allowance. Completed previews can still have short
 ready prefixes or be rejected by stable-reference checks; neither a completion
 count nor worker completion alone establishes useful adoption.
+
+## Readiness review
+
+Current beta already has bounded raw/subtitle/outward workers, immutable source
+ownership and exact-source timeline admission. Display timing is CPU-wall/phase
+evidence rather than a GPU completion guarantee; mandatory-cost tails and new
+source/repeat separation must therefore remain conservative. The helper budget
+and exact-worker-import prerequisites in PR #192 are known and can be included
+selectively without its unrelated runtime changes. Worker code will remain pure
+CPU measurement; timeline/authority mutation stays on the render thread. Native
+regressions and matched synthetic/replay measurements can prove identity,
+publication, cancellation and scheduling contracts. Live GPU/capture coverage
+will be reported separately. No configuration migration or UI redesign is needed.
 
 ## Proposed implementation
 
@@ -122,10 +138,11 @@ analysis-caused misses and distinguish new-source from repeated-output tails.
 
 VP-0204 / [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is a
 separate unmerged draft at `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`. Its
-cooperative helper budget, exact-worker imports and telemetry contracts must be
-reconciled after acceptance. This planning branch starts at current beta and does
-not carry PR #192's logging, NVIDIA or fullscreen changes. No blanket dependency
-merge or cherry-pick is authorized by this story setup.
+cooperative helper budget, exact-worker imports and telemetry contracts are
+explicit analysis prerequisites. Include only the necessary analysis support in
+this implementation and reconcile with its final APIs when beta accepts it. The
+branch starts at current beta and does not carry PR #192's logging, NVIDIA or
+fullscreen changes; no blanket dependency merge is part of this work.
 
 Related: VP-0124 safe outward lookahead, VP-0082 buffered active-picture lookahead,
 and VP-0070 subtitle safety. This story excludes LUT, focus, logging transport,
