@@ -7674,6 +7674,58 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     if(!images.isEmpty()){reopened.resize(1040,700);reopened.show();reopened.selectPage(21);QApplication::processEvents();reopened.grab().save(images+"/motion.png");reopened.selectPage(17);QApplication::processEvents();reopened.grab().save(images+"/chroma.png");}
 }
 
+void testExplicitPresetDefaultsAndOutputMatching()
+{
+    QTemporaryDir directory;
+    const QString path=directory.filePath("VideoProcessor.cfg");
+    ConfigEditorWindow window(path,0,true);
+    QCoreApplication::processEvents();
+    for (const char* key : { "upscaler", "downscaler", "sigmoid", "deband_strength", "dithering" })
+        require(requireControl<QComboBox>(window,QString("config.vprenderer.scaling.")+key)->findData("AUTO",Qt::UserRole,Qt::MatchFixedString)<0,
+            "Preset controls must offer explicit algorithms, not Auto");
+    require(requireControl<QComboBox>(window,"config.vprenderer.scaling.upscaler")->currentData()=="ewa_lanczossharp","High default scaler was not explicit");
+    auto* depth=requireControl<QComboBox>(window,"config.vprenderer.scaling.display_bit_depth");
+    require(depth->currentData()=="output" && depth->currentText()=="Match output format","New dither-depth policy is not explicit");
+    require(requireControl<QComboBox>(window,"config.vprenderer.peak_detection")->currentData()=="high_quality","Peak default was not explicit");
+    save(window);
+    ConfigFile saved; require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload explicit defaults");
+    std::string value;
+    require(saved.TryGetString("vprenderer.scaling.default","dithering",value) && value=="blue_noise","Fresh dithering default did not persist");
+    require(saved.TryGetString("vprenderer.scaling.default","display_bit_depth",value) && value=="output","Output matching did not persist");
+}
+
+void testExplicitAutoMigrationPreservesPerProfileChoices()
+{
+    QTemporaryDir directory; const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path); require(file.open(QIODevice::WriteOnly),"Cannot create migration fixture");
+    const QByteArray original="[vprenderer.Default]\ndithering: off # retain deliberate choice\ndisplay_bit_depth: 8\n[vprenderer.Hdr]\nshortcut: Ctrl+2\ndithering: AUTO\ndisplay_bit_depth: AUTO\n";
+    file.write(original);file.close();
+    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();
+    require(readBytes(path)==original,"Opening Config wrote the original file");
+    save(window);
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload migrated defaults");
+    std::string value;
+    require(saved.TryGetString("vprenderer.scaling.default","dithering",value) && value=="off","Explicit default Off was lost");
+    require(saved.TryGetString("vprenderer.scaling.hdr","dithering",value) && value=="blue_noise","HDR Auto inherited Off");
+    require(saved.TryGetString("vprenderer.scaling.hdr","display_bit_depth",value) && value=="output","HDR Auto inherited 8-bit");
+    const auto bytes=readBytes(path);
+    ConfigEditorWindow reopened(path,0,true);QCoreApplication::processEvents();
+    require(readBytes(path)==bytes,"Reopening Config wrote another migration");
+}
+
+void testPresetResolutionPrecedesEditorSectionMigration()
+{
+    QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create preset fixture");
+    file.write("[vprenderer.Default]\nquality: balanced\n[vprenderer.Fast]\nquality: fast\nshortcut: Ctrl+2\nupscaler: AUTO\ncontrast_recovery: AUTO\n");file.close();
+    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();save(window);
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload preset fixture");
+    std::string value;
+    require(saved.TryGetString("vprenderer.scaling.fast","upscaler",value) && value=="none","Editor lost Fast before resolving Auto");
+    require(saved.TryGetString("vprenderer.fast","contrast_recovery",value) && value=="0","Fast contrast recovery drifted");
+    require(saved.TryGetString("vprenderer.scaling.default","upscaler",value) && value=="lanczos","Balanced default drifted");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -7713,6 +7765,9 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("explicit preset defaults and output matching", testExplicitPresetDefaultsAndOutputMatching);
+    failures += run("explicit Auto migration preserves profile choices", testExplicitAutoMigrationPreservesPerProfileChoices);
+    failures += run("preset resolution precedes editor section migration", testPresetResolutionPrecedesEditorSectionMigration);
     failures += run("subtitle surrounding fill round trip", testSubtitleSurroundFillRoundTrip);
     failures += run("subtitle retired temporal fill preserves saved profiles", testSubtitleRetiredTemporalFillPreservesSavedProfiles);
     failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);

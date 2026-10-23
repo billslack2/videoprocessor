@@ -3,6 +3,7 @@
 
 #include "ConfigFile.h"
 #include "RendererProfileConfig.h"
+#include "QualityProfileMigration.h"
 #include <vprenderer/LibplaceboRenderParameters.h>
 
 #include <Windows.h>
@@ -713,6 +714,53 @@ namespace VideoProcessorTest
 				L"Disabled dithering must also disable the preferred error-diffusion path.");
 		}
 
+        TEST_METHOD(ExplicitMigrationDefaultsMatchTheRetiredNativePresets)
+        {
+            for (const char* quality : { "fast", "balanced", "high" })
+            {
+                const auto value = [&](const char* key) { return std::string(QualityProfileMigration::PresetValue(quality, key)); };
+                Settings settings;
+                settings.upscaler = value("upscaler");
+                settings.downscaler = value("downscaler");
+                settings.sigmoid = value("sigmoid") == "on" ? Toggle::On : Toggle::Off;
+                settings.debandStrength = value("deband_strength");
+                settings.dithering = value("dithering");
+                settings.peakDetection = value("peak_detection") == "off" ? PeakDetection::Off :
+                    value("peak_detection") == "on" ? PeakDetection::Standard : PeakDetection::HighQuality;
+                settings.hasContrastRecovery = true;
+                settings.contrastRecovery = std::stof(value("contrast_recovery"));
+                Projection projection;
+                BuildOrFail(settings, false, projection);
+                const auto* native = NativeData<pl_render_params>(std::string(quality) == "fast" ? "pl_render_fast_params" :
+                    std::string(quality) == "balanced" ? "pl_render_default_params" : "pl_render_high_quality_params");
+                AssertPointer(native->upscaler, projection.renderParams.upscaler, L"Migrated upscaler differs from old Auto.");
+                AssertPointer(native->downscaler, projection.renderParams.downscaler, L"Migrated downscaler differs from old Auto.");
+                Assert::AreEqual(native->sigmoid_params != nullptr, projection.renderParams.sigmoid_params != nullptr);
+                Assert::AreEqual(native->deband_params != nullptr, projection.renderParams.deband_params != nullptr);
+                if (native->deband_params)
+                {
+                    Assert::AreEqual(native->deband_params->threshold, projection.renderParams.deband_params->threshold);
+                    Assert::AreEqual(native->deband_params->grain, projection.renderParams.deband_params->grain);
+                }
+                Assert::AreEqual(ResolvedDithering(*native).c_str(), ResolvedDithering(projection.renderParams).c_str());
+                Assert::AreEqual(ResolvedPeakDetection(*native), ResolvedPeakDetection(projection.renderParams));
+                const float oldContrast = native->color_map_params ? native->color_map_params->contrast_recovery : 0.0f;
+                Assert::AreEqual(oldContrast, projection.colorMapParams.contrast_recovery);
+            }
+        }
+        TEST_METHOD(MatchOutputFormatPreservesActiveRepresentation)
+        {
+            for (int depth : { 8, 10, 16 })
+            {
+                pl_color_repr target{};
+                target.bits.sample_depth = depth;
+                target.bits.color_depth = depth;
+                ApplyDisplayBitDepth("output", target);
+                Assert::AreEqual(depth, target.bits.sample_depth);
+                Assert::AreEqual(depth, target.bits.color_depth);
+                Assert::AreEqual(0, target.bits.bit_shift);
+            }
+        }
 		TEST_METHOD(DisplayBitDepthTargetsDitheringWithoutChangingSwapchainStorage)
 		{
 			pl_color_repr target{};
