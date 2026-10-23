@@ -1,0 +1,224 @@
+START subtitle surrounding fill round trip
+PASS subtitle surrounding fill round trip
+START subtitle retired temporal fill preserves saved profiles
+PASS subtitle retired temporal fill preserves saved profiles
+START Motion and chroma controls persist and expose new tab
+PASS Motion and chroma controls persist and expose new tab
+START integrated updates respect local package
+PASS integrated updates respect local package
+START update shutdown discards edits without prompt
+PASS update shutdown discards edits without prompt
+START Tone slider drag performance
+DRAG: 200 updates=0ms; commits during=0; total=1
+PASS Tone slider drag performance
+START Tone mapping controls round trip
+PASS Tone mapping controls round trip
+START Beta tone mapping controls
+START subtitle profile tab round trip
+PASS Beta tone mapping controls
+PASS subtitle profile tab round trip
+START Off zoom hold round trip
+FAIL Off zoom hold round trip: Loading default Off hold dirtied configuration
+START subtitle background shape round trip and visibility
+PASS subtitle background shape round trip and visibility
+START subtitle text size reduction round trip and style visibility
+PASS subtitle text size reduction round trip and style visibility
+START subtitle HDR legacy fallback and shared modes
+PASS subtitle HDR legacy fallback and shared modes
+START subtitle diagnostic survives Config save and reopen
+PASS subtitle diagnostic survives Config save and reopen
+START Subtitle cut paste survives config save and reopen
+PASS Subtitle cut paste survives config save and reopen
+START audited Boolean aliases and inherited Auto status
+PASS audited Boolean aliases and inherited Auto status
+START invalid audited values remain actionable
+PASS invalid audited values remain actionable
+START diagnostic preset describes flags and retention default
+PASS diagnostic preset describes flags and retention default
+START omitted and Auto frame offset display ninety
+PASS omitted and Auto frame offset display ninety
+START unified Color Output migration and transfer round trip
+PASS unified Color Output migration and transfer round trip
+START calibrated UI defaults and derived transport
+PASS calibrated UI defaults and derived transport
+START calibrated legacy and inherited output preserved
+PASS calibrated legacy and inherited output preserved
+START shared profile list controller contract
+PASS shared profile list controller contract
+START Limited transport gamma notice and correction
+PASS Limited transport gamma notice and correction
+START black default and legacy Auto inheritance
+PASS black default and legacy Auto inheritance
+START Inherited HDR target luminance validation
+PASS Inherited HDR target luminance validation
+START HDR target luminance validation retains saved value
+PASS HDR target luminance validation retains saved value
+START every page round trips
+PASS every page round trips
+START OSD screen geometry scaling round trips
+PASS OSD screen geometry scaling round trips
+START Stats OSD size defaults and opt-in state
+PASS Stats OSD size defaults and opt-in state
+START Stats OSD size precision comments disable and reload
+START Stats OSD size legacy standard and whole-percent endpoints
+PASS Stats OSD size precision comments disable and reload
+PASS Stats OSD size legacy standard and whole-percent endpoints
+START renderer section tabs stay synchronized during rapid clicks
+PASS renderer section tabs stay synchronized during rapid clicks
+START empty Standard shaders can create first shader
+PASS empty Standard shaders can create first shader
+START shader profile lists can return to empty without synthetic roots
+PASS shader profile lists can return to empty without synthetic roots
+START two-column cards share row height
+FAIL two-column cards share row height: Missing card: Display
+START inherited renderer Input selectors use effective labels
+PASS inherited renderer Input selectors use effective labels
+START inherited renderer Input selectors refresh with General
+PASS inherited renderer Input selectors refresh with General
+START empty shortcuts survive NLS backend edit
+PASS empty shortcuts survive NLS backend edit
+START SDR gamma adjustment labels and persistence
+PASS SDR gamma adjustment labels and persistence
+START calibration layout preserves independent slots
+PASS calibration layout preserves independent slots
+START calibration controls follow confirmed runtime LUT
+PASS calibration controls follow confirmed runtime LUT
+START HDR target gamma loads prior input aliases
+PASS HDR target gamma loads prior input aliases
+START independent SDR LUT gamma
+PASS independent SDR LUT gamma
+START calibration profile owns LUT and HDR gamma
+PASS calibration profile owns LUT and HDR gamma
+START legacy Rendering color settings migrate to Color Config
+PASS legacy Rendering color settings migrate to Color Config
+START separated profiles do not leave shortcut shells behind
+PASS separated profiles do not leave shortcut shells behind
+START legacy VP input override migrates independently
+PASS legacy VP input override migrates independently
+START LLDV named metadata is preserved
+PASS LLDV named metadata is preserved
+START optional config sections are created when edited
+PASS optional config sections are created when edited
+START DV mode selector preserves LLDV settings
+PASS DV mode selector preserves LLDV settings
+START LLDV standard profiles
+PASS LLDV standard profiles
+START profile lifecycle through widgets
+PASS profile lifecycle through widgets
+START unrelated content remains exact
+PASS unrelated content remains exact
+START scene detection defaults off and hides manual overrides
+PASS scene detection defaults off and hides manual overrides
+START virtual shader Off option persists
+PASS virtual shader Off option persists
+START disabling shader rule preserves shortcut
+PASS disabling shader rule preserves shortcut
+START custom shader parameters expand into page scroll
+PASS custom shader parameters expand into page scroll
+START renderer profile sections collapse and persist
+PASS renderer profile sections collapse and persist
+START output experiments persist and restore defaults
+PASS output experiments persist and restore defaults
+START output diagnostic preset can inherit
+PASS output diagnostic preset can inherit
+START Screen Config sections and inline units
+PASS Screen Config sections and inline units
+START queue units and LUT controls use consistent rows
+PASS queue units and LUT controls use consistent rows
+START active profile markers cover relevant lists
+PASS active profile markers cover relevant lists
+START active profile opens selected after late status and preserves edits
+PASS active profile opens selected after late status and preserves edits
+START active shader markers use authoritative set
+PASS active shader markers use authoritative set
+START unchanged active profile status avoids list invalidation
+PASS unchanged active profile status avoids list invalidation
+PASS active shader status rejects stale generation
+START active shader status rejects stale generation
+START standalone Config reads live active profile status
+PASS standalone Config reads live active profile status
+START LUT selector discovers installation LUT files
+PASS LUT selector discovers installation LUT files
+START inherited calibration LUT uses effective control state
+PASS inherited calibration LUT uses effective control state
+START choice labels and VP Renderer name
+PASS choice labels and VP Renderer name
+START legacy renderer visibility defaults hidden and preserves shortcuts
+PASS legacy renderer visibility defaults hidden and preserves shortcuts
+START legacy renderer visibility filters existing UI immediately
+PASS legacy renderer visibility filters existing UI immediately
+START General input Apply preserves backend overrides
+PASS General input Apply preserves backend overrides
+START DirectShow-only input persists and General can be cleared
+PASS DirectShow-only input persists and General can be cleared
+START new action starts unconfigured
+PASS new action starts unconfigured
+START empty actions show an empty state
+PASS empty actions show an empty state
+START missing configuration can be created from editor
+PASS missing configuration can be created from editor
+START Apply OK Cancel contract
+PASS Apply OK Cancel contract
+START clean Apply notifies without saving
+PASS clean Apply notifies without saving
+START clean remote Apply uses unchanged RPC candidate
+PASS clean remote Apply uses unchanged RPC candidate
+START target dropdown refreshes inline
+PASS target dropdown refreshes inline
+START remote target switch keeps window responsive
+PASS remote target switch keeps window responsive
+START remote-only client opens its sole discovered VP
+PASS remote-only client opens its sole discovered VP
+START no-target startup is quiet
+PASS no-target startup is quiet
+START offline file still offers targets
+PASS offline file still offers targets
+START unavailable RPC can return to local file
+PASS unavailable RPC can return to local file
+START remembered target does not fall back to local
+PASS remembered target does not fall back to local
+START remote-only client has no local file target
+PASS remote-only client has no local file target
+START DirectShow-only effect does not restart Alpha
+PASS DirectShow-only effect does not restart Alpha
+START invalid renderer is rejected continuously
+PASS invalid renderer is rejected continuously
+START renderer discovery outage does not block profile edits
+PASS renderer discovery outage does not block profile edits
+START shortcut effects are classified live
+PASS shortcut effects are classified live
+START display warning and error precedence
+PASS display warning and error precedence
+START Video Only startup default round trips
+PASS Video Only startup default round trips
+START remaining effect summary precedence
+PASS remaining effect summary precedence
+START DPI keyboard and accessibility behavior
+PASS DPI keyboard and accessibility behavior
+START primary discovery selectors open on field click
+FAIL primary discovery selectors open on field click: Missing control: config.general.fullscreen_monitor_name
+START ordinary edits avoid disk validation
+PASS ordinary edits avoid disk validation
+START warm reveal grants foreground permission
+PASS warm reveal grants foreground permission
+START shader profile intent survives renderer construction
+PASS shader profile intent survives renderer construction
+START native owner preserves Qt input and popup association
+PASS native owner preserves Qt input and popup association
+START real configuration dropdown remains clickable
+FAIL real configuration dropdown remains clickable: A native mouse click could not select the real Video conversion dropdown
+START cold hidden association delivers pending reveal
+PASS cold hidden association delivers pending reveal
+START stable reveal endpoint survives hidden Qt window
+FAIL stable reveal endpoint survives hidden Qt window: Config lost foreground without user input after a settled reveal
+START cross-thread activation avoids reverse callback deadlock
+PASS cross-thread activation avoids reverse callback deadlock
+START external foreground leaves Config topmost
+INFO physical two-monitor placement skipped: only one monitor; synthetic negative-origin clamp plus live target HWND coverage ran
+PASS synthetic presentation target clamp
+PASS visible presentation target update moves Config
+FAIL external foreground leaves Config topmost: Natural Config ownership closed a same-process popup unexpectedly
+START synthetic presentation target clamp
+START visible presentation target update moves Config
+START normal window architecture has no lease polling
+PASS normal window architecture has no lease polling

@@ -1,0 +1,18 @@
+START Off zoom hold round trip
+PASS Off zoom hold round trip
+START Apply OK Cancel contract
+PASS Apply OK Cancel contract
+START clean Apply notifies without saving
+PASS clean Apply notifies without saving
+START clean remote Apply uses unchanged RPC candidate
+PASS clean remote Apply uses unchanged RPC candidate
+START real configuration dropdown remains clickable
+PASS real configuration dropdown remains clickable
+START stable reveal endpoint survives hidden Qt window
+PASS stable reveal endpoint survives hidden Qt window
+START external foreground leaves Config topmost
+PASS external foreground leaves Config topmost
+START subtitle profile tab round trip
+PASS subtitle profile tab round trip
+START subtitle surrounding fill round trip
+PASS subtitle surrounding fill round trip
