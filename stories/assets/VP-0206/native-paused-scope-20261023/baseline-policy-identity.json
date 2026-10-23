@@ -1,0 +1,19 @@
+{
+  "baseline": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "deployed": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "meaning": "Policy and transition model blobs are unchanged from current beta before standalone PR193. This does not establish that every threshold/input is unchanged or exclude an interaction.",
+  "files": [
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp",
+      "baselineBlob": "1b68c279440243a1ad36223a717ace4291df3133",
+      "deployedBlob": "1b68c279440243a1ad36223a717ace4291df3133",
+      "identical": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/ActivePictureTransitionModel.cpp",
+      "baselineBlob": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+      "deployedBlob": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+      "identical": true
+    }
+  ]
+}

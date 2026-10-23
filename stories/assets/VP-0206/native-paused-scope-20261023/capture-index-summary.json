@@ -1,0 +1,741 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T12:27:54.636957-04:00",
+  "captureDirectory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261023-122213-68268-1",
+  "captureSummary": {
+    "schemaVersion": 1,
+    "includeFrames": true,
+    "session": {
+      "acceptedRecords": 14031,
+      "recordsWritten": 14031,
+      "framesWritten": 64,
+      "frameBytesWritten": 2123366400
+    },
+    "lifetime": {
+      "droppedRecords": 13548,
+      "droppedFrames": 1135,
+      "historyOverwrites": 842605,
+      "writeFailures": 0
+    },
+    "limits": {
+      "preRollMs": 10000,
+      "captureMs": 20000,
+      "recordHistoryCapacity": 8192,
+      "maxCaptureRecords": 65536,
+      "maxFrameBytes": 134217728,
+      "maxCaptureFrameBytes": 2147483648,
+      "maxOutstandingFrames": 2
+    },
+    "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+  },
+  "formatInterpretation": {
+    "format": 4,
+    "name": "AnalysisLumaFormat::DecodedDolbyVision422",
+    "notP210": "P210 is enum1",
+    "encoding": 6,
+    "encodingName": "R210",
+    "colorspace": 8,
+    "colorspaceName": "BT_2020",
+    "range": 2,
+    "rangeName": "Full",
+    "header": {
+      "width": 3840,
+      "height": 2160,
+      "rowBytes": 7680,
+      "chromaRowBytes": 7680,
+      "format": 4,
+      "encoding": 6,
+      "colorspace": 8,
+      "top": 274,
+      "bottom": 1886,
+      "scriptHint": 1,
+      "range": 2
+    },
+    "interpretationSource": "src/VideoProcessor-Lib/AnalysisLumaSource.h:13 and src/VideoProcessor-Test/AnalysisDiagnosticReplayTests.cpp:237"
+  },
+  "frameIndex": {
+    "entries": 64,
+    "totalFrameBytes": 2123366400,
+    "uniqueAcceptedSequences": 32,
+    "firstAccepted": 10694,
+    "lastAccepted": 10728,
+    "spanAcceptedSequencesInclusive": 35,
+    "omittedAcceptedSequencesInsideSpan": 3,
+    "gaps": [
+      {
+        "after": 10694,
+        "before": 10697,
+        "missingCount": 2
+      },
+      {
+        "after": 10704,
+        "before": 10706,
+        "missingCount": 1
+      }
+    ],
+    "multiplicityHistogram": {
+      "2": 12,
+      "1": 10,
+      "3": 10
+    },
+    "duplicateEntriesBeyondUnique": 32,
+    "sequenceMultiplicities": [
+      {
+        "acceptedSequence": 10694,
+        "sourceFrameNumber": 45446,
+        "captureTimestamp": 1190254835460,
+        "indices": [
+          1,
+          2
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10697,
+        "sourceFrameNumber": 45449,
+        "captureTimestamp": 1190254960590,
+        "indices": [
+          3
+        ],
+        "cadenceRepeats": [
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10698,
+        "sourceFrameNumber": 45450,
+        "captureTimestamp": 1190255002300,
+        "indices": [
+          4,
+          5
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10699,
+        "sourceFrameNumber": 45451,
+        "captureTimestamp": 1190255044000,
+        "indices": [
+          6,
+          7
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10700,
+        "sourceFrameNumber": 45452,
+        "captureTimestamp": 1190255085710,
+        "indices": [
+          8,
+          9
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10701,
+        "sourceFrameNumber": 45453,
+        "captureTimestamp": 1190255127420,
+        "indices": [
+          10,
+          11
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10702,
+        "sourceFrameNumber": 45454,
+        "captureTimestamp": 1190255169130,
+        "indices": [
+          12,
+          13
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10703,
+        "sourceFrameNumber": 45455,
+        "captureTimestamp": 1190255210840,
+        "indices": [
+          14,
+          15
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10704,
+        "sourceFrameNumber": 45456,
+        "captureTimestamp": 1190255252540,
+        "indices": [
+          16,
+          17,
+          18
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10706,
+        "sourceFrameNumber": 45458,
+        "captureTimestamp": 1190255335960,
+        "indices": [
+          19,
+          20
+        ],
+        "cadenceRepeats": [
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10707,
+        "sourceFrameNumber": 45459,
+        "captureTimestamp": 1190255377670,
+        "indices": [
+          21,
+          22
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10708,
+        "sourceFrameNumber": 45460,
+        "captureTimestamp": 1190255419370,
+        "indices": [
+          23,
+          24,
+          25
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10709,
+        "sourceFrameNumber": 45461,
+        "captureTimestamp": 1190255461080,
+        "indices": [
+          26
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10710,
+        "sourceFrameNumber": 45462,
+        "captureTimestamp": 1190255502780,
+        "indices": [
+          27,
+          28,
+          29
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10711,
+        "sourceFrameNumber": 45463,
+        "captureTimestamp": 1190255544490,
+        "indices": [
+          30
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10712,
+        "sourceFrameNumber": 45464,
+        "captureTimestamp": 1190255586200,
+        "indices": [
+          31,
+          32,
+          33
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10713,
+        "sourceFrameNumber": 45465,
+        "captureTimestamp": 1190255627910,
+        "indices": [
+          34
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10714,
+        "sourceFrameNumber": 45466,
+        "captureTimestamp": 1190255669620,
+        "indices": [
+          35,
+          36,
+          37
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10715,
+        "sourceFrameNumber": 45467,
+        "captureTimestamp": 1190255711330,
+        "indices": [
+          38
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10716,
+        "sourceFrameNumber": 45468,
+        "captureTimestamp": 1190255753030,
+        "indices": [
+          39,
+          40,
+          41
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10717,
+        "sourceFrameNumber": 45469,
+        "captureTimestamp": 1190255794740,
+        "indices": [
+          42
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10718,
+        "sourceFrameNumber": 45470,
+        "captureTimestamp": 1190255836450,
+        "indices": [
+          43,
+          44
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10719,
+        "sourceFrameNumber": 45471,
+        "captureTimestamp": 1190255878160,
+        "indices": [
+          45
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10720,
+        "sourceFrameNumber": 45472,
+        "captureTimestamp": 1190255919860,
+        "indices": [
+          46,
+          47,
+          48
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10721,
+        "sourceFrameNumber": 45473,
+        "captureTimestamp": 1190255961570,
+        "indices": [
+          49
+        ],
+        "cadenceRepeats": [
+          0
+        ]
+      },
+      {
+        "acceptedSequence": 10722,
+        "sourceFrameNumber": 45474,
+        "captureTimestamp": 1190256003280,
+        "indices": [
+          50,
+          51
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10723,
+        "sourceFrameNumber": 45475,
+        "captureTimestamp": 1190256044990,
+        "indices": [
+          52,
+          53
+        ],
+        "cadenceRepeats": [
+          0,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10724,
+        "sourceFrameNumber": 45476,
+        "captureTimestamp": 1190256086690,
+        "indices": [
+          54,
+          55,
+          56
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10725,
+        "sourceFrameNumber": 45477,
+        "captureTimestamp": 1190256128400,
+        "indices": [
+          57
+        ],
+        "cadenceRepeats": [
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10726,
+        "sourceFrameNumber": 45478,
+        "captureTimestamp": 1190256170110,
+        "indices": [
+          58,
+          59,
+          60
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10727,
+        "sourceFrameNumber": 45479,
+        "captureTimestamp": 1190256211820,
+        "indices": [
+          61
+        ],
+        "cadenceRepeats": [
+          1
+        ]
+      },
+      {
+        "acceptedSequence": 10728,
+        "sourceFrameNumber": 45480,
+        "captureTimestamp": 1190256253520,
+        "indices": [
+          62,
+          63,
+          64
+        ],
+        "cadenceRepeats": [
+          0,
+          1,
+          1
+        ]
+      }
+    ],
+    "headerVariantCount": 1,
+    "allGenerationKeys": {
+      "transportGeneration": [
+        2
+      ],
+      "sourceFormatGeneration": [
+        16737396327766010546
+      ],
+      "viewportGeneration": [
+        0
+      ],
+      "rendererGeneration": [
+        2
+      ],
+      "analysisDomainKey": [
+        3440028774926749422
+      ],
+      "policyGeneration": [
+        2
+      ],
+      "continuityGeneration": [
+        5
+      ],
+      "discontinuity": [
+        0
+      ],
+      "frameDuration100ns": [
+        417083
+      ]
+    },
+    "firstCaptureTimestamp": 1190254835460,
+    "lastCaptureTimestamp": 1190256253520,
+    "captureTimestampRawDelta": 1418060,
+    "durationFromAcceptedSpanAtRecordedFrameDurationSeconds": 1.4180822
+  },
+  "pixelHashSample": {
+    "selection": "first, quarter, middle, three-quarter, last unique accepted identities plus one duplicate of first identity",
+    "filesHashed": 6,
+    "bytesRead": 199065600,
+    "uniqueFullFrameHashes": 1,
+    "uniqueLumaPlaneHashes": 1,
+    "uniqueChromaPlaneHashes": 1,
+    "allSampledPixelBytesIdentical": true,
+    "frames": [
+      {
+        "index": 1,
+        "file": "frame-000001.bin",
+        "acceptedSequence": 10694,
+        "sourceFrameNumber": 45446,
+        "captureTimestamp": 1190254835460,
+        "cadenceRepeat": 0,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      },
+      {
+        "index": 16,
+        "file": "frame-000016.bin",
+        "acceptedSequence": 10704,
+        "sourceFrameNumber": 45456,
+        "captureTimestamp": 1190255252540,
+        "cadenceRepeat": 0,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      },
+      {
+        "index": 34,
+        "file": "frame-000034.bin",
+        "acceptedSequence": 10713,
+        "sourceFrameNumber": 45465,
+        "captureTimestamp": 1190255627910,
+        "cadenceRepeat": 0,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      },
+      {
+        "index": 49,
+        "file": "frame-000049.bin",
+        "acceptedSequence": 10721,
+        "sourceFrameNumber": 45473,
+        "captureTimestamp": 1190255961570,
+        "cadenceRepeat": 0,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      },
+      {
+        "index": 62,
+        "file": "frame-000062.bin",
+        "acceptedSequence": 10728,
+        "sourceFrameNumber": 45480,
+        "captureTimestamp": 1190256253520,
+        "cadenceRepeat": 0,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      },
+      {
+        "index": 2,
+        "file": "frame-000002.bin",
+        "acceptedSequence": 10694,
+        "sourceFrameNumber": 45446,
+        "captureTimestamp": 1190254835460,
+        "cadenceRepeat": 1,
+        "bytes": 33177600,
+        "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c",
+        "lumaPlaneSha256": "694ed4cae5ce7cb8bfef8b17fd8647f3e10cea74a85c25584fa831699ee8aa3f",
+        "chromaPlaneSha256": "f12d5681c5d2ae0b8e26c06f327396b828f87fe732adbeac1c311acbe91d3867"
+      }
+    ]
+  },
+  "analysisRecords": {
+    "count": 14031,
+    "firstSequence": 836765,
+    "lastSequence": 850795,
+    "firstTimestampNs": 1190244998378300,
+    "lastTimestampNs": 1190274986954500,
+    "observedSeconds": 29.9885762,
+    "sequenceNonconsecutivePairs": 0,
+    "firstTenSequenceNonconsecutivePairs": [],
+    "uniqueAcceptedIdentities": 723,
+    "firstAccepted": 10454,
+    "lastAccepted": 11176,
+    "rendererInstances": [
+      1882550763648,
+      1882550768808
+    ],
+    "kindCounts": {
+      "3": 6487,
+      "1": 7544
+    },
+    "topStageReasonCounts": [
+      {
+        "stage": "worker-read",
+        "reason": "exact-key-accepted",
+        "count": 3354
+      },
+      {
+        "stage": "analysis-input",
+        "reason": "source-ready",
+        "count": 1797
+      },
+      {
+        "stage": "ar-edges",
+        "reason": "expansion-strips",
+        "count": 1795
+      },
+      {
+        "stage": "ar-decision",
+        "reason": "",
+        "count": 1077
+      },
+      {
+        "stage": "worker-miss",
+        "reason": "no-compatible-result",
+        "count": 911
+      },
+      {
+        "stage": "ar-decision",
+        "reason": "provisional geometry lacks affirmative crop authority",
+        "count": 719
+      },
+      {
+        "stage": "subtitle-output",
+        "reason": "not-analyzed",
+        "count": 719
+      },
+      {
+        "stage": "presentation",
+        "reason": "uncertain picture retains last submitted native AR; full raster unproven",
+        "count": 719
+      },
+      {
+        "stage": "lookahead",
+        "reason": "candidate-untrusted",
+        "count": 718
+      },
+      {
+        "stage": "worker-complete",
+        "reason": "not-analyzed",
+        "count": 712
+      },
+      {
+        "stage": "worker-start",
+        "reason": "",
+        "count": 677
+      },
+      {
+        "stage": "worker-submit",
+        "reason": "",
+        "count": 628
+      },
+      {
+        "stage": "worker-dedup",
+        "reason": "active",
+        "count": 110
+      },
+      {
+        "stage": "worker-dedup",
+        "reason": "ready",
+        "count": 93
+      },
+      {
+        "stage": "worker-dedup",
+        "reason": "queued",
+        "count": 2
+      }
+    ]
+  },
+  "preservedSmallMetadata": [
+    {
+      "file": "capture-summary.json",
+      "bytes": 572,
+      "sha256": "77b822493ee823a3ae3e2bef6f2b8e4848cd405c10050a9d015b1243fc1e037d"
+    },
+    {
+      "file": "frames.jsonl",
+      "bytes": 11127,
+      "sha256": "361ec8bc1afe355176e7503fb1c412df2ea64445b0f8b6ae7b9b51fcc9447be0"
+    },
+    {
+      "file": "analysis.jsonl",
+      "bytes": 15480925,
+      "sha256": "e6d19640910d67b7acb4901336bcbbef4a40563a752b8fbf217f1128913e4637"
+    }
+  ],
+  "limitations": [
+    "No native pixels copied or committed; six selected full frames hashed only.",
+    "Identical sample hashes establish byte identity only for sampled files, not all64frames.",
+    "Source capture IDs continue while user-paused content may remain constant; source sequence progression does not prove picture motion.",
+    "64frame files hit near2GiB capture-byte limit, so native pixels cover only the beginning of the longer diagnostic trace.",
+    "Capture summary dropped/history counters are lifetime values, not per-capture losses.",
+    "Trace record sequence gaps and duplicate native frame identities must be preserved in any replay; do not invent contiguous source identity."
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "canonicalCount": 224,
+  "uniqueFileIds": 224,
+  "indexRows": 224,
+  "rootCount": 203,
+  "childCount": 21,
+  "maximumRoot": 205,
+  "nextSafeRoot": 206,
+  "registry": {
+    "last": "VP-0205",
+    "next": "VP-0206",
+    "count": 224
+  },
+  "duplicateIds": {
+    "files": {},
+    "rows": {}
+  },
+  "missingIndex": [],
+  "missingFile": [],
+  "stateConflicts": [],
+  "malformedOrStatusConflicts": [
+    {
+      "id": "VP-0070",
+      "folderState": "Blocked",
+      "statusLine": ""
+    }
+  ],
+  "childErrors": [],
+  "registryErrors": [],
+  "legacyFormattingCount": 209,
+  "legacyFormattingNotes": [
+    "Historical narrative Status paragraphs remain unchanged.",
+    "VP-0070 has no parseable ## Status heading; its canonical folder and INDEX row both say Blocked.",
+    "VP-0168 INDEX uses In progress rather than exact In Progress; canonical state remains in-progress."
+  ]
+}
