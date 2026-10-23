@@ -1,0 +1,3 @@
+2026-10-23 15:14:55 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/81cc98532af1b3709bb02afdee68bb16738557ab branch=codex/subtitle-overlay-stability-20261023 dirty=0 build=v1.4.02-beta-81cc985
+2026-10-23 15:15:02 | Renderer handoff audit: phase=successor-selected generation=1 renderer=VP Renderer (Beta) backend=vp-renderer target=0000000003260FF2 target_revision=1 fullscreen_host=0000000003260FF2 fullscreen_intent=1 previous_renderer=
+2026-10-23 15:15:02 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/81cc98532af1b3709bb02afdee68bb16738557ab branch=codex/subtitle-overlay-stability-20261023 dirty=0 build=v1.4.02-beta-81cc985

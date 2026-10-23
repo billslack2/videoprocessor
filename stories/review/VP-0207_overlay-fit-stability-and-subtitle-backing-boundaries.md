@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -41,3 +41,12 @@ Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-5ab30a23-20261023-145959
 ## Mode clarification — 2026-10-23
 
 User confirmed flashing improved. Off must zoom out only to the bounded union of rendered picture and overlay content, allowing black bars on every side; it must not require a stable Classic movement target or default to full raster. Classic moves the picture. Existing advanced reconstruction behavior is accepted and must remain unchanged. Continuing implementation on the same clean feature lineage; current remote beta remains dfd34ea6.
+
+## Off mode correction and test deployment — 2026-10-23
+
+- Final source: `81cc98532af1b3709bb02afdee68bb16738557ab`, pushed to draft PR #195. Converts a measured Off overlay TRANSLATE proposal to FIT before Classic translation confirmation; changing scrub targets no longer reset Classic's movement vote while Off is selected. Shared FIT confirmation and bounded envelope composition remain in force.
+- Classic and advanced styles retain the exact existing translation-routing path. No advanced reconstruction shader or settings changes.
+- Clean x64 Release solution Rebuild passed at the clean final commit. All **450 focused regressions passed**, including Off target changes, unchanged Classic motion confirmation, bounded four-edge output with black bars on all sides, subtitle handoff/backing and advanced retention. Report: `E:\codex\videoprocessor\subtitle-overlay-stability-20261023\TestResults\off-fit-clean-targeted.trx`. Build/test logs: `build-off-fit-clean.log`, `test-off-fit-clean.log`. Earlier full 3,153-test coverage belongs to commit 5ab30a23, not a claimed full rerun at 81cc9853.
+- Updated the ongoing authorized test deployment: host and standard/beta renderers backed up together, replaced from the clean final Release build, and verified against build-record SHA-256 values. VP shut down gracefully and relaunched as PID 71692. Startup confirms clean host and renderer commit 81cc9853 and beta renderer selection.
+- Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-off-81cc9853-20261023-151454`. Configuration hashes unchanged before/after launch; no configuration edits. Receipt and startup evidence: `stories/assets/VP-0207/deployment-81cc9853-20261023`.
+- User confirmed flashing improvement and accepted existing advanced reconstruction behavior. Remains Review pending live confirmation of clarified Off bounded fitting. Not merged.
