@@ -1252,8 +1252,17 @@ namespace AlphaSourceCrop
         bool verticalFitOnly = false;
     };
 
+    // Successful composition is an exact-frame presentation fact. It may use
+    // an independently trusted native base; it never votes for detector geometry.
+    struct PreparedSubtitlePresentation
+    {
+        bool available=false;
+        ActivePictureBounds nativeBase;
+        uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+    };
 	struct Input
 	{
+        PreparedSubtitlePresentation preparedSubtitle;
         MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
@@ -2015,6 +2024,9 @@ namespace AlphaSourceCrop
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(
         const FinalAspectLimitFillInput& input);
 
+    // Exact current composition can resolve presentation-only inspection and
+    // recovery of this independently trusted native base, without detector votes.
+    bool HasCurrentPreparedSubtitlePresentation(const Input& input);
 	Decision Evaluate(const Input& input);
 
 	// A scene boundary resets candidate proof, but presentation is atomic:
