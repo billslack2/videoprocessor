@@ -287,6 +287,7 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="ActivePictureBlackReferenceTests.cpp" />
     <ClCompile Include="ActivePictureMeasurementCacheTests.cpp" />
     <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp" />
     <ClCompile Include="LocalBoundaryRefinementTests.cpp" />

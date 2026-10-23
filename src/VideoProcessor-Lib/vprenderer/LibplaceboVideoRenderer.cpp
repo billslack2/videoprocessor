@@ -11571,6 +11571,30 @@ struct LibplaceboVideoRenderer::Impl
                 trace.metrics[2]=scopeSubtitleEngageDriftMs;trace.metrics[3]=scopeSubtitleReleaseDriftMs;
                 trace.acceptedSeeds=scopeSubtitleAnalysisFrame!=0;trace.pendingFrames=diagnosticPending;
                 AnalysisDiagnosticTrace::Emit(trace);
+                const auto& black=evidence.blackReference;
+                auto reference=AnalysisTraceRecord(currentIdentity,this,"ar-black-reference",
+                    ActivePictureBlackReferenceModeName(black.mode));
+                reference.analysisFormat=static_cast<uint64_t>(analysisSource.format);
+                reference.sourceWidth=analysisSource.width;reference.sourceHeight=analysisSource.height;
+                reference.policyGeneration=localBoundaryPolicyGeneration;
+                reference.continuityGeneration=localBoundaryContinuityGeneration;
+                AnalysisTraceRect(reference.previous,black.adaptiveCandidate);
+                AnalysisTraceRect(reference.measured,evidence.proposedBounds);
+                AnalysisTraceRect(reference.candidate,evidence.trustedBounds);
+                if (transition.publish || applyScheduledDecision) AnalysisTraceRect(reference.published,transition.bounds);
+                AnalysisTraceText(reference.detail,"flags=evaluated1,nominal_reclassified2,publish4,queued_applied8 counters=qualified_edges,unresolved_edges,qualified_axes,nominal_axes,range,model_votes,outward_votes units=luma10bit");
+                reference.resultCode=static_cast<int32_t>(evidence.classification);
+                reference.cadenceRepeat=cadenceRepeat;
+                reference.flags=(black.evaluated?1u:0u)|(black.nominalReclassified?2u:0u)|
+                    (transition.publish?4u:0u)|(applyScheduledDecision?8u:0u);
+                reference.counters[0]=black.qualifiedEdgeMask;reference.counters[1]=black.unresolvedEdgeMask;
+                reference.counters[2]=black.qualifiedAxes;reference.counters[3]=black.nominalFullExtentAxes;
+                reference.counters[4]=static_cast<uint64_t>(analysisSource.range);
+                reference.counters[5]=transition.matchingCandidates;reference.counters[6]=admission.outward.state.confirmations;
+                reference.metrics[0]=black.observedFloor;reference.metrics[1]=black.observedThreshold;
+                reference.metrics[2]=black.floor;reference.metrics[3]=black.threshold;
+                reference.metrics[4]=evidence.lumaSamples;reference.metrics[5]=evidence.chromaSamples;
+                AnalysisDiagnosticTrace::Emit(reference);
                 auto edges=AnalysisTraceRecord(currentIdentity,this,"ar-edges",retentionEvidence.expansionStripsAvailable?"expansion-strips":"excluded-bands");
                 AnalysisTraceRect(edges.previous,retentionEvidence.expansionBase);AnalysisTraceRect(edges.candidate,retentionEvidence.expansionCandidate);
                 const auto& r=retentionEvidence;
@@ -11593,6 +11617,19 @@ struct LibplaceboVideoRenderer::Impl
                     (admission.deferPresentation ? "presentation-owner" :
                     (scheduledDecision ? "scheduled-admission" :
                     (transition.publish ? "live-published" : "live-model"))))))));
+                // Same admission as the existing decision row; no additional pixel work or per-frame formatting.
+                const auto& black=evidence.blackReference;
+                DebugLog::Log("Alpha black reference: schema=1 instance=%s generation=%llu sequence=%llu domain=%llu epoch=%llu policy=%llu continuity=%llu range=%d route=%s evaluated=%d observed_floor=%d observed_cutoff=%d effective_floor=%d effective_cutoff=%d qualified_edges=%u unresolved_edges=%u qualified_axes=%u nominal_extent_axes=%u nominal_reclassified=%d adaptive=%d,%d-%d,%d measured=%d,%d-%d,%d class=%d published=%d luma_samples=%zu chroma_samples=%zu",
+                    diagnosticInstanceId.c_str(),analysisSource.generation,frameNumber,currentIdentity.analysisDomainKey,
+                    currentIdentity.viewportGeneration,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                    static_cast<int>(analysisSource.range),ActivePictureBlackReferenceModeName(black.mode),black.evaluated?1:0,
+                    black.observedFloor,black.observedThreshold,black.floor,black.threshold,
+                    static_cast<unsigned>(black.qualifiedEdgeMask),static_cast<unsigned>(black.unresolvedEdgeMask),
+                    static_cast<unsigned>(black.qualifiedAxes),static_cast<unsigned>(black.nominalFullExtentAxes),
+                    black.nominalReclassified?1:0,black.adaptiveCandidate.left,black.adaptiveCandidate.top,
+                    black.adaptiveCandidate.right,black.adaptiveCandidate.bottom,evidence.proposedBounds.left,
+                    evidence.proposedBounds.top,evidence.proposedBounds.right,evidence.proposedBounds.bottom,
+                    static_cast<int>(evidence.classification),transition.publish?1:0,evidence.lumaSamples,evidence.chromaSamples);
                 DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
                     currentIdentity.viewportGeneration, diagnosticPending ? 1 : 0, stage,
@@ -17031,7 +17068,7 @@ releaseDriftBaseRetention =
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands provisional_sampling=per-vertical-edge-scan-step-contained-sides-and-current-strip-check partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands provisional_sampling=per-vertical-edge-scan-step-contained-sides-and-current-strip-check partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) full_black_reference=qualified-depth-matte-or-positive-nominal-full-extent full_nominal_threshold=24 retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
