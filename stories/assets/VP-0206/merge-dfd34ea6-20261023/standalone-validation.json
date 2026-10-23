@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "betaCommit": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "testDllSha256": "F5F08692646B23C3758B3E3DFBA3F3939D1FC10E4173F37EE111E9A4AC08DB6C",
+  "buildLogSha256": "AB1AD74D13D5A67E32C146037FBB47AFF32B1BC97DB76A0C7768CDB9D0E131B7",
+  "testRuns": [
+    {
+      "name": "targeted",
+      "file": "targeted-results\\standalone-targeted.trx",
+      "sha256": "2D6529BAB7F356D10D2B1C733C00B988A08D421C1EC097CC423EAD919EF80E0C",
+      "executed": 721,
+      "passed": 721,
+      "failed": 0
+    },
+    {
+      "name": "capture",
+      "file": "capture-results\\standalone-capture.trx",
+      "sha256": "9760BBB2AA641D5FEF7EB14038C82483B41589D8E908A826C012644FD66BC3A4",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  ],
+  "sourceClean": true,
+  "deploymentChanged": false,
+  "priorUnfilteredSweep": "Interrupted; no full-suite pass claimed"
+}

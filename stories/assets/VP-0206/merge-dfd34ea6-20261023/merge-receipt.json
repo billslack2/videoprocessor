@@ -1,0 +1,16 @@
+{
+  "repository": "billslack2/videoprocessor",
+  "pullRequest": 194,
+  "url": "https://github.com/billslack2/videoprocessor/pull/194",
+  "state": "MERGED",
+  "betaBranch": "v1.4.02-beta",
+  "previousBeta": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "featureCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "mergedCommit": "dfd34ea6f6365eddb17d986914bb7792836d694b",
+  "betaTip": "dfd34ea6f6365eddb17d986914bb7792836d694b",
+  "testedFeatureTree": "ffdbb4fca103909414207a792b22bc922f3055d8",
+  "mergedTree": "ffdbb4fca103909414207a792b22bc922f3055d8",
+  "treeMatches": true,
+  "standaloneValidationFile": "standalone-validation.json",
+  "deploymentChanged": false
+}

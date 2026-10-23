@@ -1,0 +1,12 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+native-black-reference sequence_files=64 unique=32 repeats=32 gaps=2 first_full_submitted_sequence=10694 first_logical_full_sequence=10700 clock=source-duration raw_mean_ms=0.241819 source_pixels=original identity_rewrite=none
+  Passed OptionalNativeBlackReferenceCaptureReleasesSubmittedScope [2 s]
+Results File: E:\codex\videoprocessor\vp-0206-merge-check-20261023\artifacts\vp-0206-merge\capture-results\standalone-capture.trx
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 3.1974 Seconds

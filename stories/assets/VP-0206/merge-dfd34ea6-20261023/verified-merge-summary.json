@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "sourceCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "sourceTree": "ffdbb4fca103909414207a792b22bc922f3055d8",
+  "mergedCommit": "dfd34ea6f6365eddb17d986914bb7792836d694b",
+  "mergedTree": "ffdbb4fca103909414207a792b22bc922f3055d8",
+  "treeVerifiedEqual": true,
+  "betaFirstParentVerified": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "fetchedOriginBetaTipVerified": "dfd34ea6f6365eddb17d986914bb7792836d694b",
+  "targetedTrx": {
+    "originalPath": "E:\\codex\\videoprocessor\\vp-0206-merge-check-20261023\\artifacts\\vp-0206-merge\\targeted-results\\standalone-targeted.trx",
+    "bytes": 1033864,
+    "sha256": "2D6529BAB7F356D10D2B1C733C00B988A08D421C1EC097CC423EAD919EF80E0C",
+    "counters": {
+      "total": "721",
+      "executed": "721",
+      "passed": "721",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "allOutcomesPassed": true,
+    "fullTrxCopied": false
+  },
+  "actualCapturePassed": 1,
+  "totalCompletedTestExecutions": 722,
+  "priorUnfilteredSweep": "interrupted-no-complete-result; not changed by these successful selected runs",
+  "deployedCombinedRuntime": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "deploymentChangedByMerge": false,
+  "otherDraftsMerged": false,
+  "userAcceptance": "User confirmed the deployed Scope improvement looks good and explicitly requested push and merge."
+}
