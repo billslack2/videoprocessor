@@ -314,7 +314,11 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     // Accept that output fact only for this exact current display snapshot;
     // neither source sampling nor native glyph/AR authority is enlarged.
     const auto& display=input.currentDisplayPicture;
-    const int maxOutwardGuard=2*(std::max)(2,source.height/540);
+    // The native guard and subtitle sampler locate the same physical edge
+    // independently. Include their existing reconciliation tolerance; keep the
+    // exact current display witness and residual native pixel checks below.
+    const int maxOutwardGuard=2*(std::max)(2,source.height/540)+
+        SubtitlePhysicalEdgeReconciliationTolerance;
     const bool preparedOutwardGuard=preparedErasureOnly &&
         base.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
         base.left==0 && base.right==source.width &&
@@ -519,6 +523,23 @@ inline QualifiedSubtitlePresentationEvidence EvaluatePreparedSubtitlePresentatio
 {
     return EvaluateSubtitlePresentationEvidence(source,raw,input,true);
 }
+inline AlphaSourceCrop::PreparedSubtitlePresentation QualifyPreparedSubtitleCropPresentation(
+    const QualifiedSubtitlePresentationEvidence& proof,
+    const ActivePictureFrameIdentity& selectedIdentity,const ActivePictureBounds& nativeBase)
+{
+    AlphaSourceCrop::PreparedSubtitlePresentation result;
+    if (!proof.qualified || proof.status!=QualifiedSubtitlePresentationStatus::Qualified ||
+        !SameAnalysisFrameIdentity(proof.identity,selectedIdentity) ||
+        !SameSubtitlePresentationBounds(proof.physicalBase,nativeBase) ||
+        !proof.retention.analysisValid || !proof.retention.excludedBandsPixelSafe ||
+        proof.retention.outwardVisibleBoundsAvailable) return result;
+    result.available=true;result.nativeBase=nativeBase;
+    result.sourceGeneration=selectedIdentity.transportGeneration;
+    result.sourceSequence=selectedIdentity.acceptedSequence;
+    result.presentationEpoch=selectedIdentity.viewportGeneration;
+    return result;
+}
+
 struct QualifiedSubtitlePresentationView
 {
     ActivePicturePresentationRetentionEvidence retention;

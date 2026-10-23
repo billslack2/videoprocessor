@@ -27,6 +27,15 @@ namespace
         input.queryStatus = QueryStatus::Available; input.snapshot = snapshot;
         return input;
     }
+    RevealDecision Settle(RevealGate& gate,SnapshotV1 snapshot)
+    {
+        auto result=gate.Evaluate(Query(snapshot,snapshot.submittedTick));
+        for (int i=0;i<2;++i) {
+            ++snapshot.selectedSequence;++snapshot.submissionSerial;snapshot.submittedTick+=125;
+            result=gate.Evaluate(Query(snapshot,snapshot.submittedTick));
+        }
+        return result;
+    }
     uint32_t __cdecl BusyQuery(IVideoRenderer*, SnapshotV1*)
     {
         return static_cast<uint32_t>(QueryStatus::Busy);
@@ -43,6 +52,57 @@ namespace VideoProcessorTest
     TEST_CLASS(StartupPresentationReadinessTests)
     {
     public:
+        TEST_METHOD(StartupWaitsForConsistentSubmittedShapeThroughInitialFlashes)
+        {
+            auto input=Submitted(true);
+            RevealGate gate;gate.Arm(7);
+            auto snapshot=AfterSubmission({},input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+            // One apparent Scope, then fallback, then another short Scope.
+            input.tick+=42;++input.selectedSequence;input.poseQualified=false;
+            snapshot=AfterSubmission(snapshot,input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+            input.tick+=42;++input.selectedSequence;input.poseQualified=true;
+            snapshot=AfterSubmission(snapshot,input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+            input.tick+=200;++input.selectedSequence;
+            snapshot=AfterSubmission(snapshot,input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+            input.tick+=50;++input.selectedSequence;
+            snapshot=AfterSubmission(snapshot,input);
+            Assert::IsTrue(gate.Evaluate(Query(snapshot,input.tick)).release);
+        }
+        TEST_METHOD(ReadySnapshotOrRepeatedSourceCannotAgeIntoStableStartupShape)
+        {
+            auto input=Submitted(true);
+            RevealGate gate;gate.Arm(7);
+            auto snapshot=AfterSubmission({},input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,1000)).release);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,2000)).release);
+            input.tick=2000;snapshot=AfterSubmission(snapshot,input);
+            Assert::IsFalse(gate.Evaluate(Query(snapshot,2000)).release);
+            Assert::IsTrue(gate.Evaluate(Query(snapshot,4000)).timedOut);
+        }
+        TEST_METHOD(SubmittedPoseAndContextChangesRestartOnlyTheStartupStabilityDwell)
+        {
+            for(int change=0;change<4;++change) {
+                RevealGate gate;gate.Arm(7);auto input=Submitted(true);
+                auto snapshot=AfterSubmission({},input);
+                Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+                input.tick+=200;++input.selectedSequence;
+                snapshot=AfterSubmission(snapshot,input);
+                Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+                if(change==0)input.displayedBounds.top+=2;
+                if(change==1)input.nativeBounds.bottom-=2;
+                if(change==2)++input.context.viewportEpoch;
+                if(change==3)++input.context.sourceGeneration;
+                input.tick+=50;++input.selectedSequence;
+                snapshot=AfterSubmission(snapshot,input);
+                Assert::IsFalse(gate.Evaluate(Query(snapshot,input.tick)).release);
+                Assert::IsTrue(Settle(gate,snapshot).release);
+                Assert::AreEqual(uint64_t(1000),snapshot.firstSubmittedTick);
+            }
+        }
         TEST_METHOD(ProposalsAndFailedSubmissionCannotReleaseStartupCover)
         {
             const SnapshotV1 initial;
@@ -57,7 +117,7 @@ namespace VideoProcessorTest
                 Assert::IsFalse(gate.Evaluate(Query(snapshot,10000)).release);
             }
         }
-        TEST_METHOD(AnyConfirmedNativeAspectAndBarAxisCanRevealImmediately)
+        TEST_METHOD(AnyConfirmedNativeAspectAndBarAxisCanRevealAfterSettling)
         {
             const Rect formats[] = {{0,278,3840,1880},{0,120,3840,2040},
                 {0,384,3840,1776},{480,0,3360,2160},{480,120,3360,2040}};
@@ -67,7 +127,7 @@ namespace VideoProcessorTest
                 Assert::IsTrue((snapshot.flags & Ready) != 0);
                 Assert::AreEqual(unsigned(Reason::ReadyNative),unsigned(snapshot.reason));
                 RevealGate gate; gate.Arm(7);
-                const auto decision = gate.Evaluate(Query(snapshot));
+                const auto decision = Settle(gate,snapshot);
                 Assert::IsTrue(decision.release); Assert::IsFalse(decision.timedOut);
             }
         }
@@ -90,7 +150,7 @@ namespace VideoProcessorTest
             Assert::IsFalse(gate.Evaluate(Query(pending)).release);
             input.poseQualified = true; ++input.selectedSequence; input.tick += 42;
             const auto ready = AfterSubmission(pending,input);
-            Assert::IsTrue(gate.Evaluate(Query(ready,input.tick)).release);
+            Assert::IsTrue(Settle(gate,ready).release);
         }
         TEST_METHOD(RepeatedPausedInputDoesNotInventGeometryAuthorityAndHasBoundedWait)
         {
@@ -188,7 +248,7 @@ namespace VideoProcessorTest
         {
             auto input = Submitted(true); auto snapshot = AfterSubmission({},input);
             RevealGate gate; gate.Arm(7);
-            Assert::IsTrue(gate.Evaluate(Query(snapshot)).release); gate.MarkRevealed();
+            Assert::IsTrue(Settle(gate,snapshot).release); gate.MarkRevealed();
             gate.Arm(7); // Same renderer cannot re-cover merely for later scene/caption changes.
             auto changed = input.context; ++changed.sourceGeneration;
             snapshot = Reset(changed,true,snapshot);
@@ -235,7 +295,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(unsigned(RendererTransitionState::AwaitingFrame),unsigned(transition.State()));
             input.nativeAuthorityConfirmed = true;
             const auto ready = AfterSubmission(pending,input);
-            Assert::IsTrue(gate.Evaluate(Query(ready)).release);
+            Assert::IsTrue(Settle(gate,ready).release);
             const auto release = transition.OnFrameReady(key);
             Assert::IsFalse(release.empty());
             Assert::AreEqual(unsigned(RendererTransitionActionType::ReleaseShield),unsigned(release.front().type));

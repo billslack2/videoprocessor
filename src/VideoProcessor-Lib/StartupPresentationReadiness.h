@@ -9,6 +9,8 @@ namespace StartupPresentation
 {
     constexpr uint32_t SnapshotVersion = 1;
     constexpr uint64_t MaximumGeometryWaitMs = 3000;
+    constexpr uint64_t StableGeometryMs = 250;
+    constexpr uint32_t StableGeometrySources = 3;
 
     enum class QueryStatus : uint32_t { Unsupported = 0, Available = 1, Busy = 2 };
     enum Flag : uint32_t { Required = 1, ActualSubmission = 2, Ready = 4 };
@@ -146,6 +148,7 @@ namespace StartupPresentation
             // session. They cannot restart its deadline or rearm after reveal.
             if (generation == m_generation && (m_armed || m_released)) return;
             m_generation = generation;
+            m_stableSamples = 0;
             if (!m_released) m_armed = true;
         }
         void MarkRevealed() { m_armed = false; m_released = true; }
@@ -184,14 +187,50 @@ namespace StartupPresentation
             } else if ((snapshot.flags & Ready) &&
                 (snapshot.reason == Reason::ReadyNative || snapshot.reason == Reason::ReadyFullRaster) &&
                 Valid(snapshot.nativeBounds, snapshot.rasterWidth, snapshot.rasterHeight)) {
-                result.release = true; result.reason = RevealReason::Ready;
-            } else if (result.elapsedMs >= MaximumGeometryWaitMs) {
+                if (ObserveStableGeometry(snapshot)) {
+                    result.release = true; result.reason = RevealReason::Ready;
+                } else result.reason = RevealReason::AwaitingGeometry;
+            } else {
+                m_stableSamples = 0;
+                result.reason = snapshot.reason == Reason::AwaitingOwner
+                    ? RevealReason::AwaitingOwner : RevealReason::AwaitingGeometry;
+            }
+            if (!result.release && result.elapsedMs >= MaximumGeometryWaitMs) {
                 result.release = true; result.timedOut = true; result.reason = RevealReason::GeometryTimeout;
-            } else result.reason = snapshot.reason == Reason::AwaitingOwner
-                ? RevealReason::AwaitingOwner : RevealReason::AwaitingGeometry;
+            }
             return result;
         }
     private:
+        static bool SameRect(const Rect& a, const Rect& b)
+        {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        }
+        bool ObserveStableGeometry(const SnapshotV1& snapshot)
+        {
+            const Context context{snapshot.rendererGeneration,snapshot.rasterWidth,snapshot.rasterHeight,
+                snapshot.sourceGeneration,snapshot.sourceFormatKey,snapshot.viewportEpoch,snapshot.outputContract};
+            const bool same = m_stableSamples && SameContext(m_stableSnapshot,context) &&
+                m_stableSnapshot.reason==snapshot.reason &&
+                SameRect(m_stableSnapshot.nativeBounds,snapshot.nativeBounds) &&
+                SameRect(m_stableSnapshot.displayedBounds,snapshot.displayedBounds) &&
+                snapshot.selectedSequence>=m_stableSnapshot.selectedSequence &&
+                snapshot.submittedTick>=m_stableSnapshot.submittedTick;
+            if (!same) {
+                m_stableSamples=1;
+                m_stableFirstTick=snapshot.submittedTick;
+            } else if (snapshot.selectedSequence>m_stableSnapshot.selectedSequence) {
+                if (m_stableSamples<StableGeometrySources) ++m_stableSamples;
+            }
+            // Querying the same snapshot or resubmitting a cadence repeat cannot
+            // advance the source-time dwell. Only distinct selected sources count.
+            if (!same || snapshot.selectedSequence>m_stableSnapshot.selectedSequence)
+                m_stableSnapshot=snapshot;
+            return m_stableSamples>=StableGeometrySources &&
+                m_stableSnapshot.submittedTick-m_stableFirstTick>=StableGeometryMs;
+        }
+        SnapshotV1 m_stableSnapshot;
+        uint64_t m_stableFirstTick=0;
+        uint32_t m_stableSamples=0;
         uint32_t m_generation = 0;
         uint64_t m_firstSubmission = 0;
         bool m_armed = false, m_released = false;
