@@ -10,9 +10,10 @@
 // Shared by the runtime parser and the comment-preserving Config editor.
 // Normalized section/key names, in original file order. No disk writes here.
 //
-// Quality is retired: Auto now always means the old High preset. A Fast or
-// Balanced choice is kept by writing that preset's values where the profile left
-// a setting at Auto. Debanding, dithering and dither depth move from Rendering
+// Quality is retired. Missing preset defaults and explicit Auto choices are
+// materialized using the effective old High, Balanced or Fast preset. Explicit
+// choices are retained; output-dependent dither precision uses "output".
+// Debanding, dithering and dither depth move from Rendering
 // profiles to Scaling. VP applies [vprenderer], then the chosen Scaling profile,
 // then the chosen Rendering profile, so a non-default Rendering profile's values
 // are carried into a Scaling copy with the same selectors. Nothing here ever
@@ -45,7 +46,8 @@ namespace QualityProfileMigration
         const auto value = found->second.find(key);
         return value == found->second.end() ? std::string() : value->second;
     }
-    // Absent and Auto read the same: the setting follows the preset.
+    // True only for a concrete choice. An absent value may inherit; an explicit
+    // Auto resets to the selected preset and must not inherit a concrete choice.
     inline bool IsSet(const Sections& sections, const std::string& section, const std::string& key)
     {
         const std::string value = Lower(Get(sections, section, key));
@@ -84,7 +86,6 @@ namespace QualityProfileMigration
     }
     // The retired presets in VP's own values (LibplaceboRenderParameters.cpp
     // QualityPreset; libplacebo pl_render_fast_params / pl_render_default_params).
-    // High is the new Auto, so it has no entry.
     inline const char* PresetValue(const std::string& quality, const std::string& key)
     {
         static const std::map<std::string, const char*> fast = {
@@ -93,23 +94,39 @@ namespace QualityProfileMigration
             { "peak_detection", "off" }, { "contrast_recovery", "0" } };
         static const std::map<std::string, const char*> balanced = {
             { "upscaler", "lanczos" }, { "downscaler", "hermite" }, { "sigmoid", "on" },
-            { "deband_strength", "off" }, { "dithering", "on" },
+            { "deband_strength", "off" }, { "dithering", "blue_noise" },
             { "peak_detection", "on" }, { "contrast_recovery", "0" } };
-        const auto* table = quality == "fast" ? &fast : quality == "balanced" ? &balanced : nullptr;
+        static const std::map<std::string, const char*> high = {
+            { "upscaler", "ewa_lanczossharp" }, { "downscaler", "hermite" }, { "sigmoid", "on" },
+            { "deband_strength", "default" }, { "dithering", "blue_noise" },
+            { "peak_detection", "high_quality" }, { "contrast_recovery", "0.3" } };
+        if (key == "display_bit_depth") return "output";
+        const auto* table = quality == "fast" ? &fast : quality == "balanced" ? &balanced :
+            quality == "high" ? &high : nullptr;
         if (!table) return nullptr;
         const auto found = table->find(key);
         return found == table->end() ? nullptr : found->second;
     }
-    inline bool IsPreset(const std::string& quality) { return quality == "fast" || quality == "balanced"; }
+    inline bool ResetsPreset(const std::string& key, const std::string& raw)
+    {
+        const std::string value = Lower(raw);
+        return value == "auto" || (key == "downscaler" && (value == "none" || value == "ewa_lanczos"));
+    }
+    inline bool IsPreset(const std::string& quality) { return quality == "fast" || quality == "balanced" || quality == "high"; }
 
     // A Rendering profile's own value for a moved key, reading the legacy deband switch.
-    inline std::string MovedValue(const Sections& sections, const std::string& section, const std::string& key)
+    inline std::string MovedValue(const Sections& sections, const std::string& section, const std::string& key,
+        const std::string& quality)
     {
         if (IsSet(sections, section, key)) return Get(sections, section, key);
+        if (Lower(Get(sections, section, key)) == "auto")
+            if (const char* value = PresetValue(quality, key)) return value;
         if (key != "deband_strength") return {};
         const std::string legacy = Lower(Get(sections, section, "deband"));
         if (legacy == "on" || legacy == "true") return "default";
         if (legacy == "off" || legacy == "false") return "off";
+        if (legacy == "auto")
+            if (const char* value = PresetValue(quality, key)) return value;
         return {};
     }
 
@@ -121,19 +138,14 @@ namespace QualityProfileMigration
         std::vector<std::string> scaling = Variants(order, "vprenderer.scaling");
         const bool scalingRoot = sections.count("vprenderer.scaling") != 0;
 
-        bool found = false;
         std::vector<std::string> rendering = display;
         if (displayRoot) rendering.insert(rendering.begin(), "vprenderer");
-        for (const auto& section : rendering)
-            for (const char* key : { "quality", "deband", "deband_strength", "dithering", "display_bit_depth" })
-                found = found || sections.at(section).count(key) != 0;
         if (scalingRoot) scaling.insert(scaling.begin(), "vprenderer.scaling");
-        for (const auto& section : scaling)
-            found = found || sections.at(section).count("quality") != 0;
-        if (!found) return plan;
+        if (rendering.empty() && scaling.empty()) return plan;
 
         Sections work = sections;
         auto set = [&](const std::string& section, const std::string& key, const std::string& value) {
+            if (Get(work, section, key) == value) return;
             work[section][key] = value;
             plan.sets.emplace_back(section, key, value);
         };
@@ -155,14 +167,25 @@ namespace QualityProfileMigration
             work[baseline];
         };
         std::map<std::string, std::set<std::string>> presetFilled;
-        const auto quality = [&](const std::string& section) { return Lower(Get(sections, section, "quality")); };
+        const auto quality = [&](const std::string& section) {
+            std::string result = Lower(Get(sections, section, "quality"));
+            if (result.empty()) result = Lower(Get(sections, fallback, "quality"));
+            return result.empty() ? std::string("high") : result;
+        };
+        // These legacy Rendering overrides still apply after Scaling at runtime.
+        // Resolve explicit Auto before retiring Quality, without inventing new
+        // Rendering overrides for absent scaling fields.
+        for (const auto& section : rendering)
+            for (const char* key : { "upscaler", "downscaler", "sigmoid" })
+                if (ResetsPreset(key, Get(sections, section, key)))
+                    if (const char* value = PresetValue(quality(section), key)) set(section, key, value);
 
         // 1. The Rendering fallback's values go under every Scaling profile.
         if (!fallback.empty())
         {
             for (const auto& key : MovedKeys())
             {
-                const std::string value = MovedValue(sections, fallback, key);
+                const std::string value = MovedValue(sections, fallback, key, quality(fallback));
                 if (value.empty()) continue;
                 ensureBaseline();
                 if (!IsSet(work, baseline, key)) set(baseline, key, value);
@@ -176,7 +199,7 @@ namespace QualityProfileMigration
             {
                 for (const auto& key : ScalingPresetKeys())
                 {
-                    if (IsSet(sections, fallback, key) || !MovedValue(sections, fallback, key).empty()) continue;
+                    if (IsSet(sections, fallback, key) || !MovedValue(sections, fallback, key, quality(fallback)).empty()) continue;
                     ensureBaseline();
                     if (IsSet(work, baseline, key)) continue;
                     set(baseline, key, PresetValue(q, key));
@@ -191,17 +214,38 @@ namespace QualityProfileMigration
             }
         }
 
-        // 2. Quality kept in a Scaling profile (a hand edit; his editor never wrote it).
+        // Materialize the baseline even when Quality was omitted (old High).
+        // Named Scaling profiles retain their ordinary inheritance, while an
+        // explicit Auto there resets the preset instead of inheriting the baseline.
+        ensureBaseline();
+        for (const auto& key : ScalingPresetKeys())
+            if (!IsSet(work, baseline, key))
+                if (const char* value = PresetValue(quality(baseline), key))
+                {
+                    set(baseline, key, value);
+                    presetFilled[baseline].insert(key);
+                }
+        if (!IsSet(work, baseline, "display_bit_depth")) set(baseline, "display_bit_depth", "output");
         for (const auto& section : scaling)
         {
-            const std::string q = quality(section);
-            if (!IsPreset(q)) continue;
+            const bool ownPreset = IsPreset(Lower(Get(sections, section, "quality")));
             for (const auto& key : ScalingPresetKeys())
-                if (!IsSet(work, section, key))
+            {
+                const std::string raw = Lower(Get(sections, section, key));
+                if (!ResetsPreset(key, raw) && !(ownPreset && raw.empty())) continue;
+                if (const char* value = PresetValue(quality(section), key))
                 {
-                    set(section, key, PresetValue(q, key));
+                    // An explicit Rendering fallback was moved here above and
+                    // has precedence over the old Scaling Auto.
+                    if (section == baseline && (key == "deband_strength" || key == "dithering") &&
+                        !MovedValue(sections, fallback, key, quality(fallback)).empty()) continue;
+                    set(section, key, value);
                     presetFilled[section].insert(key);
                 }
+            }
+            if (Lower(Get(sections, section, "display_bit_depth")) == "auto" &&
+                (section != baseline || MovedValue(sections, fallback, "display_bit_depth", quality(fallback)).empty()))
+                set(section, "display_bit_depth", "output");
         }
 
         // 3. Other Rendering profiles: tone values stay, scaling values go to a copy.
@@ -228,15 +272,15 @@ namespace QualityProfileMigration
             const std::string q = quality(profile);
             for (const auto& key : TonePresetKeys())
             {
-                if (!inherits(profile, key)) continue;
+                const std::string own = Lower(Get(sections, profile, key));
+                if (own != "auto" && !inherits(profile, key)) continue;
                 if (IsPreset(q)) set(profile, key, PresetValue(q, key));
-                else if (q == "high" && presetFilled[fallback].count(key)) set(profile, key, "auto");
             }
 
             Settings copy;
             for (const auto& key : MovedKeys())
             {
-                const std::string value = MovedValue(sections, profile, key);
+                const std::string value = MovedValue(sections, profile, key, quality(profile));
                 if (!value.empty()) copy[key] = value;
             }
             const auto explicitInBaseline = [&](const std::string& key) {
@@ -245,8 +289,11 @@ namespace QualityProfileMigration
             for (const auto& key : ScalingPresetKeys())
             {
                 if (copy.count(key) || !inherits(profile, key) || explicitInBaseline(key)) continue;
-                if (IsPreset(q)) copy[key] = PresetValue(q, key);
-                else if (q == "high" && !baseline.empty() && presetFilled[baseline].count(key)) copy[key] = "auto";
+                if (IsPreset(q))
+                {
+                    const std::string desired = PresetValue(q, key);
+                    if (Lower(Get(work, baseline, key)) != desired) copy[key] = desired;
+                }
             }
             if (!copy.empty())
             {
