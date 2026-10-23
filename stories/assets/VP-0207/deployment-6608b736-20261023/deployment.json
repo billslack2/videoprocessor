@@ -1,0 +1,48 @@
+{
+  "commit": "6608b736e93a0f207ce2a9f451e41d830d9fcc50",
+  "configuration": "Release",
+  "architecture": "x64",
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip"
+  ],
+  "nativeValidation": {
+    "total": "695",
+    "commit": "6608b736e93a0f207ce2a9f451e41d830d9fcc50",
+    "passed": "695",
+    "trx": "TestResults\\off-measured-envelope.trx"
+  },
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-off-content-6608b736-20261023-160222",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "E2819591F714D56B453C66FA688459DCCEFCA5E3FBC928836FC4801DB4B5FE80",
+      "previousSha256": "28165A86AE89A79759EE1136F89171B291DA904CCBFC1DA27F2B019FD7D7313B"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "1160B94933EFFBAA76B2D0A1AC53DA5D7C6F34D44EB2FEC8A043E70EA48CA294",
+      "previousSha256": "36F7317DB3D6D8CCFCE9456E714133E3E586E76A408FDCF8026E890E3AC73C81"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-overlay-stability-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "079289068D19A165000DEFA01DB2CDD2806D3D30E061AFBC9657B7CE209C4889",
+      "previousSha256": "EAF815B999A19FC8014D0166375E287D0B5E17C6B2DBB877CBE6046149E4B18F"
+    }
+  ],
+  "configurationEditorPreserved": "existing b099cd8d Config binaries and open session unchanged; runtime-only correction",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "DE93ABA8E976F5F90C25A0CCE3891DD9803F60817F719ABEBF72B9C02E531CB3"
+  },
+  "verifiedAt": "2026-10-23T16:02:22.9558645-04:00"
+}

@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -81,3 +81,12 @@ User clarifies Off must detect rendered content in black bars without glyph or s
 ## Off navigation fit still missing — 2026-10-23
 
 User reports Off still fails to zoom out for visible navigation/time controls. Runtime b099cd8d detects bottom content at 1806..2068, including 190 occupied rows, but current UI ownership still requires overlay-like shape. Investigate the complete measurement, confirmation, recovery and submitted presentation path; Off must accommodate measured bar content independently of glyph or UI shape classification.
+
+## Measured Off bar-content fit — 2026-10-23
+
+- Final source 6608b736e93a0f207ce2a9f451e41d830d9fcc50, pushed to draft PR #195. Previous UI-only deployment did not satisfy the user's live navigation-bar test. The new runtime correction removes three remaining gates: compact overlay-shape ownership in Off, repeated FIT confirmation before accepting current bar pixels, and composition of provisional coarse AR edges into the measured vertical fit. Logged content 1806..2068 spans 190 occupied rows when the preview is included; raw FIT was also lost when a coarse top edge at 382 differed from native top 384.
+- Off now accepts a current bar-content FIT immediately. A dedicated CURRENT_BAR_CONTENT proof requires the current source identity, trusted native base, measured occupied expanding edges and the exact measured envelope plus padding. Glyph and overlay-shape flags are not required. Measured Off vertical extents supersede coarse AR history; raw provisional geometry cannot force unrelated full-raster expansion. Existing hold and submitted-envelope retention remain in force. Classic and advanced shape/confirmation paths are unchanged.
+- Native P010 regression includes 42, 190 and 262 occupied-row cases over a 262-row span, on both bars, and checks complete padded extent, immediate Off versus repeated Classic confirmation, release hold and cache behavior. Composition cases include two-pixel coarse noise and full-raster placeholders. A further regression checks normal/near-black recovery, final aspect-fill exclusion, admission and submitted envelope, plus rejection of stale, unsupported or oversized proofs.
+- Clean x64 Release solution Rebuild passed at the final commit. All **695 focused native tests passed**, including the complete retained-scope recovery suite, plus Qt Off zoom hold round trip and subtitle profile tab round trip. Logs: build-off-measured-envelope-clean.log, test-off-measured-envelope.log, test-off-measured-ui.log, test-off-measured-subtitle-ui.log in the source worktree. Native TRX: TestResults/off-measured-envelope.trx. The earlier build caught a test-helper name error; fixed before final validation. No full native suite rerun is claimed at this revision.
+- Updated the authorized test deployment with the matching host and standard/beta renderers only; all three hashes match Release x64 build records. Preserved the existing b099cd8d Config binaries and open editor session because this is a runtime-only correction. Active configuration edits: none; hashes unchanged after launch. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-off-content-6608b736-20261023-160222. Startup confirms host and renderer 6608b736, dirty=0, beta selected, PID 11436.
+- Evidence: stories/assets/VP-0207/deployment-6608b736-20261023. Remains Review for the user's live Off navigation-bar replay. Not merged; do not treat the previous failed replay or synthetic validation as live acceptance.
