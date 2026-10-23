@@ -83,7 +83,9 @@ workers. Queued jobs prefer nearer sources, and obsolete requests cannot publish
 into replacement slots. Render-thread submission uses try-locks and never waits
 for a worker. Shutdown joins workers after presentation/conversion retirement.
 
-Each queued source retains immutable raw/global/darkness measurements. A bounded
+Each queued source retains immutable raw/global/darkness measurements. Prepared
+pixel-component priming requires an established bar-crop base; full-raster inward
+acquisition continues through raw evidence without unused retention scans. A bounded
 cache (two entries per component kind) retains complete retention, relative
 contrast and inward-caption results. Keys include the exact owned source and
 storage interpretation, full identity/domain/generations, base bounds/axes and

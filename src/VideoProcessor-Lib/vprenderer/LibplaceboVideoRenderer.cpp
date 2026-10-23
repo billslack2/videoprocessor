@@ -22231,8 +22231,9 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
             m_impl->nlsRequested || m_impl->fixedCropAspectConfigured ||
             !m_impl->nlsGeometryAvailable ||
             m_impl->nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
-            (m_impl->nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED &&
-             m_impl->nlsGeometryClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED) ||
+            // Prepared pixel components only serve established bar-crop bases.
+            // Full-raster inward acquisition uses raw observations, not retention.
+            m_impl->nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
             m_impl->movingPictureTransition.active || m_impl->movingPictureTransition.awaitingPublication ||
             m_impl->nearBlackPresentationEpisode.mode!=AlphaSourceCrop::NearBlackPresentationMode::INACTIVE)
             return;
