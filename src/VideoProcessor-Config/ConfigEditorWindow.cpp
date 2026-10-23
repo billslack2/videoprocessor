@@ -7030,11 +7030,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             layout->setSizeConstraint(QLayout::SetMinimumSize);
         profileFieldsLayout->setSizeConstraint(QLayout::SetMinimumSize);
         detailLayout->setSizeConstraint(QLayout::SetMinimumSize);
-        auto update=[type,classicSection,appearanceSection,reconstructionSection,commonForm,offset,offZoomHold] {
+        auto update=[type,classicSection,appearanceSection,reconstructionSection,commonForm,offset,offZoomHold,scriptHint] {
             const auto mode=type->currentData().toString();
             classicSection->setVisible(mode==QStringLiteral("classic"));
             appearanceSection->setVisible(mode==QStringLiteral("generated_gray") || mode==QStringLiteral("black"));
             reconstructionSection->setVisible(mode==QStringLiteral("generated_gray"));
+            commonForm->setRowVisible(scriptHint->parentWidget(),mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offset->parentWidget(),mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offZoomHold->parentWidget(),mode==QStringLiteral("off"));
         };
