@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T13:26:56.290583-04:00",
+  "nativePixelsIncluded": false,
+  "files": [
+    {
+      "path": "build-artifact-identity.json",
+      "bytes": 1729,
+      "sha256": "3435f027cffecf1e468b064980c320b84dc863aeeba9ba7c5c28422ac6ba7eed"
+    },
+    {
+      "path": "integrated-capture-tests.log",
+      "bytes": 987,
+      "sha256": "8877d769483d58c776c025fcb96ff78e9484745488431e072244c560ad383bcd"
+    },
+    {
+      "path": "integrated-capture.trx",
+      "bytes": 3118,
+      "sha256": "6d4b73bc32da461dd8d381a8bc9da875b3839f6f6c76930822492380aa8ced18"
+    },
+    {
+      "path": "integration-review.json",
+      "bytes": 13573,
+      "sha256": "ef3a3d30b7bf1c7a0c4f24a7c99c274f6357c3574d71c2e61c0c9299a89d63be"
+    },
+    {
+      "path": "progress-summary.json",
+      "bytes": 1478,
+      "sha256": "6a8d4e498ce8b7edf78a28521957b2d53106fa9a707b161975fed56f635bf1d2"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2333,
+      "sha256": "e6b723a34ced5988e22fcd63498b328dc5312e32f6d09a7dbd711275df45339c"
+    },
+    {
+      "path": "review-integration.py",
+      "bytes": 8715,
+      "sha256": "0d92097ae38f40a3cbf325c8bc399d91d4f20e7e54e7738436f518b2f2d11ef9"
+    }
+  ]
+}

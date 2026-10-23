@@ -1,0 +1,11 @@
+# Integrated AR implementation progress
+
+Feature `c48eb134c34a93c762e026af6daf50aaeb1dc83c` is published in draft unmerged [PR194](https://github.com/billslack2/videoprocessor/pull/194). Deployment integration `4d1d62d0a664ba97137ba89497888bc8fad483a0` preserves installed24e and passes the full clean serial x64 Release solution Rebuild, exit0. Three genuine runtime sidecars and exact embedded commit/hash records are retained in `build-artifact-identity.json`; the reviewer rehashed all three outputs successfully.
+
+`integration-review.json` records exactly eight intended changed files,23 retained Git identities, four project/filter checks and preserved default-null budget APIs/checkpoints. New calibration aggregates existing edge/outer-line samples. Refined/external geometry missing calibration takes an explicit source-reference rebuild; the added integration regression checks that it preserves refined geometry, counts additional scans and cooperatively cancels without publishing partial authority. Normal black-reference telemetry uses the existing decision throttle and no pixel scan.
+
+The dedicated integrated native-capture regression passed1/1. Original64 files retain32 distinct identities,32 repeated entries and two gap events. Full-raster presentation releases at source10694; logical full geometry publishes at10700. Synthetic eight-source Scope prehistory is explicit, and failed submission preserves the displayed anchor. `integrated-capture.trx` and log provide the result. Raw mean0.251122ms was observed under concurrent native-suite load and is not a performance or live-playback claim.
+
+Preliminary feature probes passed14/14 isolated tests and6/6 capture cases. The full integrated native suite is still running; no final count is claimed. A benchmark is waiting for CPU contention to end. No new runtime has been deployed; player68268 remains on24e. Final suite receipts and deployment backup/config/hash checks remain required before Review; user playback acceptance is a separate reported validation item.
+
+Qualified matte support retains uncertainty for bounded noise; strict flat-pair failure is never sufficient evidence of full raster. Raised40/64, caption/UI, noise, depth and axis-local cases belong to the regression boundary, rather than acceptance of an arbitrary global cutoff.

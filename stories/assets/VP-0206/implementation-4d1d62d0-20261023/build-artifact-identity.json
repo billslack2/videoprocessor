@@ -1,0 +1,49 @@
+{
+  "sourceCommit": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "featureCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "sourceClean": true,
+  "files": [
+    {
+      "binary": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "02FC483780F72949D86265A3C9C24B615DC4D99B1BD5D8C7DCD06229A6200109",
+      "bytes": 3081216,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "02FC483780F72949D86265A3C9C24B615DC4D99B1BD5D8C7DCD06229A6200109"
+      },
+      "embeddedExactCommit": true
+    },
+    {
+      "binary": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "18429D306553BF48B2EBAACCCB9791ACD9BC7528BF15A8F3319CF330598962B4",
+      "bytes": 2552832,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "18429D306553BF48B2EBAACCCB9791ACD9BC7528BF15A8F3319CF330598962B4"
+      },
+      "embeddedExactCommit": true
+    },
+    {
+      "binary": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "F206D0647823C58D8D7ABCD47FD6912FDA1C44073F6315C8C750FC2939F10889",
+      "bytes": 2552320,
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "F206D0647823C58D8D7ABCD47FD6912FDA1C44073F6315C8C750FC2939F10889"
+      },
+      "embeddedExactCommit": true
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="88c8957f-5ecb-4a56-94e9-80986e8a3e3b" name="bslac@DESKTOP-3G35SCJ 2026-10-23 13:24:30" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-23T13:24:30.4194578-04:00" queuing="2026-10-23T13:24:30.4194578-04:00" start="2026-10-23T13:24:26.8017312-04:00" finish="2026-10-23T13:24:30.4487728-04:00" />
+  <TestSettings name="default" id="90dc6390-c2ab-4fb0-a594-4ca21b2963bf">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-23_13_24_30" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="d111ebd1-ef62-4eb4-9f29-39cbec8ae4e0" testId="6bb6f1c2-9c0b-3399-6c6e-b4a64c344d05" testName="OptionalNativeBlackReferenceCaptureReleasesSubmittedScope" computerName="DESKTOP-3G35SCJ" duration="00:00:03.3077331" startTime="2026-10-23T13:24:27.0810091-04:00" endTime="2026-10-23T13:24:30.3887422-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d111ebd1-ef62-4eb4-9f29-39cbec8ae4e0">
+      <Output>
+        <StdOut>native-black-reference sequence_files=64 unique=32 repeats=32 gaps=2 first_full_submitted_sequence=10694 first_logical_full_sequence=10700 clock=source-duration raw_mean_ms=0.251122 source_pixels=original identity_rewrite=none</StdOut>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="OptionalNativeBlackReferenceCaptureReleasesSubmittedScope" storage="e:\codex\videoprocessor\vp-0206-deploy-20261023\x64\release\videoprocessor-test.dll" id="6bb6f1c2-9c0b-3399-6c6e-b4a64c344d05">
+      <Execution id="d111ebd1-ef62-4eb4-9f29-39cbec8ae4e0" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0206-deploy-20261023\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.AnalysisDiagnosticReplayTests" name="Tests::AnalysisDiagnosticReplayTests::OptionalNativeBlackReferenceCaptureReleasesSubmittedScope" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="6bb6f1c2-9c0b-3399-6c6e-b4a64c344d05" executionId="d111ebd1-ef62-4eb4-9f29-39cbec8ae4e0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="1" executed="1" passed="1" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>native-black-reference sequence_files=64 unique=32 repeats=32 gaps=2 first_full_submitted_sequence=10694 first_logical_full_sequence=10700 clock=source-duration raw_mean_ms=0.251122 source_pixels=original identity_rewrite=none&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

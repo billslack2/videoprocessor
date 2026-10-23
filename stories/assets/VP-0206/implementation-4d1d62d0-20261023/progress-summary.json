@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-10-23T13:26:56.289582-04:00",
+  "sourceCommit": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "featureCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "configuration": "Release",
+  "architecture": "x64",
+  "fullCleanSerialSolutionRebuild": true,
+  "buildExitCode": 0,
+  "buildLogPath": "E:\\codex\\videoprocessor\\vp-0206-deploy-20261023\\artifacts\\vp-0206-deploy\\integrated-release-build.log",
+  "buildLogBytes": 56002,
+  "buildLogSha256": "6e810963f8d7720aa86d17d94c7c15cc8eb49d741193b46088d5a737864ad02d",
+  "runtimeHashAndSidecarChecks": {
+    "binaryCount": 3,
+    "allHashesVerifiedByReviewer": true,
+    "embeddedCleanExactCommitVerifiedInRootReceipt": true
+  },
+  "integratedCapture": {
+    "testCount": 1,
+    "passed": 1,
+    "frameFiles": 64,
+    "distinctSourceIdentities": 32,
+    "repeatedEntries": 32,
+    "sourceGapEvents": 2,
+    "firstFullPresentedSequence": 10694,
+    "firstLogicalFullSequence": 10700,
+    "rawMeanMs": 0.251122,
+    "timingQualification": "Captured during concurrent native regression execution; diagnostic only, not a controlled performance or live jitter claim."
+  },
+  "preliminaryFeatureValidation": {
+    "isolatedBlackReferenceTestsPassed": 14,
+    "captureProbeCasesPassed": 6,
+    "finalIntegratedNativeSuite": "Still running; no final count recorded."
+  },
+  "deploymentPerformed": false,
+  "existingPlayerPid": 68268,
+  "state": "In Progress"
+}
