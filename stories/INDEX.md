@@ -266,7 +266,7 @@ they must not contain requirements that are absent from this file.
 | VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |
 | VP-0205 | Review | Preserve useful lookahead with prepared proof and adaptive budgets |
 | VP-0206 | Done | Release retained scope for asymmetric full height picture |
-| VP-0207 | Done | Overlay fit stability and subtitle backing boundaries |
+| VP-0207 | In Progress | Overlay fit stability and subtitle backing boundaries |
 
 ## Codex story workflow
 

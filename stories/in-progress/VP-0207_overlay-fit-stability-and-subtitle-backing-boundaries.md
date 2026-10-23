@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Done
+In Progress
 
 User accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -99,3 +99,6 @@ User: "yes that looks better so lets merge this." Marked PR #195 ready and merge
 Merged: https://github.com/billslack2/videoprocessor/pull/195 — commit 73acf650739401cdfdfccf2e111290b3265299e2 on v1.4.02-beta. Fetched the exact beta ref, verified merge ancestry and identical Git trees between the merge and tested feature. No new combination required retesting. Merge evidence: stories/assets/VP-0207/merge-73acf650-20261023/merge-result.json.
 
 The accepted tested deployment remains the clean Release source 6608b736 with recorded matching host/renderer hashes and unchanged configuration. This merge did not require another deployment or release package. Story complete.
+## Subtitle backing flash reopened — 2026-10-23
+
+User reports intermittent subtitle occlusion flashing during Ben-Hur after accepting the Off navigation fit. Reopened the unresolved backing portion; the merged Off improvement remains accepted. Preserved runtime 6608b736 logs under E:\codex\diagnostics\vp0207-backing-flash-20261023-1632. At 16:31:21–22, same cue 12 frames 1653 and 1669 have valid finite backing proof but application rejects physical 383..1777 or 384..1777 against composed 384..1776; neighboring frames apply cleanup. Frames 1659/1660/1668 also reject acquisition at the shifted edge. Current beta is 73acf650. Clean source worktree E:\codex\videoprocessor\subtitle-backing-binding-20261023, branch codex/subtitle-backing-binding-20261023. Readiness: exact current proof, stable layout and local application boundary are identified; reproduce one-pixel visible-edge clipping with current native pixel checks, stale/context/geometry negatives and GPU reconstruction regression. No change to Off fitting is planned.
