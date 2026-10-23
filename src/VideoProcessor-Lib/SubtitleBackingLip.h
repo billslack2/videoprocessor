@@ -137,7 +137,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     // Search a bounded collar into picture content for the same distributed
     // closure. These probes NEVER enlarge the removal rectangle or skip a
     // nonblack pixel in its body. All reads share the caller's work budget.
-    const auto closure=[&](int left,int right,int edgeY) {
+    const auto closure=[&](int left,int right,int edgeY,bool requireBrightEnds) {
         if(left>=right)return false;
         const int limit=(std::min)(32,(std::max)(1,glyphHeight/2));
         for(int offset=0;offset<=limit;offset=offset==0?1:offset*2) {
@@ -159,7 +159,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             }
             const unsigned maxRun=unsigned((std::min)({32,(std::max)(3,glyphHeight/3),
                 (std::max)(3,(right-left)/32)}));
-            bool supported=endsBright && result.closureDark*10<=result.closureSamples &&
+            bool supported=(!requireBrightEnds || endsBright) && result.closureDark*10<=result.closureSamples &&
                 result.closureLongestDarkRun<=maxRun;
             for(size_t bin=0;bin<total.size();++bin)
                 supported &= total[bin] && bright[bin]*3>=total[bin]*2;
@@ -167,7 +167,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             // An interior bright hole is not a card boundary. A collar may
             // corroborate an already mostly exposed edge, never search past
             // an ambiguous black row or a shadow reaching either endpoint.
-            if(offset==0 && (!endsBright ||
+            if(offset==0 && ((requireBrightEnds && !endsBright) ||
                 (result.closureSamples-result.closureDark)*3<result.closureSamples*2))return false;
         }
         return false;
@@ -234,7 +234,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             return reject("lip-outline-closure-unavailable");
         const int left=last.left+6,right=last.right-6;
         if(leftBright*2<candidate->bodyRowCount || rightBright*2<candidate->bodyRowCount ||
-            !closure(left,right,closureY))
+            !closure(left,right,closureY,false))
             return reject(exhausted?"lip-work-budget":failedRead?"lip-native-sample-unavailable":"lip-outline-boundary-occluded");
         result.measured=candidate->measured;result.cleanup=candidate->cleanup;
         // Recompute from the original row outline each time; do not repeatedly
@@ -266,7 +266,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             // OUTSIDE row is scene content and can contain small shadows.
             // Require distributed contrast, without adding that row to cleanup
             // or searching past an ambiguous closure into more picture.
-            if(!closure(left,right,y)) {
+            if(!closure(left,right,y,true)) {
                 if(exhausted || failedRead)break;
                 return reject("lip-top-closure-occluded");
             }
