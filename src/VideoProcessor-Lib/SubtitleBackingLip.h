@@ -19,19 +19,22 @@ struct CurrentSubtitleBackingLipProof
     size_t samples=0,cornerPixels=0;
     unsigned closureSamples=0,closureDark=0,closureLongestDarkRun=0;
     bool attachmentSeamClipped=false;
+    bool compositionEdgeClipped=false;
     unsigned roundingRows=0;
     // A remembered outline nominates probes only. Every body pixel and the
     // surrounding boundary are revalidated against the selected native frame.
     std::array<SubtitleBoxRect,128> bodyRows{};
     unsigned bodyRowCount=0;
     bool revalidatedOutline=false;
+    bool outlineBaseAnchored=false;
 };
 
 inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const AnalysisLumaSource& source,const SubtitleBoxPreview& preview,
     const SubtitleBoxResult& accepted,const ActivePictureFrameIdentity& expectedIdentity,
     uint64_t policy,uint64_t continuity,size_t maxSamples=65536,
-    const CurrentSubtitleBackingLipProof* candidate=nullptr)
+    const CurrentSubtitleBackingLipProof* candidate=nullptr,
+    const SubtitleCutPasteGeometry* composition=nullptr)
 {
     CurrentSubtitleBackingLipProof result;
     result.identity=expectedIdentity;result.policyGeneration=policy;result.continuityGeneration=continuity;
@@ -39,13 +42,38 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const auto reject=[&](const char* why){result.reason=why;return result;};
     const auto& current=preview.current;
     result.pictureTop=current.pictureTop;result.pictureBottom=current.pictureBottom;
+    auto candidateEpoch=candidate?candidate->identity:ActivePictureFrameIdentity{};
+    candidateEpoch.acceptedSequence=expectedIdentity.acceptedSequence;
+    candidateEpoch.sourceFrameNumber=expectedIdentity.sourceFrameNumber;
+    candidateEpoch.captureTimestamp=expectedIdentity.captureTimestamp;
+    const bool candidateContext=candidate && candidate->valid &&
+        SameAnalysisFrameIdentity(candidateEpoch,expectedIdentity) &&
+        candidate->policyGeneration==policy && candidate->continuityGeneration==continuity &&
+        expectedIdentity.acceptedSequence>=candidate->identity.acceptedSequence &&
+        expectedIdentity.acceptedSequence-candidate->identity.acceptedSequence<=8 &&
+        candidate->width==source.width && candidate->height==source.height;
+    const bool independentPhysical=current.independentBarAnalysis &&
+        !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
+        !current.barEvidence.captionBackedTop && !current.barEvidence.captionBackedBottom &&
+        !current.barEvidence.topRevalidatedAtReference && !current.barEvidence.topRevalidatedNearby &&
+        !current.barEvidence.bottomRevalidatedAtReference && !current.barEvidence.bottomRevalidatedNearby;
+    // A caption-backed plane can fall two rows beyond the independently
+    // proved picture edge. It cannot acquire a card. For the same recent cue,
+    // nominate only the old finite outline, inside BOTH current pictures.
+    // Every old body pixel and the surrounding boundary are checked below.
+    const bool boundedOutline=candidateContext && candidate->bodyRowCount>=2 &&
+        candidate->bodyRowCount<=128 && candidate->measured.Valid() &&
+        candidate->measured.top>=current.pictureTop && candidate->measured.bottom<=current.pictureBottom &&
+        std::abs(int64_t(current.pictureTop)-candidate->pictureTop)<=3 &&
+        std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)<=3;
+    const bool captionEdgeOutward=boundedOutline && (candidate->fromTopBar?
+        current.barEvidence.captionBackedTop && current.pictureTop<candidate->pictureTop:
+        current.barEvidence.captionBackedBottom && current.pictureBottom>candidate->pictureBottom);
+    const bool anchorOutlineBase=boundedOutline && (independentPhysical || captionEdgeOutward);
     if(!expectedIdentity.acceptedSequence || !preview.available || !current.analyzed || current.discontinuity ||
         current.analysisRefresh || current.cadenceSkipped || current.glyphLocalTop || current.glyphLocalBottom ||
-        !current.independentBarAnalysis || !current.barAuthority || current.barTrackingAuthority ||
-        current.currentAnchorUsesTrackedEdge || !current.barEvidence.available ||
-        current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
-        current.barEvidence.topRevalidatedAtReference || current.barEvidence.topRevalidatedNearby ||
-        current.barEvidence.bottomRevalidatedAtReference || current.barEvidence.bottomRevalidatedNearby ||
+        !current.barAuthority || !current.barEvidence.available ||
+        (!independentPhysical && !captionEdgeOutward) ||
         !SameAnalysisFrameIdentity(current.identity,expectedIdentity) ||
         preview.policyGeneration!=policy || current.policyGeneration!=policy ||
         preview.continuityGeneration!=continuity || current.continuityGeneration!=continuity)
@@ -113,8 +141,29 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     }
     if(allTop==allBottom)return reject("lip-glyphs-not-wholly-in-one-bar");
     result.fromTopBar=allTop;
+    if(anchorOutlineBase) {
+        result.pictureTop=(std::max)(result.pictureTop,candidate->pictureTop);
+        result.pictureBottom=(std::min)(result.pictureBottom,candidate->pictureBottom);
+        result.outlineBaseAnchored=result.pictureTop!=current.pictureTop ||
+            result.pictureBottom!=current.pictureBottom || !independentPhysical;
+    }
+    if(composition) {
+        if(!composition->valid || composition->fromTopBar!=allTop ||
+            composition->pictureTop<0 || composition->pictureBottom>source.height ||
+            composition->pictureTop>=composition->pictureBottom)
+            return reject("lip-composition-context-unavailable");
+        // Native bars own backing detection; stable display geometry only
+        // limits which proved pixels are visible. Neither interval may enlarge
+        // the current cleanup proof into unmeasured picture or subtitle glyphs.
+        result.pictureTop=(std::max)(result.pictureTop,composition->pictureTop);
+        result.pictureBottom=(std::min)(result.pictureBottom,composition->pictureBottom);
+        if(result.pictureTop>=result.pictureBottom)
+            return reject("lip-composition-context-unavailable");
+        result.compositionEdgeClipped=allTop?result.pictureTop!=current.pictureTop:
+            result.pictureBottom!=current.pictureBottom;
+    }
     const int glyphHeight=SubtitleTypicalLineHeight(accepted);
-    const int gap=allTop?current.pictureTop-glyphs.bottom:glyphs.top-current.pictureBottom;
+    const int gap=allTop?result.pictureTop-glyphs.bottom:glyphs.top-result.pictureBottom;
     if(glyphHeight<4 || glyphHeight>source.height/4 || gap<0 || gap>glyphHeight/2)
         return reject("lip-glyphs-too-far-from-edge");
     const int floor=allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor;
@@ -137,19 +186,20 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     // Search a bounded collar into picture content for the same distributed
     // closure. These probes NEVER enlarge the removal rectangle or skip a
     // nonblack pixel in its body. All reads share the caller's work budget.
-    const auto closure=[&](int left,int right,int edgeY,bool requireBrightEnds) {
+    const auto closure=[&](int left,int right,int edgeY,bool requireBrightEnds,bool remembered=false) {
         if(left>=right)return false;
         const int limit=(std::min)(32,(std::max)(1,glyphHeight/2));
         for(int offset=0;offset<=limit;offset=offset==0?1:offset*2) {
             const int y=edgeY+(allTop?offset:-offset);
-            if(y<current.pictureTop || y>=current.pictureBottom)break;
+            if(y<result.pictureTop || y>=result.pictureBottom)break;
             std::array<unsigned,8> total{},bright{};
+            const int bins=remembered?4:8;
             unsigned run=0;bool endsBright=true;
             result.closureSamples=result.closureDark=result.closureLongestDarkRun=0;
             for(int x=left;x<right;++x) {
                 AnalysisLumaSample value;
                 if(!sample(x,y,value))return false;
-                const int bin=(std::min)(7,int(int64_t(x-left)*8/(right-left)));
+                const int bin=(std::min)(bins-1,int(int64_t(x-left)*bins/(right-left)));
                 ++total[bin];++result.closureSamples;
                 if(value.luma<=darkLimit) {
                     ++result.closureDark;++run;
@@ -157,11 +207,16 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
                     result.closureLongestDarkRun=(std::max)(result.closureLongestDarkRun,run);
                 } else {++bright[bin];run=0;}
             }
-            const unsigned maxRun=unsigned((std::min)({32,(std::max)(3,glyphHeight/3),
-                (std::max)(3,(right-left)/32)}));
+            // First acquisition remains strict. An already finite, unchanged
+            // outline can tolerate a small moving scene shadow above it: keep
+            // the same global 10% dark limit and distributed bright support.
+            // The relaxed collar never contributes pixels to the cleanup.
+            const unsigned maxRun=remembered?
+                unsigned((std::min)({64,(std::max)(6,glyphHeight),(std::max)(6,(right-left)/16)})):
+                unsigned((std::min)({32,(std::max)(3,glyphHeight/3),(std::max)(3,(right-left)/32)}));
             bool supported=(!requireBrightEnds || endsBright) && result.closureDark*10<=result.closureSamples &&
                 result.closureLongestDarkRun<=maxRun;
-            for(size_t bin=0;bin<total.size();++bin)
+            for(int bin=0;bin<bins;++bin)
                 supported &= total[bin] && bright[bin]*3>=total[bin]*2;
             if(supported)return true;
             // An interior bright hole is not a card boundary. A collar may
@@ -172,17 +227,9 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         }
         return false;
     };
-    auto candidateEpoch=candidate?candidate->identity:ActivePictureFrameIdentity{};
-    candidateEpoch.acceptedSequence=expectedIdentity.acceptedSequence;
-    candidateEpoch.sourceFrameNumber=expectedIdentity.sourceFrameNumber;
-    candidateEpoch.captureTimestamp=expectedIdentity.captureTimestamp;
-    if(candidate && candidate->valid && SameAnalysisFrameIdentity(candidateEpoch,expectedIdentity) &&
-        candidate->policyGeneration==policy && candidate->continuityGeneration==continuity &&
-        expectedIdentity.acceptedSequence>=candidate->identity.acceptedSequence &&
-        expectedIdentity.acceptedSequence-candidate->identity.acceptedSequence<=8 && candidate->width==source.width && candidate->height==source.height &&
-        candidate->fromTopBar==allTop && candidate->bodyRowCount>=2 && candidate->bodyRowCount<=128 &&
-        (allTop?candidate->pictureTop==current.pictureTop:candidate->pictureBottom==current.pictureBottom) &&
-        candidate->measured.top>=current.pictureTop && candidate->measured.bottom<=current.pictureBottom) {
+    if(candidateContext && candidate->fromTopBar==allTop && candidate->bodyRowCount>=2 && candidate->bodyRowCount<=128 &&
+        (allTop?candidate->pictureTop==result.pictureTop:candidate->pictureBottom==result.pictureBottom) &&
+        candidate->measured.top>=result.pictureTop && candidate->measured.bottom<=result.pictureBottom) {
         // Once a finite card has been measured, scene texture beside it must
         // not repeatedly grow/shrink its outline. Require the SAME current
         // glyphs (caller), exact current ownership (above), and exhaustive black
@@ -230,11 +277,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             return reject("lip-outline-edge-area-too-large");
         const auto& last=candidate->bodyRows[candidate->bodyRowCount-1];
         const int closureY=allTop?last.bottom:last.top-1;
-        if(closureY<current.pictureTop || closureY>=current.pictureBottom)
+        if(closureY<result.pictureTop || closureY>=result.pictureBottom)
             return reject("lip-outline-closure-unavailable");
         const int left=last.left+6,right=last.right-6;
         if(leftBright*2<candidate->bodyRowCount || rightBright*2<candidate->bodyRowCount ||
-            !closure(left,right,closureY,false))
+            !closure(left,right,closureY,false,true))
             return reject(exhausted?"lip-work-budget":failedRead?"lip-native-sample-unavailable":"lip-outline-boundary-occluded");
         result.measured=candidate->measured;result.cleanup=candidate->cleanup;
         // Recompute from the original row outline each time; do not repeatedly
@@ -255,8 +302,8 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     size_t rowBodyPixels=0;
     bool closed=false,seamNeedsCorroboration=false;
     for(int depth=0;depth<=depthLimit;++depth){
-        const int y=allTop?current.pictureTop+depth:current.pictureBottom-1-depth;
-        if(y<current.pictureTop || y>=current.pictureBottom)break;
+        const int y=allTop?result.pictureTop+depth:result.pictureBottom-1-depth;
+        if(y<result.pictureTop || y>=result.pictureBottom)break;
         if(!sample(center,y,rowPixels[center]))break;
         if(rowPixels[center].luma>darkLimit){
             if(!rows)return reject("lip-no-attached-black-backing");
@@ -348,8 +395,8 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     if(failedRead)return reject("lip-native-sample-unavailable");
     if(!closed)return reject("lip-top-closure-unavailable");
     if(rows<(seamNeedsCorroboration?3:2))return reject("lip-insufficient-native-row-support");
-    result.blackInterior={commonLeft,allTop?current.pictureTop:last.y,commonRight,
-        allTop?last.y+1:current.pictureBottom};
+    result.blackInterior={commonLeft,allTop?result.pictureTop:last.y,commonRight,
+        allTop?last.y+1:result.pictureBottom};
     if(!result.blackInterior.Valid())return reject("lip-no-common-cleanup-interior");
     // All row bodies are black. Only monotone, bounded rounded corners may
     // contain picture pixels inside the complete backing restoration bounds.
@@ -384,16 +431,15 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     if(!SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
         proof.policyGeneration!=policy || proof.continuityGeneration!=continuity)
         return reject("lip-application-context-mismatch");
-    // A retained glyph anchor can preserve the opposite picture edge while
-    // current independent measurements vary there by a pixel. Cleanup belongs
-    // to its exact cue-side edge and must fit BOTH physical picture intervals.
-    // It never updates either edge, the glyph anchor, or the AR owner's crop.
+    // Current native pixels own backing proof. The displayed picture may be
+    // wider than that independent physical interval; it supplies no new cleanup
+    // authority. Every proved cleanup pixel must fit BOTH picture intervals.
+    // Neither edge, the glyph anchor, nor the AR owner's crop is changed.
     const SubtitleBoxRect picture{0,proof.pictureTop,proof.width,proof.pictureBottom};
     const SubtitleBoxRect composedPicture{0,geometry.pictureTop,proof.width,geometry.pictureBottom};
     if(proof.width<1 || proof.height<1 || proof.pictureTop<0 || proof.pictureBottom>proof.height ||
         !picture.Valid() || geometry.pictureTop<0 || geometry.pictureBottom>proof.height ||
         !composedPicture.Valid() || geometry.fromTopBar!=proof.fromTopBar ||
-        (proof.fromTopBar?geometry.pictureTop!=proof.pictureTop:geometry.pictureBottom!=proof.pictureBottom) ||
         !contains(picture,proof.cleanup) || !contains(composedPicture,proof.cleanup))
         return reject("lip-application-physical-binding-mismatch");
     if(!contains(proof.measured,proof.blackInterior) ||
@@ -418,7 +464,7 @@ public:
     CurrentSubtitleBackingLipProof Consume(const AnalysisLumaSource& source,
         const SubtitleBoxPreview& preview,const SubtitleBoxResult& text,
         const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity,
-        size_t maxSamples=65536)
+        size_t maxSamples=65536,const SubtitleCutPasteGeometry* composition=nullptr)
     {
         auto previous=m_outline.identity;
         previous.acceptedSequence=identity.acceptedSequence;
@@ -430,7 +476,7 @@ public:
             identity.acceptedSequence-m_outline.identity.acceptedSequence<=8 &&
             text.cue==m_text.cue && SameFreshSubtitleGlyphs(m_text,text,0);
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
-            maxSamples,matches?&m_outline:nullptr);
+            maxSamples,matches?&m_outline:nullptr,composition);
         if(proof.valid) {m_outline=proof;m_text=text;} else Reset();
         return proof;
     }

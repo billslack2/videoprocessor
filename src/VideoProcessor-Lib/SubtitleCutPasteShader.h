@@ -720,6 +720,12 @@ vec4 hook() {
     if(enabled>0.5) {
         bool cleanupOnly=composition_phase>0.5 && composition_phase<1.5;
         bool layerOnly=composition_phase>1.5;
+        // Reconstruction's neutral settings are the UI's transparent style.
+        // Keep deliberately blurred or brightness-limited backdrops separate.
+        bool transparentBackground=(background_mode>0.5 && background_mode<1.5) ||
+            (background_mode>4.5 && generated_opacity<=0.0 && generated_blur_px<=0.0 &&
+             generated_max_luminance>=1.0 &&
+             (generated_border_width<=0.0 || generated_border_opacity<=0.0));
         bool inPanel=p.x>=destination_left-subtitlePanelSideExtension() && p.x<destination_right+subtitlePanelSideExtension() &&
             p.y>=subtitlePanelTop() && p.y<subtitlePanelBottom();
         bool inCleanup=subtitleInGeneratedCleanup(p);
@@ -803,6 +809,17 @@ vec4 hook() {
                     subtitleRoundedPanelDistance(p)+generated_border_width);
                 borderAlpha=max(panelMask-inner,0.0)*generated_border_opacity;
                 canvas=mix(canvas,borderColor,borderAlpha);
+            }
+            if(transparentBackground) {
+                // Transparent output carries glyphs only. Copying the live
+                // picture as an opaque tile lets overlay color management and
+                // temporal blending expose a rectangular one-pixel seam.
+                if(layerOnly)return vec4(alpha>0.0?subtitleSignal(glyphColor):vec3(0.0),alpha);
+                // Avoid a transfer-function round trip on untouched picture.
+                // Overlap with the old glyph footprint still needs its fill.
+                if(alpha<=0.0 && !inCleanup && !(p.x>=content_left && p.x<content_right &&
+                    p.y>=content_top && p.y<content_bottom))return HOOKED_tex(HOOKED_pos);
+                if(background_mode>4.5)canvas=original;
             }
             if(layerOnly) {
                 // Straight source-transfer RGB plus independent alpha. Compose
@@ -1006,16 +1023,35 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     return BindSubtitleCutPasteHook(hook,geometry,backgroundMode,transfer,style);
 }
 
+// Preparation disables peak detection. Sharing the output renderer would reset
+// its HDR history on each new source packet but not on repeated display frames.
+class SubtitlePreparationRenderer {
+    pl_renderer renderer=nullptr;
+    pl_gpu owner=nullptr;
+public:
+    SubtitlePreparationRenderer()=default;
+    SubtitlePreparationRenderer(const SubtitlePreparationRenderer&)=delete;
+    SubtitlePreparationRenderer& operator=(const SubtitlePreparationRenderer&)=delete;
+    ~SubtitlePreparationRenderer() { Reset(); }
+    void Reset() { pl_renderer_destroy(&renderer);owner=nullptr; }
+    pl_renderer Get(pl_gpu gpu) {
+        if(owner!=gpu)Reset();
+        if(!renderer && gpu) { renderer=pl_renderer_create(nullptr,gpu);owner=gpu; }
+        return renderer;
+    }
+};
+
 // Compose before the main renderer crops away letterbox pixels. Reuse a
 // full-resolution floating-point surface and retain the input transfer function;
 // output tone mapping, scaling, NLS and viewport placement occur only afterward.
-inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
+inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl_gpu gpu,
     const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
     bool blitSource,bool blitDestination,bool independentAlpha=false,
     const pl_deinterlace_params* deinterlaceParams=nullptr,
     const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
-    if(source.num_planes<1 || !source.planes[0].texture)return false;
+    const auto renderer=preparation.Get(gpu);
+    if(!renderer || source.num_planes<1 || !source.planes[0].texture)return false;
     const auto texture=source.planes[0].texture;
     pl_tex_params storage{};
     storage.w=texture->params.w;storage.h=texture->params.h;
@@ -1070,30 +1106,30 @@ inline bool RenderSubtitleFullRaster(pl_renderer renderer,pl_gpu gpu,
     return true;
 }
 
-inline bool ComposeSubtitleBeforeCrop(pl_renderer renderer,pl_gpu gpu,
+inline bool ComposeSubtitleBeforeCrop(SubtitlePreparationRenderer& preparation,pl_gpu gpu,
     const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& composed,
     bool temporalBlit=false,
     const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
-    return hook && RenderSubtitleFullRaster(renderer,gpu,source,hook,surface,
+    return hook && RenderSubtitleFullRaster(preparation,gpu,source,hook,surface,
         composed,false,temporalBlit,false,nullptr,sourceProcessing);
 }
 
 // The layer carries straight RGB in source transfer and independent alpha.
-inline bool ComposeSubtitleLayerBeforeCrop(pl_renderer renderer,pl_gpu gpu,
+inline bool ComposeSubtitleLayerBeforeCrop(SubtitlePreparationRenderer& preparation,pl_gpu gpu,
     const pl_frame& source,const pl_hook* hook,pl_tex* surface,pl_frame& layer,
     const pl_deinterlace_params* deinterlaceParams=nullptr,
     const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
-    return hook && RenderSubtitleFullRaster(renderer,gpu,source,hook,surface,
+    return hook && RenderSubtitleFullRaster(preparation,gpu,source,hook,surface,
         layer,true,false,true,deinterlaceParams,sourceProcessing);
 }
 
-inline bool CaptureSubtitleTemporalBackground(pl_renderer renderer,pl_gpu gpu,
+inline bool CaptureSubtitleTemporalBackground(SubtitlePreparationRenderer& preparation,pl_gpu gpu,
     const pl_frame& source,pl_tex* surface,
     const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
 {
     pl_frame captured{};
-    return RenderSubtitleFullRaster(renderer,gpu,source,nullptr,surface,
+    return RenderSubtitleFullRaster(preparation,gpu,source,nullptr,surface,
         captured,true,false,false,nullptr,sourceProcessing);
 }

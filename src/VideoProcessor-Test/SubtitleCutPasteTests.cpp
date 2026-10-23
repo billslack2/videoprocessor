@@ -1576,6 +1576,7 @@ public:
 };
 namespace {
 struct SubtitleShaderGpuFixture {
+    SubtitlePreparationRenderer preparation;
     pl_d3d11 device=nullptr;
     pl_renderer renderer=nullptr;
     const pl_hook* hook=nullptr;
@@ -1636,6 +1637,7 @@ struct SubtitleShaderGpuFixture {
         pl_tex_destroy(device->gpu,&allOutput);
         pl_tex_destroy(device->gpu,&splitOutput);
         pl_mpv_user_shader_destroy(&hook);
+        preparation.Reset();
         pl_renderer_destroy(&renderer);pl_d3d11_destroy(&device);
     }
     void UseYuv(bool tenBit) {
@@ -1731,6 +1733,97 @@ struct SubtitleShaderGpuFixture {
                     format->host_bits[channel]);
         return pixels;
     }
+    void VerifyPreparationPreservesHdrHistory() {
+        auto target=input;target.planes[0].texture=allOutput;
+        target.color=pl_color_space_srgb;target.color.transfer=PL_COLOR_TRC_LINEAR;
+        auto peak=pl_peak_detect_high_quality_params;peak.allow_delayed=false;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        params.peak_detect_params=&peak;
+        for(int i=0;i<8;++i)Assert::IsTrue(pl_render_image(renderer,&input,&target,&params));
+        pl_gpu_finish(device->gpu);
+        pl_hdr_metadata before{};
+        Assert::IsTrue(pl_renderer_get_hdr_metadata(renderer,&before),L"HDR fixture must establish peak history");
+        for(int mode:{1,3,5}) {
+            auto geometry=Geometry();
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer));
+            pl_frame composed{};
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,composed));
+            pl_hdr_metadata after{};
+            Assert::IsTrue(pl_renderer_get_hdr_metadata(renderer,&after),
+                L"preparing a new subtitle packet must not reset output peak history");
+            Assert::IsTrue(std::abs(before.max_pq_y-after.max_pq_y)<0.000001f);
+            // A 24 Hz packet can supply three 60 Hz display ticks. Each repeat
+            // must begin with the same persistent detector, without preparation.
+            for(int repeat=0;repeat<3;++repeat)
+                Assert::IsTrue(pl_render_image(renderer,&composed,&target,&params));
+            pl_gpu_finish(device->gpu);
+            Assert::IsTrue(pl_renderer_get_hdr_metadata(renderer,&before));
+        }
+        auto noPeak=params;noPeak.peak_detect_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&input,&target,&noPeak));
+        pl_hdr_metadata reset{};
+        Assert::IsFalse(pl_renderer_get_hdr_metadata(renderer,&reset),
+            L"control: a no-peak pass on the shared renderer reproduces the old reset");
+    }
+    void VerifyTransparentLayerDoesNotCopyPicture(bool reduced,int mode) {
+        auto g=Geometry();g.pictureTop=8;g.pictureBottom=48;
+        g.source={20,48,44,60};g.content={24,50,40,58};
+        g.glyphLines[0]=g.content;g.pictureCapture={};g.generatedCleanup={};
+        g.destination={12,24,52,38};g.extendToBar=false;
+        g.centeredGlyphMapping=reduced;g.glyphScale=reduced?0.7f:1.0f;
+        g.glyphTranslateX=11.3f;g.glyphTranslateY=-9.6f;
+        std::vector<uint8_t> pixels(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t i=(y*64+x)*4;
+            pixels[i]=uint8_t(70+x);pixels[i+1]=uint8_t(60+y);pixels[i+2]=120;
+            if(y<8 || y>=48)pixels[i]=pixels[i+1]=pixels[i+2]=0;
+            if(x>=26 && x<38 && y>=52 && y<56)pixels[i]=pixels[i+1]=pixels[i+2]=230;
+        }
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+        SubtitleGeneratedGrayStyle style;
+        style.opacity=0.0f;style.blurPixels=0.0f;style.borderOpacity=0.0f;
+        style.maxLuminance=1.0f;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,input.color.transfer,
+            style,0,SubtitleCompositionPhase::LayerOnly));
+        pl_frame layer{};
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+        pl_tex_params storage{};storage.w=storage.h=64;storage.format=layerTexture->params.format;
+        storage.blit_dst=true;storage.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&storage);Assert::IsNotNull(staging);
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const auto extracted=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        int visible=0;
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const float alpha=Pixel(extracted,x,y)[3];
+            if(alpha>0.01f)++visible;
+            // No native glyph can map into this gutter on any of the four
+            // destination edges. A transparent layer must contain no picture.
+            if(x<=14 || x>=50 || y<=24 || y>=36)
+                Assert::IsTrue(alpha<0.001f,L"transparent panel gutters must not paste an opaque picture tile");
+        }
+        Assert::IsTrue(visible>0,L"transparent extraction must retain glyphs");
+        auto target=input;target.planes[0].texture=allOutput;
+        target.color.transfer=PL_COLOR_TRC_LINEAR;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&input,&target,&params));
+        const auto original=ReadLinear(allOutput);
+        pl_overlay overlay{};pl_overlay_part part{};
+        overlay.tex=layerTexture;overlay.mode=PL_OVERLAY_NORMAL;
+        overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;overlay.repr=layer.repr;overlay.color=layer.color;
+        part.src={0,0,64,64};part.dst={0,0,64,64};overlay.parts=&part;overlay.num_parts=1;
+        target.planes[0].texture=splitOutput;target.overlays=&overlay;target.num_overlays=1;
+        Assert::IsTrue(pl_render_image(renderer,&input,&target,&params));
+        const auto composed=ReadLinear(splitOutput);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
+            if(y==8 || y==47 || x==0 || x==63 ||
+                (x>=11 && x<=52 && y>=23 && y<=38 &&
+                 (x<=14 || x>=50 || y<=24 || y>=36)))
+                for(int c=0;c<3;++c)
+                    Assert::IsTrue(std::abs(Pixel(original,x,y)[c]-Pixel(composed,x,y)[c])<0.0001f,
+                        L"transparent subtitle edges must preserve the actual picture pixels");
+    }
     void VerifyViewportClippedCoverage(int mode,bool top,bool rounded) {
         auto geometry=Geometry(false,true);
         geometry.fromTopBar=top;geometry.roundedCorners=rounded;
@@ -1751,7 +1844,7 @@ struct SubtitleShaderGpuFixture {
         pl_frame layer{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
             {},false,SubtitleCompositionPhase::LayerOnly));
-        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
         pl_tex_params params{};params.w=params.h=64;params.format=layerTexture->params.format;
         params.blit_dst=true;params.host_readable=true;
         pl_tex staging=pl_tex_create(device->gpu,&params);Assert::IsNotNull(staging);
@@ -1796,7 +1889,7 @@ struct SubtitleShaderGpuFixture {
         pl_frame clean{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
             {},false,SubtitleCompositionPhase::CleanupOnly));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
         pl_frame beforeTarget{};beforeTarget.num_planes=1;
         beforeTarget.planes[0].texture=allOutput;beforeTarget.planes[0].components=4;
         for(int c=0;c<4;++c)beforeTarget.planes[0].component_mapping[c]=c;
@@ -1844,7 +1937,7 @@ struct SubtitleShaderGpuFixture {
             Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},fill,SubtitleCompositionPhase::CleanupOnly));
             Assert::AreEqual(signature,hook->signature,L"Dynamic fill selection must retain parsed shader identity");
             pl_frame clean{};
-            Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
             pl_frame target{};target.num_planes=1;target.planes[0].texture=allOutput;target.planes[0].components=4;
             for(int c=0;c<4;++c)target.planes[0].component_mapping[c]=c;
             target.repr=pl_color_repr_rgb;target.repr.alpha=PL_ALPHA_NONE;target.color=input.color;target.crop={0,0,64,64};
@@ -1868,7 +1961,7 @@ struct SubtitleShaderGpuFixture {
             if(x<16 || x>=48 || y<24 || y>=56)for(int c=0;c<3;++c)
                 Assert::IsTrue(std::abs(Pixel(blended,x,y)[c]-float(pixels[(y*64+x)*4+c])/255)<0.005f,L"spatial fill must not change unrelated picture");
     }
-    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0) {
+    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0,bool transparent=false) {
         const auto mirror=[&](SubtitleBoxRect r) {
             return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
         };
@@ -1880,7 +1973,11 @@ struct SubtitleShaderGpuFixture {
         base.placementLimits={0,16,64,48};base.fromTopBar=top;
         base.roundedCorners=false;base.extendToBar=true;
         const SubtitleBoxPadding padding{6,2,2};
-        const SubtitleGeneratedGrayStyle style;
+        SubtitleGeneratedGrayStyle style;
+        if(transparent) {
+            style.opacity=0;style.blurPixels=0;style.borderOpacity=0;style.maxLuminance=1;
+            style.textColor={0.7f,0.8f,0.0f};
+        }
         base=ApplySubtitleTextReduction(base,reduction,padding,false,false);
         SubtitleBoxPreview preview;preview.available=true;preview.policyGeneration=7;preview.continuityGeneration=8;
         preview.current.identity={2,2,2,83416,2,3,4};preview.current.width=preview.current.height=64;
@@ -1932,7 +2029,7 @@ struct SubtitleShaderGpuFixture {
         auto beforeTarget=target(allOutput),afterTarget=target(splitOutput);
         upload(true);pl_frame clean{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,spatialFill,SubtitleCompositionPhase::CleanupOnly));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
         Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
         Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
         const auto before=ReadLinear(allOutput),after=ReadLinear(splitOutput);
@@ -1958,14 +2055,30 @@ struct SubtitleShaderGpuFixture {
                 Assert::IsTrue(Pixel(after,x,y)[0]<0.001f,L"Original bar glyph erasure remains the unchanged exact content path.");
         pl_frame layer{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,spatialFill,SubtitleCompositionPhase::LayerOnly));
-        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
         pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;stagingParams.format=layerTexture->params.format;
         stagingParams.blit_dst=true;stagingParams.host_readable=true;
         pl_tex staging=pl_tex_create(device->gpu,&stagingParams);Assert::IsNotNull(staging);
         pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;pl_tex_blit(device->gpu,&copy);
         const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
         const int centerY=(geometry.destination.top+geometry.destination.bottom)/2;
-        for(int x=geometry.destination.left+1;x<geometry.destination.right-1;++x)
+        if(transparent) {
+            for(int y=geometry.destination.top;y<geometry.destination.bottom;++y) {
+                Assert::IsTrue(Pixel(layerPixels,geometry.destination.left+1,y)[3]<0.001f);
+                Assert::IsTrue(Pixel(layerPixels,geometry.destination.right-1,y)[3]<0.001f);
+            }
+            // Direct composition must repair the old cap just as CleanupOnly
+            // does, while the new yellow glyph layer leaves its gutters clear.
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,spatialFill,SubtitleCompositionPhase::All));
+            pl_frame all{};
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,all));
+            Assert::IsTrue(pl_render_image(renderer,&all,&beforeTarget,&params));
+            const auto full=ReadLinear(allOutput);
+            for(int y=proof.measured.top;y<proof.measured.bottom;++y)
+                for(int x=proof.measured.left;x<proof.measured.right;++x)for(int c=0;c<3;++c)
+                    Assert::IsTrue(std::abs(Pixel(full,x,y)[c]-Pixel(after,x,y)[c])<0.005f,
+                        L"Transparent direct composition must preserve the independently repaired source backing");
+        } else for(int x=geometry.destination.left+1;x<geometry.destination.right-1;++x)
             Assert::IsTrue(Pixel(layerPixels,x,centerY)[3]>0.999f,L"Reduced text must retain the original-size opaque backing span.");
         Assert::IsTrue(Pixel(layerPixels,3,32)[3]<0.001f);
         if(mode==3)for(int c=0;c<3;++c) {
@@ -1980,7 +2093,7 @@ struct SubtitleShaderGpuFixture {
         const auto noLip=ApplyCurrentSubtitleBackingLip(base,proof,nextIdentity,7,8);
         Assert::IsFalse(noLip.generatedCleanup.Valid());
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,noLip,mode,input.color.transfer,style,spatialFill,SubtitleCompositionPhase::CleanupOnly));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
         Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
         Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
         const auto freshBefore=ReadLinear(allOutput),freshAfter=ReadLinear(splitOutput);
@@ -2001,13 +2114,13 @@ struct SubtitleShaderGpuFixture {
         pl_frame all{},clean{},layer{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
             style,spatialFill,SubtitleCompositionPhase::All));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&allTexture,all));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,all));
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
             style,spatialFill,SubtitleCompositionPhase::CleanupOnly));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(renderer,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
             style,spatialFill,SubtitleCompositionPhase::LayerOnly));
-        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,hook,&layerTexture,layer));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
         Assert::IsTrue(layer.repr.alpha==PL_ALPHA_INDEPENDENT,L"Layer alpha metadata was lost");
         pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
         stagingParams.format=layerTexture->params.format;
@@ -2141,7 +2254,7 @@ struct SubtitleShaderGpuFixture {
             Assert::IsTrue(BindSubtitleCutPasteHook(hook,disabled,backgroundMode,
                 input.color.transfer,style,spatialFill,SubtitleCompositionPhase::LayerOnly));
             pl_frame emptyLayer{};
-            Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(renderer,device->gpu,input,
+            Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,
                 hook,&layerTexture,emptyLayer));
             pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
             stagingParams.format=layerTexture->params.format;
@@ -2167,6 +2280,22 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
+        for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2})
+            gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,reduction,fill,true);
+    }
+    TEST_METHOD(SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_PQ);
+        gpu.VerifyPreparationPreservesHdrHistory();
+    }
+    TEST_METHOD(TransparentLayersPreservePictureAtEveryPanelEdge) {
+        for(auto transfer:{PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_HLG}) {
+            SubtitleShaderGpuFixture gpu(transfer);
+            for(int mode:{1,5})for(bool reduced:{false,true})
+                gpu.VerifyTransparentLayerDoesNotCopyPicture(reduced,mode);
+        }
+    }
     TEST_METHOD(SourceProcessingSnapshotOwnsDebandValues) {
         pl_render_params settings=pl_render_fast_params;
         pl_deband_params deband=pl_deband_default_params;
