@@ -1,9 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
-Paused native-frame backing correction 31c5dfa9 is deployed in draft PR #196. The exact captured glyph-free rounded cap now passes detector/proof/application replay; live paused-scene acceptance remains pending. The accepted Off fit is unchanged.
+User accepted the paused native backing correction at 31c5dfa9. Continuing draft PR #196 for advanced-subtitle flashing when source/display rates differ and thin edges around transparent subtitles. Current GitHub beta remains 73acf650; the accepted Off fit is unchanged.
 
 Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -125,3 +125,8 @@ User supplied paused native/processed views showing the rounded black backing ex
 - Successful x64 Release solution Build at final commit following clean Rebuild. All **1,002 selected native/GPU tests passed**, with the exact native replay explicitly enabled via VP_SUBTITLE_BACKING_REPLAY_PATH. Four relevant GPU footprint tests passed: measured backing, clipped edges, prepared erasure and fresh lip cleanup/layer coverage. Both Qt Off hold and subtitle profile round-trip tests passed. Logs: build-paused-backing-clean.log, build-paused-backing-final.log, test-paused-backing-first.log, test-paused-backing-final.log, test-paused-backing-off-ui.log, test-paused-backing-subtitle-ui.log. Final TRX: TestResults/paused-backing-final.trx. Earlier 1,005-test coverage including additional GPU modes belongs to f93438ed, not a claim of all those cases rerun at this revision.
 - Continued the authorized test deployment: backed up and replaced matching host and standard/beta renderers from final Release build. All three deployed hashes match build records. Fresh host and renderer identify 31c5dfa9, dirty=0, PID 74644. Active configuration edits: none; hashes unchanged after launch. Existing Config binaries/open session preserved. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-backing-binding-31c5dfa9-20261023-172957.
 - Evidence: stories/assets/VP-0207/deployment-31c5dfa9-20261023 includes capture metadata/hash/reference bounds, native replay and GPU summaries, prior rejection lines, deployment receipt and startup identity. Raw movie pixels stay exclusively in E:\codex\diagnostics\vp0207-paused-backing-20261023 and are not committed. Review remains pending the user's inspection of the same paused shot; PR #196 remains unmerged.
+## Advanced subtitle flashing and transparent edges — 2026-10-23
+
+User confirms the glyph-free rounded backing correction works. Reports fast picture flashing only with advanced subtitles; enabling Smooth Motion stops it on a display that cannot match source rate. Also reports thin dark edges around the transparent destination rectangle. Runtime snapshot saved locally at E:\codex\diagnostics\vp0207-advanced-flash-20261023\vp-snapshot.log.
+
+Investigation found non-temporal subtitle preparation shares the final renderer while disabling peak detection. libplacebo explicitly resets detected-peak history on such a pass, so new source frames and repeated output frames can start with different tone-mapping state. Isolating preparation in its own GPU renderer, with a real HDR regression. Transparent LayerOnly also pastes an opaque copy of the underlying picture; investigating actual glyph-only alpha to avoid independently color-managed picture edges. No active configuration edits.
