@@ -249,6 +249,34 @@ namespace VideoProcessorTest
             SamePicture(raw,ExtractActivePictureEvidence(source));
         }
 
+        TEST_METHOD(DenseVisibleExtentChecksBudgetBeforeReturningCompletedRetention)
+        {
+            const OwnedMeasurementFrame frame;
+            const auto source = frame.Source();
+            const auto raw = ExtractActivePictureEvidence(source);
+            const auto global = EvaluateActivePictureGlobalNearBlack(source);
+            const auto darkness = EvaluateActivePictureArDarkness(source,raw,global);
+            const auto expected = EvaluateActivePicturePresentationRetention(source,Scope());
+            Assert::IsTrue(expected.analysisValid && expected.excludedBandsPixelSafe);
+            // The old direct-sampling paths made only about 26 checkpoints and
+            // returned a completed proof. Forty reaches the first dense visible
+            // extent only when its actual pixel reads honor the shared budget.
+            CancellationClock clock{0,40};
+            AnalysisEvaluationBudget budget(&CancellationClock::Expired,&clock);
+            ActivePicturePresentationRetentionEvidence result;
+            RequireCancelled([&] {
+                result = EvaluateActivePicturePresentationRetention(
+                    source,Scope(),raw,global,darkness,&budget);
+            });
+            Assert::AreEqual(size_t{40},clock.calls);
+            Assert::IsFalse(result.analysisValid);
+            Assert::IsFalse(result.excludedBandsPixelSafe);
+            Assert::IsFalse(result.outwardVisibleBoundsAvailable);
+            Assert::IsFalse(result.CanRetainPresentation());
+            SameRetention(EvaluateActivePicturePresentationRetention(
+                source,Scope(),raw,global,darkness),expected);
+        }
+
         TEST_METHOD(SuppliedRetentionKeepsInvalidSourceAndBaseBehavior)
         {
             const OwnedMeasurementFrame frame;

@@ -213,6 +213,7 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 	constexpr int tolerance = 4;
 	const auto xAt = [&](int i) { return i * (source.width - 1) / (columns - 1); };
 	const auto sampleAt = [&](int x, int y, AnalysisLumaSample& value) {
+        samples.Checkpoint();
 		if (!source.Sample(x, y, value)) return false;
 		++samples.lumaSamples;
 		++samples.chromaSamples;
@@ -561,6 +562,7 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 		{
 			const int x=((i*2+1)*samples.source.width)/(kVisibleExtentLineSamples*2);
 			AnalysisLumaSample pixel;
+            samples.Checkpoint();
 			if (!samples.source.Sample(x,y,pixel)) return false;
 			++samples.lumaSamples; ++samples.chromaSamples;
 			const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512),
@@ -582,6 +584,7 @@ bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 {
 	if (samples.IsErasedOverlay(x, y) || samples.IsResidualOverlay(x, y)) return false;
 	AnalysisLumaSample sample;
+    samples.Checkpoint();
 	if (!samples.source.Sample(x, y, sample))
 		return false;
 	++samples.lumaSamples;
