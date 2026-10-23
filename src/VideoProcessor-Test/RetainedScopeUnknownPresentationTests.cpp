@@ -521,7 +521,7 @@ namespace Tests
                 Assert::IsTrue(input.confirmedFitOwnership.available);
                 const auto resolved=ResolveUncertainPicturePresentation(input,input.candidate);
                 AssertBounds(approved.bounds,resolved.presentation.sourceBounds);
-                const auto fill=ResolveFinalAspectLimitFill(ScreenFill(input,resolved));
+                const auto fill=EvaluateFinalAspectLimitFill(ScreenFill(input,resolved));
                 Assert::IsFalse(fill.applied,L"Aspect-limit fill must not crop measured bar content");
                 auto admission=input.previousAdmission;
                 const auto anchor=Submit(input,resolved.presentation,admission);
