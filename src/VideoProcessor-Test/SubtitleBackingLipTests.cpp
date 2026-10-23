@@ -560,14 +560,14 @@ public:
             Assert::IsFalse(cached.generatedCleanup.Valid());AssertGeometryExceptCleanup(base,cached);
         }
     }
-    TEST_METHOD(LipApplyCannotReplaceExistingCleanupOrCrossItsPhysicalBinding) {
+    TEST_METHOD(LipApplyCannotReplaceExistingCleanupOrLeaveEitherCurrentPicture) {
         Frame frame;frame.Lip(3);const auto cue=Acquire(frame);
         const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
         const auto base=Geometry(cue);Assert::IsTrue(proof.valid);
         for(int fault=0;fault<11;++fault) {
             auto g=base;auto p=proof;auto expected=Identity(2);
             if(fault==0)g.generatedCleanup={10,280,20,296};if(fault==1)g.cleanupLimit={0,280,640,296};
-            if(fault==2)g.valid=false;if(fault==3)++g.pictureBottom;if(fault==4)g.fromTopBar=!g.fromTopBar;
+            if(fault==2)g.valid=false;if(fault==3)--g.pictureBottom;if(fault==4)g.fromTopBar=!g.fromTopBar;
             if(fault==5)++expected.acceptedSequence;if(fault==6)++expected.analysisDomainKey;
             if(fault==7)p.valid=false;if(fault==8)p.cleanup.bottom=297;
             if(fault==9)++p.policyGeneration;if(fault==10)++p.continuityGeneration;
@@ -851,7 +851,7 @@ public:
                 // The unrelated edge mismatch is deliberately present in
                 // every fault, so it cannot bypass the cue-side or epoch gates.
                 if(top)--g.pictureBottom;else --g.pictureTop;
-                if(fault==0) {if(top)--g.pictureTop;else --g.pictureBottom;}
+                if(fault==0) {if(top)++g.pictureTop;else --g.pictureBottom;}
                 if(fault==1)g.pictureBottom=g.pictureTop;
                 if(fault==2)++expected.acceptedSequence;
                 if(fault==3)++expected.sourceFrameNumber;
