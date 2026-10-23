@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -50,3 +50,9 @@ User confirmed flashing improved. Off must zoom out only to the bounded union of
 - Updated the ongoing authorized test deployment: host and standard/beta renderers backed up together, replaced from the clean final Release build, and verified against build-record SHA-256 values. VP shut down gracefully and relaunched as PID 71692. Startup confirms clean host and renderer commit 81cc9853 and beta renderer selection.
 - Backup: `C:\Videoprocessor\vp\deployment-backups\vp0207-off-81cc9853-20261023-151454`. Configuration hashes unchanged before/after launch; no configuration edits. Receipt and startup evidence: `stories/assets/VP-0207/deployment-81cc9853-20261023`.
 - User confirmed flashing improvement and accepted existing advanced reconstruction behavior. Remains Review pending live confirmation of clarified Off bounded fitting. Not merged.
+
+## Clipped time-bar follow-up — 2026-10-23
+
+User reports scrub line/time labels still clipped while its preview thumbnail is visible; 16:9 comparison exposes the complete controls. User requests Off retain the bounded zoom-out for about two seconds, configurable in the UI as Hold zoom for. Advanced reconstruction remains accepted.
+
+Deployed 81cc9853 log, 15:22:25–26, sees lower overlay rows spanning 1806..2068 with peak 1760 samples. The bounding depth flips overlay_bottom from true to false although the UI is a thin line plus separated labels. This disqualifies current UI FIT ownership. Investigating actual occupied-row density rather than treating intervening black as picture. Current beta remains dfd34ea6.
