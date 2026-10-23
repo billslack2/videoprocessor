@@ -5,7 +5,7 @@
 Review
 
 Implementation is ready for code/build/test review in separate draft
-[PR #193](https://github.com/billslack2/videoprocessor/pull/193). Runtime source is
+[PR #193](https://github.com/billslack2/videoprocessor/pull/193). Standalone PR runtime source is
 `be23c69ffb41bf54d3e112f37692a607d593930b` (prepared-proof implementation
 `19767f74d5a6e7cfb2509abcf2a051227502c9a6`, followed by the reviewed guard
 avoiding unused full-raster retention priming). The discovered integration base
@@ -29,8 +29,11 @@ remains `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
   waiting when independent subtitle proof is accepted, reject stale GPU queries
   using actual issue age, and avoid no-consumer full-raster component priming.
 - Proposed decision: retain draft for live capture/GPU-pressure qualification;
-  do not merge/release based on synthetic CPU delivery timings alone. No
-  deployment or configuration changes were made for this story.
+  do not merge/release based on synthetic CPU delivery timings alone. The user
+  subsequently authorized local deployment; see the integration and receipt below.
+- Deployed on 2026-10-23 from clean x64 Release integration `24e0dd10`, retaining
+  all previously installed fixes. Configuration was unchanged; playback was not
+  started. PR193 and PR192 remain separate and unmerged.
 
 ## Objective
 
@@ -228,3 +231,44 @@ full renderer replay.
 - [Controlled result summary](../assets/VP-0205/proof-delivery/proof-delivery-results.json).
 - [Final Release source/binary hashes](../assets/VP-0205/validation/release-validation-final.json).
 - [Native test result summary](../assets/VP-0205/validation/native-validation.json).
+
+## User-authorized local deployment (2026-10-23)
+
+The user requested `deploy it`. The existing installation was clean source
+`e1996d67e42df7ee0ba63e2fc7577a43d132af48`, confirmed by prior deployment
+receipt, actual host/renderer hashes and startup identity. Standalone PR193 would
+remove installed asynchronous memory-backed logging, fullscreen activation and
+NVIDIA worker fixes. An isolated deployment integration preserves those features.
+
+- Deployment source: [`24e0dd10430e5140c06c1fa1bd106c9bbde61ef7`](https://github.com/billslack2/videoprocessor/commit/24e0dd10430e5140c06c1fa1bd106c9bbde61ef7).
+- Published recovery branch: `codex/vp-0205-deploy-20261023`;
+  worktree `E:\codex\videoprocessor\vp-0205-deploy-20261023`.
+- Started from freshly fetched current/default beta `f7c7a820`; first local merge
+  `4d199e23` retains the installed e199 tree exactly, then integrates PR193 `a23c2118`.
+  This deployment branch leaves both GitHub PRs separate, draft and unmerged.
+- Threading and principal reviews resolved renderer/caption integration, retained
+  exact installed GUI/logger/NVIDIA/cache sources and exact new proof helpers,
+  and verified union project registrations without missing/duplicate entries.
+- Clean full x64 Release solution Rebuild passed; **348/348 focused integration
+  regressions passed**, covering retained logging/focus/NVIDIA/cache behavior and
+  new proof, cancellation, caption, phase/GPU-age/admission/worker contracts.
+  All three x64 binaries contain the full UTF-16 source commit identity; genuine
+  Release runtime records match their binary hashes. All18 dependency DLLs already
+  match the installed files and require no replacement.
+- Deployed matching `VideoProcessor.exe`, standard renderer, beta renderer and
+  their three genuine runtime records to `C:\Videoprocessor\vp`. All6 replaced
+  files were backed up and hash-verified before writing. The transaction held the
+  updater's gate and exclusive handles; copied hashes and independent subsequent
+  verification match the build. Rollback support was prepared but not needed.
+- Backup: `C:\Videoprocessor\vp\backup-vp0205-24e0dd10-20261023-114702-242`.
+- Configuration edits: **none**. Existing configuration/state/manifest hashes were
+  unchanged. No source-example settings, dependencies, Config binaries, shader
+  cache or LUTs were copied. Playback was stopped and remains stopped; no new
+  startup/capture or live adoption/GPU-pressure result is claimed.
+
+[Deployment receipt](../assets/VP-0205/deployment-24e0dd10/deployment-receipt.json),
+[build and binary identity](../assets/VP-0205/deployment-24e0dd10/validated-build.json),
+[independent integration audit](../assets/VP-0205/deployment-24e0dd10/integration-review.json),
+and [byte-hashed build/test/transaction evidence](../assets/VP-0205/deployment-24e0dd10/evidence-manifest.json)
+are preserved. Review/live qualification criteria remain open; deployment alone
+is not acceptance, a merge, or a public release.

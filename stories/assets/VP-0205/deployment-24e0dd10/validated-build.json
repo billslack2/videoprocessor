@@ -1,0 +1,68 @@
+{
+  "sourceCommit": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "branch": "codex/vp-0205-deploy-20261023",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLogSha256": "3FBE8A43DD10820AA9D63C1884C6409F34FB12FFAC4A240E8F8C3BCF015A00C8",
+  "testsPassed": 348,
+  "testsFailed": 0,
+  "testCounters": {
+    "total": "348",
+    "executed": "348",
+    "passed": "348",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "testResultSha256": "D9C1AD7652EC7F9EF2091FA113590C6935953441C15970F9D1547060997DFAAE",
+  "files": [
+    {
+      "source": "x64/Release/VideoProcessor-GUI.exe",
+      "target": "VideoProcessor.exe",
+      "sha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80",
+      "bytes": 3074560
+    },
+    {
+      "source": "x64/Release/VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor.exe.runtime.json",
+      "sha256": "0D2ECF30FC0283E497B556154B37FEC75D25AF228D447323CC78305E308BF3FF",
+      "bytes": 220
+    },
+    {
+      "source": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99",
+      "bytes": 2525696
+    },
+    {
+      "source": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "F8558E66805D22205C7044E00690AA0BE486AF990E306F261DA25C45FC0FCDB9",
+      "bytes": 220
+    },
+    {
+      "source": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE",
+      "bytes": 2525184
+    },
+    {
+      "source": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "F2BF3516F1063DA67038C0FA6E800E20D2298D3037F2604494D98CB290708EED",
+      "bytes": 220
+    }
+  ],
+  "sourceIdentityEmbeddedInAllThreeBinaries": "Verified full UTF-16LE commit identity"
+}

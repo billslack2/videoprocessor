@@ -1,0 +1,308 @@
+{
+  "head": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "expected_head": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "head_matches": true,
+  "tracked_status": "",
+  "installed": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "feature": "a23c211877685fbe31223c9d9c246ccf3bea008f",
+  "retained_source": [
+    {
+      "path": "src/VideoProcessor-Lib/DebugLog.h",
+      "installed_blob": "c4ceb46a5f832f84e0a7919b5bad36a284a63c6e",
+      "head_blob": "c4ceb46a5f832f84e0a7919b5bad36a284a63c6e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/DebugLogAsync.h",
+      "installed_blob": "0570bcdf843a2a6b0b2ced99b78774cb61690299",
+      "head_blob": "0570bcdf843a2a6b0b2ced99b78774cb61690299",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/FullscreenActivation.h",
+      "installed_blob": "632ad43870f6be02cacc1831f12cd7ea5f4f37ba",
+      "head_blob": "632ad43870f6be02cacc1831f12cd7ea5f4f37ba",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/StartupPresentationReadiness.h",
+      "installed_blob": "7df2dd3600a1bb392cf0fb9dc5e4d03dbc8a2aa8",
+      "head_blob": "7df2dd3600a1bb392cf0fb9dc5e4d03dbc8a2aa8",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/ActivePictureMeasurementCache.h",
+      "installed_blob": "9e0f94b3a56d469133dd14a08ae24e7c3e4376e8",
+      "head_blob": "9e0f94b3a56d469133dd14a08ae24e7c3e4376e8",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalController.h",
+      "installed_blob": "4b5ecc03ef83a8586eec94202e8a6d480d3e9e3d",
+      "head_blob": "4b5ecc03ef83a8586eec94202e8a6d480d3e9e3d",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalWorker.h",
+      "installed_blob": "e7abb6947904e1a3f6b3ddca4db16dac26d4f5e6",
+      "head_blob": "e7abb6947904e1a3f6b3ddca4db16dac26d4f5e6",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/NvidiaBt2020Reporter.h",
+      "installed_blob": "81e9b8e8acd728c4605d282db0a96fc2bd50d5d4",
+      "head_blob": "81e9b8e8acd728c4605d282db0a96fc2bd50d5d4",
+      "equal": true
+    }
+  ],
+  "feature_files": [
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PreparedPictureEvidence.h",
+      "feature_blob": "a6d542f29b9c0aa83d3b3e8a0fcd4ce17120d873",
+      "head_blob": "a6d542f29b9c0aa83d3b3e8a0fcd4ce17120d873",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PreparedOutwardWindow.h",
+      "feature_blob": "ff96a6b2a0a5c8dbd654ee327e0449ef4d5ed55b",
+      "head_blob": "ff96a6b2a0a5c8dbd654ee327e0449ef4d5ed55b",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/LookaheadPerformanceWindow.h",
+      "feature_blob": "76c77e54e7184324812d4708e7a9af9df3729704",
+      "head_blob": "76c77e54e7184324812d4708e7a9af9df3729704",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PresentationAnalysisBudget.h",
+      "feature_blob": "7afc838d3e2d9496f5a13f3eaf259c1f9a75a34e",
+      "head_blob": "7afc838d3e2d9496f5a13f3eaf259c1f9a75a34e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaD3D11FrameGpuTimer.h",
+      "feature_blob": "1390707a544e8193b6f8dac15fd7d2dcc961495e",
+      "head_blob": "1390707a544e8193b6f8dac15fd7d2dcc961495e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaQueuePolicy.h",
+      "feature_blob": "69510d0abe3f1edc1d2d5f01c784849e87636d75",
+      "head_blob": "69510d0abe3f1edc1d2d5f01c784849e87636d75",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/OptionalAnalysisWorker.h",
+      "feature_blob": "686dc73b9144c872391b9316f5d8d77a4273d3e4",
+      "head_blob": "686dc73b9144c872391b9316f5d8d77a4273d3e4",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/PreparedPictureEvidenceTests.cpp",
+      "feature_blob": "bcc67e354a73bd84f8358f2a2198c0d4a0d3367b",
+      "head_blob": "bcc67e354a73bd84f8358f2a2198c0d4a0d3367b",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
+      "feature_blob": "21b6d95184c3d6c759ecab3294a4f1671fe8fd4a",
+      "head_blob": "21b6d95184c3d6c759ecab3294a4f1671fe8fd4a",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/LookaheadPerformanceWindowTests.cpp",
+      "feature_blob": "9e28531305f02e55b9d6cf25747af764c05bdddc",
+      "head_blob": "9e28531305f02e55b9d6cf25747af764c05bdddc",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "feature_blob": "7c48b73038015d3e8bb24890fda67406e6a0ecae",
+      "head_blob": "7c48b73038015d3e8bb24890fda67406e6a0ecae",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
+      "feature_blob": "e7a131462c17297013dfec7480f890cadbdc0feb",
+      "head_blob": "e7a131462c17297013dfec7480f890cadbdc0feb",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "feature_blob": "a6f57be45d70766c86f60dea8d8b0fcc68a02f4f",
+      "head_blob": "a6f57be45d70766c86f60dea8d8b0fcc68a02f4f",
+      "equal": true
+    }
+  ],
+  "project_registration": [
+    {
+      "path": "src/VideoProcessor-Lib/VideoProcessor-Lib.vcxproj",
+      "missing_installed": [],
+      "missing_feature": [],
+      "duplicates": {}
+    },
+    {
+      "path": "src/VideoProcessor-Lib/VideoProcessor-Lib.vcxproj.filters",
+      "missing_installed": [],
+      "missing_feature": [],
+      "duplicates": {}
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj",
+      "missing_installed": [],
+      "missing_feature": [],
+      "duplicates": {}
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters",
+      "missing_installed": [],
+      "missing_feature": [],
+      "duplicates": {}
+    }
+  ],
+  "test_inventory": {
+    "DebugLogAsyncTests.cpp": {
+      "classes": [
+        "DebugLogAsyncTests"
+      ],
+      "methods": 17
+    },
+    "DebugLogRetentionTests.cpp": {
+      "classes": [
+        "DebugLogRetentionTests"
+      ],
+      "methods": 14
+    },
+    "FullscreenActivationTests.cpp": {
+      "classes": [
+        "FullscreenActivationTests"
+      ],
+      "methods": 10
+    },
+    "StartupPresentationReadinessTests.cpp": {
+      "classes": [
+        "StartupPresentationReadinessTests"
+      ],
+      "methods": 16
+    },
+    "Bt2020SignalControllerTests.cpp": {
+      "classes": [
+        "Bt2020SignalControllerTests"
+      ],
+      "methods": 19,
+      "coverage": "Includes six controlled slow-read/write, stale generation, retirement and shutdown worker regressions; reporter/worker implementation source is byte-identical to installed baseline."
+    },
+    "ActivePictureMeasurementCacheTests.cpp": {
+      "classes": [
+        "ActivePictureMeasurementCacheTests"
+      ],
+      "methods": 15
+    },
+    "PreparedPictureEvidenceTests.cpp": {
+      "classes": [
+        "PreparedPictureEvidenceTests"
+      ],
+      "methods": 12
+    },
+    "PreparedOutwardWindowTests.cpp": {
+      "classes": [
+        "PreparedOutwardWindowTests"
+      ],
+      "methods": 8
+    },
+    "LookaheadPerformanceWindowTests.cpp": {
+      "classes": [
+        "LookaheadPerformanceWindowTests"
+      ],
+      "methods": 10
+    },
+    "OptionalAnalysisWorkerTests.cpp": {
+      "classes": [
+        "OptionalAnalysisWorkerTests"
+      ],
+      "methods": 8
+    },
+    "AnalysisEvaluationBudgetTests.cpp": {
+      "classes": [
+        "AnalysisEvaluationBudgetTests"
+      ],
+      "methods": 8
+    },
+    "InwardCaptionEvidenceTests.cpp": {
+      "classes": [
+        "InwardCaptionEvidenceTests"
+      ],
+      "methods": 17
+    },
+    "AlphaQueuePolicyTests.cpp": {
+      "classes": [
+        "AlphaQueuePolicyTests"
+      ],
+      "methods": 29
+    },
+    "LookaheadOutwardProofTests.cpp": {
+      "classes": [
+        "LookaheadOutwardProofTests",
+        "AsyncOutwardWindowSafetyTests",
+        "GradualPictureBoundaryRetentionTests"
+      ],
+      "methods": 40
+    },
+    "RememberedEdgeReturnTests.cpp": {
+      "classes": [
+        "RememberedEdgeProfileTests",
+        "RememberedEdgeQualificationTests",
+        "RememberedEdgeRuntimeTests",
+        "RememberedEdgePresentationPolicyTests",
+        "RememberedRuntimeModeTests"
+      ],
+      "methods": 98
+    }
+  },
+  "additional_budget_methods": [
+    "OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock",
+    "OptionalAnalysisTargetsOnlyReachableDisplayBoundary",
+    "AdaptiveAnalysisAllowanceUsesActualDisplayPeriodForEachCadence",
+    "NewSourceReserveAndReachabilitySurviveManyCheapRepeatedOutputs",
+    "RecentMandatoryTailIsRetainedThenAgesOutByWallTime",
+    "CostlyRepeatedOutputRaisesTailWithoutReplacingNewSourceCost",
+    "GenerationFrequencyAndBackwardClockResetMandatoryHistory",
+    "UnknownNewSourceCostAndInvalidSamplesCannotFundUnboundedWork",
+    "OldNewSourceCostCannotBeRenewedIndefinitelyByOnlyRepeats",
+    "AdaptiveExpansionRequiresRecentResolvedGpuTiming",
+    "HighGpuCostCannotBorrowNearlyWholeDisplayIntervalFromLowCpuCost",
+    "GpuTailAgesIndependentlyOfFreshCpuSamples",
+    "GpuObservationsCannotInitializeEpochOrAdmitOldGenerationAndClock",
+    "KnownCpuAndGpuCostsStillPermitUsefulFilmCadenceLookahead",
+    "CheapRepeatCpuAndGpuSamplesDoNotEraseNewSourceUploadTail",
+    "DelayedCheapGpuQueryCannotNewlyQualifyAdaptiveAllowance",
+    "GpuConfidenceExpiresFromIssueRatherThanResolutionTime",
+    "GpuFreshnessHorizonUsesActualDisplayPeriod",
+    "UnqualifiedFutureOrInvalidGpuIssueCannotRenewConfidence",
+    "StaleGpuTailCannotMoveOtherwiseReachableBoundary",
+    "OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan",
+    "AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval",
+    "AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently",
+    "OptionalWorkerFailureIsVisibleWithoutInventingEvidence",
+    "OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames",
+    "PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership",
+    "ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource"
+  ],
+  "suggested_vstest_filter": "FullyQualifiedName~ActivePictureMeasurementCacheTests|FullyQualifiedName~AlphaQueuePolicyTests|FullyQualifiedName~AnalysisEvaluationBudgetTests|FullyQualifiedName~AsyncOutwardWindowSafetyTests|FullyQualifiedName~Bt2020SignalControllerTests|FullyQualifiedName~DebugLogAsyncTests|FullyQualifiedName~DebugLogRetentionTests|FullyQualifiedName~FullscreenActivationTests|FullyQualifiedName~GradualPictureBoundaryRetentionTests|FullyQualifiedName~InwardCaptionEvidenceTests|FullyQualifiedName~LookaheadOutwardProofTests|FullyQualifiedName~LookaheadPerformanceWindowTests|FullyQualifiedName~OptionalAnalysisWorkerTests|FullyQualifiedName~PreparedOutwardWindowTests|FullyQualifiedName~PreparedPictureEvidenceTests|FullyQualifiedName~RememberedEdgePresentationPolicyTests|FullyQualifiedName~RememberedEdgeProfileTests|FullyQualifiedName~RememberedEdgeQualificationTests|FullyQualifiedName~RememberedEdgeRuntimeTests|FullyQualifiedName~RememberedRuntimeModeTests|FullyQualifiedName~StartupPresentationReadinessTests|FullyQualifiedName~OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock|FullyQualifiedName~OptionalAnalysisTargetsOnlyReachableDisplayBoundary|FullyQualifiedName~AdaptiveAnalysisAllowanceUsesActualDisplayPeriodForEachCadence|FullyQualifiedName~NewSourceReserveAndReachabilitySurviveManyCheapRepeatedOutputs|FullyQualifiedName~RecentMandatoryTailIsRetainedThenAgesOutByWallTime|FullyQualifiedName~CostlyRepeatedOutputRaisesTailWithoutReplacingNewSourceCost|FullyQualifiedName~GenerationFrequencyAndBackwardClockResetMandatoryHistory|FullyQualifiedName~UnknownNewSourceCostAndInvalidSamplesCannotFundUnboundedWork|FullyQualifiedName~OldNewSourceCostCannotBeRenewedIndefinitelyByOnlyRepeats|FullyQualifiedName~AdaptiveExpansionRequiresRecentResolvedGpuTiming|FullyQualifiedName~HighGpuCostCannotBorrowNearlyWholeDisplayIntervalFromLowCpuCost|FullyQualifiedName~GpuTailAgesIndependentlyOfFreshCpuSamples|FullyQualifiedName~GpuObservationsCannotInitializeEpochOrAdmitOldGenerationAndClock|FullyQualifiedName~KnownCpuAndGpuCostsStillPermitUsefulFilmCadenceLookahead|FullyQualifiedName~CheapRepeatCpuAndGpuSamplesDoNotEraseNewSourceUploadTail|FullyQualifiedName~DelayedCheapGpuQueryCannotNewlyQualifyAdaptiveAllowance|FullyQualifiedName~GpuConfidenceExpiresFromIssueRatherThanResolutionTime|FullyQualifiedName~GpuFreshnessHorizonUsesActualDisplayPeriod|FullyQualifiedName~UnqualifiedFutureOrInvalidGpuIssueCannotRenewConfidence|FullyQualifiedName~StaleGpuTailCannotMoveOtherwiseReachableBoundary|FullyQualifiedName~OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan|FullyQualifiedName~AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval|FullyQualifiedName~AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently|FullyQualifiedName~OptionalWorkerFailureIsVisibleWithoutInventingEvidence|FullyQualifiedName~OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames|FullyQualifiedName~PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership|FullyQualifiedName~ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource",
+  "limits": [
+    "Source and project audit only; no build or test launched.",
+    "Renderer merge separately reviewed by threading architect; this checks retained source and feature helper parity.",
+    "The selected filter excludes the standalone heavy GPU shader/subtitle suite already reported passing.",
+    "Suggested selected method count is a source count; VSTest must report actual discovered/pass counts. No tests launched by reviewer."
+  ],
+  "retained_gui_tree": {
+    "path": "src/VideoProcessor-GUI",
+    "installed_tree": "8432aa73c1ff22d4680553fa3acbc017e78d7ce3",
+    "head_tree": "8432aa73c1ff22d4680553fa3acbc017e78d7ce3",
+    "equal": true,
+    "coverage": "Entire GUI subtree including VideoProcessorDlg, fullscreen/windowed windows, startup/focus integration, resources and project registration."
+  },
+  "suggested_method_count": 348,
+  "source_audit_pass": true
+}

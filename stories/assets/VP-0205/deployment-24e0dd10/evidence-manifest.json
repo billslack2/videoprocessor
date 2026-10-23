@@ -1,0 +1,49 @@
+{
+  "sourceCommit": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "featureCommit": "a23c211877685fbe31223c9d9c246ccf3bea008f",
+  "retainedInstalledSource": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "branch": "codex/vp-0205-deploy-20261023",
+  "scope": "User-authorized local deployment preserving installed fixes; neither PR merged; no playback launch/config edits.",
+  "files": [
+    {
+      "path": "deploy-verified-runtime.ps1",
+      "bytes": 5910,
+      "sha256": "8e956bba50700d035d1b0d8c220aa5bba855db630a2afe3b0641cea0a120797d"
+    },
+    {
+      "path": "deployment-receipt.json",
+      "bytes": 4306,
+      "sha256": "7b4a28dba2dd90b140e59b39e5c1331ae042313d198d620c5acd120c7f577c2d"
+    },
+    {
+      "path": "integrated-regressions.log",
+      "bytes": 33649,
+      "sha256": "b5e9b85f556463f8d1d3fadf05901dffa77fbebabd64a7a18084feceb5c43390"
+    },
+    {
+      "path": "integrated-regressions.trx",
+      "bytes": 471831,
+      "sha256": "d9c1ad7652ec7f9ef2091fa113590c6935953441c15970f9d1547060997dfaae"
+    },
+    {
+      "path": "integrated-release-build.log",
+      "bytes": 54686,
+      "sha256": "3fbe8a43dd10820aa9d63c1884c6409f34fb12ffac4a240e8f8c3bcf015a00c8"
+    },
+    {
+      "path": "integration-review.json",
+      "bytes": 14484,
+      "sha256": "015c10743cc6f7b1c69f3c89513b8dc37863de0c5b6af05fc27a4d2f1377f796"
+    },
+    {
+      "path": "predeployment-snapshot.json",
+      "bytes": 4050,
+      "sha256": "a8d84ce630c2983d0e26124df77904e5ffb501e6ac8d9050839212b22a8e526d"
+    },
+    {
+      "path": "validated-build.json",
+      "bytes": 2488,
+      "sha256": "27cf387ed89bba22a291eef59dec8278224646ebfba90b269bf4f8d13b65bb82"
+    }
+  ]
+}

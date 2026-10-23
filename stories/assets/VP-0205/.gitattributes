@@ -1,3 +1,4 @@
 # Preserve hashed evidence bytes, including captured CRLF and log spacing.
 proof-delivery/** -text -whitespace
 validation/** -text -whitespace
+deployment-24e0dd10/** -text -whitespace
