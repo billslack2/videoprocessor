@@ -4562,7 +4562,11 @@ struct LibplaceboVideoRenderer::Impl
 	bool hasSweepOverlayPlacement = false;
 	NativeStatsOverlayPlacement::Result lastProfileOverlayPlacement;
 	bool hasProfileOverlayPlacement = false;
-	pl_custom_lut* displayLut = nullptr;
+    LibplaceboDisplayLut::AppliedCache displayLutCache;
+    LibplaceboDisplayLut::AppliedCache::Snapshot displayLutSnapshot;
+	pl_custom_lut* displayLut = nullptr; // Nonowning alias of displayLutSnapshot.
+    std::atomic<uint64_t> displayLutApplyRequested{ 0 };
+    uint64_t displayLutApplyConsumed = 0; // Render owner only.
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
 	std::string displayLutStatus = "Disabled";
@@ -4577,10 +4581,6 @@ struct LibplaceboVideoRenderer::Impl
     bool calibrationStatusAvailable = false;
     LibplaceboOutput::SdrTransfer lastRenderedTargetTransfer = LibplaceboOutput::SdrTransfer::UNKNOWN;
     bool calibrationLutAttached = false;
-	bool displayLutObservedAvailable = false;
-	uint64_t displayLutObservedBytes = 0;
-	uint64_t displayLutObservedWriteTime = 0;
-	uint64_t displayLutNextVersionCheckTick = 0;
 	bool displayCalibrationContractLogged = false;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	std::map<std::string, std::unique_ptr<pl_dovi_metadata>> doviMetadataCache;
@@ -5407,7 +5407,9 @@ struct LibplaceboVideoRenderer::Impl
             subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
 			temporalRenderer.Clear();
             pl_renderer_destroy(&renderer);
-			pl_lut_free(&displayLut);
+			displayLut = nullptr;
+            displayLutSnapshot.reset();
+            displayLutCache.Clear();
 			if (d3d11)
 			{
 				pl_tex_destroy(d3d11->gpu, &subtitleBoxTexture);
@@ -7907,7 +7909,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void DetachDisplayLut(const std::string& status)
 	{
-		pl_lut_free(&displayLut);
+        displayLut = nullptr;
+        displayLutSnapshot.reset();
 		displayLutParsed = false;
 		SetDisplayLutStatus(status);
 	}
@@ -7968,15 +7971,8 @@ struct LibplaceboVideoRenderer::Impl
                 displayLutInputTransfer, displayLutConstrainedBaseDirectory } ==
             LibplaceboCalibrationLut::Contract{ candidatePath, candidateTarget,
                 candidateInput, candidateBase };
-		const LibplaceboDisplayLut::LoadResult result =
-			LibplaceboDisplayLut::Load(log, candidatePath, candidateBase);
-		// Acknowledge exactly the file handle version that was parsed. A second
-		// path probe here could observe a writer's later completed replacement and
-		// accidentally suppress the retry that validates those final bytes.
-		displayLutObservedAvailable = result.fileVersion.available;
-		displayLutObservedBytes = result.fileVersion.fileBytes;
-		displayLutObservedWriteTime = result.fileVersion.fileWriteTime;
-		displayLutNextVersionCheckTick = GetTickCount64() + 1000;
+        const auto candidate = displayLutCache.Get(log, candidatePath, candidateBase);
+        const auto& result = candidate->result;
 
 		if (result.status != LibplaceboDisplayLut::Status::ACTIVE)
 		{
@@ -8006,42 +8002,42 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-		pl_custom_lut* previous = displayLut;
+		displayLutSnapshot = candidate;
 		displayLut = result.lut;
 		displayLutParsed = true;
 		displayLutPath = candidatePath;
 		displayLutTarget = candidateTarget;
             displayLutInputTransfer = candidateInput;
 		displayLutConstrainedBaseDirectory = candidateBase;
-		pl_lut_free(&previous);
 		DebugLog::Log(
-			"display calibration LUT parsed: file=%s target=%s dimensions=%d^3 bytes=%zu signature=%016llX stage=post-DTM/gamma-before-range",
+			"display calibration LUT selected: file=%s target=%s dimensions=%d^3 bytes=%zu signature=%016llX stage=post-DTM/gamma-before-range",
 			displayLutPath.c_str(), displayLutTarget.c_str(),
 			displayLut->size[0], result.fileBytes,
 			static_cast<unsigned long long>(displayLut->signature));
 		SetDisplayLutStatus("Loaded");
 	}
 
-	void MaybeReloadDisplayLut()
-	{
-		if (displayLutPath.empty() || !activeSettings.calibrationLutEnabled)
-			return;
-		const uint64_t now = GetTickCount64();
-		if (now < displayLutNextVersionCheckTick)
-			return;
-		displayLutNextVersionCheckTick = now + 1000;
-		const LibplaceboDisplayLut::FileVersion observed =
-			LibplaceboDisplayLut::ProbeFileVersion(displayLutPath);
-		const LibplaceboDisplayLut::FileVersion acknowledged{
-			displayLutObservedAvailable, displayLutObservedBytes,
-			displayLutObservedWriteTime };
-		if (LibplaceboDisplayLut::SameFileVersion(observed, acknowledged))
-			return;
-		DebugLog::Log(
-			"display calibration LUT file changed in place: file=%s; validating transactional reload",
-			displayLutPath.c_str());
-		LoadDisplayLut(activeSettings, true);
-	}
+    void ApplyPendingDisplayLutReloadLocked()
+    {
+        // Capture once. An Apply arriving during I/O must remain pending.
+        const uint64_t requested = displayLutApplyRequested.load(std::memory_order_acquire);
+        if (requested == displayLutApplyConsumed) return;
+        const auto started = SteadyClock::now();
+        // Active rendering retains its own shared snapshot while the cache is
+        // refreshed. Cache failures too: fixing a file alone never retries it.
+        displayLutCache.Clear();
+        LoadDisplayLut(activeSettings, true);
+        ConfigureRenderParams(activeSettings, "explicit calibration LUT Apply");
+        displayCalibrationContractLogged = false;
+        renderLoadMeter.ResetForPipelineChange();
+        coreRenderLoadMeter.ResetForPipelineChange();
+        originalPrRenderLoadMeter.ResetForPipelineChange();
+        displayLutApplyConsumed = requested;
+        DebugLog::Log("display calibration LUT explicit Apply: request=%llu elapsed_ms=%.3f status=%s",
+            static_cast<unsigned long long>(requested),
+            std::chrono::duration<double, std::milli>(SteadyClock::now() - started).count(),
+            displayLutStatus.c_str());
+    }
 
 	void RejectDisplayLutAfterRenderFailure()
 	{
@@ -8053,7 +8049,9 @@ struct LibplaceboVideoRenderer::Impl
 			displayLutPath.c_str());
 		SetDisplayLutStatus("Rejected: render error");
 		displayLutParsed = false;
-		pl_lut_free(&displayLut);
+        displayLutCache.RejectRender(displayLutPath, displayLutConstrainedBaseDirectory);
+        displayLut = nullptr;
+        displayLutSnapshot.reset();
 	}
 
 	void ConfigureDisplayLutForTarget(struct pl_frame& target)
@@ -13440,7 +13438,6 @@ struct LibplaceboVideoRenderer::Impl
 				actualOutput.targetTransfer);
         // Resolve the active LUT before interpreting SDR. Missing/disabled LUTs
         // always fall back to physical display encoding, never a stale LUT domain.
-        MaybeReloadDisplayLut();
         const auto calibrationTransfer = LibplaceboOutput::ResolveCalibrationTransfers(
             state.eotf == EOTF::SDR, actualOutput.safeToRender, displayLutParsed && displayLut,
             sdrAdjustGamma, LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
@@ -20627,6 +20624,12 @@ bool LibplaceboVideoRenderer::GetRenderStallStatus(
 }
 
 
+void LibplaceboVideoRenderer::RequestCalibrationLutReload()
+{
+    if (m_impl)
+        m_impl->displayLutApplyRequested.fetch_add(1, std::memory_order_release);
+}
+
 bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,
@@ -23960,6 +23963,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 m_impl->displayRefreshRate.ObserveOutputRaster(m_videoHwnd);
 			}
 			m_impl->ApplyPendingProfileSettingsLocked();
+            m_impl->ApplyPendingDisplayLutReloadLocked();
             RefreshOsdCacheLocked();
 			ApplyPendingShaderSelectionLocked();
             // Query the same immutable queued analysis interpretation used by

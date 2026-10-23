@@ -3205,6 +3205,9 @@ bool CVideoProcessorDlg::ApplySavedConfiguration(bool alreadyStaged)
 {
 	if (!alreadyStaged && !StageSavedConfiguration("editor-apply", false))
 		return false;
+    // Preserve explicit intent before publication clears the staging fields.
+    const bool reloadCalibrationLut = m_stagedEditorApply;
+    const auto acceptedAction = m_stagedConfigurationAction;
 	// The target is read when a fullscreen host is created, so publish an
 	// accepted monitor change before any renderer transition. This preserves the
 	// current presentation state while making the next fullscreen entry use the
@@ -3257,6 +3260,10 @@ bool CVideoProcessorDlg::ApplySavedConfiguration(bool alreadyStaged)
 		ClearStagedConfiguration();
 		break;
 	}
+    if (reloadCalibrationLut && m_videoRenderer &&
+        acceptedAction != ConfigurationApplyPolicy::Action::RestartRenderer &&
+        acceptedAction != ConfigurationApplyPolicy::Action::RestartCapture)
+        m_videoRenderer->RequestCalibrationLutReload();
 	return true;
 }
 

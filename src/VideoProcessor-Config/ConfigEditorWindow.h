@@ -79,6 +79,7 @@ public:
         const QString& renderer, const QString& color, bool hdrSource = false);
     void setRendererDiscoveryForTesting(const QStringList& allRenderers,
         const QStringList& filteredRenderers);
+    void setApplyNotificationEventForTesting(const QString& eventName);
 
 protected:
     bool event(QEvent* event) override;
@@ -270,6 +271,7 @@ private:
     bool returnFocusAfterHide_ = false;
     bool exitRequested_ = false;
     bool updateExitPending_ = false;
+    QString applyNotificationEventForTesting_;
     bool configurationLoaded_ = false;
     bool dirty_ = false;
     bool validationValid_ = true;

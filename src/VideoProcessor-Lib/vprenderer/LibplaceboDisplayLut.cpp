@@ -257,7 +257,7 @@ namespace LibplaceboDisplayLut
 			}
 			// The content handle denies concurrent writers. A replace-by-rename is
 			// permitted, but it leaves this handle on a stable old file and will be
-			// discovered by the caller's next path probe.
+			// read only on the next explicit Apply or fresh initialization.
 			if (!SameFileVersion(result.fileVersion,
 				ProbeHandleVersion(input.Get())))
 			{
@@ -323,6 +323,33 @@ namespace LibplaceboDisplayLut
 		return result;
 	}
 
+    AppliedCache::Snapshot AppliedCache::Get(pl_log log, const std::string& path,
+        const std::string& constrainedBaseDirectory)
+    {
+        const Key key{ path, constrainedBaseDirectory };
+        const auto found = entries_.find(key);
+        if (found != entries_.end()) return found->second;
+        auto entry = std::make_shared<Entry>();
+        entry->result = Load(log, path, constrainedBaseDirectory);
+        entry->owner = std::shared_ptr<pl_custom_lut>(entry->result.lut,
+            [](pl_custom_lut* lut) { pl_lut_free(&lut); });
+        entries_.emplace(key, entry);
+        return entry;
+    }
+
+    void AppliedCache::RejectRender(const std::string& path,
+        const std::string& constrainedBaseDirectory)
+    {
+        const Key key{ path, constrainedBaseDirectory };
+        auto rejected = std::make_shared<Entry>();
+        const auto found = entries_.find(key);
+        if (found != entries_.end()) rejected->result = found->second->result;
+        rejected->result.lut = nullptr;
+        rejected->result.status = Status::REJECTED;
+        rejected->result.rejection = Rejection::RENDER_FAILED;
+        entries_[key] = std::move(rejected);
+    }
+
 	const char* ShortReason(Rejection rejection)
 	{
 		switch (rejection)
@@ -336,6 +363,7 @@ namespace LibplaceboDisplayLut
 		case Rejection::ONE_DIMENSIONAL: return "1D not supported";
 		case Rejection::UNSUPPORTED_DOMAIN: return "non-default domain";
 		case Rejection::UNSAFE_DIMENSIONS: return "unsupported size";
+		case Rejection::RENDER_FAILED: return "render error";
 		default: return "";
 		}
 	}

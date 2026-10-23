@@ -516,6 +516,11 @@ CString LibplaceboPluginVideoRenderer::ActiveShaderRule() const
 }
 
 
+void LibplaceboPluginVideoRenderer::RequestCalibrationLutReload()
+{
+    if (m_renderer) m_renderer->RequestCalibrationLutReload();
+}
+
 bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,

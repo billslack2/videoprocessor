@@ -614,6 +614,10 @@ public:
 	// CPU-only: restore normal subtitle handling even while a GPU reset is busy.
 	virtual void ResetSubtitlePreviewMode() {}
 
+    // Explicit Config Apply only. CPU-only publication; the render owner reloads
+    // calibration resources at its next safe point. Other backends ignore it.
+    virtual void RequestCalibrationLutReload() {}
+
 	virtual bool GetDolbyVisionLuminanceStatus(DolbyVisionLuminanceStatus& status) const
 	{
 		status = {};

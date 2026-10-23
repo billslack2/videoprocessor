@@ -3571,7 +3571,7 @@ bool ConfigEditorWindow::updateValidationState()
     if (saveButton_)
         saveButton_->setEnabled(configurationLoaded_ && valid);
     if (applyButton_)
-        applyButton_->setEnabled(configurationLoaded_ && dirty_ && valid);
+        applyButton_->setEnabled(configurationLoaded_ && valid);
     if (!valid)
     {
         int latest = 0;
@@ -3772,12 +3772,13 @@ bool ConfigEditorWindow::hasActiveOwnedPopup() const
 bool ConfigEditorWindow::notifyVideoProcessor()
 {
 	if (remoteClient_) return false;
-    // Test-mode editors represent the normal VP-absent standalone case. This
-    // also prevents a UI test from disturbing a developer's running VP.
-    if (testMode_) return false;
+    // Tests may notify only their own isolated event, never a running VP.
+    if (testMode_ && applyNotificationEventForTesting_.isEmpty()) return false;
+    const std::wstring testEventName = applyNotificationEventForTesting_.toStdWString();
+    const wchar_t* eventName = testMode_ ? testEventName.c_str() :
+        ConfigurationLiveApply::ChangedEventName;
     SetLastError(ERROR_SUCCESS);
-    HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
-        ConfigurationLiveApply::ChangedEventName);
+    HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE, eventName);
     if (!changedEvent) return false;
     const bool videoProcessorWasListening = GetLastError() == ERROR_ALREADY_EXISTS;
     const bool signaled = videoProcessorWasListening && SetEvent(changedEvent) != FALSE;
@@ -3785,10 +3786,47 @@ bool ConfigEditorWindow::notifyVideoProcessor()
     return signaled;
 }
 
+void ConfigEditorWindow::setApplyNotificationEventForTesting(const QString& eventName)
+{
+    if (testMode_) applyNotificationEventForTesting_ = eventName;
+}
+
 void ConfigEditorWindow::applyChanges()
 {
-    if (!dirty_) return;
-    saveChanges();
+    if (!configurationLoaded_ || !document_) return;
+    if (dirty_)
+    {
+        saveChanges();
+        return;
+    }
+
+    // Apply is also the explicit boundary for external calibration LUT edits.
+    // A clean document must not be rewritten merely to request that reload.
+    std::wstring error;
+    if (!validateCandidate(error))
+    {
+        setStatus(QString::fromStdWString(error), true);
+        if (saveButton_) saveButton_->setEnabled(false);
+        if (applyButton_) applyButton_->setEnabled(false);
+        return;
+    }
+    if (remoteClient_)
+    {
+        ConfigurationRpcClient::ApplyResult applied;
+        std::string rpcError;
+        if (!remoteClient_->ApplyConfig(document_->loadedBytes,
+            document_->loadedBytes, applied, rpcError))
+        {
+            setStatus(QString::fromUtf8(rpcError), true);
+            return;
+        }
+        setStatus(QStringLiteral("Apply sent to target; calibration LUT reload requested."));
+        return;
+    }
+    const bool notified = notifyVideoProcessor();
+    setStatus(notified ?
+        QStringLiteral("Apply sent to VideoProcessor; calibration LUT reload requested.") :
+        QStringLiteral("Apply could not reach VideoProcessor; calibration LUTs load on next start."));
 }
 
 void ConfigEditorWindow::setRendererDiscoveryForTesting(
@@ -3952,7 +3990,7 @@ bool ConfigEditorWindow::saveChanges()
 		document_->requiresMigrationBackup = false;
 		dirty_ = false;
 		if (saveButton_) saveButton_->setEnabled(true);
-		if (applyButton_) applyButton_->setEnabled(false);
+		if (applyButton_) applyButton_->setEnabled(true);
 		savedSnapshot_ = captureDocumentSnapshot(*document_);
 		updateEffectSummary();
 		const QString outcome = applied.status == 0 ?
@@ -3973,7 +4011,7 @@ bool ConfigEditorWindow::saveChanges()
     }
     dirty_ = false;
     saveButton_->setEnabled(true);
-    if (applyButton_) applyButton_->setEnabled(false);
+    if (applyButton_) applyButton_->setEnabled(true);
     savedSnapshot_ = captureDocumentSnapshot(*document_);
     updateEffectSummary();
 
@@ -4363,7 +4401,7 @@ QWidget* ConfigEditorWindow::createShell()
     cancel->setObjectName(QStringLiteral("cancelConfiguration"));
     saveButton_->setProperty("primary", true);
     saveButton_->setDefault(true);
-    applyButton_->setEnabled(configurationLoaded_ && dirty_);
+    applyButton_->setEnabled(configurationLoaded_);
     saveButton_->setEnabled(configurationLoaded_);
     footerLayout->addWidget(saveButton_);
     footerLayout->addWidget(cancel);
@@ -6249,7 +6287,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
 			"A missing or invalid selection falls back to the normal tone-mapped image. "
 			"Target gamut above selects the LUT slot. HDR tone-map target gamma belongs to this calibration profile; Target nits and target black remain in Rendering. "
-            "A retained last-known-good LUT remains active if a replacement for the same contract is rejected."));
+            "A retained last-known-good LUT remains active if a replacement for the same contract is rejected. "
+            "Changes to LUT files take effect when you press Apply. Files are not monitored during playback."));
         form->addRow(QString(), lutFolderHelp);
 
         for (QWidget* control : QList<QWidget*>{ sdrLutGamma, hdrTargetGamma, hdrGammaStatus,
