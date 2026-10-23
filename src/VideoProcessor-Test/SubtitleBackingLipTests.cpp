@@ -188,6 +188,67 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
 public:
+    TEST_METHOD(KnownBackingSurvivesCaptionPlaneJitterWithoutBorrowingCropAuthority) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+            for(bool top:{false,true})for(int delta:{1,2}) {
+                Frame frame(6,format,top);const auto lip=frame.Lip(30,true);auto cue=Acquire(frame);
+                auto geometry=Geometry(cue);geometry.pictureTop-=2;geometry.pictureBottom+=2;
+                SubtitleBackingLipContinuity state;
+                const auto first=state.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,65536,&geometry);
+                Assert::IsTrue(first.valid);
+                auto observation=frame.Measure(3);auto current=Resolve({observation});
+                const auto text=cue.tracker.Consume(current);Assert::IsTrue(text.detected && !text.held);
+                current.current.independentBarAnalysis=false;
+                if(top) {
+                    current.current.pictureTop-=delta;
+                    current.current.barEvidence.top=current.current.pictureTop;
+                    current.current.barEvidence.captionBackedTop=true;
+                } else {
+                    current.current.pictureBottom+=delta;
+                    current.current.barEvidence.bottom=current.current.pictureBottom;
+                    current.current.barEvidence.captionBackedBottom=true;
+                }
+                const auto ink=current.current.ink;
+                const auto noCandidate=ProveCurrentSubtitleBackingLip(frame.Source(),current,text,Identity(3),7,8,65536,nullptr,&geometry);
+                Assert::IsFalse(noCandidate.valid,L"A caption-backed edge cannot acquire new cleanup");
+                const auto proof=state.Consume(frame.Source(),current,text,Identity(3),7,8,65536,&geometry);
+                LogProof(proof,frame,"caption-plane-jitter");
+                Assert::IsTrue(proof.valid && proof.revalidatedOutline && proof.outlineBaseAnchored);
+                Assert::IsTrue(Same(first.cleanup,proof.cleanup) && Same(lip,proof.cleanup));
+                Assert::IsTrue(proof.samples<=65536 && current.current.ink==ink);
+                Assert::IsFalse(current.current.independentBarAnalysis,L"Cleanup cannot promote raw evidence to native crop authority");
+                const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8);
+                AssertGeometryExceptCleanup(geometry,applied);Assert::IsTrue(Same(applied.generatedCleanup,lip));
+                // A changed current body pixel revokes the same remembered mask.
+                frame.Pixel(300*6,frame.pictureBottom-10,300);
+                auto next=current;next.current.identity=Identity(4);
+                const auto changed=state.Consume(frame.Source(),next,text,Identity(4),7,8,65536,&geometry);
+                Assert::IsFalse(changed.valid);
+            }
+    }
+    TEST_METHOD(RememberedBackingClosureToleratesSmallCurrentShadowWithoutGrowingCleanup) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::DecodedDv,top);const auto lip=frame.Lip(30,true);auto cue=Acquire(frame);
+            SubtitleBackingLipContinuity state;
+            const auto first=state.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid);
+            // A 51-pixel moving shadow at every collar row matches the live
+            // rejection. Its pixels stay outside the remembered finite card.
+            frame.Fill({1500,frame.pictureBottom-63,1551,frame.pictureBottom-30},frame.floor);
+            auto current=Resolve({frame.Measure(3)});auto text=cue.tracker.Consume(current);
+            const auto fresh=ProveCurrentSubtitleBackingLip(frame.Source(),current,text,Identity(3),7,8);
+            Assert::IsFalse(fresh.valid,L"First acquisition retains the strict closure requirement");
+            const auto retained=state.Consume(frame.Source(),current,text,Identity(3),7,8);
+            LogProof(retained,frame,"small-moving-closure-shadow");
+            Assert::IsTrue(retained.valid && retained.revalidatedOutline && Same(retained.cleanup,lip));
+            Assert::IsTrue(retained.samples<=65536 && retained.closureDark*10<=retained.closureSamples);
+            // A broad ambiguous shadow still cannot support the current outline.
+            frame.Fill({1500,frame.pictureBottom-63,1740,frame.pictureBottom-30},frame.floor);
+            auto broad=Resolve({frame.Measure(4)});text=cue.tracker.Consume(broad);
+            const auto rejected=state.Consume(frame.Source(),broad,text,Identity(4),7,8);
+            Assert::IsFalse(rejected.valid);
+        }
+    }
     TEST_METHOD(CurrentOutlineSurvivesSceneFlankAndClosureNoiseWithoutMoving) {
         for(bool top:{false,true})for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb}) {
             Frame frame(1,format,top);frame.Lip(8,true);auto cue=Acquire(frame);

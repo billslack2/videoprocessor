@@ -1961,7 +1961,7 @@ struct SubtitleShaderGpuFixture {
             if(x<16 || x>=48 || y<24 || y>=56)for(int c=0;c<3;++c)
                 Assert::IsTrue(std::abs(Pixel(blended,x,y)[c]-float(pixels[(y*64+x)*4+c])/255)<0.005f,L"spatial fill must not change unrelated picture");
     }
-    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0) {
+    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0,bool transparent=false) {
         const auto mirror=[&](SubtitleBoxRect r) {
             return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
         };
@@ -1973,7 +1973,11 @@ struct SubtitleShaderGpuFixture {
         base.placementLimits={0,16,64,48};base.fromTopBar=top;
         base.roundedCorners=false;base.extendToBar=true;
         const SubtitleBoxPadding padding{6,2,2};
-        const SubtitleGeneratedGrayStyle style;
+        SubtitleGeneratedGrayStyle style;
+        if(transparent) {
+            style.opacity=0;style.blurPixels=0;style.borderOpacity=0;style.maxLuminance=1;
+            style.textColor={0.7f,0.8f,0.0f};
+        }
         base=ApplySubtitleTextReduction(base,reduction,padding,false,false);
         SubtitleBoxPreview preview;preview.available=true;preview.policyGeneration=7;preview.continuityGeneration=8;
         preview.current.identity={2,2,2,83416,2,3,4};preview.current.width=preview.current.height=64;
@@ -2058,7 +2062,23 @@ struct SubtitleShaderGpuFixture {
         pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;pl_tex_blit(device->gpu,&copy);
         const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
         const int centerY=(geometry.destination.top+geometry.destination.bottom)/2;
-        for(int x=geometry.destination.left+1;x<geometry.destination.right-1;++x)
+        if(transparent) {
+            for(int y=geometry.destination.top;y<geometry.destination.bottom;++y) {
+                Assert::IsTrue(Pixel(layerPixels,geometry.destination.left+1,y)[3]<0.001f);
+                Assert::IsTrue(Pixel(layerPixels,geometry.destination.right-1,y)[3]<0.001f);
+            }
+            // Direct composition must repair the old cap just as CleanupOnly
+            // does, while the new yellow glyph layer leaves its gutters clear.
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,spatialFill,SubtitleCompositionPhase::All));
+            pl_frame all{};
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,all));
+            Assert::IsTrue(pl_render_image(renderer,&all,&beforeTarget,&params));
+            const auto full=ReadLinear(allOutput);
+            for(int y=proof.measured.top;y<proof.measured.bottom;++y)
+                for(int x=proof.measured.left;x<proof.measured.right;++x)for(int c=0;c<3;++c)
+                    Assert::IsTrue(std::abs(Pixel(full,x,y)[c]-Pixel(after,x,y)[c])<0.005f,
+                        L"Transparent direct composition must preserve the independently repaired source backing");
+        } else for(int x=geometry.destination.left+1;x<geometry.destination.right-1;++x)
             Assert::IsTrue(Pixel(layerPixels,x,centerY)[3]>0.999f,L"Reduced text must retain the original-size opaque backing span.");
         Assert::IsTrue(Pixel(layerPixels,3,32)[3]<0.001f);
         if(mode==3)for(int c=0;c<3;++c) {
@@ -2260,6 +2280,11 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
+        for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2})
+            gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,reduction,fill,true);
+    }
     TEST_METHOD(SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs) {
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_PQ);
         gpu.VerifyPreparationPreservesHdrHistory();
