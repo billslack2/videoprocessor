@@ -15395,6 +15395,7 @@ releaseDriftBaseRetention =
 				 detectorFitActive))
 			{
 				expansionInput.trustedPicture = effectiveGeometry;
+                expansionInput.measuredVerticalFit = !scopeSubtitleFit && detailedVerticalFitEvidence;
 				auto& detector = expansionInput.detectorContent;
 				detector.bounds = selectedDetectorBounds;
 				detector.expandLeft = detectorLeftExpansion;

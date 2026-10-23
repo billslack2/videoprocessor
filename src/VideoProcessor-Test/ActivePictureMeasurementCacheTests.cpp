@@ -415,6 +415,20 @@ namespace VideoProcessorTest
                 envelope.observedContent.top=top?first:native.top;envelope.observedContent.bottom=top?native.bottom:last;
                 envelope.observedContentAvailable=true;envelope.expandTop=top;envelope.expandBottom=!top;envelope.verticalPadding=24;
                 const auto fitted=BuildPresentationEnvelope(envelope);Assert::IsTrue(fitted.valid && fitted.expanded);
+                for(bool placeholder:{false,true}) {
+                    PresentationEnvelopeCompositionInput composed;composed.trustedPicture=native;
+                    composed.denseContent.bounds=envelope.observedContent;
+                    composed.denseContent.expandTop=top;composed.denseContent.expandBottom=!top;
+                    composed.verticalPadding=24;composed.measuredVerticalFit=true;
+                    composed.detectorContent.bounds=native;
+                    composed.detectorContent.bounds.top=placeholder?0:382;
+                    composed.detectorContent.bounds.bottom=placeholder?2160:1778;
+                    composed.detectorContent.expandTop=composed.detectorContent.expandBottom=true;
+                    const auto presented=BuildComposedPresentationEnvelope(composed);
+                    Assert::IsTrue(presented.valid && presented.expanded);
+                    Assert::AreEqual(fitted.bounds.top,presented.bounds.top);
+                    Assert::AreEqual(fitted.bounds.bottom,presented.bounds.bottom);
+                }
                 ConfirmedFitOwnershipInput proof;proof.current=proof.confirmed=true;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
                 proof.nativeBase=native;proof.approvedBounds=fitted.bounds;proof.evidenceBounds=envelope.observedContent;
                 proof.sourceGeneration=17;proof.sourceSequence=42;proof.upperContent=top;proof.lowerContent=!top;

@@ -847,6 +847,7 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedPicture;
 		PresentationEnvelopeContent detectorContent;
 		PresentationEnvelopeContent denseContent;
+        bool measuredVerticalFit = false; // Off: dense bar pixels own vertical extents.
 		int horizontalPadding = 0;
 		int verticalPadding = 0;
 	};

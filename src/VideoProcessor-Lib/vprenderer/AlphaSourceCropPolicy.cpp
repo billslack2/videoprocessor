@@ -2254,7 +2254,16 @@ namespace AlphaSourceCrop
 		// supplied. Only raw dense measurements receive subtitle clearance here.
 		// Complete selected edges separately so an unrelated detector edge cannot
 		// acquire that clearance, or override vertical translation routing.
-		const auto detector = complete(input.detectorContent, 0, 0);
+		auto selectedDetector = input.detectorContent;
+        if (input.measuredVerticalFit &&
+            (input.denseContent.expandTop || input.denseContent.expandBottom))
+        {
+            // Off has scanned the complete native bars. Coarse AR history may
+            // contain provisional edges (including full-raster placeholders);
+            // it cannot enlarge this measured vertical presentation.
+            selectedDetector.expandTop = selectedDetector.expandBottom = false;
+        }
+        const auto detector = complete(selectedDetector, 0, 0);
 		if (!detector.valid)
 			return detector;
 		const auto dense = complete(input.denseContent,
