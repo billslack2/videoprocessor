@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0204`
-- Next root story number: `VP-0205`
-- Total indexed items: 223
+- Last assigned root story: `VP-0205`
+- Next root story number: `VP-0206`
+- Total indexed items: 224
 
 ## Story locations
 
@@ -264,6 +264,7 @@ they must not contain requirements that are absent from this file.
 | VP-0202 | Done | Prevent long-uptime DirectShow reference-clock overflow |
 | VP-0203 | Review | Load calibration LUT disk changes only on explicit Config Apply |
 | VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |
+| VP-0205 | Backlog | Preserve useful lookahead with prepared proof and adaptive budgets |
 
 ## Codex story workflow
 

@@ -1,0 +1,1165 @@
+{
+  "source_commit": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "configuration": "x64 Release v142, isolated test DLL linked to completed integration library",
+  "test": "Owned4kThreeFrameRetentionProofBudgetSweep",
+  "trials_per_fixture_allowance": 101,
+  "fixtures": 15,
+  "allowances_ms": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    8,
+    50
+  ],
+  "limitations": [
+    "Synthetic owned 4K fixtures; identical source reused for three helper calls.",
+    "Raw/global/darkness measurements prepared before timer.",
+    "Measures cooperative retention-helper loop, not full renderer lookahead call or adoption.",
+    "50 ms is a practically unrestrictive ticket for these helpers, not an actual uncapped renderer.",
+    "Warm CPU cache, no controlled live capture GPU workload, wall times include scheduling."
+  ],
+  "summary": [
+    {
+      "format": "P010",
+      "pattern": "scope",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0139,
+          "elapsed_p95_ms": 1.022,
+          "elapsed_p99_ms": 1.031,
+          "elapsed_max_ms": 1.0322,
+          "late_max_ms": 0.0322
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 97,
+          "cancelled": 4,
+          "elapsed_p50_ms": 1.3569,
+          "elapsed_p95_ms": 1.6766,
+          "elapsed_p99_ms": 2.0163,
+          "elapsed_max_ms": 2.0204,
+          "late_max_ms": 0.0204
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3612,
+          "elapsed_p95_ms": 1.6438,
+          "elapsed_p99_ms": 2.6158,
+          "elapsed_max_ms": 2.6305,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3587,
+          "elapsed_p95_ms": 1.6985,
+          "elapsed_p99_ms": 2.0451,
+          "elapsed_max_ms": 2.6132,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3615,
+          "elapsed_p95_ms": 1.8086,
+          "elapsed_p99_ms": 2.5981,
+          "elapsed_max_ms": 2.6108,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3632,
+          "elapsed_p95_ms": 1.6715,
+          "elapsed_p99_ms": 2.5066,
+          "elapsed_max_ms": 2.567,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3594,
+          "elapsed_p95_ms": 1.6228,
+          "elapsed_p99_ms": 2.4636,
+          "elapsed_max_ms": 2.5335,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P010",
+      "pattern": "full",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1566,
+          "elapsed_p95_ms": 0.1631,
+          "elapsed_p99_ms": 0.197,
+          "elapsed_max_ms": 0.2902,
+          "late_max_ms": 0.0
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1566,
+          "elapsed_p95_ms": 0.1583,
+          "elapsed_p99_ms": 0.1801,
+          "elapsed_max_ms": 0.1952,
+          "late_max_ms": 0.0
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1567,
+          "elapsed_p95_ms": 0.1656,
+          "elapsed_p99_ms": 0.259,
+          "elapsed_max_ms": 0.2711,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1568,
+          "elapsed_p95_ms": 0.1822,
+          "elapsed_p99_ms": 0.2008,
+          "elapsed_max_ms": 0.2972,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1568,
+          "elapsed_p95_ms": 0.1671,
+          "elapsed_p99_ms": 0.2684,
+          "elapsed_max_ms": 0.2853,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1567,
+          "elapsed_p95_ms": 0.1895,
+          "elapsed_p99_ms": 0.2453,
+          "elapsed_max_ms": 0.279,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1566,
+          "elapsed_p95_ms": 0.1616,
+          "elapsed_p99_ms": 0.2356,
+          "elapsed_max_ms": 0.2833,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P010",
+      "pattern": "dark-textured",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.016,
+          "elapsed_p95_ms": 1.0242,
+          "elapsed_p99_ms": 1.0279,
+          "elapsed_max_ms": 1.0324,
+          "late_max_ms": 0.0324
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 98,
+          "cancelled": 3,
+          "elapsed_p50_ms": 1.4016,
+          "elapsed_p95_ms": 1.6213,
+          "elapsed_p99_ms": 2.0091,
+          "elapsed_max_ms": 2.0115,
+          "late_max_ms": 0.0115
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4006,
+          "elapsed_p95_ms": 1.6477,
+          "elapsed_p99_ms": 2.4084,
+          "elapsed_max_ms": 2.5884,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4025,
+          "elapsed_p95_ms": 1.8104,
+          "elapsed_p99_ms": 2.7159,
+          "elapsed_max_ms": 2.7261,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4104,
+          "elapsed_p95_ms": 2.0213,
+          "elapsed_p99_ms": 2.7038,
+          "elapsed_max_ms": 2.7223,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4101,
+          "elapsed_p95_ms": 1.7984,
+          "elapsed_p99_ms": 2.712,
+          "elapsed_max_ms": 2.7126,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4078,
+          "elapsed_p95_ms": 1.5769,
+          "elapsed_p99_ms": 2.0337,
+          "elapsed_max_ms": 2.7179,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P010",
+      "pattern": "subtitle-edge-panel",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0176,
+          "elapsed_p95_ms": 1.0331,
+          "elapsed_p99_ms": 1.0489,
+          "elapsed_max_ms": 1.0843,
+          "late_max_ms": 0.0843
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 97,
+          "cancelled": 4,
+          "elapsed_p50_ms": 1.3009,
+          "elapsed_p95_ms": 1.6559,
+          "elapsed_p99_ms": 2.0294,
+          "elapsed_max_ms": 2.0296,
+          "late_max_ms": 0.0296
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.2916,
+          "elapsed_p95_ms": 1.9045,
+          "elapsed_p99_ms": 2.4688,
+          "elapsed_max_ms": 2.5174,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.2884,
+          "elapsed_p95_ms": 2.048,
+          "elapsed_p99_ms": 2.3223,
+          "elapsed_max_ms": 2.5433,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.2926,
+          "elapsed_p95_ms": 1.7671,
+          "elapsed_p99_ms": 2.4572,
+          "elapsed_max_ms": 2.4732,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.2869,
+          "elapsed_p95_ms": 1.8981,
+          "elapsed_p99_ms": 2.3676,
+          "elapsed_max_ms": 2.4428,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.2886,
+          "elapsed_p95_ms": 1.7832,
+          "elapsed_p99_ms": 2.4252,
+          "elapsed_max_ms": 2.505,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P010",
+      "pattern": "expansion",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0188,
+          "elapsed_p95_ms": 1.0283,
+          "elapsed_p99_ms": 1.0357,
+          "elapsed_max_ms": 1.065,
+          "late_max_ms": 0.065
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 95,
+          "cancelled": 6,
+          "elapsed_p50_ms": 1.1632,
+          "elapsed_p95_ms": 2.0105,
+          "elapsed_p99_ms": 2.0161,
+          "elapsed_max_ms": 2.0313,
+          "late_max_ms": 0.0313
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1658,
+          "elapsed_p95_ms": 2.1301,
+          "elapsed_p99_ms": 2.2205,
+          "elapsed_max_ms": 2.2246,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1725,
+          "elapsed_p95_ms": 2.1002,
+          "elapsed_p99_ms": 2.2771,
+          "elapsed_max_ms": 3.416,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1615,
+          "elapsed_p95_ms": 2.1241,
+          "elapsed_p99_ms": 2.3492,
+          "elapsed_max_ms": 2.6585,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1633,
+          "elapsed_p95_ms": 1.9067,
+          "elapsed_p99_ms": 2.2216,
+          "elapsed_max_ms": 2.2518,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1634,
+          "elapsed_p95_ms": 2.0784,
+          "elapsed_p99_ms": 2.2434,
+          "elapsed_max_ms": 2.2863,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P210",
+      "pattern": "scope",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0194,
+          "elapsed_p95_ms": 1.0259,
+          "elapsed_p99_ms": 1.0299,
+          "elapsed_max_ms": 1.0854,
+          "late_max_ms": 0.0854
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 98,
+          "cancelled": 3,
+          "elapsed_p50_ms": 1.3535,
+          "elapsed_p95_ms": 1.809,
+          "elapsed_p99_ms": 2.0234,
+          "elapsed_max_ms": 2.1626,
+          "late_max_ms": 0.1626
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.353,
+          "elapsed_p95_ms": 1.7209,
+          "elapsed_p99_ms": 2.5237,
+          "elapsed_max_ms": 2.5864,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3592,
+          "elapsed_p95_ms": 1.92,
+          "elapsed_p99_ms": 2.549,
+          "elapsed_max_ms": 2.6109,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3552,
+          "elapsed_p95_ms": 2.2345,
+          "elapsed_p99_ms": 2.5381,
+          "elapsed_max_ms": 2.5498,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.356,
+          "elapsed_p95_ms": 2.4877,
+          "elapsed_p99_ms": 2.5347,
+          "elapsed_max_ms": 2.5948,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3644,
+          "elapsed_p95_ms": 2.1115,
+          "elapsed_p99_ms": 2.5385,
+          "elapsed_max_ms": 2.6532,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P210",
+      "pattern": "full",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.154,
+          "elapsed_p95_ms": 0.2844,
+          "elapsed_p99_ms": 0.2911,
+          "elapsed_max_ms": 0.2913,
+          "late_max_ms": 0.0
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.154,
+          "elapsed_p95_ms": 0.2831,
+          "elapsed_p99_ms": 0.2849,
+          "elapsed_max_ms": 0.2854,
+          "late_max_ms": 0.0
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.154,
+          "elapsed_p95_ms": 0.2843,
+          "elapsed_p99_ms": 0.2882,
+          "elapsed_max_ms": 0.3242,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1544,
+          "elapsed_p95_ms": 0.2468,
+          "elapsed_p99_ms": 0.2848,
+          "elapsed_max_ms": 0.2848,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1545,
+          "elapsed_p95_ms": 0.2833,
+          "elapsed_p99_ms": 0.2928,
+          "elapsed_max_ms": 0.3139,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.1542,
+          "elapsed_p95_ms": 0.2844,
+          "elapsed_p99_ms": 0.2929,
+          "elapsed_max_ms": 0.312,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.154,
+          "elapsed_p95_ms": 0.2847,
+          "elapsed_p99_ms": 0.3174,
+          "elapsed_max_ms": 0.5246,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P210",
+      "pattern": "dark-textured",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0175,
+          "elapsed_p95_ms": 1.0254,
+          "elapsed_p99_ms": 1.0396,
+          "elapsed_max_ms": 1.1407,
+          "late_max_ms": 0.1407
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 97,
+          "cancelled": 4,
+          "elapsed_p50_ms": 1.4057,
+          "elapsed_p95_ms": 1.6856,
+          "elapsed_p99_ms": 2.0114,
+          "elapsed_max_ms": 2.0195,
+          "late_max_ms": 0.0195
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4097,
+          "elapsed_p95_ms": 1.917,
+          "elapsed_p99_ms": 2.5873,
+          "elapsed_max_ms": 2.7666,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.402,
+          "elapsed_p95_ms": 1.9776,
+          "elapsed_p99_ms": 2.6844,
+          "elapsed_max_ms": 2.7181,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4178,
+          "elapsed_p95_ms": 1.8497,
+          "elapsed_p99_ms": 2.6387,
+          "elapsed_max_ms": 2.6697,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4121,
+          "elapsed_p95_ms": 1.9151,
+          "elapsed_p99_ms": 2.617,
+          "elapsed_max_ms": 2.6794,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.4219,
+          "elapsed_p95_ms": 1.7972,
+          "elapsed_p99_ms": 2.6236,
+          "elapsed_max_ms": 2.6433,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P210",
+      "pattern": "subtitle-edge-panel",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0135,
+          "elapsed_p95_ms": 1.0258,
+          "elapsed_p99_ms": 1.0305,
+          "elapsed_max_ms": 1.0332,
+          "late_max_ms": 0.0332
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 99,
+          "cancelled": 2,
+          "elapsed_p50_ms": 1.3132,
+          "elapsed_p95_ms": 1.502,
+          "elapsed_p99_ms": 2.0136,
+          "elapsed_max_ms": 2.0172,
+          "late_max_ms": 0.0172
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3104,
+          "elapsed_p95_ms": 1.8323,
+          "elapsed_p99_ms": 2.3946,
+          "elapsed_max_ms": 2.4036,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.312,
+          "elapsed_p95_ms": 1.8665,
+          "elapsed_p99_ms": 2.4209,
+          "elapsed_max_ms": 2.4673,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3123,
+          "elapsed_p95_ms": 1.4703,
+          "elapsed_p99_ms": 1.8266,
+          "elapsed_max_ms": 2.3917,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3113,
+          "elapsed_p95_ms": 1.4054,
+          "elapsed_p99_ms": 2.3581,
+          "elapsed_max_ms": 2.3755,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.3069,
+          "elapsed_p95_ms": 1.3885,
+          "elapsed_p99_ms": 2.2893,
+          "elapsed_max_ms": 2.3871,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "P210",
+      "pattern": "expansion",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0133,
+          "elapsed_p95_ms": 1.0254,
+          "elapsed_p99_ms": 1.0497,
+          "elapsed_max_ms": 1.0585,
+          "late_max_ms": 0.0585
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 97,
+          "cancelled": 4,
+          "elapsed_p50_ms": 1.1779,
+          "elapsed_p95_ms": 1.9501,
+          "elapsed_p99_ms": 2.0114,
+          "elapsed_max_ms": 2.0132,
+          "late_max_ms": 0.0132
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1792,
+          "elapsed_p95_ms": 1.6926,
+          "elapsed_p99_ms": 2.1668,
+          "elapsed_max_ms": 2.2137,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1775,
+          "elapsed_p95_ms": 1.76,
+          "elapsed_p99_ms": 2.1392,
+          "elapsed_max_ms": 2.2228,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1816,
+          "elapsed_p95_ms": 1.6339,
+          "elapsed_p99_ms": 2.1551,
+          "elapsed_max_ms": 2.1745,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1793,
+          "elapsed_p95_ms": 1.42,
+          "elapsed_p99_ms": 2.1728,
+          "elapsed_max_ms": 2.1758,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.1762,
+          "elapsed_p95_ms": 1.8727,
+          "elapsed_p99_ms": 2.1458,
+          "elapsed_max_ms": 2.1575,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "BGRA8",
+      "pattern": "scope",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0165,
+          "elapsed_p95_ms": 1.0271,
+          "elapsed_p99_ms": 1.0342,
+          "elapsed_max_ms": 1.0463,
+          "late_max_ms": 0.0463
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 66,
+          "cancelled": 35,
+          "elapsed_p50_ms": 1.9833,
+          "elapsed_p95_ms": 2.0214,
+          "elapsed_p99_ms": 2.0366,
+          "elapsed_max_ms": 2.048,
+          "late_max_ms": 0.048
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 99,
+          "cancelled": 2,
+          "elapsed_p50_ms": 1.9882,
+          "elapsed_p95_ms": 2.7328,
+          "elapsed_p99_ms": 3.0122,
+          "elapsed_max_ms": 3.0143,
+          "late_max_ms": 0.0143
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.9775,
+          "elapsed_p95_ms": 2.5544,
+          "elapsed_p99_ms": 2.8138,
+          "elapsed_max_ms": 3.1385,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.9818,
+          "elapsed_p95_ms": 2.1721,
+          "elapsed_p99_ms": 2.4312,
+          "elapsed_max_ms": 2.973,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.9626,
+          "elapsed_p95_ms": 2.2777,
+          "elapsed_p99_ms": 2.5062,
+          "elapsed_max_ms": 3.0333,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.9823,
+          "elapsed_p95_ms": 2.8016,
+          "elapsed_p99_ms": 3.1153,
+          "elapsed_max_ms": 3.2068,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "BGRA8",
+      "pattern": "full",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2228,
+          "elapsed_p95_ms": 0.2641,
+          "elapsed_p99_ms": 0.4107,
+          "elapsed_max_ms": 0.4127,
+          "late_max_ms": 0.0
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2232,
+          "elapsed_p95_ms": 0.2324,
+          "elapsed_p99_ms": 0.3049,
+          "elapsed_max_ms": 0.3527,
+          "late_max_ms": 0.0
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2229,
+          "elapsed_p95_ms": 0.2755,
+          "elapsed_p99_ms": 0.3503,
+          "elapsed_max_ms": 0.373,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2229,
+          "elapsed_p95_ms": 0.2685,
+          "elapsed_p99_ms": 0.3143,
+          "elapsed_max_ms": 0.3288,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2231,
+          "elapsed_p95_ms": 0.2597,
+          "elapsed_p99_ms": 0.2782,
+          "elapsed_max_ms": 0.2909,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2227,
+          "elapsed_p95_ms": 0.2581,
+          "elapsed_p99_ms": 0.2908,
+          "elapsed_max_ms": 0.3273,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 0.2229,
+          "elapsed_p95_ms": 0.2263,
+          "elapsed_p99_ms": 0.2516,
+          "elapsed_max_ms": 0.2573,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "BGRA8",
+      "pattern": "dark-textured",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0146,
+          "elapsed_p95_ms": 1.0272,
+          "elapsed_p99_ms": 1.0363,
+          "elapsed_max_ms": 1.0493,
+          "late_max_ms": 0.0493
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 33,
+          "cancelled": 68,
+          "elapsed_p50_ms": 2.0089,
+          "elapsed_p95_ms": 2.0228,
+          "elapsed_p99_ms": 2.0289,
+          "elapsed_max_ms": 2.0364,
+          "late_max_ms": 0.0364
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 100,
+          "cancelled": 1,
+          "elapsed_p50_ms": 2.0206,
+          "elapsed_p95_ms": 2.2062,
+          "elapsed_p99_ms": 2.2946,
+          "elapsed_max_ms": 3.0264,
+          "late_max_ms": 0.0264
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 2.0444,
+          "elapsed_p95_ms": 2.271,
+          "elapsed_p99_ms": 3.1882,
+          "elapsed_max_ms": 3.7152,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 2.0217,
+          "elapsed_p95_ms": 2.5713,
+          "elapsed_p99_ms": 3.0603,
+          "elapsed_max_ms": 3.7959,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 2.0404,
+          "elapsed_p95_ms": 2.5659,
+          "elapsed_p99_ms": 3.2956,
+          "elapsed_max_ms": 3.5272,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 2.038,
+          "elapsed_p95_ms": 2.2856,
+          "elapsed_p99_ms": 2.6544,
+          "elapsed_max_ms": 3.2863,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "BGRA8",
+      "pattern": "subtitle-edge-panel",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0169,
+          "elapsed_p95_ms": 1.0315,
+          "elapsed_p99_ms": 1.0583,
+          "elapsed_max_ms": 1.1174,
+          "late_max_ms": 0.1174
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 83,
+          "cancelled": 18,
+          "elapsed_p50_ms": 1.8711,
+          "elapsed_p95_ms": 2.0183,
+          "elapsed_p99_ms": 2.0262,
+          "elapsed_max_ms": 2.1994,
+          "late_max_ms": 0.1994
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.8712,
+          "elapsed_p95_ms": 2.3605,
+          "elapsed_p99_ms": 2.9104,
+          "elapsed_max_ms": 2.925,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.8662,
+          "elapsed_p95_ms": 2.3769,
+          "elapsed_p99_ms": 2.9319,
+          "elapsed_max_ms": 2.9391,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.8602,
+          "elapsed_p95_ms": 2.0571,
+          "elapsed_p99_ms": 2.3742,
+          "elapsed_max_ms": 3.0161,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.8667,
+          "elapsed_p95_ms": 2.2838,
+          "elapsed_p99_ms": 2.9386,
+          "elapsed_max_ms": 3.0318,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.8553,
+          "elapsed_p95_ms": 2.7051,
+          "elapsed_p99_ms": 3.1346,
+          "elapsed_max_ms": 3.3388,
+          "late_max_ms": 0.0
+        }
+      }
+    },
+    {
+      "format": "BGRA8",
+      "pattern": "expansion",
+      "allowances": {
+        "1.0": {
+          "trials": 101,
+          "completed": 0,
+          "cancelled": 101,
+          "elapsed_p50_ms": 1.0178,
+          "elapsed_p95_ms": 1.0245,
+          "elapsed_p99_ms": 1.0259,
+          "elapsed_max_ms": 1.0336,
+          "late_max_ms": 0.0336
+        },
+        "2.0": {
+          "trials": 101,
+          "completed": 93,
+          "cancelled": 8,
+          "elapsed_p50_ms": 1.6523,
+          "elapsed_p95_ms": 2.0096,
+          "elapsed_p99_ms": 2.0252,
+          "elapsed_max_ms": 2.129,
+          "late_max_ms": 0.129
+        },
+        "3.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.6699,
+          "elapsed_p95_ms": 2.122,
+          "elapsed_p99_ms": 2.6661,
+          "elapsed_max_ms": 2.6699,
+          "late_max_ms": 0.0
+        },
+        "4.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.6585,
+          "elapsed_p95_ms": 2.3361,
+          "elapsed_p99_ms": 2.674,
+          "elapsed_max_ms": 2.7054,
+          "late_max_ms": 0.0
+        },
+        "6.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.6463,
+          "elapsed_p95_ms": 1.905,
+          "elapsed_p99_ms": 2.6843,
+          "elapsed_max_ms": 2.7306,
+          "late_max_ms": 0.0
+        },
+        "8.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.6609,
+          "elapsed_p95_ms": 1.9315,
+          "elapsed_p99_ms": 2.3934,
+          "elapsed_max_ms": 2.6913,
+          "late_max_ms": 0.0
+        },
+        "50.0": {
+          "trials": 101,
+          "completed": 101,
+          "cancelled": 0,
+          "elapsed_p50_ms": 1.6581,
+          "elapsed_p95_ms": 2.2128,
+          "elapsed_p99_ms": 2.566,
+          "elapsed_max_ms": 2.6771,
+          "late_max_ms": 0.0
+        }
+      }
+    }
+  ]
+}

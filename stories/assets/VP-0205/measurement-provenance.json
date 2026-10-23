@@ -1,0 +1,29 @@
+{
+  "analysis_date": "2026-10-23",
+  "source_integration": "e1996d67e42df7ee0ba63e2fc7577a43d132af48",
+  "captured_source": "c3da9ecd1e20518835a22399e39bec6d79a1b20d",
+  "planned_base_branch": "v1.4.02-beta",
+  "planned_base_commit": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "original_artifact_directory": "E:\\codex\\videoprocessor\\render-jitter-deploy-20261022\\artifacts\\vp-0204",
+  "helper_test": "Owned4kThreeFrameRetentionProofBudgetSweep",
+  "helper_test_result": "Passed, 1/1 isolated x64 Release test; not a new production build or runtime replay",
+  "helper_output": {
+    "helper-budget-summary.json": {
+      "bytes": 32896,
+      "sha256": "d4697a48842abb617a83768f03108b031d9501a11cd671a2a2bce0254e09b27b"
+    },
+    "helper-budget-sweep.csv": {
+      "bytes": 699565,
+      "sha256": "440ffd768fcb2738d83ea85afe26151db904e9a2e60df1956350df61e3501705"
+    },
+    "lookahead_budget_sweep.cpp": {
+      "bytes": 11220,
+      "sha256": "a50fd3adb6ddcdc0869f367c8ae00be3d09637c981b4511af75c3ebcc8fef425"
+    }
+  },
+  "limitations": [
+    "Three retention helper evaluations reuse one owned source fixture; raw/global/darkness prepared before timing.",
+    "15 synthetic 4K fixtures, 101 rotated trials per allowance, warm CPU cache; not controlled active GPU playback.",
+    "50 ms ticket is practically unrestrictive for these fixtures; it is not an uncapped renderer measurement."
+  ]
+}
