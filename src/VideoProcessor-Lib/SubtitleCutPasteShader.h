@@ -720,6 +720,12 @@ vec4 hook() {
     if(enabled>0.5) {
         bool cleanupOnly=composition_phase>0.5 && composition_phase<1.5;
         bool layerOnly=composition_phase>1.5;
+        // Reconstruction's neutral settings are the UI's transparent style.
+        // Keep deliberately blurred or brightness-limited backdrops separate.
+        bool transparentBackground=(background_mode>0.5 && background_mode<1.5) ||
+            (background_mode>4.5 && generated_opacity<=0.0 && generated_blur_px<=0.0 &&
+             generated_max_luminance>=1.0 &&
+             (generated_border_width<=0.0 || generated_border_opacity<=0.0));
         bool inPanel=p.x>=destination_left-subtitlePanelSideExtension() && p.x<destination_right+subtitlePanelSideExtension() &&
             p.y>=subtitlePanelTop() && p.y<subtitlePanelBottom();
         bool inCleanup=subtitleInGeneratedCleanup(p);
@@ -804,15 +810,16 @@ vec4 hook() {
                 borderAlpha=max(panelMask-inner,0.0)*generated_border_opacity;
                 canvas=mix(canvas,borderColor,borderAlpha);
             }
-            if(background_mode<1.5) {
+            if(transparentBackground) {
                 // Transparent output carries glyphs only. Copying the live
                 // picture as an opaque tile lets overlay color management and
                 // temporal blending expose a rectangular one-pixel seam.
                 if(layerOnly)return vec4(alpha>0.0?subtitleSignal(glyphColor):vec3(0.0),alpha);
                 // Avoid a transfer-function round trip on untouched picture.
                 // Overlap with the old glyph footprint still needs its fill.
-                if(alpha<=0.0 && !(p.x>=content_left && p.x<content_right &&
+                if(alpha<=0.0 && !inCleanup && !(p.x>=content_left && p.x<content_right &&
                     p.y>=content_top && p.y<content_bottom))return HOOKED_tex(HOOKED_pos);
+                if(background_mode>4.5)canvas=original;
             }
             if(layerOnly) {
                 // Straight source-transfer RGB plus independent alpha. Compose

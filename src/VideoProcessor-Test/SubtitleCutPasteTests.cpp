@@ -1765,7 +1765,7 @@ struct SubtitleShaderGpuFixture {
         Assert::IsFalse(pl_renderer_get_hdr_metadata(renderer,&reset),
             L"control: a no-peak pass on the shared renderer reproduces the old reset");
     }
-    void VerifyTransparentLayerDoesNotCopyPicture(bool reduced) {
+    void VerifyTransparentLayerDoesNotCopyPicture(bool reduced,int mode) {
         auto g=Geometry();g.pictureTop=8;g.pictureBottom=48;
         g.source={20,48,44,60};g.content={24,50,40,58};
         g.glyphLines[0]=g.content;g.pictureCapture={};g.generatedCleanup={};
@@ -1781,8 +1781,11 @@ struct SubtitleShaderGpuFixture {
         }
         pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
         Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
-        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,1,input.color.transfer,
-            {},0,SubtitleCompositionPhase::LayerOnly));
+        SubtitleGeneratedGrayStyle style;
+        style.opacity=0.0f;style.blurPixels=0.0f;style.borderOpacity=0.0f;
+        style.maxLuminance=1.0f;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,input.color.transfer,
+            style,0,SubtitleCompositionPhase::LayerOnly));
         pl_frame layer{};
         Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
         pl_tex_params storage{};storage.w=storage.h=64;storage.format=layerTexture->params.format;
@@ -1813,8 +1816,10 @@ struct SubtitleShaderGpuFixture {
         target.planes[0].texture=splitOutput;target.overlays=&overlay;target.num_overlays=1;
         Assert::IsTrue(pl_render_image(renderer,&input,&target,&params));
         const auto composed=ReadLinear(splitOutput);
-        for(int y=23;y<=38;++y)for(int x=11;x<=52;++x)
-            if(x<=14 || x>=50 || y<=24 || y>=36)
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x)
+            if(y==8 || y==47 || x==0 || x==63 ||
+                (x>=11 && x<=52 && y>=23 && y<=38 &&
+                 (x<=14 || x>=50 || y<=24 || y>=36)))
                 for(int c=0;c<3;++c)
                     Assert::IsTrue(std::abs(Pixel(original,x,y)[c]-Pixel(composed,x,y)[c])<0.0001f,
                         L"transparent subtitle edges must preserve the actual picture pixels");
@@ -2262,7 +2267,8 @@ public:
     TEST_METHOD(TransparentLayersPreservePictureAtEveryPanelEdge) {
         for(auto transfer:{PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_HLG}) {
             SubtitleShaderGpuFixture gpu(transfer);
-            for(bool reduced:{false,true})gpu.VerifyTransparentLayerDoesNotCopyPicture(reduced);
+            for(int mode:{1,5})for(bool reduced:{false,true})
+                gpu.VerifyTransparentLayerDoesNotCopyPicture(reduced,mode);
         }
     }
     TEST_METHOD(SourceProcessingSnapshotOwnsDebandValues) {
