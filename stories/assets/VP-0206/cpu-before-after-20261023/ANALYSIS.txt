@@ -1,0 +1,32 @@
+Controlled offline CPU-helper benchmark completed, 2026-10-23.
+
+Pinned production libraries:
+Before: 24e0dd10430e5140c06c1fa1bd106c9bbde61ef7; SHA256 EB712353D5993799A582AD7443325A084D76B8F4BAED6BE1AA422AB029636689.
+After: 4d1d62d0a664ba97137ba89497888bc8fad483a0; SHA256 2211F1553C2BD85D2F9C168245993BB4CE1EF927D13DF179C3EBDA6380B39AF5.
+After wrapper linked only after root confirmed successful clean x64 Release Rebuild. Measurement began only after root confirmed its broad native test process stopped; benchmark completed with exit 0. No benchmark workload remains.
+
+Method:
+Same host and owned 3840x2160 Full-range decoded-DV422 pixels. Six fixtures; three production-helper modes; 20 warmups per fixture/mode/variant, then 101 paired retained samples. Alternating before/after order and rotating fixture/mode order. 3,636 retained calls. Fixture generation/copy, source loading, and output serialization excluded from timings. Retained measurement section 1.419 s, coordinator thread CPU 1,421.875 ms. QPC wall time and current-thread cycles retained in samples.csv. All outputs are isolated under this scratch directory.
+
+Exact captured paused frame, before -> after (milliseconds, median / p95 / maximum):
+Raw: 0.1506 / 0.2205 / 0.2557 -> 0.1430 / 0.2086 / 0.2362.
+Retention with precomputed raw/global/AR measurements: 0.0793 / 0.0929 / 0.1025 -> 0.0762 / 0.0843 / 0.1162.
+Combined raw + global darkness + AR darkness + retention: 0.2254 / 0.3001 / 0.3365 -> 0.2503 / 0.2949 / 0.3640.
+The combined median increases 0.0249 ms (+11.0%); combined p95 decreases slightly. Do not describe this as a blanket performance improvement.
+
+Synthetic combined median before -> after (milliseconds):
+Zero bars: 0.7452 -> 0.7136 (-4.2%).
+Raised40 bars: 0.6951 -> 0.7511 (+8.1%).
+Raised64 bars: 0.7417 -> 0.7079 (-4.6%).
+Noisy64 bars: 0.7071 -> 0.7664 (+8.4%).
+Asymmetric dark gradient: 0.2598 -> 0.2628 (+1.2%).
+Individual paths also vary; zero-bar raw median increases 0.1920 -> 0.2445 ms (+27.3%). See compact-summary.csv and summary.json for all distributions and cycles.
+
+Classification/work:
+Captured frame and dark gradient change PROVISIONAL -> FULL_RASTER_TRUSTED. Zero/40/64/noisy64 matte fixtures retain TRUSTED_BARS. Raw pixel read counts are unchanged for every fixture. Retention removes 256 additional luma reads in every measured fixture by reusing the supplied raw reference. This reduces measured combined luma reads from 14,992 to 14,736 on the capture; synthetic bars from 42,400 to 42,144; gradient from 15,328 to 15,072. Changed classification can change computation; this is an end-to-end helper comparison, not isolated instruction-cost attribution.
+
+Limits:
+One controlled local run; medians/percentiles are sample descriptions, without a timing assertion or confidence interval. Maximum wall times include scheduling noise. These are offline CPU-helper measurements, not renderer-thread frame pacing, GPU/Present, displayed adoption, or causal live-jitter measurements. No player/runtime/configuration/playback actions were performed. Do not infer a live before/after content comparison or test-suite pass from this benchmark.
+
+Evidence:
+run-benchmark.py, bench-native.cpp, bench-wire.h, bench-native.vcxproj, build logs, wrapper/library hashes, samples.csv, compact-summary.csv, summary.json, run-benchmark.log.

@@ -1,0 +1,10 @@
+[
+  {
+    "Path": "E:\\codex\\videoprocessor\\vp-0205-deploy-20261023\\artifacts\\ar-paused-20261023\\cpu-before-after\\bin-baseline\\vp-cpu-baseline.dll",
+    "Hash": "3EF23F350A58C10627374642457FCAB8FD1293E3A1A58BF6FE434A09315998A6"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\vp-0205-deploy-20261023\\artifacts\\ar-paused-20261023\\cpu-before-after\\bin-after\\vp-cpu-after.dll",
+    "Hash": "83EC32C9A82D1190BA1195E9BAA1ECA51956B6080B40968A7115F14689A97C7E"
+  }
+]

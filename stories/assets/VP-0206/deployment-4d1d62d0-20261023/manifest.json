@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "createdAt": "2026-10-23T13:32:44.444789-04:00",
+  "nativePixelsIncluded": false,
+  "fullNativeSuitePassed": false,
+  "files": [
+    {
+      "path": "broad-suite-disposition.json",
+      "bytes": 665,
+      "sha256": "1b76915955a5762e7a8bbd9e209860c2d112bd61e00b30383a311e410646b7ee"
+    },
+    {
+      "path": "build-artifact-identity.json",
+      "bytes": 1729,
+      "sha256": "3435f027cffecf1e468b064980c320b84dc863aeeba9ba7c5c28422ac6ba7eed"
+    },
+    {
+      "path": "deploy-verified-runtime.ps1",
+      "bytes": 6710,
+      "sha256": "ff7f5e6ff1e55a1a89cbf26a09f4d51c88eed3ee2cd67c08c846e8f1f5005941"
+    },
+    {
+      "path": "deployment-receipt.json",
+      "bytes": 4302,
+      "sha256": "845386b0eb5faca38ff1df89b706dca53756ed438c7cd02722f082994fd9a15d"
+    },
+    {
+      "path": "independent-postdeployment-verification.json",
+      "bytes": 2261,
+      "sha256": "077df8f82f35a5f731c6c384ae4296eddbcf6c3af278c3fb470319a749085e97"
+    },
+    {
+      "path": "integrated-capture-tests.log",
+      "bytes": 987,
+      "sha256": "8877d769483d58c776c025fcb96ff78e9484745488431e072244c560ad383bcd"
+    },
+    {
+      "path": "integrated-capture.trx",
+      "bytes": 3118,
+      "sha256": "6d4b73bc32da461dd8d381a8bc9da875b3839f6f6c76930822492380aa8ced18"
+    },
+    {
+      "path": "integrated-targeted-tests.log",
+      "bytes": 28923,
+      "sha256": "0a433d36d06edeac5bed445c07412922656f038f804ad2c048b3ad796dddb59f"
+    },
+    {
+      "path": "integrated-targeted.trx",
+      "bytes": 468167,
+      "sha256": "29a913bd501addfb33a3c6d520baeeef9de0bf0ca5fb5f519aee93ec339f05ef"
+    },
+    {
+      "path": "integration-review.json",
+      "bytes": 13573,
+      "sha256": "ef3a3d30b7bf1c7a0c4f24a7c99c274f6357c3574d71c2e61c0c9299a89d63be"
+    },
+    {
+      "path": "predeployment-snapshot.json",
+      "bytes": 1411,
+      "sha256": "66a6b58df7d7786347c7fe5371270dc249d980d00e5e336a9da1fee8f92bd43e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2315,
+      "sha256": "88ac4679697e843d285252a84c7fc4aaa3a604da11c5eb9ea129ba567c033f38"
+    },
+    {
+      "path": "validated-build.json",
+      "bytes": 3391,
+      "sha256": "c8d87d16d97fe08a70a2ca40355ce00bd0c11b9cdca2b2988dc4e8a4636f33ff"
+    }
+  ]
+}

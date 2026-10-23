@@ -1,0 +1,51 @@
+{
+  "verifiedAt": "2026-10-23T13:31:42.7776582-04:00",
+  "readOnly": true,
+  "sourceCommit": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "configurationSha256": "5A744303135CFB76315BCE58DCDC0ED704B695B5E0CC904D5CF06A345170F97E",
+  "configurationMatchesReceipt": true,
+  "files": [
+    {
+      "target": "VideoProcessor.exe",
+      "deployedSha256": "02FC483780F72949D86265A3C9C24B615DC4D99B1BD5D8C7DCD06229A6200109",
+      "matchesBuild": true,
+      "backupSha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80",
+      "backupMatchesPrior24e": true
+    },
+    {
+      "target": "VideoProcessor.exe.runtime.json",
+      "deployedSha256": "32039F77009E753126D6A06136439AD43E52A0CF87AA441E59CBE15EB24BAF39",
+      "matchesBuild": true,
+      "backupSha256": "0D2ECF30FC0283E497B556154B37FEC75D25AF228D447323CC78305E308BF3FF",
+      "backupMatchesPrior24e": true
+    },
+    {
+      "target": "vprenderer/VideoProcessorVPRenderer.dll",
+      "deployedSha256": "18429D306553BF48B2EBAACCCB9791ACD9BC7528BF15A8F3319CF330598962B4",
+      "matchesBuild": true,
+      "backupSha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99",
+      "backupMatchesPrior24e": true
+    },
+    {
+      "target": "vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "deployedSha256": "0EB2B6F12863C0A7782CA840AA60C6D4340DE659B83075651D94403E96AB90A2",
+      "matchesBuild": true,
+      "backupSha256": "F8558E66805D22205C7044E00690AA0BE486AF990E306F261DA25C45FC0FCDB9",
+      "backupMatchesPrior24e": true
+    },
+    {
+      "target": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "deployedSha256": "F206D0647823C58D8D7ABCD47FD6912FDA1C44073F6315C8C750FC2939F10889",
+      "matchesBuild": true,
+      "backupSha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE",
+      "backupMatchesPrior24e": true
+    },
+    {
+      "target": "vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "deployedSha256": "0A48C99E72B2E3DDE4174D9A60163FDAF56D9D1DB60E07F5CE296E94547DFBF3",
+      "matchesBuild": true,
+      "backupSha256": "F2BF3516F1063DA67038C0FA6E800E20D2298D3037F2604494D98CB290708EED",
+      "backupMatchesPrior24e": true
+    }
+  ]
+}

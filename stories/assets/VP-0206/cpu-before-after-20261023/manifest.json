@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "sourceBefore": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "sourceAfter": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "rawPixelsIncluded": false,
+  "trialCsvIncluded": false,
+  "files": [
+    {
+      "path": "after-library-verified.json",
+      "bytes": 187,
+      "sha256": "64a831e0293a14a8699b2c5bf6b2537f6175e841941c58bf55b6f48b1a8385da"
+    },
+    {
+      "path": "ANALYSIS.txt",
+      "bytes": 3333,
+      "sha256": "d670d1fd360de284f9472dad65ca417b8dc6b70d5e6f37bd05c8727e65b6c930"
+    },
+    {
+      "path": "bench-native.cpp",
+      "bytes": 3987,
+      "sha256": "1ba6563436b803d413148826f0d518b1b05ee81663bed49c4bd6ab51e4fb6be9"
+    },
+    {
+      "path": "bench-native.vcxproj",
+      "bytes": 1752,
+      "sha256": "bbaffce11bd8dd4dc928b74182cd2b46ce96605bffb236a6ceff561ab52faa18"
+    },
+    {
+      "path": "bench-wire.h",
+      "bytes": 653,
+      "sha256": "cd159d1a5e410cea2b95687e3e8c4ce7d71a414e4bc7a49a6549083921b5509c"
+    },
+    {
+      "path": "compact-summary.csv",
+      "bytes": 2596,
+      "sha256": "3e611dcdaf5e3741eaa84c482e604f56bee1bd7586428114bd51b68e519f2964"
+    },
+    {
+      "path": "PROVENANCE.txt",
+      "bytes": 1614,
+      "sha256": "9cd2d97e0ce0b2ec56789b167a7b161b986598076577133218f015e595b264f8"
+    },
+    {
+      "path": "run-benchmark.py",
+      "bytes": 9308,
+      "sha256": "d8fcbd49a96e9b8e6a594f0debaf7869fe4fbd0cdb731134ae50c054d52bf466"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 55411,
+      "sha256": "ef47224fe5f87636285b7ec7f0151bead6c9e8d2176797fb52be61168d746c69"
+    },
+    {
+      "path": "wrapper-hashes.json",
+      "bytes": 483,
+      "sha256": "6f8940962a6427680394834a672b5fcfeb4e2a7307f00d7ab89a96c7eb163430"
+    }
+  ]
+}

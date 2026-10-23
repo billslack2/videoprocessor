@@ -1,0 +1,1935 @@
+{
+  "schema": 1,
+  "started_utc": "2026-10-23T17:29:17.140331+00:00",
+  "baseline_source": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "after_source": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "baseline_library_sha256": "EB712353D5993799A582AD7443325A084D76B8F4BAED6BE1AA422AB029636689",
+  "after_library_sha256": "2211F1553C2BD85D2F9C168245993BB4CE1EF927D13DF179C3EBDA6380B39AF5",
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+    "logical_cpus": 16
+  },
+  "capture": "C:\\Videoprocessor\\vp\\logs\\analysis-20261023-122213-68268-1\\frame-000001.bin",
+  "fixtures": [
+    {
+      "name": "captured_paused",
+      "bytes": 33177600,
+      "sha256": "040041493b35324ee2cbeec8ec498fd2e525c55a01345316755c61376030f79c"
+    },
+    {
+      "name": "bars_0",
+      "bytes": 33177600,
+      "sha256": "7b5f94519c7a7254fd429bcacc5fe954572cc9da14b5a398b4182604cc3bc03f"
+    },
+    {
+      "name": "bars_40",
+      "bytes": 33177600,
+      "sha256": "9c5811afd0dba1ca62a788078d1a9eae7b8c0e89b096dca937ba41d898849d2b"
+    },
+    {
+      "name": "bars_64",
+      "bytes": 33177600,
+      "sha256": "aac827e9cc3bab568a4811045e7f9ad880a9fc8d1981c63a624d741159cf80ed"
+    },
+    {
+      "name": "noisy_bars_64",
+      "bytes": 33177600,
+      "sha256": "55924377f5d28b15e756c8619d9a0537c0c50e8144aa3b326e5410d88addd0aa"
+    },
+    {
+      "name": "dark_gradient",
+      "bytes": 33177600,
+      "sha256": "db01c28e5fda9de4e8411bdb74efb82f7285ced9a5d91b3b2add6e02d551c838"
+    }
+  ],
+  "warmups_per_fixture_method_variant": 20,
+  "measured_trials_per_fixture_method_variant": 101,
+  "rows": 3636,
+  "coordinator_measurement_wall_seconds": 1.4188131000846624,
+  "coordinator_thread_cpu_ms": 1421.875,
+  "metrics": "QPC wall milliseconds inside native wrapper and QueryThreadCycleTime cycle deltas. Cycle measurement includes the two QPC reads; IO/preparation/CSV formatting excluded.",
+  "rotation": "Every trial rotates fixture/method order; immediate pairs alternate baseline-first/after-first. Both DLLs loaded together on one calling thread.",
+  "interpretation": "Offline CPU helper workload; no live A/B, frame jitter, Present, GPU or displayed-adoption measurement. Corrected classification can change work and sample counts; review outcomes alongside timing. Maxima include any host scheduling interference. No timing assertion.",
+  "summary": [
+    {
+      "fixture": "captured_paused",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.1506,
+          "p95": 0.2205,
+          "maximum": 0.2557,
+          "minimum": 0.1375,
+          "mean": 0.16436039603960395
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 568822,
+          "p95": 805562,
+          "maximum": 972724,
+          "minimum": 523450,
+          "mean": 620638.5742574257
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 288,
+            "actual_new_luma_reads": 12112,
+            "bounds": [
+              936,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.143,
+          "p95": 0.2086,
+          "maximum": 0.2362,
+          "minimum": 0.1352,
+          "mean": 0.15846930693069305
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 544274,
+          "p95": 795720,
+          "maximum": 837330,
+          "minimum": 514976,
+          "mean": 602271.7821782178
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 288,
+            "actual_new_luma_reads": 12112,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9495351925630808,
+      "median_cycle_ratio_after_before": 0.9568441445654352
+    },
+    {
+      "fixture": "captured_paused",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.0793,
+          "p95": 0.0929,
+          "maximum": 0.1025,
+          "minimum": 0.0547,
+          "mean": 0.07665148514851484
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 302366,
+          "p95": 354160,
+          "maximum": 390526,
+          "minimum": 208962,
+          "mean": 292346.0297029703
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2176,
+            "actual_new_luma_reads": 2624,
+            "bounds": [
+              936,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2624,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.0762,
+          "p95": 0.0843,
+          "maximum": 0.1162,
+          "minimum": 0.051,
+          "mean": 0.07008415841584158
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 290548,
+          "p95": 321556,
+          "maximum": 444904,
+          "minimum": 194902,
+          "mean": 266718.9900990099
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2176,
+            "actual_new_luma_reads": 2368,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2368,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.960907944514502,
+      "median_cycle_ratio_after_before": 0.9609149176825437
+    },
+    {
+      "fixture": "captured_paused",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2254,
+          "p95": 0.3001,
+          "maximum": 0.3365,
+          "minimum": 0.2026,
+          "mean": 0.23990891089108912
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 853366,
+          "p95": 1132248,
+          "maximum": 1199850,
+          "minimum": 771210,
+          "mean": 909930.6930693069
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2464,
+            "actual_new_luma_reads": 14992,
+            "bounds": [
+              936,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2624,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2503,
+          "p95": 0.2949,
+          "maximum": 0.364,
+          "minimum": 0.2024,
+          "mean": 0.24999108910891088
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 952394,
+          "p95": 1114692,
+          "maximum": 1291354,
+          "minimum": 769196,
+          "mean": 946483.3069306931
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2464,
+            "actual_new_luma_reads": 14736,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12112,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2368,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.1104702750665485,
+      "median_cycle_ratio_after_before": 1.1160439951908092
+    },
+    {
+      "fixture": "bars_0",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.192,
+          "p95": 0.3434,
+          "maximum": 0.3942,
+          "minimum": 0.1283,
+          "mean": 0.22601683168316833
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 731120,
+          "p95": 1305224,
+          "maximum": 1491804,
+          "minimum": 489022,
+          "mean": 859280.4554455446
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2445,
+          "p95": 0.3654,
+          "maximum": 0.5852,
+          "minimum": 0.1405,
+          "mean": 0.26352970297029704
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 930658,
+          "p95": 1343528,
+          "maximum": 1522318,
+          "minimum": 535648,
+          "mean": 990058.7722772277
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 1,
+            "classification": 2,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.2734375,
+      "median_cycle_ratio_after_before": 1.2729209979209979
+    },
+    {
+      "fixture": "bars_0",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4439,
+          "p95": 0.496,
+          "maximum": 0.7374,
+          "minimum": 0.3995,
+          "mean": 0.44886930693069305
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1685984,
+          "p95": 1859492,
+          "maximum": 2631044,
+          "minimum": 1519126,
+          "mean": 1695191.287128713
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33696,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4427,
+          "p95": 0.471,
+          "maximum": 0.5805,
+          "minimum": 0.4129,
+          "mean": 0.44315841584158416
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1683970,
+          "p95": 1791320,
+          "maximum": 2205330,
+          "minimum": 1569438,
+          "mean": 1682454.891089109
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33440,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 1,
+            "classification": 2,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9972966884433431,
+      "median_cycle_ratio_after_before": 0.9988054453660296
+    },
+    {
+      "fixture": "bars_0",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7452,
+          "p95": 0.8123,
+          "maximum": 0.9414,
+          "minimum": 0.6249,
+          "mean": 0.7395168316831683
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2832292,
+          "p95": 3065764,
+          "maximum": 3283732,
+          "minimum": 2376482,
+          "mean": 2793470.673267327
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42400,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7136,
+          "p95": 0.7964,
+          "maximum": 0.9525,
+          "minimum": 0.6265,
+          "mean": 0.7178970297029703
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2675656,
+          "p95": 3016744,
+          "maximum": 3170454,
+          "minimum": 2382030,
+          "mean": 2712281.2277227724
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42144,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 1,
+            "classification": 2,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9575952764358562,
+      "median_cycle_ratio_after_before": 0.9446963801754904
+    },
+    {
+      "fixture": "bars_40",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2386,
+          "p95": 0.3435,
+          "maximum": 0.3572,
+          "minimum": 0.1563,
+          "mean": 0.25585148514851486
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 907744,
+          "p95": 1304996,
+          "maximum": 1357474,
+          "minimum": 595118,
+          "mean": 971173.9009900991
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2292,
+          "p95": 0.3378,
+          "maximum": 0.3614,
+          "minimum": 0.133,
+          "mean": 0.23424950495049504
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 857546,
+          "p95": 1285274,
+          "maximum": 1375030,
+          "minimum": 506692,
+          "mean": 887801.1485148515
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 64,
+            "effective_floor": 40,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9606035205364626,
+      "median_cycle_ratio_after_before": 0.9447002679169457
+    },
+    {
+      "fixture": "bars_40",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4531,
+          "p95": 0.5177,
+          "maximum": 0.6686,
+          "minimum": 0.4077,
+          "mean": 0.45694257425742574
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1722084,
+          "p95": 1921014,
+          "maximum": 2541288,
+          "minimum": 1550400,
+          "mean": 1731446.297029703
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33696,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4387,
+          "p95": 0.4724,
+          "maximum": 0.7547,
+          "minimum": 0.405,
+          "mean": 0.4434891089108911
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1665844,
+          "p95": 1783910,
+          "maximum": 1874920,
+          "minimum": 1540140,
+          "mean": 1668871.584158416
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33440,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 64,
+            "effective_floor": 40,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9682189362171706,
+      "median_cycle_ratio_after_before": 0.9673418950527384
+    },
+    {
+      "fixture": "bars_40",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.6951,
+          "p95": 0.7848,
+          "maximum": 0.7988,
+          "minimum": 0.6127,
+          "mean": 0.7032366336633663
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2641912,
+          "p95": 2978934,
+          "maximum": 3035972,
+          "minimum": 2328640,
+          "mean": 2671213.7623762377
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42400,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7511,
+          "p95": 0.8083,
+          "maximum": 0.8241,
+          "minimum": 0.6278,
+          "mean": 0.733209900990099
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2846656,
+          "p95": 3071160,
+          "maximum": 3123676,
+          "minimum": 2386058,
+          "mean": 2784983.495049505
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42144,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 64,
+            "effective_floor": 40,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.0805639476334339,
+      "median_cycle_ratio_after_before": 1.077498417812554
+    },
+    {
+      "fixture": "bars_64",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2091,
+          "p95": 0.3564,
+          "maximum": 0.3743,
+          "minimum": 0.1264,
+          "mean": 0.22970792079207922
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 795720,
+          "p95": 1355802,
+          "maximum": 1424772,
+          "minimum": 481460,
+          "mean": 872383.6831683168
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2538,
+          "p95": 0.3528,
+          "maximum": 0.3978,
+          "minimum": 0.1419,
+          "mean": 0.2592356435643564
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 965922,
+          "p95": 1340716,
+          "maximum": 1511830,
+          "minimum": 540512,
+          "mean": 985814.0495049505
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 88,
+            "effective_floor": 64,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.2137733142037304,
+      "median_cycle_ratio_after_before": 1.2138968481375358
+    },
+    {
+      "fixture": "bars_64",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4451,
+          "p95": 0.4989,
+          "maximum": 0.522,
+          "minimum": 0.4011,
+          "mean": 0.4470079207920792
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1684578,
+          "p95": 1896010,
+          "maximum": 1984892,
+          "minimum": 1523952,
+          "mean": 1692697.9603960395
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33696,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4493,
+          "p95": 0.4876,
+          "maximum": 0.5153,
+          "minimum": 0.4165,
+          "mean": 0.44959207920792077
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1708784,
+          "p95": 1852918,
+          "maximum": 1960192,
+          "minimum": 1584030,
+          "mean": 1708744.495049505
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33440,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 88,
+            "effective_floor": 64,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.0094360817793753,
+      "median_cycle_ratio_after_before": 1.0143691773251224
+    },
+    {
+      "fixture": "bars_64",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7417,
+          "p95": 0.838,
+          "maximum": 1.0455,
+          "minimum": 0.5978,
+          "mean": 0.7324722772277228
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2817130,
+          "p95": 3148756,
+          "maximum": 3436188,
+          "minimum": 2269588,
+          "mean": 2769992.693069307
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42400,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7079,
+          "p95": 0.8376,
+          "maximum": 1.1261,
+          "minimum": 0.6148,
+          "mean": 0.7245623762376238
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2690666,
+          "p95": 3174330,
+          "maximum": 3709902,
+          "minimum": 2337760,
+          "mean": 2736749.4653465347
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42144,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 88,
+            "effective_floor": 64,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9544290144263179,
+      "median_cycle_ratio_after_before": 0.9551089229109058
+    },
+    {
+      "fixture": "noisy_bars_64",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2555,
+          "p95": 0.3471,
+          "maximum": 0.3936,
+          "minimum": 0.1466,
+          "mean": 0.25868019801980197
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 972344,
+          "p95": 1313546,
+          "maximum": 1497238,
+          "minimum": 558258,
+          "mean": 978369.4455445545
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.21,
+          "p95": 0.363,
+          "maximum": 0.5038,
+          "minimum": 0.1348,
+          "mean": 0.23766831683168316
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 798532,
+          "p95": 1351204,
+          "maximum": 1715130,
+          "minimum": 513494,
+          "mean": 895316.8613861386
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 1088,
+            "actual_new_luma_reads": 8448,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 83,
+            "effective_floor": 59,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.821917808219178,
+      "median_cycle_ratio_after_before": 0.8212443332812256
+    },
+    {
+      "fixture": "noisy_bars_64",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4588,
+          "p95": 0.5046,
+          "maximum": 0.5262,
+          "minimum": 0.42,
+          "mean": 0.45934158415841586
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1744048,
+          "p95": 1920216,
+          "maximum": 1998534,
+          "minimum": 1596190,
+          "mean": 1746339.287128713
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33696,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.4453,
+          "p95": 0.5148,
+          "maximum": 0.6273,
+          "minimum": 0.41,
+          "mean": 0.4512881188118812
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 1684464,
+          "p95": 1857706,
+          "maximum": 2384462,
+          "minimum": 1558000,
+          "mean": 1705257.891089109
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 33344,
+            "actual_new_luma_reads": 33440,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 83,
+            "effective_floor": 59,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9705754141238012,
+      "median_cycle_ratio_after_before": 0.9658358026843298
+    },
+    {
+      "fixture": "noisy_bars_64",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7071,
+          "p95": 0.8211,
+          "maximum": 0.8712,
+          "minimum": 0.6227,
+          "mean": 0.7222930693069307
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2667866,
+          "p95": 3122764,
+          "maximum": 3299084,
+          "minimum": 2366640,
+          "mean": 2735228.712871287
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42400,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": -1,
+            "classification": 2,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33696,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.7664,
+          "p95": 0.8532,
+          "maximum": 1.1724,
+          "minimum": 0.6331,
+          "mean": 0.7572871287128713
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 2856992,
+          "p95": 3200930,
+          "maximum": 4454018,
+          "minimum": 2406122,
+          "mean": 2860405.217821782
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 34432,
+            "actual_new_luma_reads": 42144,
+            "bounds": [
+              0,
+              274,
+              3840,
+              1886
+            ],
+            "calibration_mode": 2,
+            "classification": 2,
+            "effective_cutoff": 83,
+            "effective_floor": 59,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 1088,
+            "raw_luma_reads": 8448,
+            "retention_additional_chroma_reads": 33344,
+            "retention_additional_luma_reads": 33440,
+            "retention_safe": 1,
+            "retention_valid": 1,
+            "vertical_state": 1,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.083863668505162,
+      "median_cycle_ratio_after_before": 1.070890367057416
+    },
+    {
+      "fixture": "dark_gradient",
+      "method": "raw",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.1518,
+          "p95": 0.2204,
+          "maximum": 0.2316,
+          "minimum": 0.1411,
+          "mean": 0.1715009900990099
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 578056,
+          "p95": 838850,
+          "maximum": 881258,
+          "minimum": 537244,
+          "mean": 652308
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 288,
+            "actual_new_luma_reads": 12448,
+            "bounds": [
+              960,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.1493,
+          "p95": 0.2156,
+          "maximum": 0.2826,
+          "minimum": 0.1392,
+          "mean": 0.16844455445544554
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 567416,
+          "p95": 811110,
+          "maximum": 835696,
+          "minimum": 530176,
+          "mean": 637471.8118811881
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 288,
+            "actual_new_luma_reads": 12448,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 0,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 0,
+            "retention_additional_luma_reads": 0,
+            "retention_safe": 0,
+            "retention_valid": 0,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9835309617918313,
+      "median_cycle_ratio_after_before": 0.9815934788325007
+    },
+    {
+      "fixture": "dark_gradient",
+      "method": "retention_precomputed",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.0705,
+          "p95": 0.0916,
+          "maximum": 0.1948,
+          "minimum": 0.0492,
+          "mean": 0.0713009900990099
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 269192,
+          "p95": 348802,
+          "maximum": 741114,
+          "minimum": 188100,
+          "mean": 271244.37623762374
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2176,
+            "actual_new_luma_reads": 2624,
+            "bounds": [
+              960,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2624,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.0686,
+          "p95": 0.0728,
+          "maximum": 0.1161,
+          "minimum": 0.0465,
+          "mean": 0.06417722772277228
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 261478,
+          "p95": 277856,
+          "maximum": 442358,
+          "minimum": 177422,
+          "mean": 244783.58415841585
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2176,
+            "actual_new_luma_reads": 2368,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2368,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 0.9730496453900709,
+      "median_cycle_ratio_after_before": 0.9713438735177866
+    },
+    {
+      "fixture": "dark_gradient",
+      "method": "raw_global_darkness_retention_bundle",
+      "baseline": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2598,
+          "p95": 0.3011,
+          "maximum": 0.381,
+          "minimum": 0.2025,
+          "mean": 0.2589188118811881
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 988418,
+          "p95": 1145434,
+          "maximum": 1447914,
+          "minimum": 770792,
+          "mean": 982107.3663366337
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2464,
+            "actual_new_luma_reads": 15328,
+            "bounds": [
+              960,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": -1,
+            "classification": 3,
+            "effective_cutoff": -1,
+            "effective_floor": -1,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 0,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2624,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 0,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "after": {
+        "wall_ms": {
+          "n": 101,
+          "median": 0.2628,
+          "p95": 0.2984,
+          "maximum": 0.63,
+          "minimum": 0.1979,
+          "mean": 0.2583960396039604
+        },
+        "thread_cycles": {
+          "n": 101,
+          "median": 997880,
+          "p95": 1122520,
+          "maximum": 1332660,
+          "minimum": 753122,
+          "mean": 966692.9108910891
+        },
+        "outcomes": [
+          {
+            "actual_new_chroma_reads": 2464,
+            "actual_new_luma_reads": 15072,
+            "bounds": [
+              0,
+              0,
+              3840,
+              2160
+            ],
+            "calibration_mode": 4,
+            "classification": 1,
+            "effective_cutoff": 24,
+            "effective_floor": 0,
+            "global_darkness_luma_reads": 256,
+            "horizontal_state": 2,
+            "raw_chroma_reads": 288,
+            "raw_luma_reads": 12448,
+            "retention_additional_chroma_reads": 2176,
+            "retention_additional_luma_reads": 2368,
+            "retention_safe": 0,
+            "retention_valid": 1,
+            "vertical_state": 2,
+            "visible": [
+              0,
+              0,
+              3840,
+              2160
+            ]
+          }
+        ]
+      },
+      "median_wall_ratio_after_before": 1.0115473441108545,
+      "median_cycle_ratio_after_before": 1.0095728730152629
+    }
+  ],
+  "files": {
+    "bench-wire.h": "CD159D1A5E410CEA2B95687E3E8C4CE7D71A414E4BC7A49A6549083921B5509C",
+    "bench-native.cpp": "1BA6563436B803D413148826F0D518B1B05EE81663BED49C4BD6AB51E4FB6BE9",
+    "bench-native.vcxproj": "BBAFFCE11BD8DD4DC928B74182CD2B46CE96605BFFB236A6CEFF561AB52FAA18",
+    "bin-baseline\\vp-cpu-baseline.dll": "3EF23F350A58C10627374642457FCAB8FD1293E3A1A58BF6FE434A09315998A6",
+    "bin-after\\vp-cpu-after.dll": "83EC32C9A82D1190BA1195E9BAA1ECA51956B6080B40968A7115F14689A97C7E"
+  }
+}

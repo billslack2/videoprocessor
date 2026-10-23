@@ -1,0 +1,299 @@
+{
+  "schema": 1,
+  "reviewedAt": "2026-10-23T13:17:46.833858-04:00",
+  "head": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "expectedHead": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "headMatches": true,
+  "trackedStatus": "",
+  "installedBaseline": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "feature": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "changedFilesExactlyExpected": true,
+  "changedFiles": [
+    {
+      "path": "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+      "installedBlob": "fbc5a9a275b37f2e76f4ce0ce106549364300e53",
+      "featureBlob": "a2fc5361470c37b2c7fcba21554ae041dc88c6e0",
+      "integrationBlob": "57187d303ca91c9ae0fd972c17a1da326c6e5636",
+      "integrationEqualsFeature": false
+    },
+    {
+      "path": "src/VideoProcessor-Lib/ActivePictureEvidence.h",
+      "installedBlob": "b2fae0ecdaf28be87fefaa83f9fd40f7c4f4188a",
+      "featureBlob": "1d61d6171d6164196479374bec9a5759c1047a7a",
+      "integrationBlob": "1484d90a85829d20a6bb474d850981669918c24d",
+      "integrationEqualsFeature": false
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+      "installedBlob": "57262d43eb0c618b911fabaa6cce54a0a34c5240",
+      "featureBlob": "074dbead1246862c249e7633c4436015bd41c80d",
+      "integrationBlob": "2a6b0ba4e6cf707c9d75225721c7503154095e02",
+      "integrationEqualsFeature": false
+    },
+    {
+      "path": "src/VideoProcessor-Test/ActivePictureBlackReferenceTests.cpp",
+      "installedBlob": null,
+      "featureBlob": "a82458495bf4a31a73218c2559aa993cd48c1c52",
+      "integrationBlob": "a82458495bf4a31a73218c2559aa993cd48c1c52",
+      "integrationEqualsFeature": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/AnalysisDiagnosticReplayTests.cpp",
+      "installedBlob": "35bb7b1781c1d68003d8f6a406ada479c8f78d41",
+      "featureBlob": "41d553589695920b5da5c5d216c264df23d37c91",
+      "integrationBlob": "41d553589695920b5da5c5d216c264df23d37c91",
+      "integrationEqualsFeature": true
+    },
+    {
+      "path": "src/VideoProcessor-Test/AnalysisEvaluationBudgetTests.cpp",
+      "installedBlob": "922f9184a39c3583678c66acec771c3d96030423",
+      "featureBlob": null,
+      "integrationBlob": "96bd2599b8baf399badfce44ab40ca681a012a63",
+      "integrationEqualsFeature": false
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj",
+      "installedBlob": "398ab581ab028d6235714a113ef9dd1065372d1f",
+      "featureBlob": "99961802f39417c2c2709c1de9a2b60a3d1efed7",
+      "integrationBlob": "794f22cc7498b74f386362a48013e0cce47df0a4",
+      "integrationEqualsFeature": false
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters",
+      "installedBlob": "86757cc75a758d8f8973d98ed1ab8999f535ba11",
+      "featureBlob": "901dda6710270e1e89c7021de0a2dec6e6d1b1e6",
+      "integrationBlob": "6196dce2a0010a9c0ea6f6ed4f6f630eb4e783e3",
+      "integrationEqualsFeature": false
+    }
+  ],
+  "retainedInstalledSource": [
+    {
+      "path": "src/VideoProcessor-GUI",
+      "installedBlobOrTree": "8432aa73c1ff22d4680553fa3acbc017e78d7ce3",
+      "integrationBlobOrTree": "8432aa73c1ff22d4680553fa3acbc017e78d7ce3",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/DebugLog.h",
+      "installedBlobOrTree": "c4ceb46a5f832f84e0a7919b5bad36a284a63c6e",
+      "integrationBlobOrTree": "c4ceb46a5f832f84e0a7919b5bad36a284a63c6e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/DebugLogAsync.h",
+      "installedBlobOrTree": "0570bcdf843a2a6b0b2ced99b78774cb61690299",
+      "integrationBlobOrTree": "0570bcdf843a2a6b0b2ced99b78774cb61690299",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/FullscreenActivation.h",
+      "installedBlobOrTree": "632ad43870f6be02cacc1831f12cd7ea5f4f37ba",
+      "integrationBlobOrTree": "632ad43870f6be02cacc1831f12cd7ea5f4f37ba",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/StartupPresentationReadiness.h",
+      "installedBlobOrTree": "7df2dd3600a1bb392cf0fb9dc5e4d03dbc8a2aa8",
+      "integrationBlobOrTree": "7df2dd3600a1bb392cf0fb9dc5e4d03dbc8a2aa8",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/AnalysisEvaluationBudget.h",
+      "installedBlobOrTree": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "integrationBlobOrTree": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/InwardCaptionEvidence.cpp",
+      "installedBlobOrTree": "ab74cee4c6321c798976c7250752bf9b697be2ab",
+      "integrationBlobOrTree": "ab74cee4c6321c798976c7250752bf9b697be2ab",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/InwardCaptionEvidence.h",
+      "installedBlobOrTree": "fe067ccaedda96cf98d4ff090685adf720f7171b",
+      "integrationBlobOrTree": "fe067ccaedda96cf98d4ff090685adf720f7171b",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/RememberedEdgeReturn.cpp",
+      "installedBlobOrTree": "47e5af16420b2180707911ae48c8340cd25d17ca",
+      "integrationBlobOrTree": "47e5af16420b2180707911ae48c8340cd25d17ca",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/RememberedEdgeReturn.h",
+      "installedBlobOrTree": "74e2a93a250d7677651ddfa10cf583872bf178f3",
+      "integrationBlobOrTree": "74e2a93a250d7677651ddfa10cf583872bf178f3",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/ActivePictureTransitionModel.cpp",
+      "installedBlobOrTree": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+      "integrationBlobOrTree": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp",
+      "installedBlobOrTree": "1b68c279440243a1ad36223a717ace4291df3133",
+      "integrationBlobOrTree": "1b68c279440243a1ad36223a717ace4291df3133",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/ActivePictureMeasurementCache.h",
+      "installedBlobOrTree": "9e0f94b3a56d469133dd14a08ae24e7c3e4376e8",
+      "integrationBlobOrTree": "9e0f94b3a56d469133dd14a08ae24e7c3e4376e8",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalController.h",
+      "installedBlobOrTree": "4b5ecc03ef83a8586eec94202e8a6d480d3e9e3d",
+      "integrationBlobOrTree": "4b5ecc03ef83a8586eec94202e8a6d480d3e9e3d",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalWorker.h",
+      "installedBlobOrTree": "e7abb6947904e1a3f6b3ddca4db16dac26d4f5e6",
+      "integrationBlobOrTree": "e7abb6947904e1a3f6b3ddca4db16dac26d4f5e6",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/NvidiaBt2020Reporter.h",
+      "installedBlobOrTree": "81e9b8e8acd728c4605d282db0a96fc2bd50d5d4",
+      "integrationBlobOrTree": "81e9b8e8acd728c4605d282db0a96fc2bd50d5d4",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PreparedPictureEvidence.h",
+      "installedBlobOrTree": "a6d542f29b9c0aa83d3b3e8a0fcd4ce17120d873",
+      "integrationBlobOrTree": "a6d542f29b9c0aa83d3b3e8a0fcd4ce17120d873",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PreparedOutwardWindow.h",
+      "installedBlobOrTree": "ff96a6b2a0a5c8dbd654ee327e0449ef4d5ed55b",
+      "integrationBlobOrTree": "ff96a6b2a0a5c8dbd654ee327e0449ef4d5ed55b",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/LookaheadPerformanceWindow.h",
+      "installedBlobOrTree": "76c77e54e7184324812d4708e7a9af9df3729704",
+      "integrationBlobOrTree": "76c77e54e7184324812d4708e7a9af9df3729704",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PresentationAnalysisBudget.h",
+      "installedBlobOrTree": "7afc838d3e2d9496f5a13f3eaf259c1f9a75a34e",
+      "integrationBlobOrTree": "7afc838d3e2d9496f5a13f3eaf259c1f9a75a34e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaD3D11FrameGpuTimer.h",
+      "installedBlobOrTree": "1390707a544e8193b6f8dac15fd7d2dcc961495e",
+      "integrationBlobOrTree": "1390707a544e8193b6f8dac15fd7d2dcc961495e",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaQueuePolicy.h",
+      "installedBlobOrTree": "69510d0abe3f1edc1d2d5f01c784849e87636d75",
+      "integrationBlobOrTree": "69510d0abe3f1edc1d2d5f01c784849e87636d75",
+      "equal": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/OptionalAnalysisWorker.h",
+      "installedBlobOrTree": "686dc73b9144c872391b9316f5d8d77a4273d3e4",
+      "integrationBlobOrTree": "686dc73b9144c872391b9316f5d8d77a4273d3e4",
+      "equal": true
+    }
+  ],
+  "projectRegistration": [
+    {
+      "path": "src/VideoProcessor-Lib/VideoProcessor-Lib.vcxproj",
+      "missingInstalled": [],
+      "missingFeature": [],
+      "duplicates": {},
+      "entries": 318,
+      "newBlackReferenceTestEntries": 0
+    },
+    {
+      "path": "src/VideoProcessor-Lib/VideoProcessor-Lib.vcxproj.filters",
+      "missingInstalled": [],
+      "missingFeature": [],
+      "duplicates": {},
+      "entries": 254,
+      "newBlackReferenceTestEntries": 0
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj",
+      "missingInstalled": [],
+      "missingFeature": [],
+      "duplicates": {},
+      "entries": 126,
+      "newBlackReferenceTestEntries": 1
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters",
+      "missingInstalled": [],
+      "missingFeature": [],
+      "duplicates": {},
+      "entries": 73,
+      "newBlackReferenceTestEntries": 1
+    }
+  ],
+  "cooperativeCancellationTokenCounts": {
+    "samples.Checkpoint();": {
+      "installedCount": 3,
+      "integrationCount": 3
+    },
+    "CheckAnalysisEvaluationBudget(budget);": {
+      "installedCount": 17,
+      "integrationCount": 18
+    },
+    "samples.budget = budget;": {
+      "installedCount": 6,
+      "integrationCount": 6
+    }
+  },
+  "defaultOptionalBudgetDeclarationsRetained": 8,
+  "newTestClass": "ActivePictureBlackReferenceTests",
+  "newTestMethods": [
+    "VariableDarkSideIsPictureInEveryNativeFormat",
+    "GradientInsideSupportedMatteNoiseEnvelopeStaysUncertain",
+    "TrueZeroFortyAndSixtyFourBarsKeepBothOrientationsAndFormats",
+    "RaisedMatteNoiseCannotTurnIntoFullRaster",
+    "CentralCaptionDoesNotDestroyRaisedMatteReference",
+    "WholeOpposingEdgeControlLeavesOneMatteUnresolved",
+    "OneSidedAndMismatchedMattesCannotNominateFullRaster",
+    "UnresolvedMattePreservesIndependentFullExtentAxis",
+    "RejectedAdaptiveCropCannotLeakIntoFullRasterCoordinates",
+    "RetentionReusesRejectedReferenceRatherThanRestoringPerimeterFloor",
+    "RaisedMatteRetentionDoesNotUseNominalZero",
+    "LimitedAndUnknownKeepExistingAdaptiveInterpretation",
+    "FullBlackFadeAndSparseTitlesNeverAcquireFullRaster",
+    "ModeNamesRemainStableForTelemetry"
+  ],
+  "newTestMethodCount": 14,
+  "sourceReviewPass": true,
+  "reviewNotes": [
+    "Only the eight intended AR evidence/telemetry/test/project files differ from installed24e; all other tracked paths are unchanged by the exact Git diff.",
+    "Entire GUI tree, logging transport, NVIDIA worker/controller/reporter, fullscreen/readiness, prepared proof, budget/GPU confidence and worker/cache helpers retain installed blob/tree identities.",
+    "AR extraction/retention integrate calibration metadata without removing supplied-measurement overloads or cooperative checkpoints. External/refined evidence without calibration rebuilds only current reference and preserves refined geometry; dedicated integration regression covers counts and cancellation.",
+    "New telemetry records candidate separately; published rectangle is populated only for actual logical publish/queued application and has explicit flags. Cadence-repeat state is copied. Normal log uses existing decision throttle, with no additional pixel scan.",
+    "Native replay labels synthetic eight-source scope prehistory, preserves captured identity/repeats/gaps, uses production full-raster-authority reducer and source-duration clock, restores retained admission, checks failed-submit anchor fields and requires first eligible full presentation.",
+    "Preliminary reports are from feature/scratch probes, not this integration build. No test/build/runtime action was performed by this reviewer."
+  ],
+  "preliminaryReportedEvidence": {
+    "isolatedFeatureTests": "14/14 passed",
+    "captureProbes": "6/6 passed",
+    "optionalOfficialCaptureFeatureDll": {
+      "firstFullSubmittedSequence": 10694,
+      "firstLogicalFullSequence": 10700,
+      "qualification": "Preliminary feature DLL; integrated final regression run pending."
+    }
+  },
+  "pending": [
+    "Current full clean serial x64 Release integration Rebuild must complete successfully.",
+    "Run relevant tests against exact integrated Release outputs, including current native capture replay and retained runtime regressions.",
+    "Final deployment transaction must reacquire updater gate/exclusive handles after authorized lifecycle step and preserve active configuration; no deployment performed by reviewer."
+  ]
+}

@@ -1,0 +1,10 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+<PropertyGroup Label="Globals"><ProjectGuid>{3CEEF7EC-9895-4390-A9C4-CC4CF764CCB0}</ProjectGuid><WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion></PropertyGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+<PropertyGroup Label="Configuration"><ConfigurationType>DynamicLibrary</ConfigurationType><PlatformToolset>v142</PlatformToolset><UseOfMfc>Dynamic</UseOfMfc></PropertyGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+<PropertyGroup><OutDir>$(ProjectDir)bin-$(BenchVariant)\</OutDir><IntDir>$(ProjectDir)obj-$(BenchVariant)\</IntDir><TargetName>vp-cpu-$(BenchVariant)</TargetName></PropertyGroup>
+<ItemDefinitionGroup><ClCompile><AdditionalIncludeDirectories>$(BenchSourceRoot)\src\VideoProcessor-Lib</AdditionalIncludeDirectories><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><Optimization>MaxSpeed</Optimization><LanguageStandard>stdcpp17</LanguageStandard><ExceptionHandling>Sync</ExceptionHandling><PreprocessorDefinitions>NDEBUG;NOMINMAX;VP_BENCH_AFTER=$(BenchAfter);%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration><AdditionalDependencies>$(BenchSourceRoot)\x64\Release\VideoProcessor-Lib.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+<ItemGroup><ClCompile Include="bench-native.cpp" /></ItemGroup><Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

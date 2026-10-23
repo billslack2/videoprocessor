@@ -1,0 +1,8 @@
+Prepared controlled CPU-helper before/after benchmark. Do not invoke coordinator or link after DLL until root confirms completed Release build of after4d1d62d0.
+Baseline: production24e Release static library, expected SHA256 EB712353D5993799A582AD7443325A084D76B8F4BAED6BE1AA422AB029636689.
+After: production4d1d62d0 integration Release static library, linked only after build completion.
+Common wrapper exposes a fixed C ABI; each DLL is compiled against its own exact source header and linked to its own library. The Python coordinator loads both, preps identical owned source pixels in both contexts, warms all methods/fixtures20 times, then101 retained trials with alternating before/after order and rotating fixture/method order.
+Fixtures: exact captured paused frame plus synthetic native decoded-DV422 4K zero/40/64 mattes, noisy64 matte and asymmetric dark gradient. All preparation excluded from timings.
+Methods: raw extraction; retention using precomputed exact raw/global/AR measurements; full raw/global/AR/retention bundle. QPC wall and current-thread cycle counts are retained; outcomes/sample counts record changed classification/work. No timing threshold, runtime/config/playback changes, or live frame-jitter claim.
+All project outputs/PDBs live only under this scratch directory bin-baseline,obj-baseline,bin-after,obj-after. Shared source/build outputs are read-only.
+Completed run: see ANALYSIS.txt, summary.json and samples.csv. After-library SHA256 verified before coordinator execution; exact paired run completed with exit 0. No timing rerun was performed to select a favorable outcome.

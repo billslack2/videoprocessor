@@ -1,0 +1,69 @@
+{
+  "status": "deployed-not-started",
+  "sourceCommit": "4d1d62d0a664ba97137ba89497888bc8fad483a0",
+  "featureCommit": "c48eb134c34a93c762e026af6daf50aaeb1dc83c",
+  "retainedInstalledSource": "24e0dd10430e5140c06c1fa1bd106c9bbde61ef7",
+  "branch": "codex/vp-0206-deploy-20261023",
+  "configuration": "Release",
+  "architecture": "x64",
+  "testsPassed": 359,
+  "testsFailed": 0,
+  "deployedAt": "2026-10-23T13:29:43.7859944-04:00",
+  "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579",
+  "configurationEdits": [],
+  "configurationHashesUnchanged": {
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+    "C:\\Videoprocessor\\vp\\INSTALL-MANIFEST.json": "D6B4965FF8D31077999F6F36E1F7107A25098D12E04B4AD4F8AE9FAE49416852",
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\RELEASE-MANIFEST.json": "9E521D5266E658F756692F89ECE4B1E767F4A49AA9948F7F6B2401270517485F",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "5A744303135CFB76315BCE58DCDC0ED704B695B5E0CC904D5CF06A345170F97E",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.state": "B934FD15400486801A8B34C1D1D85D0D703295836D71F3439824ED3B045DA434"
+  },
+  "playbackStarted": false,
+  "updaterGateUsed": true,
+  "files": [
+    {
+      "source": "x64/Release/VideoProcessor-GUI.exe",
+      "target": "VideoProcessor.exe",
+      "beforeSha256": "57EAC6D9FDF183F6B788CEBE7D20F8E94DB5CE101C71AFD2C50D88563B97AD80",
+      "sha256": "02FC483780F72949D86265A3C9C24B615DC4D99B1BD5D8C7DCD06229A6200109",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\VideoProcessor.exe"
+    },
+    {
+      "source": "x64/Release/VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor.exe.runtime.json",
+      "beforeSha256": "0D2ECF30FC0283E497B556154B37FEC75D25AF228D447323CC78305E308BF3FF",
+      "sha256": "32039F77009E753126D6A06136439AD43E52A0CF87AA441E59CBE15EB24BAF39",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\VideoProcessor.exe.runtime.json"
+    },
+    {
+      "source": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "target": "vprenderer/VideoProcessorVPRenderer.dll",
+      "beforeSha256": "F4226C07A97A0219A19CAEA9F7DE1251BE12CB50DE05B3C35C34749988687C99",
+      "sha256": "18429D306553BF48B2EBAACCCB9791ACD9BC7528BF15A8F3319CF330598962B4",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "source": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "beforeSha256": "F8558E66805D22205C7044E00690AA0BE486AF990E306F261DA25C45FC0FCDB9",
+      "sha256": "0EB2B6F12863C0A7782CA840AA60C6D4340DE659B83075651D94403E96AB90A2",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+    },
+    {
+      "source": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "target": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "beforeSha256": "F66DAB0DC431481D7859D0963F1AC40B31993C37A3356EB9FEF81168FEEDE8AE",
+      "sha256": "F206D0647823C58D8D7ABCD47FD6912FDA1C44073F6315C8C750FC2939F10889",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "source": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "vprenderer-beta/VideoProcessorVPRendererBeta.dll.runtime.json",
+      "beforeSha256": "F2BF3516F1063DA67038C0FA6E800E20D2298D3037F2604494D98CB290708EED",
+      "sha256": "0A48C99E72B2E3DDE4174D9A60163FDAF56D9D1DB60E07F5CE296E94547DFBF3",
+      "backup": "C:\\Videoprocessor\\vp\\backup-vp0206-4d1d62d0-20261023-132943-579\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+    }
+  ]
+}

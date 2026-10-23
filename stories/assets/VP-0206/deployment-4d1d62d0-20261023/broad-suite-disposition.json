@@ -1,0 +1,9 @@
+{
+  "status": "interrupted-no-complete-result",
+  "processId": 48764,
+  "reason": "Prioritize the user-requested local test deployment and avoid broad-suite CPU load during playback validation",
+  "targetedTestsPassed": 358,
+  "captureReplayPassed": 1,
+  "stoppedAt": "2026-10-23T13:28:50.7661407-04:00",
+  "commandLine": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe\" x64\\Release\\VideoProcessor-Test.dll /Platform:x64 /Logger:console;Verbosity=minimal /Logger:trx;LogFileName=integrated-native.trx /ResultsDirectory:artifacts\\vp-0206-deploy\\test-results"
+}
