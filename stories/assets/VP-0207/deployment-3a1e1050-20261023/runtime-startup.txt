@@ -1,0 +1,10 @@
+2026-10-23 18:15:56 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/3a1e105075b6d1d75c0b56aafa20a948fbef652e branch=codex/subtitle-backing-binding-20261023 dirty=0 build=v1.4.02-beta-3a1e105
+2026-10-23 18:15:56 | unified profile runtime initialized state=C:\Videoprocessor\vp\VideoProcessor.state viewport=scope aspect=47:20 generation=1
+2026-10-23 18:15:56 | Optional VP Renderer plugin loaded: API=28 path=C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll
+2026-10-23 18:15:56 | Optional VP Renderer plugin loaded: API=28 path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 18:16:03 | unified profile runtime initialized state=C:\Videoprocessor\vp\VideoProcessor.state viewport=scope aspect=47:20 generation=1
+2026-10-23 18:16:03 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/3a1e105075b6d1d75c0b56aafa20a948fbef652e branch=codex/subtitle-backing-binding-20261023 dirty=0 build=v1.4.02-beta-3a1e105
+2026-10-23 18:16:03 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend
+2026-10-23 18:16:05 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend
+2026-10-23 18:16:05 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend
+2026-10-23 18:16:09 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend

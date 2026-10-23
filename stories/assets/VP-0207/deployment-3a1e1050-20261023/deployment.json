@@ -1,0 +1,48 @@
+{
+  "commit": "3a1e105075b6d1d75c0b56aafa20a948fbef652e",
+  "configuration": "Release",
+  "architecture": "x64",
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip"
+  ],
+  "nativeValidation": {
+    "passed": "1137",
+    "trx": "TestResults\\advanced-hdr-final.trx",
+    "total": "1137",
+    "commit": "3a1e105075b6d1d75c0b56aafa20a948fbef652e"
+  },
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-advanced-hdr-3a1e1050-20261023-181556",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-backing-binding-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "051A3FE646D009F15A384BDE711AD0CBB6DD6EC84181B9F828AA76AFEDCCB7E6",
+      "previousSha256": "1203F28F282D638E4D342B71B53EA6F1822B10FA53975B5893D11344B863236E"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-backing-binding-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "55F16135B9C78C0F04A585DCBF47FB603FE3E1A6805EB609E6A15AB79EF4D6C4",
+      "previousSha256": "95749938E41D080DD4BDF85A3B6F791AFAB3F673705D587FA2102F740D937818"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-backing-binding-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "2552444AA4E88559697736B47B838563AB934B54AD0992799E58A6FF79F76538",
+      "previousSha256": "6C7807B85B30EA4DC590DA04F0D78BE8655CD003A378DEB0138083DC51811F3D"
+    }
+  ],
+  "configurationEditorPreserved": "existing Config binaries and open session unchanged; runtime-only correction",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "928934B02A995D83713FA0363D64692893F8A81B45D3E70A73EE65DA6B146744",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+  },
+  "verifiedAt": "2026-10-23T18:15:56.3262275-04:00"
+}

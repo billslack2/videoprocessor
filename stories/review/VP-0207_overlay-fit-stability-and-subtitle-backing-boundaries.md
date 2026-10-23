@@ -1,9 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-In Progress
+Review
 
-User accepted the paused native backing correction at 31c5dfa9. Continuing draft PR #196 for advanced-subtitle flashing when source/display rates differ and thin edges around transparent subtitles. Current GitHub beta remains 73acf650; the accepted Off fit is unchanged.
+User accepted the paused native backing correction at 31c5dfa9. Advanced-subtitle HDR-history and transparent-overlay corrections are deployed for live testing at clean Release source 3a1e1050 in draft PR #196. All 1137 selected native/GPU regressions and both settings round trips passed. The accepted Off fit is unchanged; the new flashing/edge incident awaits live replay.
 
 Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -130,3 +130,15 @@ User supplied paused native/processed views showing the rounded black backing ex
 User confirms the glyph-free rounded backing correction works. Reports fast picture flashing only with advanced subtitles; enabling Smooth Motion stops it on a display that cannot match source rate. Also reports thin dark edges around the transparent destination rectangle. Runtime snapshot saved locally at E:\codex\diagnostics\vp0207-advanced-flash-20261023\vp-snapshot.log.
 
 Investigation found non-temporal subtitle preparation shares the final renderer while disabling peak detection. libplacebo explicitly resets detected-peak history on such a pass, so new source frames and repeated output frames can start with different tone-mapping state. Isolating preparation in its own GPU renderer, with a real HDR regression. Transparent LayerOnly also pastes an opaque copy of the underlying picture; investigating actual glyph-only alpha to avoid independently color-managed picture edges. No active configuration edits.
+
+## Advanced HDR and Clear / Yellow test deployment - 2026-10-23
+
+- User clarified the thin top/side edges surround the newly relocated transparent subtitle area; those lines were absent from the original picture. The original subtitle remained mostly in the bar except for its small accepted cleanup intrusion. This is a destination-overlay artifact, distinct from the source-backing cap.
+- Clean source 3a1e105075b6d1d75c0b56aafa20a948fbef652e is pushed to draft PR #196. Subtitle normalization, cleanup, glyph layers, temporal donors, and native-field preparation require an independently owned preparation renderer. Its peak-disabled passes cannot reset output HDR history between new and repeated display frames. A real PQ GPU regression establishes history, prepares packets, submits repeated output ticks, and demonstrates the old reset with a shared-renderer no-peak control.
+- Neutral transparent reconstruction (zero opacity/blur, maximum brightness setting, no visible border), including the user's Clear / Yellow settings, emits glyph color and independent alpha without an opaque picture tile. Untouched direct composition pixels avoid an extra transfer-function round trip. Intentional blur/brightness-limited panels keep existing behavior; finite-cap cleanup runs separately in the picture pass.
+- Clean x64 Release solution Rebuild succeeded at the exact final source. All 1137 selected native/GPU regressions passed, including the subtitle shader, LUT/GPU composition and MotionRenderer suites, prior Off/aspect continuity coverage, both new regressions, and the explicitly enabled captured paused native replay. Both Qt Off zoom hold round trip and subtitle profile tab round trip passed. This is selected coverage, not a claimed full native-suite run. Evidence: stories/assets/VP-0207/deployment-3a1e1050-20261023.
+- Transparent GPU checks cover all four panel edges and untouched picture boundaries in SDR, PQ and HLG, at normal and reduced text sizes. The captured rounded cap still cleans 1492,1746-2348,1776 for native 383..1776 versus composed 382..1778.
+- Deployed matching host and standard/beta renderers from the final Release build, with hashes verified against build records. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-advanced-hdr-3a1e1050-20261023-181556. Configuration edits: none. Existing Config binaries and editor session were preserved. Fresh startup evidence confirms matching clean host/renderer identity.
+- Source work began at remote beta 73acf650. Beta advanced during validation with explicit calibration-LUT apply work; this comparison deployment retains the previously deployed baseline. PR #196 remains draft and merges cleanly; a newer-beta integration needs an exact merged build before later merge/release. No merge authorized for these follow-ups.
+- Earlier incremental builds caught unmigrated helper callers and corrupt debug-information linking; callers were repaired and a clean Rebuild completed before final validation. Preliminary GPU checks passed at dc178ea1; final results above apply to 3a1e1050.
+- Remains Review for Clear / Yellow replay with Smooth Motion off. Acceptance of the previous native-cap correction is separate from this new flashing/edge fix.
