@@ -75,4 +75,31 @@ deployment.
 Validation results are recorded in the PR. Deterministic stall/cancellation tests
 and synthetic warmed 4K comparisons establish ownership, semantic equivalence
 and scan reduction. They do not establish a measured reduction in live jitter.
-No deployment, source pixel capture, or active configuration edits are included.
+Source pixel capture and active configuration edits are outside this change.
+The authorized local deployment preserves the installed startup/subtitle fixes in
+a separate integration branch; PR #192 does not absorb those unrelated changes.
+
+
+## Fullscreen activation follow-up
+
+The earlier five-second activation change (PR #186) is already in beta and the
+installed build. The installed log records an unsuccessful foreground request;
+it does not establish why Windows rejected it. Code review also found that the
+single attempt could be consumed before startup, a renderer replacement or a
+fullscreen retarget had revealed the current window.
+
+A GUI-owned session now retains the original five-second deadline and requires
+the existing validated first-live-frame reveal for the current HWND and renderer
+generation. If the deadline arrives first, intent remains pending without polling;
+the successful reveal schedules the remaining delay, or one timer wake if overdue.
+The timer also verifies the current rendering target and absence of a covering
+transition. Stale messages, targets and generations cannot consume the attempt.
+
+The native request is still attempted once per fullscreen entry, including when
+Windows denies it. Renderer restarts and display placement cannot rearm it;
+fullscreen exit and shutdown cancel it. Windowed rendering never requests focus.
+No input simulation, focus retry loop or new setting is introduced. Diagnostics
+record readiness deferrals and, on the one attempt, current generation, previous
+foreground process, requested/acquired result, keyboard focus and deadline delay.
+Ten deterministic session tests cover deadline/readiness order, stale messages,
+host/generation changes, cancellation and one-shot denial behavior.
