@@ -750,4 +750,9 @@
     <ClInclude Include="AnalysisEvaluationBudget.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="vprenderer\Bt2020SignalWorker.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vprenderer\PreparedPictureEvidence.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\LookaheadPerformanceWindow.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\PreparedOutwardWindow.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
 </Project>

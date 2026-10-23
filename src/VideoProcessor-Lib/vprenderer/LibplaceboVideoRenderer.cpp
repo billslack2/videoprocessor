@@ -4,6 +4,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
+#include "LookaheadPerformanceWindow.h"
 #include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
 #include <vprenderer/NvidiaBt2020Reporter.h>
@@ -114,6 +115,81 @@
 
 namespace
 {
+    using LookaheadPerf = LookaheadPerformanceWindow;
+    using PictureKind = PreparedPictureEvidenceKind;
+
+    LookaheadPerf::Stage PictureStage(PictureKind kind)
+    {
+        return kind==PictureKind::InwardCaption ? LookaheadPerf::Stage::InwardCaption :
+            kind==PictureKind::RelativeContrast ? LookaheadPerf::Stage::RelativeContrast :
+            LookaheadPerf::Stage::Retention;
+    }
+
+    template<class Measurement>
+    bool CurrentLookaheadMeasurement(const PreparedAnalysisFrame& frame,
+        const ActivePictureFrameIdentity& identity, const std::shared_ptr<const Measurement>& measured)
+    {
+        if (!measured || measured->domainKey!=frame.domainKey ||
+            !SameAnalysisFrameIdentity(measured->identity,identity)) return false;
+        auto imported=frame;
+        imported.source=measured->source;
+        return SamePreparedPictureFrame(imported,frame);
+    }
+
+    void LogLookaheadUsefulness(const char* instance,uint64_t generation,
+        uint64_t windowMs,double sourceHz,double displayHz,const LookaheadPerf& perf,
+        const PreparedPictureEvidenceWorker::Metrics& worker,
+        const PreparedPictureEvidenceWorker::Metrics& previous)
+    {
+        const auto& d=perf.depth;
+        const auto jobs=worker.completed-previous.completed;
+        DebugLog::Log("VP lookahead usefulness: schema=1 instance=%s generation=%llu window_ms=%llu source_hz=%.5f display_hz=%.5f attempts=%llu selected_total=%llu ready_total=%llu required_total=%llu ready_shortfall=%llu proof_shortfall=%llu no_ready=%llu complete_retained=%llu retained_after_cancellation=%llu invalid_events=%llu proof_worker_submitted=%llu proof_worker_completed=%llu proof_worker_failed=%llu proof_worker_cancelled=%llu proof_worker_full=%llu proof_worker_queued=%llu proof_worker_queue_avg_ms=%.3f proof_worker_wall_avg_ms=%.3f proof_worker_wall_peak_lifetime_ms=%.3f proof_worker_active_age_ms=%.3f",
+            instance,generation,windowMs,sourceHz,displayHz,d.samples,d.selectedTotal,d.readyTotal,
+            d.requiredTotal,d.readyShortfall,d.requiredShortfall,d.noReady,
+            perf.independentRetained,perf.independentRetainedAfterCancellation,perf.invalidEvents,
+            worker.submitted-previous.submitted,jobs,worker.failed-previous.failed,
+            worker.cancelled-previous.cancelled,worker.full-previous.full,worker.queued,
+            jobs?double(worker.queueUs-previous.queueUs)/jobs/1000.0:0.0,
+            jobs?double(worker.wallUs-previous.wallUs)/jobs/1000.0:0.0,
+            worker.wallPeakUs/1000.0,worker.activeAgeUs/1000.0);
+        static const char* stages[]={"measurements","retention","inward-caption","expansion-proof",
+            "relative-contrast","remembered-proof"};
+        for (size_t i=0;i<LookaheadPerf::StageCount;++i) {
+            const auto& v=perf.stages[i];
+            uint64_t stopped=0;for (auto count:v.stops) stopped+=count;
+            if (!v.lookups && !v.workCalls && !stopped) continue;
+            DebugLog::Log("VP lookahead stage: schema=1 instance=%s generation=%llu stage=%s cache_lookups=%llu cache_hits=%llu cache_misses=%llu hits_without_foreground_work=%llu foreground_calls=%llu foreground_complete=%llu foreground_cancelled=%llu foreground_avg_ms=%.3f foreground_peak_ms=%.3f stopped=%llu zero_admission=%llu deadline=%llu input_not_ready=%llu queue_lock=%llu render_lock=%llu policy_changed=%llu identity_mismatch=%llu invalid_evidence=%llu",
+                instance,generation,stages[i],v.lookups,v.cacheHits,v.cacheMisses,v.zeroAdmissionHits,
+                v.workCalls,v.completed,v.cancelled,v.elapsedMs.Average(),v.elapsedMs.maximum,stopped,
+                v.stops[size_t(LookaheadPerf::StopReason::ZeroAdmission)],
+                v.stops[size_t(LookaheadPerf::StopReason::Deadline)],
+                v.stops[size_t(LookaheadPerf::StopReason::InputNotReady)],
+                v.stops[size_t(LookaheadPerf::StopReason::QueueLock)],
+                v.stops[size_t(LookaheadPerf::StopReason::RenderLock)],
+                v.stops[size_t(LookaheadPerf::StopReason::PolicyChanged)],
+                v.stops[size_t(LookaheadPerf::StopReason::IdentityMismatch)],
+                v.stops[size_t(LookaheadPerf::StopReason::InvalidEvidence)]);
+        }
+        static const char* kinds[]={"scheduled","outward","inward","guarded-return"};
+        for (size_t i=0;i<LookaheadPerf::ProofKindCount;++i) {
+            const auto& v=perf.proofs[i];
+            uint64_t observed=0;for (auto count:v.async) observed+=count;
+            if (!v.published && !v.adopted && !v.rejected && !observed) continue;
+            DebugLog::Log("VP lookahead proof: schema=1 instance=%s generation=%llu kind=%s published=%llu adopted=%llu rejected=%llu rejection_identity=%llu rejection_reference=%llu rejection_policy=%llu rejection_owner=%llu async_ready=%llu async_late=%llu async_invalid=%llu async_no_change=%llu async_stale=%llu lead_samples=%llu lead_frames_avg=%.3f lead_ms_avg=%.3f",
+                instance,generation,kinds[i],v.published,v.adopted,v.rejected,
+                v.rejections[size_t(LookaheadPerf::Rejection::IdentityMismatch)],
+                v.rejections[size_t(LookaheadPerf::Rejection::ReferenceMismatch)],
+                v.rejections[size_t(LookaheadPerf::Rejection::PolicyChanged)],
+                v.rejections[size_t(LookaheadPerf::Rejection::OwnerIneligible)],
+                v.async[size_t(LookaheadPerf::AsyncOutcome::Ready)],
+                v.async[size_t(LookaheadPerf::AsyncOutcome::Late)],
+                v.async[size_t(LookaheadPerf::AsyncOutcome::Invalid)],
+                v.async[size_t(LookaheadPerf::AsyncOutcome::NoChange)],
+                v.async[size_t(LookaheadPerf::AsyncOutcome::Stale)],
+                v.effectiveLeadFrames.count,v.effectiveLeadFrames.Average(),v.effectiveLeadMs.Average());
+        }
+    }
+
 	void LogCropExtentWitness(const char* context, uint64_t frameGeneration, uint64_t sourceSequence,
 		const ActivePicturePresentationRetentionEvidence& evidence)
 	{
@@ -4355,9 +4431,13 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t sourceUploadReuseIntervalSamples = 0;
 	pl_tex subtitleBoxTexture = nullptr;
 	SubtitleMeasurementWorker subtitleMeasurementWorker;
+    PreparedPictureEvidenceWorker pictureProofWorker;
+    LookaheadPerformanceWindow lookaheadPerformance;
+    PreparedPictureEvidenceWorker::Metrics previousPictureProofMetrics;
     QueuedFrame::LookaheadWorker lookaheadMeasurementWorker;
     QueuedFrame::OutwardWindowWorker outwardWindowWorker;
     uint64_t outwardAsyncReady=0, outwardAsyncLate=0, outwardAsyncStale=0;
+    uint64_t outwardRawComputed=0,outwardRawReused=0,outwardRetentionComputed=0,outwardRetentionReused=0;
     uint64_t outwardAsyncOffered=0, outwardAsyncAdopted=0, outwardAsyncNextLogTick=0;
     uint64_t outwardAsyncLastAdoptedGeneration=0, outwardAsyncLastAdoptedSequence=0;
     uint64_t subtitlePrimeCalls=0, subtitlePrimeRequests=0;
@@ -4365,6 +4445,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t subtitleReuseRejectNextTick=0;
     double subtitlePrimeMs=0, subtitlePrimePeakMs=0;
     PresentationAnalysisBudget analysisWorkBudget;
+    uint64_t analysisGpuEpoch=0,analysisGpuMinimumSubmissionSerial=0;
     uint64_t nextOutputCorrelationLogTick=0;
     AnalysisPerformanceWindow analysisPerformance;
     QueuedFrame::LookaheadWorker::Metrics previousWorkerMetrics;
@@ -5398,6 +5479,7 @@ struct LibplaceboVideoRenderer::Impl
         InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
+            pictureProofWorker.Stop();
             lookaheadMeasurementWorker.Stop();
             outwardWindowWorker.Stop();
             subtitleMeasurementWorker.Stop();
@@ -11463,6 +11545,7 @@ struct LibplaceboVideoRenderer::Impl
             // copy contains only a current-frame commit, never future counters.
             if (applyGuardedReturn)
             {
+                lookaheadPerformance.RecordAdopted(LookaheadPerf::ProofKind::GuardedReturn);
                 nlsTransition = std::move(guardedValidatedModel);
                 // A successful current-frame proof replaces this exact old
                 // crop snapshot. Failed validation/admission leaves it intact.
@@ -11474,6 +11557,9 @@ struct LibplaceboVideoRenderer::Impl
                     guardedSceneRetired = true;
                 }
             }
+            if (guardedReturn && guardedReturn->available && !applyGuardedReturn)
+                lookaheadPerformance.RecordRejected(LookaheadPerf::ProofKind::GuardedReturn,
+                    LookaheadPerf::Rejection::Other);
             auto fallbackObservation = observation;
             if (guardedCurrent.candidateAvailable && !applyGuardedReturn)
             {
@@ -11666,6 +11752,18 @@ struct LibplaceboVideoRenderer::Impl
 					transition.authoritativeClassification);
 			if (scheduledDecision && !applyScheduledDecision)
 			{
+                lookaheadPerformance.RecordRejected(
+                    bufferedExpansion && scheduledDecision==&bufferedExpansion->decision
+                        ? LookaheadPerf::ProofKind::BufferedExpansion :
+                    scheduledDecision->association==ActivePictureDecisionAssociation::EXACT_INWARD
+                        ? LookaheadPerf::ProofKind::InwardConfirmation : LookaheadPerf::ProofKind::ScheduledDecision,
+                    scheduledValidation==ActivePictureScheduledDecisionValidation::EFFECTIVE_IDENTITY_MISMATCH ||
+                    scheduledValidation==ActivePictureScheduledDecisionValidation::OBSERVATION_CONTEXT_MISMATCH
+                        ? LookaheadPerf::Rejection::IdentityMismatch :
+                    scheduledValidation==ActivePictureScheduledDecisionValidation::TRUSTED_BOUNDS_MISMATCH
+                        ? LookaheadPerf::Rejection::ReferenceMismatch :
+                    scheduledValidation==ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE
+                        ? LookaheadPerf::Rejection::InvalidEvidence : LookaheadPerf::Rejection::Other);
 				DebugLog::Log(
 					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s publication_admission=%s scheduled_base=%d,%d-%d,%d scheduled_axes=%u live_base=%d,%d-%d,%d live_axes=%u candidate=%d,%d-%d,%d runtime-apply=0",
 					static_cast<unsigned long long>(
@@ -12004,6 +12102,17 @@ struct LibplaceboVideoRenderer::Impl
                     ? currentIdentity : ActivePictureFrameIdentity{};
 			if (applyScheduledDecision)
 			{
+                const double sourceLead=scheduledDecision->observationIdentity.acceptedSequence>=
+                    scheduledDecision->effectiveIdentity.acceptedSequence
+                    ? double(scheduledDecision->observationIdentity.acceptedSequence-
+                        scheduledDecision->effectiveIdentity.acceptedSequence) : 0.0;
+                const auto proofKind=bufferedExpansion && scheduledDecision==&bufferedExpansion->decision
+                    ? LookaheadPerf::ProofKind::BufferedExpansion :
+                    scheduledDecision->association==ActivePictureDecisionAssociation::EXACT_INWARD
+                    ? LookaheadPerf::ProofKind::InwardConfirmation : LookaheadPerf::ProofKind::ScheduledDecision;
+                if (framesPerSecond>0)
+                    lookaheadPerformance.RecordAdopted(proofKind,sourceLead,sourceLead*1000.0/framesPerSecond);
+                else lookaheadPerformance.RecordAdopted(proofKind);
 				DebugLog::Log(
 					"Alpha active-picture look-ahead applied: generation=%llu observed=%llu effective=%llu frame=%llu backdated_frames=%llu association=%s inward_proof=%s proof_frames=%u rect=%d,%d-%d,%d classification=%d runtime-apply=1",
 					static_cast<unsigned long long>(
@@ -13164,7 +13273,12 @@ struct LibplaceboVideoRenderer::Impl
 		// Resolve only old query slots and never flush. Drain a small bounded
 		// number if the driver made several available together; stop immediately
 		// at the first unresolved oldest slot.
-		auto resolveGpuTiming = [this]()
+        const uint64_t gpuBudgetEpoch=frameGeneration*1315423911ULL+viewportRequestSerial;
+        if (analysisGpuEpoch!=gpuBudgetEpoch) {
+            analysisGpuEpoch=gpuBudgetEpoch;
+            analysisGpuMinimumSubmissionSerial=renderLoadSubmissionSerial+1;
+        }
+		auto resolveGpuTiming = [this,viewportRequestSerial]()
 		{
 			for (size_t resolved = 0; resolved < 4; ++resolved)
 			{
@@ -13180,6 +13294,16 @@ struct LibplaceboVideoRenderer::Impl
 						gpuSample.milliseconds, gpuSample.lagFrames);
 					if (matched)
 					{
+                        // Reuse already-resolved DONOTFLUSH timestamp evidence.
+                        // Old viewport/source submissions cannot qualify a new epoch.
+                        if (gpuSample.submissionSerial>=analysisGpuMinimumSubmissionSerial &&
+                            gpuSample.generation*1315423911ULL+viewportRequestSerial==analysisGpuEpoch) {
+                            static const int64_t frequency=[] {
+                                LARGE_INTEGER value{};QueryPerformanceFrequency(&value);return value.QuadPart;
+                            }();
+                            analysisWorkBudget.ObserveGpu(analysisGpuEpoch,PerformanceCounterNow(),
+                                frequency,gpuSample.milliseconds,gpuSample.issuedQpc);
+                        }
 						for(int mode=0;mode<2;++mode) {
                             const double ms=mode?gpuSample.subtitleGeneratedMilliseconds:gpuSample.subtitleBlackMilliseconds;
                             if(ms>0){++subtitlePerf.gpuSamples[mode];subtitlePerf.gpuMs[mode]+=ms;subtitlePerf.gpuPeak[mode]=(std::max)(subtitlePerf.gpuPeak[mode],ms);}
@@ -19280,7 +19404,7 @@ releaseDriftBaseRetention =
             analysisWorkBudget.Observe(frameGeneration*1315423911ULL+viewportRequestSerial,sample.syncQpc,swapEndQpc,
                 sample.qpcFrequency,sample.expectedDisplayHz,
                 sample.available && !sample.disjoint && presentationSnapshot.evidence==AlphaPresentationEvidence::Stable,
-                preRenderTimings.renderLockWaitMs+livePreparationMs+renderMs);
+                preRenderTimings.renderLockWaitMs+livePreparationMs+renderMs,repeatedTemporalOutput);
             analysisPerformance.preparation.Add(livePreparationMs);
             analysisPerformance.Submission(beforeRenderMs+livePreparationMs+renderMs,
                 renderMs,swapBlockMs,captureRateHz,sample.expectedDisplayHz);
@@ -19311,6 +19435,12 @@ releaseDriftBaseRetention =
                     jobs>0?workerWallMs/jobs:0,worker.wallPeakUs/1000.0,
                     worker.cpuSamples>old.cpuSamples?workerCpuMs/double(worker.cpuSamples-old.cpuSamples):0,
                     worker.cpuSamples-old.cpuSamples,workerCpuMs,workerWallMs);
+                const auto proofWorker=pictureProofWorker.Snapshot();
+                LogLookaheadUsefulness(diagnosticInstanceId.c_str(),frameGeneration,
+                    correlationNow-analysisPerformanceLogTick,captureRateHz,sample.expectedDisplayHz,
+                    lookaheadPerformance,proofWorker,previousPictureProofMetrics);
+                previousPictureProofMetrics=proofWorker;
+                lookaheadPerformance.Reset();
                 previousWorkerMetrics=worker;analysisPerformance={};analysisPerformanceLogTick=correlationNow;
             }
             if(correlationNow>=nextOutputCorrelationLogTick) {
@@ -22040,6 +22170,88 @@ bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
 // Prepare a broad three-source OUTWARD certificate for the *next* queued
 // source while the current source renders. The worker owns only immutable
 // analysis views; queue/timeline state and crop admission stay on the renderer.
+// Prime complete independent pixel components while their source is still in
+// the configured future window. Request metadata belongs to this rendering
+// owner; workers retain immutable source/results and never mutate the timeline.
+void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
+    const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity)
+{
+    if (frames.empty()) return;
+    ActivePictureBounds base;
+    ActivePictureTransitionModel model;
+    bool captionEligible=false, relativeEligible=false;
+    uint64_t scene=0, tick=0;
+    {
+        std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
+        if (!guard.owns_lock() || policy!=m_impl->localBoundaryPolicyGeneration ||
+            continuity!=m_impl->localBoundaryContinuityGeneration ||
+            !m_impl->automaticSourceCrop || !m_impl->renderConfiguredScreenActive ||
+            m_impl->nlsRequested || m_impl->fixedCropAspectConfigured ||
+            !m_impl->nlsGeometryAvailable ||
+            m_impl->nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            // Prepared pixel components only serve established bar-crop bases.
+            // Full-raster inward acquisition uses raw observations, not retention.
+            m_impl->nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+            m_impl->movingPictureTransition.active || m_impl->movingPictureTransition.awaitingPublication ||
+            m_impl->nearBlackPresentationEpisode.mode!=AlphaSourceCrop::NearBlackPresentationMode::INACTIVE)
+            return;
+        base=m_impl->nlsGeometry;
+        model=m_impl->nlsTransition;
+        const bool unowned=m_impl->scopeVerticalBarPresentation.action==
+            AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
+            !m_impl->scopeSubtitleDrift.IsActive() &&
+            !m_impl->outwardPictureConfirmation.verticalPresentationSeen;
+        captionEligible=unowned && m_impl->scopeSubtitleFit &&
+            m_impl->nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED;
+        relativeEligible=m_impl->rememberedEdgeGuarded && !m_impl->scopeSubtitleDrift.IsActive();
+        scene=m_impl->rememberedEdgeSceneId; tick=GetTickCount64();
+    }
+    const auto minimum=frames.front().activePictureIdentity.acceptedSequence;
+    for (const auto& queued:frames) {
+        if (queued.cadenceRepeat || queued.frame.IsSourceDiscontinuity() ||
+            queued.conversionFailed || !queued.analysis || !queued.state ||
+            !queued.state->displayMode || !queued.frame.GetData()) continue;
+        const auto frame=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,queued.converted,
+            queued.analysis,AnalysisSourceProfile::QueuedCapture,
+            queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
+        if (!frame.IsValid()) continue;
+        auto identity=queued.activePictureIdentity;
+        identity.analysisDomainKey=frame.domainKey;
+        const auto raw=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
+        if (!CurrentLookaheadMeasurement(frame,identity,raw)) continue;
+        const auto request=[&](const PreparedPictureEvidenceKey& key) {
+            if (queued.analysis->pictureProof.Lookup(key)) return;
+            const auto slot=queued.analysis->pictureProof.Request(key);
+            if (!slot || slot->pending.load(std::memory_order_acquire)) return;
+            m_impl->pictureProofWorker.Submit(slot,identity.transportGeneration,
+                identity.acceptedSequence,minimum,[key,raw,slot] {
+                    static thread_local const bool prioritySet=
+                        SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
+                    (void)prioritySet;
+                    // A foreground fallback may have completed this exact slot
+                    // since admission. Do not repeat an already complete scan.
+                    if (const auto ready=PreparedPictureEvidenceWorker::Ready(slot))
+                        if (SamePreparedPictureEvidenceKey(ready->key,key)) return *ready;
+                    return EvaluatePreparedPictureEvidence(key,raw->evidence,raw->darkness);
+                });
+        };
+        // Caption components come first for their source; a missing/changed
+        // history nomination cannot make an old negative permanently reusable.
+        if (captionEligible) {
+            const auto caption=AlphaSourceCrop::NominateInwardCaptionReference(
+                frame.source,raw->evidence,base,model);
+            if (caption.valid) request(MakePreparedPictureEvidenceKey(PictureKind::InwardCaption,
+                frame,identity,base,policy,continuity,queued.analysis->lookahead,caption));
+        }
+        request(MakePreparedPictureEvidenceKey(PictureKind::Retention,
+            frame,identity,base,policy,continuity,queued.analysis->lookahead));
+        if (relativeEligible && model.HasQualifiedNativeAspectPair(base,raw->evidence.trustedBounds,
+                identity.transportGeneration,scene,tick))
+            request(MakePreparedPictureEvidenceKey(PictureKind::RelativeContrast,
+                frame,identity,base,policy,continuity,queued.analysis->lookahead));
+    }
+}
+
 void LibplaceboVideoRenderer::PrimeBufferedOutwardWindow(
     const std::vector<QueuedFrame>& futureFrames, uint64_t policy,
     uint64_t continuity)
@@ -22086,8 +22298,7 @@ void LibplaceboVideoRenderer::PrimeBufferedOutwardWindow(
             context.subtitleEvidenceSourceGeneration=m_impl->scopeSubtitleEvidenceSourceGeneration;
         }
     }
-    std::array<PreparedAnalysisFrame,required> prepared;
-    std::array<double,required> sourceRates{};
+    PreparedOutwardWindowRequest<QueuedFrame::LookaheadMeasurement> request;
     for (size_t i=0;i<required;++i) {
         const auto& queued=futureFrames[i];
         if (queued.cadenceRepeat || queued.frame.IsSourceDiscontinuity() ||
@@ -22096,33 +22307,40 @@ void LibplaceboVideoRenderer::PrimeBufferedOutwardWindow(
             queued.activePictureIdentity.transportGeneration!=
                 futureFrames.front().activePictureIdentity.transportGeneration ||
             queued.activePictureIdentity.viewportGeneration!=
-                futureFrames.front().activePictureIdentity.viewportGeneration)
-            return;
-        prepared[i]=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
+                futureFrames.front().activePictureIdentity.viewportGeneration) return;
+        request.frames[i]=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
             queued.converted,queued.analysis,AnalysisSourceProfile::QueuedCapture,
-            queued.activePictureIdentity.sourceFormatGeneration,false,
-            queued.state->dolbyVisionTunnel);
-        if (!prepared[i].IsValid()) return; // Converted DV may still be pending.
-        context.contributors[i]=queued.activePictureIdentity;
-        context.contributors[i].analysisDomainKey=prepared[i].domainKey;
-        sourceRates[i]=queued.state->displayMode->RefreshRateHz();
+            queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
+        if (!request.frames[i].IsValid()) return;
+        request.identities[i]=queued.activePictureIdentity;
+        request.identities[i].analysisDomainKey=request.frames[i].domainKey;
+        context.contributors[i]=request.identities[i];
         if (i && (context.contributors[i].acceptedSequence!=
                      context.contributors[i-1].acceptedSequence+1 ||
                   context.contributors[i].sourceFormatGeneration!=
                      context.contributors[0].sourceFormatGeneration ||
                   context.contributors[i].analysisDomainKey!=
                      context.contributors[0].analysisDomainKey)) return;
+        request.sourceRates[i]=queued.state->displayMode->RefreshRateHz();
+        request.rawSlots[i]=queued.analysis->lookahead;
+        // The native extraction request is stable before its immutable result
+        // exists. Exact source/domain/storage in the key rejects reinterpretation.
+        request.retentionKeys[i]=MakePreparedPictureEvidenceKey(PictureKind::Retention,
+            request.frames[i],request.identities[i],context.base,policy,continuity,request.rawSlots[i]);
+        request.retentionSlots[i]=queued.analysis->pictureProof.Request(request.retentionKeys[i]);
+        if (!request.retentionSlots[i]) return;
     }
+    request.context=context;
     std::shared_ptr<QueuedFrame::OutwardWindowWorker::Slot> slot;
     {
         auto& cache=*futureFrames.front().analysis;
-        std::lock_guard<std::mutex> guard(cache.mutex);
+        std::unique_lock<std::mutex> guard(cache.mutex,std::try_to_lock);
+        if (!guard.owns_lock()) return;
         if (cache.outwardRequested &&
             AlphaSourceCrop::SameAsyncOutwardContext(cache.outwardContext,context) &&
             cache.outwardWindow &&
             (cache.outwardWindow->pending.load(std::memory_order_acquire) ||
-             QueuedFrame::OutwardWindowWorker::Ready(cache.outwardWindow)))
-            return;
+             QueuedFrame::OutwardWindowWorker::Ready(cache.outwardWindow))) return;
         slot=std::make_shared<QueuedFrame::OutwardWindowWorker::Slot>();
         cache.outwardContext=context;
         cache.outwardWindow=slot;
@@ -22131,35 +22349,19 @@ void LibplaceboVideoRenderer::PrimeBufferedOutwardWindow(
     const bool submitted=m_impl->outwardWindowWorker.Submit(slot,
         context.contributors.front().transportGeneration,
         context.contributors.front().acceptedSequence,
-        context.contributors.front().acceptedSequence,
-        [context,prepared,sourceRates] {
-            constexpr size_t required=AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+        context.contributors.front().acceptedSequence,[request] {
             static thread_local const bool prioritySet=
                 SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
             (void)prioritySet;
-            QueuedFrame::OutwardWindowResult result;
-            result.context=context;
-            std::array<AlphaSourceCrop::BufferedPictureExpansionSample,required> samples;
-            for (size_t i=0;i<required;++i) {
-                const auto& source=prepared[i].source;
-                const auto raw=ExtractActivePictureEvidence(source);
-                const auto darkness=EvaluateActivePictureArDarkness(source,raw);
-                samples[i]=AlphaSourceCrop::MakeBufferedPictureSample(
-                    context.contributors[i],raw,sourceRates[i],
-                    darkness.global.evaluated,darkness.EffectiveNearBlack());
-                samples[i].retention=EvaluateActivePicturePresentationRetention(
-                    source,context.base);
-            }
-            result.proof=AlphaSourceCrop::BuildBufferedPictureExpansion(
-                samples.data(),samples.size(),context.base,
-                static_cast<uint8_t>(required-1),static_cast<uint8_t>(required-1),
-                context.continuityGeneration,context.policyGeneration);
-            return result;
+            // One self-sufficient CPU job can finish during this render even
+            // when raw/component publication happens after the prime pass.
+            // Cold misses compute here without waiting; warm work is reused.
+            return EvaluatePreparedOutwardWindow(request);
         });
     if (!submitted) {
         auto& cache=*futureFrames.front().analysis;
-        std::lock_guard<std::mutex> guard(cache.mutex);
-        if (cache.outwardWindow==slot) cache.outwardRequested=false;
+        std::unique_lock<std::mutex> guard(cache.mutex,std::try_to_lock);
+        if (guard.owns_lock() && cache.outwardWindow==slot) cache.outwardRequested=false;
     }
 }
 
@@ -22197,7 +22399,10 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
             slot->pending.load(std::memory_order_acquire)) continue;
         const auto identity=queued.activePictureIdentity;
         m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,
-            identity.acceptedSequence,minimumSequence,[prepared,identity] {
+            identity.acceptedSequence,minimumSequence,[prepared,identity,slot] {
+                auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
+                if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
+                    if (CurrentLookaheadMeasurement(prepared,expected,ready)) return *ready;
                 static thread_local const bool prioritySet=
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
@@ -22331,8 +22536,32 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     uint64_t lookaheadPolicyGeneration,
     uint64_t subtitleContinuityGeneration, int64_t deadlineQpc)
 {
-    const auto expired=[&] { return deadlineQpc<=0 || PerformanceCounterNow()>=deadlineQpc; };
+    struct AttemptMetrics {
+        LookaheadPerf& perf;
+        uint64_t selected=0,ready=0,required=1,retained=0;
+        bool cancelled=false;
+        ~AttemptMetrics() {
+            perf.ObserveDepth(selected,ready,required);
+            perf.RecordRetainedMeasurements(retained,cancelled);
+        }
+    } attempt{m_impl->lookaheadPerformance,previewFrames.size()};
+    auto currentStage=LookaheadPerf::Stage::Measurements;
+    bool cancelledStageRecorded=false;
+    const bool cachedOnly=deadlineQpc<=0;
+    if (cachedOnly)
+        m_impl->lookaheadPerformance.RecordStop(LookaheadPerf::Stage::Measurements,
+            LookaheadPerf::StopReason::ZeroAdmission);
+    const auto expired=[&] { return !cachedOnly && PerformanceCounterNow()>=deadlineQpc; };
     const auto abort=[&](const char* stage) {
+        attempt.cancelled=expired();
+        if (!cancelledStageRecorded) {
+            auto reason=expired() ? LookaheadPerf::StopReason::Deadline :
+                std::strcmp(stage,"render-lock")==0 ? LookaheadPerf::StopReason::RenderLock :
+                std::strcmp(stage,"queue-lock")==0 ? LookaheadPerf::StopReason::QueueLock :
+                std::strcmp(stage,"policy-changed")==0 ? LookaheadPerf::StopReason::PolicyChanged :
+                LookaheadPerf::StopReason::InputNotReady;
+            m_impl->lookaheadPerformance.RecordStop(currentStage,reason);
+        }
         const auto now=GetTickCount64();
         if (m_impl->lastLookaheadAbortStage!=stage ||
             now-m_impl->lastLookaheadAbortTick>=250) {
@@ -22428,7 +22657,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         subtitleAssistedArEnabled=subtitlePreviewEnabled && m_impl->automaticSourceCrop &&
             m_impl->renderConfiguredScreenActive && !m_impl->nlsRequested &&
             !m_impl->fixedCropAspectConfigured;
-        if (!previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
+        if (!cachedOnly && !previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
             (m_impl->rememberedEdgeShadow && rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick)))
         {
             rememberedWindowStatusDue = rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick;
@@ -22545,6 +22774,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         }
     }
     std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> proofSamples;
+    bool expansionPrefixComplete = true;
     std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> inwardSamples;
 	double proofInspectionMs = 0.0;
 	bool inspectExpansion = false;
@@ -22588,6 +22818,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	}
 	for (const QueuedFrame& queued : previewFrames)
 	{
+        currentStage=LookaheadPerf::Stage::Measurements;
         if(expired()) return abort("source-window");
         const size_t rememberedIndex = previewIndex++;
         if (rememberedWindowTrace && rememberedIndex < rememberedWindowSamples.size())
@@ -22629,10 +22860,12 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         // Fresh raster scans run independently. A missing result means no
         // lookahead proof for this window; playback continues with live rules.
         const auto measured=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
-        if(!measured || measured->domainKey!=prepared.domainKey) {
+        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured)) {
             m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
-                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity] {
+                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead] {
+                    if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
+                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready)) return *ready;
                     // Optional CPU work yields to capture/presentation under load.
                     static thread_local const bool prioritySet=
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
@@ -22655,6 +22888,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             continue;
         }
         if(!readyPrefix.Admit(rememberedIndex,true)) continue;
+        attempt.ready=readyPrefix.Size();
+        ++attempt.retained;
         const ActivePictureEvidence evidence=cachedPictureEvidence ?
             queued.activePicturePreviewEvidence : measured->evidence;
 
@@ -22692,6 +22927,41 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             shadow.available = true;
         }
 
+        const auto component=[&](PictureKind kind,
+            const AlphaSourceCrop::InwardCaptionReference& caption=AlphaSourceCrop::InwardCaptionReference{}) {
+            const auto key=MakePreparedPictureEvidenceKey(kind,prepared,analysisIdentity,proofBase,
+                lookaheadPolicyGeneration,subtitleContinuityGeneration,queued.analysis->lookahead,caption);
+            auto ready=queued.analysis->pictureProof.Lookup(key);
+            currentStage=PictureStage(kind);
+            m_impl->lookaheadPerformance.RecordCache(currentStage,bool(ready),!expired());
+            if (ready) { ++attempt.retained; return ready; }
+            if (cachedOnly) {
+                m_impl->lookaheadPerformance.RecordStop(currentStage,LookaheadPerf::StopReason::InputNotReady);
+                return std::shared_ptr<const PreparedPictureEvidence>{};
+            }
+            budgetStage=kind==PictureKind::Retention ? "expansion-retention" :
+                kind==PictureKind::RelativeContrast ? "relative-contrast" : "inward-caption";
+            budget.Checkpoint();
+            const auto slot=queued.analysis->pictureProof.Request(key);
+            const auto began=SteadyClock::now();
+            try {
+                std::shared_ptr<const PreparedPictureEvidence> completed=
+                    std::make_shared<PreparedPictureEvidence>(EvaluatePreparedPictureEvidence(
+                        key,measured->evidence,measured->darkness,&budget));
+                if (slot) std::atomic_store(&slot->ready,completed);
+                ++attempt.retained;
+                m_impl->lookaheadPerformance.RecordWork(currentStage,LookaheadPerf::WorkOutcome::Complete,
+                    std::chrono::duration<double,std::milli>(SteadyClock::now()-began).count());
+                return completed;
+            } catch(const AnalysisEvaluationCancelled&) {
+                cancelledStageRecorded=true;
+                m_impl->lookaheadPerformance.RecordWork(currentStage,LookaheadPerf::WorkOutcome::Cancelled,
+                    std::chrono::duration<double,std::milli>(SteadyClock::now()-began).count(),
+                    LookaheadPerf::StopReason::Deadline);
+                throw;
+            }
+        };
+
         auto observedEvidence = evidence;
         bool subtitleArProofAccepted=false;
         if (subtitleAssistedArEnabled && rememberedIndex < subtitleObservations.size()) {
@@ -22706,15 +22976,25 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 subtitleArProofAccepted=true;
             }
         }
-        if (inwardCaptionInspectionEligible &&
+        if (!subtitleArProofAccepted && inwardCaptionInspectionEligible &&
             queued.activePictureIdentity.transportGeneration == inwardCaptionSourceGeneration &&
             queued.activePictureIdentity.viewportGeneration == inwardCaptionViewport)
         {
-            budgetStage="inward-caption";
-            budget.Checkpoint();
-            const auto caption = AlphaSourceCrop::InspectInwardCaptionEvidence(
-                source, evidence, proofBase, liveProofModel, &budget);
-            if (!subtitleArProofAccepted && caption.valid) observedEvidence = caption.picture;
+            const auto reference=AlphaSourceCrop::NominateInwardCaptionReference(
+                source,measured->evidence,proofBase,liveProofModel);
+            if (reference.valid) {
+                const auto preparedCaption=component(PictureKind::InwardCaption,reference);
+                // This source must stay refinable: never cast a provisional
+                // raw vote and mark it final while an eligible caption scan waits.
+                if (!preparedCaption) {
+                    attempt.ready=observations.size();
+                    break;
+                }
+                const auto& caption=preparedCaption->caption;
+                if (!subtitleArProofAccepted && caption.valid &&
+                    AlphaSourceCrop::InwardCaptionReferenceIsCurrent(reference,proofBase,liveProofModel))
+                    observedEvidence=caption.picture;
+            }
         }
 		PreviewEvidence preview;
 		// Cache only extraction. Candidate proof belongs to this exact live
@@ -22758,13 +23038,13 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				preview.observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 				target.top < proofBase.top - step && target.bottom > proofBase.bottom + step;
 		}
-		if (inspectExpansion && proofSamples.size() < 3)
+		if (inspectExpansion && rememberedIndex < AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED)
 		{
 			const auto proofInspectionStart = SteadyClock::now();
-			budgetStage="expansion-retention";
-            budget.Checkpoint();
-            sample.retention = EvaluateActivePicturePresentationRetention(source, proofBase,
-                measured->evidence, measured->darkness.global, measured->darkness, &budget);
+            attempt.required=AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+            const auto retained=component(PictureKind::Retention);
+            if (retained) {
+            sample.retention=retained->retention;
             if (relativeContrastEligible && !queued.cadenceRepeat &&
                 !queued.frame.IsSourceDiscontinuity() &&
                 liveProofModel.HasQualifiedNativeAspectPair(proofBase, evidence.trustedBounds,
@@ -22772,29 +23052,36 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             {
                 // The preview source uses a format key. Bind this independent
                 // pixel proof to the transport generation used at consumption.
-                auto relativeSource = source;
-                relativeSource.generation = sample.identity.transportGeneration;
-                sample.qualifiedAspectPair = true;
-                budgetStage="relative-contrast";
-                sample.relativeContrast = InspectRelativeBarContrast(relativeSource, evidence, proofBase, &budget);
+                const auto relative=component(PictureKind::RelativeContrast);
+                if (relative) {
+                    sample.qualifiedAspectPair = true;
+                    sample.relativeContrast=relative->relativeContrast;
+                }
             }
 			proofInspectionMs += std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - proofInspectionStart).count();
 			proofSamples.push_back(sample);
+            } else {
+                // A later ready source cannot fill a missing head-prefix sample.
+                // Keep the current certificate until all required sources finish.
+                expansionPrefixComplete = false;
+            }
 		}
         if (inwardProofEligible)
             inwardSamples.push_back(sample);
         observations.push_back(preview);
 	}
 
-    if(readyPrefix.Size()==0) return abort("no-ready-prefix");
+    const size_t completePrefix=observations.size();
+    attempt.ready=completePrefix;
+    if(completePrefix==0) return abort("no-ready-prefix");
     if(expired()) return abort("prefix-deadline");
     // A pending tail is unavailable future evidence, never an empty frame.
     // Publish only the ready prefix and reduce all proof lookahead metadata.
-    queuedFutureFrames=(std::min)(queuedFutureFrames,readyPrefix.Size()-1);
+    queuedFutureFrames=(std::min)(queuedFutureFrames,completePrefix-1);
     availableLookahead=static_cast<uint8_t>(queuedFutureFrames);
-    if(subtitleObservations.size()>readyPrefix.Size()) subtitleObservations.resize(readyPrefix.Size());
-    if(rememberedWindowSamples.size()>readyPrefix.Size()) rememberedWindowSamples.resize(readyPrefix.Size());
+    if(subtitleObservations.size()>completePrefix) subtitleObservations.resize(completePrefix);
+    if(rememberedWindowSamples.size()>completePrefix) rememberedWindowSamples.resize(completePrefix);
 
     if (rememberedWindowTrace)
     {
@@ -22813,6 +23100,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 if (sameBounds(rememberedWindowNomination.establishedBase, rememberedWindowBase))
                 {
                     const auto started = SteadyClock::now();
+                    currentStage=LookaheadPerf::Stage::RememberedProof;
                     budgetStage="remembered-window";
                     budget.Checkpoint();
                     if (rememberedWindowActive)
@@ -22858,7 +23146,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				static_cast<unsigned long long>(lookaheadPolicyGeneration),
 				static_cast<unsigned long long>(
 					m_activePictureTimeline.LookaheadPolicyGeneration()));
-			return false;
+            return abort("policy-changed");
 		}
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
 			m_activePictureLookaheadLoggedAvailable != queuedFutureFrames)
@@ -22891,7 +23179,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 (observations.front().observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED
                     ? "candidate-untrusted" : (!inspectExpansion ? "no-two-edge-expansion" : "queue-membership-or-continuity")))));
 
-		if (proofSamples.size() == 3 && !m_frameQueue.empty() &&
+		if (expansionPrefixComplete && proofSamples.size() == 3 && !m_frameQueue.empty() &&
 			SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
 				proofSamples.front().identity))
 		{
@@ -22923,6 +23211,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     if (fitProof.valid && fitProof.relativeContrast)
                     {
                         m_frameQueue.front().bufferedPictureExpansion = fitProof;
+                        m_impl->lookaheadPerformance.RecordPublished(LookaheadPerf::ProofKind::BufferedExpansion);
                         diagnosticBuilt = diagnosticProofValid = true;
                     }
                     shadowBuilt = true;
@@ -22944,6 +23233,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                             proofSamples.size(), proofBase, configured, availableLookahead,
                             m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
                     m_frameQueue.front().bufferedPictureExpansion = proof;
+                    if (proof.valid)
+                        m_impl->lookaheadPerformance.RecordPublished(LookaheadPerf::ProofKind::BufferedExpansion);
                     diagnosticBuilt = true;
                     diagnosticProofValid = m_frameQueue.front().bufferedPictureExpansion.valid;
                     diagnosticQueueStage = diagnosticProofValid ? "proof-ready" : "proof-rejected";
@@ -23110,6 +23401,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				continue;
 			target->activePicturePreviewDecision = decision;
 			target->activePicturePreviewDecisionAvailable = true;
+            m_impl->lookaheadPerformance.RecordPublished(LookaheadPerf::ProofKind::ScheduledDecision);
 			DebugLog::Log(
 				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u backdated_frames=%llu association=%s inward_proof=%s proof_frames=%u late=%d rect=%d,%d-%d,%d runtime-apply=pending",
 				static_cast<unsigned long long>(
@@ -23159,8 +23451,9 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             if (allQueued && m_activePictureTimeline.CanProveBufferedFrames(
                 identities.data(), identities.size()))
             {
-                m_frameQueue.front().activePicturePreviewDecision = inward;
-                m_frameQueue.front().activePicturePreviewDecisionAvailable = true;
+            m_frameQueue.front().activePicturePreviewDecision = inward;
+            m_frameQueue.front().activePicturePreviewDecisionAvailable = true;
+            m_impl->lookaheadPerformance.RecordPublished(LookaheadPerf::ProofKind::InwardConfirmation);
                 DebugLog::Log("Alpha buffered inward proof: generation=%llu sequence=%llu through=%llu samples=%u configured=%u available=%u effective=%u base=%d,%d-%d,%d runtime-apply=pending",
                     inward.effectiveIdentity.transportGeneration,
                     inward.effectiveIdentity.acceptedSequence,
@@ -23187,7 +23480,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                                 SameActivePictureFrameIdentity(item.activePictureIdentity, id);
                         });
                     }))
+            {
                 m_frameQueue.front().guardedRememberedReturn = guardedCertificate;
+                m_impl->lookaheadPerformance.RecordPublished(LookaheadPerf::ProofKind::GuardedReturn);
+            }
         }
 
 	}
@@ -23561,6 +23857,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		double oldestQueuedAgeMs = 0.0;
 		std::vector<QueuedFrame> activePicturePreviewFrames;
 		std::vector<QueuedFrame> futureOutwardFrames;
+        std::vector<QueuedFrame> pictureMeasurementFrames;
         std::shared_ptr<const QueuedFrame::OutwardWindowResult> asyncOutwardReady;
         bool asyncOutwardQueueCurrent=false, asyncOutwardOffered=false;
 		size_t activePictureAvailableLookahead = 0;
@@ -23619,6 +23916,16 @@ void LibplaceboVideoRenderer::RenderLoop()
                 activePicturePreviewFrames.push_back(m_frameQueue[index]);
                 activePicturePreviewFrames.back().frame.SourceBufferAddRef();
             }
+            // Prepare both independent owned windows. At configured depth2,
+            // the next-source outward proof still needs its third future source.
+            // The first selected source stays the admission/retirement minimum.
+            for (size_t index:AlphaQueuePolicy::SelectActivePicturePreparation(m_frameQueue,
+                    m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+                    ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES,
+                    AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED)) {
+                pictureMeasurementFrames.push_back(m_frameQueue[index]);
+                pictureMeasurementFrames.back().frame.SourceBufferAddRef();
+            }
             // Queue depth normally retains current plus three future sources.
             // Snapshot the overlapping window starting at the *next* source,
             // allowing its proof worker to finish before that source dequeues.
@@ -23633,18 +23940,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 
 		const auto preRenderActiveStart = SteadyClock::now();
         try {
-            PrimeBufferedOutwardWindow(futureOutwardFrames,
-                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
-        } catch(const std::exception& error) {
-            DebugLog::Log("Alpha outward async prime: failed=%s action=continue-current-source",error.what());
-        } catch(...) {
-            DebugLog::Log("Alpha outward async prime: failed=unknown action=continue-current-source");
-        }
-        for (QueuedFrame& preview : futureOutwardFrames)
-            preview.frame.SourceBufferRelease();
-        futureOutwardFrames.clear();
-        try {
-            PrimeActivePictureMeasurements(activePicturePreviewFrames,
+            PrimeActivePictureMeasurements(pictureMeasurementFrames,
                 activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
         } catch(const std::exception& error) {
             DebugLog::Log("Alpha look-ahead prime: failed=%s action=continue-current-source",error.what());
@@ -23659,6 +23955,28 @@ void LibplaceboVideoRenderer::RenderLoop()
         } catch(...) {
             DebugLog::Log("SUBTITLE DISPATCH: failed=unknown action=continue-current-source");
         }
+        try {
+            PrimePictureProofMeasurements(pictureMeasurementFrames,
+                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
+        } catch(const std::exception& error) {
+            DebugLog::Log("Alpha picture-proof prime: failed=%s action=continue-current-source",error.what());
+        } catch(...) {
+            DebugLog::Log("Alpha picture-proof prime: failed=unknown action=continue-current-source");
+        }
+        try {
+            PrimeBufferedOutwardWindow(futureOutwardFrames,
+                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
+        } catch(const std::exception& error) {
+            DebugLog::Log("Alpha outward async prime: failed=%s action=continue-current-source",error.what());
+        } catch(...) {
+            DebugLog::Log("Alpha outward async prime: failed=unknown action=continue-current-source");
+        }
+        for (QueuedFrame& preview : futureOutwardFrames)
+            preview.frame.SourceBufferRelease();
+        futureOutwardFrames.clear();
+        for (QueuedFrame& prepared:pictureMeasurementFrames)
+            prepared.frame.SourceBufferRelease();
+        pictureMeasurementFrames.clear();
         LARGE_INTEGER analysisQpcFrequency{};
         QueryPerformanceFrequency(&analysisQpcFrequency);
         if(!activePicturePreviewFrames.empty())
@@ -23675,18 +23993,26 @@ void LibplaceboVideoRenderer::RenderLoop()
                  budgetLogTick-m_impl->lastAnalysisBudgetLogTick>=250)) {
                 m_impl->lastAnalysisBudgetLogTick=budgetLogTick;
                 m_impl->lastAnalysisBudgetSkippedBoundary=lookaheadTicket.skippedBoundary;
-                DebugLog::Log("Alpha look-ahead budget: generation=%llu sequence=%llu epoch=%llu phase_known=%d next_lead_ms=%.3f mandatory_ms=%.3f reserve_ms=%.3f target_lead_ms=%.3f skipped_boundary=%d allowance_ms=%.3f repeat=%d backlog=%d",
+                DebugLog::Log("Alpha look-ahead budget: generation=%llu sequence=%llu epoch=%llu phase_known=%d next_lead_ms=%.3f mandatory_ms=%.3f mandatory_tail_ms=%.3f mandatory_known=%d gpu_tail_ms=%.3f gpu_known=%d mandatory_envelope_ms=%.3f reserve_ms=%.3f target_lead_ms=%.3f skipped_boundary=%d allowance_ms=%.3f repeat=%d backlog=%d",
                     activePicturePreviewFrames.front().activePictureIdentity.transportGeneration,
                     activePicturePreviewFrames.front().activePictureIdentity.acceptedSequence,
                     activePicturePreviewFrames.front().activePictureIdentity.viewportGeneration,
                     lookaheadTicket.phaseKnown?1:0,lookaheadTicket.nextBoundaryLeadMs,
-                    lookaheadTicket.mandatoryMs,lookaheadTicket.reserveMs,
+                    lookaheadTicket.mandatoryMs,lookaheadTicket.mandatoryTailMs,
+                    lookaheadTicket.mandatoryKnown?1:0,lookaheadTicket.gpuTailMs,
+                    lookaheadTicket.gpuKnown?1:0,lookaheadTicket.mandatoryEnvelopeMs,lookaheadTicket.reserveMs,
                     lookaheadTicket.targetLeadMs,lookaheadTicket.skippedBoundary?1:0,
                     lookaheadTicket.allowanceMs,
                     activePicturePreviewFrames.front().cadenceRepeat?1:0,previewBacklog?1:0);
             }
         }
-		if (lookaheadTicket.deadlineQpc>0 && !activePicturePreviewFrames.empty() &&
+        const bool allowCachedLookahead=!activePicturePreviewFrames.empty() &&
+            !activePicturePreviewFrames.front().cadenceRepeat &&
+            !activePicturePreviewFrames.front().frame.IsSourceDiscontinuity() && !previewBacklog &&
+            !m_impl->resizePending.load(std::memory_order_acquire) &&
+            !m_impl->outputRenegotiationPending.load(std::memory_order_acquire);
+		if ((lookaheadTicket.deadlineQpc>0 || allowCachedLookahead) &&
+            !activePicturePreviewFrames.empty() &&
 			m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
 		{
 			const auto lookaheadStarted = SteadyClock::now();
@@ -23712,8 +24038,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 			lookaheadMs = std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - lookaheadStarted).count();
-            lookaheadLateMs=(std::max)(0.0,double(PerformanceCounterNow()-lookaheadTicket.deadlineQpc)*1000.0/analysisQpcFrequency.QuadPart);
+            lookaheadLateMs=lookaheadTicket.deadlineQpc>0
+                ? (std::max)(0.0,double(PerformanceCounterNow()-lookaheadTicket.deadlineQpc)*1000.0/analysisQpcFrequency.QuadPart)
+                : 0.0;
 		}
+        if (!lookaheadAttempted && !activePicturePreviewFrames.empty())
+            m_impl->lookaheadPerformance.RecordStop(LookaheadPerf::Stage::Measurements,
+                LookaheadPerf::StopReason::ZeroAdmission);
         m_impl->analysisPerformance.Preview(lookaheadAttempted,lookaheadCompleted,
             lookaheadTicket.phaseKnown,lookaheadMs,lookaheadLateMs);
         const auto outwardLogTick=GetTickCount64();
@@ -23722,13 +24053,17 @@ void LibplaceboVideoRenderer::RenderLoop()
             const auto worker=m_impl->outwardWindowWorker.Snapshot();
             DebugLog::Log("Alpha optional proof budget: cooperative_cancellations=%llu diagnostic_skips=%llu sample_checkpoints=bounded row_checkpoints=enabled incomplete_prefix=discarded",
                 m_impl->lookaheadProofCancellations,m_impl->lookaheadDiagnosticSkips);
-            DebugLog::Log("Alpha outward async: ready=%llu late=%llu stale=%llu offered=%llu adopted=%llu worker_submitted=%llu worker_completed=%llu worker_failed=%llu worker_full=%llu worker_queued=%llu worker_queue_avg_ms=%.3f worker_wall_avg_ms=%.3f worker_cpu_avg_ms=%.3f",
+            DebugLog::Log("Alpha outward async: ready=%llu late=%llu stale=%llu offered=%llu adopted=%llu worker_submitted=%llu worker_completed=%llu worker_failed=%llu worker_full=%llu worker_queued=%llu worker_queue_avg_ms=%.3f worker_wall_avg_ms=%.3f worker_cpu_avg_ms=%.3f raw_fallback_scans=%llu raw_reused=%llu retention_fallback_scans=%llu retention_reused=%llu",
                 m_impl->outwardAsyncReady,m_impl->outwardAsyncLate,m_impl->outwardAsyncStale,
                 m_impl->outwardAsyncOffered,m_impl->outwardAsyncAdopted,
                 worker.submitted,worker.completed,worker.failed,worker.full,worker.queued,
                 worker.completed?double(worker.queueUs)/worker.completed/1000.0:0.0,
                 worker.completed?double(worker.wallUs)/worker.completed/1000.0:0.0,
-                worker.cpuSamples?double(worker.cpuUs)/worker.cpuSamples/1000.0:0.0);
+                worker.cpuSamples?double(worker.cpuUs)/worker.cpuSamples/1000.0:0.0,
+                m_impl->outwardRawComputed,m_impl->outwardRawReused,
+                m_impl->outwardRetentionComputed,m_impl->outwardRetentionReused);
+            m_impl->outwardRawComputed=m_impl->outwardRawReused=0;
+            m_impl->outwardRetentionComputed=m_impl->outwardRetentionReused=0;
             m_impl->outwardAsyncReady=m_impl->outwardAsyncLate=m_impl->outwardAsyncStale=0;
             m_impl->outwardAsyncOffered=m_impl->outwardAsyncAdopted=0;
         }
@@ -23775,13 +24110,29 @@ void LibplaceboVideoRenderer::RenderLoop()
                 const auto& cache=*m_frameQueue.front().analysis;
                 if (cache.outwardRequested && cache.outwardWindow) {
                     asyncOutwardReady=QueuedFrame::OutwardWindowWorker::Ready(cache.outwardWindow);
-                    if (!asyncOutwardReady) ++m_impl->outwardAsyncLate;
+                    if (asyncOutwardReady) {
+                        m_impl->outwardRawComputed+=asyncOutwardReady->rawComputed;
+                        m_impl->outwardRawReused+=asyncOutwardReady->rawReused;
+                        m_impl->outwardRetentionComputed+=asyncOutwardReady->retentionComputed;
+                        m_impl->outwardRetentionReused+=asyncOutwardReady->retentionReused;
+                        for (uint64_t hit=0;hit<asyncOutwardReady->retentionReused;++hit)
+                            m_impl->lookaheadPerformance.RecordCache(LookaheadPerf::Stage::Retention,true,false);
+                        for (uint64_t miss=0;miss<asyncOutwardReady->retentionComputed;++miss)
+                            m_impl->lookaheadPerformance.RecordCache(LookaheadPerf::Stage::Retention,false,false);
+                    }
+                    if (!asyncOutwardReady) {
+                        ++m_impl->outwardAsyncLate;
+                        m_impl->lookaheadPerformance.RecordAsync(LookaheadPerf::ProofKind::BufferedExpansion,
+                            LookaheadPerf::AsyncOutcome::Late);
+                    }
                     else if (asyncOutwardReady->proof.valid &&
                         AlphaSourceCrop::SameAsyncOutwardContext(
                             cache.outwardContext,asyncOutwardReady->context) &&
                         SameActivePictureFrameIdentity(
                             asyncOutwardReady->context.contributors.front(),activePictureIdentity)) {
                         ++m_impl->outwardAsyncReady;
+                        m_impl->lookaheadPerformance.RecordAsync(LookaheadPerf::ProofKind::BufferedExpansion,
+                            LookaheadPerf::AsyncOutcome::Ready);
                         const auto& contributors=asyncOutwardReady->context.contributors;
                         asyncOutwardQueueCurrent=m_activePictureTimeline.CanProveBufferedFrames(
                             contributors.data(),contributors.size()) &&
@@ -23798,6 +24149,12 @@ void LibplaceboVideoRenderer::RenderLoop()
                         if (!asyncOutwardQueueCurrent) ++m_impl->outwardAsyncStale;
                     } else if (asyncOutwardReady->proof.valid) {
                         ++m_impl->outwardAsyncStale;
+                        m_impl->lookaheadPerformance.RecordAsync(LookaheadPerf::ProofKind::BufferedExpansion,
+                            LookaheadPerf::AsyncOutcome::Stale);
+                    } else {
+                        m_impl->lookaheadPerformance.RecordAsync(LookaheadPerf::ProofKind::BufferedExpansion,
+                            asyncOutwardReady->noChange ? LookaheadPerf::AsyncOutcome::NoChange :
+                                LookaheadPerf::AsyncOutcome::Invalid);
                     }
                 }
             }

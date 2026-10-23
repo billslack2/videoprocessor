@@ -192,4 +192,10 @@
     <ClCompile Include="DebugLogAsyncTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="AnalysisEvaluationBudgetTests.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="LookaheadPerformanceWindowTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="PreparedPictureEvidenceTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="OptionalAnalysisWorkerTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="PreparedOutwardWindowTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>

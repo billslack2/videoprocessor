@@ -51,14 +51,23 @@ public:
             } else ++it;
         }
         queued.store(jobs.size(),std::memory_order_relaxed);
-        if (jobs.size() >= Capacity) {
-            ++full;
-            // Retain the nearer pending work; missing future evidence is safe.
-            slot->pending.store(false); return false;
+        const bool replaceFurthest=jobs.size()>=Capacity &&
+            jobs.back().generation==generation && sequence<jobs.back().sequence;
+        if (jobs.size()>=Capacity && !replaceFurthest) {
+            ++full;slot->pending.store(false);return false;
         }
         try {
             if (!worker.joinable()) worker = std::thread([this] { Run(); });
-            jobs.push_back({slot,generation,sequence,std::move(measure),NowUs()});
+            // Retain arrival order among equal sequences. The active job is
+            // already outside this queue and is never interrupted/replaced.
+            auto where=jobs.begin();
+            while (where!=jobs.end() && where->sequence<=sequence) ++where;
+            jobs.insert(where,{slot,generation,sequence,std::move(measure),NowUs()});
+            if (replaceFurthest) {
+                // Insert successfully before discarding existing work. A nearer
+                // source must not be rejected merely because future work is full.
+                jobs.back().slot->pending.store(false);++cancelled;jobs.pop_back();
+            }
             ++submitted;queued.store(jobs.size(),std::memory_order_relaxed);
             Peak(queueHighWater,jobs.size());
         } catch (...) { slot->pending.store(false); return false; }

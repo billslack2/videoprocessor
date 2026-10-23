@@ -5,10 +5,70 @@
 
 namespace AlphaSourceCrop
 {
-    InwardCaptionEvidence InspectInwardCaptionEvidence(
+    namespace
+    {
+        bool SameCaptionBounds(const ActivePictureBounds& a, const ActivePictureBounds& b)
+        {
+            return a.left == b.left && a.top == b.top && a.right == b.right &&
+                a.bottom == b.bottom && a.rasterWidth == b.rasterWidth &&
+                a.rasterHeight == b.rasterHeight && a.aspectRatio == b.aspectRatio &&
+                a.trustedBarAxes == b.trustedBarAxes;
+        }
+    }
+
+    InwardCaptionReference NominateInwardCaptionReference(
         const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
-        const ActivePictureBounds& base, const ActivePictureTransitionModel& model,
-        const AnalysisEvaluationBudget* budget)
+        const ActivePictureBounds& base, const ActivePictureTransitionModel& model)
+    {
+        InwardCaptionReference reference;
+        if (!source.IsValid() || source.width < 320 || source.height < 180 ||
+            !raw.available || raw.classification != ActivePictureClassification::PROVISIONAL ||
+            raw.axisEvidence.horizontal.FailedBar() ||
+            base.rasterWidth != source.width || base.rasterHeight != source.height ||
+            base.left != 0 || base.right != source.width || base.top <= 0 ||
+            base.bottom >= source.height || base.top >= base.bottom ||
+            base.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            raw.proposedBounds.rasterWidth != source.width || raw.proposedBounds.rasterHeight != source.height ||
+            raw.proposedBounds.left != 0 || raw.proposedBounds.right != source.width)
+            return reference;
+        // Mirror only the nomination arithmetic of the symmetric hypothesis.
+        // Its black-band/continuation pixel checks still run in Inspect below.
+        const int step = std::max(2, source.height / 540);
+        const int top = raw.proposedBounds.top;
+        const int bottom = source.height - raw.proposedBounds.bottom;
+        const bool cleanTop = raw.top.trusted && (!raw.bottom.trusted || top > bottom + step);
+        const bool cleanBottom = raw.bottom.trusted && (!raw.top.trusted || bottom > top + step);
+        if (cleanTop == cleanBottom) return reference;
+        const int bar = cleanTop ? top : bottom;
+        if (bar <= step * 2 || bar >= source.height / 3) return reference;
+        const bool oppositeExpanded = cleanTop
+            ? raw.proposedBounds.bottom > source.height - bar + step
+            : raw.proposedBounds.top < bar - step;
+        if (!oppositeExpanded || source.height - bar <= bar) return reference;
+        reference.base = base;
+        reference.candidate = { 0, bar, source.width, source.height - bar,
+            source.width, source.height, static_cast<double>(source.width)/(source.height - 2*bar),
+            ActivePictureBounds::BarAxes::TOP_BOTTOM };
+        if (reference.candidate.top <= base.top || reference.candidate.bottom >= base.bottom ||
+            !model.FindRecentTrustedBarGeometry(reference.candidate, reference.remembered))
+            return reference;
+        reference.valid = true;
+        return reference;
+    }
+
+    bool InwardCaptionReferenceIsCurrent(const InwardCaptionReference& reference,
+        const ActivePictureBounds& base, const ActivePictureTransitionModel& model)
+    {
+        ActivePictureBounds remembered;
+        return reference.valid && SameCaptionBounds(reference.base, base) &&
+            model.FindRecentTrustedBarGeometry(reference.candidate, remembered) &&
+            SameCaptionBounds(remembered, reference.remembered);
+    }
+
+    static InwardCaptionEvidence InspectInwardCaptionEvidenceImpl(
+        const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
+        const ActivePictureBounds& base, const ActivePictureTransitionModel* model,
+        const InwardCaptionReference* reference, const AnalysisEvaluationBudget* budget)
     {
         CheckAnalysisEvaluationBudget(budget);
         InwardCaptionEvidence result;
@@ -34,8 +94,14 @@ namespace AlphaSourceCrop
         const auto candidate = hypothesis.trustedBounds;
         ActivePictureBounds remembered;
         result.reason = "not-known-inward-format";
+        if (reference)
+        {
+            if (!reference->valid || !SameCaptionBounds(reference->base, base) ||
+                !SameCaptionBounds(reference->candidate, candidate)) return result;
+            remembered = reference->remembered;
+        }
+        else if (!model || !model->FindRecentTrustedBarGeometry(candidate, remembered)) return result;
         if (candidate.top <= base.top || candidate.bottom >= base.bottom ||
-            !model.FindRecentTrustedBarGeometry(candidate, remembered) ||
             remembered.left != 0 || remembered.right != source.width ||
             remembered.rasterWidth != source.width || remembered.rasterHeight != source.height ||
             remembered.top <= base.top || remembered.bottom >= base.bottom ||
@@ -128,6 +194,20 @@ namespace AlphaSourceCrop
         result.protectedBounds=protection;
         result.reason="current-caption-protected-known-return";
         return result;
+    }
+    InwardCaptionEvidence InspectInwardCaptionEvidence(
+        const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
+        const ActivePictureBounds& base, const ActivePictureTransitionModel& model,
+        const AnalysisEvaluationBudget* budget)
+    {
+        return InspectInwardCaptionEvidenceImpl(source, raw, base, &model, nullptr, budget);
+    }
+
+    InwardCaptionEvidence InspectInwardCaptionEvidence(
+        const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
+        const InwardCaptionReference& reference, const AnalysisEvaluationBudget* budget)
+    {
+        return InspectInwardCaptionEvidenceImpl(source, raw, reference.base, nullptr, &reference, budget);
     }
 }
 
