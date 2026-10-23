@@ -227,6 +227,37 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(SuppliedRefinedGeometryWithoutCalibrationRebuildsOnlyCurrentReference)
+        {
+            const OwnedMeasurementFrame frame;
+            for (const auto range : {AnalysisLumaRange::Limited,AnalysisLumaRange::Full})
+            {
+                auto source = frame.Source(); source.range = range;
+                const auto raw = ExtractActivePictureEvidence(source);
+                const auto global = EvaluateActivePictureGlobalNearBlack(source);
+                const auto darkness = EvaluateActivePictureArDarkness(source,raw,global);
+                auto refined = raw;
+                refined.blackReference = {};
+                refined.reason = "independently refined geometry";
+                const auto expected = EvaluateActivePicturePresentationRetention(source,Scope(),raw,global,darkness);
+                const auto actual = EvaluateActivePicturePresentationRetention(source,Scope(),refined,global,darkness);
+                Assert::IsTrue(actual.analysisValid && actual.blackReference.evaluated);
+                Assert::AreEqual(expected.presentationBlackFloor,actual.presentationBlackFloor);
+                Assert::AreEqual(expected.presentationBlackThreshold,actual.presentationBlackThreshold);
+                Assert::AreEqual(expected.excludedBandsPixelSafe,actual.excludedBandsPixelSafe);
+                SameBounds(refined.trustedBounds,actual.activePicture.trustedBounds);
+                Assert::AreEqual(refined.reason,actual.activePicture.reason);
+                Assert::AreEqual(expected.lumaSamples+raw.lumaSamples,actual.lumaSamples);
+                Assert::AreEqual(expected.chromaSamples+raw.chromaSamples,actual.chromaSamples);
+                CancellationClock clock{0,3};
+                AnalysisEvaluationBudget budget(&CancellationClock::Expired,&clock);
+                ActivePicturePresentationRetentionEvidence incomplete;
+                RequireCancelled([&] { incomplete = EvaluateActivePicturePresentationRetention(
+                    source,Scope(),refined,global,darkness,&budget); });
+                Assert::IsFalse(incomplete.analysisValid || incomplete.excludedBandsPixelSafe);
+            }
+        }
+
         TEST_METHOD(CancelledSuppliedRetentionCannotPublishPartialSafetyAndMandatoryRetryWorks)
         {
             const OwnedMeasurementFrame frame;

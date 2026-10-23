@@ -197,5 +197,8 @@
     <ClCompile Include="PreparedPictureEvidenceTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="OptionalAnalysisWorkerTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="PreparedOutwardWindowTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ActivePictureBlackReferenceTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

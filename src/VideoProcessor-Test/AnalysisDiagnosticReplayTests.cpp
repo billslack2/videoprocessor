@@ -977,6 +977,275 @@ namespace Tests
             Assert::IsTrue(allSafe,
                 L"Every admitted crop must contain all current adversarial pixels, including caption-like ink.");
         }
+        TEST_METHOD(OptionalNativeBlackReferenceCaptureReleasesSubmittedScope)
+        {
+            wchar_t* value = nullptr;
+            size_t length = 0;
+            _wdupenv_s(&value, &length, L"VP_BLACK_REFERENCE_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value ? value : L"");
+            std::free(value);
+            if (directory.empty())
+            {
+                Logger::WriteMessage("Native black-reference regression capture was not requested.");
+                return;
+            }
+            std::vector<std::filesystem::path> paths;
+            for (const auto& entry : std::filesystem::directory_iterator(directory))
+                if (entry.is_regular_file() && entry.path().extension() == L".bin" &&
+                    entry.path().filename().wstring().rfind(L"frame-", 0) == 0)
+                    paths.push_back(entry.path());
+            std::sort(paths.begin(), paths.end());
+            Assert::IsTrue(!paths.empty() && paths.size() <= 4096);
+            const auto first = ReadFrame(paths.front());
+            Assert::IsTrue(first.identity.acceptedSequence > 16);
+            Assert::IsTrue(first.source.range == AnalysisLumaRange::Full &&
+                first.source.format == AnalysisLumaFormat::DecodedDolbyVision422 &&
+                first.frameDuration100ns != 0);
+            int top = 0, bottom = 0;
+            {
+                auto sidecar = paths.front(); sidecar.replace_extension(L".txt");
+                std::ifstream metadata(sidecar);
+                int width = 0, height = 0, format = 0, encoding = 0, colorspace = 0;
+                size_t stride = 0, chromaStride = 0;
+                metadata >> width >> height >> stride >> chromaStride >> format >> encoding >>
+                    colorspace >> top >> bottom;
+                Assert::IsTrue(bool(metadata) && top > 0 && bottom > top && bottom < height &&
+                    (top & 1) == 0 && (bottom & 1) == 0);
+            }
+            // A derived adversary removes chroma while retaining captured luma.
+            // It is a measurement-only fixture, never a rewritten captured observation.
+            auto neutralPixels = std::make_shared<std::vector<uint8_t>>(*first.pixels);
+            auto neutralSource = first.source;
+            neutralSource.data = neutralPixels->data(); neutralSource.backingOwner = neutralPixels;
+            const size_t chromaOffset = neutralSource.rowBytes*size_t(neutralSource.height);
+            for (size_t offset = chromaOffset; offset+1 < neutralPixels->size(); offset += 2)
+            {
+                (*neutralPixels)[offset] = 0; (*neutralPixels)[offset+1] = 128; // 512<<6 in LE16.
+            }
+            const auto neutralEvidence = ExtractActivePictureEvidence(neutralSource);
+            Assert::IsTrue(neutralEvidence.classification == ActivePictureClassification::FULL_RASTER_TRUSTED,
+                L"The correction must follow full-band luma evidence, not a scene-specific chroma code.");
+            const int width = first.source.width, height = first.source.height;
+            const ActivePictureBounds raster = {0,0,width,height,width,height,
+                double(width)/height,ActivePictureBounds::BarAxes::NONE};
+            const ActivePictureBounds scope = {0,top,width,bottom,width,height,
+                double(width)/(bottom-top),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            // Explicit synthetic prehistory acquires the sidecar's retained Scope.
+            // Captured files keep their actual identities, repeats and omissions.
+            auto seedPixels = std::make_shared<std::vector<uint8_t>>(size_t(width)*height*4);
+            auto* words = reinterpret_cast<uint16_t*>(seedPixels->data());
+            std::fill(words + size_t(width)*height, words + size_t(width)*height*2,
+                uint16_t(512 << 6));
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                    words[size_t(y)*width+x] = uint16_t((y < top || y >= bottom ? 0 :
+                        240 + ((x/32+y/32)%7)*24) << 6);
+            auto seedSource = first.source;
+            seedSource.format = AnalysisLumaFormat::DecodedDolbyVision422;
+            seedSource.rowBytes = seedSource.chromaRowBytes = size_t(width)*2;
+            seedSource.data = seedPixels->data(); seedSource.dataBytes = seedPixels->size();
+            seedSource.backingOwner = seedPixels;
+            const auto seedEvidence = ExtractActivePictureEvidence(seedSource);
+            Assert::IsTrue(seedEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(top,seedEvidence.trustedBounds.top);
+            Assert::AreEqual(bottom,seedEvidence.trustedBounds.bottom);
+            ActivePictureTransitionModel model;
+            ActivePictureTransitionDecision transition;
+            for (uint64_t sequence = first.identity.acceptedSequence-8;
+                sequence < first.identity.acceptedSequence; ++sequence)
+                transition = model.Observe(MakeActivePictureObservation(seedEvidence,sequence,
+                    10000000.0/double(first.frameDuration100ns)));
+            Assert::IsTrue(transition.stable);
+            AlphaSourceCrop::Input crop;
+            crop.automaticCropEnabled = crop.sharedGeometryAvailable = true;
+            crop.latestObservationSupportsCrop = true;
+            crop.classification = crop.latestObservationClassification =
+                ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.geometry = scope;
+            crop.rasterWidth = width; crop.rasterHeight = height;
+            crop.frameSourceGeneration = crop.geometrySourceGeneration = first.identity.transportGeneration;
+            crop.frameSourceSequence = first.identity.acceptedSequence-1;
+            crop.framePresentationEpoch = first.identity.viewportGeneration;
+            auto admission = AlphaSourceCrop::AdmitCropPresentation({},crop,
+                AlphaSourceCrop::Evaluate(crop),first.identity.viewportGeneration).state;
+            Assert::IsTrue(admission.available);
+            AlphaSourceCrop::SubmittedNativeScopeAnchorUpdateInput seedCommit;
+            seedCommit.selectedAdmission = admission;
+            seedCommit.nativeCropAvailable = true; seedCommit.nativeCrop = scope;
+            seedCommit.submittedBounds = scope;
+            seedCommit.selectedOwner = AlphaSourceCrop::DecisionOwner::TRUSTED_CROP;
+            seedCommit.sourceGeneration = first.identity.transportGeneration;
+            seedCommit.sourceSequence = first.identity.acceptedSequence-1;
+            seedCommit.presentationEpoch = first.identity.viewportGeneration;
+            seedCommit.frameSubmitted = true;
+            auto anchor = AlphaSourceCrop::CommitSubmittedNativeScopeAnchor(seedCommit);
+            Assert::IsTrue(anchor.available);
+            AlphaSourceCrop::PresentationRecoveryState recovery;
+            recovery.active = true; recovery.trustedCrop = scope;
+            recovery.sourceGeneration = first.identity.transportGeneration;
+            recovery.presentationEpoch = first.identity.viewportGeneration;
+            recovery.startedSourceSequence = first.identity.acceptedSequence-1;
+            recovery.lastSourceSequence = first.identity.acceptedSequence-1;
+            recovery.startedTick = 1;
+            AlphaSourceCrop::OutwardPictureConfirmationState outward;
+            auto logical = scope;
+            auto logicalClass = ActivePictureClassification::BAR_CROP_TRUSTED;
+            ReplayFrame previous;
+            bool hasPrevious = false, fullSubmitted = false, fullAuthority = false;
+            uint64_t firstFullSequence = 0, firstLogicalFullSequence = 0;
+            unsigned unique = 0, repeats = 0, gaps = 0;
+            double elapsedMs = 0.0;
+            for (const auto& path : paths)
+            {
+                const auto frame = ReadFrame(path);
+                Assert::IsTrue(SameReplayContext(first,frame) && !frame.discontinuity,
+                    L"This retained-history replay requires one exact captured context.");
+                if (hasPrevious && SameAnalysisFrameIdentity(frame.identity,previous.identity))
+                {
+                    ++repeats;
+                    continue; // A display repeat never contributes another observation.
+                }
+                const bool gap = hasPrevious && frame.identity.acceptedSequence != previous.identity.acceptedSequence+1;
+                if (gap) ++gaps;
+                const auto begin = std::chrono::steady_clock::now();
+                const auto raw = ExtractActivePictureEvidence(frame.source);
+                elapsedMs += std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-begin).count();
+                Assert::IsTrue(raw.classification == ActivePictureClassification::FULL_RASTER_TRUSTED,
+                    L"The captured dark wall must not nominate an inward left crop.");
+                Assert::IsTrue(raw.axisEvidence.horizontal.state == ActivePictureAxisState::FULL_EXTENT_SUPPORTED &&
+                    raw.axisEvidence.vertical.state == ActivePictureAxisState::FULL_EXTENT_SUPPORTED,
+                    L"Nominal classification must have affirmative current support on all raster edges.");
+                auto retention = EvaluateActivePicturePresentationRetention(frame.source,logical);
+                AlphaSourceCrop::TransitionAdmissionInput change;
+                change.evidence = raw;
+                change.outwardCandidate = raw.trustedBounds;
+                change.presentationBeforeObservation = logical;
+                change.trustedGeometry = logical; change.trustedGeometryAvailable = true;
+                change.compatiblePresentation = logicalClass == ActivePictureClassification::BAR_CROP_TRUSTED;
+                change.trustedGeneration = change.sourceGeneration = frame.identity.transportGeneration;
+                change.sourceSequence = frame.identity.acceptedSequence;
+                change.framesPerSecond = 10000000.0/double(frame.frameDuration100ns);
+                change.retention = retention; change.previousOutward = outward;
+                const auto changed = AlphaSourceCrop::EvaluateTransitionAdmission(change);
+                if (gap && change.compatiblePresentation)
+                    Assert::AreEqual(1u,unsigned(changed.outward.state.confirmations));
+                outward = changed.outward.state;
+                transition = model.Observe(changed.observation);
+                if (transition.publish)
+                {
+                    Assert::IsTrue(changed.outward.authoritative ||
+                        logicalClass == ActivePictureClassification::FULL_RASTER_TRUSTED,
+                        L"The old Scope cannot publish a replacement before current outward proof.");
+                    logical = transition.bounds; logicalClass = raw.classification;
+                    if (!firstLogicalFullSequence && logicalClass == ActivePictureClassification::FULL_RASTER_TRUSTED)
+                        firstLogicalFullSequence = frame.identity.acceptedSequence;
+                    retention = EvaluateActivePicturePresentationRetention(frame.source,logical);
+                }
+                crop.geometry = logical; crop.classification = logicalClass;
+                crop.frameSourceSequence = frame.identity.acceptedSequence;
+                crop.latestObservationSupportsCrop = false;
+                crop.latestObservationClassification = raw.classification;
+                fullAuthority = AlphaSourceCrop::UpdateFullRasterPresentationAuthority(fullAuthority,
+                    raw.classification,raw.trustedBounds.left == 0 && raw.trustedBounds.top == 0 &&
+                    raw.trustedBounds.right == width && raw.trustedBounds.bottom == height,raw.authorityOrigin);
+                crop.fullRasterPresentationAuthoritative = fullAuthority;
+                crop.frameLocalPresentationRetentionEvaluated = true;
+                crop.frameLocalPresentationRetentionSafe = retention.excludedBandsPixelSafe;
+                crop.currentVisibleBoundsAvailable = retention.outwardVisibleBoundsAvailable;
+                crop.currentVisibleBounds = retention.outwardVisibleBounds;
+                crop.currentVisibleBase = logical;
+                crop.currentVisibleSourceGeneration = frame.identity.transportGeneration;
+                crop.currentVisibleSourceSequence = frame.identity.acceptedSequence;
+                AlphaSourceCrop::PresentationRecoveryInput input;
+                input.previous = recovery; input.previousAdmission = admission;
+                input.submittedScopeAnchor = anchor; input.crop = crop;
+                input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+                input.excludedBandsPixelSafe = retention.excludedBandsPixelSafe;
+                input.observationAvailable = retention.proposedBoundsAvailable;
+                input.observation = retention.activePicture.proposedBounds;
+                input.observedTrustedCrop = retention.activePicture.trustedBounds;
+                input.observationClassification = retention.activePicture.classification;
+                input.retentionBounds = logical;
+                input.retentionSourceGeneration = frame.identity.transportGeneration;
+                input.retentionSourceSequence = frame.identity.acceptedSequence;
+                input.globalNearBlack = retention.EffectiveArNearBlack();
+                input.presentationEpoch = frame.identity.viewportGeneration;
+                input.currentTick = 1000 + (frame.identity.acceptedSequence-first.identity.acceptedSequence)*
+                    frame.frameDuration100ns/10000;
+                input.framesPerSecond = change.framesPerSecond;
+                input.candidate = AlphaSourceCrop::Evaluate(crop);
+                const auto recovered = AlphaSourceCrop::EvaluatePresentationRecovery(input);
+                recovery = recovered.state; input.candidate = recovered.presentation;
+                const auto bounded = AlphaSourceCrop::EvaluateNearBlackBoundedPresentation({},input);
+                const auto admitted = AlphaSourceCrop::AdmitCropPresentation(admission,crop,
+                    bounded.presentation,input.presentationEpoch);
+                admission = admitted.state;
+                const auto uncertainty = AlphaSourceCrop::ResolveUncertainPicturePresentation(input,admitted.presentation);
+                if (uncertainty.retained)
+                {
+                    crop.geometry = uncertainty.nativeCrop;
+                    crop.geometrySourceGeneration = crop.frameSourceGeneration;
+                    crop.sharedGeometryAvailable = true;
+                    crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+                    crop.latestObservationSupportsCrop = false;
+                    admission.available = true; admission.trustedCrop = uncertainty.nativeCrop;
+                    admission.sourceGeneration = crop.frameSourceGeneration;
+                    admission.presentationEpoch = input.presentationEpoch;
+                    admission.authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+                    admission.outwardPresentationAvailable = uncertainty.expanded;
+                    admission.outwardPresentation = uncertainty.presentation.sourceBounds;
+                    admission.presentationSourceSequence = crop.frameSourceSequence;
+                }
+                AlphaSourceCrop::FinalAspectLimitFillInput fill;
+                fill.crop = crop; fill.evidence = input;
+                fill.presentation = uncertainty.presentation; fill.uncertainPicture = uncertainty;
+                fill.recoveryBoundedPresentation = recovered.boundedPresentation;
+                fill.configuredScreenActive = true; fill.configured.screenAspect = 2.35;
+                fill.configured.cropNarrowerContentToFillScreen = fill.configured.narrowerLimitConfigured = true;
+                fill.configured.narrowerAspectLimit = 2.32;
+                fill.configured.cropWiderContentToFillScreen = fill.configured.widerLimitConfigured = true;
+                fill.configured.widerAspectLimit = 2.42;
+                const auto selected = AlphaSourceCrop::EvaluateFinalAspectLimitFill(fill);
+                if (crop.fullRasterPresentationAuthoritative)
+                {
+                    Assert::IsFalse(uncertainty.retained || recovered.state.active || admitted.blocked || selected.applied);
+                    Assert::AreEqual(0,selected.sourceBounds.left); Assert::AreEqual(0,selected.sourceBounds.top);
+                    Assert::AreEqual(width,selected.sourceBounds.right); Assert::AreEqual(height,selected.sourceBounds.bottom);
+                    AlphaSourceCrop::SubmittedNativeScopeAnchorUpdateInput commit;
+                    commit.previous = anchor; commit.fullRasterAuthority = true;
+                    commit.sourceGeneration = frame.identity.transportGeneration;
+                    commit.sourceSequence = frame.identity.acceptedSequence;
+                    commit.presentationEpoch = frame.identity.viewportGeneration;
+                    commit.submittedBounds = raster;
+                    const auto failed = AlphaSourceCrop::CommitSubmittedNativeScopeAnchor(commit);
+                    Assert::AreEqual(anchor.available,failed.available);
+                    Assert::AreEqual(anchor.sourceGeneration,failed.sourceGeneration);
+                    Assert::AreEqual(anchor.presentationEpoch,failed.presentationEpoch);
+                    Assert::AreEqual(anchor.lastSubmittedSourceSequence,failed.lastSubmittedSourceSequence);
+                    Assert::AreEqual(anchor.lastSubmittedPresentationSourceSequence,failed.lastSubmittedPresentationSourceSequence);
+                    Assert::AreEqual(anchor.crop.top,failed.crop.top); Assert::AreEqual(anchor.crop.bottom,failed.crop.bottom);
+                    commit.frameSubmitted = true;
+                    anchor = AlphaSourceCrop::CommitSubmittedNativeScopeAnchor(commit);
+                    Assert::IsFalse(anchor.available);
+                    if (!fullSubmitted) firstFullSequence = frame.identity.acceptedSequence;
+                    fullSubmitted = true;
+                }
+                previous = frame; previous.pixels.reset(); previous.source.backingOwner.reset();
+                previous.source.data = nullptr; hasPrevious = true; ++unique;
+            }
+            Assert::IsTrue(fullSubmitted && unique >= 5 && firstLogicalFullSequence != 0);
+            Assert::AreEqual(first.identity.acceptedSequence,firstFullSequence,
+                L"Current affirmative native full raster must release presentation on its first eligible source.");
+            std::ostringstream report;
+            report << "native-black-reference sequence_files=" << paths.size() << " unique=" << unique <<
+                " repeats=" << repeats << " gaps=" << gaps << " first_full_submitted_sequence=" << firstFullSequence <<
+                " first_logical_full_sequence=" << firstLogicalFullSequence << " clock=source-duration" <<
+                " raw_mean_ms=" << elapsedMs/unique << " source_pixels=original identity_rewrite=none";
+            Logger::WriteMessage(report.str().c_str());
+        }
+
         TEST_METHOD(OptionalOrderedNativeAnalysisCaptureReportsFreshAcquisition)
         {
             wchar_t* value = nullptr;

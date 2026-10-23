@@ -33,8 +33,40 @@ struct P010PlaneView
 };
 
 
+// A low perimeter percentile nominates a possible matte, never a calibrated
+// black reference by itself. These summaries reuse the six existing depth lines.
+enum class ActivePictureMatteReferenceState : uint8_t
+{
+    NOT_EVALUATED, REJECTED, QUALIFIED, UNRESOLVED
+};
+struct ActivePictureMatteReference
+{
+    ActivePictureMatteReferenceState state = ActivePictureMatteReferenceState::NOT_EVALUATED;
+    int y = 0, u = 512, v = 512;
+};
+enum class ActivePictureBlackReferenceMode : uint8_t
+{
+    LEGACY, FULL_NOMINAL, FULL_QUALIFIED_RAISED, FULL_UNRESOLVED_RAISED,
+    FULL_REJECTED_RAISED
+};
+struct ActivePictureBlackReference
+{
+    bool evaluated = false;
+    ActivePictureBlackReferenceMode mode = ActivePictureBlackReferenceMode::LEGACY;
+    int observedFloor = 0, observedThreshold = 24;
+    int floor = 0, threshold = 24;
+    // Edge bits: left1, top2, right4, bottom8. Axis bits: top/bottom1, left/right2.
+    uint8_t qualifiedEdgeMask = 0, unresolvedEdgeMask = 0, qualifiedAxes = 0;
+    uint8_t nominalFullExtentAxes = 0;
+    bool nominalReclassified = false;
+    ActivePictureBounds adaptiveCandidate;
+};
+
+const char* ActivePictureBlackReferenceModeName(ActivePictureBlackReferenceMode mode);
+
 struct ActivePictureEdgeEvidence
 {
+    ActivePictureMatteReference matteReference;
 	int barPixels = 0;
 	// For each of four equal along-edge quartiles, the low six bits identify
 	// sampled depth rows with at least half their samples above the source-aware
@@ -90,6 +122,7 @@ struct ActivePictureVerticalBarProfile
 
 struct ActivePictureEvidence
 {
+    ActivePictureBlackReference blackReference;
 	bool available = false;
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
@@ -216,6 +249,7 @@ struct ActivePictureVisibleExtentDiagnostic
 // requirement; this never creates authority for a new crop.
 struct ActivePicturePresentationRetentionEvidence
 {
+    ActivePictureBlackReference blackReference;
 	bool analysisValid = false;
 	bool presentationValid = false;
 	double globalLumaP90 = 0.0;
