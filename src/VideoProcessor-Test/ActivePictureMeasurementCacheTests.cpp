@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <vprenderer/ActivePictureMeasurementCache.h>
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include "CppUnitTest.h"
 
 #include <array>
@@ -359,6 +360,97 @@ namespace VideoProcessorTest
             Assert::IsFalse(lifetime.expired());
             cache.Begin({}, Identity(), 7, 8);
             Assert::IsTrue(lifetime.expired());
+        }
+
+        TEST_METHOD(ScrubLineAndSeparatedTimeLabelsOwnCompleteBoundedOffFitAndReleaseHold)
+        {
+            using namespace AlphaSourceCrop;
+            for(bool top:{false,true})for(int shape:{0,1,2}) {
+                const int width=3840,height=2160;
+                auto pixels=std::make_shared<std::vector<uint16_t>>(size_t(width)*height*3/2,uint16_t(512<<6));
+                std::fill(pixels->begin(),pixels->begin()+size_t(width)*height,uint16_t(64<<6));
+                const auto paint=[&](int left,int first,int right,int last,int code) {
+                    for(int y=first;y<last;++y)for(int x=left;x<right;++x)
+                        (*pixels)[size_t(top?height-1-y:y)*width+x]=uint16_t(code<<6);
+                };
+                paint(0,384,width,1776,300);
+                if(shape==2)paint(128,1806,3712,2068,500);
+                else {
+                    paint(128,1806,3712,1826,500);
+                    if(shape==1)paint(2700,1826,3470,1974,500); // Preview plus line and labels: 190 rows.
+                    paint(2920,2046,3220,2068,700);paint(3470,2046,3650,2068,700);
+                }
+                AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels->data());
+                source.dataBytes=pixels->size()*2;source.width=width;source.height=height;
+                source.rowBytes=source.chromaRowBytes=width*2;source.format=AnalysisLumaFormat::P010;
+                source.generation=17;source.backingOwner=pixels;
+                const ActivePictureBounds native={0,384,width,1776,width,height,3840.0/1392.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                ActivePictureMeasurementCache cache;cache.Begin(source,Identity(),7,8);
+                const auto measured=cache.SubtitleContent(native,64);
+                Assert::IsTrue(top?measured.upper:measured.lower);
+                const int first=top?measured.upperTop:measured.lowerTop;
+                const int last=top?measured.upperBottom:measured.lowerBottom;
+                const int occupied=top?measured.upperOccupiedRows:measured.lowerOccupiedRows;
+                Assert::AreEqual(262,last-first);Assert::AreEqual(shape==2?262:(shape==1?190:42),occupied);
+                VerticalBarContentInput input;input.sampledColumns=1800;
+                input.upperContent=measured.upper;input.lowerContent=measured.lower;
+                input.upperBarPixels=input.lowerBarPixels=384;
+                input.upperOccupiedDepth=measured.upperBottom-measured.upperTop;
+                input.lowerOccupiedDepth=measured.lowerBottom-measured.lowerTop;
+                input.upperOccupiedRows=measured.upperOccupiedRows;input.lowerOccupiedRows=measured.lowerOccupiedRows;
+                input.upperPeakSamples=measured.upperPeak;input.lowerPeakSamples=measured.lowerPeak;
+                input.upperRequiredShift=top?272.0f:0.0f;input.lowerRequiredShift=top?0.0f:292.0f;
+                const auto legacy=EvaluateVerticalBarContent(input);
+                Assert::IsFalse(top?legacy.upperOverlayLike:legacy.lowerOverlayLike);
+                const auto classic=SelectVerticalBarContentPresentation(legacy,true,&input);
+                Assert::IsFalse(top?classic.upperOverlayLike:classic.lowerOverlayLike);
+                const auto off=SelectVerticalBarContentPresentation(legacy,false,&input);
+                Assert::IsFalse(top?off.upperOverlayLike:off.lowerOverlayLike);
+                Assert::IsTrue(off.action==VerticalBarPresentationAction::FIT);
+                const auto immediate=ConfirmVerticalFit({},off,42,false);
+                Assert::IsFalse(immediate.pending);
+                Assert::IsTrue(immediate.effective.action==VerticalBarPresentationAction::FIT);
+                Assert::IsTrue(ConfirmVerticalFit({},classic,42).pending);
+                PresentationEnvelopeGeometryInput envelope;envelope.trustedPicture=native;envelope.observedContent=native;
+                envelope.observedContent.top=top?first:native.top;envelope.observedContent.bottom=top?native.bottom:last;
+                envelope.observedContentAvailable=true;envelope.expandTop=top;envelope.expandBottom=!top;envelope.verticalPadding=24;
+                const auto fitted=BuildPresentationEnvelope(envelope);Assert::IsTrue(fitted.valid && fitted.expanded);
+                for(bool placeholder:{false,true}) {
+                    PresentationEnvelopeCompositionInput composed;composed.trustedPicture=native;
+                    composed.denseContent.bounds=envelope.observedContent;
+                    composed.denseContent.expandTop=top;composed.denseContent.expandBottom=!top;
+                    composed.verticalPadding=24;composed.measuredVerticalFit=true;
+                    composed.detectorContent.bounds=native;
+                    composed.detectorContent.bounds.top=placeholder?0:382;
+                    composed.detectorContent.bounds.bottom=placeholder?2160:1778;
+                    composed.detectorContent.expandTop=composed.detectorContent.expandBottom=true;
+                    const auto presented=BuildComposedPresentationEnvelope(composed);
+                    Assert::IsTrue(presented.valid && presented.expanded);
+                    Assert::AreEqual(fitted.bounds.top,presented.bounds.top);
+                    Assert::AreEqual(fitted.bounds.bottom,presented.bounds.bottom);
+                }
+                ConfirmedFitOwnershipInput proof;proof.current=proof.confirmed=true;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
+                proof.nativeBase=native;proof.approvedBounds=fitted.bounds;proof.evidenceBounds=envelope.observedContent;
+                proof.sourceGeneration=17;proof.sourceSequence=42;proof.upperContent=top;proof.lowerContent=!top;
+                proof.upperOverlayLike=off.upperOverlayLike;proof.lowerOverlayLike=off.lowerOverlayLike;
+                proof.verticalPadding=24;
+                Assert::IsTrue(QualifyConfirmedFitOwnership(proof).available);
+                proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+                Assert::IsFalse(QualifyConfirmedFitOwnership(proof).available, L"Classic keeps its overlay-shape requirement");
+                Assert::IsTrue(fitted.bounds.top>0 && fitted.bounds.bottom<height);
+                VerticalBarPresentationUpdateInput update;update.current=immediate.effective;update.upperContent=top;update.lowerContent=!top;
+                update.upperContentTop=measured.upperTop;update.lowerContentBottom=measured.lowerBottom;
+                update.currentTick=1000;update.currentSourceSequence=42;update.holdMs=2000;update.translationEnabled=false;
+                update.previous=UpdateVerticalBarPresentation(update);
+                update.current={};update.upperContent=update.lowerContent=false;update.currentSourceSequence=43;update.currentTick=2999;
+                const auto held=UpdateVerticalBarPresentation(update);
+                Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),static_cast<int>(held.action));
+                Assert::AreEqual(top?first:last,top?held.detectedTop:held.detectedBottom);
+                update.previous=held;update.currentSourceSequence=44;update.currentTick=3001;
+                Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::NONE),static_cast<int>(UpdateVerticalBarPresentation(update).action));
+                const auto cached=cache.SubtitleContent(native,64);
+                Assert::AreEqual(occupied,top?cached.upperOccupiedRows:cached.lowerOccupiedRows);
+            }
         }
 
         TEST_METHOD(NewCapturedFrameMeasuresItsOwnPixels)

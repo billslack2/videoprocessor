@@ -6874,6 +6874,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* offset = addText(QStringLiteral("Inward offset / Classic padding"), QStringLiteral("offset_pixels"), QStringLiteral("source pixels"));
         offset->setValidator(new QIntValidator(0,500,offset));
         offset->setToolTip(QStringLiteral("Offsets the whole moved subtitle box: bottom subtitles move higher and top subtitles move lower. Text stays centered within the box; extension to the black bar does not count toward centering. In Classic, this is the original subtitle padding."));
+        auto* offZoomHold = addText(QStringLiteral("Hold zoom for"), QStringLiteral("off_zoom_hold_seconds"), QStringLiteral("seconds"));
+        auto* offZoomValidator = new QDoubleValidator(0,30,3,offZoomHold);
+        offZoomValidator->setNotation(QDoubleValidator::StandardNotation);
+        offZoomHold->setValidator(offZoomValidator);
+        offZoomHold->setToolTip(QStringLiteral("Keep the fitted view for this long after subtitles or playback controls disappear. The view fits the visible content, including controls outside the picture."));
         auto* commonForm=form;
         form = addCollapsibleSection(QStringLiteral("classic"), QStringLiteral("Classic picture movement"), QString(), true);
         auto* classicSection=profileFieldsLayout->itemAt(profileFieldsLayout->count()-1)->widget();
@@ -7025,12 +7030,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             layout->setSizeConstraint(QLayout::SetMinimumSize);
         profileFieldsLayout->setSizeConstraint(QLayout::SetMinimumSize);
         detailLayout->setSizeConstraint(QLayout::SetMinimumSize);
-        auto update=[type,classicSection,appearanceSection,reconstructionSection,commonForm,offset] {
+        auto update=[type,classicSection,appearanceSection,reconstructionSection,commonForm,offset,offZoomHold,scriptHint] {
             const auto mode=type->currentData().toString();
             classicSection->setVisible(mode==QStringLiteral("classic"));
             appearanceSection->setVisible(mode==QStringLiteral("generated_gray") || mode==QStringLiteral("black"));
             reconstructionSection->setVisible(mode==QStringLiteral("generated_gray"));
+            commonForm->setRowVisible(scriptHint,mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offset->parentWidget(),mode!=QStringLiteral("off"));
+            commonForm->setRowVisible(offZoomHold->parentWidget(),mode==QStringLiteral("off"));
         };
         connect(type,qOverload<int>(&QComboBox::currentIndexChanged),this,[update](int){update();});
         update();
@@ -7429,6 +7436,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if(key == QStringLiteral("subtitle_script_hint")) return QStringLiteral("latin");
                 if(key == QStringLiteral("offset_pixels")) return value(section,QStringLiteral("type"))==QStringLiteral("classic") || value(section,QStringLiteral("type")).isEmpty() ? QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS) : QStringLiteral("0");
                 if(key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
+                if(key == QStringLiteral("off_zoom_hold_seconds")) return QStringLiteral("2");
                 if(key == QStringLiteral("subtitle_engage_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS);
                 if(key == QStringLiteral("subtitle_release_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS);
                 if(key == QStringLiteral("subtitle_target_buffer_pixels")) return QStringLiteral("10");

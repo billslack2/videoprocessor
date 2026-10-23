@@ -6207,6 +6207,75 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
+        TEST_METHOD(OffFitsChangingOverlayExtentsWithoutWaitingForClassicMotionTarget)
+        {
+            VerticalFitConfirmationState fitState;
+            VerticalTranslationConfirmationState motionState;
+            for(uint64_t seq=1;seq<=3;++seq) {
+                VerticalBarContentDecision raw;
+                raw.action=VerticalBarPresentationAction::TRANSLATE;
+                raw.translationPixels=seq==1?70.0f:seq==2?140.0f:-90.0f;
+                raw.upperOverlayLike=raw.lowerOverlayLike=true;
+                VerticalTranslationConfirmationInput motion;
+                motion.previous=motionState;motion.sourceSequence=seq;
+                motion.observed=SelectVerticalBarContentPresentation(raw,false);
+                const auto noMotion=ConfirmVerticalTranslation(motion);
+                Assert::IsFalse(noMotion.pending);
+                Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),static_cast<int>(noMotion.effective.action));
+                Assert::AreEqual(0.0f,noMotion.effective.translationPixels,0.001f);
+                const auto fit=ConfirmVerticalFit(fitState,noMotion.effective,seq);
+                fitState=fit.state;motionState=noMotion.state;
+                Assert::AreEqual(seq==1,fit.pending);
+                if(seq>1)Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),static_cast<int>(fit.effective.action));
+                Assert::IsTrue(noMotion.effective.upperOverlayLike && noMotion.effective.lowerOverlayLike);
+            }
+            // Off does not convert missing/failed analysis into a fit certificate.
+            for(auto action:{VerticalBarPresentationAction::NONE,VerticalBarPresentationAction::FAIL_OPEN}) {
+                VerticalBarContentDecision raw;raw.action=action;
+                Assert::AreEqual(static_cast<int>(action),static_cast<int>(SelectVerticalBarContentPresentation(raw,false).action));
+            }
+        }
+
+        TEST_METHOD(ClassicAndAdvancedModesKeepExistingTranslationConfirmation)
+        {
+            for(bool top:{false,true}) {
+                VerticalTranslationConfirmationState previous;
+                for(uint64_t seq=1;seq<=3;++seq) {
+                    VerticalBarContentDecision raw;raw.action=VerticalBarPresentationAction::TRANSLATE;
+                    raw.translationPixels=top?-90.0f:90.0f;raw.upperOverlayLike=top;raw.lowerOverlayLike=!top;
+                    VerticalTranslationConfirmationInput motion;motion.previous=previous;motion.sourceSequence=seq;
+                    motion.observed=SelectVerticalBarContentPresentation(raw,true);
+                    const auto result=ConfirmVerticalTranslation(motion);previous=result.state;
+                    Assert::AreEqual(seq<3,result.pending);
+                    if(seq==3) {
+                        Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE),static_cast<int>(result.effective.action));
+                        Assert::IsTrue(top?result.effective.translationPixels<0:result.effective.translationPixels>0);
+                    }
+                }
+            }
+        }
+
+        TEST_METHOD(OffEnvelopeIncludesAllFourRenderedEdgesWithoutFullRasterFallback)
+        {
+            const ActivePictureBounds picture={400,380,3440,1780,3840,2160,3040.0/1400.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            PresentationEnvelopeGeometryInput input;input.trustedPicture=picture;
+            input.observedContentAvailable=true;
+            input.observedContent={300,330,3540,1960,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            input.expandLeft=input.expandTop=input.expandRight=input.expandBottom=true;
+            input.horizontalPadding=input.verticalPadding=8;
+            const auto envelope=BuildPresentationEnvelope(input);
+            Assert::IsTrue(envelope.valid && envelope.expanded);
+            Assert::AreEqual(292,envelope.bounds.left);Assert::AreEqual(322,envelope.bounds.top);
+            Assert::AreEqual(3548,envelope.bounds.right);Assert::AreEqual(1968,envelope.bounds.bottom);
+            Assert::IsTrue(envelope.bounds.left>0 && envelope.bounds.top>0 && envelope.bounds.right<3840 && envelope.bounds.bottom<2160);
+            const auto screen=FitAspect(2.35,{0,0,3840,2160},VerticalPictureAlignment::CENTER);
+            const auto displayed=FitAspect(double(envelope.bounds.right-envelope.bounds.left)/
+                (envelope.bounds.bottom-envelope.bounds.top),screen.picture,VerticalPictureAlignment::CENTER);
+            Assert::IsTrue(screen.valid && displayed.valid);
+            Assert::IsTrue(displayed.picture.left>0 && displayed.picture.top>0 &&
+                displayed.picture.right<3840 && displayed.picture.bottom<2160);
+        }
+
 		TEST_METHOD(DenseFitRequiresTwoConsecutiveAnalyzedSamples)
 		{
 			VerticalBarContentDecision fit;
@@ -8729,11 +8798,12 @@ namespace Tests
 			Assert::IsTrue(decision.authoritative);
 		}
 
-		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
+		TEST_METHOD(FreshOneEdgeOverlayKeepsHeldFitUntilItsBoundedRelease)
 		{
 			VerticalBarPresentationUpdateInput update;
 			update.previous.action = VerticalBarPresentationAction::FIT;
 			update.previous.detectedTop = 80;
+			update.previous.detectedBottom = 2080;
 			update.previous.lastDetectionTick = 1000;
 			update.previous.sourceSequence = 40;
 			update.current.action = VerticalBarPresentationAction::TRANSLATE;
@@ -8744,11 +8814,33 @@ namespace Tests
 			update.currentSourceSequence = 41;
 			update.holdMs = 2000;
 			update.translationEnabled = true;
-			const auto state = UpdateVerticalBarPresentation(update);
-			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::TRANSLATE),
-				static_cast<int>(state.action));
-			Assert::AreEqual(104, state.detectedTop);
+			auto state = UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(state.action));
+			Assert::AreEqual(80, state.detectedTop);
+			Assert::AreEqual(2080, state.detectedBottom);
+			// A newly appearing control can grow the envelope immediately.
+			update.previous=state;update.currentSourceSequence=42;update.currentTick=1200;
+			update.upperContentTop=60;
+			state=UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(60,state.detectedTop);
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(state.action));
+			// Repeated source samples do not renew the hold.
+			update.previous=state;update.currentTick=1300;
+			state=UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(uint64_t(1200),state.lastDetectionTick);
+			// A completed negative releases only after the existing timer.
+			update.previous=state;update.current={};update.upperContent=false;
+			update.currentTick=1500;update.currentSourceSequence=43;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
+			update.currentTick=3201;update.currentSourceSequence=44;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::NONE),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
+			// A genuinely expired FIT may adopt fresh one-edge placement.
+			update.current.action=VerticalBarPresentationAction::TRANSLATE;
+			update.current.translationPixels=-75.0f;update.upperContent=true;
+			Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(UpdateVerticalBarPresentation(update).action));
 		}
 
 		TEST_METHOD(LiveOverlayAndAspectMetadataTimelineProducesStableFinalGeometry)
@@ -15243,6 +15335,39 @@ input.currentNativeBounds = crop.geometry;
             Assert::IsTrue(held.expanded && !held.currentPixelExtent);
             Assert::AreEqual(2040,held.presentation.sourceBounds.bottom);
             Assert::AreEqual(1880,held.nativeCrop.bottom);
+        }
+        TEST_METHOD(DisplayedPendingOverlayEnvelopeSurvivesAnalysisGapWithoutRenewingNativeAr)
+        {
+            for(auto owner:{DecisionOwner::TRANSLATION_CONFIRMATION,DecisionOwner::FIT_CONFIRMATION}) {
+                auto input=Uncertain();Visible(input,280,2040);
+                auto commit=CommitInput(input,QualifiedVisible(input));
+                commit.selectedOwner=owner;
+                commit.selectedAdmission.available=true;
+                commit.selectedAdmission.trustedCrop=commit.nativeCrop;
+                commit.selectedAdmission.sourceGeneration=commit.sourceGeneration;
+                commit.selectedAdmission.presentationEpoch=commit.presentationEpoch;
+                const auto nativeSequence=commit.previous.lastSubmittedSourceSequence;
+                commit.frameSubmitted=false;
+                Assert::IsFalse(CommitSubmittedNativeScopeAnchor(commit).submittedEnvelopeAvailable);
+                commit.frameSubmitted=true;
+                input.submittedScopeAnchor=CommitSubmittedNativeScopeAnchor(commit);
+                Assert::IsTrue(input.submittedScopeAnchor.submittedEnvelopeAvailable);
+                Assert::AreEqual(nativeSequence,input.submittedScopeAnchor.lastSubmittedSourceSequence);
+                ++input.crop.frameSourceSequence;input.crop.currentVisibleBoundsAvailable=false;
+                const auto retained=Resolve(input);
+                Assert::IsTrue(retained.expanded);
+                Assert::AreEqual(2040,retained.presentation.sourceBounds.bottom);
+                Assert::AreEqual(1880,retained.nativeCrop.bottom);
+                for(int bad=0;bad<5;++bad) {
+                    auto mismatch=commit;
+                    if(bad==0)++mismatch.selectedAdmission.sourceGeneration;
+                    if(bad==1)++mismatch.selectedAdmission.presentationEpoch;
+                    if(bad==2)mismatch.selectedAdmission.available=false;
+                    if(bad==3)mismatch.selectedAdmission.trustedCrop.top+=2;
+                    if(bad==4)mismatch.previous={};
+                    Assert::IsFalse(CommitSubmittedNativeScopeAnchor(mismatch).submittedEnvelopeAvailable);
+                }
+            }
         }
         TEST_METHOD(ExpandedPresentationCannotManufactureFirstNativeAnchor)
         {

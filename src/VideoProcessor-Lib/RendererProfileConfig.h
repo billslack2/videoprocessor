@@ -41,6 +41,7 @@ namespace RendererProfileConfig
 	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
 	// Defaults for the independent Classic subtitle profile; explicit zero remains valid.
 	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_HOLD_MS = 2000;
+    constexpr uint64_t DEFAULT_OFF_ZOOM_HOLD_MS = 2000;
 	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS = 500;
 	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS = 2000;
 	constexpr int DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS = 20;
@@ -537,6 +538,17 @@ namespace RendererProfileConfig
 		return true;
 	}
 
+    // Off owns its independent release timer; Classic/moved profiles do not use it.
+    inline uint64_t ResolveOffZoomHoldMs(const std::map<std::string,std::string>& settings)
+    {
+        const auto found=settings.find("off_zoom_hold_seconds");
+        double seconds=0.0;
+        if(found==settings.end() || !DisplayRuleExpression::ParseNumber(ConfigFile::Trim(found->second),seconds) ||
+            !std::isfinite(seconds) || seconds<0.0 || seconds>MAX_SUBTITLE_HOLD_SECONDS)
+            return DEFAULT_OFF_ZOOM_HOLD_MS;
+        return static_cast<uint64_t>(std::llround(seconds*1000.0));
+    }
+
     // Reduction belongs only to moved profiles. Invalid/missing values keep
     // the original size; Classic and Off never inherit a moved-mode setting.
     inline int ResolveSubtitleTextReduction(const std::map<std::string,std::string>& settings)
@@ -589,6 +601,7 @@ namespace RendererProfileConfig
             if (key == "minimum_headroom_pixels") { int n=0; return ParseInteger(value,0,200,n); }
             if (key == "offset_pixels") { int n=0; return ParseInteger(value,0,500,n); }
             if (key == "subtitle_hold_seconds") return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS, MAX_SUBTITLE_HOLD_SECONDS);
+            if (key == "off_zoom_hold_seconds") return IsNumberInRange(value,0.0,MAX_SUBTITLE_HOLD_SECONDS);
             if (key == "subtitle_engage_drift_ms" || key == "subtitle_release_drift_ms") { int n=0; return ParseInteger(value,0,30000,n); }
             if (key == "subtitle_target_buffer_pixels") { int n=0; return ParseInteger(value,0,MAX_SUBTITLE_TARGET_BUFFER_PIXELS,n); }
             // offset_pixels is the Classic padding as well as the moved-mode inset.

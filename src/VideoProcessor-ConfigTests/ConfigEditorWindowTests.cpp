@@ -7106,6 +7106,44 @@ void testSubtitleProfileTabRoundTrip()
 
 }
 
+void testOffZoomHoldRoundTrip()
+{
+    QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write Off hold fixture");
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[vprenderer.subtitles.Visibility]\ntype: off\n# keep user comment\n");file.close();
+    { ConfigEditorWindow migrating(path,0,true);save(migrating); }
+    ConfigEditorWindow window(path,0,true);window.show();QApplication::processEvents();
+    requireControl<QStackedWidget>(window,"settingsPages")->setCurrentIndex(19);QApplication::processEvents();
+    auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
+    auto* hold=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.off_zoom_hold_seconds");
+    require(type->currentData().toString()=="off" && hold->isVisible(),"Off zoom hold must be visible in Off");
+    auto* hint=requireControl<QComboBox>(window,"config.vprenderer.subtitles.subtitle_script_hint");
+    require(!hint->isVisible(),"Off must not offer a glyph script hint");
+    require(hold->text()=="2","Off zoom hold must default to two seconds");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading default Off hold dirtied configuration");
+    hold->setText("31");require(!hold->hasAcceptableInput(),"Off hold accepted an out-of-range value");
+    hold->setText("5.25");require(hold->hasAcceptableInput(),"Off hold rejected fractional seconds");
+    selectData(type,"classic");QApplication::processEvents();require(!hold->isVisible(),"Off hold leaked into Classic");
+    auto* classicHold=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_hold_seconds");
+    require(hint->isVisible(),"Classic lost its script hint");
+    selectData(hint,"cjk");
+    classicHold->setText("7");
+    selectData(type,"generated_gray");QApplication::processEvents();require(!hold->isVisible() && hint->isVisible(),"Reconstruction control visibility is incorrect");
+    selectData(type,"black");QApplication::processEvents();require(!hold->isVisible() && hint->isVisible(),"Solid subtitle control visibility is incorrect");
+    selectData(type,"off");QApplication::processEvents();require(hold->isVisible() && hold->text()=="5.25","Switching styles lost Off hold");
+    require(!hint->isVisible() && hint->currentData().toString()=="cjk","Off must hide and preserve the subtitle hint");
+    save(window);QApplication::processEvents();
+    if(!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty())
+        window.grab().save(qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES")+QStringLiteral("/off-zoom-hold.png"));
+    window.hide();ConfigEditorWindow reopened(path,0,true);
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.off_zoom_hold_seconds")->text()=="5.25","Off hold did not survive save and reopen");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_hold_seconds")->text()=="7","Off hold changed Classic's independent timer");
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.subtitle_script_hint")->currentData().toString()=="cjk","Hidden subtitle hint did not survive save and reopen");
+    QFile saved(path);require(saved.open(QIODevice::ReadOnly),"Cannot read saved Off hold fixture");
+    const auto content=saved.readAll();require(content.contains("# keep user comment") && content.contains("off_zoom_hold_seconds: 5.25"),"Off hold save lost settings or comments");
+}
+
 void testSubtitleSurroundFillRoundTrip()
 {
     QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
@@ -7397,6 +7435,7 @@ int main(int argc, char** argv)
     failures += run("Tone mapping controls round trip", testToneMappingControls);
     failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
+    failures += run("Off zoom hold round trip", testOffZoomHoldRoundTrip);
     failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
     failures += run("subtitle text size reduction round trip and style visibility", testSubtitleTextSizeReductionRoundTripAndStyleVisibility);
     failures += run("subtitle HDR legacy fallback and shared modes", testSubtitleHdrLegacyFallbackAndSharedModes);

@@ -455,6 +455,31 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+    VerticalBarContentDecision SelectVerticalBarContentPresentation(
+        VerticalBarContentDecision observed, bool translationEnabled,
+        const VerticalBarContentInput* current)
+    {
+        if (!translationEnabled && current)
+        {
+            // Off reveals measured content regardless of its shape or glyphs.
+            // Retain the classifier flags for diagnostics and Classic only.
+            observed = EvaluateVerticalBarContent(*current);
+            if (observed.action != VerticalBarPresentationAction::FAIL_OPEN &&
+                ((current->upperContent && current->upperRequiredShift > 0.5f) ||
+                 (current->lowerContent && current->lowerRequiredShift > 0.5f)))
+            {
+                observed.action = VerticalBarPresentationAction::FIT;
+                observed.translationPixels = 0.0f;
+            }
+        }
+        if (!translationEnabled && observed.action == VerticalBarPresentationAction::TRANSLATE)
+        {
+            observed.action = VerticalBarPresentationAction::FIT;
+            observed.translationPixels = 0.0f;
+        }
+        return observed;
+    }
+
 	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
 		const VerticalTranslationConfirmationInput& input)
 	{
@@ -669,12 +694,21 @@ namespace AlphaSourceCrop
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
 		const VerticalBarContentDecision& observed,
-		uint64_t sourceSequence)
+		uint64_t sourceSequence, bool requireRepeatedSamples)
 	{
 		VerticalFitConfirmationDecision decision;
 		decision.effective = observed;
 		if (observed.action != VerticalBarPresentationAction::FIT)
-			return decision;
+            return decision;
+        // Off already has a current pixel measurement around a trusted native
+        // picture. Reveal it immediately before AR can make that base provisional.
+        if (!requireRepeatedSamples && sourceSequence != 0)
+        {
+            decision.state.confirmations = VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+            decision.state.lastObservedSourceSequence = sourceSequence;
+            decision.newlyAccepted = previous.confirmations < VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+            return decision;
+        }
 		if (sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence &&
 			previous.confirmations != 0)
@@ -1278,6 +1312,16 @@ namespace AlphaSourceCrop
 			state.lastDetectionTick = input.currentTick;
 			state.sourceSequence = input.currentSourceSequence;
 			return state;
+		}
+
+		// Once FIT has revealed controls, a changing one-edge classification must
+		// not zoom back in underneath them. Refresh from fresh occupancy while
+		// preserving the bounded per-edge extents; NONE still expires normally.
+		if (previousActiveByHold && state.action == VerticalBarPresentationAction::FIT &&
+			current.action == VerticalBarPresentationAction::TRANSLATE)
+		{
+			current.action = VerticalBarPresentationAction::FIT;
+			current.translationPixels = 0.0f;
 		}
 
 		if (current.action == VerticalBarPresentationAction::FIT)
@@ -2210,7 +2254,16 @@ namespace AlphaSourceCrop
 		// supplied. Only raw dense measurements receive subtitle clearance here.
 		// Complete selected edges separately so an unrelated detector edge cannot
 		// acquire that clearance, or override vertical translation routing.
-		const auto detector = complete(input.detectorContent, 0, 0);
+		auto selectedDetector = input.detectorContent;
+        if (input.measuredVerticalFit &&
+            (input.denseContent.expandTop || input.denseContent.expandBottom))
+        {
+            // Off has scanned the complete native bars. Coarse AR history may
+            // contain provisional edges (including full-raster placeholders);
+            // it cannot enlarge this measured vertical presentation.
+            selectedDetector.expandTop = selectedDetector.expandBottom = false;
+        }
+        const auto detector = complete(selectedDetector, 0, 0);
 		if (!detector.valid)
 			return detector;
 		const auto dense = complete(input.denseContent,
@@ -3832,7 +3885,8 @@ namespace AlphaSourceCrop
         const int width = native.rasterWidth, height = native.rasterHeight;
         if (!input.current || !input.confirmed || !input.sourceGeneration || !input.sourceSequence ||
             (input.origin != ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
-             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) ||
+             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY &&
+             input.origin != ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) ||
             !ValidBounds(native,width,height) || !HasAuthorityForCroppedAxes(native,width,height) ||
             !CropEdgesAreChromaAligned(native,width,height) ||
             !ValidBounds(approved,width,height) || !CropEdgesAreChromaAligned(approved,width,height) ||
@@ -3843,17 +3897,19 @@ namespace AlphaSourceCrop
         if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
             ContainedBounds(native,input.evidenceBounds))
             return result; // An inside-only cue cannot originate an outward FIT.
-        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY)
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
+            input.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT)
         {
-            // Keep Classic's non-glyph UI route, but require EVERY occupied
-            // expanding edge to be independently current and overlay-like.
+            // Every expanding edge must have independently current bar pixels.
+            // Classic additionally requires an overlay-like shape.
             // A mixed UI/picture pair cannot turn broad dense FIT into a caption.
             if (native.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
                 native.left != 0 || native.right != width ||
                 approved.left != native.left || approved.right != native.right ||
                 (!input.upperContent && !input.lowerContent) ||
-                (input.upperContent && !input.upperOverlayLike) ||
-                (input.lowerContent && !input.lowerOverlayLike) ||
+                (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY &&
+                    ((input.upperContent && !input.upperOverlayLike) ||
+                     (input.lowerContent && !input.lowerOverlayLike))) ||
                 (approved.top < native.top && !input.upperContent) ||
                 (approved.bottom > native.bottom && !input.lowerContent) ||
                 (input.upperContent && (input.evidenceBounds.top >= native.top ||
@@ -3861,6 +3917,20 @@ namespace AlphaSourceCrop
                 (input.lowerContent && (input.evidenceBounds.bottom <= native.bottom ||
                     approved.bottom <= native.bottom)))
                 return result;
+        }
+        if (input.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT)
+        {
+            PresentationEnvelopeGeometryInput measured;
+            measured.trustedPicture = native;
+            measured.observedContent = input.evidenceBounds;
+            measured.observedContentAvailable = true;
+            measured.expandTop = input.upperContent;
+            measured.expandBottom = input.lowerContent;
+            measured.horizontalPadding = input.horizontalPadding;
+            measured.verticalPadding = input.verticalPadding;
+            const auto bounded = BuildPresentationEnvelope(measured);
+            if (!bounded.valid || !bounded.expanded || !SameBounds(bounded.bounds, approved))
+                return result; // No authority beyond the measured content and padding.
         }
         result.available = true;
         result.origin = input.origin;
@@ -3906,7 +3976,8 @@ namespace AlphaSourceCrop
             return proof.available && input.crop.sharedGeometryAvailable &&
                 input.crop.geometrySourceGeneration == input.crop.frameSourceGeneration &&
                 (proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION ||
-                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY) &&
+                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
+                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) &&
                 proof.sourceGeneration != 0 && proof.sourceSequence != 0 &&
                 proof.sourceGeneration == input.crop.frameSourceGeneration &&
                 proof.sourceSequence == input.crop.frameSourceSequence &&
@@ -5772,7 +5843,17 @@ namespace AlphaSourceCrop
         if (previousSameContext && input.nativeCropAvailable &&
             input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
             SameTrustedCropContract(input.nativeCrop, result.crop) &&
-            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE) &&
+            // Pending placement may already have displayed a safe outward
+            // envelope. Remember that exact submitted view across analysis gaps,
+            // without renewing native AR or accepting a proposed-only envelope.
+            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE ||
+             ((input.selectedOwner == DecisionOwner::TRANSLATION_CONFIRMATION ||
+               input.selectedOwner == DecisionOwner::FIT_CONFIRMATION) &&
+              input.selectedAdmission.available &&
+              input.selectedAdmission.sourceGeneration == input.sourceGeneration &&
+              input.selectedAdmission.presentationEpoch == input.presentationEpoch &&
+              input.selectedAdmission.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+              SameTrustedCropContract(input.selectedAdmission.trustedCrop,result.crop))) &&
             ValidBounds(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
             CropEdgesAreChromaAligned(input.submittedBounds, result.crop.rasterWidth, result.crop.rasterHeight) &&
             ContainedBounds(input.submittedBounds, result.crop) &&

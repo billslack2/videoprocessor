@@ -14,6 +14,7 @@ public:
         bool upper = false, lower = false;
         int upperTop = 0, upperBottom = 0, lowerTop = 0, lowerBottom = 0;
         int upperPeak = 0, lowerPeak = 0;
+        int upperOccupiedRows = 0, lowerOccupiedRows = 0;
     };
 
     struct Statistics
@@ -116,14 +117,14 @@ public:
             const int minimumSamples = (std::max)(8, sampledColumns / 192);
             const int minimumSpan = (std::max)(24, width / 48);
             const int limit = (std::min)(1023, (std::max)(0, blackCode + 32));
-            const auto scan = [&](int top, int bottom, int& first, int& last, int& peak) {
-                first = height; last = peak = 0;
+            const auto scan = [&](int top, int bottom, int& first, int& last, int& peak, int& occupiedRows) {
+                first = height; last = peak = occupiedRows = 0;
                 int rows = 0;
                 for (int y = top; y < bottom; y += rowStep) {
                     AnalysisLumaRowContent row;
                     if (!m_source.MeasureLumaRowContent(y, x0, x1, xStep,
                             static_cast<uint16_t>(limit), row)) {
-                        first = last = peak = 0;
+                        first = last = peak = occupiedRows = 0;
                         return false;
                     }
                     if (row.samples < minimumSamples || row.right - row.left < minimumSpan)
@@ -134,14 +135,15 @@ public:
                     last = (std::max)(last, y + rowStep);
                 }
                 if (rows < 2) { first = last = 0; return false; }
+                occupiedRows = rows * rowStep;
                 return true;
             };
             measured.upper = presentation.top > rowStep * 2 &&
                 scan(rowStep, presentation.top - rowStep,
-                    measured.upperTop, measured.upperBottom, measured.upperPeak);
+                    measured.upperTop, measured.upperBottom, measured.upperPeak, measured.upperOccupiedRows);
             measured.lower = presentation.bottom + rowStep * 2 < height &&
                 scan(presentation.bottom + rowStep, height - rowStep,
-                    measured.lowerTop, measured.lowerBottom, measured.lowerPeak);
+                    measured.lowerTop, measured.lowerBottom, measured.lowerPeak, measured.lowerOccupiedRows);
         }
         const double elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - started).count();

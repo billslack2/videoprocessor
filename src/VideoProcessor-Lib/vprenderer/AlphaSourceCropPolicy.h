@@ -102,6 +102,8 @@ namespace AlphaSourceCrop
 		bool lowerContent = false;
 		int upperOccupiedDepth = 0;
 		int lowerOccupiedDepth = 0;
+        // Current sampled row support; black gaps between UI rows are excluded.
+        int upperOccupiedRows = 0, lowerOccupiedRows = 0;
 		int upperPeakSamples = 0;
 		int lowerPeakSamples = 0;
 		int upperBarPixels = 0;
@@ -128,6 +130,14 @@ namespace AlphaSourceCrop
 	// fit/aspect path. This is deliberately bounded geometry, not OCR or ML.
 	VerticalBarContentDecision EvaluateVerticalBarContent(
 		const VerticalBarContentInput& input);
+
+    // Off reveals measured content by fitting its bounded envelope. Select that
+    // action BEFORE confirmation: a changing UI extent is not a Classic motion
+    // target. Classic and advanced styles keep their existing shared translation.
+    VerticalBarContentDecision SelectVerticalBarContentPresentation(
+        VerticalBarContentDecision observed, bool translationEnabled,
+        const VerticalBarContentInput* current = nullptr);
+
 
 	// Subtitle extent often grows over the first few decoded frames. Confirm a
 	// new or larger translation on three consecutive dense analysis samples before
@@ -196,7 +206,7 @@ namespace AlphaSourceCrop
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
 		const VerticalBarContentDecision& observed,
-		uint64_t sourceSequence = 0);
+		uint64_t sourceSequence = 0, bool requireRepeatedSamples = true);
 
 	// A current provisional envelope which expands one or both vertical edges is
 	// eligible for trusted-base retention until the first dense sample. This
@@ -837,6 +847,7 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedPicture;
 		PresentationEnvelopeContent detectorContent;
 		PresentationEnvelopeContent denseContent;
+        bool measuredVerticalFit = false; // Off: dense bar pixels own vertical extents.
 		int horizontalPadding = 0;
 		int verticalPadding = 0;
 	};
@@ -1775,7 +1786,7 @@ namespace AlphaSourceCrop
 
     enum class ConfirmedFitOwnershipOrigin : uint8_t
     {
-        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY
+        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY, CURRENT_BAR_CONTENT
     };
     // The approved envelope is built independently from current accepted
     // caption/UI evidence. A dense geometry/FIT completion is not ownership.
@@ -1787,6 +1798,7 @@ namespace AlphaSourceCrop
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         bool upperContent = false, lowerContent = false;
         bool upperOverlayLike = false, lowerOverlayLike = false;
+        int horizontalPadding = 0, verticalPadding = 0;
     };
     struct ConfirmedFitOwnershipEvidence
     {
