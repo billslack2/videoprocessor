@@ -1,7 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+Done
+
+User accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
 Implementation on `codex/subtitle-overlay-stability-20261023`, starting at current beta `dfd34ea6f6365eddb17d986914bb7792836d694b`, in `E:\codex\videoprocessor\subtitle-overlay-stability-20261023`.
 
@@ -90,3 +92,10 @@ User reports Off still fails to zoom out for visible navigation/time controls. R
 - Clean x64 Release solution Rebuild passed at the final commit. All **695 focused native tests passed**, including the complete retained-scope recovery suite, plus Qt Off zoom hold round trip and subtitle profile tab round trip. Logs: build-off-measured-envelope-clean.log, test-off-measured-envelope.log, test-off-measured-ui.log, test-off-measured-subtitle-ui.log in the source worktree. Native TRX: TestResults/off-measured-envelope.trx. The earlier build caught a test-helper name error; fixed before final validation. No full native suite rerun is claimed at this revision.
 - Updated the authorized test deployment with the matching host and standard/beta renderers only; all three hashes match Release x64 build records. Preserved the existing b099cd8d Config binaries and open editor session because this is a runtime-only correction. Active configuration edits: none; hashes unchanged after launch. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-off-content-6608b736-20261023-160222. Startup confirms host and renderer 6608b736, dirty=0, beta selected, PID 11436.
 - Evidence: stories/assets/VP-0207/deployment-6608b736-20261023. Remains Review for the user's live Off navigation-bar replay. Not merged; do not treat the previous failed replay or synthetic validation as live acceptance.
+## Acceptance and merge — 2026-10-23
+
+User: "yes that looks better so lets merge this." Marked PR #195 ready and merged using the vp-release pinned-head/base procedure. Reviewed source 6608b736e93a0f207ce2a9f451e41d830d9fcc50, integration base dfd34ea6f6365eddb17d986914bb7792836d694b; beta had not advanced. GitHub reported clean mergeability and no pending/failing checks. Final clean Release validation remains 695 native tests and both Qt settings round-trip tests passed.
+
+Merged: https://github.com/billslack2/videoprocessor/pull/195 — commit 73acf650739401cdfdfccf2e111290b3265299e2 on v1.4.02-beta. Fetched the exact beta ref, verified merge ancestry and identical Git trees between the merge and tested feature. No new combination required retesting. Merge evidence: stories/assets/VP-0207/merge-73acf650-20261023/merge-result.json.
+
+The accepted tested deployment remains the clean Release source 6608b736 with recorded matching host/renderer hashes and unchanged configuration. This merge did not require another deployment or release package. Story complete.

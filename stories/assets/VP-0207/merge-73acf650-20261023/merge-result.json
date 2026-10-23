@@ -1,0 +1,10 @@
+{
+  "baseRefName": "v1.4.02-beta",
+  "headRefOid": "6608b736e93a0f207ce2a9f451e41d830d9fcc50",
+  "mergeCommit": {
+    "oid": "73acf650739401cdfdfccf2e111290b3265299e2"
+  },
+  "mergedAt": "2026-10-23T20:30:28Z",
+  "state": "MERGED",
+  "url": "https://github.com/billslack2/videoprocessor/pull/195"
+}
