@@ -1,0 +1,48 @@
+{
+  "story": "VP-0204",
+  "pr": 192,
+  "state": "ready for merge review; unmerged",
+  "head": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+  "base": "f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b",
+  "original_head": "6e7ce51103269a5fd27ac5adcaa40c3b12a3635a",
+  "release_build": "passed",
+  "native": {
+    "report": "pr192-final.trx",
+    "passed": 1340,
+    "failed": 0,
+    "skipped": 0
+  },
+  "config": {
+    "report": "config-focused.json",
+    "passed": 8,
+    "failed": 0
+  },
+  "initial_runs": {
+    "core_failed": 1,
+    "failure": "Stale API 28 expectation inherited after PR191; corrected to API29 and all final selected tests passed",
+    "core_passed": 1285,
+    "motion_passed": 54,
+    "head": "b561cc5f2dc8aa38edd77b922b261a7331d79ca5"
+  },
+  "resolutions": [
+    "Preserve unresolved Full-range matte rejection; budget-aware recovery only in eligible else branch and final cancellation checkpoint",
+    "Union black-reference, logger and budget test project filter registrations"
+  ],
+  "new_regression": "BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference",
+  "compatibility_correction": "Update ConfigFileTests API expectation to API29 for merged explicit LUT reload interface",
+  "source_review": {
+    "newer_changes_preserved": [
+      191,
+      194,
+      195
+    ],
+    "lut_config_crop_subtitle_policy": "match current beta",
+    "retention": "shares current raw black reference",
+    "logger_nvidia_fullscreen_helpers": "match original PR192"
+  },
+  "deployment": false,
+  "live_jitter_ab": "not performed; historical controlled measurements are not a new live improvement claim",
+  "new_live_gpu_pressure": "not performed",
+  "build_artifacts": "E:\\codex\\videoprocessor\\pr192-conflict-review-20261023\\artifacts\\pr192-ready",
+  "binary_hashes": "binary-hashes.json"
+}

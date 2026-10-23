@@ -1,0 +1,126 @@
+[
+  {
+    "Name": "MotionRendererTests",
+    "Count": 54
+  },
+  {
+    "Name": "Tests.ActivePictureAnalyzerTests",
+    "Count": 2
+  },
+  {
+    "Name": "Tests.AlphaSourceCropPolicyTests",
+    "Count": 331
+  },
+  {
+    "Name": "Tests.InwardCaptionEvidenceTests",
+    "Count": 11
+  },
+  {
+    "Name": "Tests.LibplaceboOutputPolicyTests",
+    "Count": 55
+  },
+  {
+    "Name": "Tests.LookaheadOutwardProofTests",
+    "Count": 31
+  },
+  {
+    "Name": "Tests.QueueNativeContinuityTests",
+    "Count": 9
+  },
+  {
+    "Name": "Tests.RendererTransitionModelTests",
+    "Count": 12
+  },
+  {
+    "Name": "Tests.RetainedScopeUnknownPresentationTests",
+    "Count": 25
+  },
+  {
+    "Name": "Tests.SubtitleMeasurementWorkerTests",
+    "Count": 32
+  },
+  {
+    "Name": "UnitTests.Bt2020SignalControllerTests",
+    "Count": 19
+  },
+  {
+    "Name": "VideoProcessorTest.ActivePictureBlackReferenceTests",
+    "Count": 15
+  },
+  {
+    "Name": "VideoProcessorTest.ActivePictureDecisionTimelineTests",
+    "Count": 44
+  },
+  {
+    "Name": "VideoProcessorTest.ActivePictureEvidenceTests",
+    "Count": 205
+  },
+  {
+    "Name": "VideoProcessorTest.ActivePictureMeasurementCacheTests",
+    "Count": 16
+  },
+  {
+    "Name": "VideoProcessorTest.ActivePictureTransitionModelTests",
+    "Count": 62
+  },
+  {
+    "Name": "VideoProcessorTest.AnalysisEvaluationBudgetTests",
+    "Count": 8
+  },
+  {
+    "Name": "VideoProcessorTest.ConfigFileTests",
+    "Count": 165
+  },
+  {
+    "Name": "VideoProcessorTest.DebugLogAsyncTests",
+    "Count": 17
+  },
+  {
+    "Name": "VideoProcessorTest.DebugLogRetentionTests",
+    "Count": 14
+  },
+  {
+    "Name": "VideoProcessorTest.DimSideCompositionGuardTests",
+    "Count": 23
+  },
+  {
+    "Name": "VideoProcessorTest.FullRasterLookaheadTests",
+    "Count": 11
+  },
+  {
+    "Name": "VideoProcessorTest.FullscreenActivationTests",
+    "Count": 10
+  },
+  {
+    "Name": "VideoProcessorTest.LibplaceboPluginProxyTests",
+    "Count": 7
+  },
+  {
+    "Name": "VideoProcessorTest.RememberedEdgePresentationPolicyTests",
+    "Count": 3
+  },
+  {
+    "Name": "VideoProcessorTest.RememberedEdgeProfileTests",
+    "Count": 72
+  },
+  {
+    "Name": "VideoProcessorTest.RememberedEdgeQualificationTests",
+    "Count": 19
+  },
+  {
+    "Name": "VideoProcessorTest.RememberedRuntimeModeTests",
+    "Count": 3
+  },
+  {
+    "Name": "VideoProcessorTest.SparseBoundaryCropExperimentTests",
+    "Count": 30
+  },
+  {
+    "Name": "VideoProcessorTest.SparseBoundaryTransitionExperimentTests",
+    "Count": 19
+  },
+  {
+    "Name": "VideoProcessorTest.StartupPresentationReadinessTests",
+    "Count": 16
+  }
+]

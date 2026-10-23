@@ -1,0 +1,1868 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed IdleAndInvalidTargetsCannotActivate [< 1 ms]
+  Passed OsDenialAndRendererRestartCannotRearmCompletedAttempt [< 1 ms]
+  Passed ShutdownCancelsBeforeOrAfterDeadline [< 1 ms]
+  Passed FullscreenExitCancelsAndReentryStartsFreshSession [< 1 ms]
+  Passed RetargetOrShieldReadinessCannotBeBypassedByOldReveal [< 1 ms]
+  Passed ReusedHostRejectsStaleRendererGeneration [< 1 ms]
+  Passed ReplacedHostRequiresItsOwnSuccessfulReveal [< 1 ms]
+  Passed SlowStartupRetainsAttemptUntilMatchingRevealWithoutNewDelay [< 1 ms]
+  Passed EarlyOrStaleTimerCannotSpendAttemptBeforeDeadline [< 1 ms]
+  Passed ArmKeepsOriginalFiveSecondDeadline [< 1 ms]
+  Passed WaitingGeometryDoesNotAdvanceCoordinatedShieldReleaseState [< 1 ms]
+  Passed MissingOldPluginExportBypassesWhileBusyExportKeepsWaiting [< 1 ms]
+  Passed SceneCutsAndSubtitlesNeverRearmAnAlreadyRevealedRenderer [< 1 ms]
+  Passed ManualFixedOrAutomaticCropOffBypassesOnlyGeometryWait [< 1 ms]
+  Passed FullscreenProfileAndResetRetriesDoNotRestartGeometryDeadline [< 1 ms]
+  Passed SourceFormatViewportAndOutputChangesClearUnsubmittedReadiness [< 1 ms]
+  Passed ProfileAndTargetPrerequisitesCannotBeBypassedByOldReadySnapshot [< 1 ms]
+  Passed BlackSubmittedViewTimesOutButNoSignalCannotExposeRetiredSurface [< 1 ms]
+  Passed RepeatedPausedInputDoesNotInventGeometryAuthorityAndHasBoundedWait [< 1 ms]
+  Passed SelectedOwnerMustBeQualifiedButNoCaptionIsRequired [< 1 ms]
+  Passed IndependentFullRasterIsReadyButConservativeFallbackIsNotAuthority [< 1 ms]
+  Passed AnyConfirmedNativeAspectAndBarAxisCanRevealAfterSettling [< 1 ms]
+  Passed ProposalsAndFailedSubmissionCannotReleaseStartupCover [< 1 ms]
+  Passed SubmittedPoseAndContextChangesRestartOnlyTheStartupStabilityDwell [< 1 ms]
+  Passed ReadySnapshotOrRepeatedSourceCannotAgeIntoStableStartupShape [< 1 ms]
+  Passed StartupWaitsForConsistentSubmittedShapeThroughInitialFlashes [< 1 ms]
+  Passed EmptyResetRequestsDoNotCreateAnEpochAndDefaultRequestsRemainFull [< 1 ms]
+  Passed ConcurrentQueueRequestsCannotDowngradeAnUnconsumedFullReset [< 1 ms]
+  Passed FullResetDominatesPendingQueueOnlyRequestsInEitherOrder [< 1 ms]
+  Passed OnlyAnAlreadyDequeuedOldPacketDefersQueueOnlyInvalidation [< 1 ms]
+  Passed ModelResetCannotPreserveFullRasterInferredOrWrongNativeContracts [< 1 ms]
+  Passed NativeFormatFactsSurviveButPendingVotesAndSourceBoundCertificatesDoNot [15 ms]
+  Passed UnknownDarkMaskedExpandedOrChangedNativePixelsCannotBecomeQueueContinuity [13 ms]
+  Passed ChangedContextOrNonCurrentEvidenceCannotRebindNativeGeometry [16 ms]
+  Passed ExactFreshP010AndP210NativeBarsSurviveOnlyTheQueueGenerationChange [35 ms]
+  Passed UnrelatedProfileUpdatesDoNotRestartRetries [< 1 ms]
+  Passed UnsupportedOutputStopsAfterBoundedAttemptsWithoutWriting [< 1 ms]
+  Passed ReleasedOutputIsNotWrittenAgainDuringRetirement [< 1 ms]
+  Passed DisengagementFailureIsReportedAndCanRecoverAfterModeset [< 1 ms]
+  Passed RetirementNeverRestoresInheritedBt2020OrStaleTimingFields [< 1 ms]
+  Passed OutputChangeClearsOldOutputWithoutTouchingPrimary [< 1 ms]
+  Passed FailedSetStillRequiresCleanupAndRetainsItAfterFailure [< 1 ms]
+  Passed UnverifiedSendStillOwnsDisengagement [< 1 ms]
+  Passed TransientReadFailureDoesNotDisableDesiredState [< 1 ms]
+  Passed ModeChangeAfterSuccessUsesFreshFrameAndRetransmits [< 1 ms]
+  Passed F6CancelsDelayedF5 [< 1 ms]
+  Passed F5CancelsDelayedF6AndRepeatedlyClearsTheFlag [< 1 ms]
+  Passed RepeatsAfterSuccessAndStopsAtEightSeconds [< 1 ms]
+  Passed WorkerRetirementDuringSlowReadCancelsEnableBeforeAnySet [2 ms]
+  Passed WorkerPendingRestartSurvivesOrdinaryDuplicateRequests [15 ms]
+  Passed WorkerShutdownAbandonDoesNotRetryFailedRestoration [15 ms]
+  Passed WorkerRetirementRetriesDirtyFailureWithoutReopeningEnableRequests [15 ms]
+  Passed WorkerWriteStallCannotPublishObsoleteSuccessAndRestoresOldTarget [15 ms]
+  Passed WorkerReadStallKeepsRequestsAndStatusResponsiveAndSkipsObsoleteSet [15 ms]
+  Passed AcceptedSeedStillRejectsChangedCurrentPixels [< 1 ms]
+  Passed PendingGuardReportsCurrentBarFailureWithoutCaptionAuthority [< 1 ms]
+  Passed PendingGuardReportsExactChangedGlyphPixel [< 1 ms]
+  Passed PendingGuardReportsQueueContinuityWithoutRelaxingIt [< 1 ms]
+  Passed PendingQueueBridgePreservesEntireLeaseAcrossSuccessiveRetirements [< 1 ms]
+  Passed PendingQueueBridgeTokenMustNameLastValidatedPendingFrameNotOriginalSeed [< 1 ms]
+  Passed PendingQueueBridgeRequiresSeedAndStrictlyForwardSource [< 1 ms]
+  Passed PendingQueueBridgeStillRejectsChangedGlyphChromaAndPhysicalBars [< 1 ms]
+  Passed PendingQueueBridgeNeverRelaxesOtherContextOrTokenRequirements [< 1 ms]
+  Passed PendingQueueBridgeRequiresCurrentNativePixelsAndClearsNonSubtitleAuthority [< 1 ms]
+  Passed PendingFallbackRejectsChangedAnalysisDomainWithIdenticalPixels [< 1 ms]
+  Passed PendingSeedNeverPromotesUnacceptedDetectorRows [< 1 ms]
+  Passed PartialDetectionPruningAndNarrowCaptureCannotSeedSmallerFallback [< 1 ms]
+  Passed ExportedCertificateCannotRenewPendingBudgetOrSurviveRepeatedConsume [1 ms]
+  Passed CertifiedSeedCannotHoldRemovedLineCueEndOrLostPhysicalBar [2 ms]
+  Passed CertifiedSeedRejectsPartialRawChangedInkContextAndHeldRenewal [9 ms]
+  Passed UnresolvedFreshThreeLineCueCannotMintPendingSeedCertificate [< 1 ms]
+  Passed CompletedThreeLineBacklogScanSeedsNextPendingOnlyWithTrackerCertificate [< 1 ms]
+  Passed AcceptedCompleteExtractionSeedsCurrentPixelPendingFallback [< 1 ms]
+  Passed BacklogRebindRejectsTrackedChangedOrIncompleteGlyphEvidence [< 1 ms]
+  Passed BacklogTokenReusesOnlyCompletedExactCurrentGlyphAndNativeBars [10 ms]
+  Passed NewTransportCurrentRequestSupersedesOldFullPendingQueueWithoutPriming [46 ms]
+  Passed FullPendingQueueKeepsCurrentAndNearestSources [47 ms]
+  Passed SourceWindowExpiresOnlyPendingOldFramesWithoutWaitingForActiveWork [46 ms]
+  Passed UnavailablePictureSnapshotsCoalesceOneActiveExactFrameScan [47 ms]
+  Passed StaleSharedPictureAuthorityCannotSatisfyTheCurrentFrameRequest [15 ms]
+  Passed DifferentAnalysisDomainsCannotConsumeOrCoalesceEachOthersJobs [15 ms]
+  Passed NonDestructiveReadRefusesWrongFrameDomainAndPolicy [15 ms]
+  Passed RepeatedExactReadsKeepOneImmutableReadyResultAndDeduplicateSubmission [15 ms]
+  Passed CompletedWorkerResultIsAvailableToTheExactQueuedFrameRequest [16 ms]
+  Passed FaultCaptureModeWaitsForFailureAndPreservesLegacyStartupRules [< 1 ms]
+  Passed FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource [< 1 ms]
+  Passed SourceCounterGapCannotHideBehindContinuousAcceptedSequences [17 ms]
+  Passed ActualFourPixelPictureGrowthIsNotMislabelledCleanBarJitter [15 ms]
+  Passed BufferedPublicationStaysStableThroughFollowingCleanBarMeasurementJitter [255 ms]
+  Passed RepeatedBufferedRoundTripsKeepFirstFramePixelSafeAcrossBothNoiseOrders [66 ms]
+  Passed BufferedDecisionCannotSurvivePolicyChangeOrDiscardedProofFrame [13 ms]
+  Passed BufferedConsumerPreservesCurrentEvidenceContextAndSubtitleVetoes [15 ms]
+  Passed BufferedNoiseUsesFirstFrameCoordinatesAndCannotWalkBeyondOneStep [15 ms]
+  Passed ZeroOrOneLookaheadRetainsConservativeLiveConfirmation [13 ms]
+  Passed BufferedProofRequiresEverySampleToBeFreshBroadAndConsistent [14 ms]
+  Passed TwoBufferedFutureFramesPublishOnFirstChangedFrameWithoutLiveWait [14 ms]
+  Passed PhysicalBufferedSamplesProvideThreeDistinctBroadExpansionObservations [16 ms]
+  Passed DeepSelectedQueueCannotPresentExpansionBeforeItsSourceFrameOrReorderReturn [144 ms]
+  Passed SelectedQueueDepthControlsFirstDisplayedExpansionWithoutChangingFinalCrop [188 ms]
+  Passed SelectedPhysicalInwardProofReachesFirstFrameFinalCropAndRemainsStable [35 ms]
+  Passed BufferedHardChangeKeepsFirstFrameTimingBeforeAndDuringMovement [73 ms]
+  Passed GradualReversalAndBriefPauseNeverReleaseTheEstablishedScope [399 ms]
+  Passed GradualScopeExpansionDoesNotResizeBeforeTrustedFullRasterEndpoint [508 ms]
+  Passed ActualMovingPixelsHoldEstablishedScopeThroughRecoveryAdmissionAndFill [2 s]
+  Passed DisabledMotionControlReproducesIntermediateCropSteps [1 s]
+  Passed LocalMotionSettlementAndHardCutKeepScopeUntilActualPublication [537 ms]
+  Passed MotionReturnInsideDeadbandReusesOnlyPixelSafePriorCrop [240 ms]
+  Passed BufferedInwardUsesAvailableAdjacentProofAtLiveCropCadence [< 1 ms]
+  Passed TranslationRetirementRequiresSuccessfulAdoptionAndClearsReleaseDrift [< 1 ms]
+  Passed PreviousMovingEpisodeCannotTakeOverTranslationAfterCurrentObservationClearsMotion [9 ms]
+  Passed SparseSubtitleAndBottomMenuPixelsCannotTakeTranslatedScopeOwnership [40 ms]
+  Passed TranslatedBufferedExpansionKeepsGenerationBaseOwnerAndCurrentPixelVetoes [14 ms]
+  Passed BufferedBroadExpansionRetiresTranslationOnFirstFrameAndKeepsFinalCrop [32 ms]
+  Passed RelativeBufferedLiveRevalidationPreservesOwnerAndIdentityVetoes [14 ms]
+  Passed RelativeBufferedActualPixelsRecheckCaptionAfterPreview [17 ms]
+  Passed RelativeBufferedProofRejectsMissingOrConflictingFutureEvidence [14 ms]
+  Passed RelativeBufferedDarkExpansionRequiresIndependentQueuedProof [13 ms]
+  Passed SourceViewportAndOrderingChangesCannotBorrowASubmittedScopeOrEnvelope [< 1 ms]
+  Passed NewCropAcquisitionStillRejectsUnownedCurrentVisiblePixels [< 1 ms]
+  Passed NearBlackPipelinePreservesOnlyExactCurrentIndependentTinySamplingGuard [< 1 ms]
+  Passed IndependentOneScanStepSamplingGuardStillPreservesMeasuredBoundaryRows [< 1 ms]
+  Passed CurrentPictureHandoffAndMovingHoldAreNotConvertedToFallbackOwners [< 1 ms]
+  Passed RealFullRasterAuthorityAndPublishedNativeCropStillApplyImmediately [< 1 ms]
+  Passed ActuallyAcceptedTranslationSurvivesNearBlackMeasurementGaps [< 1 ms]
+  Passed LegacyTranslationFlagAloneCannotAuthorizeAnUnknownNearBlackEnvelope [< 1 ms]
+  Passed CurrentConfirmedTranslationKeepsItsDimensionsAndDisplacement [< 1 ms]
+  Passed Startup205Through210CannotAlternateDenseFullFitAndSubmittedNativeFill [< 1 ms]
+  Passed SelectedUiFitSurvivesHeldSkippedAndRepeatedAnalysisWithoutGrowing [< 1 ms]
+  Passed OffMeasuredBarContentReachesSubmittedScopeFitWithoutGlyphOrUiShape [< 1 ms]
+  Passed CaptionOwnedPaddingCannotCertifyUnrelatedDenseOrDetectorExtent [< 1 ms]
+  Passed CaptionOwnedPaddingPermitsSmallerLegacyFitWithoutDelayingAcceptedCue [< 1 ms]
+  Passed ExactCurrentAcceptedCaptionDoesNotWaitForTheCoarseArMeasurementStride [< 1 ms]
+  Passed MixedUiAndPictureEdgesCannotMasqueradeAsConfirmedOverlayOwnership [< 1 ms]
+  Passed StaleOrOversizedFitCannotBorrowAQualifiedCurrentCaptionCapsule [< 1 ms]
+  Passed ConfirmedFitCapsuleRequiresIndependentCurrentBoundedEvidence [< 1 ms]
+  Passed DenseFitResolutionWithoutAcceptedCaptionOrUiOwnershipCannotFlashFullRaster [< 1 ms]
+  Passed CurrentConfirmedCaptionFitKeepsItsActualPartialOrFullPresentation [< 1 ms]
+  Passed CurrentPixelBoundedSideFitKeepsItsIndependentHorizontalOwner [< 1 ms]
+  Passed UnconfirmedVerticalFitCannotBypassScopeRetentionViaTheCroppedFastPath [< 1 ms]
+  Passed PendingFitOrAConfirmationFlagCannotPromoteADifferentUnownedCandidate [< 1 ms]
+  Passed UnknownFrameCanRetainAnOwnedSubmittedEnvelopeWithoutGrowingIt [< 1 ms]
+  Passed LoggedPartialAndFullExtentsCannotOriginateAnUnknownFallbackEnvelope [< 1 ms]
+  Passed NearBlackEpisodePresentationOverridesTransientCropArbitration [< 1 ms]
+  Passed RetainedEpisodePartialProofRejectsDuplicatesAndRestartsAfterInterruption [< 1 ms]
+  Passed NearBlackRetainedEpisodeCannotCarryProofAcrossViewportEpoch [< 1 ms]
+  Passed NearBlackReleaseRetiresPriorInspectionLatchForFollowingFrame [< 1 ms]
+  Passed NearBlackReleasedCropSurvivesRendererInspectionHandoff [< 1 ms]
+  Passed RetainedEpisodeHandoffPreservesCropThroughProvisionalFrameAndRecovery [< 1 ms]
+  Passed RetainedNearBlackEpisodeRequiresFreshCurrentSafeScope [< 1 ms]
+  Passed RetainedNearBlackEpisodeYieldsAfterFreshSafeScopeReturns [< 1 ms]
+  Passed NearBlackCropRevalidationNeedsDistinctFramesAndFullRasterWins [< 1 ms]
+  Passed NearBlackCropRevalidationRejectsPreLatchProofAcrossLongSafeGap [< 1 ms]
+  Passed NearBlackCropRevalidationRejectsUnrelatedOrStaleAuthority [< 1 ms]
+  Passed NearBlackEpisodeRetiresObsoleteNativeEntryAfterCurrentOutwardProof [< 1 ms]
+  Passed NearBlackCropRevalidationResetsAcrossSubtitleGap [< 1 ms]
+  Passed NearBlackStartupBootstrapResetsOnMismatchAndNearBlack [< 1 ms]
+  Passed NearBlackPausedBootstrapRejectsRepeatOnlyAndStalledEvidence [< 1 ms]
+  Passed NearBlackPausedBootstrapOverlayResetsTimedDwell [< 1 ms]
+  Passed NearBlackProfileEpochRestartIsObservableWithoutCropEvidence [< 1 ms]
+  Passed NearBlackStartupBootstrapRestartsOnCurrentProfileEpoch [< 1 ms]
+  Passed NearBlackStartupBootstrapAcceptsExactPausedFrameAfterTimedDwell [< 1 ms]
+  Passed NearBlackOutwardOverlayCanBootstrapBackToSafeNativeCrop [< 1 ms]
+  Passed NearBlackNativeBootstrapIsNotDelayedByPartialEntryRecovery [< 1 ms]
+  Passed NearBlackSimultaneousOutwardEntryDoesNotCarryRecoveryAcrossContext [< 1 ms]
+  Passed NearBlackSimultaneousOutwardEntryRecoveryKeepsEvidenceVetoes [< 1 ms]
+  Passed NearBlackSimultaneousOutwardEntryRecoversLoggedAlienCrop [< 1 ms]
+  Passed NearBlackStartupBootstrapOnlyReopensNormalAcquisition [< 1 ms]
+  Passed NearBlackEpisodeSuppressesPublishedAndHeldBarGeometryMutation [< 1 ms]
+  Passed CaptionBootstrapScanUsesBoundedProofBurstAndColdRateLimit [< 1 ms]
+  Passed CaptionBackedLogicalAcquisitionRequiresFreshProofDuringEpisode [< 1 ms]
+  Passed NearBlackOutwardConfirmationRequiresExactCurrentEntryRetention [< 1 ms]
+  Passed NearBlackSustainedOutwardContentRecoversAfterContainedSafeDwell [< 1 ms]
+  Passed NearBlackFullRasterReleasesOnlyExactEntryCropAfterSafeDwell [< 1 ms]
+  Passed NearBlackEpisodeSurvivesProfileGeometryWithdrawal [< 1 ms]
+  Passed NearBlackRetainedCropCanOnlyMoveOnceToFullRaster [< 1 ms]
+  Passed NearBlackStartupEpisodeStaysFullRasterUntilSceneBoundary [< 1 ms]
+  Passed SceneSnapshotDeadlineDoesNotWithdrawPixelSafeLogicalScope [< 1 ms]
+  Passed DarkFadeHoldExpiresCropAndFinalNlsTogether [< 1 ms]
+  Passed SceneHoldWithoutNlsKeepsCropOnlyUntilDeadline [< 1 ms]
+  Passed SceneHoldExpiryWithdrawsCropAndNlsTogether [< 1 ms]
+  Passed SceneBoundaryPreservesCurrentLogicalReferenceButRejectsStaleState [< 1 ms]
+  Passed VisiblePixelsAtCutOverrideSnapshotTimer [< 1 ms]
+  Passed CurrentOverlayAtCutKeepsGeometryWithoutSnapshotExpiry [< 1 ms]
+  Passed PixelSafeCutKeepsPresentationWithoutSnapshotExpiry [< 1 ms]
+  Passed SceneBoundaryHoldsOnlyExistingTrustedScopeSnapshot [< 1 ms]
+  Passed SceneBoundaryKeepsMatchingBarAndFullRasterPresentation [< 1 ms]
+  Passed CurrentSharedTrustedCropIsTheOnlyAcceptedCrop [< 1 ms]
+  Passed TrustedFullRasterDoesNotBecomeACrop [< 1 ms]
+  Passed InvalidAndMisalignedBoundsCannotCrop [< 1 ms]
+  Passed RasterMismatchCannotCrop [< 1 ms]
+  Passed WrongAxisAuthorityCannotAcquireCropAuthority [< 1 ms]
+  Passed BoundsWithoutAxisAuthorityCannotAcquireCropAuthority [< 1 ms]
+  Passed OverlayReleaseReturnsDirectlyToTrustedCrop [< 1 ms]
+  Passed ProfileEpochRequiresFreshOverlayEvidence [< 1 ms]
+  Passed PillarboxAuthorityCanDriveHorizontalPresentationFit [< 1 ms]
+  Passed CurrentOutwardEnvelopeIsSafeWithoutNewCropAuthority [< 1 ms]
+  Passed OverlayExpansionFailsSafeWhenMissingStaleOrInward [< 1 ms]
+  Passed ProvisionalOverlayWithinSceneHoldMayExpandExistingAuthority [< 1 ms]
+  Passed OutwardPresentationSupportsAllFourEdgesAndFullRaster [< 1 ms]
+  Passed BarContentFitExpandsOnlyTheDetectedEdges [< 1 ms]
+  Passed FullRasterAuthorityOverridesHeldTranslation [< 1 ms]
+  Passed VerticalFitCannotComposeWithVerticalTranslation [< 1 ms]
+  Passed HorizontalFitAndVerticalTranslationComposeWithoutChangingHeight [< 1 ms]
+  Passed SparseTranslationRequiresExactCurrentBaseAndGeneration [< 1 ms]
+  Passed SparseTopSubtitleRoundsAwayFromZeroAndClampsBothDirections [< 1 ms]
+  Passed SparseSubtitleTranslatesSameSizeWindowWithoutChangingNlsAspect [< 1 ms]
+  Passed CaptionFitDoesNotReplaceAConfirmedRealPictureExpansion [< 1 ms]
+  Passed CaptionFitRejectsStaleUnconfirmedUnpairedOrWrongEdgeEvidence [< 1 ms]
+  Passed ConfirmedCaptionFitUsesMeasuredCoordinatesAtTopBottomAndSmallRaster [< 1 ms]
+  Passed ConfirmedCaptionFitAcquiresOnlyTheCurrentPictureAndCaptionEnvelope [< 1 ms]
+  Passed CaptionAtomicHandoffRejectsStaleOwnersAndLateVetoesWithoutChangingSafeFit [< 1 ms]
+  Passed RecordedCaptionAcquisitionRunsRecoveryAdmissionRoutingAndHandoffInRendererOrder [< 1 ms]
+  Passed CaptionAcquisitionPublishesFinalTranslationWithoutIntermediateFit [< 1 ms]
+  Passed CaptionAcquisitionAdmissionIdentityCannotCrossEpochGenerationOrGeometry [< 1 ms]
+  Passed NewScopeContractAcquiresCaptionFitAfterTallPictureWasAdmitted [< 1 ms]
+  Passed CaptionConfirmationHoldCannotRenewAcrossGapsTargetChangesOrDeadline [< 1 ms]
+  Passed CaptionConfirmationHoldRejectsUnpairedUnsafeOrUnrenderedEvidence [< 1 ms]
+  Passed OrderedPendingCaptionCadenceHoldsUntilAtomicTranslationWithoutChangingVotes [< 1 ms]
+  Passed CaptionConfirmationKeepsExactRenderedAnchorThroughPendingAndZeroEngage [< 1 ms]
+  Passed RendererReleaseTimelinePreservesAspectAndReturnsMonotonically [< 1 ms]
+  Passed SubtitleReleaseSettlesAtTrustedBaseWithoutAFullRasterFlash [< 1 ms]
+  Passed SceneVerificationCannotOverrideFullRasterOrStaleAuthority [< 1 ms]
+  Passed SceneVerificationHoldsTrustedCropAcrossUnreaffirmedBarObservation [< 1 ms]
+  Passed BoundedSceneVerificationRetainsOnlyExistingTrustedCrop [< 1 ms]
+  Passed VisiblePixelsOverrideLegacyAmbiguityTimers [< 1 ms]
+  Passed PixelSafeUncertaintyRetainsPresentationWithoutATimer [12 ms]
+  Passed AmbiguousDarkObservationRetainsTrustedPresentation [< 1 ms]
+  Passed UnclassifiedLossOfAuthorityWithdrawsToFullRaster [< 1 ms]
+  Passed StaleGenerationCannotRetainCropAuthority [< 1 ms]
+  Passed ProvisionalGeometryCannotAcquireCropAuthority [< 1 ms]
+  Passed WorldCupFalseCandidatesCannotCropWhileOff [2 ms]
+  Passed AutomaticCropDefaultsToFailSafeFullRaster [< 1 ms]
+  Passed AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal [< 1 ms]
+  Passed TwoToOneLensPrecompressesSixteenByNineToEightByNine [< 1 ms]
+  Passed AnamorphicUnityAndAlignmentPreserveExistingContract [< 1 ms]
+  Passed AnamorphicInferredScreenAndExtremeRatiosStayInOutput [< 1 ms]
+  Passed AnamorphicPhysicalNlsRatioDoesNotIncludeLens [< 1 ms]
+  Passed AnamorphicMatchingScreenUsesFullProjectorRaster [< 1 ms]
+  Passed FixedAspectCropIsIndependentOfThePhysicalScreen [< 1 ms]
+  Passed SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping [< 1 ms]
+  Passed AspectLimitFillCropsTrustedNarrowerAndWiderContent [< 1 ms]
+  Passed FillOnlyUsesContentInsteadOfTransportAspectAndPreservesExactMatches [< 1 ms]
+  Passed FillOnlyEligibilityPreservesExplicitAutoCropAndIndependentSubtitleFit [< 1 ms]
+  Passed FillOnlyContentEligibilityRejectsStaleUnknownAndMalformedPicture [< 1 ms]
+  Passed FillOnlyEligibleContentStillCropsOnBothSidesOfScreenAspect [< 1 ms]
+  Passed FillOnlyScopeSubtitlesKeepTheCompleteSixteenByNineFrameStationary [< 1 ms]
+  Passed FillContentReferenceRejectsMalformedReferenceAndKeepsActualEnvelopeLimit [< 1 ms]
+  Passed FillContentReferencePreservesEligibleFillAndFullRaster [< 1 ms]
+  Passed FillContentReferenceCannotCrossTheNarrowerLimitOrChangeDirection [< 1 ms]
+logged sequence=3906 picture.top=202.000000
+logged sequence=3908 picture.top=356.000000
+logged sequence=3911 picture.top=202.000000
+logged sequence=6276 fill=0 picture.top=272.000000 bottom=2160.000000
+logged sequence=6290 fill=0 picture.top=214.000000 bottom=2160.000000
+  Passed FillContentReferenceRejectsBothLoggedGermanTvZoomBursts [< 1 ms]
+  Passed LoggedBottomPlacementEligibleFillStillUsesFullScreen [< 1 ms]
+  Passed LoggedBottomPlacementRefinementDoesNotToggleFullHeightFill [1 ms]
+  Passed LoggedBottomPlacementAmbiguityKeepsBothFramesBottomAnchored [< 1 ms]
+  Passed DetectedContentFitsConfiguredScreenWithoutASecondViewport [< 1 ms]
+  Passed ConfiguredScopeScreenHonorsVerticalAlignmentWithinOutput [< 1 ms]
+  Passed VerticalAlignmentRedistributesOnlyUnusedVerticalSpace [< 1 ms]
+  Passed CenteredFitMatrixPreservesAspectAndOneUnusedAxis [< 1 ms]
+  Passed PresentationEnvelopeExpandsOnlySelectedObservedEdges [< 1 ms]
+  Passed RendererWiringTranslatesTopEdgeAndRejectsStaleGeneration [< 1 ms]
+  Passed RendererWiringRetainsFitAndBoundarySafety [< 1 ms]
+  Passed RendererWiringTranslatesOneEdgeSubtitleWithoutPillarboxing [< 1 ms]
+  Passed HeldEnvelopeRequiresMatchingBaseGenerationAndDeadline [< 1 ms]
+  Passed CurrentFrameEnvelopeSurvivesGeometryChangeAndZeroHold [< 1 ms]
+  Passed UnsafeNewBarContentForcesOnlyTheInitialSubtitleScan [< 1 ms]
+  Passed ActiveCropForcesInspectionOnNonScheduledFrames [< 1 ms]
+  Passed FullRasterAuthorityBridgesSparseAnalysisWithoutWaitingPulse [< 1 ms]
+  Passed LiveOverlayAndAspectMetadataTimelineProducesStableFinalGeometry [< 1 ms]
+  Passed FreshOneEdgeOverlayKeepsHeldFitUntilItsBoundedRelease [< 1 ms]
+  Passed CadenceRepeatCannotAdvanceOutwardPictureConfirmation [< 1 ms]
+  Passed NativeDistributedProofRejectsLocalizedOrUnownedEvidenceAndCannotMixRoutes [< 1 ms]
+  Passed DarkNativeDistributedPictureRequiresThreeFreshExactFrames [< 1 ms]
+  Passed OutwardLogicalGeometryRequiresBroadOpposingSameFramePicture [< 1 ms]
+  Passed CurrentEnvelopeAttestsHeldTranslationWithoutRefreshingItsFrame [< 1 ms]
+  Passed PendingFitMayConfirmAcrossMatchingTwoEdgeAuthorityGap [< 1 ms]
+  Passed PendingTranslationMayConfirmAcrossMatchingAuthorityGap [< 1 ms]
+  Passed HeldBarAnalysisRejectsContradictoryOrStaleEvidence [< 1 ms]
+  Passed PersistentSubtitleMayBeRescannedOnHeldTrustedBarGeometry [< 1 ms]
+  Passed RetiringTranslationFlagCannotOverrideUnexpiredOrUnprovenFit [< 1 ms]
+  Passed FreshConfirmedFitRetiresExpiredTranslationAndReachesBoundedPresentation [< 1 ms]
+  Passed RetiringTranslationInspectionRejectsActiveStaleOrIncompatibleHistory [< 1 ms]
+  Passed ExpiredTranslationWithRecentConfirmedFitCanRequestFreshDenseInspection [< 1 ms]
+  Passed VerticalBarTranslationSurvivesSameGenerationAuthorityGap [< 1 ms]
+  Passed VerticalBarCurrentFrameSurvivesZeroHoldAndThenReleases [< 1 ms]
+  Passed VerticalBarPresentationHoldsTranslationAgainstCompetingFit [< 1 ms]
+  Passed RecordedBottomSubtitleKeepsConfirmedDenseMotionTarget [< 1 ms]
+  Passed ZeroShiftTimedEngageKeepsTrustedBaseInsteadOfFailingOpen [< 1 ms]
+  Passed ZeroHoldTimedEngageCadenceNeverAlternatesFullRaster [< 1 ms]
+  Passed SubtitleOwnedTwoEdgePixelsCannotPublishNovelAspect [< 1 ms]
+  Passed ZeroHoldTranslationOwnsCompetingFitUntilAnalyzedNegative [< 1 ms]
+  Passed ZeroHoldRetainsPresentationUntilNextAnalysisSample [< 1 ms]
+  Passed ZeroDurationEngageStillAllowsTimedRelease [< 1 ms]
+  Passed HorizontalConflictOverridesEveryProvisionalCropOwner [< 1 ms]
+  Passed BarCropRefinementRetainsTrustedCropUntilTransitionPublishes [< 1 ms]
+  Passed TemporaryWithdrawalPreservesReferenceButFullRasterAuthorityClearsIt [< 1 ms]
+  Passed PresentationRetentionRejectsDifferentContractOrContext [< 1 ms]
+  Passed PresentationAdmissionPreservesRealAspectChangesAndExistingRetention [< 1 ms]
+  Passed ZdfResolvedFitContainingCurrentPixelsCanAcquireWithoutPriorCrop [< 1 ms]
+  Passed ZdfAcquisitionWitnessRequiresCurrentValidMatchingBounds [< 1 ms]
+  Passed ZdfUnseenConfirmedFitMustContainFreshVisiblePixelWitness [< 1 ms]
+  Passed ZdfPendingToConfirmedFitCannotLaunderUnresolvedCropAcquisition [< 1 ms]
+  Passed ZdfAcquisitionGuardPreservesAlreadyPresentedCaptionBase [< 1 ms]
+  Passed ZdfNewCropCannotAcquireThroughPendingOwnerDespiteSupportingObservation [< 1 ms]
+  Passed PendingPresentationOwnersCannotBootstrapAnUnseenCrop [< 1 ms]
+  Passed ScrollingTextRetentionCannotIntroduceUnpresentedCrop [< 1 ms]
+  Passed PendingDenseFitRetainsTrustedCropWithoutFullRasterFlash [< 1 ms]
+  Passed DarkSceneCutInspectionRetainsTrustedCropBeforeDenseBaseExists [< 1 ms]
+  Passed PendingTranslationRetainsTrustedCropWithoutFullRasterFlash [< 1 ms]
+  Passed DenseVerticalOwnerClosesInspectionBeforeFailOpen [< 1 ms]
+  Passed ResolvedCropRearmsLaterSubtitleWithoutFullRasterFlash [< 1 ms]
+  Passed VerticalInspectionBridgeRearmsOnlyForResolvedOrNewProvenance [< 1 ms]
+  Passed OnlyCurrentFullWidthVerticalDenseFitMayResolveInspection [< 1 ms]
+  Passed ConfirmedCurrentVerticalFitResolvesSpentInspectionBridge [< 1 ms]
+  Passed VerticalInspectionBridgeRepeatIsIdempotentAndDropoutDoesNotRearm [< 1 ms]
+  Passed VerticalInspectionBridgeStopsAfterDenseClassification [< 1 ms]
+  Passed FixedCropTracksMenusOnlyWhenDynamicGeometryIsEnabled [< 1 ms]
+  Passed OnlyProvisionalVerticalEdgesStartInspectionRetention [< 1 ms]
+  Passed NonTranslationObservationCancelsPendingConfirmation [< 1 ms]
+  Passed TargetBufferCannotTranslatePastTheSourceRaster [< 1 ms]
+  Passed TargetBufferMirrorsForUpperEdgeAndStillAllowsLargeGrowth [< 1 ms]
+  Passed TargetBufferOvershootsAndAbsorbsLaterGrowth [< 1 ms]
+  Passed LargerTranslationConfirmsWithoutMovingAcceptedTargetEarly [< 1 ms]
+  Passed ChangingVerticalTranslationTargetRestartsConfirmation [< 1 ms]
+  Passed NewVerticalTranslationRequiresThreeStableAnalysisSamples [< 1 ms]
+  Passed SubtitleTranslationDriftEasesInAndOutAndZeroSnaps [< 1 ms]
+  Passed SubtitleHoldRejectsMixedFrameGenericAspectFit [< 1 ms]
+  Passed DenseFitConfirmationDoesNotDelayFailOpen [< 1 ms]
+  Passed DenseArbitrationSuppressesCoarseTwoEdgeFitUntilAccepted [< 1 ms]
+  Passed CadenceRepeatCannotAdvanceDenseConfirmations [< 1 ms]
+  Passed DenseFitRequiresTwoConsecutiveAnalyzedSamples [< 1 ms]
+  Passed OffEnvelopeIncludesAllFourRenderedEdgesWithoutFullRasterFallback [< 1 ms]
+  Passed ClassicAndAdvancedModesKeepExistingTranslationConfirmation [< 1 ms]
+  Passed OffFitsChangingOverlayExtentsWithoutWaitingForClassicMotionTarget [< 1 ms]
+  Passed VerticalBarResolutionKeepsOneEdgeTranslationStable [< 1 ms]
+  Passed VerticalBarPolicyPreservesHeldTranslationAgainstOppositeOverlay [< 1 ms]
+  Passed VerticalBarPolicyFitsTwoEdgePictureEvidence [< 1 ms]
+  Passed VerticalBarPolicyChoosesDominantTwoEdgeOverlay [< 1 ms]
+  Passed VerticalBarPolicyTranslatesThinFullWidthVolumeButFitsPictureFill [< 1 ms]
+  Passed VerticalBarPolicyTranslatesOnlyOneOverlayLikeEdge [< 1 ms]
+  Passed BarContentDetectorNeverManufacturesAnOppositeEdge [< 1 ms]
+  Passed ProfileTransitionRejectsStaleOrUntrustedGeometry [< 1 ms]
+  Passed ProfileTransitionRetainsOnlyCurrentTrustedSourceGeometry [< 1 ms]
+  Passed RecoveryPendingOwnersCannotBypassButConfirmedPresentationCan [< 1 ms]
+  Passed RecoveryRejectsRepeatsStaleEvidenceGapsAndContextChanges [< 1 ms]
+  Passed RecoveryRequiresAdjacentQuarterSecondProofAtSourceFrameRate [< 1 ms]
+  Passed RecoveryStopsAlternatingPixelSafeTrustedAndRefinementOwners [1 ms]
+  Passed RecoveryDoesNotChangeOrdinaryAcquisitionOrFullRasterTiming [< 1 ms]
+  Passed NearBlackEntryProofCannotCrossProfileEpochOrCountOlderFrames [< 1 ms]
+  Passed RecoveryArmsAfterHorizontalConflictOrExplicitFailOpenWithoutOverridingThem [< 1 ms]
+rate=23.976000 first_wrong_logical=0 first_full_raster=0 subtitle_full_frames=0 fit_candidates_held_full=0 confirmed_subtitle_frames=273 clipped_subtitle_frames=0 recovered_after_removal=1
+
+rate=24.000000 first_wrong_logical=0 first_full_raster=0 subtitle_full_frames=0 fit_candidates_held_full=0 confirmed_subtitle_frames=273 clipped_subtitle_frames=0 recovered_after_removal=1
+
+rate=59.940000 first_wrong_logical=0 first_full_raster=0 subtitle_full_frames=0 fit_candidates_held_full=0 confirmed_subtitle_frames=684 clipped_subtitle_frames=0 recovered_after_removal=1
+
+rate=60.000000 first_wrong_logical=0 first_full_raster=0 subtitle_full_frames=0 fit_candidates_held_full=0 confirmed_subtitle_frames=685 clipped_subtitle_frames=0 recovered_after_removal=1
+
+  Passed ReceivedLateBurstCannotReenterThroughUnsafeTrustedRefinementOrNearBlack [< 1 ms]
+  Passed SamplingNoiseCannotBypassUnsafeStaleProvisionalOrFailOpenRecovery [< 1 ms]
+  Passed WomenInBlueSamplingNoiseResolvesInspectionAndRecoveryWithoutNewAspect [< 1 ms]
+  Passed SamplingReaffirmationRequiresSafeBandsAndTheSameBarContract [< 1 ms]
+  Passed NearBlackRecoveryUsesTheSameSamplingEquivalenceAndPixelVeto [< 1 ms]
+  Passed WomenInBlueCurrentBoundedHorizontalContentUsesFitInsteadOfFullRaster [< 1 ms]
+  Passed CoarseSamplingReaffirmationCannotHidePixelsOrMaterialGeometry [< 1 ms]
+  Passed LiveFourPixelCoarseEnvelopeDoesNotWithdrawPixelSafePillarboxCrop [< 1 ms]
+  Passed RecordedSubtitleOnsetMustNotReacquireFullHeightOrStrandRecovery [2 ms]
+  Passed AsymmetricExpansionChecksOnlyNewlyExposedEdges [< 1 ms]
+  Passed MixedEdgeExpansionRequiresPictureEvidenceAndCanSupersedeSubtitle [< 1 ms]
+  Passed DeferredHistoryCannotPublishOrBankConfirmations [< 1 ms]
+  Passed OutwardProofResetsForInvalidEvidenceGapsAndGenerationChanges [< 1 ms]
+  Passed OutwardDiagnosticReasonsDescribeEvidenceGatesWithoutAddingAuthority [< 1 ms]
+  Passed CropDiagnosticContextAndClockRollbackDiscardPreviousThrottleState [< 1 ms]
+  Passed CropDiagnosticSameSourceFrameCannotSpamEventBundles [< 1 ms]
+  Passed CropDiagnosticPendingEndFlushesAtCapWithoutAnotherStateChange [< 1 ms]
+  Passed CropDiagnosticsCapOscillatingStartEndAndCoalesceSuppressedEvents [< 1 ms]
+  Passed CropDiagnosticsStayQuietWhenInactiveAndHeartbeatUnresolvedState [< 1 ms]
+  Passed QueuedPublicationCannotOverrideCurrentAdmissionVeto [< 1 ms]
+  Passed StaleQueuedTargetFallsBackWithoutPresentationBounce [20 ms]
+  Passed SamplingNoiseAcrossWholeTransitionNeverWithdrawsOrResizesAgain [91 ms]
+  Passed LoggedPictureTransitionWithLookaheadHasOnePresentationChange [38 ms]
+  Passed LoggedPictureTransitionWithoutLookaheadHasOnePresentationChange [39 ms]
+  Passed RetainedAspectDoesNotSuppressCurrentOutsidePicture [< 1 ms]
+  Passed LoggedLookaheadConflictKeepsCropFillAndSubtitleScaleStable [1 ms]
+  Passed CurrentCertifiedFitCanResolveAnAlreadyArmedRecovery [< 1 ms]
+  Passed BoundedRecoveryHandlesEitherAxisAndRoundsOnlyOutward [< 1 ms]
+  Passed BoundedRecoveryReturnsInwardOnlyAfterExistingProofAndClearsOnContextChange [< 1 ms]
+  Passed BoundedRecoveryRealPixelsAgreeForNativeV210AndP010 [< 1 ms]
+  Passed BoundedRecoveryRejectsMissingStaleConflictingOrUnacquiredEvidence [< 1 ms]
+  Passed BoundedRecoveryDoesNotPumpWithSmallChangesAndStillExposesMoreContent [< 1 ms]
+  Passed BoundedContractPreservationDoesNotBypassFinalNewCropAdmission [< 1 ms]
+  Passed BoundedContractChangeDiscardsOldEnvelopeAcrossContextOrFullRasterAuthority [< 1 ms]
+  Passed BoundedContractChangeCannotInheritPartialProofOnRepeatedOrOlderSource [< 1 ms]
+  Passed BoundedContractChangeRejectsStaleUnsafeOrUntrustedPreservationEvidence [< 1 ms]
+  Passed BoundedRecoveryKeepsSafeEnvelopeWhenAcceptedCropChanges [< 1 ms]
+  Passed BoundedRecoveryAgencyPreservesBlackTopThroughExpiredInspection [1 ms]
+  Passed NearBlackBoundedReplayMissingProofDoesNotLatchAnUnsubmittedFailure [< 1 ms]
+  Passed NearBlackBoundedReplayGenuineRasterExpansionAlwaysWins [< 1 ms]
+  Passed NearBlackBoundedReplayAcceptsExistingAcquisitionSuppressionWithoutNewAuthority [< 1 ms]
+  Passed NearBlackBoundedReplayUsesRealP010AndV210ExtentEvidence [< 1 ms]
+  Passed NearBlackBoundedReplayCannotAcquireOnRepeatButPreservesCertifiedRepeat [< 1 ms]
+  Passed NearBlackBoundedReplayReturnsOnlyAfterUnchangedSevenFrameProof [< 1 ms]
+  Passed NearBlackBoundedReplayRejectsStaleUnsafeAndCompetingEvidence [< 1 ms]
+  Passed NearBlackBoundedReplayHoldsEnvelopeAndExposesFurtherGrowth [< 1 ms]
+  Passed NearBlackBoundedReplayKeepsPriorScopeWhenDarkFrameHasOutwardPixels [< 1 ms]
+  Passed NearBlackEpisodeUsesSubmittedScopeAcrossGeometryLossAndUnconfirmedFullRaster [< 1 ms]
+  Passed SubmittedScopeContinuityClearsAnAmbiguousFullRasterRecoveryFallback [< 1 ms]
+  Passed SubmittedScopeContinuityIsPresentationRetentionNotNewAuthority [< 1 ms]
+  Passed SubmittedScopeContinuityRequiresCurrentSafePixelsOrTheExactRepeatedFrame [< 1 ms]
+  Passed SelectedAspectFillPreservesNativeScopeWhenSubtitleAppears [< 1 ms]
+  Passed SubmittedNativeScopeAnchorCommitsOnlySelectedSafePresentation [< 1 ms]
+  Passed RetainedScopeDoesNotRevertToFullRasterOnWeakDarkFrameEvidence [< 1 ms]
+  Passed RetainedScopeEnvelopeNeedsCurrentPixelsAndSelectedOutputCommit [< 1 ms]
+  Passed PreviouslyAdmittedScopeStaysLogicalAnchorWhenDarkFrameHasOutwardPixels [< 1 ms]
+  Passed NearBlackBoundedReplayKeepsSafeEnvelopeAcrossTwoPixelObservationDisagreement [< 1 ms]
+  Passed NearBlackBoundedReplayKeepsMeasuredFringeWithoutFullRasterFlash [< 1 ms]
+  Passed NearBlackSameObservedRowsRemainStableWithDifferentAcquisitionHistory [< 1 ms]
+  Passed NearBlackWeakFringeFillReusesOnlyItsCertifiedRepeatedFrame [< 1 ms]
+  Passed NearBlackWeakFringeFillCertificateRejectsMissingChangedOrCompetingContracts [< 1 ms]
+  Passed NearBlackWeakFringePreservesOnlyActuallyAdmittedOptionalFill [< 1 ms]
+  Passed AdmissionClearsPriorFitOnWithdrawalBlockedAndOtherOwners [< 1 ms]
+  Passed InspectionReentryReturnsAfterExistingSafeCropProof [< 1 ms]
+  Passed InspectionNativeResolutionCannotCrossContractOrSurviveAnotherOwner [< 1 ms]
+  Passed InspectionReentrySafeResolutionSurvivesRepeatWithoutAddingDwell [< 1 ms]
+  Passed InspectionReentryDoesNotDelayNativeResolutionInsideBridge [< 1 ms]
+  Passed InspectionReentryPreservesConfirmedOwnerPrecedence [< 1 ms]
+  Passed InspectionReentryRequiresCurrentContinuousMatchingFit [< 1 ms]
+  Passed InspectionReentryRepeatPreservesFitWithoutCountingProof [< 1 ms]
+  Passed InspectionReentryExposesLargerContentAndRejectsMissingExtentProof [< 1 ms]
+  Passed InspectionReentryCannotContractAnOccupiedOutwardFit [< 1 ms]
+  Passed SamplingJitterDoesNotRequireNewAspectAuthority [< 1 ms]
+  Passed DeferredEvidenceCannotPromoteAllSidedInset [< 1 ms]
+  Passed MovingAllSidedInsetCannotEarnAuthorityAcrossPartialAxisConfidence [< 1 ms]
+  Passed SubtitleOccupancyDoesNotBecomeFullHeightPictureOrHorizontalFit [< 1 ms]
+  Passed LoggedSafeSideBarsCannotCreateFullRasterRecoveryOrHeldWidth [< 1 ms]
+  Passed ExpansionStripProofRejectsMismatchedBaseCandidateAndSparseContent [< 1 ms]
+  Passed SubtitleOccupancyCannotTurnSafeHorizontalJitterIntoFullRaster [< 1 ms]
+  Passed HorizontalPixelProofComposesWithCurrentSubtitleOwner [< 1 ms]
+  Passed SubtitleOnsetAfterHorizontalContentNeverArmsRecoveryDuringConfirmationOrEngage [< 1 ms]
+  Passed SubtitleInspectionRejectsStaleProofAndDoesNotConsumeOnsetWithoutAuthority [< 1 ms]
+  Passed ProvisionalSplitScreenExpansionKeepsBoundedCropThroughSubtitleConfirmation [17 ms]
+  Passed KnownFullRasterEpisodeCannotOverrideTrustedCropOrMissingAuthority [< 1 ms]
+  Passed KnownFullRasterDarkEpisodePreservesAuthorityButStartupStillWaits [< 1 ms]
+  Passed KnownFullRasterRawBarsOverrideConflictingCommitMetadata [< 1 ms]
+  Passed KnownFullRasterSceneCutNeedsFreshFullEvidence [< 1 ms]
+  Passed KnownFullRasterContextChangesRejectStaleCommit [< 1 ms]
+  Passed KnownFullRasterReorderedFrameRevokesWithoutOldCommitReplay [< 1 ms]
+  Passed KnownFullRasterDuplicateContradictionCanWithdrawButCannotRearm [< 1 ms]
+  Passed KnownFullRasterRepeatCannotCreateOrResurrectAuthority [< 1 ms]
+  Passed KnownFullRasterTrustedScopeAndPillarboxRevokeUntilNewCommit [< 1 ms]
+  Passed KnownFullRasterRetainsThroughUnavailableAndSparseMeasurements [< 1 ms]
+  Passed KnownFullRasterRequiresActualCurrentFullCommit [< 1 ms]
+  Passed DarknessBoundarySceneRoutingCannotKeepCroppedOrStaleGeometry [< 1 ms]
+  Passed DarknessBoundaryDetectorResetCannotPreserveAnOldLease [< 1 ms]
+  Passed DarknessBoundaryRequiresPriorCurrentExactFullAuthority [< 1 ms]
+  Passed DarknessBoundarySimultaneousConfirmedCutIsNotExempt [< 1 ms]
+  Passed DarknessBoundaryAbruptDarkCutStillWithdrawsThroughRealPolicyChain [< 1 ms]
+  Passed DarknessBoundaryGradualFadePreservesFullRasterThroughRealPolicyChain [< 1 ms]
+  Passed KnownFullRasterActualCommitDuringCutMustWaitForFreshReaffirmation [< 1 ms]
+  Passed KnownFullRasterPendingCutCannotAccumulateReaffirmationDuringCooldown [< 1 ms]
+  Passed KnownFullRasterMeasuredAmbiguityAndCutsRestartReaffirmation [< 1 ms]
+  Passed KnownFullRasterSparseMeasurementsCanReaffirmButDuplicatesCannot [< 1 ms]
+  Passed KnownFullRasterReaffirmationNeedsCurrentNonDarkExactCommittedContext [< 1 ms]
+  Passed KnownFullRasterFreshReaffirmationsMustRecoverWithoutNewGeometryPublication [1 ms]
+  Passed KnownFullRasterCooldownCutMustRevokeDespiteSuppressedBoundary [17 ms]
+  Passed SharedCaptionReproofReleasesEpisodeOnlyWithFreshConfirmedTranslation [< 1 ms]
+  Passed ScopeOnsetCannotBypassFullRasterOrStaleConflictingEvidence [< 1 ms]
+  Passed ScopeOnsetRetainsPresentationThroughConfirmationAndEngage [< 1 ms]
+  Passed DarkCaptionRetentionHandlesUpperBarWithoutExtendingItsLease [< 1 ms]
+  Passed DarkPendingCaptionCannotUseHeldOrConflictingPhysicalBars [< 1 ms]
+  Passed DarkConfirmedCaptionKeepsScopeDuringZeroAndPartialEngage [< 1 ms]
+  Passed DarkCaptionOnsetUsesFreshPhysicalBarsThroughNormalConfirmation [< 1 ms]
+  Passed DarkCaptionRetentionRejectsStaleConflictingAndUncoveredEvidence [< 1 ms]
+  Passed NlsOwnCropCannotBorrowEstablishedSubtitleTranslation [< 1 ms]
+  Passed NlsWithoutOwnCropKeepsConfirmedTranslationAcrossDarknessThreshold [< 1 ms]
+  Passed DarkEngageRejectsPoseThatRoutesToFitOutsideRaster [< 1 ms]
+  Passed DarkEngageUsesRoutedAlignedPoseForScopeCertificate [< 1 ms]
+  Passed DarkStarfieldCannotPreemptEstablishedCaptionTranslation [< 1 ms]
+  Passed DarkSubtitleReleaseDriftKeepsCertifiedScopeOnSafeEmptyBars [< 1 ms]
+  Passed DarkSubtitleEmptyBarRequiresCurrentSafeLiveOwner [< 1 ms]
+  Passed DarkSubtitleInwardSamplesFollowCertifiedReleaseWithoutRenewal [< 1 ms]
+  Passed DarkSubtitleInwardNativeSampleKeepsAdmittedTranslation [< 1 ms]
+  Passed DarkSubtitleLiveOwnerSurvivesPixelSafeEmptyBarSample [< 1 ms]
+  Passed PackedR10DiagnosticsRespectsRowPitchAndSampleStep [< 1 ms]
+  Passed R10ToPng16MappingPreservesEveryCode [1 ms]
+  Passed PackedR10DiagnosticsExtractChannelsAndStudioExcursions [< 1 ms]
+  Passed LimitedRgbRejectsDisplayTransfersWithoutMatchingDxgiDeclarations [< 1 ms]
+  Passed FullRgbSupportsMadvrStyleCalibratedDisplayTransfers [< 1 ms]
+  Passed AutoRangeExplicitGamma22UsesTheCalibratedDisplayTarget [< 1 ms]
+  Passed FullGamma24IsAStandardDisplayCalibrationTarget [< 1 ms]
+  Passed MissingSwapchain3FallsBackFull [< 1 ms]
+  Passed DirectLimitedFailureStaysOnRequestedPresentationPath [< 1 ms]
+  Passed AutoLimitedFailureRequiresComposedFallback [< 1 ms]
+  Passed VerifiedTransitionDoesNotPostCheckAfterSetFailure [< 1 ms]
+  Passed VerifiedTransitionDoesNotSetWithoutPreSupport [< 1 ms]
+  Passed VerifiedTransitionEnforcesCheckSetCheckOrder [< 1 ms]
+  Passed VerifiedRestoreAllowsReturnToFullContract [< 1 ms]
+  Passed PreviousStudioWithoutSwapchain3BlocksRendering [< 1 ms]
+  Passed FullSetSuccessWithoutPresentSupportBlocksRendering [< 1 ms]
+  Passed FailedFullRestoreBlocksRendering [< 1 ms]
+  Passed PostCheckFailureWithSuccessfulRestoreFallsBackSafely [< 1 ms]
+  Passed AdvertisedSupportWithSetFailureFallsBackFull [< 1 ms]
+  Passed SetSuccessWithoutPreAdvertisedSupportFallsBackFull [< 1 ms]
+  Passed LimitedBt2020UsesVerifiedStudioG24P2020 [< 1 ms]
+  Passed Bt2020ForcesFlipAndRejectsBitBlt [< 1 ms]
+  Passed FullBt2020RequiresVerifiedP2020Encoding [< 1 ms]
+  Passed LimitedG24UsesOnlyStudioG24 [< 1 ms]
+  Passed LimitedAutoUsesExactStudioG24AndFlipCandidate [< 1 ms]
+  Passed FullPureG22SupportsComposedWindowsPresentation [< 1 ms]
+  Passed FullPureG22SeparatesDisplayPixelsFromWindowsRgbDeclaration [< 1 ms]
+  Passed FullPureG22IsAStandardDisplayCalibrationTarget [< 1 ms]
+  Passed LimitedG22ExperimentUsesStudioG22AndPureGamma22 [< 1 ms]
+  Passed LimitedG22IsDisabledUnlessTheExperimentIsExplicitlyEnabled [< 1 ms]
+  Passed DirectRequestsFlipButReportsActualModel [< 1 ms]
+  Passed P3D65TargetRetainsP709CarrierAndCannotRequestBt2020Signaling [< 1 ms]
+  Passed Rec709TargetCannotRequestBt2020AviSignaling [< 1 ms]
+  Passed Bt2020TargetRetainsProvenP709Transport [< 1 ms]
+  Passed AutoBaselineUsesFlipForPresentationTiming [< 1 ms]
+  Passed OneShotInfoFrameRequiresSuccessfulSet [< 1 ms]
+  Passed OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho [< 1 ms]
+  Passed ActiveSweepComposedSubmissionRequiresVisualDeliveryGrade [< 1 ms]
+  Passed ActiveSweepUnexpectedFallbackAndBlockedStateFail [< 1 ms]
+  Passed ActiveSweepExpectedFallbackMustActuallyFallback [< 1 ms]
+  Passed ActiveSweepPhysicalCurveIsMeasurementNotAutomaticPass [< 1 ms]
+  Passed ActiveSweepExactContractRequiresMetadataAndPresent [< 1 ms]
+  Passed SdrGammaPolicyDoesNotModifyHdrOrUnsafeOutput [< 1 ms]
+  Passed SdrGammaAutoMatchesMpvCommonSdrToAutomaticSrgbPolicy [< 1 ms]
+  Passed SdrGammaOffMatchesAcceptedSdrTarget [< 1 ms]
+  Passed SdrGammaMissingDefaultsToNoAdjustment [< 1 ms]
+  Passed CalibrationTargetTransferIsExplicitAndLutToggleIndependent [< 1 ms]
+  Passed CalibrationLutNeverFallsBackAcrossTargetGamuts [< 1 ms]
+  Passed CalibrationLutSelectsConfiguredDisplayTargetOnly [< 1 ms]
+  Passed CalibrationWorkflowKeepsNoLutPolicyAndBlocksUnsafeOutput [< 1 ms]
+  Passed SdrLutInputGammaIsOptInAndIndependentOfHdrAndTransport [< 1 ms]
+  Passed LutReloadContractTracksEffectiveSdrEncoding [< 1 ms]
+  Passed HdrLutTargetIsIndependentAndMissingLutUsesDisplay [< 1 ms]
+  Passed LimitedDeclarationReportsRenderedGammaAndUnknownLutOutput [< 1 ms]
+  Passed WindowsDisplaySnapshotReadsDesktopAndReportsUnavailableTarget [5 ms]
+  Passed DiscontinuityClearsHistoryInsteadOfMixingOldSource [285 ms]
+  Passed ChromaDefaultAndExplicitScalerReachRenderParameters [< 1 ms]
+  Passed IncompatibleGeometryNeighborDoesNotBlendIntoSelectedPicture [276 ms]
+  Passed SourceSequenceGapClearsSelectedPacketBeforeNewCapture [131 ms]
+  Passed IncompatibleInterlaceNeighborsFallBackToBob [491 ms]
+  Passed EmptyPixelSafeBandsPermitMixAcrossDifferentSourceCrops [268 ms]
+  Passed ClassicZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput [290 ms]
+  Passed ZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput [311 ms]
+  Passed AlgorithmsReceiveBothFieldsInTopAndBottomOrder [2 s]
+  Passed SubtitleStyleEpochChangeClearsSameSourceBeforeRecapture [253 ms]
+  Passed LinearMixerRetainsSourceAfterUploadTextureIsReleased [261 ms]
+  Passed AllMixerFiltersRenderOnGpu [1 s]
+  Passed DefaultOffDoesNotAllocateTemporalHistory [< 1 ms]
+  Passed UnknownFieldOrderDoesNotDeinterlaceProgressiveOrGuessInterlace [< 1 ms]
+  Passed NativeP010ChromaUpscalerChangesNoCuePixelsLikeDirectRender [799 ms]
+  Passed NativeP010ChromaFieldsMatchDirectLibplacebo [4 s]
+  Passed CompositionDeinterlaceProducesCorrectTopAndBottomFields [2 s]
+  Passed NativeCompositionSnapshotsDolbyMetadataBeforeCallback [248 ms]
+  Passed NativeCompositionOversampleMixesAdjacentCleanFields [362 ms]
+  Passed NativeCompositionPreparationFailureClearsHistory [251 ms]
+  Passed NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer [257 ms]
+  Passed NativeCompositionRetainsRawTextureAfterUploadRelease [252 ms]
+  Passed CompositionSnapshotDoesNotBorrowUploadTextures [267 ms]
+  Passed CompositionAppliesCropAndRotationOnce [374 ms]
+  Passed CompositionModeRendersEveryMixerWithOpaqueGlyphs [1 s]
+  Passed CompositionCapturesSourceFramesWithNoScheduledOutput [222 ms]
+  Passed CompositionCaptureFailureDoesNotRetainBorrowedPixels [245 ms]
+  Passed CompositionRejectsNonNormalizedCleanFrameAndClearsHistory [217 ms]
+  Passed CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle [283 ms]
+  Passed CompositionSnapshotsSurviveTextureReuseAndDuplicateCapture [264 ms]
+  Passed CompositionModeTransitionResetsHistoryButKeepsMotionActive [219 ms]
+  Passed CompositionModeRetainsFieldCadenceAndParity [< 1 ms]
+  Passed CompositionFixtureDirectHalfRenderBaseline [217 ms]
+  Passed SubtitleCompositionModeKeepsSmoothMotionCadenceAcrossCues [< 1 ms]
+  Passed MatchedCadenceBypassesAndMismatchSchedulesEveryVsync [< 1 ms]
+  Passed FieldOrderChangeResetsHistoryAndLowerCadenceRetainsIt [131 ms]
+  Passed OutputTelemetryKeepsSelectedPacketDistinctFromInputDebtKey [< 1 ms]
+  Passed MotionConfigLoadsAllSupportedOptionsAndRejectsUnknownMixer [2 ms]
+  Passed ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource [< 1 ms]
+  Passed PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership [< 1 ms]
+  Passed OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames [< 1 ms]
+  Passed OptionalWorkerFailureIsVisibleWithoutInventingEvidence [< 1 ms]
+  Passed AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval [< 1 ms]
+  Passed AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently [< 1 ms]
+  Passed OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan [< 1 ms]
+  Passed OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock [< 1 ms]
+  Passed OptionalAnalysisTargetsOnlyReachableDisplayBoundary [< 1 ms]
+  Passed ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue [298 ms]
+  Passed UnsubmittedWarmupRepeatCannotCreateOutputOrEraseHistory [134 ms]
+  Passed HdrToneMappedSourceIsReusedAtOutputRate [431 ms]
+  Passed ExplicitCadenceRepeatReusesSubmittedPixelsAndLeavesNextTickUnchanged [535 ms]
+  Passed ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch [335 ms]
+  Passed OutputOverlayStaysLiveWhileSourceProcessingIsCached [282 ms]
+  Passed AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty [< 1 ms]
+  Passed ConfigurationReferenceMatchesPublicFieldInventory [110 ms]
+  Passed OldLutInputKeysRemainLoadableInTheirOriginalSections [< 1 ms]
+  Passed CanonicalRendererAcceptsDocumentedPeakAndCalibrationLutValues [6 ms]
+  Passed CalibrationMigrationPreservesDistinctSetsSelectorsAndArchiveCollisions [< 1 ms]
+  Passed CalibrationMigrationUsesLiteralRootAndPreservesMixedColorOverrides [< 1 ms]
+  Passed ColorCalibrationAliasesResolveBeforeInheritance [2 ms]
+  Passed CalibrationArchivesPassRuntimeValidationForTargetAndOlderFormats [4 ms]
+  Passed RendererConfigRejectsWrongCanonicalOwnership [1 ms]
+  Passed HdrToneMapTargetGammaAndTargetPrimariesValidateCanonicalAndOldKeys [< 1 ms]
+  Passed RendererConfigViewPreservesLegacyPrecedence [1 ms]
+  Passed RendererConfigViewWarnsOnlyForConsumedLegacySections [1 ms]
+  Passed RendererConfigViewRejectsCanonicalDisplayCoexistence [1 ms]
+  Passed RendererConfigViewRejectsPolicyKeyDuplicate [1 ms]
+  Passed MainConfigSchemaOwnsOnlyTheKnownLoggingKey [3 ms]
+  Passed RendererConfigViewReadsCanonicalNamespace [1 ms]
+  Passed MainConfigSchemaRejectsForeignAndIllTypedKeys [5 ms]
+  Passed MainConfigSchemaValidatesForegroundOnlyShortcutPolicy [2 ms]
+  Passed DvProfilesResolveModeAndPublishModeOnlyReloads [10 ms]
+  Passed LegacyLldvRootRemainsTheBaselineProfile [1 ms]
+  Passed QueueRecoveryUsesDefaultQueueAndRejectsLegacyDuplicates [4 ms]
+  Passed LldvProfilesUseOrderedSelectionAndInheritBaselineMetadata [3 ms]
+  Passed MainConfigSchemaAcceptsLegacyQueueNamesButRejectsAmbiguousAliases [9 ms]
+  Passed DirectShowSchemaOwnsAllRendererOverridesAndRejectsStartupKeys [4 ms]
+  Passed Vp0089NlsPlusNewParametersHaveBackwardCompatibleDefaults [1 ms]
+  Passed Vp0089AndVp0131InvalidAdvancedNlsSettingsAreRejected [6 ms]
+  Passed Vp0099TypedNlsDefaultsToExpansionOnly [6 ms]
+  Passed Vp0089AndVp0131TypedAdvancedNlsSettingsResolveForAlpha [1 ms]
+  Passed Vp0159ReorderedNlsFallbackSelectsFirstProfile [1 ms]
+  Passed Vp0099MaximumStretchRatioIsValidatedAndPublished [6 ms]
+  Passed Vp0159ShaderProfilesShareRulesWithoutInheritance [6 ms]
+  Passed Vp0159ShaderProfilesResolveRootBaseSelection [2 ms]
+  Passed Vp0079EmptyShaderRootResolvesAsExplicitOff [1 ms]
+  Passed Vp0097ProfileFileOrderIsPriorityAndRootShortcutSelectsDefault [1 ms]
+  Passed CheckedInVp0079ConfigurationPassesStartupSchemas [1 ms]
+  Passed AutomaticQueueRuleOverridesPersistedQueueSelection [10 ms]
+  Passed Vp0097LegacyViewportRootRetainsPrecedenceAndRejectsDefaultId [4 ms]
+  Passed AutomaticQueueProfilesMayUseRendererAndActualRefresh [6 ms]
+  Passed InvalidSourceContextRetainsCompatibleQueueInsteadOfPersistedMadVRFallback [1 ms]
+  Passed RenderingProfilesUseExactParsedNames [1 ms]
+  Passed Vp0097ShortcutKeyCombinesWithOptionalProfileRule [3 ms]
+  Passed Vp0097NamedViewportsUseFileOrderAndIgnoreLabels [1 ms]
+  Passed Vp0123InputProcessingChildIsNotADisplayProfile [2 ms]
+  Passed UnifiedActionsRejectUnknownRendererAliasAndLegacyScope [2 ms]
+  Passed Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline [1 ms]
+  Passed UnifiedActionsRejectValueEncodedEventNames [1 ms]
+  Passed UnifiedActionsRouteByBuiltInRendererAliasOrWildcard [1 ms]
+  Passed UnifiedActionsRejectArgumentVariableForWrongEvent [1 ms]
+  Passed ProfileChangeDisplayDurationIsBoundedAndLive [3 ms]
+  Passed EventActionArgumentsExpandAllSupportedValues [< 1 ms]
+  Passed StatsOsdSizePercentValidatesSharedRendererIngressAndRestarts [21 ms]
+  Passed StatsOsdWholePercentUiUsesRebasedDefaultAndSharedParsing [< 1 ms]
+  Passed LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload [< 1 ms]
+  Passed ScaleOsdBooleanIsValidatedAndRestartsEitherRenderer [5 ms]
+  Passed ProfileOverlayOmitsGroupsWithoutAChoice [< 1 ms]
+  Passed ProfileOverlaySkipsResolutionWhenSelectionsAreUnchanged [< 1 ms]
+  Passed ProfileOverlayIncludesQueueAndConfiguredNlsState [< 1 ms]
+  Passed ProfileOverlayDerivesShaderOffFromFilesNotNames [< 1 ms]
+  Passed ProfileActionCircuitBreakerBoundsRecursiveLaunches [< 1 ms]
+  Passed ProfileChangeOverlayUsesFriendlyOrderedLabels [< 1 ms]
+  Passed CoalescerReportsOnlyActualPendingReplacement [< 1 ms]
+  Passed RenderingFeedbackClassificationKeepsMixedAndCycleSelections [< 1 ms]
+  Passed CanceledActionCannotClaimNewSelectionAfterReload [< 1 ms]
+  Passed ScopeActionSurvivesOldRenderingFeedbackAndRepeatedSelections [17 ms]
+  Passed RenderingFeedbackRemainsSuppressedDuringScriptOnly [< 1 ms]
+  Passed DelayedActionCannotClaimReusedGenerationAfterCompletion [< 1 ms]
+  Passed PendingEventActionsCoalesceToNewestTrigger [< 1 ms]
+  Passed ScreenIntentSurvivesRunningProfileScript [< 1 ms]
+  Passed Vp0098RejectsRemovedSecondScreenAspect [1 ms]
+  Passed UnifiedActionsPublishCommittedSourceAndProfileEvents [6 ms]
+  Passed ZoomShortcutNeverChangesSelectedScreenProfile [11 ms]
+  Passed Vp0103VerticalAlignmentDefaultsValidatesAndPublishes [5 ms]
+  Passed ClassicSubtitleControlsResolveFromTheirOwnProfile [1 ms]
+  Passed SubtitleProfilesCycleIndependentlyAndIgnoreLegacyKnobs [1 ms]
+  Passed OffZoomHoldIsIndependentBoundedAndDefaultsToTwoSeconds [7 ms]
+  Passed SubtitleTextReductionIsOptionalBoundedAndMovedProfileOnly [2 ms]
+  Passed SubtitleSpatialCleanupModesValidateWithoutChangingLegacyChoices [< 1 ms]
+  Passed SubtitleBackgroundLayoutDefaultsValidationAndLiveProfilePolicy [2 ms]
+  Passed SubtitleHdrAnalysisOverridesLegacyZoomForEveryStyle [13 ms]
+  Passed ClassicSubtitleDefaultsRestoreDriftAndPreserveExplicitZero [2 ms]
+  Passed FreshConstructionDoesNotConsumeNewerOrChangedProfileIntent [< 1 ms]
+  Passed UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection [3 ms]
+  Passed RejectedQueueProfileResetSubmissionRestoresExactIdentity [< 1 ms]
+  Passed FreshDirectShowConstructionRequiresCompleteConsistentAudit [< 1 ms]
+  Passed UnifiedQueueProfileRestartPolicyUsesCommittedLatestQueueSelection [5 ms]
+  Passed FreshAlphaConstructionConsumesMatchingPendingProfileReset [< 1 ms]
+  Passed MainAndRendererSchemasAcceptOneCombinedConfig [1 ms]
+  Passed Vp0079OwnerVariantsPersistAndRestoreProfileState [4 ms]
+  Passed DisplayRecoveryDetectionIsStateFileScoped [1 ms]
+  Passed GeneralRecoveryToggleDefaultsBoundedAndValidatesBothModes [2 ms]
+  Passed MainConfigSchemaValidatesTargetOnlyDisplaySessionMode [1 ms]
+  Passed LegacyEqualsAssignmentsRemainReadable [1 ms]
+  Passed MainConfigSchemaUsesSharedTypedValidation [1 ms]
+  Passed CommandLineConfigOptionRejectsDuplicates [< 1 ms]
+  Passed ColonAssignmentsPreserveEqualityExpressions [1 ms]
+  Passed RendererConfigSelectionFollowsPrimaryConfig [< 1 ms]
+  Passed RendererConfigSelectionExplicitOverrideWins [< 1 ms]
+  Passed CommandLineConfigOptionRejectsMissingValue [< 1 ms]
+  Passed RendererConfigSelectionDefaultsToPrimaryConfig [< 1 ms]
+  Passed CommandLineConfigOptionAcceptsSeparateAndEqualsValues [< 1 ms]
+  Passed CommandLineConfigOptionIsCaseInsensitive [< 1 ms]
+  Passed DuplicateKeyWarnsAndLastValueWins [1 ms]
+  Passed DisplayRuleLutValuesPreserveBasePathAndBlankOverride [1 ms]
+  Passed IndexedShortcutKeyRejectsZeroAndMalformedValues [< 1 ms]
+  Passed IndexedShortcutKeyRejectsOverflow [< 1 ms]
+  Passed LegacyRendererPolicyDefaultsToHiddenAndAcceptsExplicitFalse [1 ms]
+  Passed LegacyRendererPolicyFallsBackToHiddenForMalformedValue [< 1 ms]
+  Passed IndexedShortcutKeyParsesOneBasedIndex [< 1 ms]
+  Passed DeckLinkCapturePackingFallsBackWhenDeviceRejectsPreference [< 1 ms]
+  Passed DeckLinkCapturePackingSchemaRejectsInvalidDepthVariant [< 1 ms]
+  Passed DeckLinkCapturePackingConfigurationExposesEveryRgbVariant [3 ms]
+  Passed DeckLinkCapturePackingDefaultsRemainCanonical [< 1 ms]
+  Passed DeckLinkEightBitYuvUsesHdycOnlyForRec709 [< 1 ms]
+  Passed VideoOnlyFillsClientWithoutChangingOuterWindowBounds [< 1 ms]
+  Passed VideoOnlyImmediatelyReflowsVideoBoundsInBothDirections [< 1 ms]
+  Passed ModernOperatorPreviewStaysBoundedAtTwoHundredPercentDpi [< 1 ms]
+  Passed NoUiVideoGeometryIsSixteenByNineAtDefaultAndMinimum [< 1 ms]
+  Passed ModernCapturedVideoNeverLeaksTemplatePlaceholders [< 1 ms]
+  Passed ModernOperatorPreviewRemainsSixteenByNineWhenResized [< 1 ms]
+  Passed ModernOperatorLayoutScalesApprovedGeometryWithDpi [< 1 ms]
+  Passed ModernOperatorHeaderControlsAreCompactAndDpiAligned [< 1 ms]
+  Passed ApplicationInterfaceNoUiSuppressesInvalidSelection [< 1 ms]
+  Passed ModernOperatorLayoutMatchesApprovedDefaultGeometry [< 1 ms]
+  Passed ApplicationInterfaceValuesAreCaseInsensitiveAndTrimmed [< 1 ms]
+  Passed ApplicationInterfaceDuplicateOptionWarnsAndUsesConfiguration [< 1 ms]
+  Passed ApplicationInterfaceMissingCommandLineValueFallsBackToModern [< 1 ms]
+  Passed ApplicationInterfaceNoUiAlwaysWins [< 1 ms]
+  Passed ApplicationInterfaceCommandLineOverridesConfiguration [< 1 ms]
+  Passed ApplicationInterfaceInvalidCommandLineFallsBackToConfiguration [< 1 ms]
+  Passed ApplicationInterfaceDefaultsToModern [< 1 ms]
+  Passed ApplicationInterfaceConfigurationSelectsEitherUi [< 1 ms]
+  Passed VideoOnlyRetainsForegroundEscapeShortcuts [< 1 ms]
+  Passed WindowCloseAlwaysAdvancesSafeShutdown [< 1 ms]
+  Passed FullscreenToggleUsesRequestedAndEffectiveState [< 1 ms]
+  Passed RightAltFullscreenAndModifiedEnterAreFailSafe [< 1 ms]
+  Passed ShortcutTableStagesWithoutRendererRestart [< 1 ms]
+  Passed ConfigurationPublicationPreservesTransientPresentation [< 1 ms]
+  Passed OmittedHardwareSelectionsUseFirstDiscoveredValues [< 1 ms]
+  Passed FailedReloadRestoresAcceptedRendererSelection [< 1 ms]
+  Passed PpmNumericSentinelDoesNotEnableAutomaticMode [5 ms]
+  Passed FrameOffsetAutoAndOmissionUseStableDefault [< 1 ms]
+  Passed NamedBaseIdentityAndRootCollision [4 ms]
+  Passed ConfigurationEditorOwnerSurvivesMissingOrChangingRenderer [< 1 ms]
+  Passed FreshRendererConsumesLatchedRestartIntent [< 1 ms]
+  Passed ConfigurationBoundaryDefersRendererForNewerCaptureState [< 1 ms]
+  Passed ConfigurationEditorUsesNativeOwnerWithoutRuntimePolling [44 ms]
+  Passed ModernBackgroundAndConfigurationModalPoliciesAreFailSafe [< 1 ms]
+  Passed AlphaHostReconstructionRevealsOnlyCurrentGenerationAndTarget [< 1 ms]
+  Passed SessionRendererSelectionSurvivesLifecyclePublication [< 1 ms]
+  Passed GlobalShortcutPolicyAllowsBareKeysOutsideConfig [< 1 ms]
+  Passed ConfigurationEditorRevealIntentSurvivesColdStartupTransitions [< 1 ms]
+  Passed ConfigurationEditorActivationAckBreaksReverseCallbackCycle [< 1 ms]
+  Passed ConfigurationEditorShortcutAlwaysStartsFreshReveal [< 1 ms]
+  Passed ConfigurationEditorStaleHandleRediscoveryIsBounded [< 1 ms]
+  Passed ModernOperatorBuildIdentityUsesBranchForCleanBuildsAndCommitForDirtyBuilds [< 1 ms]
+  Passed FullscreenActivationNeverStealsAnotherProcessForeground [< 1 ms]
+  Passed VideoConversionOverrideAcceptsConfiguredDisabledValues [< 1 ms]
+  Passed SharedRefreshPolicyDoesNotWarnAsLegacyRendererPolicy [2 ms]
+  Passed ProfileSnapshotsReuseAcceptedConfigurationUntilExplicitReload [8 ms]
+  Passed StartupOwnershipAcceptsOldAndSavedOutputArchivesButRejectsUnknownSections [7 ms]
+  Passed BackendInputSettingsRemainScoped [21 ms]
+  Passed UnifiedColorOutputMigrationPreservesEveryBaselineSettingAndArchivesSelectors [< 1 ms]
+  Passed UnifiedColorOutputRuntimeMigrationRetainsRulesAndRejectsMalformedProfiles [2 ms]
+  Passed ManualQueueSelectionUsesSavedSectionIdWithoutShortcut [2 ms]
+  Passed ManualProfileAndActionCommandsUseSavedRuntimeModel [1 ms]
+  Passed SubstringRuleRuntimeRefreshAndManualSelection [3 ms]
+  Passed ConfiguredCountsKeepExactIndexedBoundariesAndLegacyAgesOut [65 ms]
+  Passed RetentionOneKeepsActiveAndPrunesIndexedArchives [1 ms]
+  Passed SparseIndexedArchivesPruneTheOccupiedShiftDestination [9 ms]
+  Passed ArchiveRenameFailureContinuesInExistingActiveLog [1 ms]
+  Passed LockedArchiveDoesNotOverwriteActiveLog [4 ms]
+  Passed MissingLogsDirectoryIsCreatedOnFirstRun [1 ms]
+  Passed RepeatedRotationCreatesNewestFirstIndexedArchives [5 ms]
+  Passed ArchiveMatcherRecognizesIndexedAndLegacyFilesOnly [< 1 ms]
+  Passed FirstRunCreatesStableActiveLog [< 1 ms]
+  Passed InvalidZeroNegativeOverflowAndTextUseTen [< 1 ms]
+  Passed DuplicateAndUnreadableConfigurationUseTen [< 1 ms]
+  Passed OmittedSettingUsesTen [< 1 ms]
+  Passed ValidMinimumNormalAndMaximumValuesAreAccepted [< 1 ms]
+  Passed MissingLogsDirectoryIsCreated [< 1 ms]
+  Passed TransportAppendPreservesRotatedAndUnrelatedLogFiles [3 ms]
+  Passed ExternalSinkKeepsFormattedModuleForwardingAndTruncation [< 1 ms]
+  Passed ProductionFileSinkWritesOneCompleteMaximumSizedBatch [17 ms]
+  Passed ReopeningStartsAnIndependentSessionWithResetMetrics [< 1 ms]
+  Passed SparseTrafficCoalescesWritesAndFlushesWithBoundedScratch [319 ms]
+  Passed ConcurrentConsumerRecyclesNodesWithoutLosingOrDuplicatingAcceptedMessages [1 ms]
+  Passed SimultaneousProducersRetainEveryRecordWhenPoolHasRoom [2 ms]
+  Passed FinalFlushRejectsLateProducersWithoutWaitingForDisk [< 1 ms]
+  Passed ConcurrentProducersAccountForEveryAcceptedRecordAndDrop [< 1 ms]
+  Passed PeriodicFlushDoesNotOwnProducerLock [260 ms]
+  Passed ShutdownDrainsAcceptedRecordsAndRejectsLaterPublication [< 1 ms]
+  Passed BatchFlushDoesNotOwnProducerLock [252 ms]
+  Passed ShutdownWaitsForAlreadyReservedProducerAndDrainsItsMessage [31 ms]
+  Passed SlowDiskWriteCannotBlockProducersOrGrowTheQueue [< 1 ms]
+  Passed PausedProducerDoesNotBlockOtherPublicationOrDrain [< 1 ms]
+  Passed OnlyRealCapacityExhaustionDropsAndPreservesAcceptedRecords [< 1 ms]
+  Passed RecordsOwnProducerTextAndCaptureTimestamp [< 1 ms]
+  Passed DenseVisibleExtentChecksBudgetBeforeReturningCompletedRetention [< 1 ms]
+  Passed SuppliedRetentionKeepsInvalidSourceAndBaseBehavior [< 1 ms]
+  Passed SuppliedExactMeasurementsPreserveAllRetentionValuesAndSampleTotals [3 ms]
+  Passed CancelledSuppliedRetentionCannotPublishPartialSafetyAndMandatoryRetryWorks [< 1 ms]
+  Passed CancelledRawExtractionCannotReturnBlackOrPartialAuthorityAndMandatoryRetryWorks [< 1 ms]
+  Passed CancelledGlobalGridCannotReturnNearBlackEvidenceAndMandatoryRetryWorks [< 1 ms]
+  Passed ExplicitBudgetCancellationIsStickyAndNeverReadsClockAgain [< 1 ms]
+  Passed NonExpiredBudgetPreservesRawGlobalAndDarknessEvidence [< 1 ms]
+  Passed BufferedProofInvalidatedByDiscardOrLaterContinuityReset [< 1 ms]
+  Passed AcceptedSequenceGapBreaksSpeculativeBackdating [< 1 ms]
+  Passed BacklogRetirementCanCrossKnownDequeuedPendingSource [< 1 ms]
+  Passed BacklogRetirementRejectsUnknownOrMixedContinuity [< 1 ms]
+  Passed BufferedProofRequiresExactPendingContiguousIdentities [< 1 ms]
+  Passed BacklogRetirementProvesOnlyTheExactMissingSourceRange [< 1 ms]
+  Passed RequestIsClampedBySafeAvailabilityAndMaximum [< 1 ms]
+  Passed BufferedProofCannotStampOverRecordedSourceDiscontinuity [< 1 ms]
+  Passed OlderAcceptedFrameCanBeAnalyzedAfterNewerFramesArrive [< 1 ms]
+  Passed DiscardedCandidateCannotReceiveFutureConfirmation [< 1 ms]
+  Passed StaleTransportGenerationIsRejectedWithoutRollback [< 1 ms]
+  Passed DuplicateObservationCannotConfirmATransition [< 1 ms]
+  Passed ExactProofDoesNotChangeTransitionDecisionSetOrOrder [< 1 ms]
+  Passed InitialBarAcquisitionCannotBackdateFromImplicitFullRaster [< 1 ms]
+  Passed DelayedPreviewCannotRebuildProofAcrossDiscontinuity [< 1 ms]
+  Passed ConflictingDuplicateEvidenceIsRejected [< 1 ms]
+  Passed DiscardAtTargetAndTransportResetInvalidateQueuedDecision [< 1 ms]
+  Passed InvalidDecisionCannotBeResurrectedByLaterBoundary [< 1 ms]
+  Passed LookaheadZeroCrossingCannotReuseStaleCandidate [< 1 ms]
+  Passed LaterContinuityWiringPathsPreserveEarlierProvenDecision [< 1 ms]
+  Passed LookaheadDepthChangesFromFiveInvalidateQueuedDecision [< 1 ms]
+  Passed LookaheadDepthChangePreservesVotesCadenceAndProofEvidence [< 1 ms]
+  Passed LeftRightExactInwardProofBackdatesCandidate [< 1 ms]
+  Passed LaterContinuityBreakPreservesEarlierProvenDecision [< 1 ms]
+  Passed OrthogonalInsetCannotUseSingleAxisInwardProof [< 1 ms]
+  Passed MixedDirectionCropCannotUseExactInwardProof [< 1 ms]
+  Passed BothAxesCropCannotPublishAsInnerComposition [< 1 ms]
+  Passed InwardProofRequiresExactBoundsRasterAndAxes [< 1 ms]
+  Passed InwardProofRequiresConfiguredAndAvailableLead [< 1 ms]
+  Passed InwardProofRequiresEveryAcceptedFrameEvidence [< 1 ms]
+  Passed InwardProofRejectsUntrustedAndNearBlackFrames [< 1 ms]
+  Passed ExactInwardProofBackdatesRecordedEternalsReplay [< 1 ms]
+  Passed UnscheduledEvidenceCannotAddAConfirmationVote [< 1 ms]
+  Passed ScheduledCadenceGapsRemainEligibleForLookahead [< 1 ms]
+  Passed InwardCropCannotBackdateAcrossUnknownFrames [< 1 ms]
+  Passed BufferedConfirmationBackdatesToPendingCandidate [< 1 ms]
+  Passed ConsumedCandidateCannotBeBackdated [< 1 ms]
+  Passed ZeroLookaheadPublishesAtObservationIdentity [< 1 ms]
+  Passed ZeroLookaheadMatchesTransitionModelDecisions [< 1 ms]
+  Passed ScheduledDecisionRejectsMismatchedOrProvisionalBounds [< 1 ms]
+  Passed RuntimeIdentityMatchRequiresEveryQueueEpochField [< 1 ms]
+  Passed ScheduledDecisionAcceptsOnlyCurrentTrustedContext [< 1 ms]
+  Passed ScheduledDecisionRejectsStaleFormatViewportAndRenderer [< 1 ms]
+  Passed GeometryReacquisitionInvalidatesOldPreviewButKeepsAcceptedQueue [< 1 ms]
+  Passed FullRasterBufferedProofRetainsGeometryDeadbandAndDoesNotMutateLiveHistory [< 1 ms]
+  Passed AmbiguousCutFrameOrSecondCutCannotSupplyConfirmation [< 1 ms]
+  Passed CutFrameStartsFreshProofAndCountsOnce [< 1 ms]
+  Passed BufferedLiveReferenceCannotCrossSourceFormatOrViewportReset [< 1 ms]
+  Passed FullBaseExceptionDoesNotPermitUntrustedPartialOrCrossAxisBounds [< 1 ms]
+  Passed FullRasterCanonicalizationKeepsTinyMeasurementNoiseOutOfAuthority [< 1 ms]
+  Passed BufferedFullRasterProofKeepsAllEvidenceAndIdentityVetoes [< 1 ms]
+  Passed FullRasterProofRequiresTwoRealFramesAndAvailableBudget [< 1 ms]
+  Passed OrdinaryTimelineFullRasterReturnRequiresCompletePendingEvidence [< 1 ms]
+  Passed OrdinaryFullRasterProofCannotSkipContradictoryOrMissingIntermediateFrames [< 1 ms]
+  Passed BufferedFullRasterReturnAppliesToFirstEligibleFrameOnBothAxes [< 1 ms]
+VP-0188: real renderer initialized; 10 HDR withdrawal/restoration cycles, profile F4, and explicit reload passed with zero renderer config disk reads.
+
+  Passed ShutdownFinalizationHasExplicitProxyOverride [< 1 ms]
+  Passed OptionalRendererUsesOnePrivateDependencyDirectory [4 ms]
+  Passed ActivePictureLookaheadHasExplicitProxyOverride [< 1 ms]
+  Passed RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads [157 ms]
+  Passed AspectOsdMapsEveryNamedFormat [< 1 ms]
+  Passed AspectOsdSnapsAtOnePercentAndHoldsAmbiguousChanges [< 1 ms]
+  Passed BetaUsesSeparatePluginAndRuntimeNames [< 1 ms]
+  Passed BootstrapResetCannotAcquireFromPausedFrameDuplicates [< 1 ms]
+  Passed DeadbandCannotBeRaisedBeyondFivePercent [< 1 ms]
+  Passed SceneCandidateResetPreservesStableButCannotBridgeConfirmation [< 1 ms]
+  Passed MinorTrustedGeometryChangeStaysWithinTwoPercentDeadband [< 1 ms]
+  Passed TrustedGeometryBeyondAspectDeadbandStillTransitions [< 1 ms]
+  Passed TwoThirtyFiveAndOneNinetyCanTransitionInBothDirections [< 1 ms]
+  Passed TwoTwentyAndTwoThirtyFiveTransitionBothWaysAtFivePercent [< 1 ms]
+  Passed AspectDeadbandPreservesMaterialImaxAndFullRasterTransitions [< 1 ms]
+  Passed TwoTwentyAndOneFortyThreeCanTransitionInBothDirections [< 1 ms]
+  Passed RememberedWindowboxCannotBypassCompositionHold [2 ms]
+  Passed FailedReplayAllSidedInsetNeverReplacesTrustedMovieFrame [< 1 ms]
+  Passed RecentHistoryCannotBypassEstablishedAspectDeadband [< 1 ms]
+  Passed AllSidedInsetRetainsFramingButExpansionAndTranslationProceed [< 1 ms]
+  Passed AspectDeadbandUsesAcceptedPixelsWithoutRollingDrift [< 1 ms]
+  Passed WomenInBlueThreePercentSameAxisChangeRetainsEstablishedFormat [< 1 ms]
+  Passed QueuedInitialAndAxisReferencesCannotBeInvented [< 1 ms]
+  Passed QueuedPublicationCannotBypassEitherLiveDeadband [< 1 ms]
+  Passed GeometryTransitionInquiryDoesNotAdvanceProofInEitherDirection [< 1 ms]
+  Passed QueuedPublicationRequiresTheExactLiveStableReference [< 1 ms]
+  Passed OutwardReferenceEquivalenceStillHonorsLiveGeometryDeadband [< 1 ms]
+  Passed GeometryTransitionInquiryPreservesDeadbandsAndAuthority [< 1 ms]
+  Passed OutwardReferenceToleranceCannotHideDifferentHistoryOrInwardCrop [< 1 ms]
+  Passed OutwardReferenceEquivalencePreservesAdmissionVetoes [< 1 ms]
+  Passed FixedImaxAndFourByThreeControlsRemainStableWithNoise [< 1 ms]
+  Passed LoggedOutwardPublicationAcceptsOneScanStepReferenceDifference [< 1 ms]
+  Passed RecordedFalseCandidateSequenceCannotContractFullRaster [< 1 ms]
+  Passed OscillatingClearCandidatesPreserveStableGeometry [< 1 ms]
+  Passed FullRasterTransitionRetainsStableCropUntilConfirmed [< 1 ms]
+  Passed AsymmetricCandidateCannotCropEitherSide [< 1 ms]
+  Passed ResetClearsAnAtomicCurrentGenerationPublication [< 1 ms]
+  Passed FullRasterIsImmediateSafeStartupAuthority [< 1 ms]
+  Passed WorkerRestartResetRepublishesUnchangedTrustedGeometry [< 1 ms]
+  Passed ResetBetweenAnalysisAndPublicationRejectsOldGeneration [< 1 ms]
+  Passed RecentTrustedGeometryExpiresAfterThreeNewModes [< 1 ms]
+  Passed ResetDiscardsPreviouslyTrustedGeometry [< 1 ms]
+  Passed PreviouslyTrustedGeometryReacquiresOnAdjacentFrames [< 1 ms]
+  Passed RecentTrustedGeometryRecursAcrossThreeAspectModes [< 1 ms]
+  Passed DarkCenterCreditsAndUnavailableFramesDoNotChangeMode [< 1 ms]
+  Passed AmbiguousSustainedTransitionNeverAcquiresCropAuthority [< 1 ms]
+  Passed SubtitleLogoAndEdgeIntrusionsDoNotChangeMode [< 1 ms]
+  Passed PersistentLocalizedOverlayNeverBecomesProgramAspect [< 1 ms]
+  Passed ProvisionalRecentWindowboxCannotOverrideEstablishedScope [1 ms]
+  Passed BriefBlackFadePreservesLastStableMapping [< 1 ms]
+  Passed ThreeSecondNestedWindowboxBlipRetainsScopeAtEveryFrameRate [1 ms]
+  Passed PersistentAllSidedWindowboxRetainsEstablishedScope [4 ms]
+  Passed InitialGeometryRequiresFourConsistentObservations [< 1 ms]
+  Passed ClearScopeImaxCutsRequireTwoTrustedObservations [< 1 ms]
+  Passed RecentTrustedCommitUsesCurrentAuthorityButPreservesProvisionalCanonicalBounds [< 1 ms]
+  Passed CurrentHistoryCoordinateSubstitutionPreservesLiveDeadbandVeto [< 1 ms]
+  Passed InitialGeometryConfirmationPublishesCurrentPixelCertificate [< 1 ms]
+  Passed CurrentCommitCoordinatesDoNotWalkUnconfirmedCandidateAnchor [< 1 ms]
+  Passed ConfirmedGeometryPublishesCurrentTrustedCoordinatesOnlyAtCommit [< 1 ms]
+  Passed AnalysisCadenceIsNormalizedAcrossFrameRateFamilies [< 1 ms]
+  Passed AnalysisCadenceRejectsRepeatedOrOutOfOrderSourceSequence [< 1 ms]
+  Passed LookaheadPublicationBecomesTheLiveStableGeometry [< 1 ms]
+  Passed LookaheadCannotInjectProvisionalGeometry [< 1 ms]
+  Passed InitiallyAcquiredWindowboxRejectsSmallAlternatingEdgeNoise [< 1 ms]
+  Passed NovelCandidateCannotInheritRecentGeometryAuthority [< 1 ms]
+  Passed MovingInsetReturningWithinAspectBandDoesNotPublishAtOldTimer [< 1 ms]
+  Passed ContainedInsetStaysHeldAcrossMissingEvidenceAndSceneReset [< 1 ms]
+  Passed WomenInBlueFourPixelNoiseDoesNotPublishAnAspectChange [4 ms]
+  Passed MaterialMovingAllSidedInsetRetainsEstablishedFraming [< 1 ms]
+  Passed ResetRestartsTheSparseAnalysisSchedule [< 1 ms]
+  Passed UnavailableP010FrameProducesOneDeterministicObservation [< 1 ms]
+  Passed NativeRowLimitFastPathMatchesEverySourceSample [< 1 ms]
+UHD native strip certificate: samples=2096896 elapsed_ms=7.581
+  Passed UhdStripCertificateHasBoundedNativeSampleCount [28 ms]
+  Passed ExactCurrentTopStripAndWholeRowBudgetAreConservative [1 ms]
+  Passed AmbiguousStripScanNeverRunsForPendingHeldOrWorkLimitedEvidence [< 1 ms]
+  Passed ExactCurrentClearStripProvesRemovedRowsIndependentOfAdvancedPose [3 ms]
+  Passed ExactCurrentClearStripRejectsTinyInkColorAndWrongProvenance [4 ms]
+  Passed ColorCorroborationNativeV210MatchesPlanarSamples [1 ms]
+  Passed ColorCandidateCannotDistinguishNearIdenticalNoisyBars [< 1 ms]
+  Passed ColorCorroborationP010AndP210AgreeOnDistributedDetail [< 1 ms]
+  Passed ColorCorroborationRejectsNoisyTintedBarsWithInteriorBoundary [< 1 ms]
+Set VP_DARK_AR_ANALYSIS_FRAME to run the captured dark-scene diagnostic.
+  Passed ColorCorroborationRejectsUnknownAndEightBitPrecision [< 1 ms]
+  Passed ColorCorroborationRejectsInvalidSourceAndCentralLogo [< 1 ms]
+  Passed NearBlackEpisodeBlocksOnlyNewBarCropAuthority [< 1 ms]
+  Passed ColorCorroborationRejectsUniformNeutralAndTintedDarkFrames [< 1 ms]
+  Passed ArDarknessExceptionRejectsTitlesCreditsUniformFadesNoiseAndInvalidProof [9 ms]
+  Passed OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture [< 1 ms]
+  Passed DistributedDarkPictureRequiresNativeBarsAndMatchesP010P210AndDv [3 ms]
+  Passed DistributedDarkPictureReleasesOnlyEstablishedGeometryFromDarkSuppression [1 ms]
+  Passed FullRangeRgbAndDvDarkScopePreservePresentationLikeLimitedYuv [6 ms]
+  Passed FullRangeRgbAndDvSparseTitlesKeepNearBlackBootstrap [3 ms]
+  Passed GlobalNearBlackCutoffTracksDeclaredTenBitRange [< 1 ms]
+  Passed FullRangeBlackFadeAndSparseTitleStayNearBlack [< 1 ms]
+  Passed GlobalNearBlackIsEvaluatedWithoutTrustedPresentation [< 1 ms]
+  Passed InvalidSourceCannotProveNearBlackOrPixelSafety [< 1 ms]
+  Passed NearBlackFrameCannotReplaceRetainedPresentationGeometry [< 1 ms]
+  Passed IsolatedTopBarNoiseCannotAuthorizeAnOutwardEnvelope [< 1 ms]
+  Passed AllBlackFrameIsValidNearBlackWithoutGeometry [< 1 ms]
+  Passed FourKSmallTranslucentTopControlIsStillBounded [21 ms]
+  Passed BottomAndSideOverlaysExpandOnlyTheirOccupiedEdges [< 1 ms]
+  Passed NativeP210TopOverlayUsesTheSameOutwardFitPolicy [< 1 ms]
+  Passed NativeP210ScopeUsesTheSameAxisAuthorityContract [< 1 ms]
+  Passed NarrowTopOverlayProducesMinimalOutwardVisibleEnvelope [< 1 ms]
+  Passed PersistentFullWidthTopOverlayCannotBecomeProgramAspect [< 1 ms]
+  Passed LogoRetentionStillRejectsRealExpansionAndInvalidPixels [22 ms]
+  Passed ColoredOrVisibleExcludedBandsRejectRetention [< 1 ms]
+  Passed BrightLogoWithoutAcquisitionGeometryKeepsEstablishedCrop [26 ms]
+  Passed UnavailableLogoGeometryCannotHideVisibleMarginContent [24 ms]
+  Passed DiagnosticGridPreservesSubtleBlackAndChromaDifferences [76 ms]
+  Passed DiagnosticGridIsBoundedAndRejectsInvalidSource [15 ms]
+  Passed NearBlackOutwardEntryRecoversOnlyPixelSafeEstablishedPicture [23 ms]
+  Passed ContainedDarkProvisionalFrameRetainsWithoutInnerContrast [< 1 ms]
+  Passed ProvisionalSamplingProofCanResolveLatchedInspectionWithoutCropAuthority [26 ms]
+  Passed CleanScopeBarsAreSafeForTrustedPresentationRetention [< 1 ms]
+  Passed ProvisionalScanStepCanCompleteExistingRecoveryWithCurrentPixelProof [21 ms]
+  Passed ProvisionalSamplingRecoveryRejectsStaleUnsafeOrDifferentContext [21 ms]
+  Passed ProvisionalScanStepIsResolutionScaledAndRequiresTrustedBars [36 ms]
+  Passed AgencyTreeSamplingRetainsOneStepAtEachVerticalEdge [22 ms]
+  Passed BrightOneStepBorderMustNotCauseFullFrameWithdrawal [21 ms]
+  Passed ProvisionalSamplingToleranceDistinguishesEdgePixelsFromLargerExpansion [98 ms]
+  Passed ProvisionalOneScanStepRetainsPixelSafeScope [49 ms]
+  Passed ProvisionalScanStepDoesNotArmInspectionOrRecovery [21 ms]
+  Passed AgencyTreeSamplingKeepsScopeThroughInspectionAndRecovery [151 ms]
+  Passed AgencyTreeSamplingStillRejectsOutwardSidesAndLargerVerticalChanges [70 ms]
+  Passed PartialProposalNativeV210MatchesPlanarStripProof [93 ms]
+  Passed PartialProposalRecoveryRequiresExplicitFreshProofForExactContract [26 ms]
+  Passed PartialProposalRejectsLargerExpansionOutwardSidesAndUntrustedBase [51 ms]
+  Passed PartialProposalProofSurvivesNearBlackExitAndExpiredInspectionWithoutNewAcquisition [47 ms]
+  Passed PartialProposalSafeOutwardStripRetainsOnlyEstablishedGeometry [155 ms]
+  Passed PartialProposalOutwardStripConflictMustNotInheritOldBorderTolerance [289 ms]
+  Passed ContainedInspectionRejectsUnknownStaleUnsafeAndCompetingContracts [70 ms]
+  Passed ContainedInspectionKeepsCurrentOsdAndGenuinelyTallerPictureVisible [128 ms]
+  Passed ContainedInspectionUnsafeInterruptionRestartsAllSevenRecoveryVotes [138 ms]
+  Passed AdversarialBlackFrameStaysInsideFixedLumaBudget [29 ms]
+  Passed ContainedInspectionResolvesLatchButKeepsNormalSevenFrameRecovery [55 ms]
+  Passed DarkArtworkDoesNotBecomeTrustedBars [< 1 ms]
+  Passed RejectsShortPlaneAndInvalidPitchWithoutReadingPastBounds [< 1 ms]
+  Passed SmallImaxStyleBarsRequireAndPassBoundaryEvidence [< 1 ms]
+  Passed AsymmetricOrColoredEdgeCannotAuthorizeCrop [< 1 ms]
+  Passed SourceBakedSideControlExpandsTheMeasuredPillarEnvelope [< 1 ms]
+  Passed TrustedVerticalBarsIgnoreUntrustedHorizontalArtwork [< 1 ms]
+  Passed WindowboxCarriesIndependentAuthorityForBothAxes [< 1 ms]
+  Passed SourceBakedTopControlExpandsTheMeasuredScopeEnvelope [< 1 ms]
+  Passed DarkCinematicScopeFrameKeepsTrustedBars [45 ms]
+  Passed FourByThreePillarboxIsTrusted [< 1 ms]
+  Passed StartupBottomSubtitleRecoversSymmetricScopeHypothesis [< 1 ms]
+  Passed StartupHypothesisRejectsBroadOneSidedPictureExpansion [< 1 ms]
+  Passed GeneratedFramesGateOutwardLogicalAspectOnBroadOpposingPicture [< 1 ms]
+  Passed ScopeBarsHaveTrustedOpposingLumaAndChromaEvidence [< 1 ms]
+  Passed GeneratedFramesCertifyExactInwardProofAndNearBlackVeto [< 1 ms]
+  Passed FullRasterIsTrustedImmediately [< 1 ms]
+  Passed MovingSparseStarsInsideKnownLetterboxNeverChangePresentation [42 ms]
+  Passed OutsideStarsWithdrawImmediatelyAndLetterboxReturnNeedsFreshProof [36 ms]
+  Passed InternalDividerDoesNotBecomeAnOuterCropEdge [12 ms]
+  Passed SparseFullHeightStarsCannotAcquireAnInsetCropAtStartup [20 ms]
+  Passed SubtitleAndSparseStarsCannotCertifyAnExpandedPictureStrip [53 ms]
+  Passed GradualPictureExpansionUsesNewStripRatherThanWholeOldBar [33 ms]
+  Passed RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof [11 ms]
+  Passed PublishedGeometryGetsSameFramePixelEvidenceBeforeCropEvaluation [48 ms]
+  Passed PixelMeasuredMarginsReplaceOnlyUncertifiedPresentationAxes [13 ms]
+  Passed AsymmetricBlackMarginsCannotPromoteAllSidedInsetThroughRealPixelExtraction [101 ms]
+  Passed FailedBarEvidenceCannotReenterThroughHistoryQueueOrPreview [8 ms]
+  Passed PixelMultiAspectRoundTripsRemainEligibleWithAxisMetadata [135 ms]
+  Passed VerifiedVerticalPermissionDoesNotAuthorizeUnresolvedHorizontalRemoval [94 ms]
+  Passed AxisMetadataDistinguishesBarsFullExtentUnknownAndUnfinishedScan [9 ms]
+  Passed SidePictureInwardQueueRequiresFreshProofInEveryFrame [4 ms]
+  Passed SidePictureProbeUsesNativeP210Luma [2 ms]
+  Passed DistributedSidePictureAdmitsOnlyVerifiedFullWidthVerticalCrop [11 ms]
+  Passed VerifiedVerticalCropPreservesSideLogosBordersAndDimMargins [9 ms]
+  Passed UhdGuardedScopeHasSameExactApertureAtStartupLiveAndQueuedTransition [147 ms]
+  Passed SideZoneTelemetryStaysIndependentOfVerifiedVerticalPermission [6 ms]
+Rejected two-step fringe floor=1 P210=0 upper=0 scenario=0 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=1 P210=0 upper=0 scenario=1 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=192
+Rejected two-step fringe floor=1 P210=0 upper=0 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=0 upper=0 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=0 upper=1 scenario=0 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=0 upper=1 scenario=1 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=0 upper=1 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=0 upper=1 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=0 scenario=0 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=1 P210=1 upper=0 scenario=1 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=1 P210=1 upper=0 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=0 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=1 scenario=0 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=1 scenario=1 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=1 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=1 P210=1 upper=1 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=0 scenario=0 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=64 P210=0 upper=0 scenario=1 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=192
+Rejected two-step fringe floor=64 P210=0 upper=0 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=0 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=1 scenario=0 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=1 scenario=1 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=1 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=0 upper=1 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=0 scenario=0 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=64 P210=1 upper=0 scenario=1 classification=2 raw=excluded-bands-clean raw_deep=0 guard=excluded-band-profile-mismatch guard_mismatches=96
+Rejected two-step fringe floor=64 P210=1 upper=0 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=0 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=1 scenario=0 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=1 scenario=1 classification=2 raw=excluded-band-profile-mismatch raw_deep=96 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=1 scenario=2 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Rejected two-step fringe floor=64 P210=1 upper=1 scenario=3 classification=3 raw=not-required raw_deep=0 guard=not-required guard_mismatches=0
+Two-step source floor=1 format=0 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+  Passed UhdTwoStepGuardRejectsDeeperContentAndSubtitleOcclusion [1 s]
+  Passed NativeOwnBoundaryProofPreservesEightRealPictureRowsOutsideSavedCrop [25 ms]
+Two-step source floor=1 format=0 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=0 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=1 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=1 format=2 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=0 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=1 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=0 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=0 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=0 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=0 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=1 fringe=0 bounds=268..1892 raw=excluded-bands-clean guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=1 fringe=4 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=1 fringe=6 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+Two-step source floor=64 format=2 upper=1 fringe=8 bounds=268..1892 raw=excluded-band-profile-mismatch guard=excluded-bands-clean
+  Passed UhdTwoStepGuardRetainsNativeBoundaryFringeAcrossAnalysisFormats [1 s]
+  Passed StartupCaptionFallbackKeepsOneScanStepPictureFringeAllowance [137 ms]
+  Passed StartupModelDoesNotAcquireMirroredBroadPictureButKeepsBarsAndCaptionAcquisition [204 ms]
+  Passed LocalizedStartupCaptionCanHaveTwoIndividuallyTrustedEdges [139 ms]
+  Passed StartupFallbackPreservesGapSeparatedShallowFullWidthOverlay [137 ms]
+  Passed StartupSymmetryCannotCropBroadConnectedPictureAtOppositeBoundary [144 ms]
+  Passed NativeVerticalSymmetryKeepsExistingEightPixelAllowanceAtFourK [100 ms]
+  Passed DisconnectedInternalBlackDeskLineDoesNotBecomeAnOuterBar [45 ms]
+  Passed NeutralUnequalTopBottomExtentsCannotGainNativeVerticalAuthority [140 ms]
+  Passed CenteredBarsAndLocalizedStartupCaptionRemainSupportedAcrossPaddedFormats [80 ms]
+  Passed LoneDarkDeskAtBottomCannotCreateOpposingBarsAcrossPaddedFormats [44 ms]
+  Passed HardEdgeRefinementDoesNotInventBarsOnFullOrBlackFrames [142 ms]
+  Passed GenuineSymmetricBarsAgreeWithVisibleExtentSafety [46 ms]
+  Passed OddHardEdgesPreservePictureWithSubsampledChromaAtBothAxes [95 ms]
+  Passed HardEdgeRefinementReservePreservesEvidenceAfterLongCoarseSearch [66 ms]
+  Passed HardEdgeAlignedBarsRemainPreciselyAcquiredAndRetained [73 ms]
+  Passed HardEdgePillarBarsRemainSafeAcrossHorizontalScanPhases [254 ms]
+  Passed HardEdge42PixelBarsDoNotAcquirePictureClippingCrop [48 ms]
+  Passed HardEdgeBarsRemainSafeAcrossVerticalScanPhasesAndResolutions [235 ms]
+Relative contrast 4K P010 samples=5568 average_us=145.715 (informational; no timing threshold)
+Relative contrast 4K P210 samples=5568 average_us=97.24 (informational; no timing threshold)
+  Passed DeskVetoDoesNotCountDuplicateColumnsAtSmallResolution [< 1 ms]
+  Passed SparseNativeBarsCanContradictVisibleExtentSafety [214 ms]
+  Passed DeskVetoAppliesToNativeV210AndRgbWithoutConversion [22 ms]
+  Passed DeskVetoChecksActualSymmetricBoundaryWithLocalizedCaption [< 1 ms]
+  Passed DeskVetoDoesNotTreatAnIsolatedPixelAsConnectedPicture [20 ms]
+  Passed DeskVetoPreservesOneScanStepFringeAndRejectsDimColoredContinuation [54 ms]
+  Passed DeskConnectedSidePictureCannotAcquireAFalseVerticalCrop [285 ms]
+  Passed DeskVetoPreservesCleanBarsAndDisconnectedSmallOverlay [93 ms]
+  Passed RelativeContrastDarkNativeExtractionAndBoundedCost [92 ms]
+  Passed RelativeContrastRejectsUncertifiedGeometryAndContext [20 ms]
+  Passed RelativeContrastNativeV210MatchesPlanarAndRejectsUnknownSides [9 ms]
+  Passed RelativeContrastMeasuredDarkExpansionUsesBothRealBars [215 ms]
+  Passed RelativeContrastRejectsDeskMissingEdgeAndBarContamination [272 ms]
+  Passed WeakFringeThresholdsRejectStrongerBroaderAndCompetingEvidence [< 1 ms]
+  Passed WeakFringeRejectsInvalidEvidenceAndPresentation [< 1 ms]
+  Passed WeakFringeMeasuredReplayP010AndP210 [56 ms]
+  Passed WeakFringeMeasuredBottomP010AndP210 [47 ms]
+  Passed RelocatedOverlayRecheckRejectsMismatchedBaseAndInvalidFootprint [< 1 ms]
+Relocated overlay 4K retention recheck: 0.191444 ms/frame, luma=13540, chroma=13492
+Relocated residual 4K recheck: 1.74079 ms/frame, luma=98204
+  Passed RelocatedOverlayFootprintCannotSuppressSideBarContent [< 1 ms]
+  Passed RelocatedOverlayRetention4KSampleBudget [53 ms]
+  Passed RelocatedOverlayRecheckPreservesRawEvidenceAndProtectsOtherContent [3 ms]
+  Passed RelocatedResidualToleranceRejectsUiColorExpansionAndFarMarks [4 ms]
+  Passed RelocatedResidualProofCannotHideSeparateUiOutsideItsHalo [1 ms]
+  Passed QualifiedRelocatedCaptionPreservesOtherBarContentAndRawExpansion [120 ms]
+  Passed RelocatedResidualDotsAndQuotesCanRetainPresentationWithoutChangingRawEvidence [2 ms]
+  Passed QualifiedRelocatedCaptionRejectsDisconnectedPixelNearAnOwnedSample [29 ms]
+  Passed QualifiedRelocatedCaptionRejectsDimConnectedInterGlyphScenery [28 ms]
+Qualified subtitle native ownership 4K: iterations=8 avg_ms=2.8765 max_ms=3.3709 ownership_samples=138000
+  Passed QualifiedRelocatedCaptionRejectsStalePendingIncompleteOrUnpreparedProof [626 ms]
+  Passed QualifiedRelocatedCaptionDoesNotTreatSampledOwnershipAsWholeRectangleProof [58 ms]
+  Passed QualifiedSubtitleNativeProofReportsBoundedCpuCost [55 ms]
+  Passed GlyphLocalSubtitleProofCannotQualifyOrRenewArPresentation [31 ms]
+  Passed QualifiedSubtitleCannotOverrideAffirmativeFullRasterPicture [27 ms]
+  Passed UnknownSubtitleRetentionPreservesSubmittedHorizontalFillThroughFinalPolicy [30 ms]
+  Passed PendingQualifiedSubtitleCannotStartOrRenewContinuityLease [32 ms]
+  Passed QualifiedSubtitleUnknownHoldCannotHideNewPictureOutsidePriorCaption [31 ms]
+  Passed QualifiedSubtitleUnknownHoldRejectsConflictAbsenceAndContextChanges [35 ms]
+Real-builder negative scenario=0 reason=incomplete-current-glyph-capture
+Real-builder negative scenario=1 reason=incomplete-caption-source
+Real-builder negative scenario=2 reason=unowned-picture-outside-erasure
+Real-builder negative scenario=3 reason=independent-full-raster-picture
+Real-builder negative scenario=4 reason=physical-base-mismatch
+Real-builder negative scenario=5 reason=unowned-native-reconciled-edge
+Real-builder negative scenario=6 reason=physical-base-mismatch
+Real-builder negative scenario=7 reason=physical-base-mismatch
+Real-builder negative scenario=8 reason=physical-base-mismatch
+  Passed QualifiedSubtitleHoldDoesNotCommitFailureAndRetiresOnAcceptedAbsenceOrConflict [29 ms]
+  Passed QualifiedSubtitleHoldSeedsOnlySuccessfulExactSelectedSubmission [30 ms]
+  Passed QualifiedSubtitleUnknownHoldExpiresWithoutRenewalOnRepeatedOutput [31 ms]
+  Passed QualifiedProjectionRejectsDifferentSelectedFrameAndBase [29 ms]
+  Passed CurrentPendingNativeProofKeepsSameAdvancedPresentation [34 ms]
+  Passed Logged2115OwnedBarLineOutsideCardDoesNotExpandAdvancedPresentation [127 ms]
+  Passed Logged2115QualifiedViewReachesFinalCropWithoutRewritingRawHistory [62 ms]
+  Passed RealSubtitleBuilderReconciledRowsCountOnceWithinOwnershipBudget [37 ms]
+  Passed RealSubtitleBuilderRejectsTruncatedGlyphCaptureAndUnownedPicture [260 ms]
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch
+  Passed CurrentContinuedCueRetainsPreparedOwnershipWithoutPromotingMissingRawEdge [539 ms]
+  Passed RealSubtitleBuilderBottomReconciliationRequiresNativeBlackOutsideCaption [136 ms]
+  Passed RealSubtitleBuilderOneRowObservationFringeUsesVerifiedPhysicalBase [125 ms]
+  Passed SubtitleContinuationVetoRequiresAffirmativeNativeExpansion [< 1 ms]
+  Passed PreparedLargeErasureChargesOnlyNativeRowsActuallyInspected [64 ms]
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=0 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=0 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=0 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=0 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=2 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=2 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=2 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=2 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=-2 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=-1 P210=1 mode=3 reason=current-prepared-caption-erasure
+Guarded subtitle scenario=0 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=1 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=2 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=3 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=4 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=5 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=6 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=7 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=8 P210=1 mode=3 reason=unowned-picture-outside-erasure
+Guarded subtitle scenario=9 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=10 P210=1 mode=3 reason=current-caption-proof-unavailable
+Guarded subtitle scenario=11 P210=1 mode=3 reason=physical-base-mismatch
+Guarded subtitle scenario=12 P210=1 mode=3 reason=physical-base-mismatch
+  Passed GuardedScopeDisplayKeepsPhysicalSubtitleCaptureAndPreparedErasureCompatible [5 s]
+Local prepared erasure scenario=-1 P210=0 mode=2 reason=current-prepared-caption-erasure
+Local prepared erasure scenario=0 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=1 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=2 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=3 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=4 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=5 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=6 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=7 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=8 P210=0 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=-1 P210=0 mode=3 reason=current-prepared-caption-erasure
+Local prepared erasure scenario=0 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=1 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=2 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=3 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=4 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=5 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=6 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=7 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=8 P210=0 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=-1 P210=1 mode=2 reason=current-prepared-caption-erasure
+Local prepared erasure scenario=0 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=1 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=2 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=3 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=4 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=5 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=6 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=7 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=8 P210=1 mode=2 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=-1 P210=1 mode=3 reason=current-prepared-caption-erasure
+Local prepared erasure scenario=0 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=1 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=2 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=3 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=4 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=5 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=6 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=7 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Local prepared erasure scenario=8 P210=1 mode=3 reason=prepared-local-erasure-unverified
+Prepared native shape=0 P210=0 mode=2 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=2 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=2 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=2 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=2 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=2 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=2 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=2 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=2 P210=0 mode=2 sequence=1561 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=2 sequence=1563 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=2 sequence=1566 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=2 sequence=1572 strict_reason=unowned-native-color
+Prepared native shape=0 P210=0 mode=3 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=3 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=3 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=0 mode=3 sequence=1572 strict_reason=unowned-native-glyph-excursion
+  Passed PreparedErasureDoesNotRenewAnEarlierSemanticCaptionLease [31 ms]
+  Passed PreparedGlyphLocalErasureUsesFreshClippedSupportWithoutSemanticAuthority [1 s]
+Prepared native shape=1 P210=0 mode=3 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=3 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=3 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=0 mode=3 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=2 P210=0 mode=3 sequence=1561 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=3 sequence=1563 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=3 sequence=1566 strict_reason=unowned-native-color
+Prepared native shape=2 P210=0 mode=3 sequence=1572 strict_reason=unowned-native-color
+Prepared native shape=0 P210=1 mode=2 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=2 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=2 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=2 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=2 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=2 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=2 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=2 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=2 P210=1 mode=2 sequence=1561 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=2 sequence=1563 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=2 sequence=1566 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=2 sequence=1572 strict_reason=unowned-native-color
+Prepared native shape=0 P210=1 mode=3 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=3 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=3 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=0 P210=1 mode=3 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=3 sequence=1561 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=3 sequence=1563 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=3 sequence=1566 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=1 P210=1 mode=3 sequence=1572 strict_reason=unowned-native-glyph-excursion
+Prepared native shape=2 P210=1 mode=3 sequence=1561 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=3 sequence=1563 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=3 sequence=1566 strict_reason=unowned-native-color
+Prepared native shape=2 P210=1 mode=3 sequence=1572 strict_reason=unowned-native-color
+Prepared erasure negative scenario=0 reason=source-not-prepared
+Prepared erasure negative scenario=1 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=2 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=3 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=4 reason=incomplete-caption-source
+Prepared erasure negative scenario=5 reason=destination-outside-picture
+Prepared erasure negative scenario=6 reason=physical-base-mismatch
+Prepared erasure negative scenario=7 reason=incomplete-current-glyph-capture
+Prepared erasure negative scenario=8 reason=unowned-picture-outside-erasure
+Prepared erasure negative scenario=9 reason=unowned-picture-outside-erasure
+Prepared erasure negative scenario=10 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=11 reason=mode-not-relocated
+Prepared erasure negative scenario=12 reason=independent-picture-expansion
+Prepared erasure negative scenario=13 reason=independent-picture-expansion
+Prepared erasure negative scenario=14 reason=prepared-cleanup-outside-picture
+Prepared erasure negative scenario=15 reason=prepared-cleanup-outside-picture
+Prepared erasure negative scenario=16 reason=prepared-panel-outside-picture
+Prepared erasure negative scenario=17 reason=prepared-panel-outside-picture
+Prepared erasure negative scenario=0 reason=source-not-prepared
+Prepared erasure negative scenario=1 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=2 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=3 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=4 reason=incomplete-caption-source
+Prepared erasure negative scenario=5 reason=destination-outside-picture
+Prepared erasure negative scenario=6 reason=physical-base-mismatch
+Prepared erasure negative scenario=7 reason=incomplete-current-glyph-capture
+Prepared erasure negative scenario=8 reason=unowned-picture-outside-erasure
+Prepared erasure negative scenario=9 reason=unowned-picture-outside-erasure
+Prepared erasure negative scenario=10 reason=current-caption-proof-unavailable
+Prepared erasure negative scenario=11 reason=mode-not-relocated
+Prepared erasure negative scenario=12 reason=independent-picture-expansion
+Prepared erasure negative scenario=13 reason=independent-picture-expansion
+Prepared erasure negative scenario=14 reason=prepared-cleanup-outside-picture
+  Passed PreparedErasureKeepsLoggedCaptionAtScopeDespiteNativeSamplingPhase [681 ms]
+Prepared erasure negative scenario=15 reason=prepared-cleanup-outside-picture
+Prepared erasure negative scenario=16 reason=prepared-panel-outside-picture
+Prepared erasure negative scenario=17 reason=prepared-panel-outside-picture
+  Passed PreparedErasureRequiresExactCurrentCompositionAndIndependentPictureSafety [1 s]
+  Passed SubtitleStylesDoNotOverrideFailedCropOrRealPictureExpansion [< 1 ms]
+  Passed RealSubtitleBuilderTightCaptureKeepsLoggedAlternatingFramesAtScope [521 ms]
+  Passed SubtitleStylesShareCropAspectAndOnlyChangeFinalTranslation [< 1 ms]
+  Passed AdvancedSubtitlePicturePoseIsIndependentOfReplacementStatus [< 1 ms]
+  Passed ExactWorkerGuardedBarsReopenSubtitleInspectionOnly [< 1 ms]
+  Passed ConfirmedBlankSubtitleRequiresExactCompletedNoBrightInkScan [< 1 ms]
+  Passed SharedSubtitleRecoveryRevalidatesDarkEdgesWithoutCreatingCaption [7 ms]
+  Passed SharedSubtitleReferenceRecoveryRequiresBothEdgesAndRejectsUnsafeBands [5 ms]
+  Passed SharedSubtitleRecoveryReprovesBarsWithoutActiveCaptionHold [2 ms]
+  Passed SharedSubtitleRecoveryRejectsExpansionStaleAndDisabledContexts [2 ms]
+  Passed SubtitleAssistedProofRejectsUnsupportedCityLikeContentAndStaleWorkerState [62 ms]
+  Passed CurrentWorkerReaffirmationStillRequiresFreshStrictBarPixels [38 ms]
+  Passed ContinuousSubtitlesCarryChangedBoundsThroughTheArTransitionModel [123 ms]
+  Passed SubtitleProofDoesNotMaskTheGapBetweenMeasuredLineCards [42 ms]
+  Passed SubtitleAssistedProofUsesCurrentBackingOrOwnedCrossingInk [130 ms]
+  Passed SubtitleProofAcceptsGenuinelyMeasuredSixtyPercentBackingCard [42 ms]
+  Passed CurrentWorkerReaffirmationRequiresExactFreshIdentityAndGlyphEvidence [45 ms]
+current-subtitle-masked-vertical-profile-proved
+excluded-bands-clean
+current-subtitle-masked-vertical-profile-proved
+excluded-bands-clean
+current-subtitle-masked-vertical-profile-proved
+excluded-bands-clean
+  Passed DistributedBarsAcquireCurrentSubtitleAndArAcrossAnalysisFormats [385 ms]
+  Passed MeasuredPairCannotOverrideFullRasterOrAConflictingHorizontalAxis [41 ms]
+  Passed ColdStartMeasuredBarWrapperRequiresCurrentCrossingGlyphs [117 ms]
+  Passed MeasuredCurrentFlanksRecoverOnlyStrictSymmetricBarsFromRawAsymmetry [53 ms]
+  Passed MeasuredBarsRejectMissingStaleAsymmetricAndConflictingEvidence [68 ms]
+  Passed CorrectedExpansionStripsRejectInvalidInputsAndAcceptZeroExpansion [1 ms]
+  Passed ExpansionStripsRecordDistributedAboveBlackFloorSupport [24 ms]
+  Passed LowCodeOpposingBoundaryMirrorsTopAndBottom [1 ms]
+  Passed CorrectedExpansionStripsMatchDirectCurrentSourceMeasurement [1 ms]
+  Passed LowCodeOpposingBoundaryMatchesEightAndTenBitOffsets [2 ms]
+  Passed LowCodeOpposingBoundaryRejectsAsymmetryFadeAndContamination [6 ms]
+  Passed LowCodeOpposingBoundaryRecoversSymmetricPictureAcrossNativeFormats [2 ms]
+  Passed FullBlackFadeAndSparseTitlesNeverAcquireFullRaster [3 ms]
+  Passed ModeNamesRemainStableForTelemetry [< 1 ms]
+  Passed RaisedMatteRetentionDoesNotUseNominalZero [2 ms]
+  Passed LimitedAndUnknownKeepExistingAdaptiveInterpretation [1 ms]
+  Passed RejectedAdaptiveCropCannotLeakIntoFullRasterCoordinates [< 1 ms]
+  Passed RetentionReusesRejectedReferenceRatherThanRestoringPerimeterFloor [< 1 ms]
+  Passed OneSidedAndMismatchedMattesCannotNominateFullRaster [1 ms]
+  Passed UnresolvedMattePreservesIndependentFullExtentAxis [< 1 ms]
+  Passed CentralCaptionDoesNotDestroyRaisedMatteReference [7 ms]
+  Passed WholeOpposingEdgeControlLeavesOneMatteUnresolved [1 ms]
+  Passed TrueZeroFortyAndSixtyFourBarsKeepBothOrientationsAndFormats [22 ms]
+  Passed RaisedMatteNoiseCannotTurnIntoFullRaster [17 ms]
+  Passed VariableDarkSideIsPictureInEveryNativeFormat [8 ms]
+  Passed GradientInsideSupportedMatteNoiseEnvelopeStaysUncertain [< 1 ms]
+  Passed BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference [14 ms]
+  Passed NewCapturedFrameMeasuresItsOwnPixels [< 1 ms]
+  Passed CacheRetainsBackingUntilSourceReplacement [< 1 ms]
+  Passed ScrubLineAndSeparatedTimeLabelsOwnCompleteBoundedOffFitAndReleaseHold [49 ms]
+  Passed DisabledCachePreservesDirectSingleOutputMeasurements [1 ms]
+  Passed ExactOwnerControlBlockIsPartOfImmutableSourceIdentity [2 ms]
+  Passed BorrowedPixelsAndIncompleteIdentitiesAreNeverReused [8 ms]
+  Passed BorrowedCurrentRawAndGlobalDoNotGetExtractedAgainForDarkness [< 1 ms]
+  Passed PixelLayoutRangeAndColorInterpretationChangesInvalidate [11 ms]
+  Passed RetentionRequiresExactCropBaseButKeepsOtherMeasurements [8 ms]
+4K analysis paired cost: format=P010 pattern=scope pairs=21 baseline_median_ms=0.5587 baseline_p95_ms=1.1298 baseline_peak_ms=1.5563 cache_median_ms=0.5601 cache_p95_ms=1.0422 cache_peak_ms=1.2929 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P010 pattern=full pairs=21 baseline_median_ms=0.0648 baseline_p95_ms=0.0743 baseline_peak_ms=0.0746 cache_median_ms=0.0622 cache_p95_ms=0.074 cache_peak_ms=0.0787 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P010 pattern=dark-textured pairs=21 baseline_median_ms=1.3195 baseline_p95_ms=1.8089 baseline_peak_ms=1.8706 cache_median_ms=1.4368 cache_p95_ms=1.9917 cache_peak_ms=2.1285 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P010 pattern=subtitle-edge-panel pairs=21 baseline_median_ms=0.7312 baseline_p95_ms=0.8499 baseline_peak_ms=2.167 cache_median_ms=0.7244 cache_p95_ms=0.9171 cache_peak_ms=1.9943 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P010 pattern=expansion pairs=21 baseline_median_ms=0.4858 baseline_p95_ms=0.5806 baseline_peak_ms=0.8109 cache_median_ms=0.4705 cache_p95_ms=0.6953 cache_peak_ms=0.7241 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P210 pattern=scope pairs=21 baseline_median_ms=0.5475 baseline_p95_ms=0.8614 baseline_peak_ms=1.1026 cache_median_ms=0.5384 cache_p95_ms=0.7581 cache_peak_ms=1.5835 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P210 pattern=full pairs=21 baseline_median_ms=0.063 baseline_p95_ms=0.0653 baseline_peak_ms=0.0686 cache_median_ms=0.0606 cache_p95_ms=0.0643 cache_peak_ms=0.0682 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P210 pattern=dark-textured pairs=21 baseline_median_ms=1.1784 baseline_p95_ms=1.9822 baseline_peak_ms=1.988 cache_median_ms=1.1255 cache_p95_ms=1.6763 cache_peak_ms=1.768 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P210 pattern=subtitle-edge-panel pairs=21 baseline_median_ms=0.8308 baseline_p95_ms=1.311 baseline_peak_ms=1.3144 cache_median_ms=0.8431 cache_p95_ms=1.46 cache_peak_ms=1.7624 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=P210 pattern=expansion pairs=21 baseline_median_ms=0.4814 baseline_p95_ms=1.0533 baseline_peak_ms=1.7054 cache_median_ms=0.4623 cache_p95_ms=1.5475 cache_peak_ms=1.6068 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=BGRA8 pattern=scope pairs=21 baseline_median_ms=0.7722 baseline_p95_ms=0.8707 baseline_peak_ms=0.9318 cache_median_ms=0.771 cache_p95_ms=0.9648 cache_peak_ms=1.0039 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=BGRA8 pattern=full pairs=21 baseline_median_ms=0.0881 baseline_p95_ms=0.1041 baseline_peak_ms=0.1316 cache_median_ms=0.0845 cache_p95_ms=0.0859 cache_peak_ms=0.0865 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=BGRA8 pattern=dark-textured pairs=21 baseline_median_ms=1.6792 baseline_p95_ms=3.0978 baseline_peak_ms=3.3735 cache_median_ms=1.6546 cache_p95_ms=2.8864 cache_peak_ms=3.8841 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=BGRA8 pattern=subtitle-edge-panel pairs=21 baseline_median_ms=1.2362 baseline_p95_ms=2.2435 baseline_peak_ms=2.4313 cache_median_ms=1.1217 cache_p95_ms=1.6921 cache_peak_ms=1.8256 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+4K analysis paired cost: format=BGRA8 pattern=expansion pairs=21 baseline_median_ms=0.6504 baseline_p95_ms=0.6606 baseline_peak_ms=0.7769 cache_median_ms=0.6483 cache_p95_ms=0.724 cache_peak_ms=0.8129 cache_actual_scans=1/1/1/1 raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed RefiningReturnedCopiesCannotPoisonCachedPixelEvidence [< 1 ms]
+  Passed EverySourceIdentityFieldAndPolicyOrContinuityChangeInvalidates [9 ms]
+  Passed PairedWarmed4kMeasurementsReportCostAndPreserveEveryEvidenceField [1 s]
+  Passed ThreeRepeatedOutputsReuseExactScopeDarkAndFullRasterMeasurements [4 ms]
+  Passed QueuedNativeSeedRebindsOnlyGenerationAndKeepsReturnedRefinementsLocal [2 ms]
+  Passed QueuedSeedRejectsEveryIdentityFieldAndStorageInterpretationMismatch [15 ms]
+  Passed SingleOutputReusesRawGlobalAndArAcrossCurrentRetentionBases [1 ms]
+  Passed TemporalAcquisitionNativeRecoveryThenAmbiguousRetentionNeedsNoRestart [116 ms]
+  Passed MovingArtworkCounterexampleRemainsAnExplicitAcquisitionLimitation [4 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed TemporalAcquisitionWithoutLogicalGeometryCannotPromoteMovingArtwork [79 ms]
+  Passed TemporalAcquisitionLogicalButNeverPresentedStillNeedsFreshAuthority [134 ms]
+  Passed StartupAdmissionClosesOncePerRealSourceGenerationAcrossUnrelatedResets [< 1 ms]
+  Passed CaptionOnWouldBePublicationFrameCannotCompleteStaleExperimentalProof [5 ms]
+  Passed NearBlackStartupEpisodeReopensBeforeFreshOrdinaryCropConfirmation [22 ms]
+  Passed MixedNativeAndExperimentalFramesCannotShareInitialConfirmationVotes [< 1 ms]
+  Passed DefaultNativeOriginMatchesExplicitNativeAndExactNativeProofCanUpgradeExperiment [< 1 ms]
+  Passed QueuedAdoptionRejectsExperimentalTargetButAcceptsNativeOutwardAuthority [< 1 ms]
+  Passed EquivalentPlanarAndPackedSourcesProduceTheSameGuardedCandidate [19 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed ExperimentalGeometryCannotEnterRecentTrustedHistoryOrReacquireAsNative [5 ms]
+  Passed FullRasterExpansionWithdrawsExperimentalCropUsingExistingPolicy [6 ms]
+  Passed CaptionAfterAcquisitionUsesOutwardPresentationWithoutChangingLogicalAspect [6 ms]
+  Passed NativeAuthorityAlwaysWinsAndCannotBeRelabeledExperimental [8 ms]
+  Passed AdmittedCropUsesCurrentNativeRetentionWithoutDiagnosticExpiryBounce [113 ms]
+  Passed NearBlackTitleArtworkCannotPublishThroughOrdinaryAcquisitionConstraint [20 ms]
+  Passed PausedInteriorNoiseAndDriftingAsymmetricTitlesNeverAcquire [22 ms]
+  Passed OutwardRoundingIncludesUnmeasuredBoundaryStripsAtFourK [83 ms]
+  Passed ShrinkingOrMissingFreshProposalKeepsPendingReferenceWhileOldExteriorIsSafe [6 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed CurrentExteriorLumaAndChromaIntrusionsRejectMaturePendingReference [8 ms]
+  Passed FrozenExteriorCutoffCannotRiseWithCurrentBackgroundFloor [5 ms]
+  Passed DisableOrLossOfStartupEligibilityCannotRetainOrResurrectPendingCrop [10 ms]
+  Passed InvalidPrecisionAndMismatchedSourceIdentityCannotAcquire [5 ms]
+  Passed MatureCandidateRequiresFreshValidationBetweenDiscoveryTicks [6 ms]
+  Passed EveryIdentityChangeCutAndSequenceDiscontinuityDiscardsPendingProof [53 ms]
+  Passed CandidatePreservesRawAxisMeasurementsAndReportsItsExperimentalOrigin [4 ms]
+  Passed RepeatedSequenceAndCadenceRepeatCannotSupplyTemporalVotes [6 ms]
+  Passed DefaultOffPreservesRawPixelsEvidenceAndNativeTransitionDecisions [4 ms]
+current-experimental-startup-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed ActualSparseSourceNeedsTemporalEvidenceAndOrdinaryPublicationConfirmation [5 ms]
+  Passed ExperimentalTransitionCannotBeQueuedOrReacquiredFromNativeHistory [5 ms]
+  Passed PendingTransitionCannotReclassifyOldFullRasterButExactCommittedScopeCanReaffirm [9 ms]
+  Passed NativeToExperimentalToNativeCycleCanRepeatWithoutRememberingExperimentalScope [12 ms]
+  Passed FullRasterAuthoritySurvivesPendingExperimentAndClearsOnlyOnActualPublication [5 ms]
+  Passed DarkFadeCannotAcquireButAdmittedScopeRetainsWithoutReferenceExpiryBounce [120 ms]
+  Passed NativeEvidenceWinsAndReverseTransitionsKeepExistingConfirmationTiming [13 ms]
+  Passed CaptionOnPublicationFrameVetoesCurrentCandidateAndPreservesTheOldSafeCrop [5 ms]
+  Passed ActiveCaptionAndMovingPresentationOwnersCannotBeBypassed [4 ms]
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed CurrentHorizontalAxisConflictCannotBeLaunderedByAValidVerticalProof [4 ms]
+  Passed GraduallyMovingBoundaryCannotAccumulateAStationaryAcquisitionWindow [7 ms]
+  Passed FourPixelAndFivePercentAspectDeadbandsStillRetainTheOldFormat [20 ms]
+  Passed ExperimentalOrAllSidedEstablishedBasesCannotAuthorizeNewTransitions [5 ms]
+  Passed RestoringAnOldBaseCannotResurrectItsPreviousReference [6 ms]
+  Passed RepeatsAndInteriorNoiseCannotSupplyMissingTransitionEvidence [21 ms]
+  Passed ChangedReferenceRestartsVotesAndNativeVotesCannotMixWithTransitionVotes [6 ms]
+  Passed ContextCutAndOldBaseChangesInvalidateTheEntireDiscoveryWindow [62 ms]
+  Passed DefaultDisabledAndStartupOnlyModesCannotReplaceExistingAuthority [14 ms]
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed TypedProofBindsCurrentSourceExactOldBaseAndGuardedRectangle [6 ms]
+  Passed RealFullAndImaxSourcesTransitionInwardOnlyAfterCurrentProofAndOrdinaryConfirmation [11 ms]
+  Passed VerifiedVerticalCropStillObeysActualNearBlackAcquisitionVeto [11 ms]
+  Passed CompleteNativePictureStillConfirmsInwardAndReturnsToImax [9 ms]
+  Passed VerifiedVerticalCropRejectsCurrentRemovedLumaChromaAndSmallOverlays [44 ms]
+  Passed VerifiedVerticalCropDoesNotBypassGenuineBothAxisWindowbox [9 ms]
+  Passed RawSideWitnessKeepsLookaheadProofAcrossSamplingPhaseChanges [170 ms]
+  Passed OriginalFourZoneSideRouteKeepsItsNativeUnpaddedContract [66 ms]
+  Passed MixedNativeAndGuardedCandidatesCommitOnlyTheCurrentSafeAperture [155 ms]
+  Passed RawSideWitnessSurvivesOutwardGuardSamplingPhaseChange [202 ms]
+  Passed QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps [255 ms]
+  Passed GuardedNativeReturnDoesNotBorrowHistoricalOrQueuedUnsafeBounds [157 ms]
+  Passed ShadowedSideCertificateIsBoundToItsApertureAndCurrentProfile [4 ms]
+  Passed ShadowedSideQueuedInwardDecisionRequiresCurrentProofInEveryFrame [12 ms]
+  Passed QuantizedShadowedSideKeepsBoundaryPixelsAcrossFormats [1 s]
+  Passed ShadowedSideRequiresStrictCurrentExcludedBandProfile [22 ms]
+  Passed SideDistributionCannotRejectVerifiedVerticalRemoval [45 ms]
+  Passed SideBrightnessCountsRemainDiagnosticAtTheirExactThresholds [17 ms]
+  Passed RememberedScopeCannotTightenCurrentVerifiedVerticalGuard [49 ms]
+  Passed ShadowedSidePublishesCurrentScopeWithoutRememberedHistoryAcrossFormats [180 ms]
+  Passed P010P210AndNativeV210KeepDimSideCompositionPixels [44 ms]
+  Passed NeutralRaisedMarginsPermitOnlyVerifiedVerticalRemoval [16 ms]
+  Passed VerifiedVerticalCropRetainsBothDimSideCompositionsAcrossFormats [44 ms]
+current-caption-protected-known-return
+current-caption-protected-known-return
+converted=22..158 native=22..158
+current-caption-protected-known-return
+candidate=276..1884 protected=276..2024
+Synthetic4K inward-caption helper100 batches x4 calls: total_ms=639.414900 mean_batch_ms=6.394149 mean_call_ms=1.598537
+current-caption-protected-known-return
+candidate=22..158 protected=22..170
+current-caption-protected-known-return
+candidate=22..158 protected=22..170
+  Passed DimTintedMarginsPreserveColumnsDuringVerifiedVerticalCrop [17 ms]
+  Passed VerifiedVerticalCropAcceptsCapturedTwoBrightZoneSideWithoutBrightnessQuota [91 ms]
+  Passed NativeV210AndConvertedP010ProduceSameProtectedCaptionCertificate [1 ms]
+  Passed SourceSizedMeasurementJitterKeepsCanonicalPictureAndCaptionAtomic [56 ms]
+  Passed SourceSizedSyntheticCaptionKeepsProtectionAfterModelAcceptsScope [682 ms]
+  Passed CleanScopeAndInvalidSourceDoNotUseCaptionException [< 1 ms]
+  Passed CertifiedCaptionDoesNotBypassLookaheadContinuityOrAvailableFrameBudget [1 ms]
+  Passed CertifiedReturnUsesExistingInwardProofAndPreservesCaptionOnPublicationFrame [< 1 ms]
+  Passed AsymmetricPictureMenusTwoEdgesAndDarknessCannotAcquireCaptionReturn [< 1 ms]
+current-caption-protected-known-return
+current-caption-protected-known-return
+  Passed UnknownScopeHistoryCannotBeInventedFromSparseCaptionOrArtwork [< 1 ms]
+  Passed CancelledOptionalInwardCaptionProofLeavesNoAuthorityAndMandatoryRetrySucceeds [1 ms]
+  Passed KnownScopeCaptionProducesProtectedPictureEvidenceForBothAnalysisFormats [1 ms]
+  Passed RawCaptionStillBlocksInwardProofAndOldBaseMissesItsPixels [< 1 ms]
+  Passed ReleaseFailureStaysCovered [< 1 ms]
+  Passed LatestQueuedTargetReplacementWins [< 1 ms]
+  Passed TargetReplacementDuringReleaseIsRejected [< 1 ms]
+  Passed InvalidStatesCannotReleaseShield [< 1 ms]
+  Passed FrameReadinessReleasesExactlyOnce [< 1 ms]
+  Passed ResetDuringAwaitingFrameBlocksReveal [< 1 ms]
+  Passed TargetReplacementDuringResetQueuesWithoutOverlappingReset [< 1 ms]
+  Passed StaleReleaseCannotUncoverCurrentTransition [< 1 ms]
+  Passed ShieldFailureDoesNotResetOrRelease [< 1 ms]
+  Passed ResetCannotStartBeforeMatchingShieldAck [< 1 ms]
+  Passed StaleResetAndFrameCompletionsAreIgnored [< 1 ms]
+  Passed ResetFailureRemainsCoveredAndRequestsRebuild [< 1 ms]
+  Passed CaptionOnSecondVoteCancelsTheReturnIncludingBetweenSparseProbeRows [375 ms]
+  Passed PresentationResetPreservesSourceFactsButNeverPendingReturnVotes [32 ms]
+  Passed NativeOutwardPictureKeepsItsExistingConfirmationTimingAfterReturn [15 ms]
+  Passed CurrentProofCannotBeRedirectedToAnotherHistoryBaseTargetOrFrame [107 ms]
+  Passed TwoFreshProfileProofsPassOrdinaryAdmissionWithoutAFullRasterBounce [14 ms]
+  Passed AQualifiedReturnCannotTrainItselfOrTransferToAQueuedDecision [24 ms]
+  Passed DiscontinuityInvalidatesPendingVotesWithoutDestroyingQualifiedPrior [15 ms]
+  Passed ExperimentalOrHistoryDerivedNativeRelabelsCannotTrainQualification [69 ms]
+  Passed CutCandidateAndConfirmationCreditOnlyOneNewVerifiedScene [12 ms]
+  Passed TwoQualifiedNativeTargetsSharingTheExactEdgeRemainAmbiguous [292 ms]
+  Passed SourceContextRollbackAndQualifiedHistoryAgeRemainBounded [137 ms]
+  Passed QualificationCanBeginAfterTheSixtyFourSceneAgeWindow [14 ms]
+  Passed TwoConfirmedScenesEachRequireThreeIndependentNativeFrames [51 ms]
+  Passed PausedRepeatsAndChangingPixelsCannotInventAnIndependentScene [26 ms]
+  Passed DefaultOffAndOrdinaryHistoryAloneCannotQualifyTheReturn [24 ms]
+  Passed QualifiedAspectPairRetiredNoiseDoesNotBridgeDistinctRepresentatives [367 ms]
+  Passed QualifiedAspectPairRequiresTwoIndependentlyLearnedFormats [8 ms]
+  Passed QualifiedAspectPairRejectsStaleSourceAndGeometry [9 ms]
+  Passed QualifiedAspectPairFamilyReplacementWaitsForLaterScene [183 ms]
+  Passed InvalidIdentityUnqualifiedNominationAndSideConflictCannotReadmit [12 ms]
+  Passed P010P210AndNativeV210ReturnTheSameFixedRememberedBounds [25 ms]
+  Passed CurrentCompleteNativeExpansionAlwaysWinsOverRememberedHypothesis [12 ms]
+  Passed ProfileInspectionCannotMutateSourcePixelsOrRawAuthority [16 ms]
+  Passed EveryImmediateExcludedRowProtectsOneAndTwoRowPictureOrCaptions [59 ms]
+  Passed DisplacedDimGroundAndSmoothRampFailDespiteQualifiedHistoryAndGenericSafety [380 ms]
+  Passed NoisyReferenceAndLocalizedMatchedEdgeCannotCreateAProfileCertificate [25 ms]
+  Passed CurrentChromaAndNoiseMismatchesCannotHideBelowTheBlackCutoff [25 ms]
+  Passed RememberedMatchedEdgeFringeCannotMaskSeparateCaption [178 ms]
+  Passed RememberedMatchedEdgeChecksEachSignedChromaLimit [411 ms]
+  Passed CurrentBottomEdgeCanReturnWithAnEntirelyBlackUpperPicture [13 ms]
+  Passed RememberedMatchedEdgeFringePublishesOnlyAfterExistingConfirmation [186 ms]
+  Passed RememberedMatchedEdgeFringeDoesNotRelaxLumaColorOrSpatialLimits [258 ms]
+  Passed RememberedMatchedEdgeAllowsOnlySmallChromaFringeAcrossFormats [66 ms]
+  Passed RememberedOddPictureLearnsOutwardEvenEdgesAndKeepsFringeStrict [526 ms]
+  Passed RememberedP010FringeFollowsChromaPairAtOddBoundary [532 ms]
+  Passed RememberedNativeLearningEquivalenceDoesNotAdmitMaterialOrInferredGeometry [1 s]
+  Passed RememberedNativeLearningRetainsPresentationButLearnsExactFourKMeasurement [243 ms]
+  Passed QualifiedScopeReturnsWithZeroOppositeBoundaryContrast [185 ms]
+  Passed RememberedNativeLearningNeverPoolsNearbyExactMeasurementVariants [237 ms]
+  Passed RememberedEligibilityDoesNotChangeFourByThreeNativePresentation [17 ms]
+  Passed RememberedEligibilityAlternatingOverflowCandidatesCannotPoolOrEvict [424 ms]
+  Passed RememberedEligibilityProtectionCannotReviveExpiredOrPreviousSourceHistory [18 ms]
+  Passed RememberedEligibilityOverflowCandidateMustRequalifyAfterExpiryOrSourceReset [740 ms]
+  Passed RememberedEligibilityAcceptsCommonFamiliesWithinOnePercentWithoutSnapping [5 s]
+  Passed RememberedEligibilityFourthCandidateCannotEvictQualifiedHistoryUntilQualified [367 ms]
+  Passed RememberedEligibilityUsesOnePercentComputedBoundaryWithoutDetectorRounding [500 ms]
+  Passed RememberedFamilyReplacementInvalidatesRetiredHistoryDespiteFreshPixelProof [240 ms]
+  Passed RememberedFamilyRequalifyingTheSameTwoRectanglesDoesNotExhaustWitnessCapacity [617 ms]
+  Passed RememberedEligibilityRejectsNonCommonLearningWithoutChangingNativeAcquisition [360 ms]
+  Passed RememberedFamilyRevisitingRepresentativeAtWitnessCapacityKeepsRecall [428 ms]
+  Passed RememberedFamilyRetiredEdgeKnowledgeSurvivesAnUnrelatedIntermediateRepresentative [309 ms]
+  Passed RememberedFamilyRetiredAmbiguityExpiresAndResetsWithSource [471 ms]
+  Passed RememberedFamilyCorrectionCannotTrainFromIncompleteOrExperimentalEvidence [1 s]
+  Passed RememberedFamilyWitnessOverflowAbstainsUntilLostHistoryExpires [876 ms]
+  Passed RememberedFamilyReplacementNeedsIndependentScenesAndOnlyChangesFutureRecall [947 ms]
+  Passed GuardedSceneHoldPreservesReturnFromNativeFullRasterWithOrWithoutSnapshot [20 ms]
+  Passed RememberedFamilyRetiredSameEdgeAlternativesRemainAmbiguousAcrossCorrections [313 ms]
+  Passed RememberedFamilyAlternatingExactCandidatesCannotPoolOrReplace [306 ms]
+Synthetic4K guarded active: frames=5 whole_window_build_ms=4.0656 current_frame_adopt_ms=0.9372
+  Passed GuardedSceneHoldValidatedWindowReplacesHeldWideSnapshotBeforeDeadline [179 ms]
+  Passed GuardedSceneHoldInvalidCertificateCannotClearOrReplaceHeldGeometry [51 ms]
+  Passed GuardedSceneHoldPreservesCutNlsAndMismatchedSnapshotGuards [19 ms]
+  Passed GuardedRememberedActiveRequiresExplicitOptInAndAvailableConfirmationFrames [83 ms]
+  Passed GuardedRememberedActiveCannotSkipConflictOrReuseConsumedQueueWindow [190 ms]
+  Passed GuardedRememberedActiveFourKMeasuredBoundaryPublishesPaddedFinalCrop [171 ms]
+  Passed GuardedRememberedActiveCannotPublishFromOrdinaryLiveInspection [14 ms]
+  Passed GuardedRememberedActivePublishesOnlyVerifiedWindowAndEvaluatesPaddedCrop [20 ms]
+  Passed RememberedGuardedShadowPreservesNominalDeepSamplingPhaseAtFourK [169 ms]
+  Passed GuardedRememberedActiveRejectsStaleCommitAndLeavesAuthorityUnchanged [247 ms]
+  Passed GuardedRememberedActiveNativeHandoffKeepsEnvelopeWithoutLearningOrSkippingFrames [16 ms]
+  Passed RememberedGuardedShadowWindowKeepsOneEnvelopeAndCannotSkipAConflictingFuture [64 ms]
+  Passed RememberedGuardedShadowCannotCrossOrTouchEstablishedBase [46 ms]
+  Passed RememberedGuardedShadowReproducesFourKMeasuredPointAt2020And1884 [157 ms]
+  Passed RememberedGuardedShadowRetainsBoundaryPixelsWithoutChangingKnownTargetOrNativeHandoff [38 ms]
+  Passed RememberedShadowWindowRejectsInvalidNomineeAndOverflowBeforeReadingPixels [128 ms]
+  Passed RememberedGuardedShadowStillRejectsEveryConflictOutsideItsFixedEnvelope [66 ms]
+  Passed RememberedGuardedShadowUsesEvenOutwardEnvelopeAcrossP010P210AndV210 [231 ms]
+  Passed RememberedShadowWindowCannotSkipAConflictingMiddleOrLastPicture [32 ms]
+  Passed RememberedShadowWindowVerifiesAllConsecutiveFramesWithoutChangingAuthorityOrHistory [15 ms]
+  Passed RememberedShadowWindowUsesOnlyConfiguredActuallyAvailableFramesAndCapsWork [27 ms]
+  Passed RememberedShadowWindowRejectsMissingRepeatedOrDifferentContextBeforeInspection [222 ms]
+  Passed RememberedShadowReportsLocalizedOppositeEdgeWithoutManufacturingAuthority [24 ms]
+  Passed RememberedShadowRequiresQualifiedFreshContextAndCannotLearnPausedDuplicates [103 ms]
+  Passed RememberedShadowAbstainsWhenHeavySideDarknessLeavesOneMatchedQuarterUnsupported [11 ms]
+  Passed RememberedShadowTaggedNominationAndConflictingFlagsCannotPublishLegacyProof [19 ms]
+  Passed RememberedShadowRecognizesSidePartialReturnWithoutChangingPrimaryOrQueuedCrop [34 ms]
+Shadow unsafe pattern=0 class=3 raw=0,68-960,482 top_trusted=1 bottom_trusted=0 nominated=1 samples=0 mismatches=0 reason=ineligible-context
+Shadow unsafe pattern=1 class=3 raw=0,68-960,402 top_trusted=1 bottom_trusted=1 nominated=1 samples=14208 mismatches=1536 reason=excluded-band-profile-mismatch
+Shadow unsafe pattern=2 class=3 raw=0,68-960,402 top_trusted=1 bottom_trusted=1 nominated=1 samples=1152 mismatches=0 reason=matched-edge-not-distributed
+Shadow unsafe pattern=3 class=2 raw=0,18-960,522 top_trusted=1 bottom_trusted=1 nominated=0 samples=0 mismatches=0 reason=ineligible-context
+Shadow unsafe pattern=4 class=3 raw=0,68-960,402 top_trusted=1 bottom_trusted=1 nominated=1 samples=14208 mismatches=8 reason=excluded-band-profile-mismatch
+  Passed GuardedReferenceRejectsQueueSourceFormatViewportOrShaderDiscontinuity [< 1 ms]
+  Passed RememberedShadowCannotTurnKnownGeometryOrUnsafeExteriorIntoProof [66 ms]
+  Passed RememberedShadowProfileParityKeepsP010P210AndV210PixelsUnchanged [22 ms]
+  Passed CancelledRememberedWindowCannotReturnPartialPrefixAndMandatoryRetrySucceeds [22 ms]
+  Passed GuardedReferenceKeepsShaderAndQueueGenerationDomainsIndependent [< 1 ms]
+  Passed CancelledGuardedCertificateCannotPublishOrChangeHistoryAndMandatoryRetrySucceeds [21 ms]
+  Passed OnlyAnActualStableRememberedPublicationCanCommitAuthorityHandoff [14 ms]
+  Passed PendingRememberedReturnCannotRevokePriorFullRasterAuthority [13 ms]
+  Passed RememberedEvidenceCanReaffirmOnlyItsOwnExactPublishedCropAndOrigin [12 ms]
+  Passed RememberedRuntimeModePreservesExplicitDiagnosticModes [< 1 ms]
+  Passed RememberedRuntimeModeExplicitDisableAndInvalidStayOff [< 1 ms]
+  Passed RememberedRuntimeModeNormalLaunchUsesGuardedFallback [< 1 ms]
+Results File: E:\codex\videoprocessor\pr192-conflict-review-20261023\artifacts\pr192-ready\native-final\pr192-final.trx
+
+Test Run Successful.
+Total tests: 1340
+     Passed: 1340
+ Total time: 1.3736 Minutes

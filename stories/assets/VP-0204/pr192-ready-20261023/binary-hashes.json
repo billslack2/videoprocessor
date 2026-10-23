@@ -1,0 +1,32 @@
+[
+  {
+    "path": "VideoProcessor-GUI.exe",
+    "toolset": "14.29.30133",
+    "sha256": "245029779E1B4EF487CC5AA2FAB4232ADA51AB5C2C6B2552FD05DE33FDFF8AAD"
+  },
+  {
+    "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+    "toolset": "14.29.30133",
+    "sha256": "C5DEA3AAD0F435E3357D76E6A8695E8FFE9EBD0566369E9B23630563EB53CA5C"
+  },
+  {
+    "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "toolset": "14.29.30133",
+    "sha256": "E4D89A29D3A3FD201F29456CEA63DEE4D39657F192DB4F2CF27E7EBDC0374DA2"
+  },
+  {
+    "path": "VideoProcessorConfig.exe",
+    "toolset": "14.44.35207",
+    "sha256": "B3C86F92536239FEAA6848CBB58E54DDEC1BF684BE5F8D4BC98EEC35C5C6F3AA"
+  },
+  {
+    "path": "VideoProcessor-Test.dll",
+    "toolset": "14.29.30133",
+    "sha256": "0917291E205EDEF2030CCC705BF1AD0867FE2F536E9DBCE2AB352C119776A176"
+  },
+  {
+    "path": "VideoProcessorConfigTests.exe",
+    "toolset": "14.44.35207",
+    "sha256": "D9F999606D53CB88D3DE2426EBF400394D6FCEC6E03817C91B00943C14D5266C"
+  }
+]

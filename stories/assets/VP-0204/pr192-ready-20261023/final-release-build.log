@@ -1,0 +1,665 @@
+Build started 10/23/2026 6:02:27 PM.
+Logging verbosity is set to: Normal.
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" on node 1 (Build target(s)).
+     1>ValidateSolutionConfiguration:
+         Building solution configuration "Release|x64".
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\blackmagic_decklink\BlackMagicDeckLink.vcxproj" (3) on node 2 (default targets).
+     3>InitializeBuildStatus:
+         Creating "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild".
+       Midl:
+         All outputs are up-to-date.
+       ClCompile:
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         BlackMagicDeckLink.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild".
+         Touching "x64\Release\BlackMag.50140967.tlog\BlackMagic DeckLink SDK.lastbuildstate".
+     3>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\blackmagic_decklink\BlackMagicDeckLink.vcxproj" (default targets).
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\microsoft_directshow_baseclasses\MicrosoftDirectshowBaseclasses.vcxproj" (4) on node 2 (default targets).
+     4>InitializeBuildStatus:
+         Creating "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         MicrosoftDirectshowBaseclasses.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild".
+         Touching "x64\Release\Microsof.fbc2d6cb.tlog\Microsoft Directshow Baseclasses.lastbuildstate".
+     4>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\microsoft_directshow_baseclasses\MicrosoftDirectshowBaseclasses.vcxproj" (default targets).
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\lavfilters\LAVFilters.vcxproj" (7) on node 2 (default targets).
+     7>InitializeBuildStatus:
+         Creating "x64\Release\LAVFilters.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\LAVFilters.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (2) on node 1 (default targets).
+     2>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (2) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (5) on node 1 (default targets).
+     5>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (5) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (6) on node 1 (default targets).
+     6>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (6) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj" (8) on node 1 (default targets).
+     8>InitializeBuildStatus:
+         Creating "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild".
+     7>Lib:
+         All outputs are up-to-date.
+         LAVFilters.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\LAVFilters.lib
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\LAVFilters.tlog\unsuccessfulbuild".
+         Touching "x64\Release\LAVFilters.tlog\LAVFilters.lastbuildstate".
+     7>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\lavfilters\LAVFilters.vcxproj" (default targets).
+     8>ClCompile:
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         mpc_video_renderer.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\MPC Video Renderer.lib
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild".
+         Touching "x64\Release\MPC Vide.0b36de56.tlog\MPC Video Renderer.lastbuildstate".
+     8>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj" (default targets).
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj" (13) on node 2 (default targets).
+    13>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+       Link:
+         All outputs are up-to-date.
+         VideoProcessor-ConfigTests.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfigTests.exe
+       PostBuildEvent:
+         "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfigTests.exe"
+         copy /Y "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\plugins\platforms\qoffscreen.dll" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\platforms\qoffscreen.dll"
+         :VCEnd
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\VideoProcessor-OutputProbe.vcxproj" (14) on node 1 (default targets).
+    14>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+       Link:
+         All outputs are up-to-date.
+         VideoProcessor-OutputProbe.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorOutputProbe.exe
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\VideoProcessor-OutputProbe.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorOutputProbe.exe" -ToolsetVersion "14.44.35207"
+    13>PostBuildEvent:
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfigTests.exe 64 bit, release executable
+         Adding in plugin type generic for module: Qt6Gui
+         Adding Qt6Network for qtuiotouchplugin.dll from plugin type: generic
+         Adding in plugin type iconengines for module: Qt6Gui
+         Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+         Adding in plugin type imageformats for module: Qt6Gui
+         Adding in plugin type networkinformation for module: Qt6Network
+         Adding in plugin type platforms for module: Qt6Gui
+         Adding in plugin type styles for module: Qt6Widgets
+         Adding in plugin type tls for module: Qt6Network
+         Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+         Direct dependencies: Qt6Core Qt6Gui Qt6Widgets
+         All dependencies   : Qt6Core Qt6Gui Qt6Widgets
+         To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+         Qt6Core.dll is up to date.
+         Qt6Gui.dll is up to date.
+         Qt6Network.dll is up to date.
+         Qt6Svg.dll is up to date.
+         Qt6Widgets.dll is up to date.
+         opengl32sw.dll is up to date.
+         dxcompiler.dll is up to date.
+         dxil.dll is up to date.
+         vc_redist.x64.exe is up to date.
+         qtuiotouchplugin.dll is up to date.
+         qsvgicon.dll is up to date.
+         qgif.dll is up to date.
+         qico.dll is up to date.
+         qjpeg.dll is up to date.
+         qsvg.dll is up to date.
+         qnetworklistmanager.dll is up to date.
+         qwindows.dll is up to date.
+         qmodernwindowsstyle.dll is up to date.
+         qcertonlybackend.dll is up to date.
+         qschannelbackend.dll is up to date.
+                 1 file(s) copied.
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\VideoProcessor-ConfigTests.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfigTests.exe" -ToolsetVersion "14.44.35207"
+    14>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-OutputProbe\VideoProcessor-OutputProbe.vcxproj" (default targets).
+    13>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj" (default targets).
+     6>InitializeBuildStatus:
+         Creating "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         VideoProcessor-Lib.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Lib.lib
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild".
+         Touching "x64\Release\VideoPro.85f8c0f9.tlog\VideoProcessor-Lib.lastbuildstate".
+     6>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (default targets).
+     5>InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (9) on node 2 (default targets).
+     9>InitializeBuildStatus:
+         Creating "x64\Release\VideoPro.3AA709FC.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\VideoPro.3AA709FC.tlog\unsuccessfulbuild".
+     5>InitializeBuildStatus:
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild".
+       PreBuildEvent:
+         powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\." -GitRoot "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\..\.."
+         :VCEnd
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\VideoProcessor-GUI.vcxproj" (10) on node 2 (default targets).
+    10>InitializeBuildStatus:
+         Creating "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild".
+       PreBuildEvent:
+         powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\." -GitRoot "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\..\.."
+         :VCEnd
+     5>PreBuildEvent:
+         Written E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\.\version.h as:
+         
+    10>PreBuildEvent:
+         Written E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\.\version.h as:
+         
+     5>PreBuildEvent:
+         #pragma once
+         
+         #include <atlstr.h>
+    10>PreBuildEvent:
+         #pragma once
+         
+     5>PreBuildEvent:
+         
+    10>PreBuildEvent:
+         #include <atlstr.h>
+         
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/43b81e9063e0531f7ac2b1f589238d6ad6d37d33");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/43b81e9063e0531f7ac2b1f589238d6ad6d37d33");
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_DATE=TEXT("2026-10-23 18:02:25 -0400");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_DATE=TEXT("2026-10-23 18:02:25 -0400");
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_DESCRIBE=TEXT("git-43b81e9");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_DESCRIBE=TEXT("git-43b81e9");
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_BRANCH=TEXT("codex/render-thread-jitter-20261022");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_BRANCH=TEXT("codex/render-thread-jitter-20261022");
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_COMMIT_SHORT=TEXT("43b81e9");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_COMMIT_SHORT=TEXT("43b81e9");
+     5>PreBuildEvent:
+         static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+    10>PreBuildEvent:
+         static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+     5>PreBuildEvent:
+         const bool VERSION_DIRTY=false;
+    10>PreBuildEvent:
+         const bool VERSION_DIRTY=false;
+     5>PreBuildEvent:
+         
+    10>PreBuildEvent:
+         
+     5>PreBuildEvent:
+         
+    10>PreBuildEvent:
+         
+     1>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (11) on node 2 (default targets).
+    11>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (11) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (12) on node 2 (default targets).
+    12>InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild".
+     5>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Lib" /I..\..\3rdparty\libplacebo\include /I..\..\3rdparty\nvapi /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _USRDLL /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\\" /Fd"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue LibplaceboPluginExports.cpp
+    12>ClCompile:
+         All outputs are up-to-date.
+       Link:
+         All outputs are up-to-date.
+         VideoProcessor-ConfigDiscovery.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\VideoProcessor-ConfigDiscovery.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll" -ToolsetVersion "14.29.30133"
+     5>ClCompile:
+         LibplaceboPluginExports.cpp
+         _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+    12>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (default targets).
+    10>ClCompile:
+         All outputs are up-to-date.
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"..\VideoProcessor-ConfigCore" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I"..\VideoProcessor-Lib" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"pch.h" /Fp"x64\Release\VideoProcessor-GUI.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue ModernOperatorView.cpp VideoProcessorApp.cpp VideoProcessorDlg.cpp version.cpp
+         ModernOperatorView.cpp
+     9>ClCompile:
+         All outputs are up-to-date.
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\libplacebo\include /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\include" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"pch.h" /Fp"x64\Release\VideoProcessor-Test.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS ConfigFileTests.cpp
+    10>ClCompile:
+         VideoProcessorApp.cpp
+     9>ClCompile:
+         ConfigFileTests.cpp
+    10>ClCompile:
+         VideoProcessorDlg.cpp
+     9>ClCompile:
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.dll" /INCREMENTAL:NO /NOLOGO /LIBPATH:..\..\3rdparty\libplacebo\lib /LIBPATH:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-360.lib" Ws2_32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG:FULL /PDB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"x64\Release\VideoProcessor-Test.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.lib" /MACHINE:X64 /DLL x64\Release\FullscreenActivationTests.obj
+         x64\Release\StartupPresentationReadinessTests.obj
+         x64\Release\QueueNativeContinuityTests.obj
+         x64\Release\Bt2020SignalControllerTests.obj
+         x64\Release\pch.obj
+         x64\Release\CpuFeaturesTests.obj
+         x64\Release\VideoFrameFormatterTests.obj
+         x64\Release\DolbyVisionLuminancePolicyTests.obj
+         x64\Release\DolbyVisionTunnelFormatterTests.obj
+         x64\Release\MovingPictureTransitionTests.obj
+         x64\Release\SubtitleBoxDetectorTests.obj
+         x64\Release\SubtitleOpaqueCardRefinementTests.obj
+         x64\Release\SubtitleBoxLookaheadTests.obj
+         x64\Release\SubtitleHandoffTests.obj
+         x64\Release\SubtitleBackingLipTests.obj
+         x64\Release\AnalysisRecoveryParityTests.obj
+         x64\Release\AnalysisRecoveryDvTests.obj
+         x64\Release\SubtitleMeasurementWorkerTests.obj
+         x64\Release\SubtitleCutPasteTests.obj
+         x64\Release\LookaheadOutwardProofTests.obj
+         x64\Release\PictureTransitionHandoffTests.obj
+         x64\Release\FitLookaheadDiagnosticTests.obj
+         x64\Release\PresentationEnvelopeCompositionTests.obj
+         x64\Release\NearBlackNativeBoundaryRecoveryTests.obj
+         x64\Release\SubtitleTranslationReversalTests.obj
+         x64\Release\RetainedScopeUnknownPresentationTests.obj
+         x64\Release\SubmittedNativeFillRetentionTests.obj
+         x64\Release\AlphaSourceCropPolicyTests.obj
+         x64\Release\HdrPeakAnalysisCropTests.obj
+         x64\Release\LibplaceboOutputPolicyTests.obj
+         x64\Release\NativeStatsOverlayPlacementTests.obj
+         x64\Release\LibplaceboLutParserTests.obj
+         x64\Release\MotionRendererTests.obj
+         x64\Release\LibplaceboRenderParametersTests.obj
+         x64\Release\LibplaceboDisplayLut.obj
+         x64\Release\LibplaceboRenderParameters.obj
+         x64\Release\SceneDetectorTests.obj
+         x64\Release\WindowResizeLayoutTests.obj
+         x64\Release\AlphaPresentationTelemetryTests.obj
+         x64\Release\AlphaRenderLoadMeterTests.obj
+         x64\Release\AlphaCadenceCorrectionPolicyTests.obj
+         x64\Release\ProcessCpuUsageWindowTests.obj
+         x64\Release\ConfigFileTests.obj
+         x64\Release\ConfigEditorCoreTests.obj
+         x64\Release\ConfigurationRpcServerTests.obj
+         x64\Release\ConfigurationRpcServer.obj
+         x64\Release\ConfigurationRpcClient.obj
+         x64\Release\ConfigEditorCore.obj
+         x64\Release\DebugLogRetentionTests.obj
+         x64\Release\DebugLogAsyncTests.obj
+         x64\Release\AnalysisEvaluationBudgetTests.obj
+         x64\Release\AnalysisDiagnosticTraceTests.obj
+         x64\Release\AnalysisDiagnosticReplayTests.obj
+         x64\Release\DisplayRefreshRatePolicyTests.obj
+         x64\Release\DisplayWindowGeometryTests.obj
+         x64\Release\DisplayRasterInfoTests.obj
+         x64\Release\StatsOverlayWindow.obj
+         x64\Release\DisplayRefreshRateEstimatorTests.obj
+         x64\Release\DisplayRefreshRateWindowTests.obj
+         x64\Release\CadenceIntervalEstimateTests.obj
+         x64\Release\AlphaQueuePolicyTests.obj
+         x64\Release\RendererPostStallResetAdvisorTests.obj
+         x64\Release\MadVRShaderRuntimeStateTests.obj
+         x64\Release\ActivePictureDecisionTimelineTests.obj
+         x64\Release\FullRasterLookaheadTests.obj
+         x64\Release\LibplaceboPluginProxyTests.obj
+         x64\Release\ActivePictureTransitionModelTests.obj
+         x64\Release\ActivePictureAnalyzerTests.obj
+         x64\Release\ActivePictureEvidenceTests.obj
+         x64\Release\ActivePictureBlackReferenceTests.obj
+         x64\Release\ActivePictureMeasurementCacheTests.obj
+         x64\Release\LocalBoundaryDiagnosticsTests.obj
+         x64\Release\LocalBoundaryRefinementTests.obj
+         x64\Release\SparseEntryEpisodeRecoveryTests.obj
+         x64\Release\LocalBoundaryAnchorDiagnosticsTests.obj
+         x64\Release\SparseBoundaryCropExperimentTests.obj
+         x64\Release\SparseBoundaryTransitionExperimentTests.obj
+         x64\Release\SidePictureDiagnosticsTests.obj
+         x64\Release\DimSideCompositionGuardTests.obj
+         x64\Release\OpposingBoundaryDiagnosticsTests.obj
+         x64\Release\InwardCaptionEvidenceTests.obj
+         x64\Release\FullRasterColorEvidenceFormatTests.obj
+         x64\Release\InvalidCaptureStateGraceTests.obj
+         x64\Release\EotfTransitionStabilizerTests.obj
+         x64\Release\NativeRgbAnalysisTests.obj
+         x64\Release\RendererIdTests.obj
+         x64\Release\RendererResetPolicyTests.obj
+         x64\Release\RendererResetCoordinatorTests.obj
+         x64\Release\RendererResetRequestLatchTests.obj
+         x64\Release\RendererTransitionModelTests.obj
+         x64\Release\RendererQueueLaunchContractModelTests.obj
+         x64\Release\RendererGenerationGateTests.obj
+         x64\Release\RendererLivenessTests.obj
+         x64\Release\DirectShowPresentationLeadPolicyTests.obj
+         x64\Release\DirectShowEpochPrimePolicyTests.obj
+         x64\Release\LiveOutputTraceTests.obj
+         x64\Release\VideoTimingControllerTests.obj
+         x64\Release\CaptureClockConversionTests.obj
+         x64\Release\DirectShowTimingClockTests.obj
+         x64\Release\DirectShowVideoTimingAdapterTests.obj
+         x64\Release\DirectShowFrameDelivererTests.obj
+         x64\Release\DirectShowDeliveryOutcomeTests.obj
+         x64\Release\DirectShowSegmentTransitionTests.obj
+         x64\Release\CaptureResyncHardeningTests.obj
+         x64\Release\DirectShowGraphExecutorTests.obj
+         x64\Release\DirectShowQueueConstructionContractTests.obj
+         x64\Release\EpochBoundedQueueTests.obj
+         x64\Release\FrameProcessorTests.obj
+         x64\Release\LiveEpochConvergenceControllerTests.obj
+         x64\Release\LiveFrameCounterTrackerTests.obj
+         x64\Release\OutputReadinessControllerTests.obj
+         x64\Release\TemporalPresentationLedgerTests.obj
+         x64\Release\MagewellCaptureTests.obj
+         x64\Release\MagewellDiscoveryTests.obj
+         x64\Release\MagewellSdkInstanceTests.obj
+         x64\Release\RationalLiveOutputSequencerTests.obj
+         x64\Release\ConsecutiveFrameDurationHistoryTests.obj
+         x64\Release\RememberedEdgeReturnTests.obj
+         x64\Release\OutputOsdTelemetryCacheTests.obj
+         x64\Release\HdrStatusTests.obj
+         x64\Release\OsdInputColorInfoTests.obj
+         x64\Release\StatsOverlayLayoutTests.obj
+         x64\Release\MadVROsdSizingTests.obj
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\LAVFilters.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\MPC Video Renderer.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+     5>Link:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll" /NOLOGO /LIBPATH:..\..\3rdparty\libplacebo\lib /LIBPATH:..\..\3rdparty\nvapi\amd64 /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-360.lib" nvapi64.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib windowscodecs.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoProcessorVPRenderer.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.lib" /MACHINE:X64 /DLL "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboPluginExports.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboDisplayLut.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboRenderParameters.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboVideoRenderer.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\LAVFilters.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\MPC Video Renderer.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+            Creating library E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.lib and object E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.exp
+         Generating code
+     9>Link:
+            Creating library E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.lib and object E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.exp
+         Generating code
+    10>ClCompile:
+         version.cpp
+     5>Link:
+         5 of 14421 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+           0 functions were new in current compilation
+           112 functions had inline decision re-evaluated but remain unchanged
+         Finished generating code
+         VideoProcessor-VPRenderer.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       PostBuildEvent:
+         if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\*.dll" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\*.dll" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses" xcopy /Y /I /E "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\third_party_licenses" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\LICENSE.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\LICENSE.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\third_party_licenses\libplacebo-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\nvapi\License.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\nvapi\License.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\third_party_licenses\nvapi-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\README.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\README.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\README.txt"
+         :VCEnd
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libdovi.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libgcc_s_seh-1.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\liblcms2-2.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libplacebo-360.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libshaderc_shared.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libspirv-cross-c-shared.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libstdc++-6.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\libwinpthread-1.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\bin\vulkan-1.dll
+                 9 file(s) copied.
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING.LIB
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING.RUNTIME
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING3
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\README
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\lcms2\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\lcms2\LICENSE-fast_float
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\libdovi\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\shaderc\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\spirv-cross\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\spirv-tools\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\vulkan-loader\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo\licenses\winpthreads\COPYING
+         12 File(s) copied
+                 1 file(s) copied.
+                 1 file(s) copied.
+                 1 file(s) copied.
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\VideoProcessor-VPRenderer.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll" -ToolsetVersion "14.29.30133"
+     5>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (default targets).
+     2>Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (2) is building "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj" (15) on node 1 (default targets).
+    15>InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild".
+       PreBuildEvent:
+         powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\." -GitRoot "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\..\.."
+         :VCEnd
+         Written E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\.\version.h as:
+         
+         #pragma once
+         
+         #include <atlstr.h>
+         
+         static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/43b81e9063e0531f7ac2b1f589238d6ad6d37d33");
+         static const TCHAR* VERSION_DATE=TEXT("2026-10-23 18:02:25 -0400");
+         static const TCHAR* VERSION_DESCRIBE=TEXT("git-43b81e9");
+         static const TCHAR* VERSION_BRANCH=TEXT("codex/render-thread-jitter-20261022");
+         static const TCHAR* VERSION_COMMIT_SHORT=TEXT("43b81e9");
+         static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+         const bool VERSION_DIRTY=false;
+         
+         
+       ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Lib" /I"..\..\3rdparty\libplacebo-beta\include" /I..\..\3rdparty\nvapi /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _USRDLL /D VP_LIBPLACEBO_BETA /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\\" /Fd"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue LibplaceboPluginExports.cpp
+         LibplaceboPluginExports.cpp
+         _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll" /NOLOGO /LIBPATH:"..\..\3rdparty\libplacebo-beta\lib" /LIBPATH:..\..\3rdparty\nvapi\amd64 /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-377.lib" nvapi64.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib windowscodecs.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoProcessorVPRendererBeta.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib" /MACHINE:X64 /DLL "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboPluginExports.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboDisplayLut.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboRenderParameters.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboVideoRenderer.obj"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\LAVFilters.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\MPC Video Renderer.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+            Creating library E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib and object E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.exp
+         Generating code
+     9>Link:
+         4 of 40683 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+           2 functions were new in current compilation
+           1620 functions had inline decision re-evaluated but remain unchanged
+         Finished generating code
+    15>Link:
+         3 of 14381 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+           0 functions were new in current compilation
+           113 functions had inline decision re-evaluated but remain unchanged
+         Finished generating code
+         VideoProcessor-VPRendererBeta.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       PostBuildEvent:
+         if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\*.dll" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\*.dll" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses" xcopy /Y /I /E "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\third_party_licenses" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\LICENSE.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\LICENSE.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\third_party_licenses\libplacebo-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\nvapi\License.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\nvapi\License.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\third_party_licenses\nvapi-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\README.txt" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\README.txt" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\README.txt"
+         :VCEnd
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libdovi.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libgcc_s_seh-1.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\liblcms2-2.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libplacebo-377.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libshaderc_shared.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libspirv-cross-c-shared.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libstdc++-6.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\libwinpthread-1.dll
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\bin\vulkan-1.dll
+                 9 file(s) copied.
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.LIB
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.RUNTIME
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING3
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\README
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE-fast_float
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\libdovi\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\shaderc\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\spirv-cross\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\spirv-tools\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\vulkan-loader\LICENSE
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\3rdparty\libplacebo-beta\licenses\winpthreads\COPYING
+         12 File(s) copied
+                 1 file(s) copied.
+                 1 file(s) copied.
+                 1 file(s) copied.
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\VideoProcessor-VPRendererBeta.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll" -ToolsetVersion "14.29.30133"
+    15>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj" (default targets).
+     2>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (default targets).
+     9>Link:
+         VideoProcessor-Test.vcxproj.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.dll
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       PostBuildEvent:
+         xcopy /D /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Test\..\..\3rdparty\libplacebo\bin\*.dll" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\" >nul
+         :VCEnd
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\VideoPro.3AA709FC.tlog\unsuccessfulbuild".
+         Touching "x64\Release\VideoPro.3AA709FC.tlog\VideoProcessor-Test.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Test.dll" -ToolsetVersion "14.29.30133"
+     9>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (default targets).
+    10>ClCompile:
+         All outputs are up-to-date.
+       ResourceCompile:
+         All outputs are up-to-date.
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-GUI.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-GUI.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"x64\Release\VideoProcessor-GUI.iobj" /TLBID:1 /ENTRY:"wWinMainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-GUI.lib" /MACHINE:X64 x64\Release\VideoProcessor.res
+         x64\Release\CCie1931Control.obj
+         x64\Release\ConfigEditorCore.obj
+         x64\Release\FullscreenVideoWindow.obj
+         x64\Release\ModernOperatorView.obj
+         x64\Release\RendererTransitionWindow.obj
+         x64\Release\ShaderLoadingWindow.obj
+         x64\Release\pch.obj
+         x64\Release\StatsOverlayWindow.obj
+         x64\Release\version.obj
+         x64\Release\VideoProcessorApp.obj
+         x64\Release\VideoProcessorDlg.obj
+         x64\Release\ConfigurationRpcServer.obj
+         x64\Release\WindowedVideoWindow.obj
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\LAVFilters.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\MPC Video Renderer.lib"
+         "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+         Generating code
+         8 of 20467 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+           0 functions were new in current compilation
+           110 functions had inline decision re-evaluated but remain unchanged
+         Finished generating code
+         VideoProcessor-GUI.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-GUI.exe
+       PostBuildEvent:
+         if not exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor.cfg" if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.cfg" copy "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.cfg" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor.cfg" & if exist "E:\codex\videoprocessor\pr192-conflict-review-20261023\CONFIGURATION.html" copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\CONFIGURATION.html" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\CONFIGURATION.html"
+         :VCEnd
+       FinalizeBuildStatus:
+         Deleting file "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild".
+         Touching "x64\Release\VideoPro.a2af7b35.tlog\VideoProcessor-GUI.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessor-GUI.exe" -ToolsetVersion "14.29.30133"
+    10>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-GUI\VideoProcessor-GUI.vcxproj" (default targets).
+    11>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+         All outputs are up-to-date.
+       ResourceCompile:
+         All outputs are up-to-date.
+       Link:
+         All outputs are up-to-date.
+         VideoProcessor-Config.vcxproj -> E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfig.exe
+       _CopyOutOfDateSourceItemsToOutputDirectory:
+       Skipping target "_CopyOutOfDateSourceItemsToOutputDirectory" because all output files are up-to-date with respect to the input files.
+       PostBuildEvent:
+         copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\..\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\"
+         copy /Y "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\..\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll.runtime.json" "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\"
+         "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfig.exe"
+         :VCEnd
+                 1 file(s) copied.
+                 1 file(s) copied.
+         E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfig.exe 64 bit, release executable
+         Adding in plugin type generic for module: Qt6Gui
+         Adding in plugin type iconengines for module: Qt6Gui
+         Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+         Adding in plugin type imageformats for module: Qt6Gui
+         Adding in plugin type networkinformation for module: Qt6Network
+         Adding in plugin type platforms for module: Qt6Gui
+         Adding in plugin type styles for module: Qt6Widgets
+         Adding in plugin type tls for module: Qt6Network
+         Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+         Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6Widgets
+         All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6Widgets
+         To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+         Qt6Core.dll is up to date.
+         Qt6Gui.dll is up to date.
+         Qt6Network.dll is up to date.
+         Qt6Svg.dll is up to date.
+         Qt6Widgets.dll is up to date.
+         opengl32sw.dll is up to date.
+         dxcompiler.dll is up to date.
+         dxil.dll is up to date.
+         vc_redist.x64.exe is up to date.
+         qtuiotouchplugin.dll is up to date.
+         qsvgicon.dll is up to date.
+         qgif.dll is up to date.
+         qico.dll is up to date.
+         qjpeg.dll is up to date.
+         qsvg.dll is up to date.
+         qnetworklistmanager.dll is up to date.
+         qwindows.dll is up to date.
+         qmodernwindowsstyle.dll is up to date.
+         qcertonlybackend.dll is up to date.
+         qschannelbackend.dll is up to date.
+       FinalizeBuildStatus:
+         Deleting file "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild".
+         Touching "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\VideoProcessor-Config.lastbuildstate".
+       RecordVpRuntimeRequirement:
+         powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr192-conflict-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr192-conflict-review-20261023\x64\Release\VideoProcessorConfig.exe" -ToolsetVersion "14.44.35207"
+    11>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (default targets).
+     1>Done Building Project "E:\codex\videoprocessor\pr192-conflict-review-20261023\VideoProcessor.sln" (Build target(s)).
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:29.40

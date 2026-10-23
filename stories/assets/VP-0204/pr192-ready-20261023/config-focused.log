@@ -1,0 +1,16 @@
+PASS warm reveal grants foreground permission
+START warm reveal grants foreground permission
+START normal window architecture has no lease polling
+PASS normal window architecture has no lease polling
+START stable reveal endpoint survives hidden Qt window
+PASS stable reveal endpoint survives hidden Qt window
+START cross-thread activation avoids reverse callback deadlock
+PASS cross-thread activation avoids reverse callback deadlock
+START clean Apply notifies without saving
+PASS clean Apply notifies without saving
+START clean remote Apply uses unchanged RPC candidate
+PASS clean remote Apply uses unchanged RPC candidate
+START Apply OK Cancel contract
+PASS Apply OK Cancel contract
+START Off zoom hold round trip
+PASS Off zoom hold round trip

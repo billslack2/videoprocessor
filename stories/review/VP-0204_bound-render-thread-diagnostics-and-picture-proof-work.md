@@ -4,13 +4,48 @@
 
 Review
 
-Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is unmerged
-at `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a` (the PR branch remains
-`codex/render-thread-jitter-20261022`; the logging worktree is
-`E:\codex\videoprocessor\log-memory-20261022` on `codex/log-memory-20261022`).
-Its verified current/default beta base is `v1.4.02-beta` at
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. PR #191 / VP-0203 and broad
-foreground-policy VP-0111 remain separate and unchanged.
+[PR #192](https://github.com/billslack2/videoprocessor/pull/192) is ready for merge
+review and remains unmerged. Current tested integration head is
+`43b81e9063e0531f7ac2b1f589238d6ad6d37d33` on
+`codex/render-thread-jitter-20261022`, from freshly fetched current/default beta
+`f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b`. The clean integration worktree is
+`E:\codex\videoprocessor\pr192-conflict-review-20261023`.
+
+- Full x64 Release solution build passed, including host and both renderer variants.
+  Genuine Release records match the six tested binary hashes.
+- **1340/1340 selected native regressions passed**, zero failures/skips, covering
+  logging concurrency/exhaustion/drain, NVIDIA worker lifecycle and generation
+  fencing, fullscreen one-shot readiness, cancellation, owner/domain cache reuse,
+  picture/crop/subtitle/retention safety, rendering and plugin compatibility.
+- **8/8 focused Windows Config checks passed** on the final build: reveal/focus,
+  no lease polling, cross-thread activation, local/remote clean Apply,
+  Apply/OK/Cancel and Off hold. No full Config-suite pass is claimed.
+- Resolved the substantive picture-evidence conflict by preserving #194's
+  unresolved Full-range matte rejection and passing the optional budget only to
+  eligible low-contrast recovery, followed by the final budget checkpoint.
+  Unioned the black-reference/logger/budget test filter registrations.
+- Added cross-format budgeted black-reference/retention parity coverage.
+  The first run found a Config test still expecting API28 after merged #191;
+  its assertion now covers API29 and explicit LUT reload. The final selected
+  suite passes. Initial failed-run evidence at `b561cc5f` is preserved.
+- #191 API29/LUT Apply and #194/#195 safety behavior are retained. Independent
+  logger/NVIDIA/fullscreen helpers match original #192. #193 remains separate.
+- No deployment, restart or active-configuration changes. No fresh live jitter
+  A/B or sustained GPU-pressure qualification, and no causal live improvement
+  claim. This story remains Review for merge/field acceptance.
+
+[Current readiness evidence](../assets/VP-0204/pr192-ready-20261023/validation.json),
+[native report](../assets/VP-0204/pr192-ready-20261023/pr192-final.trx),
+[focused Config result](../assets/VP-0204/pr192-ready-20261023/config-focused.json)
+and genuine build records/hashes are committed with this story. Complete local
+build artifacts remain in the integration worktree's `artifacts/pr192-ready`.
+
+## Historical implementation and deployment (2026-10-22)
+
+The original feature head was `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`,
+based on beta `fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`. The following
+measurements and installed-process observations describe that earlier work;
+they are not a fresh deployment or live qualification of the current integration.
 
 The user's memory-queue follow-up is implemented, tested and deployed. The earlier
 try-lock contention-drop design is superseded by preallocated atomic pool
