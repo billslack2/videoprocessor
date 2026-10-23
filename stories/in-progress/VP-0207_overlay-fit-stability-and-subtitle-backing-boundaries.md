@@ -1,7 +1,7 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Review
+In Progress
 
 Follow-up backing correction f93438ed is deployed for Ben-Hur replay in draft PR #196. The one-pixel current-measurement/composition binding dropout is reproduced and covered by native/GPU regressions; live acceptance remains pending. Prior Off fitting remains accepted.
 
@@ -113,3 +113,6 @@ User reports intermittent subtitle occlusion flashing during Ben-Hur after accep
 - Clean x64 Release solution Rebuild passed. All **1,005 selected native/GPU tests passed**, including all three new regressions, the prior 695-test coverage and additional lookahead, measurement worker, cut/paste and actual GPU shader tests. GPU cases cover black/reconstruction alpha, measured/clipped backing, prepared erasure, the fresh backing lip and surround reconstruction. Both Qt Off zoom hold and subtitle profile round-trip tests passed. Logs in the source worktree: build-backing-visible-edge-clean.log, test-backing-edge-new.log, test-backing-visible-edge.log, test-backing-edge-off-ui.log, test-backing-edge-subtitle-ui.log. Final TRX: TestResults/backing-visible-edge.trx. No full suite rerun is claimed at this revision.
 - Continued the authorized test deployment: host and standard/beta renderers backed up and replaced together from the successful Release build. All three deployed SHA-256 hashes match build records. Startup confirms host and beta renderer f93438ed with dirty=0, PID 65292. Existing Config binaries/open editor preserved; no active configuration edits, and hashes unchanged after launch. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-backing-binding-f93438ed-20261023-164515.
 - Evidence: stories/assets/VP-0207/deployment-f93438ed-20261023 includes receipt, startup identity, same-cue incident lines and validation summary. Complete log snapshot remains in E:\codex\diagnostics\vp0207-backing-flash-20261023-1632; no movie pixels committed. Review remains pending the user's live Ben-Hur replay, particularly whether the narrow occluding strip still flashes during a single cue.
+## Paused glyph-free backing remains — 2026-10-23
+
+User supplied paused native/processed views showing the rounded black backing extending into the picture, without glyphs in that strip. Runtime f93438ed repeatedly rejects lip-composition-edge-not-contained before sampling the card: independent physical picture 383..1776, displayed composition 382..1778, cue text 1546,1778..2306,2022. Captured the exact paused 3840x2160 decoded-DV source and metadata under E:\codex\diagnostics\vp0207-paused-backing-20261023 (native pixels remain outside Git). The previous inward-only binding fix is insufficient when display geometry extends beyond native physical bars. Continue draft PR #196 from the same clean current-beta lineage and validate current native proof intersected with the actual visible picture; do not enlarge cleanup into unproved pixels or glyphs.
