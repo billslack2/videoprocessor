@@ -45,6 +45,27 @@ namespace AlphaQueuePolicy
 		return result;
 	}
 
+	// Preparation may cover the independent next-source outward certificate even
+	// when the configured AR admission horizon is shorter or disabled. This is
+	// only a union of already buffered entries: no extra queue wait or proof vote.
+	template<typename Queue>
+	std::vector<size_t> SelectActivePicturePreparation(const Queue& queue,
+		size_t configured, size_t maxLookahead, size_t requiredOutwardFutureFrames)
+	{
+		auto indices = SelectActivePicturePreview(queue, configured, maxLookahead).indices;
+		size_t outwardFrames = 0;
+		for (size_t index = 1; index < queue.size() &&
+			outwardFrames < requiredOutwardFutureFrames; ++index)
+		{
+			if (queue[index].cadenceRepeat) continue;
+			indices.push_back(index);
+			++outwardFrames;
+		}
+		std::sort(indices.begin(), indices.end());
+		indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+		return indices;
+	}
+
 	inline size_t NormalizeDesiredDepth(size_t value)
 	{
 		return std::max<size_t>(1, value);
