@@ -5006,7 +5006,10 @@ struct LibplaceboVideoRenderer::Impl
 	HMONITOR negotiatedMonitor = nullptr;
 	bool hasPresentedFrame = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
+    uint64_t lookaheadProofCancellations = 0, lookaheadDiagnosticSkips = 0;
     uint64_t nextSourceMeasurementCacheLogTick = 0;
+    ActivePictureMeasurementCache::Statistics sourceMeasurementInterval;
+    uint64_t sourceMeasurementBatches = 0, sourceMeasurementOutputs = 0;
 	PostStallResetAdvisor postStallResetAdvisor;
 	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
@@ -10524,8 +10527,7 @@ struct LibplaceboVideoRenderer::Impl
             // AR darkness is rebutted only by current independently measured native
             // bars and distributed picture structure. Caption/sparse inference below
             // keeps the raw global-dark guard; it cannot supply this certificate.
-            auto arDarkness = EvaluateActivePictureArDarkness(
-                analysisSource, latestRawPictureEvidence, globalNearBlack);
+            auto arDarkness = pixelMeasurements.ArDarkness(latestRawPictureEvidence, globalNearBlack);
             if (frameNumber % 120 == 0)
                 DebugLog::Log("Alpha AR darkness: sequence=%llu generation=%llu raw_near_black=%d ar_near_black=%d p90=%.1f cutoff=%.3f range=%u distributed_picture=%d textured_tiles=%d quadrants=%d bar_floor=%.1f picture_median=%.1f median_spread=%.1f samples=%zu",
                     static_cast<unsigned long long>(frameNumber),
@@ -10685,8 +10687,7 @@ struct LibplaceboVideoRenderer::Impl
 					bootstrapRetention = sparseStartupCandidate
 						// Same source, sequence and exact selected contract, inspected above.
 						? sparseCandidate.retention
-						: EvaluateActivePicturePresentationRetention(
-							analysisSource, latestNativeBootstrapContract);
+						: pixelMeasurements.Retention(latestNativeBootstrapContract);
 				if (bootstrapProbeDue)
 					LogCropExtentWitness("bootstrap", analysisSource.generation, frameNumber, bootstrapRetention);
 				latestNativeBootstrapRetentionEvaluated =
@@ -12649,6 +12650,15 @@ struct LibplaceboVideoRenderer::Impl
 			currentActivePictureIdentity.viewportGeneration =
 				viewportRequestSerial;
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
+            pixelMeasurements.Begin(analysisSource, currentActivePictureIdentity,
+                localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+            if (analysisCache) {
+                const auto native = QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if (native && native->domainKey == preparedLive.domainKey)
+                    pixelMeasurements.SeedQueued(native->source, native->identity,
+                        native->evidence, native->darkness);
+            }
+
             // Consume a completed exact-frame worker job before AR evaluates this
             // frame. An empty queue result is unknown; rendering never waits.
             if (subtitleMeasurementEnabled &&
@@ -19751,6 +19761,12 @@ releaseDriftBaseRetention =
 					load.windowFilledSeconds,
 					load.framePeriodFromRenderCadence ? "render-cadence" :
 						"unavailable");
+                const auto signaling=nvidiaBt2020Reporter.Snapshot();
+                DebugLog::Log("NVIDIA BT.2020 worker: generation=%llu completed=%llu requests=%llu coalesced=%llu duplicates=%llu obsolete=%llu pending=%d request_age_us=%llu service_peak_us=%llu driver_calls=%llu driver_total_us=%llu driver_peak_us=%llu driver_active_age_us=%llu",
+                    signaling.generation,signaling.completedGeneration,signaling.requests,
+                    signaling.coalesced,signaling.duplicates,signaling.obsoleteCompletions,
+                    signaling.pending?1:0,signaling.requestAgeUs,signaling.requestToServicePeakUs,
+                    signaling.driverCalls,signaling.driverTotalUs,signaling.driverPeakUs,signaling.driverActiveAgeUs);
                 DebugLog::Log("VP render load budget: source_hz=%.6f scheduled_output_hz=%.6f budget_hz=%.6f budget_ms=%.3f origin=%s",
                     budgetRateHz,scheduledOutputHz,renderBudgetHz,renderLoadFramePeriodMs,
                     scheduledOutputHz>0.0?"temporal-output":"source");
@@ -22235,12 +22251,15 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
             slot->pending.load(std::memory_order_acquire)) continue;
         const auto identity=queued.activePictureIdentity;
         m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,
-            identity.acceptedSequence,minimumSequence,[prepared] {
+            identity.acceptedSequence,minimumSequence,[prepared,identity] {
                 static thread_local const bool prioritySet=
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
                 QueuedFrame::LookaheadMeasurement result;
                 result.domainKey=prepared.domainKey;
+                result.source=prepared.source;
+                result.identity=identity;
+                result.identity.analysisDomainKey=prepared.domainKey;
                 result.evidence=ExtractActivePictureEvidence(prepared.source);
                 result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
                 return result;
@@ -22385,6 +22404,11 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         }
         return false;
     };
+    AnalysisEvaluationBudget budget([](void* context) {
+        return PerformanceCounterNow() >= *static_cast<const int64_t*>(context);
+    }, &deadlineQpc);
+    const char* budgetStage="entry";
+    try {
     if(expired()) return abort("entry");
     uint8_t availableLookahead = static_cast<uint8_t>((std::min)(
         queuedFutureFrames, size_t{UINT8_MAX}));
@@ -22662,13 +22686,15 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         if(!measured || measured->domainKey!=prepared.domainKey) {
             m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
-                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared] {
+                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity] {
                     // Optional CPU work yields to capture/presentation under load.
                     static thread_local const bool prioritySet=
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                     (void)prioritySet;
                     QueuedFrame::LookaheadMeasurement result;
                     result.domainKey=prepared.domainKey;
+                    result.source=prepared.source;
+                    result.identity=analysisIdentity;
                     result.evidence=ExtractActivePictureEvidence(prepared.source);
                     result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
                     return result;
@@ -22738,9 +22764,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             queued.activePictureIdentity.transportGeneration == inwardCaptionSourceGeneration &&
             queued.activePictureIdentity.viewportGeneration == inwardCaptionViewport)
         {
-            if(expired()) return abort("inward-caption");
+            budgetStage="inward-caption";
+            budget.Checkpoint();
             const auto caption = AlphaSourceCrop::InspectInwardCaptionEvidence(
-                source, evidence, proofBase, liveProofModel);
+                source, evidence, proofBase, liveProofModel, &budget);
             if (!subtitleArProofAccepted && caption.valid) observedEvidence = caption.picture;
         }
 		PreviewEvidence preview;
@@ -22788,8 +22815,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		if (inspectExpansion && proofSamples.size() < 3)
 		{
 			const auto proofInspectionStart = SteadyClock::now();
-			if(expired()) return abort("expansion-retention");
-            sample.retention = EvaluateActivePicturePresentationRetention(source, proofBase);
+			budgetStage="expansion-retention";
+            budget.Checkpoint();
+            sample.retention = EvaluateActivePicturePresentationRetention(source, proofBase,
+                measured->evidence, measured->darkness.global, measured->darkness, &budget);
             if (relativeContrastEligible && !queued.cadenceRepeat &&
                 !queued.frame.IsSourceDiscontinuity() &&
                 liveProofModel.HasQualifiedNativeAspectPair(proofBase, evidence.trustedBounds,
@@ -22800,7 +22829,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 auto relativeSource = source;
                 relativeSource.generation = sample.identity.transportGeneration;
                 sample.qualifiedAspectPair = true;
-                sample.relativeContrast = InspectRelativeBarContrast(relativeSource, evidence, proofBase);
+                budgetStage="relative-contrast";
+                sample.relativeContrast = InspectRelativeBarContrast(relativeSource, evidence, proofBase, &budget);
             }
 			proofInspectionMs += std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - proofInspectionStart).count();
@@ -22837,11 +22867,13 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 if (sameBounds(rememberedWindowNomination.establishedBase, rememberedWindowBase))
                 {
                     const auto started = SteadyClock::now();
+                    budgetStage="remembered-window";
+                    budget.Checkpoint();
                     if (rememberedWindowActive)
                     {
                         guardedCertificate = BuildGuardedRememberedEdgeReturnCertificate(rememberedWindowModel,
                             rememberedWindowNomination, rememberedWindowSamples.data(), rememberedWindowSamples.size(),
-                            rememberedWindowConfigured, availableLookahead, rememberedWindowContinuity);
+                            rememberedWindowConfigured, availableLookahead, rememberedWindowContinuity, &budget);
                         rememberedGuardedWindowResult = guardedCertificate.diagnostic;
                         rememberedGuardedWindowMs = std::chrono::duration<double, std::milli>(SteadyClock::now()-started).count();
                     }
@@ -22849,14 +22881,14 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     {
                     rememberedWindowResult = InspectRememberedEdgeReturnShadowWindow(
                         rememberedWindowNomination, rememberedWindowSamples.data(), rememberedWindowSamples.size(),
-                        rememberedWindowConfigured, availableLookahead);
+                        rememberedWindowConfigured, availableLookahead, &budget);
                     rememberedWindowMs = std::chrono::duration<double, std::milli>(SteadyClock::now()-started).count();
                     // Compare the same owned source frames and fixed nominee. The
                     // retained strip is diagnostic geometry, never a crop decision.
                     const auto guardedStarted = SteadyClock::now();
                     rememberedGuardedWindowResult = InspectRememberedEdgeReturnGuardedShadowWindow(
                         rememberedWindowNomination, rememberedWindowSamples.data(), rememberedWindowSamples.size(),
-                        rememberedWindowConfigured, availableLookahead);
+                        rememberedWindowConfigured, availableLookahead, &budget);
                     rememberedGuardedWindowMs = std::chrono::duration<double, std::milli>(SteadyClock::now()-guardedStarted).count();
                     }
                 }
@@ -23216,10 +23248,16 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 
     if (rememberedWindowTrace)
     {
+        // Proof publication is already complete. Skip optional diagnostics on
+        // contention/expiry; cancellation here must not report it as discarded.
+        if (expired()) { ++m_impl->lookaheadDiagnosticSkips; return true; }
         bool queueCurrent = false, referenceCurrent = false;
         uint64_t continuity = 0;
         {
-            std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+            std::unique_lock<std::mutex> queueGuard(m_queueMutex,std::try_to_lock);
+            if (!queueGuard.owns_lock() || expired()) {
+                ++m_impl->lookaheadDiagnosticSkips; return true;
+            }
             std::vector<ActivePictureFrameIdentity> identities;
             for (const auto& sample : rememberedWindowSamples) identities.push_back(sample.identity);
             queueCurrent = !identities.empty() && !m_frameQueue.empty() &&
@@ -23233,7 +23271,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             continuity = m_activePictureTimeline.ContinuityGeneration();
         }
         {
-            std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+            std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex,std::try_to_lock);
+            if (!renderGuard.owns_lock() || expired()) {
+                ++m_impl->lookaheadDiagnosticSkips; return true;
+            }
             referenceCurrent = rememberedOwnerEligible() &&
                 m_impl->diagnosticInstanceId == rememberedWindowInstance &&
                 m_impl->localBoundaryPolicyGeneration == lookaheadPolicyGeneration &&
@@ -23304,6 +23345,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     }
 
     return true;
+    } catch (const AnalysisEvaluationCancelled&) {
+        ++m_impl->lookaheadProofCancellations;
+        return abort(budgetStage);
+    }
 }
 
 
@@ -23729,6 +23774,8 @@ void LibplaceboVideoRenderer::RenderLoop()
         if (outwardLogTick>=m_impl->outwardAsyncNextLogTick) {
             m_impl->outwardAsyncNextLogTick=outwardLogTick+2000;
             const auto worker=m_impl->outwardWindowWorker.Snapshot();
+            DebugLog::Log("Alpha optional proof budget: cooperative_cancellations=%llu diagnostic_skips=%llu sample_checkpoints=bounded row_checkpoints=enabled incomplete_prefix=discarded",
+                m_impl->lookaheadProofCancellations,m_impl->lookaheadDiagnosticSkips);
             DebugLog::Log("Alpha outward async: ready=%llu late=%llu stale=%llu offered=%llu adopted=%llu worker_submitted=%llu worker_completed=%llu worker_failed=%llu worker_full=%llu worker_queued=%llu worker_queue_avg_ms=%.3f worker_wall_avg_ms=%.3f worker_cpu_avg_ms=%.3f",
                 m_impl->outwardAsyncReady,m_impl->outwardAsyncLate,m_impl->outwardAsyncStale,
                 m_impl->outwardAsyncOffered,m_impl->outwardAsyncAdopted,
@@ -24171,7 +24218,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 const auto motionOutputs=m_impl->temporalRenderer.outputs;
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 SourceUploadBatch sourceUploadBatch;
-                ActivePictureMeasurementCache pixelMeasurements(motionDraws > 1);
+                ActivePictureMeasurementCache pixelMeasurements;
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
                     if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
                 const uint64_t beforeSubmission=m_impl->renderLoadSubmissionSerial;
@@ -24218,15 +24265,39 @@ void LibplaceboVideoRenderer::RenderLoop()
                     std::lock_guard<std::mutex> motionQueueGuard(m_queueMutex);
                     if(m_stopRequested||frameGeneration!=m_queueGeneration)break;
                 }
-                if(motionDraws>1 && GetTickCount64()>=m_impl->nextSourceMeasurementCacheLogTick) {
-                    m_impl->nextSourceMeasurementCacheLogTick=GetTickCount64()+2000;
-                    const auto& samples=pixelMeasurements.Snapshot();
-                    DebugLog::Log("VP source measurement cache sample: source=%llu scheduled_outputs=%zu global_requests=%zu global_hits=%zu picture_requests=%zu picture_hits=%zu retention_requests=%zu retention_hits=%zu subtitle_requests=%zu subtitle_hits=%zu subtitle_scan_total_ms=%.3f subtitle_scan_peak_ms=%.3f",
-                        static_cast<unsigned long long>(sourceSequence),motionDraws,
-                        samples.globalRequests,samples.globalHits,samples.pictureRequests,samples.pictureHits,
-                        samples.retentionRequests,samples.retentionHits,samples.subtitleRequests,samples.subtitleHits,
-                        samples.subtitleScanMs,samples.subtitleScanPeakMs);
+                {
+                    const auto& batch=pixelMeasurements.Snapshot();
+                    auto& total=m_impl->sourceMeasurementInterval;
+                    ++m_impl->sourceMeasurementBatches;
+                    m_impl->sourceMeasurementOutputs+=motionDraws;
+                    total.globalRequests+=batch.globalRequests; total.globalHits+=batch.globalHits;
+                    total.pictureRequests+=batch.pictureRequests; total.pictureHits+=batch.pictureHits;
+                    total.darknessRequests+=batch.darknessRequests; total.darknessHits+=batch.darknessHits;
+                    total.retentionRequests+=batch.retentionRequests; total.retentionHits+=batch.retentionHits;
+                    total.globalScans+=batch.globalScans; total.pictureScans+=batch.pictureScans;
+                    total.darknessScans+=batch.darknessScans; total.retentionScans+=batch.retentionScans;
+                    total.workerImports+=batch.workerImports; total.workerImportRejects+=batch.workerImportRejects;
+                    total.measurementMs+=batch.measurementMs;
+                    total.measurementPeakMs=(std::max)(total.measurementPeakMs,batch.measurementPeakMs);
+                    total.subtitleRequests+=batch.subtitleRequests; total.subtitleHits+=batch.subtitleHits;
+                    total.subtitleScanMs+=batch.subtitleScanMs;
+                    total.subtitleScanPeakMs=(std::max)(total.subtitleScanPeakMs,batch.subtitleScanPeakMs);
+                    if(GetTickCount64()>=m_impl->nextSourceMeasurementCacheLogTick) {
+                        m_impl->nextSourceMeasurementCacheLogTick=GetTickCount64()+2000;
+                        DebugLog::Log("VP source measurement interval: source=%llu batches=%llu outputs=%llu global_requests=%zu global_hits=%zu global_scans=%zu picture_requests=%zu picture_hits=%zu picture_scans=%zu darkness_requests=%zu darkness_hits=%zu darkness_scans=%zu retention_requests=%zu retention_hits=%zu retention_scans=%zu worker_imports=%zu worker_rejects=%zu measurement_total_ms=%.3f measurement_peak_ms=%.3f subtitle_requests=%zu subtitle_hits=%zu subtitle_scan_total_ms=%.3f subtitle_scan_peak_ms=%.3f",
+                            static_cast<unsigned long long>(sourceSequence),
+                            static_cast<unsigned long long>(m_impl->sourceMeasurementBatches),
+                            static_cast<unsigned long long>(m_impl->sourceMeasurementOutputs),
+                            total.globalRequests,total.globalHits,total.globalScans,
+                            total.pictureRequests,total.pictureHits,total.pictureScans,
+                            total.darknessRequests,total.darknessHits,total.darknessScans,
+                            total.retentionRequests,total.retentionHits,total.retentionScans,
+                            total.workerImports,total.workerImportRejects,total.measurementMs,total.measurementPeakMs,
+                            total.subtitleRequests,total.subtitleHits,total.subtitleScanMs,total.subtitleScanPeakMs);
+                        total={}; m_impl->sourceMeasurementBatches=m_impl->sourceMeasurementOutputs=0;
+                    }
                 }
+
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(
 						SteadyClock::now() - renderCycleStart).count();

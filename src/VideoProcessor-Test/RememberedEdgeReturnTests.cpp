@@ -326,6 +326,69 @@ AlphaSourceCrop::GuardedSceneHoldInput GuardedRecallSceneHold(const GuardedActiv
 TEST_CLASS(RememberedEdgeProfileTests)
 {
 public:
+    TEST_METHOD(CancelledRememberedWindowCannotReturnPartialPrefixAndMandatoryRetrySucceeds)
+    {
+        RecallShadowWindowRig fixture;
+        size_t total=0;
+        AnalysisEvaluationBudget counting([](void* context) {
+            ++*static_cast<size_t*>(context);return false;
+        },&total);
+        const auto expected=InspectRememberedEdgeReturnShadowWindow(fixture.nomination,
+            fixture.samples.data(),fixture.samples.size(),5,2,&counting);
+        Assert::IsTrue(expected.allPass && total>8);
+        std::array<size_t,2> clock{{0,total/2}};
+        AnalysisEvaluationBudget budget([](void* context) {
+            auto& state=*static_cast<std::array<size_t,2>*>(context);
+            return ++state[0]>=state[1];
+        },&clock);
+        RememberedEdgeReturnShadowWindowResult cancelled;
+        bool threw=false;
+        try { cancelled=InspectRememberedEdgeReturnShadowWindow(fixture.nomination,
+            fixture.samples.data(),fixture.samples.size(),5,2,&budget); }
+        catch (const AnalysisEvaluationCancelled&) { threw=true; }
+        Assert::IsTrue(threw && budget.Cancelled());
+        Assert::IsFalse(cancelled.allPass);
+        const auto retry=InspectRememberedEdgeReturnShadowWindow(fixture.nomination,
+            fixture.samples.data(),fixture.samples.size(),5,2);
+        Assert::IsTrue(retry.allPass);
+        Assert::AreEqual(expected.totalSamples,retry.totalSamples);
+        Assert::AreEqual(expected.passedFrames,retry.passedFrames);
+    }
+
+    TEST_METHOD(CancelledGuardedCertificateCannotPublishOrChangeHistoryAndMandatoryRetrySucceeds)
+    {
+        GuardedActiveRecallRig fixture;
+        const auto history=fixture.rig.model.GetRememberedEdgeReturnHistoryStatus();
+        size_t total=0;
+        AnalysisEvaluationBudget counting([](void* context) {
+            ++*static_cast<size_t*>(context);return false;
+        },&total);
+        const auto expected=BuildGuardedRememberedEdgeReturnCertificate(fixture.rig.model,
+            fixture.nomination,fixture.samples.data(),fixture.samples.size(),5,4,
+            fixture.timeline.ContinuityGeneration(),&counting);
+        Assert::IsTrue(expected.available && total>8);
+        std::array<size_t,2> clock{{0,total/2}};
+        AnalysisEvaluationBudget budget([](void* context) {
+            auto& state=*static_cast<std::array<size_t,2>*>(context);
+            return ++state[0]>=state[1];
+        },&clock);
+        GuardedRememberedEdgeReturnCertificate cancelled;
+        bool threw=false;
+        try { cancelled=BuildGuardedRememberedEdgeReturnCertificate(fixture.rig.model,
+            fixture.nomination,fixture.samples.data(),fixture.samples.size(),5,4,
+            fixture.timeline.ContinuityGeneration(),&budget); }
+        catch (const AnalysisEvaluationCancelled&) { threw=true; }
+        Assert::IsTrue(threw && budget.Cancelled());
+        Assert::IsFalse(cancelled.available);
+        const auto after=fixture.rig.model.GetRememberedEdgeReturnHistoryStatus();
+        Assert::AreEqual(history.entries,after.entries);
+        Assert::AreEqual(history.qualifiedEntries,after.qualifiedEntries);
+        const auto retry=fixture.Build();
+        Assert::IsTrue(retry.available);
+        Assert::AreEqual(expected.frameCount,retry.frameCount);
+        EqualRecallBounds(expected.currentEvidence.trustedBounds,retry.currentEvidence.trustedBounds);
+    }
+
         TEST_METHOD(GuardedReferenceKeepsShaderAndQueueGenerationDomainsIndependent)
     {
         ActivePictureFrameIdentity frame;

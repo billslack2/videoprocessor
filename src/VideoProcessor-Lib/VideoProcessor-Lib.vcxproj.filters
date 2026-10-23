@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClInclude Include="FullscreenActivation.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="StartupPresentationReadiness.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -744,4 +745,9 @@
     <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdRefresh.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="DebugLogAsync.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AnalysisEvaluationBudget.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\Bt2020SignalWorker.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
 </Project>
