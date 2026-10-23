@@ -4335,6 +4335,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool vpOwnedColorSpaceVerified = false;
 	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
+    SubtitlePreparationRenderer subtitlePreparationRenderer;
 	std::atomic<ULONGLONG> libplaceboRenderStartedTick{ 0 };
     // All libplacebo render passes use the same UI-polled loading status.
     // Keep the timer exception-safe so a failed pass cannot strand the notice.
@@ -5408,6 +5409,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleCutPasteHookFailed = false;
             subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
 			temporalRenderer.Clear();
+            subtitlePreparationRenderer.Reset();
             pl_renderer_destroy(&renderer);
 			pl_lut_free(&displayLut);
 			if (d3d11)
@@ -13847,7 +13849,7 @@ struct LibplaceboVideoRenderer::Impl
                     if(SubtitleTemporalFill::Capture(analysisSource,samples) &&
                         [&]() {
                             PipelinePreparationScope preparing(libplaceboRenderStartedTick);
-                            return CaptureSubtitleTemporalBackground(renderer,d3d11->gpu,
+                            return CaptureSubtitleTemporalBackground(subtitlePreparationRenderer,d3d11->gpu,
                                 image,&subtitleTemporalTexture,subtitleSourceProcessingOptions);
                         }()) {
                         subtitleTemporalSamples=samples;
@@ -14007,7 +14009,7 @@ struct LibplaceboVideoRenderer::Impl
                         const int perfMode=subtitleCutPasteBackground==5?1:0;
                         const auto compositionStart=SteadyClock::now();
                         frameGpuTiming.BeginStage(perfMode?AlphaD3D11FrameGpuTimer::Stage::SubtitleGenerated:AlphaD3D11FrameGpuTimer::Stage::SubtitleBlack);
-                        subtitleHookBound=RenderSubtitleFullRaster(renderer,d3d11->gpu,
+                        subtitleHookBound=RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,
                             image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
                             temporalSubtitleComposition,
                             activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5,
@@ -14018,7 +14020,7 @@ struct LibplaceboVideoRenderer::Impl
                                 subtitleCutPasteBackground,image.color.transfer,
                                 activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
                                 SubtitleCompositionPhase::LayerOnly) &&
-                                ComposeSubtitleLayerBeforeCrop(renderer,d3d11->gpu,image,
+                                ComposeSubtitleLayerBeforeCrop(subtitlePreparationRenderer,d3d11->gpu,image,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,layer,
                                     nullptr,subtitleSourceProcessingOptions);
                             // Never retain a repaired picture without its matching subtitle.
@@ -14220,7 +14222,7 @@ struct LibplaceboVideoRenderer::Impl
             if(temporalSubtitleComposition) {
                 if(!subtitleCompositionSucceeded && !nativeSubtitleComposition) {
                     PipelinePreparationScope preparing(libplaceboRenderStartedTick);
-                    if(!RenderSubtitleFullRaster(renderer,d3d11->gpu,image,nullptr,
+                    if(!RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,image,nullptr,
                         &subtitleCompositionTexture,subtitleComposedImage,true,false,false,
                         nullptr,subtitleSourceProcessingOptions))return failSubtitleMotion("Motion: subtitle normalization failed");
                 }
@@ -14276,7 +14278,7 @@ struct LibplaceboVideoRenderer::Impl
                         if(hasCue && (!subtitleCutPasteHook ||
                             !BindSubtitleCutPasteHook(subtitleCutPasteHook,geometry,background,
                                 field.color.transfer,style,spatialFill,SubtitleCompositionPhase::CleanupOnly)))return false;
-                        if(!RenderSubtitleFullRaster(renderer,d3d11->gpu,field,
+                        if(!RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,field,
                             hasCue?subtitleCutPasteHook:nullptr,&subtitleCompositionTexture,clean,
                             true,static_cast<bool>(donor),false,&deinterlace,&subtitleSourceProcessing))return false;
                         if(donor) {
@@ -14297,7 +14299,7 @@ struct LibplaceboVideoRenderer::Impl
                             glyphSource.prev=nullptr;glyphSource.next=nullptr;
                             if(!BindSubtitleCutPasteHook(subtitleCutPasteHook,geometry,background,
                                 field.color.transfer,style,spatialFill,SubtitleCompositionPhase::LayerOnly) ||
-                                !ComposeSubtitleLayerBeforeCrop(renderer,d3d11->gpu,glyphSource,
+                                !ComposeSubtitleLayerBeforeCrop(subtitlePreparationRenderer,d3d11->gpu,glyphSource,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,ignored,
                                     nullptr,&subtitleSourceProcessing))return false;
                             layer=subtitleMotionLayerTexture;bounds=layerBounds;
