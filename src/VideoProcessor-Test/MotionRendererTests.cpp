@@ -21,6 +21,7 @@
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace {
 struct GpuFixture {
+    SubtitlePreparationRenderer preparation;
     pl_d3d11 device=nullptr;pl_renderer renderer=nullptr;pl_tex source=nullptr,target=nullptr,clean=nullptr,layer=nullptr,luma=nullptr,chroma=nullptr;
     pl_frame input{},output{},cleanInput{},p010Input{};TemporalRenderer temporal;
     GpuFixture(){
@@ -44,7 +45,7 @@ struct GpuFixture {
         cleanInput=input;cleanInput.planes[0].texture=clean;cleanInput.repr.sys=PL_COLOR_SYSTEM_RGB;
         cleanInput.repr.levels=PL_COLOR_LEVELS_FULL;cleanInput.repr.alpha=PL_ALPHA_NONE;
     }
-    ~GpuFixture(){temporal.Clear();if(device){pl_tex_destroy(device->gpu,&source);pl_tex_destroy(device->gpu,&target);pl_tex_destroy(device->gpu,&clean);pl_tex_destroy(device->gpu,&layer);pl_tex_destroy(device->gpu,&luma);pl_tex_destroy(device->gpu,&chroma);pl_renderer_destroy(&renderer);pl_d3d11_destroy(&device);}}
+    ~GpuFixture(){temporal.Clear();preparation.Reset();if(device){pl_tex_destroy(device->gpu,&source);pl_tex_destroy(device->gpu,&target);pl_tex_destroy(device->gpu,&clean);pl_tex_destroy(device->gpu,&layer);pl_tex_destroy(device->gpu,&luma);pl_tex_destroy(device->gpu,&chroma);pl_renderer_destroy(&renderer);pl_d3d11_destroy(&device);}}
     void Upload(int gray,bool fields=false){
         std::vector<unsigned char> pixels(64*64*4,255);
         for(int y=0;y<64;++y)for(int x=0;x<64;++x){const size_t o=(y*64+x)*4;
@@ -793,7 +794,7 @@ TEST_CLASS(MotionRendererTests){public:
             [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                 pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                 bounds={24,24,40,40};layer=g.layer;
-                return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                     &g.clean,clean,true,false,false,&algorithm);
             },true));
         Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,1,
@@ -817,7 +818,7 @@ TEST_CLASS(MotionRendererTests){public:
             [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                 pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                 layer=nullptr;bounds={};
-                return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                     &g.clean,clean,true,false,false,&algorithm);
             }));
         g.temporal.outputPts=1./30;g.Draw();
@@ -831,7 +832,7 @@ TEST_CLASS(MotionRendererTests){public:
             [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                 pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                 layer=nullptr;bounds={};
-                return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                     &g.clean,clean,true,false,false,&algorithm);
             }));
         pl_tex_destroy(g.device->gpu,&g.source);
@@ -851,7 +852,7 @@ TEST_CLASS(MotionRendererTests){public:
                 [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                     pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                     layer=nullptr;bounds={};
-                    return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                    return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                         &g.clean,clean,true,false,false,&algorithm);
                 }));
         }
@@ -903,7 +904,7 @@ TEST_CLASS(MotionRendererTests){public:
             [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                 pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                 layer=nullptr;bounds={};
-                return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                     &g.clean,clean,true,false,false,&algorithm);
             }));
         g.temporal.outputPts=1./30;
@@ -921,7 +922,7 @@ TEST_CLASS(MotionRendererTests){public:
                     [&g](const pl_frame& field,const pl_deinterlace_params& algorithm,
                         pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                         layer=nullptr;bounds={};
-                        return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                        return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                             &g.clean,clean,true,false,false,&algorithm);
                     }));
             }
@@ -975,7 +976,7 @@ TEST_CLASS(MotionRendererTests){public:
                 Assert::IsTrue(std::abs(field.repr.dovi->nonlinear_offset[0]-.125f)<1e-6f,
                     L"Native callback saw mutated Dolby metadata");
                 checked=true;layer=nullptr;bounds={};
-                return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                     &g.clean,clean,true,false,false,&algorithm);
             }));
         metadata.nonlinear_offset[0]=.75f;
@@ -1000,7 +1001,7 @@ TEST_CLASS(MotionRendererTests){public:
                     [&g,sourceOptions](const pl_frame& field,const pl_deinterlace_params& deinterlace,
                         pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                         layer=nullptr;bounds={};
-                        return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                        return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                             &g.clean,clean,true,false,false,&deinterlace,&sourceOptions);
                     }));
             }
@@ -1045,7 +1046,7 @@ TEST_CLASS(MotionRendererTests){public:
                     [&g](const pl_frame& field,const pl_deinterlace_params& deinterlace,
                         pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                         layer=nullptr;bounds={};
-                        return RenderSubtitleFullRaster(g.renderer,g.device->gpu,field,nullptr,
+                        return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
                             &g.clean,clean,true,false,false,&deinterlace);
                     }));
             }
@@ -1054,7 +1055,7 @@ TEST_CLASS(MotionRendererTests){public:
                 raw.field=parity;raw.prev=&g.p010Input;raw.next=&g.p010Input;
                 const auto deinterlace=g.temporal.DeinterlaceParameters();
                 pl_frame normalized{};
-                Assert::IsTrue(RenderSubtitleFullRaster(g.renderer,g.device->gpu,raw,nullptr,
+                Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,raw,nullptr,
                     &g.clean,normalized,true,false,false,&deinterlace),L"Direct P010 normalization failed");
                 auto params=pl_render_default_params;
                 params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;

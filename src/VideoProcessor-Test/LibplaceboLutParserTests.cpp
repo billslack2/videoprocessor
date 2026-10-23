@@ -791,10 +791,11 @@ namespace
 			pl_tex targetTexture=pl_tex_create(gpu,&output);Assert::IsNotNull(targetTexture);
 			auto target=MakeRgbFrame(targetTexture);target.color=image.color;
 			auto params=pl_render_fast_params;params.dither_params=nullptr;params.peak_detect_params=nullptr;
+            SubtitlePreparationRenderer preparation;
             pl_tex compositionTexture=nullptr;
             if(sourceCrop && hook) {
                 pl_frame composed{};
-                Assert::IsTrue(ComposeSubtitleBeforeCrop(m_renderer,gpu,image,hook,&compositionTexture,composed));
+                Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,gpu,image,hook,&compositionTexture,composed));
                 image=composed;
             }
             const pl_hook* hooks[2]={sourceCrop ? additionalHook : hook,additionalHook};
