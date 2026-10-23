@@ -744,4 +744,9 @@
     <ClInclude Include="microsoft_directshow\video_renderers\MadVROsdRefresh.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="DebugLogAsync.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AnalysisEvaluationBudget.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\Bt2020SignalWorker.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
 </Project>

@@ -156,6 +156,8 @@ private:
 		};
         struct LookaheadMeasurement {
             uint64_t domainKey=0;
+            AnalysisLumaSource source;
+            ActivePictureFrameIdentity identity;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
         };

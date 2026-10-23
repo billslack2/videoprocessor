@@ -20,6 +20,10 @@ public:
     {
         size_t globalRequests = 0, globalHits = 0;
         size_t pictureRequests = 0, pictureHits = 0;
+        size_t darknessRequests = 0, darknessHits = 0;
+        size_t globalScans = 0, pictureScans = 0, darknessScans = 0, retentionScans = 0;
+        size_t workerImports = 0, workerImportRejects = 0;
+        double measurementMs = 0, measurementPeakMs = 0;
         size_t retentionRequests = 0, retentionHits = 0;
         size_t subtitleRequests = 0, subtitleHits = 0;
         double subtitleScanMs = 0, subtitleScanPeakMs = 0;
@@ -40,7 +44,7 @@ public:
             continuityGeneration != m_continuityGeneration ||
             !SameSource(source, m_source))
         {
-            m_globalValid = m_pictureValid = m_retentionValid = m_subtitleValid = false;
+            m_globalValid = m_pictureValid = m_darknessValid = m_retentionValid = m_subtitleValid = false;
         }
         m_source = source; // Retain immutable pixels while observations are reusable.
         m_identity = identity;
@@ -49,47 +53,84 @@ public:
         m_cacheable = cacheable;
     }
 
+    // Import only independent native measurements from this exact immutable
+    // frame. Queued analysis uses the format generation; live analysis uses
+    // the transport generation. Rebind that adapter field only after the full
+    // frame identity and every storage/interpretation/owner field match.
+    bool SeedQueued(const AnalysisLumaSource& queuedSource,
+        const ActivePictureFrameIdentity& identity,
+        const ActivePictureEvidence& picture,
+        const ActivePictureArDarknessEvidence& darkness)
+    {
+        auto rebound = queuedSource;
+        rebound.generation = m_source.generation;
+        if (!m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
+            queuedSource.generation != identity.sourceFormatGeneration ||
+            m_source.generation != identity.transportGeneration ||
+            !SameSource(rebound, m_source))
+        {
+            ++m_statistics.workerImportRejects;
+            return false;
+        }
+        // A later Begin for another policy/continuity invalidates the import
+        // just as it invalidates locally computed measurements.
+        if (!m_pictureValid) { m_picture = picture; m_pictureValid = true; }
+        if (!m_globalValid) { m_global = darkness.global; m_globalValid = true; }
+        if (!m_darknessValid) { m_darkness = darkness; m_darknessValid = true; }
+        ++m_statistics.workerImports;
+        return true;
+    }
+
     ActivePictureGlobalNearBlackEvidence GlobalNearBlack()
     {
         ++m_statistics.globalRequests;
-        if (!m_cacheable) return EvaluateActivePictureGlobalNearBlack(m_source);
-        if (m_cacheable && m_globalValid)
-        {
-            ++m_statistics.globalHits;
-            return m_global;
-        }
-        m_global = EvaluateActivePictureGlobalNearBlack(m_source);
-        m_globalValid = m_cacheable;
-        return m_global;
+        if (m_cacheable && m_globalValid) ++m_statistics.globalHits;
+        return Global();
     }
 
     ActivePictureEvidence Picture()
     {
         ++m_statistics.pictureRequests;
-        if (!m_cacheable) return ExtractActivePictureEvidence(m_source);
-        if (m_cacheable && m_pictureValid)
-        {
-            ++m_statistics.pictureHits;
-            return m_picture;
-        }
-        m_picture = ExtractActivePictureEvidence(m_source);
-        m_pictureValid = m_cacheable;
-        return m_picture;
+        if (m_cacheable && m_pictureValid) ++m_statistics.pictureHits;
+        return Native();
+    }
+
+    ActivePictureArDarknessEvidence ArDarkness()
+    {
+        ++m_statistics.darknessRequests;
+        if (m_cacheable && m_darknessValid) ++m_statistics.darknessHits;
+        return Darkness();
+    }
+
+    ActivePictureArDarknessEvidence ArDarkness(const ActivePictureEvidence& raw,
+        const ActivePictureGlobalNearBlackEvidence& global)
+    {
+        if (m_cacheable) return ArDarkness();
+        // Borrowed legacy views cannot cache, but their caller already holds
+        // this frame's independent raw/global values. Do not scan them again.
+        ++m_statistics.darknessRequests;
+        return DarknessFor(raw, global);
     }
 
     ActivePicturePresentationRetentionEvidence Retention(
         const ActivePictureBounds& presentation)
     {
         ++m_statistics.retentionRequests;
-        if (!m_cacheable)
-            return EvaluateActivePicturePresentationRetention(m_source, presentation);
-        if (m_cacheable && m_retentionValid &&
-            SameBounds(presentation, m_presentation))
+        if (m_cacheable && m_retentionValid && SameBounds(presentation, m_presentation))
         {
             ++m_statistics.retentionHits;
             return m_retention;
         }
-        m_retention = EvaluateActivePicturePresentationRetention(m_source, presentation);
+        const auto raw = Native();
+        const auto global = Global();
+        const auto darkness = DarknessFor(raw, global);
+        const auto started = std::chrono::steady_clock::now();
+        ++m_statistics.retentionScans;
+        // Retention still inspects current excluded bands for each crop base.
+        // Only completed independent scans of these same pixels are reused.
+        m_retention = EvaluateActivePicturePresentationRetention(
+            m_source, presentation, raw, global, darkness);
+        RecordTime(started);
         m_presentation = presentation;
         m_retentionValid = m_cacheable;
         return m_retention; // Callers may refine their copy with current worker evidence.
@@ -157,6 +198,56 @@ public:
     const Statistics& Snapshot() const { return m_statistics; }
 
 private:
+    void RecordTime(std::chrono::steady_clock::time_point started)
+    {
+        const double elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started).count();
+        m_statistics.measurementMs += elapsed;
+        m_statistics.measurementPeakMs = (std::max)(m_statistics.measurementPeakMs, elapsed);
+    }
+
+    ActivePictureGlobalNearBlackEvidence Global()
+    {
+        if (m_cacheable && m_globalValid) return m_global;
+        const auto started = std::chrono::steady_clock::now();
+        ++m_statistics.globalScans;
+        const auto value = EvaluateActivePictureGlobalNearBlack(m_source);
+        RecordTime(started);
+        if (m_cacheable) { m_global = value; m_globalValid = true; }
+        return value;
+    }
+
+    ActivePictureEvidence Native()
+    {
+        if (m_cacheable && m_pictureValid) return m_picture;
+        const auto started = std::chrono::steady_clock::now();
+        ++m_statistics.pictureScans;
+        const auto value = ExtractActivePictureEvidence(m_source);
+        RecordTime(started);
+        if (m_cacheable) { m_picture = value; m_pictureValid = true; }
+        return value;
+    }
+
+    ActivePictureArDarknessEvidence Darkness()
+    {
+        if (m_cacheable && m_darknessValid) return m_darkness;
+        const auto raw = Native();
+        const auto global = Global();
+        return DarknessFor(raw, global);
+    }
+
+    ActivePictureArDarknessEvidence DarknessFor(const ActivePictureEvidence& raw,
+        const ActivePictureGlobalNearBlackEvidence& global)
+    {
+        if (m_cacheable && m_darknessValid) return m_darkness;
+        const auto started = std::chrono::steady_clock::now();
+        ++m_statistics.darknessScans;
+        const auto value = EvaluateActivePictureArDarkness(m_source, raw, global);
+        RecordTime(started);
+        if (m_cacheable) { m_darkness = value; m_darknessValid = true; }
+        return value;
+    }
+
     static bool SameSource(const AnalysisLumaSource& a, const AnalysisLumaSource& b)
     {
         return a.data == b.data && a.dataBytes == b.dataBytes &&
@@ -183,9 +274,10 @@ private:
     uint64_t m_policyGeneration = 0, m_continuityGeneration = 0;
     bool m_enabled = true;
     bool m_cacheable = false;
-    bool m_globalValid = false, m_pictureValid = false, m_retentionValid = false;
+    bool m_globalValid = false, m_pictureValid = false, m_darknessValid = false, m_retentionValid = false;
     ActivePictureGlobalNearBlackEvidence m_global;
     ActivePictureEvidence m_picture;
+    ActivePictureArDarknessEvidence m_darkness;
     ActivePicturePresentationRetentionEvidence m_retention;
     ActivePictureBounds m_presentation;
     VerticalBarContent m_subtitle;
