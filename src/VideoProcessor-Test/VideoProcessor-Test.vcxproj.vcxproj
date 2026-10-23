@@ -357,4 +357,13 @@
   <ItemGroup>
     <ClCompile Include="MadVROsdSizingTests.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" />
+    <ClCompile Include="LookaheadPerformanceWindowTests.cpp" />
+    <ClCompile Include="PreparedPictureEvidenceTests.cpp" />
+    <ClCompile Include="OptionalAnalysisWorkerTests.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="PreparedOutwardWindowTests.cpp" />
+  </ItemGroup>
 </Project>

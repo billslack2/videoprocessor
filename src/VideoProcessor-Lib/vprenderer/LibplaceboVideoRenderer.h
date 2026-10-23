@@ -1,4 +1,6 @@
 #pragma once
+#include "PreparedPictureEvidence.h"
+#include "PreparedOutwardWindow.h"
 
 #include <IRenderer.h>
 #include <StartupPresentationReadiness.h>
@@ -156,15 +158,14 @@ private:
 			int64_t completedQpc = 0;
 		};
         struct LookaheadMeasurement {
+            AnalysisLumaSource source;
+            ActivePictureFrameIdentity identity;
             uint64_t domainKey=0;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
         };
         using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
-        struct OutwardWindowResult {
-            AlphaSourceCrop::AsyncOutwardWindowContext context;
-            AlphaSourceCrop::BufferedPictureExpansionProof proof;
-        };
+        using OutwardWindowResult = PreparedOutwardWindowResult;
         using OutwardWindowWorker = OptionalAnalysisWorker<OutwardWindowResult, 4>;
         struct AnalysisPayload
         {
@@ -172,6 +173,7 @@ private:
             std::shared_ptr<OutwardWindowWorker::Slot> outwardWindow;
             AlphaSourceCrop::AsyncOutwardWindowContext outwardContext;
             bool outwardRequested=false;
+            PreparedPictureEvidenceCache pictureProof;
             std::mutex mutex;
             std::shared_ptr<const void> nativeOwner;
             PreparedAnalysisFrame live;
@@ -216,6 +218,8 @@ private:
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
     void PrimeSubtitleMeasurements(const std::vector<QueuedFrame>& frames,
+        uint64_t policyGeneration, uint64_t continuityGeneration);
+    void PrimePictureProofMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration);
     void PrimeActivePictureMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration);

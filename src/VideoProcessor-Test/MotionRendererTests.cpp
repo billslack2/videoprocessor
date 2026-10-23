@@ -1,9 +1,10 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/TemporalRenderer.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
+#include <limits>
 #include <vprenderer/AnalysisPerformanceWindow.h>
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
@@ -292,19 +293,24 @@ TEST_CLASS(MotionRendererTests){public:
     TEST_METHOD(OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock) {
         PresentationAnalysisBudget budget;
         budget.Observe(7,1000000,1001000,1000000,60,true,1);
+        budget.ObserveGpu(7,1001000,1000000,0.0);
         auto early=budget.Begin(7,1001000,1000000,false,false);
-        Assert::IsTrue(early.phaseKnown);Assert::AreEqual(2.0,early.allowanceMs,1e-6);
+        Assert::IsTrue(early.phaseKnown);Assert::IsTrue(early.mandatoryKnown);
+        Assert::AreEqual(1000.0/60.0-3.0,early.allowanceMs,1e-6);
         auto late=budget.Begin(7,1015000,1000000,false,false);
         Assert::IsTrue(late.phaseKnown);Assert::AreEqual(int64_t(0),late.deadlineQpc);
-        Assert::AreEqual(int64_t(1003000),early.deadlineQpc,L"A work ticket cannot roll its deadline forward.");
+        const auto issuedDeadline=early.deadlineQpc;
+        Assert::AreEqual(int64_t(1014666),issuedDeadline,L"The ticket must end before the reserved mandatory work.");
         Assert::AreEqual(int64_t(0),budget.Begin(7,1001000,1000000,true,false).deadlineQpc);
         Assert::AreEqual(int64_t(0),budget.Begin(7,1001000,1000000,false,true).deadlineQpc);
         Assert::IsFalse(budget.Begin(8,1001000,1000000,false,false).phaseKnown);
         Assert::IsFalse(budget.Begin(7,1300000,1000000,false,false).phaseKnown);
         budget.Observe(7,1016667,1017000,1000000,60,false,1);
+        budget.ObserveGpu(7,1017000,1000000,0.0);
         Assert::IsFalse(budget.Begin(7,1018000,1000000,false,false).phaseKnown);
         Assert::AreEqual(int64_t(0),budget.Begin(7,1018000,0,false,false).deadlineQpc);
         budget.Observe(7,1033334,1034000,1000000,60,true,14);
+        budget.ObserveGpu(7,1034000,1000000,0.0);
         Assert::AreEqual(int64_t(0),budget.Begin(7,1034000,1000000,false,false).deadlineQpc,
             L"Live analysis and upload preparation must be reserved alongside rendering, leaving no optional work on a busy output.");
     }
@@ -313,6 +319,7 @@ TEST_CLASS(MotionRendererTests){public:
         PresentationAnalysisBudget slowDisplay;
         // 23.976 Hz: a 12 ms mandatory stage cannot reach a boundary 0.7 ms away.
         slowDisplay.Observe(9,qpc,qpc+41000,qpc,23.976,true,12);
+        slowDisplay.ObserveGpu(9,qpc+41000,qpc,0.0);
         const auto nearBoundary=slowDisplay.Begin(9,qpc+41000,qpc,false,false);
         Assert::IsTrue(nearBoundary.phaseKnown);
         Assert::IsTrue(nearBoundary.skippedBoundary);
@@ -320,19 +327,22 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(12.0,nearBoundary.mandatoryMs,1e-9);
         Assert::AreEqual(15.0,nearBoundary.reserveMs,1e-9);
         Assert::IsTrue(nearBoundary.targetLeadMs>40.0);
-        Assert::AreEqual(2.0,nearBoundary.allowanceMs,1e-9);
-        Assert::AreEqual(qpc+43000,nearBoundary.deadlineQpc);
+        Assert::AreEqual(nearBoundary.targetLeadMs-15.0,nearBoundary.allowanceMs,1e-9);
+        Assert::IsTrue(nearBoundary.allowanceMs>25.0);
+        const auto issuedSlowDeadline=nearBoundary.deadlineQpc;
         // The issued ticket is immutable even if a later observation changes phase.
         slowDisplay.Observe(9,qpc+41708,qpc+41800,qpc,23.976,true,1);
-        Assert::AreEqual(qpc+43000,nearBoundary.deadlineQpc);
+        slowDisplay.ObserveGpu(9,qpc+41800,qpc,0.0);
+        Assert::AreEqual(issuedSlowDeadline,nearBoundary.deadlineQpc);
 
         PresentationAnalysisBudget fastDisplay;
         fastDisplay.Observe(10,qpc,qpc+1000,qpc,60,true,1);
+        fastDisplay.ObserveGpu(10,qpc+1000,qpc,0.0);
         const auto early=fastDisplay.Begin(10,qpc+1000,qpc,false,false);
         Assert::IsTrue(early.phaseKnown);
         Assert::IsFalse(early.skippedBoundary);
-        Assert::AreEqual(2.0,early.allowanceMs,1e-9);
-        Assert::AreEqual(qpc+3000,early.deadlineQpc);
+        Assert::AreEqual(1000.0/60.0-3.0,early.allowanceMs,1e-9);
+        Assert::AreEqual(qpc+14666,early.deadlineQpc);
         const auto late=fastDisplay.Begin(10,qpc+15000,qpc,false,false);
         Assert::IsTrue(late.phaseKnown);
         Assert::IsFalse(late.skippedBoundary,
@@ -340,11 +350,13 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(int64_t(0),late.deadlineQpc);
         Assert::AreEqual(0.0,late.allowanceMs,1e-9);
         fastDisplay.Observe(10,qpc+33334,qpc+34000,qpc,60,true,14);
+        fastDisplay.ObserveGpu(10,qpc+34000,qpc,0.0);
         const auto busy=fastDisplay.Begin(10,qpc+34000,qpc,false,false);
         Assert::IsFalse(busy.skippedBoundary);
         Assert::AreEqual(int64_t(0),busy.deadlineQpc,
             L"Reserve blocking optional work must not roll an otherwise reachable frame");
         fastDisplay.Observe(10,qpc+50000,qpc+50500,qpc,60,true,20);
+        fastDisplay.ObserveGpu(10,qpc+50500,qpc,0.0);
         const auto overloaded=fastDisplay.Begin(10,qpc+50500,qpc,false,false);
         Assert::AreEqual(int64_t(0),overloaded.deadlineQpc);
         Assert::IsFalse(overloaded.skippedBoundary,
@@ -357,6 +369,309 @@ TEST_CLASS(MotionRendererTests){public:
         const auto otherGeneration=fastDisplay.Begin(11,qpc+50500,qpc,false,false);
         Assert::IsFalse(otherGeneration.phaseKnown);
         Assert::AreEqual(1.0,otherGeneration.allowanceMs,1e-9);
+    }
+    TEST_METHOD(AdaptiveAnalysisAllowanceUsesActualDisplayPeriodForEachCadence) {
+        constexpr int64_t frequency=1000000,sync=1000000,now=1001000;
+        // Both 24->60 and 60->60 use the actual 60Hz scanout deadline. The
+        // 24Hz source interval cannot fund work across intervening output frames.
+        for (const double sourceHz:{24.0,60.0}) {
+            PresentationAnalysisBudget display60;
+            display60.Observe(1,sync,now,frequency,60,true,4.0);
+            display60.ObserveGpu(1,now,frequency,0.0);
+            const auto ticket=display60.Begin(1,now,frequency,false,false);
+            Assert::AreEqual(5.0,ticket.reserveMs,1e-9);
+            Assert::AreEqual(1000.0/60.0-1.0-5.0,ticket.allowanceMs,1e-9);
+            Assert::IsTrue(ticket.allowanceMs>2.0);
+            Assert::IsTrue(ticket.allowanceMs+ticket.reserveMs<=1000.0/sourceHz);
+            Assert::IsFalse(ticket.skippedBoundary);
+        }
+        PresentationAnalysisBudget display24;
+        display24.Observe(1,sync,now,frequency,24,true,12.0);
+        display24.ObserveGpu(1,now,frequency,0.0);
+        const auto film=display24.Begin(1,now,frequency,false,false);
+        Assert::AreEqual(15.0,film.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/24.0-1.0-15.0,film.allowanceMs,1e-9);
+        Assert::IsTrue(film.allowanceMs>20.0);
+        Assert::IsFalse(film.skippedBoundary);
+    }
+    TEST_METHOD(NewSourceReserveAndReachabilitySurviveManyCheapRepeatedOutputs) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(3,start,start+1000,frequency,60,true,8.0,false);
+        budget.ObserveGpu(3,start+1000,frequency,0.0);
+        for (int i=1;i<=90;++i) {
+            const int64_t sync=start+i*10000;
+            budget.Observe(3,sync,sync+1000,frequency,60,true,0.1,true);
+            budget.ObserveGpu(3,sync+1000,frequency,0.0);
+        }
+        const auto ticket=budget.Begin(3,start+901000,frequency,false,false);
+        Assert::IsTrue(ticket.mandatoryKnown);
+        Assert::AreEqual(8.0,ticket.mandatoryMs,1e-9);
+        Assert::AreEqual(8.0,ticket.mandatoryTailMs,1e-9);
+        Assert::AreEqual(10.0,ticket.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/60.0-1.0-10.0,ticket.allowanceMs,1e-9);
+        // Cheap repeats must not falsely claim that a 1ms-away boundary can
+        // accommodate the next new source's 8ms preparation.
+        const auto late=budget.Begin(3,start+915666,frequency,false,false);
+        Assert::IsTrue(late.skippedBoundary);
+        Assert::AreEqual(8.0,late.mandatoryMs,1e-9);
+    }
+    TEST_METHOD(RecentMandatoryTailIsRetainedThenAgesOutByWallTime) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(4,start,start+1000,frequency,60,true,8.0);
+        budget.ObserveGpu(4,start+1000,frequency,0.0);
+        for (int i=1;i<=90;++i) {
+            const int64_t sync=start+i*10000;
+            budget.Observe(4,sync,sync+1000,frequency,60,true,1.0);
+            budget.ObserveGpu(4,sync+1000,frequency,0.0);
+        }
+        auto recent=budget.Begin(4,start+901000,frequency,false,false);
+        Assert::AreEqual(1.0,recent.mandatoryMs,1e-9);
+        Assert::AreEqual(8.0,recent.mandatoryTailMs,1e-9);
+        Assert::AreEqual(10.0,recent.reserveMs,1e-9);
+        // More than two seconds later the obsolete tail no longer suppresses
+        // useful work. History expiry is independent of film/high source rates.
+        budget.Observe(4,start+2200000,start+2201000,frequency,60,true,1.0);
+        budget.ObserveGpu(4,start+2201000,frequency,0.0);
+        const auto aged=budget.Begin(4,start+2201000,frequency,false,false);
+        Assert::AreEqual(1.0,aged.mandatoryTailMs,1e-9);
+        Assert::AreEqual(2.0,aged.reserveMs,1e-9);
+        Assert::IsTrue(aged.allowanceMs>recent.allowanceMs);
+    }
+    TEST_METHOD(CostlyRepeatedOutputRaisesTailWithoutReplacingNewSourceCost) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(5,start,start+1000,frequency,60,true,4.0);
+        budget.ObserveGpu(5,start+1000,frequency,0.0);
+        budget.Observe(5,start+16667,start+17667,frequency,60,true,9.0,true);
+        budget.ObserveGpu(5,start+17667,frequency,0.0);
+        const auto ticket=budget.Begin(5,start+17667,frequency,false,false);
+        Assert::AreEqual(4.0,ticket.mandatoryMs,1e-9);
+        Assert::AreEqual(9.0,ticket.mandatoryTailMs,1e-9);
+        Assert::AreEqual(11.25,ticket.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/60.0-1.0-11.25,ticket.allowanceMs,1e-9);
+    }
+    TEST_METHOD(GenerationFrequencyAndBackwardClockResetMandatoryHistory) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(6,start,start+1000,frequency,60,true,15.0);
+        budget.ObserveGpu(6,start+1000,frequency,0.0);
+        Assert::AreEqual(int64_t(0),budget.Begin(6,start+1000,frequency,false,false).deadlineQpc);
+        budget.Observe(7,start+16667,start+17667,frequency,60,true,1.0);
+        budget.ObserveGpu(7,start+17667,frequency,0.0);
+        Assert::AreEqual(1.0,budget.Begin(7,start+17667,frequency,false,false).mandatoryTailMs,1e-9);
+        budget.Observe(7,2000000,2002000,2000000,60,true,1.0);
+        budget.ObserveGpu(7,2002000,2000000,0.0);
+        Assert::AreEqual(1.0,budget.Begin(7,2002000,2000000,false,false).mandatoryTailMs,1e-9);
+        budget.Observe(7,2200000,2202000,2000000,60,true,12.0);
+        budget.ObserveGpu(7,2202000,2000000,0.0);
+        budget.Observe(7,1800000,1802000,2000000,60,true,1.0);
+        budget.ObserveGpu(7,1802000,2000000,0.0);
+        Assert::AreEqual(1.0,budget.Begin(7,1802000,2000000,false,false).mandatoryTailMs,1e-9);
+        const auto reversed=budget.Begin(7,1801000,2000000,false,false);
+        Assert::IsFalse(reversed.phaseKnown);
+        Assert::AreEqual(1.0,reversed.allowanceMs,1e-9);
+    }
+    TEST_METHOD(UnknownNewSourceCostAndInvalidSamplesCannotFundUnboundedWork) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(8,start,start+1000,frequency,60,true,0.1,true);
+        budget.ObserveGpu(8,start+1000,frequency,0.0);
+        const auto onlyRepeat=budget.Begin(8,start+1000,frequency,false,false);
+        Assert::IsTrue(onlyRepeat.phaseKnown);
+        Assert::IsFalse(onlyRepeat.mandatoryKnown);
+        Assert::AreEqual(1.0,onlyRepeat.allowanceMs,1e-9);
+        budget.Observe(8,start+16667,start+17667,frequency,60,true,
+            (std::numeric_limits<double>::quiet_NaN)());
+        budget.ObserveGpu(8,start+17667,frequency,0.0);
+        const auto invalid=budget.Begin(8,start+17667,frequency,false,false);
+        Assert::IsFalse(invalid.mandatoryKnown);
+        Assert::AreEqual(1.0,invalid.allowanceMs,1e-9);
+        budget.Observe(8,0,0,0,60,true,1.0);
+        budget.ObserveGpu(8,0,0,0.0);
+        const auto reset=budget.Begin(8,start+17667,frequency,false,false);
+        Assert::IsFalse(reset.phaseKnown);
+        Assert::AreEqual(1.0,reset.allowanceMs,1e-9);
+    }
+    TEST_METHOD(OldNewSourceCostCannotBeRenewedIndefinitelyByOnlyRepeats) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(9,start,start+1000,frequency,60,true,8.0);
+        budget.ObserveGpu(9,start+1000,frequency,0.0);
+        budget.Observe(9,start+2200000,start+2201000,frequency,60,true,0.1,true);
+        budget.ObserveGpu(9,start+2201000,frequency,0.0);
+        const auto ticket=budget.Begin(9,start+2201000,frequency,false,false);
+        Assert::IsTrue(ticket.phaseKnown);
+        Assert::IsFalse(ticket.mandatoryKnown);
+        Assert::AreEqual(1.0,ticket.allowanceMs,1e-9);
+    }
+    TEST_METHOD(AdaptiveExpansionRequiresRecentResolvedGpuTiming) {
+        constexpr int64_t frequency=1000000,start=1000000,now=start+1000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(20,start,now,frequency,60,true,4.0);
+        const auto unknown=budget.Begin(20,now,frequency,false,false);
+        Assert::IsTrue(unknown.phaseKnown);Assert::IsFalse(unknown.gpuKnown);
+        Assert::AreEqual(1.0,unknown.allowanceMs,1e-9);
+        budget.ObserveGpu(20,now,frequency,3.0);
+        const auto known=budget.Begin(20,now,frequency,false,false);
+        Assert::IsTrue(known.gpuKnown);
+        Assert::AreEqual(3.0,known.gpuTailMs,1e-9);
+        Assert::AreEqual(7.0,known.mandatoryEnvelopeMs,1e-9);
+        Assert::AreEqual(8.75,known.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/60.0-1.0-8.75,known.allowanceMs,1e-9);
+        Assert::IsTrue(known.allowanceMs>2.0);
+        Assert::AreEqual(1.0,unknown.allowanceMs,1e-9,L"A later GPU observation cannot extend an issued ticket.");
+    }
+    TEST_METHOD(HighGpuCostCannotBorrowNearlyWholeDisplayIntervalFromLowCpuCost) {
+        constexpr int64_t frequency=1000000,start=1000000,now=start+1000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(21,start,now,frequency,60,true,1.0);
+        budget.ObserveGpu(21,now,frequency,11.0);
+        const auto ticket=budget.Begin(21,now,frequency,false,false);
+        Assert::AreEqual(12.0,ticket.mandatoryEnvelopeMs,1e-9);
+        Assert::AreEqual(15.0,ticket.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/60.0-1.0-15.0,ticket.allowanceMs,1e-9);
+        Assert::IsTrue(ticket.allowanceMs<1.0);
+        budget.Observe(21,start+16667,start+17667,frequency,60,true,6.0);
+        const auto overloaded=budget.Begin(21,start+17667,frequency,false,false);
+        Assert::AreEqual(17.0,overloaded.mandatoryEnvelopeMs,1e-9);
+        Assert::AreEqual(int64_t(0),overloaded.deadlineQpc);
+        Assert::IsFalse(overloaded.skippedBoundary);
+    }
+    TEST_METHOD(GpuTailAgesIndependentlyOfFreshCpuSamples) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(22,start,start+1000,frequency,60,true,1.0);
+        budget.ObserveGpu(22,start+1000,frequency,11.0);
+        budget.Observe(22,start+500000,start+501000,frequency,60,true,1.0);
+        budget.ObserveGpu(22,start+501000,frequency,1.0);
+        const auto recent=budget.Begin(22,start+501000,frequency,false,false);
+        Assert::AreEqual(11.0,recent.gpuTailMs,1e-9);
+        budget.Observe(22,start+2700000,start+2701000,frequency,60,true,1.0);
+        const auto stale=budget.Begin(22,start+2701000,frequency,false,false);
+        Assert::IsFalse(stale.gpuKnown);
+        Assert::AreEqual(1.0,stale.allowanceMs,1e-9);
+        budget.ObserveGpu(22,start+2701000,frequency,1.0);
+        const auto refreshed=budget.Begin(22,start+2701000,frequency,false,false);
+        Assert::IsTrue(refreshed.gpuKnown);
+        Assert::AreEqual(1.0,refreshed.gpuTailMs,1e-9);
+        Assert::AreEqual(2.5,refreshed.reserveMs,1e-9);
+    }
+    TEST_METHOD(GpuObservationsCannotInitializeEpochOrAdmitOldGenerationAndClock) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.ObserveGpu(23,start+1000,frequency,11.0);
+        budget.Observe(23,start,start+1000,frequency,60,true,1.0);
+        Assert::IsFalse(budget.Begin(23,start+1000,frequency,false,false).gpuKnown);
+        budget.ObserveGpu(23,start+1000,frequency,3.0);
+        Assert::IsTrue(budget.Begin(23,start+1000,frequency,false,false).gpuKnown);
+        budget.Observe(24,start+16667,start+17667,frequency,60,true,1.0);
+        budget.ObserveGpu(23,start+17667,frequency,20.0);
+        budget.ObserveGpu(24,start+17667,frequency*2,20.0);
+        budget.ObserveGpu(24,start+16000,frequency,20.0);
+        const auto ignored=budget.Begin(24,start+17667,frequency,false,false);
+        Assert::IsFalse(ignored.gpuKnown);
+        Assert::AreEqual(1.0,ignored.mandatoryTailMs,1e-9);
+        Assert::AreEqual(1.0,ignored.allowanceMs,1e-9);
+        budget.ObserveGpu(24,start+17667,frequency,0.5);
+        Assert::AreEqual(0.5,budget.Begin(24,start+17667,frequency,false,false).gpuTailMs,1e-9);
+    }
+    TEST_METHOD(KnownCpuAndGpuCostsStillPermitUsefulFilmCadenceLookahead) {
+        constexpr int64_t frequency=1000000,start=1000000,now=start+1000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(25,start,now,frequency,24,true,12.0);
+        budget.ObserveGpu(25,now,frequency,8.0);
+        const auto ticket=budget.Begin(25,now,frequency,false,false);
+        Assert::AreEqual(20.0,ticket.mandatoryEnvelopeMs,1e-9);
+        Assert::AreEqual(25.0,ticket.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/24.0-1.0-25.0,ticket.allowanceMs,1e-9);
+        Assert::IsTrue(ticket.allowanceMs>2.0);
+        Assert::IsFalse(ticket.skippedBoundary);
+    }
+    TEST_METHOD(CheapRepeatCpuAndGpuSamplesDoNotEraseNewSourceUploadTail) {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(26,start,start+1000,frequency,60,true,8.0);
+        budget.ObserveGpu(26,start+1000,frequency,2.0);
+        for (int i=1;i<=90;++i) {
+            const int64_t sync=start+i*10000;
+            budget.Observe(26,sync,sync+1000,frequency,60,true,0.1,true);
+            budget.ObserveGpu(26,sync+1000,frequency,0.1);
+        }
+        const auto ticket=budget.Begin(26,start+901000,frequency,false,false);
+        Assert::AreEqual(8.0,ticket.mandatoryMs,1e-9);
+        Assert::AreEqual(2.0,ticket.gpuTailMs,1e-9);
+        Assert::AreEqual(12.5,ticket.reserveMs,1e-9);
+        Assert::AreEqual(1000.0/60.0-1.0-12.5,ticket.allowanceMs,1e-9);
+    }
+    TEST_METHOD(DelayedCheapGpuQueryCannotNewlyQualifyAdaptiveAllowance) {
+        constexpr int64_t frequency=1000000,start=1000000,now=start+201000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(30,start+200000,now,frequency,60,true,1.0);
+        budget.ObserveGpu(30,now,frequency,0.1,start+1000);
+        const auto ticket=budget.Begin(30,now,frequency,false,false);
+        Assert::IsTrue(ticket.phaseKnown);Assert::IsFalse(ticket.gpuKnown);
+        Assert::AreEqual(1.0,ticket.allowanceMs,1e-9);
+        Assert::AreEqual(0.0,ticket.gpuTailMs,1e-9);
+    }
+    TEST_METHOD(GpuConfidenceExpiresFromIssueRatherThanResolutionTime) {
+        constexpr int64_t frequency=1000000,start=1000000,issued=start+1000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(31,start,issued,frequency,60,true,1.0);
+        // Fifty milliseconds later this is still within four60Hz periods.
+        budget.ObserveGpu(31,start+51000,frequency,1.0,issued);
+        Assert::IsTrue(budget.Begin(31,start+51000,frequency,false,false).gpuKnown);
+        budget.Observe(31,start+66667,start+67667,frequency,60,true,1.0);
+        const auto stale=budget.Begin(31,start+67667,frequency,false,false);
+        Assert::IsTrue(stale.phaseKnown);Assert::IsFalse(stale.gpuKnown);
+        Assert::AreEqual(1.0,stale.allowanceMs,1e-9);
+        Assert::AreEqual(1.0,stale.gpuTailMs,1e-9,L"A conservative tail can remain after expansion confidence expires.");
+    }
+    TEST_METHOD(GpuFreshnessHorizonUsesActualDisplayPeriod)
+    {
+        constexpr int64_t frequency=1000000,start=1000000,issued=start+1000;
+        for (const double hz:{24.0,60.0}) {
+            PresentationAnalysisBudget budget;
+            budget.Observe(32,start,issued,frequency,hz,true,1.0);
+            budget.ObserveGpu(32,issued,frequency,1.0,issued);
+            budget.Observe(32,start+100000,start+101000,frequency,hz,true,1.0);
+            const auto ticket=budget.Begin(32,start+101000,frequency,false,false);
+            Assert::IsTrue(ticket.gpuKnown==(hz==24.0));
+            if (hz==24.0) Assert::IsTrue(ticket.allowanceMs>2.0);
+            else Assert::AreEqual(1.0,ticket.allowanceMs,1e-9);
+        }
+    }
+    TEST_METHOD(UnqualifiedFutureOrInvalidGpuIssueCannotRenewConfidence)
+    {
+        constexpr int64_t frequency=1000000,start=1000000,now=start+1000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(33,start,now,frequency,60,false,1.0);
+        budget.ObserveGpu(33,now,frequency,0.1,now);
+        budget.Observe(33,start+16667,start+17667,frequency,60,true,1.0);
+        budget.ObserveGpu(33,start+17667,frequency,0.1,start+18000);
+        budget.ObserveGpu(33,start+17667,frequency,0.1,-1);
+        budget.ObserveGpu(32,start+17667,frequency,0.1,start+17000);
+        budget.ObserveGpu(33,start+17667,frequency,
+            (std::numeric_limits<double>::quiet_NaN)(),start+17000);
+        budget.ObserveGpu(33,start+16000,frequency,0.1,start+15000);
+        const auto ticket=budget.Begin(33,start+17667,frequency,false,false);
+        Assert::IsTrue(ticket.phaseKnown);Assert::IsFalse(ticket.gpuKnown);
+        Assert::AreEqual(1.0,ticket.allowanceMs,1e-9);
+    }
+    TEST_METHOD(StaleGpuTailCannotMoveOtherwiseReachableBoundary)
+    {
+        constexpr int64_t frequency=1000000,start=1000000;
+        PresentationAnalysisBudget budget;
+        budget.Observe(34,start,start+1000,frequency,60,true,0.1);
+        budget.ObserveGpu(34,start+1000,frequency,11.0,start+1000);
+        budget.Observe(34,start+100000,start+116000,frequency,60,true,0.1);
+        const auto ticket=budget.Begin(34,start+116000,frequency,false,false);
+        Assert::IsTrue(ticket.phaseKnown);Assert::IsFalse(ticket.gpuKnown);
+        Assert::AreEqual(11.0,ticket.gpuTailMs,1e-9);
+        Assert::AreEqual(0.1,ticket.mandatoryEnvelopeMs,1e-9);
+        Assert::IsFalse(ticket.skippedBoundary);
+        Assert::AreEqual(int64_t(0),ticket.deadlineQpc);
     }
     TEST_METHOD(OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan) {
         OptionalAnalysisWorker<int,1> worker;

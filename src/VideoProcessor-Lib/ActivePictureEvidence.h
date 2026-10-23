@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "AnalysisLumaSource.h"
+#include "AnalysisEvaluationBudget.h"
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureDecisionTimeline.h"
 
@@ -325,17 +326,21 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 // point remains above for callers with a planar frame; native RGB callers use
 // this bounded source sampler and retain source-raster coordinates.
 ActivePictureEvidence ExtractActivePictureEvidence(
-	const AnalysisLumaSource& source);
+	const AnalysisLumaSource& source,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
-	const AnalysisLumaSource& source);
+	const AnalysisLumaSource& source,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
 	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
-	const ActivePictureGlobalNearBlackEvidence& global);
+	const ActivePictureGlobalNearBlackEvidence& global,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
-	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative);
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 	const P010PlaneView& view);
@@ -350,7 +355,8 @@ ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
 	const ActivePictureEvidence& observed,
-    bool allowRejectedAlignedEdge = false);
+    bool allowRejectedAlignedEdge = false,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 // Startup-only: independently proved flank bars nominate a native-coordinate
 // pair when a sparse subtitle makes the raw vertical axis asymmetric. The
@@ -423,7 +429,18 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
 // visible or colored pixels outside it still fail open.
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
-	const ActivePictureBounds& trustedPresentation);
+	const ActivePictureBounds& trustedPresentation,
+    const AnalysisEvaluationBudget* budget = nullptr);
+
+// The supplied measurements must come from this exact immutable source frame,
+// before caption or temporal-policy refinement. Sample totals retain the direct
+// wrapper's logical accounting even though those measurements are reused.
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+    const AnalysisLumaSource& source, const ActivePictureBounds& trustedPresentation,
+    const ActivePictureEvidence& raw,
+    const ActivePictureGlobalNearBlackEvidence& global,
+    const ActivePictureArDarknessEvidence& arDarkness,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 // Remeasure only the expansion strips for a corrected, exact candidate on the
 // same decoded source that produced currentRetention. This keeps the raw
@@ -520,7 +537,8 @@ struct RelativeBarContrastEvidence
     const char* reason = "not-evaluated";
 };
 RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
-    const ActivePictureEvidence& raw, const ActivePictureBounds& base);
+    const ActivePictureEvidence& raw, const ActivePictureBounds& base,
+    const AnalysisEvaluationBudget* budget = nullptr);
 
 // Caller must certify successful current-frame composition, background-safe erasure,
 // and a relocated destination inside trustedPresentation. Only the erased top/bottom
