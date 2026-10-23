@@ -5,17 +5,18 @@
 Review
 
 Implemented and pushed as source commit
-`ead594028431e4c1c43b5886e4da437a8f066444` on
+`3f5dd8a1b2693e79645bab4dfdf24e76fba53cc8` on
 `codex/render-thread-jitter-20261022` in
 `E:\codex\videoprocessor\render-thread-jitter-20261022`.
 Draft [PR #192](https://github.com/billslack2/videoprocessor/pull/192) targets
 `v1.4.02-beta` from verified baseline
-`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`: one implementation commit, 26 files.
+`fcc33fc9a3b57ce79c56904b3ff78b23f27bfe02`: two implementation commits, 31 files.
 LUT Apply-only PR #191 and VP-0203 remain separate and untouched.
 
 The final committed-source x64 Release solution build passed with zero errors
-and zero warnings. Native validation passed 1,022 tests: 1,021 focused regressions
-plus one paired 4K fixture test. The current-beta Windows Config suite has 108
+and zero warnings. After the measurement-driven checkpoint correction, final
+native validation passed 1,023/1,023 tests; the isolated measurement DLL also
+passed. The unchanged current-beta Windows Config suite has 108
 registered tests: 104 passed and four unrelated failures were confirmed on clean
 baseline `fcc33fc`. The two extra Config tests in LUT PR #191 are excluded from
 this branch; this result is not a 110-test run.
@@ -56,6 +57,53 @@ stack budget. Deterministic regressions cover mid-scan cancellation, absence of
 partial authority, whole-window/certificate rejection, and successful mandatory
 retry on the same pixels. The authority-adoption API remains unchanged.
 
+## Measurement follow-up and checkpoint correction
+
+Real-clock measurements of initial source `ead594028431e4c1c43b5886e4da437a8f066444`
+found three direct samplers bypassing the cooperative checkpoints: strict bar
+profile samples, disputed expansion strips, and credible-visible-extent samples.
+The follow-up adds `samples.Checkpoint()` before those direct reads. A new
+`DenseVisibleExtentChecksBudgetBeforeReturningCompletedRetention` regression
+expires at checkpoint 40, verifies that no partial safety result returns, and
+proves a subsequent mandatory retry remains equivalent. The earlier raw
+measurements are preserved under `measurements/before-dense-checkpoint-fix`.
+
+The committed report `docs/VP-0204_MEASUREMENTS.md` and four aggregate CSVs under
+`docs/measurements` record the methods, distributions, costs and limits:
+`VP-0204-analysis-reuse.csv`, `VP-0204-analysis-budget.csv`,
+`VP-0204-logger-summary.csv`, and `VP-0204-nvidia-aggregate.csv`.
+
+- Real QPC analysis measurements use 101 interleaved pairs per case across 15
+  fixed 4K fixtures. In the three dark-textured 1 ms cases, between-helper p95
+  deadline lateness was 0.4233-0.5285 ms; cooperative p95 lateness was
+  0.0395-0.0529 ms after the correction. Cooperative worst observed lateness
+  was 0.1026-0.1334 ms in those cases, not a hard scheduling or deadline bound.
+  Checkpoints and unwinding cost time: at the 2 ms BGRA8 limit, 66/101 complete
+  proof windows versus 86/101 for the between-helper control is a documented
+  tradeoff. No cancelled prefix was published; mandatory current safety remains.
+- With an exact already-ready worker result, the measured caller helper-stage
+  median was 20-26% lower for scope and 61-64% lower for dark-textured cases.
+  Worker measurement is outside that caller timer and still consumes CPU.
+  Fallback-only changes remain small and mixed; this is not whole-frame,
+  whole-process, GPU, or live-playback savings.
+- Five logging trials per controlled case made 1,000 calls before a deliberately
+  held 100 ms dependency gate was released. Periodic-flush transport p99/max
+  were 0.7/1.6 microseconds; the extracted original QueueMessage path under
+  periodic/final flush lock held callers for 104.5-108.8 ms. These are injected
+  stalls and transport results, not observed production disk stalls or full
+  Log() latency. Contention rejection and extreme-saturation losses are recorded
+  explicitly; they are not a production log-loss estimate.
+- The fake-NVAPI harness completed 28/28 blocked trials safely, including stale
+  generation checks. Request/Status p99 were about 0.1/0.2 microseconds while
+  the old driver-held-lock control blocked its first caller about 109 ms.
+  No actual NVAPI call or display state change was performed by this harness.
+- Passive installed-build evidence remains the healthy 22:17:57-22:19:57 window:
+  7,199 submissions, active CPU 4.180 ms average / 6.903 ms peak, and zero
+  source/display/preview overruns or reported backlog/drop events. Existing
+  4K capture playback continued while scratch measurements ran, so elapsed
+  timings include shared-host scheduling/cache/memory effects. No live jitter
+  improvement is established; controlled matched replay remains future work.
+
 ## Validation evidence and limits
 
 Artifacts are under
@@ -63,11 +111,13 @@ Artifacts are under
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Final committed-source full solution x64 Release build | Passed; 0 errors, 0 warnings | `release-ead59402.log` |
-| Focused native regression suite | 1,021/1,021 passed | `native/focused.trx`, `native-tests.log` |
-| Paired 4K fixture test | 1/1 passed; all evidence parity checks passed | `native/paired-4k.trx`, `paired-4k.log`, `paired-4k-summary.json` |
-| Windows Qt Config suite | 104 passed, 4 failed out of 108 | `config-tests.log` |
-| Consolidated source/validation manifest | Exact source `ead594028431e4c1c43b5886e4da437a8f066444` and baseline-proof paths | `validation-summary.json` |
+| Final committed-source full solution x64 Release build | Source `3f5dd8a1`; passed, 0 errors, 0 warnings | `measurements/release-3f5dd8a1.log` |
+| Final native regression suite after direct-sampler correction | 1,023/1,023 passed | `measurements/results/dense-fix-native.trx`, `measurements/dense-fix-native.log` |
+| Initial focused native suite | 1,021/1,021 passed | `native/focused.trx`, `native-tests.log` |
+| Isolated final measurement DLL | Passed | `measurements/analysis-final-run.log` |
+| Initial paired 4K fixture test | 1/1 passed; all evidence parity checks passed | `native/paired-4k.trx`, `paired-4k.log`, `paired-4k-summary.json` |
+| Prior Windows Qt Config suite; UI unchanged | 104 passed, 4 failed out of 108 | `config-tests.log` |
+| Initial source/validation manifest | Exact source `ead594028431e4c1c43b5886e4da437a8f066444` and baseline-proof paths | `validation-summary.json` |
 | Additional UI baseline comparison | Both cases fail identically on clean baseline and feature; each exit 1 | `config-baseline-comparison.log`, `config-baseline-comparison-results.json` |
 
 The warmed paired test covers 15 synthetic 3840x2160 fixtures: P010, P210 and
@@ -210,3 +260,10 @@ VP-0204 / Next VP-0205 / count 223. No new duplicate, missing, orphan, child-ord
 or state discrepancy was found. Known VP-0070/VP-0088/VP-0168 formatting exceptions
 remain unchanged; VP-0203 is unchanged. VP-0204's file, exact Review status and
 index row move together in this tracker commit.
+
+Measurement follow-up remains in Review. After fetching origin/main
+`2609120c1707a7187319f6ca4a50e73ee68842c7`, the canonical/index audit still found
+223 files/rows, 202 roots and 21 children with registry VP-0204/VP-0205/223 and
+no new identity/state discrepancies. Exact Review status and index row remain
+aligned. VP-0203 and historical formatting exceptions are unchanged. Source is
+pushed clean at the updated PR head; no deployment or configuration edit occurred.
