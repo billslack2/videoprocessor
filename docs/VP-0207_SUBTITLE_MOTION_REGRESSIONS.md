@@ -73,6 +73,39 @@ expiry on the third missing source, immediate new-cue selection, cue-end expiry,
 immutable background/layer pairing, reset/context rejection and ordinary mode.
 Live diagnostics must distinguish these intentional presentation repeats from
 fresh subtitle acquisition or current cleanup authority.
+## Source preparation and output reuse
+
+Each immutable source has one preparation receipt shared by upload, early picture
+analysis and subtitle preparation. Repeated output draws may reuse its prepared
+pixels and decisions only while source ownership, timestamps, format, policy,
+viewport, output and GPU identity still match. New sources and failed attempts
+invalidate the receipt before mutable state or textures are prepared.
+
+Inserted Smooth Motion outputs may reuse a completed attempt, including an
+inconclusive result, without treating it as fresh proof. A queued repeat of the
+same source may skip picture and subtitle analysis only when both were complete;
+otherwise an exact late worker result can still recover the source. An AR-only
+retry preserves an already conclusive progressive subtitle packet and its frozen
+source mapping, without another preparation pass. Incomplete subtitle results
+remain retryable. Upload reuse is independent. Reuse preserves the original
+completeness and source time.
+Results that depend on an older source's timed hold remain retryable; expiration
+forces the existing current bar inspection, without renewing the old detection.
+Scene and ambiguity holds also remain eligible for their normal expiry checks.
+
+Bar-content inspection advances every third eligible source identity, not every
+third display draw. Forced inspection still handles current changed bar content.
+Output acquisition, presentation pose, OSD, HDR publication and submission remain
+per-output. This does not change libplacebo tone mapping or the existing bounded
+subtitle packet fallback.
+
+`SourceOutputNormalizationTests` exercises actual native AR/subtitle detection,
+current-cue preparation, placement and backing cleanup through the shared receipt
+at controlled 24/48/60/120 Hz output schedules. It also checks late incomplete
+recovery, failed preparation, source/context changes and navigation content.
+These CPU cadence checks complement the dual-library GPU tests above; neither is
+physical mismatched-refresh playback acceptance.
+
 ## Transfer and chroma controls
 
 Exercise opaque HLG preparation separately from transparent subtitle layers.
@@ -138,3 +171,36 @@ window and shows matched sample count versus submitted output count. Sampling
 can miss subtitle-preparation outputs; low coverage or no samples cannot establish
 that preparation is free. Never sum CPU/wait rows with GPU frame time. Telemetry
 must not introduce a GPU finish, blocking query or render-mutex wait on the UI.
+
+## Source events, inserted outputs and late recovery
+
+An inserted display output is not a new source observation. Native AR, bar-content
+inspection, scene detection and subtitle acquisition use the original owned
+source. Extra display outputs consume prepared pictures and their frozen source
+geometry. Output pose, target validation, OSD and render/HDR publication remain
+per-output because they describe the actual displayed result.
+
+A discontinuity is an event on one identified source. Its first preparation must
+invalidate preceding source state; once that preparation succeeds, the exact
+same owned source can be reused even though its immutable discontinuity flag is
+still set. A changed identity, reset epoch, backing owner or processing contract
+must still invalidate reuse. A failed attempt cannot publish a reusable receipt.
+
+An incomplete source may receive late exact native evidence on a genuine queued
+repeat. Recovery is complete only when the owned GPU picture, subtitle/background
+pixels and presentation metadata agree. A successful duplicate capture that
+retains the old no-cue picture is not a successful recovery. Ordinary inserted
+outputs must not attempt this revision or reconsider subtitle absence.
+
+The whole-picture fallback means briefly repeating a previously completed source
+picture, with its subtitle and replacement background together. It does not mean
+full-raster geometry or zooming out. Its original two-source-interval bound and
+context checks remain; inserted outputs cannot renew it or authorize old cleanup
+on new pixels. Physical mismatched-refresh playback remains a separate acceptance
+step after controlled CPU and GPU regressions.
+
+The late same-source recovery regression is a transactional consistency test.
+Ordinary active Smooth Motion does not normally enqueue the host's true cadence
+correction repeats, so reproducing that supported retry contract does not prove
+it caused steady-playback subtitle flashing. Discontinuity-source inserted-output
+reuse is tested independently. Retain this distinction in deployment receipts.

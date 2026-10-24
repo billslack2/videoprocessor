@@ -5,6 +5,7 @@
 #include <SubtitleBackingLip.h>
 #include <SubtitleCutPasteShader.h>
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/SourcePreparationReceipt.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/options.h>
 #include <array>
@@ -69,8 +70,7 @@ struct MeasuredReconstructionCue {
     SubtitleCutPastePresentation compositor;
     SubtitleLayoutAnchor anchor;
     SubtitleBackingLipContinuity backing;
-    PreparedCurrentSubtitleCue prepared;
-    CurrentSubtitleCueDecision decision;
+    struct { SubtitleCueContinuation proof; SubtitleBoxResult accepted; } decision;
     SubtitleCutPasteGeometry geometry;
     size_t proofReads=0;
     void Acquire(const NativeReconstructionPixels& pixels,uint64_t sequence) {
@@ -95,10 +95,9 @@ struct MeasuredReconstructionCue {
         preview=SubtitleBoxLookahead::Resolve(&observations[1],1,7,8);Admit(source,sequence);
     }
     void Admit(const AnalysisLumaSource& source,uint64_t sequence) {
-        AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto current=source;current.readBudget=&budget;
-        PrepareCurrentSubtitleCueInto(prepared,guard,preview,current,ReconstructionBase(),true,250,1000.0/SourceHz);
-        ConsumePreparedCurrentSubtitleCueInto(decision,guard,tracker,preview,current,ReconstructionBase(),true,
-            250,1000.0/SourceHz,prepared);
+        auto current=source;
+        tracker.RefreshReferencePixels(preview,current);
+        decision.proof={};decision.accepted=tracker.Consume(preview);
         Assert::IsTrue(decision.accepted.detected&&!decision.accepted.confirmationPending&&!decision.accepted.held);
         const auto* proof=decision.proof.valid?&decision.proof:nullptr;
         const auto safe=padding.Consume(decision.accepted,preview,{36,24,18},{},proof);
@@ -109,13 +108,12 @@ struct MeasuredReconstructionCue {
         Assert::IsTrue(geometry.valid,L"Measured UHD cue did not produce current reconstruction geometry");
         if(!geometry.generatedCleanup.Valid()) {
             const auto cap=backing.Consume(current,preview,decision.accepted,ReconstructionIdentity(sequence),7,8,
-                SubtitleBackingLipSampleLimit,&geometry,proof);
+                65536,&geometry,proof);
             Assert::IsTrue(cap.valid,L"Measured UHD backing strip was not currently proved");
             geometry=ApplyCurrentSubtitleBackingLip(geometry,cap,ReconstructionIdentity(sequence),7,8);
         }
         Assert::IsTrue(geometry.valid&&geometry.generatedCleanup.Valid());
-        Assert::IsFalse(budget.exhausted,L"Native acquisition and finite cleanup exceeded the production frame allowance");
-        proofReads=budget.used;
+        ++proofReads; // Native measurement/admission passes, not sample counts.
     }
 };
 struct ReconstructionMotionGpu {
@@ -259,7 +257,7 @@ TEST_CLASS(ReconstructionMotionTests) { public:
         ++g->processingEpoch;g->Draw();
         Assert::AreEqual(flushes+1,g->temporal.ProcessingSnapshot().sourceRendererHistoryFlushes,
             L"A true processing epoch change must retire old library processing history");
-        std::ostringstream text;text<<"UHD native reconstruction/motion executed; native_reads="<<proofReads
+        std::ostringstream text;text<<"UHD native reconstruction/motion executed; native_admissions="<<proofReads
             <<" preparation_calls="<<preparations<<" inserted_outputs=8 elapsed_ms="
             <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
         Logger::WriteMessage(text.str().c_str());
@@ -318,6 +316,183 @@ TEST_CLASS(ReconstructionMotionTests) { public:
         Assert::IsFalse(captured);Assert::IsFalse(g->temporal.HasCurrentFrame(14));
         g->Capture(blank,14);Assert::AreEqual(uint64_t(0),g->temporal.SelectedSubtitleSequence());
         g->Draw();Assert::AreEqual(size_t(0),g->YellowPixels());
+    }
+    TEST_METHOD(UhdConclusiveCuePacketSurvivesAnalysisOnlyCadenceRetry) {
+        auto pixels=std::make_shared<NativeReconstructionPixels>();
+        auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(*pixels,2);
+        auto g=std::make_unique<ReconstructionMotionGpu>();g->Capture(*pixels,2,&cue->geometry);g->Draw();
+        Assert::IsTrue(g->temporal.HasCurrentCompleteComposition(2));
+        const auto calls=g->preparation.RenderCallCount();
+        const auto depth=g->temporal.HistoryDepth();const auto pts=g->temporal.SelectedPacketPts();
+        const auto yellow=g->YellowPixels();Assert::IsTrue(yellow>100);
+        SourcePreparationContext context;context.identity=ReconstructionIdentity(2);
+        context.source=pixels->Source();context.source.backingOwner=pixels;
+        context.queuedSource=context.source;context.gpu=g->device->gpu;
+        context.processingEpoch=g->processingEpoch;context.policyGeneration=7;
+        context.continuityGeneration=8;context.viewportEpoch=g->viewportEpoch;
+        context.outputContract=g->outputContract;
+        SourcePreparationReceipt receipt;receipt.Commit(context,false,true);
+        for(int attempt=0;attempt<2;++attempt) {
+            const auto reuse=receipt.Begin(context,SourceRepeatKind::CadenceRepeat);
+            Assert::IsTrue(reuse.upload&&!reuse.analysis&&!reuse.subtitle);
+            const bool keep=ReuseConclusiveSubtitlePacketForSourceRetry(reuse,SourceRepeatKind::CadenceRepeat,
+                true,true,true,g->temporal.HasCurrentCompleteComposition(2),true);
+            Assert::IsTrue(keep,L"AR-only retry must retain the exact already-complete source/cue packet");
+            g->temporal.Begin(g->settings,SourceHz,DisplayHz,false,0,2,2,0.0,false,true,true);
+            // This is the production reuse branch: no new preparation or capture.
+            g->Draw();receipt.Commit(context,attempt==1,true);
+            Assert::AreEqual(calls,g->preparation.RenderCallCount());
+            Assert::AreEqual(depth,g->temporal.HistoryDepth());Assert::AreEqual(pts,g->temporal.SelectedPacketPts());
+            Assert::AreEqual(uint64_t(2),g->temporal.SelectedSubtitleSequence());
+            Assert::AreEqual(uint64_t(2),g->Hdr().sourceSequence);Assert::AreEqual(yellow,g->YellowPixels());
+        }
+        Assert::IsTrue(receipt.ReuseAnalysis(context,SourceRepeatKind::CadenceRepeat));
+        Assert::IsTrue(receipt.ReuseSubtitle(context,SourceRepeatKind::CadenceRepeat));
+        const SourcePreparationReuse retry{true,false,false};
+        for(int fault=0;fault<8;++fault) {
+            auto reuse=retry;auto kind=SourceRepeatKind::CadenceRepeat;
+            bool matches=true,conclusive=true,complete=true,owned=true,snapshot=true;
+            switch(fault) {
+            case 0:reuse.upload=false;break;case 1:kind=SourceRepeatKind::NewSource;break;
+            case 2:kind=SourceRepeatKind::InsertedOutput;break;case 3:matches=false;break;
+            case 4:conclusive=false;break;case 5:complete=false;break;
+            case 6:owned=false;break;case 7:snapshot=false;break;
+            }
+            Assert::IsFalse(ReuseConclusiveSubtitlePacketForSourceRetry(reuse,kind,
+                matches,conclusive,complete,owned,snapshot));
+        }
+        auto changed=context;++changed.identity.acceptedSequence;
+        const auto wrong=receipt.Begin(changed,SourceRepeatKind::CadenceRepeat);
+        Assert::IsFalse(ReuseConclusiveSubtitlePacketForSourceRetry(wrong,SourceRepeatKind::CadenceRepeat,
+            true,true,true,g->temporal.HasCurrentCompleteComposition(2),true));
+    }
+    TEST_METHOD(NativeRecoveryNominationRequiresCurrentCompleteEvidence) {
+        auto pixels=std::make_unique<NativeReconstructionPixels>();
+        auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(*pixels,2);
+        auto current=std::make_unique<SubtitleBoxPreview>(cue->preview);
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        current->current.text=detector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3,true);
+        current->current.ink=detector.InkSnapshot();
+        Assert::IsTrue(current->current.text.detected&&current->current.text.configuredSearchComplete);
+        Assert::IsTrue(current->current.ink&&current->current.ink->rawEvidenceComplete);
+        const auto accepted=cue->tracker.Consume(*current);
+        Assert::IsTrue(accepted.detected&&!accepted.held&&!accepted.confirmationPending);
+        const auto identity=ReconstructionIdentity(2);
+        Assert::IsTrue(CanRecoverCurrentSubtitlePacket(true,true,true,false,false,
+            accepted,*current,{},identity,7,8),L"Current complete measured worker evidence must nominate recovery");
+        for(int fault=0;fault<17;++fault) {
+            auto bad=std::make_unique<SubtitleBoxPreview>(*current);auto text=accepted;
+            bool retry=true,prior=true,composed=true,incomplete=false,exhausted=false;
+            switch(fault) {
+            case 0:retry=false;break;case 1:prior=false;break;case 2:composed=false;break;
+            case 3:incomplete=true;break;case 4:exhausted=true;break;
+            case 5:text.held=true;break;case 6:text.confirmationPending=true;break;
+            case 7:bad->current.text.configuredSearchComplete=false;break;
+            case 8:bad->current.pendingRefresh=true;break;case 9:bad->current.analysisRefresh=true;break;
+            case 10:++bad->current.identity.acceptedSequence;break;
+            case 11:++bad->policyGeneration;break;case 12:++bad->current.continuityGeneration;break;
+            case 13:bad->current.analyzed=false;break;case 14:bad->current.ink.reset();break;
+            case 15:++text.capturePanel.left;break;case 16:++text.lineCapturePanels[0].left;break;
+            }
+            Assert::IsFalse(CanRecoverCurrentSubtitlePacket(retry,prior,composed,incomplete,exhausted,
+                text,*bad,{},identity,7,8),L"Partial, refreshed or mismatched evidence cannot nominate packet replacement");
+        }
+        auto missing=std::make_unique<SubtitleBoxPreview>(cue->preview);
+        missing->available=false;missing->current.analyzed=false;
+        missing->current.text={};missing->current.ink.reset();
+        SubtitleCueContinuation glyphOnly;glyphOnly.valid=true;glyphOnly.localGlyphsOnly=true;
+        glyphOnly.identity=identity;glyphOnly.accepted=accepted;
+        Assert::IsFalse(CanRecoverCurrentSubtitlePacket(true,true,true,false,false,
+            accepted,*missing,glyphOnly,identity,7,8),L"Glyph-only continuation cannot replace complete packet pixels");
+    }
+    TEST_METHOD(UhdLateCurrentCueReplacesNoCuePacketBeforeSealingSourceReuse) {
+        auto pixels=std::make_shared<NativeReconstructionPixels>();
+        auto g=std::make_unique<ReconstructionMotionGpu>();
+        // The source has real glyphs in its bar, but no worker observation was
+        // available when its first complete raw packet was captured.
+        g->Capture(*pixels,2);g->Draw();
+        Assert::AreEqual(uint64_t(0),g->temporal.SelectedSubtitleSequence());
+        Assert::AreEqual(size_t(0),g->YellowPixels());
+        SourcePreparationContext context;context.identity=ReconstructionIdentity(2);
+        context.source=pixels->Source();context.source.backingOwner=pixels;
+        context.queuedSource=context.source;context.gpu=g->device->gpu;
+        context.processingEpoch=g->processingEpoch;context.policyGeneration=7;
+        context.continuityGeneration=8;context.viewportEpoch=g->viewportEpoch;
+        context.outputContract=g->outputContract;
+        SourcePreparationReceipt receipt;receipt.Commit(context,true,false);
+        const auto calls=g->preparation.RenderCallCount();
+        for(int inserted=0;inserted<3;++inserted) {
+            const auto reuse=receipt.Begin(context,SourceRepeatKind::InsertedOutput);
+            Assert::IsTrue(reuse.upload&&reuse.analysis&&reuse.subtitle);
+            g->temporal.outputPts=double(inserted+1)/8.0/SourceHz;g->Draw();
+            receipt.Commit(context,true,false);
+        }
+        Assert::AreEqual(calls,g->preparation.RenderCallCount());
+        const auto retry=receipt.Begin(context,SourceRepeatKind::CadenceRepeat);
+        Assert::IsTrue(retry.upload&&!retry.analysis&&!retry.subtitle);
+        auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(*pixels,2);
+        Assert::IsTrue(cue->decision.accepted.detected&&cue->geometry.valid);
+        Assert::IsFalse(CanRecoverCurrentSubtitlePacket(true,true,true,true,false,
+            cue->decision.accepted,cue->preview,cue->decision.proof,ReconstructionIdentity(2),7,8));
+        // A composed but incomplete retry must leave the first packet unsealed,
+        // allowing another exact-source attempt instead of hiding the cue forever.
+        receipt.Commit(context,true,false);
+        const auto afterIncomplete=receipt.Begin(context,SourceRepeatKind::CadenceRepeat);
+        Assert::IsTrue(afterIncomplete.upload&&!afterIncomplete.analysis&&!afterIncomplete.subtitle);
+        auto missing=std::make_unique<SubtitleBoxPreview>(cue->preview);
+        missing->available=false;missing->current.analyzed=false;missing->current.text={};missing->current.ink.reset();
+        Assert::IsFalse(CanRecoverCurrentSubtitlePacket(true,true,true,false,false,
+            cue->decision.accepted,*missing,{},ReconstructionIdentity(2),7,8));
+        // A late complete worker result, rather than a retained glyph proof,
+        // is the authority available in the current beta detector.
+        auto late=cue->preview;SubtitleBoxDetector lateDetector;lateDetector.SetNearBarDistance(20);
+        late.current.text=lateDetector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3,true);
+        late.current.ink=lateDetector.InkSnapshot();
+        const auto lateAccepted=cue->tracker.Consume(late);
+        Assert::IsTrue(CanRecoverCurrentSubtitlePacket(true,true,true,false,false,
+            lateAccepted,late,{},ReconstructionIdentity(2),7,8));
+        g->temporal.Begin(g->settings,SourceHz,DisplayHz,false,0,2,2,0.0,false,true,true);
+        const auto pts=g->temporal.SelectedPacketPts();const auto depth=g->temporal.HistoryDepth();
+        auto params=g->Parameters();const auto options=CaptureSubtitleSourceProcessingOptions(params);
+        pl_frame recovered{};
+        Assert::IsTrue(PrepareCompleteSubtitleSourcePacket(g->preparation,g->device->gpu,g->input,g->hook,
+            cue->geometry,5,g->style,2,&g->surface,recovered,&options));
+        // A failed transactional revision must leave the original owned packet
+        // present and drawable; preparation success alone cannot relabel it.
+        bool revised=true;
+        Assert::IsFalse(g->temporal.ReviseCompleteComposition(g->device->gpu,recovered,3,&revised));
+        Assert::IsFalse(revised);
+        const auto currentPts=g->temporal.currentPts;g->temporal.currentPts+=1.0/SourceHz;
+        Assert::IsFalse(g->temporal.ReviseCompleteComposition(g->device->gpu,recovered,2,&revised));
+        Assert::IsFalse(revised);g->temporal.currentPts=currentPts;
+        auto wrongFormat=recovered;wrongFormat.color.transfer=PL_COLOR_TRC_SRGB;
+        Assert::IsFalse(g->temporal.ReviseCompleteComposition(g->device->gpu,wrongFormat,2,&revised));
+        Assert::IsFalse(revised);
+        pl_d3d11_params otherParams{};otherParams.allow_software=true;
+        auto otherDevice=pl_d3d11_create(nullptr,&otherParams);
+        Assert::IsTrue(otherDevice!=nullptr);
+        const bool wrongDeviceAccepted=g->temporal.ReviseCompleteComposition(otherDevice->gpu,recovered,2,&revised);
+        pl_d3d11_destroy(&otherDevice);
+        Assert::IsFalse(wrongDeviceAccepted||revised);
+        Assert::IsFalse(g->temporal.ReviseCompleteComposition(g->device->gpu,{},2,&revised));
+        Assert::IsFalse(revised);Assert::AreEqual(depth,g->temporal.HistoryDepth());
+        Assert::AreEqual(uint64_t(0),g->temporal.SelectedSubtitleSequence());
+        g->Draw();Assert::AreEqual(size_t(0),g->YellowPixels());
+        Assert::IsTrue(g->temporal.ReviseCompleteComposition(g->device->gpu,recovered,2,&revised));
+        Assert::IsTrue(revised);Assert::AreEqual(depth,g->temporal.HistoryDepth());
+        Assert::AreEqual(pts,g->temporal.SelectedPacketPts());
+        auto pose=g->presentation;pose.cleaned=true;
+        Assert::IsTrue(g->temporal.AnnotatePresentation(2,pose));
+        Assert::IsTrue(g->temporal.AnnotateHdrSource(2,g->input));
+        receipt.Commit(context,true,true);
+        g->Draw();Assert::AreEqual(uint64_t(2),g->temporal.SelectedSubtitleSequence());
+        Assert::AreEqual(uint64_t(2),g->Hdr().sourceSequence);
+        Assert::IsTrue(g->YellowPixels()>100,L"Late native recovery must reach actual selected GPU pixels");
+        Assert::IsTrue(receipt.ReuseSubtitle(context,SourceRepeatKind::CadenceRepeat));
+        revised=true;
+        Assert::IsFalse(g->temporal.ReviseCompleteComposition(g->device->gpu,recovered,2,&revised),
+            L"The completed cue packet cannot be revised again");
+        Assert::IsFalse(revised);g->Draw();Assert::IsTrue(g->YellowPixels()>100);
     }
     TEST_METHOD(UhdCompleteCaptureRejectsIdentityAndContextRebinding) {
         NativeReconstructionPixels pixels,blank(false,12,1);

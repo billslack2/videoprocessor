@@ -126,6 +126,7 @@ private:
     uint64_t subtitleFallbackSequence=0;
     const char* subtitleFallbackReason="not-selected";
     bool initialized=false,interlaced=false,topFirst=true,mixing=false,composition=false,nativeMode=false;
+    bool lastSourceDiscontinuity=false;
     int delay=0;
     MotionConfig::Settings settings;
     const pl_filter_config* mixer=nullptr;
@@ -155,7 +156,7 @@ private:
             pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;sourceRendererCompleteMode=false;
         }
         if(gpu)pl_tex_destroy(gpu,&compositionSurface);
-        nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();
+        nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;lastSourceDiscontinuity=false;outputs.clear();
     }
 public:
     std::vector<double> outputs;
@@ -207,6 +208,11 @@ public:
         return selected;
     }
     bool HasCurrentFrame(uint64_t sequence) const { return !history.empty() && history.back()->sequence==sequence; }
+    bool HasCurrentCompleteComposition(uint64_t sequence) const {
+        return mixing&&composition&&!interlaced&&!history.empty()&&
+            history.back()->sequence==sequence&&history.back()->pts==currentPts&&
+            history.back()->completeComposition;
+    }
     bool AnnotatePresentation(uint64_t sequence,const PresentationGeometry& geometry) {
         if(history.empty()||history.back()->sequence!=sequence)return false;
         history.back()->presentation=geometry;
@@ -343,7 +349,7 @@ public:
             interlaced!=newInterlaced||mixing!=newMix||composition!=sourceSubtitleComposition||(newInterlaced&&topFirst!=newTopFirst)||
             (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
             (std::abs(measuredDisplayHz-displayHz)>(std::max)(0.1,displayHz*0.001));
-        if(cadenceRepeat && initialized && !changed && !discontinuity &&
+        if(cadenceRepeat && initialized && !changed && discontinuity==lastSourceDiscontinuity &&
             sequence==lastSequence && pts==previousPts && Active()) {
             if(submittedOutputAvailable && !history.empty()) {
                 outputPts=submittedOutputPts;
@@ -371,7 +377,7 @@ public:
             status=requested.smoothMotion!="off"&&displayHz<=0?"Motion: display cadence unavailable":
                 requested.deinterlace!="off"&&inputInterlaced&&!knownOrder?"Deinterlacing: field order unavailable (select Top/Bottom first)":"Motion: bypassed";
             if(requested.smoothMotion=="off"&&!inputInterlaced)status="Motion: Off";
-            previousPts=pts;lastSequence=sequence;return;
+            previousPts=pts;lastSequence=sequence;lastSourceDiscontinuity=discontinuity;return;
         }
         // Without a measured display rate, deinterlacing uses its own nominal
         // field/frame clock. Mixing never guesses the display cadence.
@@ -389,7 +395,7 @@ public:
             (interlaced?"; deinterlacing: "+requested.algorithm+(topFirst?" TFF":" BFF"):"; progressive")+
             "; buffer "+std::to_string(delay)+" frame(s)"+
             (composition?"; subtitles synchronized":"");
-        previousPts=pts;lastSequence=sequence;
+        previousPts=pts;lastSequence=sequence;lastSourceDiscontinuity=discontinuity;
     }
     bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
         // A successful duplicate keeps its first immutable GPU packet. The
@@ -531,6 +537,61 @@ public:
             history.back()->hasSubtitle=hasSubtitle;
         }
         if(capturedNew)*capturedNew=added;
+        return true;
+    }
+    // Explicit late-current completion, not an ordinary duplicate capture. The
+    // caller must bind a newly complete current cue to the same immutable source
+    // and preparation context. Only the latest no-cue packet can be upgraded.
+    // Build a private replacement first so allocation/validation failure leaves
+    // the original pixels, metadata, history and output clock intact.
+    bool ReviseCompleteComposition(pl_gpu device,const pl_frame& completeRgb,
+        uint64_t sequence,bool* revised=nullptr) {
+        if(revised)*revised=false;
+        if(!mixing||!composition||interlaced||gpu!=device||history.empty())return false;
+        const auto& prior=*history.back();
+        if(prior.sequence!=sequence||prior.pts!=currentPts||!prior.completeComposition||
+            prior.hasSubtitle||prior.subtitle||completeRgb.num_planes!=1||
+            !completeRgb.planes[0].texture||completeRgb.planes[0].components<3||
+            completeRgb.repr.sys!=PL_COLOR_SYSTEM_RGB||completeRgb.repr.levels!=PL_COLOR_LEVELS_FULL||
+            completeRgb.repr.alpha!=PL_ALPHA_NONE||completeRgb.repr.dovi||completeRgb.lut||
+            completeRgb.icc||completeRgb.profile.data||completeRgb.acquire||completeRgb.release||
+            completeRgb.overlays||completeRgb.num_overlays||
+            completeRgb.planes[0].texture->params.user_data)return false;
+        const auto& before=prior.frame.planes[0];const auto& after=completeRgb.planes[0];
+        const auto input=after.texture;
+        if(!before.texture||!input->params.blit_src||
+            input->params.w!=before.texture->params.w||input->params.h!=before.texture->params.h||
+            input->params.format!=before.texture->params.format||
+            !pl_color_space_equal(&prior.frame.color,&completeRgb.color)||
+            !pl_color_repr_equal(&prior.frame.repr,&completeRgb.repr)||
+            prior.frame.rotation!=completeRgb.rotation||
+            after.components!=before.components||after.shift_x!=before.shift_x||
+            after.shift_y!=before.shift_y||after.flipped!=before.flipped||
+            after.address_mode!=before.address_mode||
+            std::abs(completeRgb.crop.x0)>0.001f||std::abs(completeRgb.crop.y0)>0.001f||
+            std::abs(completeRgb.crop.x1-input->params.w)>0.001f||
+            std::abs(completeRgb.crop.y1-input->params.h)>0.001f)return false;
+        for(int c=0;c<after.components;++c)
+            if(after.component_mapping[c]!=before.component_mapping[c])return false;
+        std::unique_ptr<Stored> replacement;
+        try { replacement=std::make_unique<Stored>(); }
+        catch(...) { return false; }
+        replacement->gpu=device;replacement->pts=prior.pts;replacement->sequence=prior.sequence;
+        replacement->frame=completeRgb;
+        replacement->frame.planes[0].texture=nullptr;
+        replacement->frame.prev=nullptr;replacement->frame.next=nullptr;
+        auto storage=input->params;storage.initial_data=nullptr;storage.user_data=nullptr;
+        storage.import_handle=static_cast<pl_handle_type>(0);storage.export_handle=static_cast<pl_handle_type>(0);
+        storage.blit_src=true;storage.blit_dst=true;storage.sampleable=true;
+        if(!pl_tex_recreate(device,&replacement->textures[0],&storage))return false;
+        replacement->frame.planes[0].texture=replacement->textures[0];
+        pl_tex_blit_params copy{};copy.src=input;copy.dst=replacement->textures[0];
+        pl_tex_blit(device,&copy);
+        replacement->completeComposition=true;replacement->hasSubtitle=true;
+        replacement->signature=nextSignature++;
+        history.back()=std::move(replacement);
+        subtitleFallbackSequence=0;subtitleFallbackReason="current-cue-recovered";
+        if(revised)*revised=true;
         return true;
     }
     // The callback owns its shader inputs and may use scratch textures only for

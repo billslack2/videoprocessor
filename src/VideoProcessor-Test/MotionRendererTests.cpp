@@ -1071,6 +1071,45 @@ TEST_CLASS(MotionRendererTests){public:
             Assert::AreEqual(size_t(0),g.temporal.HistoryDepth(),L"A repeat must not cross a source generation.");
         }
     }
+    TEST_METHOD(ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+        settings.deinterlace="off";settings.mixer="oversample";
+        TemporalRenderer control;
+        g.temporal.Begin(settings,24,60,false,0,1,1,0,true,true);
+        control.Begin(settings,24,60,false,0,1,1,0,true,true);
+        g.UploadComposition(false,1);
+        Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,1,{24,24,40,40}));
+        g.temporal.outputPts=0;
+        const auto before=g.Draw();g.temporal.MarkSubmitted();
+        const auto stats=g.temporal.ProcessingSnapshot();
+        for(int repeat=0;repeat<8;++repeat) {
+            g.temporal.Begin(settings,24,60,false,0,1,1,0,true,true,true);
+            Assert::AreEqual(size_t(1),g.temporal.HistoryDepth());
+            Assert::AreEqual(size_t(1),g.temporal.outputs.size());
+            Assert::AreEqual(0.0,g.temporal.outputPts,1e-10);
+            Assert::AreEqual(uint64_t(1),g.temporal.SelectedPacketSequence());
+            const auto output=g.Draw();g.temporal.MarkSubmitted();
+            for(int c=0;c<3;++c)Assert::AreEqual(before[c],output[c]);
+        }
+        Assert::AreEqual(stats.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        Assert::AreEqual(stats.sourceRenders,g.temporal.ProcessingSnapshot().sourceRenders);
+        g.temporal.Begin(settings,24,60,false,0,1,2,1./24,false,true);
+        control.Begin(settings,24,60,false,0,1,2,1./24,false,true);
+        Assert::AreEqual(control.outputs.size(),g.temporal.outputs.size());
+        for(size_t i=0;i<control.outputs.size();++i)
+            Assert::AreEqual(control.outputs[i],g.temporal.outputs[i],1e-10);
+        for(int fault=0;fault<5;++fault) {
+            GpuFixture reset;
+            const bool originalEvent=fault!=0;
+            reset.temporal.Begin(settings,24,60,false,0,1,1,0,originalEvent,true);
+            reset.UploadComposition(false,1);
+            Assert::IsTrue(reset.temporal.CaptureComposition(reset.device->gpu,reset.cleanInput,reset.layer,1,{24,24,40,40}));
+            reset.temporal.Begin(settings,24,60,false,0,fault==4?2:1,fault==2?2:1,
+                fault==3?1./24:0,fault==1?false:true,true,true);
+            Assert::AreEqual(size_t(0),reset.temporal.HistoryDepth(),
+                L"Changed event, source, PTS or epoch must keep the original reset behavior");
+        }
+    }
     TEST_METHOD(ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue) {
         GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
         settings.deinterlace="off";settings.mixer="linear";
