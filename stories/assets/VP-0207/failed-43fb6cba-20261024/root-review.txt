@@ -1,0 +1,10 @@
+Root review: shared-budget lifetime and deployment continuity
+2026-10-24, source 6f0c02b2034b47e8b71aababaf47cb1ab96c8358
+
+The existing continuation worktree remains clean. GitHub default branch is v1.4.02-beta; fetched ref, GitHub REST branch lookup and git ls-remote agree on b1415da4e2cc12807f390f4b722c459be9a17c08. The connector PR snapshot reported an older base SHA, so branch identity is taken from the three direct checks. PR197 remains open draft with head6f0c02b2; no integration action performed.
+
+LibplaceboVideoRenderer.cpp creates one AnalysisLumaReadBudget per selected presentation and lends it to synchronous pending validation, ConsumeCurrentSubtitleCue, pending seed refresh and backing proof. Source inspection copies a borrowed pointer only for immediate calls. Reviewed retained cue, mask and backing structures store owned samples/coordinates/identity rather than this stack token. No queued worker receives subtitleProofSource. No dangling budget pointer found in these paths.
+
+SubtitleCueContinuation.h InspectCurrent bounds the local allowance by remaining shared allowance. Its scope-exit Charge adds local.used exactly once; it propagates an exhausted outer flag only when the local limit is the remaining outer limit. Thus an inspector-phase cutoff does not incorrectly poison a still-available shared remainder, while actual shared exhaustion cannot authorize extra native reads. Exact-last-successful-read semantics are preserved. Cached complete proof is keyed to exact current analysis identity, policy and continuity; candidate retention is not current cleanup authority.
+
+Steady log costs are separately recorded in runtime-performance.json. The asynchronous worker's elapsed scan time must not be added directly to mandatory renderer consume time. These observations do not qualify a 60-Hz presentation schedule, larger subtitle stress cases, or visual output. No speculative production changes or repeated full regression suite were performed for this review.

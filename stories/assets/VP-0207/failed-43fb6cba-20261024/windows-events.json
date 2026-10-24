@@ -1,0 +1,14 @@
+[
+  {
+    "TimeCreated": "2026-10-24T01:56:53.3034553-04:00",
+    "Id": 1001,
+    "ProviderName": "Windows Error Reporting",
+    "Message": "Fault bucket 2232553948005016108, type 4\r\nEvent Name: APPCRASH\r\nResponse: Not available\r\nCab Id: 0\r\n\r\nProblem signature:\r\nP1: VideoProcessor.exe\r\nP2: 0.0.0.0\r\nP3: 6adc45f7\r\nP4: VideoProcessorVPRendererBeta.dll\r\nP5: 0.0.0.0\r\nP6: 6adc462c\r\nP7: c00000fd\r\nP8: 0000000000201497\r\nP9: \r\nP10: \r\n\r\nAttached files:\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp\\WERA76F.tmp.dmp\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp\\WERAABC.tmp.WERInternalMetadata.xml\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp\\WERAAEC.tmp.xml\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp\\WERAAEA.tmp.csv\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp\\WERAB39.tmp.txt\r\n\r\nThese files may be available here:\r\n\\\\?\\C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportArchive\\AppCrash_VideoProcessor.e_845ca2dc56d848d92f33e38f351e30e4d54fbfef_75e13a72_fe2fcd17-2fdd-46a9-8a1d-c2b91c175e16\r\n\r\nAnalysis symbol: \r\nRechecking for solution: 0\r\nReport Id: 09cf8da1-98c3-4a1b-ac93-b66cc511b21a\r\nReport Status: 268435456\r\nHashed bucket: fc7c087c7122fb37befb9ffcb4bc222c\r\nCab Guid: 0"
+  },
+  {
+    "TimeCreated": "2026-10-24T01:56:51.3976056-04:00",
+    "Id": 1000,
+    "ProviderName": "Application Error",
+    "Message": "Faulting application name: VideoProcessor.exe, version: 0.0.0.0, time stamp: 0x6adc45f7\r\nFaulting module name: VideoProcessorVPRendererBeta.dll, version: 0.0.0.0, time stamp: 0x6adc462c\r\nException code: 0xc00000fd\r\nFault offset: 0x0000000000201497\r\nFaulting process id: 0x98e0\r\nFaulting application start time: 0x01dd637c6dc0528f\r\nFaulting application path: C:\\Videoprocessor\\vp\\VideoProcessor.exe\r\nFaulting module path: C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll\r\nReport Id: 09cf8da1-98c3-4a1b-ac93-b66cc511b21a\r\nFaulting package full name: \r\nFaulting package-relative application ID: "
+  }
+]

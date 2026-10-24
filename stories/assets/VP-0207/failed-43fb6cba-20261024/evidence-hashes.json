@@ -1,0 +1,54 @@
+{
+  "localOnly": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe.39136.dmp",
+      "bytes": 44971825,
+      "sha256": "BDF37AB1E0B2248229B60E986475CFE017137FB649206E9E0583C573B24F4EF7"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vp.log",
+      "bytes": 219002,
+      "sha256": "4EE6E37684749DC256724C33169A6D384B7F65BEA6634CB16070FBEE11CBF863"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\overnight-release-regressions.trx",
+      "bytes": 3016389,
+      "sha256": "6F1ABE12ED277D86B2B8631D57EFA39F2962553E32C6A8CBE9B6B16D77502EDB"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\audit-release-build.log",
+      "bytes": 119304,
+      "sha256": "FC6BFD157F411A71085B78A5AD03A1A03D525F2FF169C83B9D94038239899B25"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.pdb",
+      "bytes": 27340800,
+      "sha256": "AECD952987F143DD41A7F464C86A58013040C3434F9539FBE11CCFB8EC6B5EEE"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "bytes": 20418560,
+      "sha256": "8F458A98D49799662CA702F1F781F06F089BA8C2928B023F96319DDF76A5F1D5"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "bytes": 20393984,
+      "sha256": "736EF2CEED30512EF406D5C2B0DD9A5206B56A2C95F7502CC206C99E7373756E"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2594816,
+      "sha256": "CB8EE51F1C3A64C99E63EB3EC9577330571154C251F9C12FC78825D856D1734F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2593792,
+      "sha256": "2FD39C5FB3835CC2D5C6B52F3141951B2A78BB09850C0CD97666CB63C429AEA4"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe",
+      "bytes": 3069952,
+      "sha256": "7542CAAF1D10C66EDF81FC266D31BEFD1AA796B04E86267DA8B3636E6F0C2A14"
+    }
+  ]
+}

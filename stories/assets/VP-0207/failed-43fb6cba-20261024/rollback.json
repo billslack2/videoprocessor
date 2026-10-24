@@ -1,0 +1,22 @@
+{
+  "sourceCommit": "6f0c02b2034b47e8b71aababaf47cb1ab96c8358",
+  "failedCommit": "43fb6cba5ba94d9ad6b91d7a8cc53399da1fe088",
+  "reason": "Live beta renderer stack overflow c00000fd at RVA0x201497 after startup",
+  "startedProcessId": 81160,
+  "started": "2026-10-24T01:58:53.9368028-04:00",
+  "configurationSha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7",
+  "files": [
+    {
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "F61B0ECA9B28B5B5E597B570AE004A79BAFA660E988974CEBBC0B66F212319AE"
+    },
+    {
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "9FBA29A5040B7FF6C84AE5B568439749959B69DDA3819F543D80238B9A4F12C6"
+    },
+    {
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "A7018156CA6AC0BBA06D8EF0AC653BA23B61E3FA792AD97D8D30C455825B8EA0"
+    }
+  ]
+}
