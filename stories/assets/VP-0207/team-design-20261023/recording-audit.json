@@ -1,0 +1,103 @@
+{
+  "source_video": "C:\\Users\\bslac\\Videos\\2026-10-23 20-17-01.mp4",
+  "incident": "earlier recording, not 21:26 replay",
+  "roi": [
+    600,
+    405,
+    2480,
+    1000
+  ],
+  "method": "LK tracks; RANSAC similarity transform excludes subtitle band; local 5x5 patch photometry at inlier points, no HDR absolute claim",
+  "subtitle_missing_frames": [
+    1319,
+    1320
+  ],
+  "results": [
+    {
+      "from_frame": 1316,
+      "to_frame": 1318,
+      "from_seconds": 21.933333333333334,
+      "to_seconds": 21.966666666666665,
+      "inliers": 283,
+      "tracked": 283,
+      "scale": 1.0000017095755303,
+      "tx_pixels": -0.0034088056550914776,
+      "ty_pixels": -2.6417140289639065e-05,
+      "patches": 283,
+      "median_patch_delta_8bit": 0.0,
+      "median_patch_ratio": 1.0
+    },
+    {
+      "from_frame": 1318,
+      "to_frame": 1319,
+      "from_seconds": 21.966666666666665,
+      "to_seconds": 21.983333333333334,
+      "inliers": 271,
+      "tracked": 284,
+      "scale": 0.9998321148780017,
+      "tx_pixels": -0.02937984139894012,
+      "ty_pixels": 1.1451302274037227,
+      "patches": 271,
+      "median_patch_delta_8bit": -0.240000000000002,
+      "median_patch_ratio": 0.9960629921259841
+    },
+    {
+      "from_frame": 1319,
+      "to_frame": 1320,
+      "from_seconds": 21.983333333333334,
+      "to_seconds": 22.0,
+      "inliers": 272,
+      "tracked": 272,
+      "scale": 0.9999994729855767,
+      "tx_pixels": -0.01172801956439659,
+      "ty_pixels": 0.06490953256076774,
+      "patches": 272,
+      "median_patch_delta_8bit": 0.0,
+      "median_patch_ratio": 1.0
+    },
+    {
+      "from_frame": 1320,
+      "to_frame": 1321,
+      "from_seconds": 22.0,
+      "to_seconds": 22.016666666666666,
+      "inliers": 272,
+      "tracked": 272,
+      "scale": 0.9998815721972866,
+      "tx_pixels": -0.038895358900829194,
+      "ty_pixels": 1.0829060995163675,
+      "patches": 272,
+      "median_patch_delta_8bit": -0.3000000000000007,
+      "median_patch_ratio": 0.9947754691632088
+    },
+    {
+      "from_frame": 1321,
+      "to_frame": 1324,
+      "from_seconds": 22.016666666666666,
+      "to_seconds": 22.066666666666666,
+      "inliers": 278,
+      "tracked": 279,
+      "scale": 0.9999416797496279,
+      "tx_pixels": 0.09885389975412905,
+      "ty_pixels": 0.5727067302896262,
+      "patches": 278,
+      "median_patch_delta_8bit": -0.0799999999999983,
+      "median_patch_ratio": 0.9988769171817806
+    },
+    {
+      "from_frame": 1318,
+      "to_frame": 1321,
+      "from_seconds": 21.966666666666665,
+      "to_seconds": 22.016666666666666,
+      "inliers": 283,
+      "tracked": 284,
+      "scale": 0.9997242504256852,
+      "tx_pixels": -0.10509979249121676,
+      "ty_pixels": 2.317600622065943,
+      "patches": 283,
+      "median_patch_delta_8bit": -0.7600000000000051,
+      "median_patch_ratio": 0.986822840409956
+    }
+  ],
+  "video_sha256": "9e06e2e302a3dbe68cd86b941cf00dc89a25970f059b994d1923cac8c8dc9ff8",
+  "qualification": "Earlier recorded subtitle disappearance only; not matched to21:26. Similarity fit is evidence against a large scale jump in these frames. Local unregistered patch photometry is diagnostic and is not a brightness/tonemapping verdict."
+}

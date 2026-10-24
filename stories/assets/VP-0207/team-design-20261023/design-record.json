@@ -1,0 +1,24 @@
+{
+  "status": "design recommended; implementation pending",
+  "currentRuntime": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "liveResult": "FAILED",
+  "reviewHead": "13577069fa4b51f13587eb1d43f5fdbb9fed9fce",
+  "teamRoles": [
+    "source cue continuity",
+    "presentation and coordinate audit",
+    "adversarial safety and regression"
+  ],
+  "userClarifications": [
+    "Fixed zoom is intended; do not assume perceived flashing was zoom.",
+    "Playback is not paused on an offending frame."
+  ],
+  "primaryDesign": "Independent complete current cue proof, atomic current preparation, fixed transform under metadata jitter.",
+  "deferred": "New automatic outward/inward recovery and color-path changes require separate evidence.",
+  "newProductionEdits": false,
+  "newBuild": false,
+  "newDeployment": false,
+  "newConfigurationEdits": false,
+  "mergeAuthorized": false,
+  "evidence": "recording-audit.json; ../expert-review-20261023-2126",
+  "crossReview": "All three reviewers approve with incorporated scan-coverage, direct-read budget, optional-cap, completed-GPU-receipt and fallback-clipping qualification clarifications."
+}

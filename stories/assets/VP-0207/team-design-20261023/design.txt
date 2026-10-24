@@ -1,0 +1,112 @@
+VP-0207 team design: subtitle continuity with fixed zoom
+2026-10-23 — design recommendation; implementation and live qualification pending
+
+Decision
+Keep the user's fixed zoom fixed when only subtitle/AR metadata becomes uncertain. The primary correction is current-source subtitle continuity and atomic current-frame preparation. A new automatic zoom-out/zoom-in cycle is NOT the proposed remedy for the reported flashing. Treat subtitle visibility, glyph-free source backing, destination edges, picture mapping and picture luminance as separate observable results.
+
+The user clarified that the flashing was not necessarily visible zoom and that playback is not paused on an offending frame. No current paused-frame capture can qualify this issue. Use the existing recording and runtime evidence; further capture must trigger during normal playback.
+
+Evidence boundaries
+1. Confirmed source-cue failure: at source 1767 in the 21:26 session, 9,316 current native glyph samples pass before shared-picture-changed rejects the cue. Other gaps skip scanning with no-current-flat-bar. Composition and its backing cleanup disappear and return.
+2. Confirmed earlier recorded subtitle flash: C:\Users\bslac\Videos\2026-10-23 20-17-01.mp4, frames 1319-1320 (21.9833-22.0000s), has no relocated text between adjacent frames displaying the same line. Existing bright-glyph counts go2653 -> 19 -> 2654. Non-subtitle scene feature tracking on entry estimates scale 0.999832 (271 inliers); recovery0.999882 (272 inliers). This incident does not show a roughly 15 percent zoom change. Ordinary scene motion and recording compression remain; the measurement is not an absolute HDR test.
+3. Separate mapping defect in later logs: four 21:26 pairs submit 3840x1600 then 3340x1392 source rectangles to nearly the same target. Source preparation preserves raster dimensions and ordinary scene coordinates; temporal/mixing/NLS/hooks are inactive. Code+logs therefore show a different native-to-target mapping although fixed_crop=1 and requested aspect remain unchanged. There is no corresponding 21:26 output recording proving what the user perceived. Do not present this as the established explanation of all flashing.
+4. Brightness remains unclassified: the gaps switch native Dolby input versus prepared RGB representation (dv=1/scene=L1 versus dv=0/scene=frame). Scene peak/average match. Representation flags alone neither prove nor exclude brightness differences. Test output pixels separately.
+5. Positive-proof expiry is independently reproduced: fixed captured native pixels plus injected logged metadata cause otherwise positive current verification to expire at 250.248ms. This contract probe is not a captured multi-frame 21:26 sequence.
+
+Source pins
+Authoritative beta v1.4.02-beta: e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a.
+Failed deployment / draft PR #197: 26934dc8b2fed266f19e898a05e0a1bafe61b66f.
+Read-only review HEAD 13577069fa4b51f13587eb1d43f5fdbb9fed9fce has identical tree 7989b6545b0fc33c85a6953d0d5bbadf3a88e19c.
+Three independent team reviews covered cue continuity, presentation/coordinates, and adversarial regression safety. The presentation and safety reviewers rechecked mapping after the user's clarification; the design below incorporates that correction.
+
+A. Separate three authorities
+A1. Current cue proof describes source content, never AR or a right to crop.
+A2. Current preparation receipt proves what this exact source packet actually erased and replaced. A prior rectangle is never permission to erase current pixels.
+A3. Submitted presentation record describes what successfully reached output: selected packet identity, actual source and target rectangles, native-to-output mapping, configured fixed zoom, mode/output contract, required-content extent and representation. Recording prepared-erasure output does not make it native glyph ownership or renew the semantic ownership lease.
+
+Keep the raw worker observation, bar evidence and AR measurements immutable. Do not substitute retained picture edges into them. New local proof travels alongside them with explicit coverage and authority flags. Do not globally relax SameContext or preparedErasureOnly restrictions.
+
+B. Established-cue proof, independent of unrelated AR hints
+Acquisition retains cue identity, exact accepted line/capture/panel geometry, owned strokes, native physical cue side and plane, source dimensions/format/range/colorspace, transport/format/analysis/renderer/viewport generations, policy and continuity epochs. Acquisition requires complete current accepted evidence and independently established cue-side placement. An unrelated missing/nearby opposite edge cannot by itself invalidate an otherwise complete cue-side acquisition. Pending, stale or prepared-erasure evidence cannot acquire a template.
+
+For each distinct ordered admitted source packet:
+- Reuse a completed exact-current worker result if it contains all required proof.
+- Otherwise run a bounded established-cue inspector even when automaticSourceCrop=false/fixed zoom is active. It nominates only the acquired source-side plane, then re-proves that side from current native pixels; an independently measured conflicting current edge wins.
+- Verify the acquired glyphs and backing from current pixels. If edge masking is needed, mask only freshly verified owned strokes, never a padded rectangle or old cleanup region.
+- Run the existing detector over the complete relevant cue-side search area and configured companion/picture band. For a lower cue, Analyze with upper edge 0 and independently proved lower plane can inspect only that side; mirror for upper cues. This is private local inspection, not a fabricated full-picture measurement.
+- Require the relevant topSearchComplete/bottomSearchComplete, no work limit, exact acquired line matching, and no additional candidates or conflicting residual content. These flags and rawEvidenceComplete are necessary but NOT sufficient: carry explicit actual coverage bounds, sampled rows and stride for every pass and require coverage of the promised configured domain. The existing detector first scans nearBarDistance=0 and widens only if no cue is found; a detected old cue can therefore leave the farther configured band unexamined. Force inspection of any missing configured band even when the narrow pass detects the old cue. Coverage describes the actual detector sampling grid, not exhaustive native pixels and never whole-raster absence/crop/UI authority. A padded old glyph ROI alone is insufficient.
+- The inspector confirms existing ownership only. New, shifted or enlarged text goes through ordinary current acquisition.
+
+Proposed proof outcomes:
+NO_TEMPLATE: normal acquisition only.
+CURRENT_COMPLETE: exact current cue/placement and complete relevant coverage; preserve cue identity and advance normally beyond 250 ms. Opposite/shared AR loss does not weaken this proof.
+CURRENT_PARTIAL: retain the template as a candidate, but publish no stronger authority than actually verified. Any existing bounded continuation must require its current glyph/placement/capture prerequisites; missing placement cannot authorize moving text. Use a nonrenewing source-time limit capped by the existing 250 ms / configured hold. Incomplete coverage cannot reset that limit or become a positive detector result.
+CONTRADICTED: current glyphs disappeared/changed, extra line/content, conflicting cue-side edge, in-picture/nav placement, changed required glyph/source-panel backing or genuine picture expansion. Invalidate affected relocation immediately; reacquire new content normally. Optional finite-cap failure invalidates only cap cleanup unless it also contradicts glyph or placement proof.
+HARD_RESET: seek/discontinuity/incompatible source or policy epoch. No stale continuation.
+
+Use actual source timestamps and the source clock for elapsed time. Repeated display outputs neither spend nor renew a lease. Source gaps require complete fresh verification or acquisition; a partial bridge spends the actual elapsed source time. One frame-wide work budget counts pending checks, local inspection and reused samples; no hidden second unlimited scan. Count direct planar detector reads as well as AnalysisLumaSource::Sample calls: P010/P210/decoded-DV must not bypass the budget. Cache exact-current proof for repeats. If coverage cannot complete, report CURRENT_PARTIAL/budget exhaustion honestly and retain the existing safe behavior; do not weaken proof to satisfy the benchmark.
+
+Source state commits once in accepted-source order, including packets prepared ahead of temporal display. Future lookahead observations are evidence only. Output selection does not advance that source cursor. GPU preparation failure must not erase an otherwise valid source cue. Successful output submission commits presentation state separately.
+
+C. Atomic source preparation and optional finite cap
+For relocation, current glyph erasure and its matching reconstructed layer form one packet. Both must match the same source identity/context. Issue the receipt only after actual GPU preparation succeeds, including deferred native preparation. Existing subtitleCompositionSucceeded=true on geometry acceptance is not sufficient evidence of completed GPU work. Never submit repaired source without its caption, borrow the preceding frame's glyph layer or certify an unprepared frame as clean for mixing.
+
+Finite glyph-free backing cleanup is optional and separately current-proved. Reuse an acquired outline only as candidate coordinates; recheck current body/chroma/flanks/closure/allowed extent. A failed cap proof removes only that optional cleanup, not an otherwise valid cue/layout. This separation already largely exists and must survive refactoring. Do not enlarge black thresholds, closure collars or masks as a substitute for repairing cue continuity.
+
+Keep the accepted transparent glyph-only alpha path and isolated preparation renderer. Verify source cap pixels and untouched destination pixels together, including Clear/Yellow top/side edges and reduced glyph sizes.
+
+D. Fixed zoom and representation invariants
+Missing upper-bar/shared-hint metadata alone must not alter movie scale/translation, reset cue identity, drop its valid cleanup or change color processing. Validate the configured movie transform separately from subtitle placement. Intentional fixed-zoom side-cropping is not a residual-content conflict; required subtitle/navigation content has a separate extent.
+
+A current prepared-erasure receipt may establish that this exact packet permits the native picture mapping. It may record successful submission. It cannot seed or renew semantic glyph ownership. Do not simply remove the fixed-crop exclusion in EvaluateQualifiedSubtitleUnknownHold: subtracting an OLD erased footprint from a CURRENT unprepared frame could hide the still-visible original caption.
+
+If current preparation genuinely fails, do not pretend erased pixels still exist or change fixed-zoom behavior as an incidental error response. Exercise the existing mode-specific fallback and document whether it preserves required content. If an injected failure clips a required current caption, qualification is BLOCKED; preserving the old fallback does not establish safety. Resolve that failure explicitly before shipping, without assuming an automatic zoom policy is the answer. Any new recovery owner or outward/inward timing policy is a separate conditional proposal, deferred pending observed need and fixed-zoom semantics. Off's existing content-fit/hold, Classic translation and NLS policies remain unchanged in this correction.
+
+Brightness discrimination precedes any new color-path change. With an identical native source and fixed transform, compare direct native, prepared/no-hook and prepared/subtitle outputs outside subtitle/cleanup regions, including DV/PQ/HLG and peak-history evolution across distinct and repeated frames. If an actual representation mismatch is found, evaluate a consistent preparation representation in advanced mode; do not implement it merely because dv flags differ. Preserve separate preparation/final renderers.
+
+E. Production-shared regression seam
+Extract narrow orchestration functions used by production and tests, not a parallel model:
+- Source decision/admission: current worker/Resolve result -> pending/local current proof -> cue tracker -> source receipt.
+- Presentation selection/commit: current prepared packet and configured transform -> crop arbitration -> temporal packet selection -> actual successful submission record.
+Use real detector, Resolve, pending/tracker/continuation helpers, cap proof and composition geometry. Preserve the existing temporal ledger. A deterministic worker scheduler delays/reorders/withholds completions without sleeps. No wholesale renderer rewrite.
+
+Tests must distinguish source analysis, preparation success, selected packet and successful submission. Failed submissions never change submitted history. Repeated output reuses immutable packet data; prepare-ahead cannot seed displayed history. Raw and reconstructed representations must not be blended across incompatible packets.
+
+F. Required qualification matrix
+1. Replay logged metadata transitions with fixed native pixels: both missing raw edges, no-current-flat-bar, shared hint unavailable/changed, opposite nearby/reference/missing edge, fixed zoom with automatic inspection disabled. Require stable current cue and valid cap; assert actual source/target transform remains unchanged under metadata-only jitter.
+2. Keep complete current proof for several seconds, beyond 250 ms; both subtitle sides and coarse AR inside/outside physical bounds. Partial evidence still expires and repeats do not renew it.
+3. Change/remove glyphs, replace text within identical bounds, add lines outside the old padded ROI and in a widened-only companion band while the narrow pass still detects the old cue, alter required glyph/source-panel backing, fail optional finite-cap proof independently, move subtitles inside picture, introduce navigation, expand real picture, change epoch/format/range and exhaust budgets. Require prompt safe invalidation and proper reacquisition. Missing placement is never movement authority.
+4. Strong ownership and prepared-erasure fallback get separate cases. Fail cleanup, layer preparation, selection and submission independently. No stale erasure, missing subtitle, mismatched packet or inappropriate semantic hold.
+5. Exact-source fixed-transform GPU comparison separates geometry, scene luminance, glyph visibility, source cap and destination alpha. Include temporal off/on and23.976 source / 59.94 or 59.95 display repeats with Smooth Motion off/on. Check final HDR history and no side/top alpha seam.
+6. Verify Off, Classic and NLS existing behavior. Add logged 3340x1392/3840x1600 case as a mapping regression, not as a claimed reproduction of the earlier recorded visual flash.
+7. Measure worst-case native samples/CPU per accepted source on 4K formats and queue latency. Cache repeats; document incomplete coverage honestly. Targeted new regressions fail 26934, while preserved safety negatives remain passing.
+8. Final normal-playback replay of the same Ben-Hur section WITHOUT navigation. Use a bounded in-memory ring, triggered by cue output loss/reacquisition, backing transition, unexpected mapping change or preparation-representation change, preserving a short pre/post interval and exact source/output timestamps. Capture final output where feasible plus native/packet metadata; manual recording is also useful for brightness events without a software trigger. Do not assume an offending paused frame exists. Native movie pixels stay outside Git.
+
+Log one correlated event record containing accepted source sequence/PTS, selected output sequence/PTS, complete/partial proof and coverage reason, cue identity, current preparation/representation and cap result, configured zoom/mode, final source/target mapping, color metadata/peak-history identifier where available, and submission result. A transition ring should avoid full-frame readback every frame.
+
+The existing fixed native capture with injected metadata is a contract fixture, not real multi-frame playback. The earlier recording is different from the 21:26 replay. Neither passing helper tests nor metadata alone establishes complete visual resolution.
+
+Implementation order and stop conditions
+1. Add the integrated regressions and fixed-transform A/B discrimination; demonstrate current failures with the evidence limits above.
+2. Implement local current-cue contract and inspector; keep raw AR immutable and verify budgets.
+3. Wire exact-current packet preparation and independent submitted-state tracking; preserve fixed transform under metadata jitter. Correct a separate mapping/color defect only when its focused test demonstrates it.
+4. Run selected native/GPU/Qt regression gates and clean x64 Release build; any test deployment must pin matching host/renderers, preserve configuration, and verify runtime hashes/identity.
+5. Qualify normal playback with correlated output evidence. Keep PR #197 draft and VP-0207 In Progress until the user-observed failure is demonstrably resolved. No source edit, new build, deployment or configuration edit is part of this design review.
+
+Code map (reviewed 13577069 / tree 7989b654)
+SubtitleCueContinuation.h:17,88,147 — source/local proof and positive-vs-partial duration.
+SubtitleCueContinuationProof.h:25 — separate cue-local context from presentation base.
+SubtitleMeasurementWorker.h:635-683 — pending glyph success currently rejected by shared hint.
+SubtitleBoxLookahead.h:281-341,699,1994,2090 — local side inspection; strict acquisition versus narrow current continuity; tracker admission.
+SubtitleBoxDetector.h:88,114 — side-search completeness and detector entry point.
+SubtitleBoxDetector.cpp:179-189,373,2614-2622 — direct-read budget accounting, actual sampled-grid coverage, and conditional widened search.
+LibplaceboVideoRenderer.cpp:13625-13758 — actual worker/pending/continuation/tracker orchestration.
+LibplaceboVideoRenderer.cpp:13910-14027 — optional cap and atomic cleanup/layer preparation.
+LibplaceboVideoRenderer.cpp:14900-15035,18910-18930 — current proof versus actual selected submission.
+SubtitleAspectRetention.h:593,623 — preserve prepared-erasure distinction; old footprint alone is not current safety.
+SubtitleCutPasteShader.h:1028,1047-1105 — isolated preparation and same-raster coordinates.
+TemporalRenderer.h:807 — direct non-temporal output path for recorded 21:26mapping.
+AlphaSourceCropPolicy.cpp:4440,6211 — immediate prepared recovery release/fixed center crop; separate investigated policy, not automatically changed.
+
+Final cross-review disposition
+All three reviewers approve this design with the incorporated clarifications: explicit scan coverage beyond completeness flags; accounting for direct planar reads; optional-cap failure isolation; actual GPU success before issuing preparation receipts; and a hard qualification block if genuine fallback failure clips current required text. No change to fixed-zoom semantics is implicitly authorized by this design.

@@ -1,13 +1,13 @@
 VideoProcessor subtitle and zoom failure review - 2026-10-23
 
-Verdict: deployed source 26934dc8 fails the reported playback. Keep PR #197 draft and VP-0207 In Progress. The latest incident is an actual submitted crop/zoom change driven by subtitle uncertainty. Display cadence or tone mapping is not needed to explain these specific flashes. This does not requalify the separate earlier HDR-history issue.
+Verdict: deployed source 26934dc8 fails the reported playback. Keep PR #197 draft and VP-0207 In Progress. The latest logs contain an actual submitted source-to-target mapping change correlated with subtitle uncertainty. This does not establish that zoom was the flashing the user perceived or exclude brightness/backing flashing. The user specifies fixed zoom. The later team design and earlier recording audit distinguish these outcomes; see ../team-design-20261023/design.txt.
 
 Evidence and scope
 - The user confirms the latest incident was just before the 21:26 restart, without navigation controls. Preserved vp.log and nine rotations at E:\codex\diagnostics\vp0207-expert-review-20261023-212751. Host and renderer identify clean 26934dc8 in both affected sessions.
 - Focus: vp.log.0 at 21:25:48 and 21:26:08, :09, :29, :30. Five suspected subtitle flashes are logged; the four 21:26 gaps have exact submitted geometry showing a single-frame zoom reversal.
 - Refreshed authoritative GitHub default/latest beta v1.4.02-beta remains e3dcad1a. Isolated review worktree E:\codex\videoprocessor\subtitle-expert-review-20261023 starts there and integrates the exact draft head. Review HEAD 13577069 has the same tree as deployed 26934dc8: 7989b6545b0fc33c85a6953d0d5bbadf3a88e19c. No production source edits, rebuild, configuration edits or deployment in this review.
 
-P1: Fixed zoom exposes an unstable relationship between subtitle composition and picture crop.
+P1: Submitted mapping changes under fixed zoom; its relation to the perceived flash remains unverified.
 - Source frame pairs 1265/1266, 1284/1285, 1767/1768 and 1786/1787 submit source rectangles 0,404-3840,2004 then 250,384-3590,1776. Target rectangles are effectively unchanged. The source window switches between 3840x1600 and 3340x1392, a roughly 15 percent scale difference. Source timestamps differ by 41.70-41.71 ms. This is final VP submitted geometry, not merely a detector proposal.
 - The larger-source frame has composed=0, cue_source=0; the next has composed=1 and the current cue source. temporal=0 and mixing=0 on all eight submissions. The picture dimensions are responding directly to subtitle preparation success.
 - In LibplaceboVideoRenderer.cpp:14998, unknownInput.measurementUnknown explicitly excludes fixedCropAspectConfigured and nlsRequested. Fixed zoom therefore bypasses the existing bounded unknown-caption presentation hold.
@@ -44,3 +44,6 @@ Required regression gate before another candidate is called fixed
 3. Keep positive current proof for longer than 250 ms and prove true disappearance, changed glyphs, extra lines, source/viewport discontinuity, genuine outward picture, navigation UI and subtitles already inside the picture still cause the correct transitions.
 4. Exercise the prepared-erasure fallback and the stronger ownership path separately. Validate source backing cleanup and transparent destination pixels together, not only isolated GPU layer helpers.
 5. Preserve sample budgets and measure CPU work, then validate the user's same normal-playback section. Do not merge based only on a passing helper suite.
+
+Evidence qualification after user clarification - 2026-10-23
+The earlier20:17 recording has a subtitle disappearance at21.983-22.000seconds with scene-feature scale approximately1.0 across loss and restoration. This is a subtitle flash without the roughly15percent mapping change seen in later21:26logs. Re-auditing code shows the later rectangles use comparable native coordinates, so the mapping defect remains real, but there is no matching21:26 output video to identify the perceived symptom. Native/prepared metadata also differs; no luminance-equality claim is supported. Primary design preserves fixed zoom and repairs source cue continuity. A new outward/inward recovery cycle is deferred rather than adopted as the fix. Playback is not paused on an offending frame.

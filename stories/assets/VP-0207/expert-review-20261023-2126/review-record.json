@@ -30,8 +30,9 @@
   ],
   "mergeAuthorized": false,
   "reviewFindings": [
-    "P1 fixed zoom oscillates on subtitle preparation success",
+    "P1 submitted mapping changes under fixed zoom; perceived flash not visually matched",
     "P1 source cue continuity depends on volatile AR hint",
     "P2 positive proof incorrectly expires after 250 ms"
-  ]
+  ],
+  "visualQualification": "Earlier recording confirms subtitle loss without large scale change. No matching21:26video; tone/brightness effects unclassified. See ../team-design-20261023."
 }
