@@ -1,0 +1,11 @@
+Source/output normalization in progress
+
+User requested a recoverable current-state rollback followed by consistent optimization across ordinary and Smooth Motion paths. Current b81e1b8b source and installed Release runtime are preserved; this baseline is not yet accepted by actual Smooth Motion replay.
+
+Fresh GitHub default/current beta remains v1.4.02-beta at b1415da4. Created E:\codex\videoprocessor\source-output-normalization-20261024 from its fetched tip, then fast-forwarded the preserved b81 chain. Existing worktrees and current deployment remain intact.
+
+Detailed review corrects the broad initial hypothesis: motionDraw>0 already skips scene analysis, reuses full subtitle preparation/cap proof, and uses the late frozen crop-policy ledger. Remaining duplicate work includes earlier AR/bar state handling; true queued cadence repeats do not enter the same preparation/upload cache path.
+
+Approved implementation scope: shared exact source/context and stage-completion receipt for upload, early AR/bar decisions and existing subtitle preparation. Preserve the existing final presentation ledger. Unknown/incomplete source work is not a successful proof; true repeats must permit exact late-worker recovery. Inserted outputs retain immutable source preparation. Output safety, resets, display-clock pose, acquisition, HDR publication, live OSD and submission stay per-output. No threshold/budget/lease or libplacebo tone-map algorithm changes.
+
+Tests will exercise real policy and proof code across output cadences, source/context boundaries, incomplete recovery and actual content exposure. Matching Release host/both renderers, dual-library GPU tests and native/stack qualification are required before authorized test deployment. Keep PR197 draft/unmerged; raw logs, native pixels and binaries stay outside Git.

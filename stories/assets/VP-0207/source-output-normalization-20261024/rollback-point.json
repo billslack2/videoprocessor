@@ -1,0 +1,10 @@
+{
+  "path": "C:\\Videoprocessor\\vp\\rollback-points\\vp0207-b81e1b8b-20261024-155706",
+  "sourceCommit": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+  "manifestSha256": "7DEB58CCE3108646C1390E27CBD1D37ECC6E709F2002D558752E3F6C2A2FDA46",
+  "runtimeFiles": 33,
+  "settingsFiles": 5,
+  "sourceRemoteVerified": "b81e1b8b201c7810c68010cecac51f88336df7b9\trefs/heads/codex/rollback-vp0207-b81e1b8b-20261024",
+  "rollbackScriptSha256": "19B4B09B0B16C01392EFE26904E9E24A719E2573FC085938ACBA64A5761748A2",
+  "verification": "All 38 saved files verified; -Mode Restore -WhatIf passed without runtime/configuration changes."
+}
