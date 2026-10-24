@@ -252,6 +252,41 @@ public:
             Assert::IsTrue(result.CanRetainPresentation());
         }
     }
+    TEST_METHOD(BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference)
+    {
+        for (int format = 0; format < 4; ++format)
+            for (bool uncertain : { false, true })
+            {
+                BlackReferenceFrame frame;
+                frame.Bars(true, 64, uncertain ? 6 : 0, uncertain);
+                const auto source = frame.Source(format);
+                const auto expected = ExtractActivePictureEvidence(source);
+                const auto expectedRetention = EvaluateActivePicturePresentationRetention(source, frame.Scope());
+                int checkpoints = 0;
+                AnalysisEvaluationBudget budget([](void* context) {
+                    ++*static_cast<int*>(context);
+                    return false;
+                }, &checkpoints);
+                const auto raw = ExtractActivePictureEvidence(source, &budget);
+                const auto global = EvaluateActivePictureGlobalNearBlack(source, &budget);
+                const auto darkness = EvaluateActivePictureArDarkness(source, raw, global, &budget);
+                const auto retention = EvaluateActivePicturePresentationRetention(
+                    source, frame.Scope(), raw, global, darkness, &budget);
+                Assert::IsTrue(checkpoints > 0);
+                Assert::AreEqual(int(expected.classification), int(raw.classification));
+                Assert::AreEqual(int(expected.axisEvidence.vertical.state), int(raw.axisEvidence.vertical.state));
+                Assert::AreEqual(int(expected.blackReference.mode), int(raw.blackReference.mode));
+                Assert::AreEqual(expected.blackReference.qualifiedEdgeMask, raw.blackReference.qualifiedEdgeMask);
+                Assert::AreEqual(expected.blackReference.unresolvedEdgeMask, raw.blackReference.unresolvedEdgeMask);
+                Assert::AreEqual(expectedRetention.presentationBlackFloor, retention.presentationBlackFloor);
+                Assert::AreEqual(expectedRetention.presentationBlackThreshold, retention.presentationBlackThreshold);
+                Assert::AreEqual(expectedRetention.excludedBandsPixelSafe, retention.excludedBandsPixelSafe);
+                Assert::AreEqual(raw.blackReference.floor, retention.presentationBlackFloor);
+                Assert::AreEqual(raw.blackReference.threshold, retention.presentationBlackThreshold);
+                if (raw.blackReference.mode == ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED)
+                    Assert::AreEqual(int(ActivePictureClassification::PROVISIONAL), int(raw.classification));
+            }
+    }
     TEST_METHOD(LimitedAndUnknownKeepExistingAdaptiveInterpretation)
     {
         for (auto range : {AnalysisLumaRange::Limited,AnalysisLumaRange::Unknown})

@@ -38,8 +38,10 @@ static RememberedEdgeReturnResult InspectRememberedEdgeReturnImpl(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination,
     uint64_t sourceSequence, uint64_t tickMs, RememberedEdgeReturnShadowResult* shadow,
-    bool retainBoundary = false)
+    bool retainBoundary,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     RememberedEdgeReturnResult result;
     result.evidence = raw;
     const auto& target = nomination.rememberedBounds;
@@ -106,6 +108,7 @@ static RememberedEdgeReturnResult InspectRememberedEdgeReturnImpl(
     }
 
     auto sample = [&](int x, int y, AnalysisLumaSample& value) {
+        if ((result.samples & 63u) == 0) CheckAnalysisEvaluationBudget(budget);
         if (!source.Sample(x,y,value)) return false;
         ++result.samples;
         return true;
@@ -252,7 +255,7 @@ static RememberedEdgeReturnResult InspectRememberedEdgeReturnImpl(
     result.reason = "excluded-band-profile-mismatch";
     if (result.mismatches) return result;
 
-    const auto retention = EvaluateActivePicturePresentationRetention(source,presentation);
+    const auto retention = EvaluateActivePicturePresentationRetention(source,presentation,budget);
     result.samples += retention.lumaSamples + retention.chromaSamples;
     result.reason = "current-retention-veto";
     if (!retention.analysisValid || !retention.presentationValid ||
@@ -276,37 +279,45 @@ static RememberedEdgeReturnResult InspectRememberedEdgeReturnImpl(
     result.evidence.rememberedEdgeReturnProof.timestampMs = tickMs;
     result.evidence.reason = "qualified remembered edge return with current bar-profile proof";
     result.reason = "current-profile-verified-known-return";
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
 
 RememberedEdgeReturnResult InspectRememberedEdgeReturn(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
-    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs)
+    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     if (nomination.guarded) return {};
-    return InspectRememberedEdgeReturnImpl(source, raw, nomination, sourceSequence, tickMs, nullptr);
+    return InspectRememberedEdgeReturnImpl(source, raw, nomination, sourceSequence, tickMs, nullptr, false, budget);
 }
 static RememberedEdgeReturnShadowResult InspectRememberedEdgeReturnShadowImpl(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
     const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs,
-    bool retainBoundary)
+    bool retainBoundary,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     RememberedEdgeReturnShadowResult result;
     result.sourceGeneration = source.generation;
     result.sourceSequence = sourceSequence;
     result.timestampMs = tickMs;
     result.target = nomination.rememberedBounds;
     result.matchedEdge = nomination.matchedEdge;
-    const auto inspected = InspectRememberedEdgeReturnImpl(source, raw, nomination, sourceSequence, tickMs, &result, retainBoundary);
+    const auto inspected = InspectRememberedEdgeReturnImpl(source, raw, nomination, sourceSequence, tickMs, &result, retainBoundary, budget);
     static_cast<RememberedEdgeReturnMetrics&>(result) = inspected;
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
 
 static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowWindowImpl(
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture, bool retainBoundary)
+    uint32_t configuredFuture, uint32_t actualFuture, bool retainBoundary,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     RememberedEdgeReturnShadowWindowResult result;
     result.effectiveFuture = (std::min)((std::min)(configuredFuture, actualFuture),
         uint32_t{ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES});
@@ -358,6 +369,7 @@ static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowW
     // or unrelated later frame cannot be skipped, even if earlier pixels pass.
     for (size_t i=0; i<result.expectedFrames; ++i)
     {
+        CheckAnalysisEvaluationBudget(budget);
         const auto& sample = samples[i];
         const auto& identity = sample.identity;
         if (!sample.available || !sample.source.IsValid() || !sample.raw.available)
@@ -413,6 +425,7 @@ static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowW
     }
     for (size_t i=0; i<result.expectedFrames; ++i)
     {
+        CheckAnalysisEvaluationBudget(budget);
         const auto& sample = samples[i];
         // Qualified history and the exact target remain fixed. Only this frame's
         // sequence/time are rebound; no observed rectangle is learned or merged.
@@ -422,7 +435,7 @@ static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowW
         auto source = sample.source;
         source.generation = sample.identity.transportGeneration;
         const auto inspection = InspectRememberedEdgeReturnShadowImpl(source, sample.raw,
-            currentNomination, sample.identity.acceptedSequence, sample.timestampMs, retainBoundary);
+            currentNomination, sample.identity.acceptedSequence, sample.timestampMs, retainBoundary, budget);
         ++result.inspectedFrames;
         result.totalSamples += inspection.samples;
         if (i == 0)
@@ -458,35 +471,44 @@ static RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowW
     result.allPass = true;
     result.reason = retainBoundary ? "consecutive-retained-boundary-shadow-window-verified" :
         "consecutive-shadow-window-verified";
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
 
 RememberedEdgeReturnShadowResult InspectRememberedEdgeReturnGuardedShadow(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
-    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs)
+    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget)
 {
-    return InspectRememberedEdgeReturnShadowImpl(source, raw, nomination, sourceSequence, tickMs, true);
+    CheckAnalysisEvaluationBudget(budget);
+    return InspectRememberedEdgeReturnShadowImpl(source, raw, nomination, sourceSequence, tickMs, true, budget);
 }
 RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnGuardedShadowWindow(
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture)
+    uint32_t configuredFuture, uint32_t actualFuture,
+    const AnalysisEvaluationBudget* budget)
 {
-    return InspectRememberedEdgeReturnShadowWindowImpl(nomination, samples, sampleCount, configuredFuture, actualFuture, true);
+    CheckAnalysisEvaluationBudget(budget);
+    return InspectRememberedEdgeReturnShadowWindowImpl(nomination, samples, sampleCount, configuredFuture, actualFuture, true, budget);
 }
 
 RememberedEdgeReturnShadowResult InspectRememberedEdgeReturnShadow(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
-    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs)
+    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget)
 {
-    return InspectRememberedEdgeReturnShadowImpl(source, raw, nomination, sourceSequence, tickMs, false);
+    CheckAnalysisEvaluationBudget(budget);
+    return InspectRememberedEdgeReturnShadowImpl(source, raw, nomination, sourceSequence, tickMs, false, budget);
 }
 RememberedEdgeReturnShadowWindowResult InspectRememberedEdgeReturnShadowWindow(
     const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture)
+    uint32_t configuredFuture, uint32_t actualFuture,
+    const AnalysisEvaluationBudget* budget)
 {
-    return InspectRememberedEdgeReturnShadowWindowImpl(nomination, samples, sampleCount, configuredFuture, actualFuture, false);
+    CheckAnalysisEvaluationBudget(budget);
+    return InspectRememberedEdgeReturnShadowWindowImpl(nomination, samples, sampleCount, configuredFuture, actualFuture, false, budget);
 }
 
 namespace {
@@ -525,8 +547,10 @@ ActivePictureEvidence GuardedEvidence(const ActivePictureEvidence& raw,
 }
 RememberedEdgeReturnResult InspectGuardedRememberedEdgeReturn(
     const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
-    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs)
+    const RememberedEdgeReturnNomination& nomination, uint64_t sourceSequence, uint64_t tickMs,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     RememberedEdgeReturnResult result;
     result.evidence = raw;
     if (!nomination.guarded || nomination.shadowOnly || raw.sparseTransitionProof.available ||
@@ -535,26 +559,29 @@ RememberedEdgeReturnResult InspectGuardedRememberedEdgeReturn(
     // only by this explicitly opted-in API, preserving the original nomination.
     auto diagnosticNomination = nomination;
     diagnosticNomination.shadowOnly = true;
-    const auto inspection = InspectRememberedEdgeReturnGuardedShadow(source,raw,diagnosticNomination,sourceSequence,tickMs);
+    const auto inspection = InspectRememberedEdgeReturnGuardedShadow(source,raw,diagnosticNomination,sourceSequence,tickMs,budget);
     static_cast<RememberedEdgeReturnMetrics&>(result) = inspection;
     if (!inspection.wouldVerify) return result;
     result.candidateAvailable = true;
     result.evidence = GuardedEvidence(raw,nomination,inspection.presentation);
     result.reason = "guarded-current-profile-verified-known-return";
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
 GuardedRememberedEdgeReturnCertificate BuildGuardedRememberedEdgeReturnCertificate(
     const ActivePictureTransitionModel& model, const RememberedEdgeReturnNomination& nomination,
     const RememberedEdgeReturnShadowSample* samples, size_t sampleCount,
-    uint32_t configuredFuture, uint32_t actualFuture, uint64_t continuityGeneration)
+    uint32_t configuredFuture, uint32_t actualFuture, uint64_t continuityGeneration,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     GuardedRememberedEdgeReturnCertificate result;
     if (!nomination.available || !nomination.guarded || nomination.shadowOnly || !continuityGeneration)
         return result;
     auto diagnosticNomination = nomination;
     diagnosticNomination.shadowOnly = true;
     result.diagnostic = InspectRememberedEdgeReturnGuardedShadowWindow(diagnosticNomination,
-        samples,sampleCount,configuredFuture,actualFuture);
+        samples,sampleCount,configuredFuture,actualFuture,budget);
     result.reason = result.diagnostic.reason;
     if (!result.diagnostic.allPass || result.diagnostic.expectedFrames > result.identities.size()) return result;
     result.nomination = nomination;
@@ -566,6 +593,7 @@ GuardedRememberedEdgeReturnCertificate BuildGuardedRememberedEdgeReturnCertifica
     result.createdTickMs = nomination.timestampMs;
     for (size_t i=0; i<result.frameCount; ++i)
     {
+        CheckAnalysisEvaluationBudget(budget);
         if (samples[i].raw.sparseTransitionProof.available || samples[i].raw.rememberedEdgeReturnProof.available)
         { result.reason = "raw-frame-already-inferred"; return result; }
         auto frameNomination = nomination;
@@ -583,6 +611,7 @@ GuardedRememberedEdgeReturnCertificate BuildGuardedRememberedEdgeReturnCertifica
     { result.reason = "live-history-or-confirmation-rejected"; return result; }
     result.available = true;
     result.reason = "guarded-buffered-certificate-verified";
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
 bool ValidateAndAdoptGuardedRememberedEdgeReturn(
@@ -618,7 +647,7 @@ bool ValidateAndAdoptGuardedRememberedEdgeReturn(
     auto observations = certificate.observations;
     for (size_t i=0; i<expected; ++i)
     {
-        const auto& identity = certificate.identities[i];
+            const auto& identity = certificate.identities[i];
         const auto& observation = certificate.observations[i];
         const auto& proof = observation.rememberedEdgeReturnProof;
         if (identity.transportGeneration != nomination.sourceGeneration ||

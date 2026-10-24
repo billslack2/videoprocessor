@@ -71,6 +71,13 @@ struct SampleContext
 	int erasedBlackFloor = 0;
 	const std::vector<uint8_t>* residualOverlay = nullptr;
 	ActivePictureBounds residualBounds;
+    const AnalysisEvaluationBudget* budget = nullptr;
+    size_t sampleAccesses = 0;
+    void Checkpoint()
+    {
+        // A clock/predicate read per bounded batch, never per sampled pixel.
+        if (budget && (sampleAccesses++ & 63u) == 0) budget->Checkpoint();
+    }
 	bool IsResidualOverlay(int x, int y) const
 	{
 		return residualOverlay && x >= residualBounds.left && x < residualBounds.right &&
@@ -89,6 +96,7 @@ struct SampleContext
 
 	int Luma(int x, int y)
 	{
+        Checkpoint();
 		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y)) return erasedBlackFloor;
 		AnalysisLumaSample sample;
 		if (!source.Sample(x, y, sample))
@@ -99,6 +107,7 @@ struct SampleContext
 
 	void Chroma(int x, int y, int& u, int& v)
 	{
+        Checkpoint();
 		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y)) { u = v = 512; return; }
 		AnalysisLumaSample sample;
 		if (!source.Sample(x, y, sample))
@@ -277,6 +286,7 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 	constexpr int tolerance = 4;
 	const auto xAt = [&](int i) { return i * (source.width - 1) / (columns - 1); };
 	const auto sampleAt = [&](int x, int y, AnalysisLumaSample& value) {
+        samples.Checkpoint();
 		if (!source.Sample(x, y, value)) return false;
 		++samples.lumaSamples;
 		++samples.chromaSamples;
@@ -641,6 +651,7 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 		{
 			const int x=((i*2+1)*samples.source.width)/(kVisibleExtentLineSamples*2);
 			AnalysisLumaSample pixel;
+            samples.Checkpoint();
 			if (!samples.source.Sample(x,y,pixel)) return false;
 			++samples.lumaSamples; ++samples.chromaSamples;
 			const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512),
@@ -662,6 +673,7 @@ bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 {
 	if (samples.IsErasedOverlay(x, y) || samples.IsResidualOverlay(x, y)) return false;
 	AnalysisLumaSample sample;
+    samples.Checkpoint();
 	if (!samples.source.Sample(x, y, sample))
 		return false;
 	++samples.lumaSamples;
@@ -908,8 +920,10 @@ ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidenc
 // a current, symmetric boundary whose excluded pixels match the measured bar
 // and whose picture side has a coherent low-code edge. No history is borrowed.
 static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
-    ActivePictureEvidence& evidence)
+    ActivePictureEvidence& evidence,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     const auto& raw=evidence.proposedBounds;
     auto& axes=evidence.axisEvidence;
     if(evidence.classification!=ActivePictureClassification::PROVISIONAL ||
@@ -945,6 +959,7 @@ static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
         (anchorTop && nominalBottom<=raw.bottom+step) ||
         (!anchorTop && nominalTop>=raw.top-step))return false;
     SampleContext samples{source};
+    samples.budget = budget;
     struct SampleCountGuard {
         ActivePictureEvidence& evidence;
         SampleContext& samples;
@@ -970,6 +985,7 @@ static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
         for(int index=zone*12;index<(zone+1)*12;++index) {
             const int x=((index*2+1)*source.width)/96;
             AnalysisLumaSample outside[2]{},inside[4]{};
+            CheckAnalysisEvaluationBudget(budget);
             for(int d=0;d<2;++d) {
                 const int y=boundary+outsideDirection*(2+d*4);
                 if(y<0 || y>=source.height || !source.Sample(x,y,outside[d]))return false;
@@ -1030,8 +1046,10 @@ static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
 
 
 ActivePictureEvidence ExtractActivePictureEvidence(
-	const AnalysisLumaSource& source)
+	const AnalysisLumaSource& source,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
 	ActivePictureEvidence result;
 	if (!source.IsValid() || source.width < 16 || source.height < 16)
 	{
@@ -1040,6 +1058,7 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	}
 
 	SampleContext samples{ source };
+    samples.budget = budget;
 	std::vector<int> perimeter;
 	perimeter.reserve(256);
 	for (int i = 0; i < 64; ++i)
@@ -1429,7 +1448,8 @@ ActivePictureEvidence ExtractActivePictureEvidence(
         rejectRaisedBars(result.axisEvidence.vertical);
         result.reason = "raised Full-range matte reference is unresolved; no new crop or full-raster authority";
     }
-    else RecoverLowContrastOpposingBoundary(source,result);
+    else RecoverLowContrastOpposingBoundary(source,result,budget);
+    CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
 
@@ -1449,8 +1469,10 @@ const char* ActivePictureBlackReferenceModeName(ActivePictureBlackReferenceMode 
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
 	const ActivePictureEvidence& observed,
-    bool allowRejectedAlignedEdge)
+    bool allowRejectedAlignedEdge,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
 	ActivePictureEvidence result = observed;
 	if (!source.IsValid() || !observed.available ||
 		observed.classification != ActivePictureClassification::PROVISIONAL ||
@@ -1487,6 +1509,7 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 		return result;
 
 	SampleContext samples{ source };
+    samples.budget = budget;
 	const ActivePictureEdgeEvidence& clean = cleanTop ? observed.top : observed.bottom;
 	const int blackFloor = static_cast<int>(clean.lumaFloor);
 	const int blackThreshold = std::min(104, blackFloor + 24);
@@ -1542,6 +1565,7 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	result.chromaSamples += samples.chromaSamples;
 	result.reason =
 		"one clean bar plus overlay-compatible opposite bar supports symmetric startup geometry";
+    CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
 
@@ -2133,14 +2157,17 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 
 
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
-	const AnalysisLumaSource& source)
+	const AnalysisLumaSource& source,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
 	ActivePictureGlobalNearBlackEvidence result;
 	if (!source.IsValid() || source.width < 16 || source.height < 16)
 		return result;
 
 	result.evaluated = true;
 	SampleContext samples{ source };
+    samples.budget = budget;
 	std::vector<int> globalLuma;
 	globalLuma.reserve(kGlobalGridWidth * kGlobalGridHeight);
 	for (int row = 0; row < kGlobalGridHeight; ++row)
@@ -2159,14 +2186,17 @@ ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 		kFullRangeNearBlackP90 : kGlobalNearBlackP90;
 	result.nearBlack = result.lumaP90 <= result.lumaCutoff;
 	result.lumaSamples = samples.lumaSamples;
+    CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
 
 
 ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
 	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
-	const ActivePictureGlobalNearBlackEvidence& global)
+	const ActivePictureGlobalNearBlackEvidence& global,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
 	ActivePictureArDarknessEvidence result;
 	result.global = global;
 	if (!global.evaluated || !global.nearBlack || !source.IsValid() ||
@@ -2190,6 +2220,7 @@ ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
 	// detector already certified these edges; this small read only establishes
 	// a current source-relative floor for the dark-picture distinction.
 	SampleContext samples{ source };
+    samples.budget = budget;
 	std::vector<int> topBar, bottomBar;
 	topBar.reserve(32);
 	bottomBar.reserve(32);
@@ -2270,14 +2301,17 @@ ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
 		result.pictureMedian >= result.barFloor + 32.0 &&
 		result.texturedTiles >= 12 && result.texturedQuadrants == 4 &&
 		result.tileMedianSpread >= 16.0;
+    CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
 
 ActivePictureArDarknessEvidence EvaluateActivePictureArDarkness(
-	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative)
+	const AnalysisLumaSource& source, const ActivePictureEvidence& currentNative,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
 	return EvaluateActivePictureArDarkness(source, currentNative,
-		EvaluateActivePictureGlobalNearBlack(source));
+		EvaluateActivePictureGlobalNearBlack(source,budget),budget);
 }
 
 
@@ -2346,10 +2380,33 @@ bool ActivePicturePresentationRetentionEvidence::IsWeakBoundedFringe(
 
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
-	const ActivePictureBounds& trustedPresentation)
+	const ActivePictureBounds& trustedPresentation,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
+    const auto raw = ExtractActivePictureEvidence(source,budget);
+    ActivePictureGlobalNearBlackEvidence global;
+    ActivePictureArDarknessEvidence arDarkness;
+    if (source.IsValid() && source.width >= 16 && source.height >= 16 &&
+        IsValidBoundsForSource(trustedPresentation,source))
+    {
+        global = EvaluateActivePictureGlobalNearBlack(source,budget);
+        arDarkness = EvaluateActivePictureArDarkness(source,raw,global,budget);
+    }
+    return EvaluateActivePicturePresentationRetention(
+        source,trustedPresentation,raw,global,arDarkness,budget);
+}
+
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+    const AnalysisLumaSource& source, const ActivePictureBounds& trustedPresentation,
+    const ActivePictureEvidence& raw,
+    const ActivePictureGlobalNearBlackEvidence& global,
+    const ActivePictureArDarknessEvidence& arDarkness,
+    const AnalysisEvaluationBudget* budget)
+{
+    CheckAnalysisEvaluationBudget(budget);
 	ActivePicturePresentationRetentionEvidence result;
-	result.activePicture = ExtractActivePictureEvidence(source);
+	result.activePicture = raw;
 	result.lumaSamples = result.activePicture.lumaSamples;
 	result.chromaSamples = result.activePicture.chromaSamples;
 	if (!source.IsValid() || source.width < 16 || source.height < 16)
@@ -2365,17 +2422,14 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	}
 	result.presentationValid = true;
 
-	const ActivePictureGlobalNearBlackEvidence global =
-		EvaluateActivePictureGlobalNearBlack(source);
 	result.globalLumaP90 = global.lumaP90;
 	result.globalNearBlack = global.nearBlack;
 	result.lumaSamples += global.lumaSamples;
-	const ActivePictureArDarknessEvidence arDarkness =
-		EvaluateActivePictureArDarkness(source, result.activePicture, global);
 	result.distributedDarkPicture = arDarkness.distributedDarkPicture;
 	result.lumaSamples += arDarkness.lumaSamples;
 
 	SampleContext samples{ source };
+    samples.budget = budget;
 
     result.blackReference = result.activePicture.blackReference;
     const int blackFloor = result.blackReference.floor;
@@ -2538,6 +2592,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "current excluded bands remain pixel-safe despite unavailable geometry";
 	else
 		result.reason = "non-contained active-picture evidence rejects retention";
+    CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
 
@@ -3121,8 +3176,10 @@ FullRasterColorEvidence EvaluateFullRasterColorEvidence(
 }
 
 RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
-    const ActivePictureEvidence& raw, const ActivePictureBounds& base)
+    const ActivePictureEvidence& raw, const ActivePictureBounds& base,
+    const AnalysisEvaluationBudget* budget)
 {
+    CheckAnalysisEvaluationBudget(budget);
     constexpr int columns = 96;
     constexpr int stripDepths = 6;
     constexpr int boundaryRows = 8;
@@ -3163,6 +3220,7 @@ RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource&
         return result;
 
     const auto readSample = [&](int x, int y, AnalysisLumaSample& sample) {
+        if ((result.samples & 63u) == 0) CheckAnalysisEvaluationBudget(budget);
         if (result.samples >= sampleBudget)
         {
             result.reason = "sample-budget";
@@ -3276,5 +3334,6 @@ RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource&
         return result;
     result.valid = true;
     result.reason = "relative-bars-and-picture-confirmed";
+    CheckAnalysisEvaluationBudget(budget);
     return result;
 }
