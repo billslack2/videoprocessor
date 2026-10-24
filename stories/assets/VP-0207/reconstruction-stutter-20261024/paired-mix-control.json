@@ -1,0 +1,141 @@
+{
+  "observedAt": "2026-10-24T17:32:03.388213-04:00",
+  "installedSource": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+  "installedStatus": "failed live Reconstruction/Smooth Motion replay",
+  "controlSource": "external diagnostic copies; production candidate not built or deployed",
+  "rawLogSHA256": "65000012c0fdfc92bf261919dd042cf833c6cf32517de38e1c93e6e8072389b3",
+  "summarySHA256": "ea2a7e083ee74b47d78feb700be0023741caf029d8c556abb3631966954b071d",
+  "controls": [
+    {
+      "outputs": 32.0,
+      "rows": 32,
+      "mode": 4,
+      "source_render": {
+        "mean": 0.0,
+        "max": 0.0,
+        "sum": 0.0
+      },
+      "prepare": {
+        "mean": 0.33265937499999987,
+        "max": 0.543,
+        "sum": 10.645099999999996
+      },
+      "present_wait": {
+        "mean": 16.325715625,
+        "max": 30.4044,
+        "sum": 522.4229
+      },
+      "render": {
+        "mean": 1.9767031249999998,
+        "max": 19.5933,
+        "sum": 63.25449999999999
+      }
+    },
+    {
+      "outputs": 80.0,
+      "rows": 32,
+      "mode": 1,
+      "source_render": {
+        "mean": 11.231003124999999,
+        "max": 21.8623,
+        "sum": 359.39209999999997
+      },
+      "prepare": {
+        "mean": 0.6469750000000001,
+        "max": 1.3954,
+        "sum": 20.703200000000002
+      },
+      "present_wait": {
+        "mean": 40.995484375,
+        "max": 60.9451,
+        "sum": 1311.8555
+      },
+      "render": {
+        "mean": 11.6463125,
+        "max": 22.3319,
+        "sum": 372.682
+      }
+    },
+    {
+      "outputs": 80.0,
+      "rows": 32,
+      "mode": 3,
+      "source_render": {
+        "mean": 10.277324999999998,
+        "max": 21.1731,
+        "sum": 328.8743999999999
+      },
+      "prepare": {
+        "mean": 0.34641875,
+        "max": 0.4146,
+        "sum": 11.0854
+      },
+      "present_wait": {
+        "mean": 41.713290625,
+        "max": 60.4752,
+        "sum": 1334.8253
+      },
+      "render": {
+        "mean": 10.773699999999998,
+        "max": 21.7729,
+        "sum": 344.75839999999994
+      }
+    },
+    {
+      "outputs": 80.0,
+      "rows": 32,
+      "mode": 6,
+      "source_render": {
+        "mean": 8.626359375000002,
+        "max": 20.634,
+        "sum": 276.04350000000005
+      },
+      "prepare": {
+        "mean": 0.348771875,
+        "max": 0.6445,
+        "sum": 11.1607
+      },
+      "present_wait": {
+        "mean": 41.15900000000001,
+        "max": 60.862,
+        "sum": 1317.0880000000004
+      },
+      "render": {
+        "mean": 9.102846874999997,
+        "max": 21.0739,
+        "sum": 291.2910999999999
+      }
+    },
+    {
+      "outputs": 80.0,
+      "rows": 32,
+      "mode": 7,
+      "source_render": {
+        "mean": 0.0,
+        "max": 0.0,
+        "sum": 0.0
+      },
+      "prepare": {
+        "mean": 0.3960906249999999,
+        "max": 0.7311,
+        "sum": 12.674899999999997
+      },
+      "present_wait": {
+        "mean": 41.54142812499999,
+        "max": 76.7786,
+        "sum": 1329.3256999999996
+      },
+      "render": {
+        "mean": 3.7919687500000006,
+        "max": 29.1949,
+        "sum": 121.34300000000002
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic 4K PQ source and logged style/render settings, not physical movie playback.",
+    "No VP process during paired controls; earlier sequential probes overlapped VP and cannot establish intrinsic shader cost.",
+    "Wall-time sums per source include GPU/driver waits and output draws; exclude native detection, upload, capture and Present waits.",
+    "Ordinary complete-frame mixing is an approved implementation direction, not yet a qualified fix."
+  ]
+}

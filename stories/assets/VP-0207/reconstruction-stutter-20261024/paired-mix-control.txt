@@ -1,0 +1,15 @@
+2026-10-24 paired GPU controls, API377, 32 warmed sources per mode.
+VP closed cleanly at17:14:16, before the paired17:23:57-17:24:18 controls.
+No Smooth Motion / All: render1.977ms + prepare0.333ms per source.
+Current split Smooth Motion: render11.646ms + prepare0.647ms.
+Complete All with current manual mixer: render10.774ms + prepare0.346ms.
+Complete All with delayed peak: render9.103ms + prepare0.349ms.
+Complete All with ordinary libplacebo mixing: render3.792ms + prepare0.396ms.
+These are same-process warmed CPU/driver wall measurements, not shader-only costs,
+not native detection timings and not actual movie/display acceptance.
+User accepts blending completed reconstructed subtitles with the picture and wants
+reconstruction to use essentially the same path with Smooth Motion On and Off.
+Implement complete progressive source pictures and ordinary library mixing; retain
+configured HDR/dither and bounded whole-packet fallback. No delayed-peak change.
+OSD additions show prep versus new/reused draw costs and asynchronous GPU coverage.
+All tests, build and deployment of this candidate remain pending.
