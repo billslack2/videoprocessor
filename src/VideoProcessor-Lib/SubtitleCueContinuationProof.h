@@ -4,8 +4,8 @@
 
 // Hard synchronous read limits, including current native glyph and side scans.
 // The frame-wide allowance also covers pending validation and the finite cap.
-inline constexpr size_t SubtitleCurrentCueInspectionSampleLimit=393216;
-inline constexpr size_t SubtitleCurrentCueFrameSampleLimit=524288;
+constexpr size_t SubtitleCurrentCueInspectionSampleLimit=393216;
+constexpr size_t SubtitleCurrentCueFrameSampleLimit=524288;
 
 // Current-pixel continuation only. This is not a detector or AR measurement.
 struct SubtitleCueContinuation {
