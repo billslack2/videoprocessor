@@ -52,3 +52,17 @@ Controlled GPU tests do not establish physical 23.976-to-59.95 Hz playback or HD
 display acceptance. Qualify both uninterrupted playback and recovery from drops,
 including Reconstruction, transparent glyphs, source cue changes and no-cue
 frames, before marking the live regression resolved.
+
+## Transfer and chroma controls
+
+Exercise opaque HLG preparation separately from transparent subtitle layers.
+Every full-raster output pixel must be finite, and opaque video must not inherit
+stored texture alpha. Real source alpha retains its normal composition policy.
+Keep explicit phase/transfer diagnostics on shader failures; optimized release
+line mappings can point at the assertion after the failing render call.
+
+A direct P010 reference and the prepared/temporal paths must use the same chroma
+scalers. A null plane scaler inherits the main scaler; fast and default rendering
+presets therefore do not express the same policy. Check explicit bilinear and
+Lanczos policies through all three paths, both field orders and each deinterlacer,
+without widening pixel tolerances to accommodate a mismatched reference.
