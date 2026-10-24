@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "acd1a8f61895b0386cb2e6d74aa52184706ca7a0",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "RetainedEnvelopeSelectionGpuTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 1,
+      "binary": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "2022C797E25006256719073E2DCF50780F115A1FEDBDABC790340B3BE56FDF53",
+      "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+    }
+  ],
+  "finished": "2026-10-24T13:37:59.1646159-04:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}
