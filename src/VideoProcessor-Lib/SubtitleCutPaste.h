@@ -179,15 +179,25 @@ public:
         SubtitleBoxPadding requested,SubtitlePaddingPolicy scalePolicy={},
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
-        if(!preview.available || (!text.detected && !text.held) || !text.bounds.Valid()) {
+        if(cueContinuation && !text.detected &&
+            cueContinuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_requested==requested && m_scalePolicy==scalePolicy)
+            return m_safe; // private margins survive; there is no displayed cue
+        const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if((!preview.available && !completeSource) || (!text.detected && !text.held) || !text.bounds.Valid()) {
             Reset();return requested;
         }
         if(cueContinuation && m_valid && m_cue==text.cue && m_requested==requested && m_scalePolicy==scalePolicy &&
-            m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
-            cueContinuation->Matches(preview.current.identity,preview.policyGeneration,preview.continuityGeneration,
+            m_policy==preview.policyGeneration && (m_continuity==preview.continuityGeneration ||
+                (completeSource && cueContinuation->RebindsGeometryContinuity(m_continuity,
+                    m_reference.identity,m_reference.width,m_reference.height))) &&
+            (completeSource || (cueContinuation->Matches(preview.current.identity,preview.policyGeneration,preview.continuityGeneration,
                 text,preview.current.sharedPicture.bounds) &&
-            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height))
-            return m_safe;
+                preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height)))) {
+            m_continuity=preview.continuityGeneration;return m_safe;
+        }
         const bool same=m_valid && m_cue==text.cue && m_requested==requested && m_scalePolicy==scalePolicy &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
             !preview.current.discontinuity && SameCueContext(m_reference,preview.current);
@@ -291,6 +301,7 @@ struct SubtitleCutPasteGeometry
     SubtitleBoxRect placementLimits, layoutContent, layoutCoverage;
     SubtitleBoxRect cleanupLimit; // Fresh local proof, when backing edges are hidden.
     bool centeredGlyphMapping=false, roundedCorners=true, extendToBar=true, pictureIntrusion=false;
+    bool currentBackingCorrection=false; // Current complete proof contracts display coverage; no source authority.
     int pictureTop = 0, pictureBottom = 0;
     // Display-only attachment edges. They grant no source glyph or cleanup ownership.
     int displayPictureLeft = 0, displayPictureTop = 0, displayPictureRight = 0, displayPictureBottom = 0;
@@ -559,9 +570,17 @@ public:
     void Reset() { m_valid=false; m_geometry={}; m_reference={}; m_text={}; }
     SubtitleCutPasteGeometry Consume(SubtitleCutPasteGeometry g,
         const SubtitleBoxResult& text,const SubtitleBoxPreview& preview,
-        SubtitleBoxPadding padding,int offset,bool floatBackground=false)
+        SubtitleBoxPadding padding,int offset,bool floatBackground=false,
+        const SubtitleCueContinuation* continuation=nullptr)
     {
-        if(!g.valid || !text.detected || !preview.available || preview.current.discontinuity) {
+        if(continuation && !text.detected && !g.valid &&
+            continuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_padding==padding && m_offset==offset && m_float==floatBackground)
+            return {}; // retain only the private placement candidate
+        const bool complete=continuation && continuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if(!g.valid || !text.detected || (!preview.available && !complete) || preview.current.discontinuity) {
             Reset();return g;
         }
         const auto& a=m_reference.identity;const auto& b=preview.current.identity;
@@ -574,7 +593,9 @@ public:
             std::abs(priorLimits.top-limits.top)<=edgeTolerance &&
             std::abs(priorLimits.bottom-limits.bottom)<=edgeTolerance;
         const bool sameIdentity=m_valid && !text.revised &&
-            m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_policy==preview.policyGeneration && (m_continuity==preview.continuityGeneration ||
+                (complete && continuation->RebindsGeometryContinuity(m_continuity,
+                    m_reference.identity,m_reference.width,m_reference.height))) &&
             a.transportGeneration==b.transportGeneration &&
             a.sourceFormatGeneration==b.sourceFormatGeneration &&
             a.analysisDomainKey==b.analysisDomainKey &&
@@ -595,7 +616,24 @@ public:
             // picture. This never reuses old source card, mask or cleanup pixels.
             if(box.left>=limits.left && box.right<=limits.right &&
                 box.top>=limits.top && box.bottom<=limits.bottom) {
-                g.destination=box;
+                if(g.currentBackingCorrection && g.centeredGlyphMapping) {
+                    // Preserve the accepted glyph pivot, not obsolete decorative
+                    // bounds. Rebuild padding before covering this frame's card.
+                    const auto ink=g.layoutContent.Valid()?g.layoutContent:g.content;
+                    const int side=(std::max)(0,padding.sides);
+                    const int vertical=(std::max)(0,(std::max)(padding.top,padding.bottom));
+                    const int width=(std::min)(limits.right-limits.left,
+                        int(std::ceil(g.glyphScale*(ink.right-ink.left)))+2*side);
+                    const int height=(std::min)(g.fromTopBar?limits.bottom-box.top:box.bottom-limits.top,
+                        int(std::ceil(g.glyphScale*(ink.bottom-ink.top)))+2*vertical);
+                    const float centerX=g.glyphScale*(ink.left+ink.right)*0.5f+m_geometry.glyphTranslateX;
+                    const float centerY=g.glyphScale*(ink.top+ink.bottom)*0.5f+m_geometry.glyphTranslateY;
+                    const int left=(std::max)(limits.left,(std::min)(limits.right-width,
+                        int(std::lround(centerX-width*0.5f))));
+                    const int top=(std::max)(limits.top,(std::min)(limits.bottom-height,
+                        int(std::lround(centerY-height*0.5f))));
+                    g.destination={left,top,left+width,top+height};
+                } else g.destination=box;
                 g.glyphTranslateX=m_geometry.glyphTranslateX;
                 g.glyphTranslateY=m_geometry.glyphTranslateY;
             }
@@ -668,8 +706,18 @@ public:
         const SubtitleBoxRect* displayBounds=nullptr,
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
-        if (!text.detected || !text.bounds.Valid() || !preview.available ||
-            !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current) || text.workLimit ||
+        m_geometry.currentBackingCorrection=false;
+        if(cueContinuation && !text.detected &&
+            cueContinuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_geometry.valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_gap==gap && m_relativeDisplay==(displayBounds!=nullptr)) {
+            m_backingReason="incomplete-current-inspection";
+            return {}; // never return cached erasure on an unverified source
+        }
+        const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if (!text.detected || !text.bounds.Valid() || (!completeSource && (!preview.available ||
+            !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current))) || text.workLimit ||
             (text.nearBarEligibilityMeasured && !text.nearBarEligible)) {
             Reset();return {};
         }
@@ -728,20 +776,26 @@ public:
             !containsLocal(SubtitleGlyphCaptureBounds(text,current.width,current.height)))) {
             Reset();return {};
         }
-        if(cueContinuation && cueContinuation->Matches(current.identity,preview.policyGeneration,
+        if(cueContinuation && (completeSource || (cueContinuation->Matches(current.identity,preview.policyGeneration,
                 preview.continuityGeneration,current.sharedPicture.bounds) &&
-            current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+                current.sharedPicture.AvailableFor(current.identity,current.width,current.height))) &&
             cueContinuation->MatchesCue(text) && cueContinuation->MatchesCue(m_cachedText) &&
             m_geometry.valid && m_cue==text.cue && m_policy==preview.policyGeneration &&
-            m_continuity==preview.continuityGeneration && m_padding==padding && m_gap==gap &&
+            (m_continuity==preview.continuityGeneration ||
+                (completeSource && cueContinuation->RebindsGeometryContinuity(m_continuity,
+                    m_reference.identity,m_reference.width,m_reference.height))) && m_padding==padding && m_gap==gap &&
             m_relativeDisplay==(displayBounds!=nullptr) &&
             SubtitleCueContinuation::SameRect(displayBounds?*displayBounds:text.bounds,m_cachedDisplay) &&
-            m_geometry.pictureTop==cueContinuation->pictureTop && m_geometry.pictureBottom==cueContinuation->pictureBottom &&
+            (cueContinuation->oppositeBarUnavailable?
+                (m_geometry.fromTopBar?m_geometry.pictureTop==cueContinuation->pictureTop:
+                    m_geometry.pictureBottom==cueContinuation->pictureBottom):
+                m_geometry.pictureTop==cueContinuation->pictureTop && m_geometry.pictureBottom==cueContinuation->pictureBottom) &&
             // Source padding is a display envelope; current glyph extraction
             // and erasure are limited to content and the measured cleanup card.
             SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_sourcePanel) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_geometry.generatedCleanup)) {
+            m_continuity=preview.continuityGeneration;
             m_backingReason="current-cue-missing-edge";
             return m_geometry;
         }
@@ -756,7 +810,9 @@ public:
         // A fresh complete-card proof can correct cleanup without changing the
         // glyphs. Use only this frame's proof, never a held/future-frame one.
         const auto& proof=current.text.provenSourcePanel;
-        bool freshProof=!glyphLocal && !text.held && current.text.detected && proof.Valid();
+        bool freshProof=!glyphLocal && !text.held && current.analyzed &&
+            !current.pendingRefresh && !current.analysisRefresh && current.text.detected &&
+            !current.text.held && !current.text.workLimit && proof.Valid();
         for(int i=0;i<text.lineCount && freshProof;++i) {
             const auto& row=text.lineBounds[i];
             const int top=(std::max)(row.top,current.pictureTop);
@@ -768,8 +824,8 @@ public:
         if(freshProof && prior.Valid())
             freshProof=(std::min)(prior.right,proof.right)>(std::max)(prior.left,proof.left) &&
                 (std::min)(prior.bottom,proof.bottom)>(std::max)(prior.top,proof.top);
-        // On an unchanged cue, a complete proof may add only its own area.
-        // Do not let unrelated growth in the local estimate ride along.
+        // Complete proof does not license new blank margins on an unchanged
+        // cue. Current local fringe is bounded by the established footprint.
         // A local proof cannot borrow an old card to erase source pixels.
         // Retain the old footprint only as a cap on a future fresh measurement.
         const auto& sx=m_stableReference.identity;
@@ -829,10 +885,41 @@ public:
             if(!containsInk) {Reset();return {};}
             panel=clipped;cappedRecoveredPanel=true;
         }
-        if(freshProof && sameDisplayCue && !text.revised)panel=m_sourcePanel;
-        if(freshProof)panel=panel.Valid()?SubtitleBoxRect{
-            (std::min)(panel.left,proof.left),(std::min)(panel.top,proof.top),
-            (std::max)(panel.right,proof.right),(std::max)(panel.bottom,proof.bottom)}:proof;
+        bool currentBackingCorrection=false;
+        if(freshProof) {
+            // A fresh complete proof may correct an established card, but
+            // unchanged glyphs cannot acquire unrelated blank scene margins.
+            // Keep the current local fringe only inside that existing footprint.
+            if(sameDisplayCue && !text.revised) {
+                if(m_sourcePanel.Valid()) {
+                    const auto currentPanel=panel.Valid()?panel:proof;
+                    panel={(std::max)(currentPanel.left,m_sourcePanel.left),
+                        (std::max)(currentPanel.top,m_sourcePanel.top),
+                        (std::min)(currentPanel.right,m_sourcePanel.right),
+                        (std::min)(currentPanel.bottom,m_sourcePanel.bottom)};
+                    const SubtitleBoxRect boundedProof{
+                        (std::max)(proof.left,m_sourcePanel.left),
+                        (std::max)(proof.top,m_sourcePanel.top),
+                        (std::min)(proof.right,m_sourcePanel.right),
+                        (std::min)(proof.bottom,m_sourcePanel.bottom)};
+                    if(boundedProof.Valid()) panel=panel.Valid()?SubtitleBoxRect{
+                        (std::min)(panel.left,boundedProof.left),(std::min)(panel.top,boundedProof.top),
+                        (std::max)(panel.right,boundedProof.right),(std::max)(panel.bottom,boundedProof.bottom)}:boundedProof;
+                    bool containsInk=panel.Valid();
+                    for(int i=0;i<text.lineCount && containsInk;++i) {
+                        const auto& row=text.lineBounds[i];
+                        const int top=(std::max)(row.top,current.pictureTop);
+                        const int bottom=(std::min)(row.bottom,current.pictureBottom);
+                        if(top<bottom && (row.left<panel.left || row.right>panel.right ||
+                            top<panel.top || bottom>panel.bottom)) containsInk=false;
+                    }
+                    if(!containsInk) {Reset();return {};}
+                    currentBackingCorrection=!SubtitleBoxLookahead::SameLine(panel,m_sourcePanel,0);
+                } else panel={};
+            } else panel=panel.Valid()?SubtitleBoxRect{
+                (std::min)(panel.left,proof.left),(std::min)(panel.top,proof.top),
+                (std::max)(panel.right,proof.right),(std::max)(panel.bottom,proof.bottom)}:proof;
+        }
         m_backingReason=freshProof?"complete-card-proof":cappedRecoveredPanel?"retained-current-card-intersection":"acquired";
         if(sameDisplayCue) {
             // An unchanged opaque caption owns the same original footprint.
@@ -840,14 +927,15 @@ public:
             // black run is not evidence that the caption itself grew. Keep the
             // accepted removal footprint; current glyph masks/card interiors
             // remain independent and fresh below. A tracker-confirmed glyph
-            // correction can enlarge coverage, but never shrink the old card.
+            // correction may enlarge coverage; a complete current proof can
+            // correct an old blank footprint without moving the glyphs.
             m_backingReason=freshProof?"complete-card-proof":
                 text.revised?"confirmed-glyph-expansion":"retained-cue-footprint";
-            if((text.revised || freshProof) && panel.Valid()) {
+            if(!freshProof && text.revised && panel.Valid()) {
                 if(m_sourcePanel.Valid()) panel={
                     (std::min)(panel.left,m_sourcePanel.left),(std::min)(panel.top,m_sourcePanel.top),
                     (std::max)(panel.right,m_sourcePanel.right),(std::max)(panel.bottom,m_sourcePanel.bottom)};
-            } else {
+            } else if(!freshProof) {
                 if(panel.left!=m_sourcePanel.left || panel.top!=m_sourcePanel.top ||
                     panel.right!=m_sourcePanel.right || panel.bottom!=m_sourcePanel.bottom)++m_backingHeld;
                 panel=m_sourcePanel;
@@ -892,7 +980,9 @@ public:
             old.left==padded.left && old.top==padded.top &&
             old.right==padded.right && old.bottom==padded.bottom;
         if (same && m_geometry.destination.top>=current.pictureTop &&
-            m_geometry.destination.bottom<=current.pictureBottom) return m_geometry;
+            m_geometry.destination.bottom<=current.pictureBottom) {
+            m_geometry.currentBackingCorrection=currentBackingCorrection;return m_geometry;
+        }
         auto next=ComputeSubtitleCutPaste(display,current.width,current.height,
             current.pictureTop,current.pictureBottom,padding,gap,&panel,current.nearBarDistance,
             &captureInPicture,
@@ -932,7 +1022,7 @@ public:
                 (std::min)(ink.left,m_geometry.layoutContent.left),(std::min)(ink.top,m_geometry.layoutContent.top),
                 (std::max)(ink.right,m_geometry.layoutContent.right),(std::max)(ink.bottom,m_geometry.layoutContent.bottom)};
             next.layoutContent=ink;
-            if(sameDisplayCue && m_geometry.layoutCoverage.Valid()) {
+            if(sameDisplayCue && !freshProof && m_geometry.layoutCoverage.Valid()) {
                 const auto old=m_geometry.layoutCoverage;
                 next.layoutCoverage=next.layoutCoverage.Valid()?SubtitleBoxRect{
                     (std::min)(old.left,next.layoutCoverage.left),(std::min)(old.top,next.layoutCoverage.top),
@@ -952,6 +1042,7 @@ public:
             LimitSubtitleCleanupToLocalProof(next);
             m_backingReason="current-local-glyph-support";
         }
+        next.currentBackingCorrection=currentBackingCorrection;
         m_cachedText=text;m_cachedDisplay=display;
         m_geometry=next;
         m_geometry.content=content;m_geometry.glyphLines=glyphLines;

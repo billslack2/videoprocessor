@@ -57,7 +57,7 @@
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/ActivePictureMeasurementCache.h>
 #include <SubtitleBoxDetector.h>
-#include <SubtitleCueContinuation.h>
+#include <SubtitleCurrentCue.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
@@ -4465,8 +4465,14 @@ struct LibplaceboVideoRenderer::Impl
     ULONGLONG subtitlePerfTick=0;
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleCueContinuationGuard subtitleCueContinuation;
+    // RenderLocked serializes this reusable output storage. Keep bulky cue
+    // values and return temporaries off the normal renderer thread stack.
+    std::unique_ptr<PreparedCurrentSubtitleCue> subtitlePreparedCueScratch;
+    std::unique_ptr<CurrentSubtitleCueDecision> subtitleCueDecisionScratch;
     std::string subtitleContinuationLogReason;
     uint64_t subtitleContinuationLogTick=0;
+    unsigned subtitlePixelMismatchLogCount=0;
+    ActivePictureFrameIdentity subtitlePixelMismatchLogIdentity;
     bool subtitleContinuationStateLogged=false;
     bool subtitleContinuationStateLastBase=false,subtitleContinuationStateLastReference=false;
     std::string subtitleContinuationStateLastSeedReason;
@@ -4606,6 +4612,8 @@ struct LibplaceboVideoRenderer::Impl
     const char* subtitleLipLogReason="not-evaluated";
     SubtitleBoxRect subtitleLipLogCleanup;
     uint64_t subtitleLipLogTick=0;
+    uint32_t subtitleLipLogContextRejectMask=0;
+    const char* subtitleLipLogPlaneReason="not-required";
 	SubtitleBoxResult subtitleBoxResult;
     SubtitleCutPastePresentation subtitleCutPastePresentation;
     const pl_hook* subtitleCutPasteHook = nullptr;
@@ -13698,6 +13706,12 @@ struct LibplaceboVideoRenderer::Impl
         bool currentSubtitlePendingPixelsVerified = false;
         SubtitleBoxPreview currentSubtitlePreview;
         SubtitleCueContinuation currentCueContinuation;
+        // One synchronous current-source budget covers pending glyph checks,
+        // complete local inspection, tracker refresh and optional backing repair.
+        // This borrowed pointer is never attached to a queued/retained source.
+        AnalysisLumaReadBudget subtitleReadBudget{SubtitleCurrentCueFrameSampleLimit};
+        auto subtitleProofSource=analysisSource;
+        subtitleProofSource.readBudget=&subtitleReadBudget;
         bool currentNoCaptionConfirmed = false;
         SubtitleBarStripClearance currentSubtitleBarStripClearance;
         std::string currentSubtitleScanReason="unavailable";
@@ -13790,13 +13804,46 @@ struct LibplaceboVideoRenderer::Impl
                     break;
                 }
 
+            // A missing cue-side measurement must not skip checking an already
+            // accepted subtitle. Keep this proof separate from the raw worker
+            // observation and from every active-picture admission path.
+            const bool continuationBaseAvailable=subtitleCutPasteTest && configuredScreenActive &&
+                nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                  latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
+            // A retained cue's complete current inspection outranks optional
+            // pending recovery. Failed pending probes must not consume the
+            // budget needed to prove and clean an otherwise valid current cap.
+            const bool prioritizeCurrentInspection=continuationBaseAvailable &&
+                !currentSubtitlePreview.available &&
+                (subtitleCueContinuation.CanInspectCurrentObservation(currentSubtitlePreview.current) ||
+                 subtitleCueContinuation.CanInspectAfterBacklogRetirement(currentSubtitlePreview.current,
+                    subtitleProofSource,subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                    subtitleBacklogRetirementOnly));
+            if(!subtitlePreparedCueScratch)subtitlePreparedCueScratch=std::make_unique<PreparedCurrentSubtitleCue>();
+            if(!subtitleCueDecisionScratch)subtitleCueDecisionScratch=std::make_unique<CurrentSubtitleCueDecision>();
+            auto& preparedCurrentCue=*subtitlePreparedCueScratch;
+            auto& cueDecision=*subtitleCueDecisionScratch;
+            if(prioritizeCurrentInspection)
+                PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
+                    currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    SubtitleCurrentCueInspectionSampleLimit,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,subtitleBacklogRetirementOnly);
+            const bool allowPendingRecovery=!prioritizeCurrentInspection ||
+                preparedCurrentCue.AllowsPendingRecovery(currentSubtitlePreview);
             ++subtitlePerf.frames;
             bool& pendingCurrentPixelsVerified=currentSubtitlePendingPixelsVerified;
             pendingCurrentPixelsVerified=false;
-            if(!currentSubtitlePreview.available) {
+            // A COMPLETE proof needs no pending work. A hard contradiction
+            // cannot be promoted back into the old cue by narrower fallback.
+            if(!currentSubtitlePreview.available && allowPendingRecovery) {
                 ++subtitlePerf.pending;
                 pendingCurrentPixelsVerified=subtitlePendingGuard.Resolve(currentSubtitlePreview,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    subtitleProofSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                     subtitleBacklogRetirementOnly);
                 if(pendingCurrentPixelsVerified) {
@@ -13820,49 +13867,73 @@ struct LibplaceboVideoRenderer::Impl
                         pendingDetail.measuredTop,pendingDetail.measuredBottom);
                 }
             }
-            // A missing cue-side measurement must not skip checking an already
-            // accepted subtitle. Keep this proof separate from the raw worker
-            // observation and from every active-picture admission path.
-            const bool continuationBaseAvailable=subtitleCutPasteTest && configuredScreenActive &&
-                nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
-                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
-                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
-                !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
-                  latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
-                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
-            if(!continuationBaseAvailable) subtitleCueContinuation.Reset();
-            else if(!currentSubtitlePreview.current.text.detected) {
-                currentCueContinuation=subtitleCueContinuation.Prepare(currentSubtitlePreview,
-                    analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
+            if(!prioritizeCurrentInspection)
+                PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
+                    currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    SubtitleCurrentCueInspectionSampleLimit,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,subtitleBacklogRetirementOnly);
+            ConsumePreparedCurrentSubtitleCueInto(cueDecision,subtitleCueContinuation,
+                subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                preparedCurrentCue,pendingCurrentPixelsVerified,
+                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                subtitleBacklogRetirementOnly);
+            const auto& mismatch=subtitleCueContinuation.LastPixelMismatch();
+            if(mismatch.valid && subtitlePixelMismatchLogCount<64 &&
+                SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitleIdentity) &&
+                !SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitlePixelMismatchLogIdentity)) {
+                ++subtitlePixelMismatchLogCount;subtitlePixelMismatchLogIdentity=mismatch.currentIdentity;
+                const auto& before=mismatch.templateIdentity;const auto& now=mismatch.currentIdentity;
+                DebugLog::Log("SUBTITLE PIXEL CONTRADICTION: event=%u xy=%d,%d baseline_yuv=%u,%u,%u current_yuv=%u,%u,%u ink=%d/%d black=%d/%d palette=%d,%d,%d black_limit=%d region_line=%d panel=%d bar=%d picture=%d template=%llu/%llu/%llu/%llu current=%llu/%llu/%llu/%llu format=%llu domain=%llu viewport=%llu renderer=%llu",
+                    subtitlePixelMismatchLogCount,mismatch.x,mismatch.y,
+                    unsigned(mismatch.prior.luma),unsigned(mismatch.prior.chromaU),unsigned(mismatch.prior.chromaV),
+                    unsigned(mismatch.current.luma),unsigned(mismatch.current.chromaU),unsigned(mismatch.current.chromaV),
+                    mismatch.priorInk?1:0,mismatch.currentInk?1:0,mismatch.priorBlack?1:0,mismatch.currentBlack?1:0,
+                    mismatch.inkFloor,mismatch.inkU,mismatch.inkV,mismatch.blackLimit,
+                    mismatch.inLine?1:0,mismatch.inSourcePanel?1:0,mismatch.inCueBar?1:0,mismatch.inPicture?1:0,
+                    before.transportGeneration,before.acceptedSequence,before.sourceFrameNumber,before.captureTimestamp,
+                    now.transportGeneration,now.acceptedSequence,now.sourceFrameNumber,now.captureTimestamp,
+                    now.sourceFormatGeneration,now.analysisDomainKey,now.viewportGeneration,now.rendererGeneration);
+            }
+            currentCueContinuation=cueDecision.proof;
+            subtitleBoxResult=cueDecision.accepted;
+            // Borrowed source bindings and output ownership do not survive
+            // this synchronous call; every later use starts with PrepareInto.
+            preparedCurrentCue.inputSource.data=nullptr;preparedCurrentCue.inputSource.dataBytes=0;
+            preparedCurrentCue.inputBaseAvailable=false;
+            preparedCurrentCue.proof.valid=false;preparedCurrentCue.proof.completeCurrentCue=false;
+            preparedCurrentCue.proof.candidateRetained=false;
+            preparedCurrentCue.proof.ink.reset();preparedCurrentCue.proof.currentInk.reset();
+            preparedCurrentCue.backlogCandidate.reset();
+            preparedCurrentCue.backlogTrial=PreparedCurrentSubtitleCue::BacklogTrial::None;
+            cueDecision.proof.valid=false;cueDecision.proof.completeCurrentCue=false;
+            cueDecision.proof.candidateRetained=false;
+            cueDecision.proof.ink.reset();cueDecision.proof.currentInk.reset();cueDecision.accepted.detected=false;
+            if(currentCueContinuation.templateIdentity.acceptedSequence) {
                 const auto now=GetTickCount64();
                 if(std::strcmp(currentCueContinuation.reason,"not-eligible")!=0 &&
                     (subtitleContinuationLogReason!=currentCueContinuation.reason ||
                      now-subtitleContinuationLogTick>=2000)) {
                     subtitleContinuationLogReason=currentCueContinuation.reason;
                     subtitleContinuationLogTick=now;
-                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d",
+                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d complete=%d coverage=%d,%d-%d,%d step=%d proof_phase_reads=%zu",
                         sourceSequence,currentCueContinuation.templateIdentity.acceptedSequence,
                         currentCueContinuation.valid?1:0,currentCueContinuation.reason,
                         currentCueContinuation.samples,currentCueContinuation.elapsedMs,
                         currentSubtitlePreview.current.pictureTop,currentSubtitlePreview.current.pictureBottom,
-                        currentCueContinuation.pictureTop,currentCueContinuation.pictureBottom);
+                        currentCueContinuation.pictureTop,currentCueContinuation.pictureBottom,
+                        currentCueContinuation.completeCurrentCue?1:0,
+                        currentCueContinuation.verifiedSearch.left,currentCueContinuation.verifiedSearch.top,
+                        currentCueContinuation.verifiedSearch.right,currentCueContinuation.verifiedSearch.bottom,
+                        currentCueContinuation.searchStep,subtitleReadBudget.used);
                 }
             }
-            const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
-            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
+            // Invalid/incomplete tokens retain private placement candidates only.
+            // Every actual composition/cleanup consumer still requires valid proof.
+            const auto* cueContinuation=(currentCueContinuation.valid || currentCueContinuation.candidateRetained)?
+                &currentCueContinuation:nullptr;
             subtitlePreview=&currentSubtitlePreview;
-            subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview,
-                activeSettings.subtitleHoldMs,subtitleFrameMs,
-                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
-            if(subtitleBoxResult.confirmationPending)subtitleCueContinuation.Reset();
-            else if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
-                if(!subtitleCueContinuation.Remember(currentSubtitlePreview,subtitleBoxResult,nlsGeometry,analysisSource))
-                    subtitleCueContinuation.AdvanceVerified(currentSubtitlePreview,subtitleBoxResult,
-                        analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
-            }
-            else if(!subtitleBoxResult.detected)
-                subtitleCueContinuation.Reset();
 
             // State-only telemetry: no extra source scan or continuation attempt.
             const bool continuationHasReference=subtitleCueContinuation.HasReference();
@@ -13971,7 +14042,7 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    subtitleProofSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     &subtitleBoxPresentation.AcceptedCueSeedCertificate());
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
@@ -14011,7 +14082,8 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitleTextReductionPercent, safeSubtitlePadding,
                     activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
                 move=subtitleLayoutAnchor.Consume(move,subtitleBoxResult,*subtitlePreview,
-                    safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground);
+                    safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground,
+                    cueContinuation);
                 // Display backing width is independent of reduced letters. Keep
                 // both decorations outside the stable glyph/layout caches.
                 move=PreserveExtendedSubtitleBackingWidth(move,safeSubtitlePadding,
@@ -14022,11 +14094,12 @@ struct LibplaceboVideoRenderer::Impl
                 if(move.valid && !move.generatedCleanup.Valid() &&
                     (subtitleCutPasteBackground==3 || subtitleCutPasteBackground==5)) {
                     const auto lipStarted=SteadyClock::now();
-                    auto lipSource=analysisSource;
+                    auto lipSource=subtitleProofSource;
                     lipSource.generation=subtitleIdentity.transportGeneration;
                     const auto lip=subtitleBackingLipContinuity.Consume(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,65536,&move);
+                        localBoundaryContinuityGeneration,SubtitleBackingLipSampleLimit,&move,
+                        currentCueContinuation.valid?&currentCueContinuation:nullptr);
                     const char* lipApplicationReason=nullptr;
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,&lipApplicationReason);
@@ -14036,10 +14109,12 @@ struct LibplaceboVideoRenderer::Impl
                     const auto now=GetTickCount64();
                     const auto& prior=subtitleLipLogCleanup;
                     const bool changed=std::strcmp(subtitleLipLogReason,lip.reason)!=0 ||
+                        subtitleLipLogContextRejectMask!=lip.contextRejectMask ||
+                        std::strcmp(subtitleLipLogPlaneReason,lip.cuePlaneReason)!=0 ||
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_reject_mask=0x%08x cue_plane_verified=%d cue_plane_samples=%zu cue_plane_reason=%s",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
@@ -14050,8 +14125,11 @@ struct LibplaceboVideoRenderer::Impl
                             lip.pictureTop,lip.pictureBottom,move.pictureTop,move.pictureBottom,
                             lip.closureDark,lip.closureSamples,lip.closureLongestDarkRun,
                             lip.attachmentSeamClipped?1:0,subtitlePreview->current.pictureTop,
-                            subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0);
+                            subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0,
+                            lip.contextRejectMask,lip.cuePlaneVerified?1:0,lip.cuePlaneSamples,lip.cuePlaneReason);
                         subtitleLipLogTick=now;subtitleLipLogReason=lip.reason;
+                        subtitleLipLogContextRejectMask=lip.contextRejectMask;
+                        subtitleLipLogPlaneReason=lip.cuePlaneReason;
                         subtitleLipLogCleanup=move.generatedCleanup;
                     }
                 }
@@ -14323,6 +14401,7 @@ struct LibplaceboVideoRenderer::Impl
         }
         else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
 
+        bool capturedSubtitlePacketNew=false;
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
             if(temporalSubtitleComposition) {
@@ -14413,9 +14492,9 @@ struct LibplaceboVideoRenderer::Impl
                         return true;
                     };
                     if(!temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                        subtitleSourcePreparation.nativePrepare,hasCue))return failSubtitleMotion(temporalRenderer.status.c_str());
+                        subtitleSourcePreparation.nativePrepare,hasCue,&capturedSubtitlePacketNew))return failSubtitleMotion(temporalRenderer.status.c_str());
                 } else if(!temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
-                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds))
+                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds,&capturedSubtitlePacketNew))
                     return failSubtitleMotion(temporalRenderer.status.c_str());
             }
             subtitleSourcePreparation.valid=true;
@@ -14441,21 +14520,23 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.barStripClearance=currentSubtitleBarStripClearance;
             subtitleSourcePreparation.scanReason=currentSubtitleScanReason;
             subtitleSourcePreparation.padding=safeSubtitlePadding;
-            if(temporalSubtitleComposition)
-                subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
-                    subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         }
         // Recovery can clear history during a repeated output. Recapture this
         // already prepared packet without consuming cue state again.
         if(reuseSubtitlePreparation && temporalSubtitleComposition && !temporalRenderer.HasCurrentFrame(sourceSequence)) {
             const bool captured=nativeSubtitleComposition?
                 temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded):
+                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
                 temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,
-                    subtitleSourcePreparation.layerBounds);
+                    subtitleSourcePreparation.layerBounds,&capturedSubtitlePacketNew);
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
+        // Match metadata to the immutable GPU packet, not a later preparation
+        // result for the same source. A real recovery capture replaces both.
+        if(capturedSubtitlePacketNew)
+            subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
+                subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         // Capture metadata even while buffering; the selected output may be an
         // older packet by the time a source pass is finally rendered.
         temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
@@ -24466,16 +24547,24 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_activePictureTimeline.LookaheadPolicyGeneration();
 				m_impl->localBoundaryPolicyGeneration = activePictureCurrentPolicyGeneration;
 				m_impl->localBoundaryContinuityGeneration = m_activePictureTimeline.ContinuityGeneration();
-                if (!staleGeneration && cachedQueuedDomain &&
-                    m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate()) {
+                if (!staleGeneration && cachedQueuedDomain) {
                     auto currentSubtitleIdentity=activePictureIdentity;
                     currentSubtitleIdentity.analysisDomainKey=cachedQueuedDomain;
-                    const auto templateIdentity=
-                        m_impl->subtitleBoxPresentation.AcceptedTemplateIdentity();
-                    subtitleBacklogRetirementOnly=
+                    ActivePictureFrameIdentity templateIdentity;uint64_t templateContinuity=0;
+                    const bool rawTemplate=m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate();
+                    if(rawTemplate) {
+                        templateIdentity=m_impl->subtitleBoxPresentation.AcceptedTemplateIdentity();
+                        templateContinuity=m_impl->subtitleBoxPresentation.AcceptedTemplateContinuity();
+                    }
+                    // A selected COMPLETE source may have no raw worker/bar
+                    // authority. Nominate its exact native-verified cursor for
+                    // the same timeline witness; fresh inspection remains mandatory.
+                    const bool inspectionCursor=!rawTemplate && TryGetCurrentSubtitleCueInspectionCursor(
+                        m_impl->subtitleCueContinuation,m_impl->subtitleBoxPresentation,
+                        templateIdentity,templateContinuity);
+                    subtitleBacklogRetirementOnly=(rawTemplate || inspectionCursor) &&
                         m_activePictureTimeline.OnlyBacklogRetirementBetween(
-                            templateIdentity,currentSubtitleIdentity,
-                            m_impl->subtitleBoxPresentation.AcceptedTemplateContinuity(),
+                            templateIdentity,currentSubtitleIdentity,templateContinuity,
                             m_impl->localBoundaryContinuityGeneration);
                     if(subtitleBacklogRetirementOnly)
                         backlogTemplateIdentity=templateIdentity;

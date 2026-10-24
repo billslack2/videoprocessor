@@ -786,6 +786,94 @@ TEST_CLASS(MotionRendererTests){public:
                     GpuFixture::PixelText(pixel)+L" expected "+GpuFixture::PixelText(expected[i])).c_str());
         }
     }
+    TEST_METHOD(CompositionCaptureReceiptKeepsMetadataWithItsGpuPacket) {
+        for(bool native:{false,true})for(bool firstCue:{false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+            settings.mixer="linear";settings.deinterlace=native?"force":"off";
+            struct Metadata {uint64_t generation=0,sequence=0;bool composed=false;SubtitleCutPasteGeometry geometry;};
+            std::array<Metadata,8> packets{};
+            auto begin=[&](uint64_t sequence,uint64_t generation) {
+                g.temporal.Begin(settings,24,60,native,1,generation,sequence,double(sequence-1)/24,false,true);
+            };
+            auto capture=[&](uint64_t sequence,uint64_t generation,bool cue) {
+                g.Upload(0);g.UploadComposition(false,cue?1:0);
+                bool added=true,ok=false;
+                if(native)ok=g.temporal.CaptureNativeComposition(g.device->gpu,g.input,sequence,
+                    [&g,cue](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                        // A later duplicate can overwrite upload scratch before
+                        // this first packet's deferred callback is evaluated.
+                        g.UploadComposition(false,cue?1:0);clean=g.cleanInput;
+                        layer=cue?g.layer:nullptr;bounds={24,24,40,40};return true;
+                    },cue,&added);
+                else ok=g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,cue?g.layer:nullptr,
+                    sequence,{24,24,40,40},&added);
+                Assert::IsTrue(ok);
+                if(added) {
+                    SubtitleCutPasteGeometry geometry;geometry.valid=cue;geometry.destination={24,24,40,40};
+                    packets[sequence%packets.size()]={generation,sequence,cue,geometry};
+                }
+                return added;
+            };
+            auto verify=[&](uint64_t sequence,uint64_t generation,bool cue) {
+                g.temporal.outputPts=double(sequence-1)/24;
+                const auto pixel=g.Draw();const auto& packet=packets[sequence%packets.size()];
+                Assert::IsTrue(packet.generation==generation&&packet.sequence==sequence&&packet.composed==cue);
+                Assert::AreEqual(cue?sequence:uint64_t(0),g.temporal.LastSubtitleSequence());
+                Assert::IsTrue(cue?(pixel[0]>230&&pixel[1]<20&&pixel[2]<20):
+                    (pixel[0]<20&&pixel[1]<20&&pixel[2]<20),L"Metadata must describe retained GPU pixels.");
+                Assert::IsTrue(SubtitleHdrProtectionPixels(packet.geometry,packet.composed,0,64)==(cue?40.0f:0.0f),
+                    L"HDR subtitle protection must follow the retained packet.");
+            };
+            begin(1,1);Assert::IsTrue(capture(1,1,firstCue));
+            Assert::IsFalse(capture(1,1,!firstCue),L"A duplicate must not authorize replacing metadata.");
+            verify(1,1,firstCue);
+            // The host's recovery path uses later preparation only after the
+            // old GPU history is cleared, and must bind its new metadata too.
+            g.temporal.Clear();begin(1,1);Assert::IsTrue(capture(1,1,!firstCue));verify(1,1,!firstCue);
+            for(uint64_t sequence=2;sequence<=9;++sequence) {
+                begin(sequence,1);Assert::IsTrue(capture(sequence,1,(sequence&1)!=0));
+            }
+            verify(9,1,true);Assert::AreEqual(size_t(8),g.temporal.HistoryDepth());
+            // Reusing a ring slot or source sequence in a new context must not
+            // preserve metadata from the old packet.
+            begin(9,2);Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::IsTrue(capture(9,2,false));verify(9,2,false);
+        }
+    }
+    TEST_METHOD(CaptureReceiptDistinguishesBypassRejectionAndDeferredFailure) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="off";settings.deinterlace="off";
+        g.Upload(0);g.temporal.Begin(settings,24,60,false,0,1,1,0,false);
+        bool added=true;Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,1,nullptr,{},&added));
+        Assert::IsFalse(added,L"An inactive successful capture adds no packet.");
+        settings.smoothMotion="always";g.temporal.Begin(settings,24,60,false,0,1,1,0,false,true);
+        g.UploadComposition(false,1);auto bad=g.cleanInput;bad.repr.sys=PL_COLOR_SYSTEM_BT_709;
+        added=true;Assert::IsFalse(g.temporal.CaptureComposition(g.device->gpu,bad,g.layer,1,{},&added));
+        Assert::IsFalse(added);Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+        Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,1,{},&added));
+        Assert::IsTrue(added);
+        added=true;Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.cleanInput,1,g.layer,{},&added));
+        Assert::IsFalse(added,L"The underlying capture also reports duplicate retention.");
+        g.temporal.Clear();settings.deinterlace="force";
+        g.temporal.Begin(settings,24,60,true,1,2,2,1./24,false,true);
+        auto fail=[](const pl_frame&,const pl_deinterlace_params&,pl_frame&,pl_tex&,pl_rect2d&){return false;};
+        added=true;Assert::IsFalse(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,{},false,&added));
+        Assert::IsFalse(added);
+        bad=g.input;bad.num_planes=0;added=true;
+        Assert::IsFalse(g.temporal.CaptureNativeComposition(g.device->gpu,bad,2,fail,false,&added));Assert::IsFalse(added);
+        // Capturing native pixels succeeds before deferred GPU preparation.
+        // Its receipt never claims successful rendering or presentation.
+        Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,fail,false,&added));
+        Assert::IsTrue(added);g.temporal.outputPts=1./24;
+        Assert::IsFalse(g.temporal.PreflightCompositionOutput());Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+        Assert::AreEqual(uint64_t(0),g.temporal.SelectedPacketSequence());
+        Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,
+            [&g](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                g.UploadComposition(false,0);clean=g.cleanInput;layer=nullptr;bounds={};return true;
+            },false,&added));
+        Assert::IsTrue(added,L"Recovery recapture must allow replacement metadata.");
+        Assert::IsTrue(g.temporal.PreflightCompositionOutput());const auto pixel=g.Draw();
+        Assert::IsTrue(pixel[0]<20&&pixel[1]<20&&pixel[2]<20);Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+    }
     TEST_METHOD(NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer){
         GpuFixture g;MotionConfig::Settings settings;settings.cadence="field";
         settings.deinterlace="force";g.Upload(0,true);g.UploadComposition(false,1);

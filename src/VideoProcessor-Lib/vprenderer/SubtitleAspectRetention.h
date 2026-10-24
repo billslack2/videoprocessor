@@ -269,8 +269,15 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     const auto& move=*input.composition;
     const auto& base=input.physicalBase;
     const auto* continuation=input.continuation;
-    if(continuation && !continuation->Matches(input.currentIdentity,input.policyGeneration,
-        input.continuityGeneration,accepted,base))
+    // Complete cue-local proof belongs to this source, independently of the
+    // renderer's AR snapshot. Only actual current preparation may consume it
+    // as an output fact; it cannot manufacture native picture ownership.
+    const bool completePreparedCue=preparedErasureOnly && continuation &&
+        continuation->completeCurrentCue && continuation->MatchesSource(
+            input.currentIdentity,input.policyGeneration,input.continuityGeneration,accepted);
+    if(continuation && !completePreparedCue &&
+        !continuation->Matches(input.currentIdentity,input.policyGeneration,
+            input.continuityGeneration,accepted,base))
         return reject("continuation-context-mismatch");
     if((continuation || preparedErasureOnly) &&
         CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
@@ -285,8 +292,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         return reject("independent-full-raster-picture",QualifiedSubtitlePresentationStatus::Conflict);
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
-        observation.discontinuity || !observation.analyzed || !observation.barAuthority ||
-        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified) || text.workLimit ||
+        observation.discontinuity ||
+        ((!observation.analyzed || !observation.barAuthority ||
+          (observation.pendingRefresh && !input.pendingCurrentPixelsVerified)) && !completePreparedCue) ||
+        text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
         !accepted.detected || (accepted.held && !continuation) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
@@ -330,7 +339,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         display.AvailableFor(input.currentIdentity,source.width,source.height) &&
         SameAnalysisFrameIdentity(display.identity,input.currentIdentity) &&
         SameSubtitlePresentationBounds(display.bounds,base) &&
-        observation.sharedPicture.Matches(display);
+        (observation.sharedPicture.Matches(display) || completePreparedCue);
     const bool exactComposedPicture=move.pictureTop==base.top && move.pictureBottom==base.bottom;
     if(!source.IsValid() || source.generation!=input.currentIdentity.transportGeneration || observation.width!=source.width || observation.height!=source.height ||
         base.rasterWidth!=source.width || base.rasterHeight!=source.height ||

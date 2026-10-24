@@ -86,6 +86,10 @@ struct SubtitleBoxResult
     // True only when this source frame completed the configured search on
     // that physical bar side. A missing side is not a complete empty search.
     bool topSearchComplete = false, bottomSearchComplete = false;
+    // True only when the configured companion/picture band was inspected,
+    // including when the ordinary narrow pass already found a cue.
+    bool configuredSearchComplete = false;
+    int searchStep=0,topSearchEnd=0,bottomSearchStart=0;
     const char* diagnosticReason = "not-analyzed";
     unsigned diagnosticComponentCount = 0;
     // Picture-only acquisition needs a real glyph row when no finite opaque
@@ -112,7 +116,8 @@ class SubtitleBoxDetector
 {
 public:
     SubtitleBoxResult Analyze(const AnalysisLumaSource& source, int pictureTop,
-        int pictureBottom, uint64_t sequence, uint64_t viewportGeneration);
+        int pictureBottom, uint64_t sequence, uint64_t viewportGeneration,
+        bool requireConfiguredSearch = false);
     void Reset();
     void SetScriptHint(SubtitleScriptHint hint) {
         if(hint==SubtitleScriptHint::GeneralMixed)hint=SubtitleScriptHint::Latin;
