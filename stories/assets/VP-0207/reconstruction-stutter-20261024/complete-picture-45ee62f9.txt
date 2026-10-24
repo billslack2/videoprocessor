@@ -1,0 +1,27 @@
+VideoProcessor test build 45ee62f9 is deployed and running with Reconstruction selected.
+
+Each progressive source picture is reconstructed once. Smooth Motion blends the complete picture, including subtitle text and replacement background. HDR remains enabled. Inserted frames do no new subtitle preparation; the existing two-source hold remains bounded.
+
+Ctrl+I shows preparation-call cost, new/reused draw costs, averages, peaks and sample counts. CPU/wait rows exclude Present. Preparation is already included in total draw time. GPU measurements show their sample coverage.
+
+All 2,245 selected test executions passed: 1,897 native/OSD/HDR/startup tests, 174 standard-library GPU tests and 174 beta-library GPU tests. Five preserved native captures executed. Matching binary/PDB and normal 1 MiB stack checks passed.
+
+Controlled 4K comparison: preparation averaged 0.31 ms with Smooth Motion and 0.34 ms without it. Average render service work fell from 12.07 to 3.90 ms per source picture. These are submission/wait measurements, not total player or shader-only timings. One 57.54 ms outlier remained.
+
+Runtime startup check: PID 86776 stayed responsive for 222.6 seconds, all three loaded hashes matched, and no crash/hang was recorded. Input/output were both near 59.94 Hz; no active mixing or composed subtitle cue was observed. This does not establish 24-to-60 movie playback acceptance.
+
+Configuration files are byte-identical to their prior values, and the saved Reconstruction selection did not change. The startup Classic action was suppressed briefly, then the original configuration bytes were restored.
+
+Current-runtime backup:
+C:\Videoprocessor\vp\deployment-backups\vp0207-reconstruction-motion-45ee62f9-20261024-182329
+
+Original rollback point:
+C:\Videoprocessor\vp\rollback-points\vp0207-b81e1b8b-20261024-155706
+
+PR197 remains draft and unmerged until actual playback acceptance:
+https://github.com/billslack2/videoprocessor/pull/197
+
+Detailed evidence:
+C:\Users\bslac\vp\story-tracker\stories\assets\VP-0207\reconstruction-stutter-20261024\complete-picture-45ee62f9.json
+
+Source: 45ee62f90feaf526285735d6458991d6bb967a84

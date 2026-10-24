@@ -1,0 +1,159 @@
+{
+  "recordedAt": "2026-10-24T18:27:52.966101-04:00",
+  "source": "45ee62f90feaf526285735d6458991d6bb967a84",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T18:07:00.1482745-04:00",
+    "Commit": "45ee62f90feaf526285735d6458991d6bb967a84",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "selectedTests": {
+    "nativeOsdHdrStartup": 1897,
+    "standardGpu": 174,
+    "betaGpu": 174,
+    "totalMethodExecutions": 2245
+  },
+  "nativeCaptureCount": 5,
+  "normalStackModes": 6,
+  "privateNativeBaseCases": 2,
+  "loadedRuntime": {
+    "source": "45ee62f90feaf526285735d6458991d6bb967a84",
+    "pid": 86776,
+    "start": "2026-10-24T18:23:31.3026956-04:00",
+    "observedAt": "2026-10-24T18:27:13.9071311-04:00",
+    "aliveSeconds": 222.6044355,
+    "responding": true,
+    "cpuSeconds": 168.78125,
+    "logLastWrite": "2026-10-24T18:27:13.8670018-04:00",
+    "crashOrHangEvents": 0,
+    "modules": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "F0E647E74488DF9E22D6287798496D921E1A3B011C6664C09AAF46AA220F9C1D"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "896C94D7759CC9F8D9063546BDD38B21EA9ABB13F7AC28AABF1BA1D8579D82DE"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "AE6BE4ED61222C7FAFAA2E41B75E9109B2CDDB7C4A1A2A685AA4A21CC091381F"
+      }
+    ],
+    "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+  },
+  "deploymentBackup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-reconstruction-motion-45ee62f9-20261024-182329",
+  "persistentConfigurationEdits": [],
+  "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+  "stateSelectionEdit": null,
+  "runtimeObservation": {
+    "settledStart": "2026-10-24 18:24:01",
+    "lastLogTime": "2026-10-24 18:27:27",
+    "performanceWindows": 103,
+    "processingPaths": {
+      "source_before_blend": 103
+    },
+    "completeLibraryOutputs": 0,
+    "preparationReuses": 0,
+    "boundedFallbackOutputs": 0,
+    "rendererCreations": 0,
+    "historyFlushes": 0,
+    "submissions": 12353,
+    "activeMeanMs": 4.837909252813082,
+    "prepareMeanPerOutputMs": 4.41892001942848,
+    "renderMeanMs": 0.2368030437950296,
+    "maxActiveMs": 9.683,
+    "maxRenderMs": 0.798,
+    "backlogEvents": 0,
+    "droppedByBacklog": 0,
+    "suspectedFlashLines": 0,
+    "subtitleMotionSamples": 825,
+    "activeMixSamples": 0,
+    "composedCueSamples": 0,
+    "modesSeen": [
+      3
+    ],
+    "sourceHzRange": [
+      59.94106,
+      59.94108
+    ],
+    "displayTargetHzRange": [
+      59.94064,
+      59.94105
+    ]
+  },
+  "observationSHA256": "B0582B3DB308117075B5DB38FD0EE4CBBE2525E769BB42595C5032772D8B2C34",
+  "pairedControl": {
+    "summary": {
+      "direct_all_no_smooth_motion": {
+        "sources": 32,
+        "outputs": 32,
+        "render_cpu_ms_per_source": 1.6036906249999998,
+        "render_cpu_ms_per_output": 1.6036906249999998,
+        "prepare_cpu_ms_per_source": 0.3403875,
+        "capture_cpu_ms_per_source": 0.0,
+        "max_render_cpu_ms_per_source": 5.2207,
+        "median_render_cpu_ms_per_source": 1.50155,
+        "p95_nearest_rank_render_cpu_ms_per_source": 1.9864
+      },
+      "existing_split_manual_smooth_motion": {
+        "sources": 32,
+        "outputs": 80,
+        "render_cpu_ms_per_source": 12.073271875,
+        "render_cpu_ms_per_output": 4.82930875,
+        "prepare_cpu_ms_per_source": 0.6169968749999999,
+        "capture_cpu_ms_per_source": 0.005009375000000001,
+        "max_render_cpu_ms_per_source": 26.7896,
+        "median_render_cpu_ms_per_source": 16.7652,
+        "p95_nearest_rank_render_cpu_ms_per_source": 21.9428
+      },
+      "production_complete_library_mix_with_hdr_capture": {
+        "sources": 32,
+        "outputs": 80,
+        "render_cpu_ms_per_source": 3.8957812499999998,
+        "render_cpu_ms_per_output": 1.5583125,
+        "prepare_cpu_ms_per_source": 0.30850312500000004,
+        "capture_cpu_ms_per_source": 0.003503125,
+        "max_render_cpu_ms_per_source": 57.5442,
+        "median_render_cpu_ms_per_source": 1.1564,
+        "p95_nearest_rank_render_cpu_ms_per_source": 9.1409
+      }
+    },
+    "scope": "Paired forward/reverse offscreen service-cost control at configured source/output cadence. Current production header-defined complete preparation/capture/Render includes mixed HDR polling. Warmup first8 of each24 excluded; zero-output sources included. Not live DXGI/visual acceptance. GPU work is asynchronous and wall calls may wait for earlier submissions.",
+    "rows_used": 96,
+    "remaining_limit": "One production complete-path warmed-source output group took57.5442ms. Lower average does not demonstrate elimination of stalls or live visual acceptance.",
+    "workload": "3840x2160 PQ source;2000x1125 output; configured peak detection,contrast recovery,Sierra3,ewa_lanczossharp/mitchell,75%Reconstruction opacity,blur30,surround2; actual source/output pacing23.97642/59.95066."
+  },
+  "productionEquivalence": {
+    "recordedAt": "2026-10-24T18:12:28.639624-04:00",
+    "benchmarkedProduction": "082a4aab5146aeb2980a4ba9cae7c6adbb00c64e",
+    "finalCandidate": "45ee62f90feaf526285735d6458991d6bb967a84",
+    "changedFiles": [
+      "src/VideoProcessor-Test/ConfigFileTests.cpp",
+      "src/VideoProcessor-Test/StartupPresentationReadinessTests.cpp"
+    ],
+    "productionSourcesUnchanged": true,
+    "betaAncestorVerified": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "limits": "The paired control was built with082a production headers and a prior helper library; this establishes unchanged production source, not a new live playback result."
+  },
+  "rollbackPoint": "C:\\Videoprocessor\\vp\\rollback-points\\vp0207-b81e1b8b-20261024-155706",
+  "qualificationDirectory": "E:\\codex\\diagnostics\\vp0207-reconstruction-stutter-20261024-1653\\qualification-api30",
+  "pr": "https://github.com/billslack2/videoprocessor/pull/197",
+  "status": "test candidate; draft/unmerged; actual playback acceptance pending",
+  "limitations": [
+    "Selected test classes and runtime targets, not all tests or full solution.",
+    "Offscreen CPU/GPU controls are not physical refresh or visual acceptance.",
+    "One57.54ms warmed rendering outlier remains in the control.",
+    "Runtime observation is sampled telemetry; no per-output screenshot proof.",
+    "Observed 0 active-mixing samples and 0 composed-cue samples; source range=[59.94106, 59.94108], display target range=[59.94064, 59.94105]. This is sampled telemetry and does not establish visual acceptance."
+  ]
+}
