@@ -1,0 +1,37 @@
+[
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-overnight-audit-20261023\\audit-release-build.log",
+    "bytes": 78169,
+    "sha256": "58CDC7CDC68A33F0FFB0269F8C6F1FFB85FC60AC6C87187149256E6C7F7FC3A3"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-overnight-audit-20261023\\audit-release-regressions.trx",
+    "bytes": 2970210,
+    "sha256": "760C01C960E73F992091BC9C9A1E03B78E7B4D4BF4A8D96D66EFAFA349743580"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-overnight-audit-20261023\\audit-release-regressions-console.txt",
+    "bytes": 345638,
+    "sha256": "36AE658B298F0154E826D3D346C939B875FD7630C02FEC0075C55EE72E574C6A"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-overnight-audit-20261023\\post-deploy-observation.log",
+    "bytes": 1552875,
+    "sha256": "9F1A843E9DD8A38FBA7E1CE5170E31695B240FC70E3E40F6C0A2BEFA447B15DA"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\vp.log",
+    "bytes": 4247728,
+    "sha256": "0C796EFABD9EADE90A9BDD98ACFF3DAF448038E095466DAACC6AD0DF3046A60C"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+    "bytes": 33177600,
+    "sha256": "8771C3C3693737F39204216895509D4229FF8BCF401C107599DC2DBAC32B6490"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-b.bin",
+    "bytes": 33177600,
+    "sha256": "8771C3C3693737F39204216895509D4229FF8BCF401C107599DC2DBAC32B6490"
+  }
+]

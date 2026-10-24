@@ -1,0 +1,204 @@
+{
+  "source": "7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973",
+  "sourceClean": true,
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T00:16:45.0435816-04:00",
+    "Commit": "7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "nativeCounters": {
+    "total": "1928",
+    "executed": "1928",
+    "passed": "1928",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "nativeClasses": {
+    "Tests.SubtitleBoxDetectorTests": 142,
+    "VideoProcessorTest.ConfigFileTests": 165,
+    "VideoProcessorTest.ActivePictureBlackReferenceTests": 15,
+    "Tests.SubtitleHandoffTests": 27,
+    "Tests.AlphaQueuePolicyTests": 29,
+    "VideoProcessorTest.ActivePictureDecisionTimelineTests": 44,
+    "Tests.RetainedScopeUnknownPresentationTests": 25,
+    "Tests.LookaheadOutwardProofTests": 31,
+    "Tests.AlphaSourceCropPolicyTests": 332,
+    "VideoProcessorTest.ActivePictureEvidenceTests": 207,
+    "Tests.SubtitleCutPasteShaderTests": 12,
+    "Tests.SubtitleBoxLookaheadTests": 203,
+    "Tests.SubtitleBackingLipTests": 61,
+    "Tests.LibplaceboOutputPolicyTests": 55,
+    "Tests.SubtitleCutPasteTests": 78,
+    "MotionRendererTests": 54,
+    "VideoProcessorTest.RememberedEdgeProfileTests": 72,
+    "VideoProcessorTest.ActivePictureTransitionModelTests": 62,
+    "VideoProcessorTest.ConfigEditorCoreTests": 44,
+    "Tests.TemporalPresentationLedgerTests": 7,
+    "Tests.FinalAspectLimitFillRoutingTests": 4,
+    "Tests.QueueNativeContinuityTests": 9,
+    "Tests.SubtitleMeasurementWorkerTests": 33,
+    "VideoProcessorTest.ActivePictureMeasurementCacheTests": 11,
+    "VideoProcessorTest.LibplaceboPluginProxyTests": 7,
+    "Tests.PendingOverlayEnvelopeTests": 3,
+    "Tests.AutomaticPictureContinuityTests": 22,
+    "VideoProcessorTest.AnalysisEvaluationBudgetTests": 8,
+    "VideoProcessorTest.OptionalAnalysisWorkerTests": 8,
+    "VideoProcessorTest.RememberedEdgeRuntimeTests": 1,
+    "VideoProcessorTest.PreparedPictureEvidenceTests": 12,
+    "Tests.DenseFitExtentLifetimeTests": 14,
+    "VideoProcessorTest.SourceUploadBatchTests": 5,
+    "VideoProcessorTest.RememberedRuntimeModeTests": 3,
+    "VideoProcessorTest.RememberedEdgeQualificationTests": 19,
+    "VideoProcessorTest.FullRasterLookaheadTests": 11,
+    "Tests.SubmittedEnvelopeContinuityTests": 6,
+    "Tests.InwardCaptionEvidenceTests": 17,
+    "VideoProcessorTest.PreparedOutwardWindowTests": 8,
+    "VideoProcessorTest.LocalBoundaryRefinementTests": 19,
+    "Tests.TemporalPresentationGeometrySafetyTests": 6,
+    "Tests.GradualPictureBoundaryRetentionTests": 3,
+    "Tests.LookaheadPerformanceWindowTests": 10,
+    "VideoProcessorTest.RememberedEdgePresentationPolicyTests": 3,
+    "VideoProcessorTest.BufferedInwardSafetyReviewTests": 5,
+    "Tests.AsyncOutwardWindowSafetyTests": 6,
+    "VideoProcessorTest.TemporalCleanPacketGpuTests": 1,
+    "Tests.AdvancedPhysicalScopeFillAdmissionTests": 4,
+    "Tests.ActivePictureAnalyzerTests": 2,
+    "VideoProcessorTest.FullRasterColorEvidenceFormatTests": 3
+  },
+  "unusedFilterTerms": [],
+  "samplerCoverage": "ActivePictureEvidenceTests includes native source and row sampler parity; subtitle tests exercise the new shared read budgets",
+  "nativeFixtures": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+  "previousNativeFixture": "E:\\codex\\diagnostics\\vp0207-paused-backing-20261023\\paused-native.bin",
+  "stationaryNativeFixture": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+  "requiredNativeReplays": [
+    "OptionalNativePausedBackingCaptureCleansGlyphFreePictureIntrusion",
+    "OptionalPausedRecurrenceColdCapUsesCurrentPixelsWithLoggedNearbyMetadata",
+    "OptionalNativeRecurrenceCoordinatorKeepsCueGeometryAndCapWithinProductionBudgets",
+    "OptionalNativeNearbyFirstCueSeedsCandidateAndSurvivesCurrentMetadataLoss",
+    "OptionalStationaryNativeBudgetCannotConvertCandidateIntoOutputAuthority"
+  ],
+  "runtimeRecords": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "744B9900BDD5838534181054D2764E04627A0CDCADF61882551872A66D7AEB05",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "420E43FEBAB5FF523E31C8260C1BA3D706CD6DA5B821259A216BE2F0C2DA8955",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "AEE96845CECCFF792C692DE17BCC3866E2B5A0A503C0B645FA0F1668A26272BB",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "VideoProcessor-Test.dll",
+      "sha256": "2C6ED84E3DEFA59BFD819F43ECCD4054F2881EAB84C8E0345F0C3BC7D9B8BC1E",
+      "toolset": "14.29.30133"
+    }
+  ],
+  "matchedDependencies": [
+    {
+      "file": "vprenderer/libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "file": "vprenderer/libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "file": "vprenderer/liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "file": "vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "file": "vprenderer/libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "file": "vprenderer/libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "file": "vprenderer/libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "file": "vprenderer/libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "file": "vprenderer/vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "file": "vprenderer-beta/libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "file": "vprenderer-beta/libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "file": "vprenderer-beta/liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "file": "vprenderer-beta/libplacebo-377.dll",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+    },
+    {
+      "file": "vprenderer-beta/libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "file": "vprenderer-beta/libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "file": "vprenderer-beta/libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "file": "vprenderer-beta/libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "file": "vprenderer-beta/vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "limitations": [
+    "Selected runtime/test target build and regression classes, not full solution or entire native test suite.",
+    "Three preserved native 4K frames are replayed with controlled metadata and failure cases; these are not a captured native flicker sequence.",
+    "Live replay acceptance remains pending."
+  ]
+}

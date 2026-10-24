@@ -1,0 +1,37 @@
+RUN NewInkDiagnosticRecordsExactNativeThresholdCrossingWithoutExtraReads
+PASS
+RUN OnlyCompleteInspectionCanDeferUnownedPicturePixelsOutsideAllSourceEnvelopes
+current-complete-cue
+current-complete-cue
+PASS
+RUN CompletePictureDeferralStillRejectsCompanionsBarInkAndRequiredSourceChanges
+complete-cue-changed
+new-ink-outside-cue
+backing-changed
+new-ink-outside-cue
+new-ink-outside-cue
+new-ink-outside-cue
+new-ink-outside-cue
+PASS
+RUN CurrentCueCoordinatorRetainsOnlyPrivateSelectionThroughIncompleteInspectionAndRecovers
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+complete-sample-budget
+PASS
+RUN CurrentCueCoordinatorCannotRevivePrivateCandidateAfterContradictionOrContextReset
+PASS

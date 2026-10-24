@@ -1,0 +1,91 @@
+{
+  "sourceCommit": "7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973",
+  "betaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-inspection-audit-7a8bfb83-20261024-002441",
+  "configurationEdits": [],
+  "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+  "files": [
+    {
+      "previousSha256": "D4126D3E4B73378C525B42E8397EDF28493392668735124D68C7D5207B27298D",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "744B9900BDD5838534181054D2764E04627A0CDCADF61882551872A66D7AEB05",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "previousSha256": "4C1ABA02885341379517B47C8A7DAAF3307BE703931EC4F77BBFB48D6F62617D",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "420E43FEBAB5FF523E31C8260C1BA3D706CD6DA5B821259A216BE2F0C2DA8955",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "previousSha256": "C23C62BFDDF658002B88F2EE903893A2D66577DD5B6D97E1A383C2015419E141",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "AEE96845CECCFF792C692DE17BCC3866E2B5A0A503C0B645FA0F1668A26272BB",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    }
+  ],
+  "configBefore": [
+    {
+      "name": "active-output-sweep-hdr-template.cfg",
+      "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "name": "active-output-sweep-sdr-template.cfg",
+      "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "name": "NPNnnNPn.cfg",
+      "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "name": "VideoProcessor.cfg",
+      "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+    }
+  ],
+  "configAfter": [
+    {
+      "name": "active-output-sweep-hdr-template.cfg",
+      "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "name": "active-output-sweep-sdr-template.cfg",
+      "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "name": "NPNnnNPn.cfg",
+      "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "name": "VideoProcessor.cfg",
+      "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+    }
+  ],
+  "stateBeforeShutdown": "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+  "stateAfterShutdown": "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+  "stateNote": "No state writes by deployment; application may save its state on close",
+  "startedProcessId": 25704,
+  "verifiedAt": "2026-10-24T00:24:54.3444253-04:00",
+  "status": "deployed-identity-verified-replay-pending",
+  "loadedModules": [
+    {
+      "name": "VideoProcessor.exe",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "744B9900BDD5838534181054D2764E04627A0CDCADF61882551872A66D7AEB05"
+    },
+    {
+      "name": "VideoProcessorVPRenderer.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "420E43FEBAB5FF523E31C8260C1BA3D706CD6DA5B821259A216BE2F0C2DA8955"
+    },
+    {
+      "name": "VideoProcessorVPRendererBeta.dll",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "AEE96845CECCFF792C692DE17BCC3866E2B5A0A503C0B645FA0F1668A26272BB"
+    }
+  ],
+  "observedThrough": "2026-10-24 00:27:20",
+  "activeSubtitleProfile": "clear__yellow",
+  "configurationRestored": true
+}

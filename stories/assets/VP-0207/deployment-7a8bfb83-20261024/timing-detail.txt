@@ -1,0 +1,560 @@
+near=20 mode=uncached trial=1
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=18.5063
+near=20 mode=uncached trial=2
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.511
+near=20 mode=uncached trial=3
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.149
+near=20 mode=uncached trial=4
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=12.8959
+near=20 mode=uncached trial=5
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=17.1477
+near=20 mode=uncached trial=6
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=12.8438
+near=20 mode=uncached trial=7
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=12.9568
+near=20 mode=uncached trial=8
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.1736
+near=20 mode=uncached trial=9
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.8633
+near=20 mode=uncached trial=10
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=232006
+DETECT pre-native=371718
+DETECT post-native=437254
+DETECT detect-finish=437254
+CACHE lookups=206310 hits=0 bytes=3110400
+INSPECT detector=437254 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=437254 total_reads=550064 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.5683
+near=20 mode=cached trial=1
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=16.2625
+near=20 mode=cached trial=2
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=16.7028
+near=20 mode=cached trial=3
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=12.9515
+near=20 mode=cached trial=4
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.6122
+near=20 mode=cached trial=5
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.0934
+near=20 mode=cached trial=6
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.4497
+near=20 mode=cached trial=7
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.7883
+near=20 mode=cached trial=8
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=16.4684
+near=20 mode=cached trial=9
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.7243
+near=20 mode=cached trial=10
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=230944
+DETECT pre-panel=231526
+DETECT pre-native=270652
+DETECT post-native=332074
+DETECT detect-finish=332074
+CACHE lookups=206310 hits=105180 bytes=3110400
+INSPECT detector=332074 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=332074 total_reads=444884 exhausted=0 ink_hash=14198694937767334104 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=12.9488
+near=200 mode=uncached trial=1
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.5995
+near=200 mode=uncached trial=2
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.5372
+near=200 mode=uncached trial=3
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.1706
+near=200 mode=uncached trial=4
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.2338
+near=200 mode=uncached trial=5
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.1364
+near=200 mode=uncached trial=6
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.2664
+near=200 mode=uncached trial=7
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.0218
+near=200 mode=uncached trial=8
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.6628
+near=200 mode=uncached trial=9
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.2819
+near=200 mode=uncached trial=10
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=275725
+DETECT pre-native=431119
+DETECT post-native=496655
+DETECT detect-finish=496655
+CACHE lookups=222511 hits=0 bytes=3110400
+INSPECT detector=496655 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=496655 total_reads=609465 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.4302
+near=200 mode=cached trial=1
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.4263
+near=200 mode=cached trial=2
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.7094
+near=200 mode=cached trial=3
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.2988
+near=200 mode=cached trial=4
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=17.0067
+near=200 mode=cached trial=5
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.7496
+near=200 mode=cached trial=6
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.8739
+near=200 mode=cached trial=7
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.1046
+near=200 mode=cached trial=8
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.2135
+near=200 mode=cached trial=9
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.9595
+near=200 mode=cached trial=10
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 ink_hash=840011568621713799 roi_hash=9148459588443687731 cap=current-finite-rounded-backing-lip cap_valid=1 ms=15.4445

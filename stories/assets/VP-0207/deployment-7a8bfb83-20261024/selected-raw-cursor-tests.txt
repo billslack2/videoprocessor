@@ -1,0 +1,16 @@
+RUN CurrentRawFallbackCursorSurvivesConsecutiveUnknownAndExactRepeatsWithoutRenewingProof
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+PASS
+RUN CurrentRawFallbackCursorCannotBridgeUnknownGapOrChangedRepeat
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+PASS
+RUN CurrentRawFallbackCursorCannotSurviveContextResetOrNewCurrentCue
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+PASS

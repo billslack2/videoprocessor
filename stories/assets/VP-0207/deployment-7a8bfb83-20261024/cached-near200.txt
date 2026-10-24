@@ -1,0 +1,13 @@
+INSPECT verify=46112
+INSPECT plane=60064
+DETECT coarse-grid=274144
+DETECT pre-panel=274732
+DETECT pre-native=274736
+DETECT post-native=336158
+DETECT detect-finish=336158
+CACHE lookups=222511 hits=160497 bytes=3110400
+INSPECT detector=336158 reason=detected
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=336158 total_reads=448968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.9051

@@ -1,0 +1,14 @@
+{
+  "ExitCode": 0,
+  "Finished": "2026-10-24T00:16:45.0435816-04:00",
+  "Commit": "7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973",
+  "Dirty": false,
+  "Configuration": "Release",
+  "Architecture": "x64",
+  "Targets": [
+    "VideoProcessor-GUI",
+    "VideoProcessor-VPRenderer",
+    "VideoProcessor-VPRendererBeta",
+    "VideoProcessor-Test"
+  ]
+}

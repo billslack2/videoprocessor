@@ -1,0 +1,15 @@
+VP-0207 final candidate cross-review, 2026-10-24
+Source: 7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973
+Base: v1.4.02-beta b1415da4e2cc12807f390f4b722c459be9a17c08
+Reviewers: cue_continuity_design, presentation_stability_design, safety_regression_design; root integration review.
+
+Confirmed and fixed after initial retention review:
+A transactional raw fallback using only the original complete-proof tracker could display the first current raw-positive UNKNOWN frame but reject the next consecutive one. The original previous identity correctly stayed at the last full proof, so ordinary sequence admission rejected the second frame. Candidate now keeps a separate value-only display cursor containing the actual last ordinarily admitted raw preview/result, anchored to the original complete-proof identity. A trial still uses ordinary admission and must return the exact original selected cue and extraction geometry, with no held/weak/confirmation/work-limit result. Original source cursor, acquisition/extension references, leases and certificates are not advanced. A full proof remains bound to the original verified source. Reset, failed raw admission, context changes, and ordinary/full-proof consumption clear the display cursor.
+
+The ordinary repeat shortcut cannot be borrowed by a changed same-source raw snapshot: different immutable ink pointer, result/geometry or pending state rejects. This is intentionally conservative even for an identical newly allocated snapshot; complete inspection can still recover using the original proof cursor. No fabricated predecessor identity or cached cleanup permission is issued.
+
+Safety review found no remaining stale-cleanup authorization. Finite-cap repair still independently proves current pixels with the shared frame budget. Exhausting the whole frame budget can suppress optional cap repair; no old erasure is authorized by the display cursor. UNKNOWN private candidates may persist beyond the short missing-edge hold, but they cannot emit output without current ordinary raw acceptance or complete current proof.
+
+Scratch exact-body checks: all 3 CurrentRawFallbackCursor tests passed, including sequence3..10, exact repeats, no original lease/cursor/certificate renewal, blank gap, changed glyph/geometry/snapshot, identical newly allocated snapshot, context reset, current cap budget failure, and COMPLETE recovery bound to original identity2. Five separate exact-body checks also passed for strict partial proof, full-only outside-envelope picture deferral, actual companion/bar/glyph/backing rejection, and unknown recovery/no resurrection. These scratch checks are not substitutes for the full committed Release test run.
+
+No source edits were made during the final 7a8bfb83 Release build/test run. No merge or live playback acceptance is implied by this review. Prior deployed398034da failed the user replay; this remains an open issue until the new candidate is replay-qualified.
