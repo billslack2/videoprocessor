@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleCueContinuation.h>
+#include <memory>
 
 struct CurrentSubtitleCueDecision {
     SubtitleCueContinuation proof;
@@ -8,12 +9,23 @@ struct CurrentSubtitleCueDecision {
 
 // Preparation-call binding is separate from proof.physicalBase, which retains
 // acquired source coordinates across unrelated global picture metadata changes.
-// This token is synchronous: it keeps neither a read-budget pointer nor owner.
+// This token is synchronous: its input binding keeps neither a read-budget
+// pointer nor a native-frame owner. Any trial state has unique ownership.
 struct PreparedCurrentSubtitleCue {
     SubtitleCueContinuation proof;
     ActivePictureBounds inputBase;
     AnalysisLumaSource inputSource;
     bool inputBaseAvailable=false;
+    // Unique reusable heap scratch: tokens are movable, never mutable aliases.
+    enum class BacklogTrial { None, Unknown, Complete, Contradiction };
+    BacklogTrial backlogTrial=BacklogTrial::None;
+    std::unique_ptr<SubtitleCueContinuationGuard> backlogCandidate;
+    ActivePictureFrameIdentity backlogWitness;
+    bool AllowsPendingRecovery(const SubtitleBoxPreview& preview) const {
+        return backlogTrial==BacklogTrial::Unknown ||
+            (backlogTrial==BacklogTrial::None && proof.RetainsCandidateFor(
+                preview.current.identity,preview.policyGeneration,preview.continuityGeneration));
+    }
     bool MatchesInput(const AnalysisLumaSource& source,const ActivePictureBounds& base,bool available) const {
         return available==inputBaseAvailable && source.IsValid() &&
             base.left==inputBase.left && base.top==inputBase.top && base.right==inputBase.right &&
@@ -33,10 +45,30 @@ inline void PrepareCurrentSubtitleCueInto(
     PreparedCurrentSubtitleCue& out,
     SubtitleCueContinuationGuard& guard,const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
     const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
-    size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
+    size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit,
+    const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,bool backlogRetirementOnly=false) {
     out.proof={};out.inputBase=base;out.inputBaseAvailable=baseAvailable;
+    out.backlogTrial=PreparedCurrentSubtitleCue::BacklogTrial::None;out.backlogWitness={};
     out.inputSource=source;out.inputSource.readBudget=nullptr;out.inputSource.backingOwner.reset();
     if(!baseAvailable){guard.Reset();return;}
+    if(!preview.available && preview.policyGeneration==preview.current.policyGeneration &&
+        preview.continuityGeneration==preview.current.continuityGeneration &&
+        guard.CanInspectAfterBacklogRetirement(preview.current,source,backlogTemplateIdentity,backlogRetirementOnly)) {
+        if(!out.backlogCandidate)out.backlogCandidate=std::make_unique<SubtitleCueContinuationGuard>();
+        if(guard.CopyBacklogInspectionCandidateTo(*out.backlogCandidate,preview.current,source,
+            backlogTemplateIdentity,backlogRetirementOnly)) {
+            out.backlogWitness=*backlogTemplateIdentity;
+            out.proof=out.backlogCandidate->InspectCurrent(preview,source,maxSamples);
+            out.backlogTrial=out.proof.completeCurrentCue && out.proof.valid?
+                PreparedCurrentSubtitleCue::BacklogTrial::Complete:
+                out.backlogCandidate->HasReference()?PreparedCurrentSubtitleCue::BacklogTrial::Unknown:
+                    PreparedCurrentSubtitleCue::BacklogTrial::Contradiction;
+            // UNKNOWN does not expose a cross-epoch private-retention token.
+            out.proof.candidateRetained=false;
+            if(out.backlogTrial==PreparedCurrentSubtitleCue::BacklogTrial::Contradiction)guard.Reset();
+            return;
+        }
+    }
     if(guard.NeedsCurrentPixelRevalidation(preview) || preview.current.pendingRefresh || !preview.current.analyzed)
         out.proof=guard.Prepare(preview,source,base,holdMs,frameMs,maxSamples);
     return;
@@ -44,9 +76,10 @@ inline void PrepareCurrentSubtitleCueInto(
 inline PreparedCurrentSubtitleCue PrepareCurrentSubtitleCue(
     SubtitleCueContinuationGuard& guard,const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
     const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
-    size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
+    size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit,
+    const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,bool backlogRetirementOnly=false) {
     PreparedCurrentSubtitleCue out;
-    PrepareCurrentSubtitleCueInto(out,guard,preview,source,base,baseAvailable,holdMs,frameMs,maxSamples);
+    PrepareCurrentSubtitleCueInto(out,guard,preview,source,base,baseAvailable,holdMs,frameMs,maxSamples,backlogTemplateIdentity,backlogRetirementOnly);
     return out;
 }
 // Consume the same source-bound preparation after optional pending resolution.
@@ -62,18 +95,30 @@ inline void ConsumePreparedCurrentSubtitleCueInto(
 {
     out.accepted={};
     out.proof=prepared.proof;
+    const bool backlogComplete=prepared.backlogTrial==PreparedCurrentSubtitleCue::BacklogTrial::Complete;
+    if(prepared.backlogTrial==PreparedCurrentSubtitleCue::BacklogTrial::Contradiction) {
+        guard.Reset();presentation.Reset();return;
+    }
+    const bool guardCurrent=backlogComplete?
+        prepared.backlogCandidate && backlogTemplateIdentity && backlogRetirementOnly &&
+        SameAnalysisFrameIdentity(*backlogTemplateIdentity,prepared.backlogWitness) &&
+        SameAnalysisFrameIdentity(out.proof.previousIdentity,prepared.backlogWitness) &&
+        guard.CanInspectAfterBacklogRetirement(preview.current,source,backlogTemplateIdentity,true) &&
+        prepared.backlogCandidate->CanInspectCurrentObservation(preview.current):
+        guard.CanInspectCurrentObservation(preview.current);
     // Pending resolution may replace raw metadata, never this source binding.
     if((out.proof.valid || out.proof.candidateRetained) &&
        (!baseAvailable || !prepared.MatchesInput(source,base,baseAvailable) ||
         source.width!=preview.current.width || source.height!=preview.current.height ||
         source.generation!=preview.current.identity.transportGeneration ||
-        !guard.CanInspectCurrentObservation(preview.current) ||
+        !guardCurrent ||
         !SameAnalysisFrameIdentity(out.proof.identity,preview.current.identity) ||
         out.proof.policyGeneration!=preview.policyGeneration ||
         out.proof.continuityGeneration!=preview.continuityGeneration ||
         preview.current.policyGeneration!=preview.policyGeneration ||
         preview.current.continuityGeneration!=preview.continuityGeneration)) {
         guard.Reset();out.proof={};out.proof.reason="prepared-source-context-changed";
+        if(backlogComplete){presentation.Reset();return;}
     }
     if(out.proof.RetainsCandidateFor(preview.current.identity,preview.policyGeneration,
         preview.continuityGeneration)) {
@@ -94,6 +139,19 @@ inline void ConsumePreparedCurrentSubtitleCueInto(
     out.accepted=presentation.Consume(preview,holdMs,frameMs,
         backlogTemplateIdentity,backlogRetirementOnly,pendingPixelsVerified,
         out.proof.valid?&out.proof:nullptr);
+    if(backlogComplete) {
+        // Tracker admission checks exact selected cue and previous source.
+        // Only its accepted COMPLETE result may publish the trial epoch/cursor.
+        if(out.proof.completeCurrentCue && out.proof.valid && out.proof.MatchesCue(out.accepted)) {
+            out.proof.recoveredFromContinuity=guard.ReferenceContinuityGeneration();
+            guard=std::move(*prepared.backlogCandidate);
+        }
+        else {
+            guard.Reset();out.proof.valid=false;out.proof.completeCurrentCue=false;
+            out.proof.reason="complete-backlog-cue-not-bound";
+        }
+        return;
+    }
     if(out.accepted.confirmationPending)guard.Reset();
     else if(baseAvailable && out.accepted.detected && !out.proof.valid) {
         if(!guard.Remember(preview,out.accepted,base,source))
@@ -119,7 +177,8 @@ inline CurrentSubtitleCueDecision ConsumeCurrentSubtitleCue(
     const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
     bool pendingPixelsVerified=false,const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
     bool backlogRetirementOnly=false) {
-    const auto prepared=PrepareCurrentSubtitleCue(guard,preview,source,base,baseAvailable,holdMs,frameMs);
+    const auto prepared=PrepareCurrentSubtitleCue(guard,preview,source,base,baseAvailable,holdMs,frameMs,
+        SubtitleCurrentCueInspectionSampleLimit,backlogTemplateIdentity,backlogRetirementOnly);
     return ConsumePreparedCurrentSubtitleCue(guard,presentation,preview,source,base,baseAvailable,holdMs,frameMs,
         prepared,pendingPixelsVerified,backlogTemplateIdentity,backlogRetirementOnly);
 }

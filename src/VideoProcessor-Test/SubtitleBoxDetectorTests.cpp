@@ -3,6 +3,9 @@
 #include <SubtitleBoxDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleOpaqueCardRefinement.h>
+#include <SubtitleCurrentCue.h>
+#include <SubtitleCutPaste.h>
+#include <memory>
 #include <vector>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
@@ -2878,5 +2881,101 @@ public:
         auto first=d.Analyze(Source(f),45,315,1,1);
         auto repeat=d.Analyze(Source(f),45,315,1,1);
         Assert::AreEqual(first.observations,repeat.observations);Assert::IsTrue(f==original);
+    }
+    TEST_METHOD(CurrentCompleteCardCannotGrowUnchangedCueDecorationIntoDarkScene) {
+        // Native P210 scene proxy: all current glyph pixels stay byte-identical.
+        // A finite black scene patch is indistinguishable from a taller blank
+        // card to the cold producer, so the established-cue contract must bound
+        // it through the actual final layout rather than merely reject gray.
+        struct State {
+            std::vector<uint16_t> pixels=std::vector<uint16_t>(size_t(3840)*2160*2,uint16_t(512<<6));
+            AnalysisLumaSource source;
+            ActivePictureBounds base{0,276,3840,1884,3840,2160};
+            std::array<SubtitleBoxObservation,2> observed;
+            SubtitleBoxPreview preview;
+            SubtitleCueContinuationGuard guard;
+            SubtitleBoxPresentation tracker;
+            PreparedCurrentSubtitleCue prepared;
+            CurrentSubtitleCueDecision decision;
+            SubtitleCutPastePresentation compositor;
+            SubtitleLayoutAnchor anchor;
+            SubtitleCutPasteGeometry geometry;
+        };
+        const auto identity=[](uint64_t sequence) {
+            auto id=ActivePictureFrameIdentity{2,sequence,sequence,sequence*41708,2,3,4};
+            id.analysisDomainKey=9;return id;
+        };
+        const auto same=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        };
+        for(const auto extension : {SubtitleBoxRect{876,1172,2968,1884},
+            SubtitleBoxRect{798,1172,3524,1884},SubtitleBoxRect{876,1462,3524,1884}}) {
+            auto state=std::make_unique<State>();auto& s=*state;
+            const auto fill=[&](SubtitleBoxRect r,int code) {
+                for(int y=r.top;y<r.bottom;++y)for(int x=r.left;x<r.right;++x)
+                    s.pixels[size_t(y)*3840+x]=uint16_t(code<<6);
+            };
+            fill({0,0,3840,2160},64);fill({0,276,3840,1884},300);
+            for(int y=1640;y<1887;++y) {
+                const int inset=(std::max)(0,12-(y-1640));fill({876+inset,y,2968-inset,y+1},64);
+            }
+            for(int row=0;row<2;++row)for(int k=0;k<(row?26:22);++k) {
+                const int x=(row?928:1072)+k*78,y=row?1848:1678,h=row?76:98;
+                fill({x,y,x+48,y+h},700);fill({x+12,y+12,x+36,y+h-12},64);
+            }
+            s.source.data=reinterpret_cast<const uint8_t*>(s.pixels.data());
+            s.source.dataBytes=s.pixels.size()*2;s.source.width=3840;s.source.height=2160;
+            s.source.rowBytes=s.source.chromaRowBytes=3840*2;s.source.format=AnalysisLumaFormat::P210;s.source.generation=2;
+            const auto measure=[&](SubtitleBoxObservation& out,uint64_t sequence) {
+                SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=identity(sequence);shared.bounds=s.base;
+                out=SubtitleBoxLookahead::Measure(detector,s.source,{},identity(sequence),false,{},7,8,shared);
+                Assert::IsTrue(out.text.detected && !out.text.workLimit);
+                Assert::IsTrue(out.text.provenSourcePanel.Valid());
+            };
+            const auto consume=[&]() {
+                // Worker measurement has its separate budget; all synchronous
+                // current-pixel work uses the production whole-frame allowance.
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};
+                auto current=s.source;current.readBudget=&budget;
+                PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.preview,current,s.base,true,250,41.708);
+                ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.preview,current,s.base,true,250,41.708,s.prepared);
+                Assert::IsTrue(s.decision.accepted.detected && !s.decision.accepted.held);
+                s.geometry=s.compositor.Consume(s.decision.accepted,s.preview,{},0,nullptr,&s.decision.proof);
+                Assert::IsTrue(s.geometry.valid && s.geometry.generatedCleanup.Valid());
+                auto final=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(s.geometry,{0,276,3840,1884},20),
+                    30,{60,40,21},true,false);
+                final=s.anchor.Consume(final,s.decision.accepted,s.preview,{60,40,21},20,false);
+                Assert::IsTrue(final.valid && !budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+                return final;
+            };
+            measure(s.observed[0],1);measure(s.observed[1],2);
+            s.preview=SubtitleBoxLookahead::Resolve(s.observed.data(),2,7,8);consume();
+            s.preview=SubtitleBoxLookahead::Resolve(&s.observed[1],1,7,8);
+            const auto normal=consume();const auto cleanup=s.geometry.generatedCleanup;
+            const auto cue=s.decision.accepted.cue;const auto original=s.pixels;
+            Assert::IsTrue(cleanup.top<1640 && cleanup.top>1600,
+                L"The original small native fringe remains part of cleanup.");
+            for(uint64_t sequence=3;sequence<=4;++sequence) {
+                if(sequence==3) {
+                    fill(extension,64);
+                    for(int y=extension.top;y<extension.bottom;++y)for(int x=extension.left;x<extension.right;++x)
+                        if((original[size_t(y)*3840+x]>>6)>=700)s.pixels[size_t(y)*3840+x]=original[size_t(y)*3840+x];
+                } else s.pixels=original;
+                measure(s.observed[0],sequence);
+                s.preview=SubtitleBoxLookahead::Resolve(&s.observed[0],1,7,8);
+                if(sequence==3)Assert::IsTrue(s.preview.current.text.provenSourcePanel.top<cleanup.top-100,
+                    L"This adversary must reach the compositor with a genuinely enlarged current producer proof.");
+                const auto final=consume();
+                Assert::AreEqual(cue,s.decision.accepted.cue);
+                Assert::IsFalse(s.decision.accepted.revised);
+                Assert::IsTrue(same(cleanup,s.geometry.generatedCleanup));
+                Assert::IsTrue(same(normal.destination,final.destination),
+                    L"Fit, reduction and the persistent layout anchor must not inflate or retain a new blank background.");
+                Assert::AreEqual(normal.glyphScale,final.glyphScale);
+                Assert::AreEqual(normal.glyphTranslateX,final.glyphTranslateX);
+                Assert::AreEqual(normal.glyphTranslateY,final.glyphTranslateY);
+            }
+        }
     }
 }; }

@@ -112,7 +112,36 @@ public:
             c.policyGeneration==m_reference.policyGeneration &&
             c.continuityGeneration==m_reference.continuityGeneration;
     }
+    // A queue-only witness nominates private state for a new COMPLETE proof.
+    // It is never a continuation certificate or permission to renew a lease.
+    bool CanInspectAfterBacklogRetirement(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity* witness,bool backlogOnly) const {
+        if(!backlogOnly || !witness || !m_valid || c.discontinuity || !Context(c,m_reference) ||
+            !ValidSource(c,source) || !SameAnalysisFrameIdentity(*witness,m_last) ||
+            c.policyGeneration!=m_reference.policyGeneration || !m_reference.continuityGeneration ||
+            c.continuityGeneration<=m_reference.continuityGeneration ||
+            source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
+            source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration ||
+            c.identity.acceptedSequence<=m_last.acceptedSequence ||
+            c.identity.captureTimestamp<=m_last.captureTimestamp)return false;
+        const auto gap=c.identity.acceptedSequence-m_last.acceptedSequence;
+        return !(c.identity.sourceFrameNumber || m_last.sourceFrameNumber) ||
+            (m_last.sourceFrameNumber && c.identity.sourceFrameNumber>m_last.sourceFrameNumber &&
+             c.identity.sourceFrameNumber-m_last.sourceFrameNumber==gap);
+    }
+    bool CopyBacklogInspectionCandidateTo(SubtitleCueContinuationGuard& trial,
+        const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity* witness,bool backlogOnly) const {
+        if(&trial==this || !CanInspectAfterBacklogRetirement(c,source,witness,backlogOnly))return false;
+        trial=*this;
+        trial.m_reference.continuityGeneration=c.continuityGeneration;
+        trial.m_cached.valid=false;trial.m_cached.completeCurrentCue=false;trial.m_cached.candidateRetained=false;
+        trial.m_cached.ink.reset();trial.m_cached.currentInk.reset();
+        trial.m_incompleteCurrent=true;
+        return true;
+    }
     const ActivePictureFrameIdentity& LastVerifiedIdentity() const {return m_last;}
+    uint64_t ReferenceContinuityGeneration() const {return m_valid?m_reference.continuityGeneration:0;}
     SubtitleCueContinuation InspectCurrent(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
         SubtitleCueContinuation out;const auto& raw=preview.current;

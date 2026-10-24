@@ -13819,7 +13819,10 @@ struct LibplaceboVideoRenderer::Impl
             // budget needed to prove and clean an otherwise valid current cap.
             const bool prioritizeCurrentInspection=continuationBaseAvailable &&
                 !currentSubtitlePreview.available &&
-                subtitleCueContinuation.CanInspectCurrentObservation(currentSubtitlePreview.current);
+                (subtitleCueContinuation.CanInspectCurrentObservation(currentSubtitlePreview.current) ||
+                 subtitleCueContinuation.CanInspectAfterBacklogRetirement(currentSubtitlePreview.current,
+                    subtitleProofSource,subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                    subtitleBacklogRetirementOnly));
             if(!subtitlePreparedCueScratch)subtitlePreparedCueScratch=std::make_unique<PreparedCurrentSubtitleCue>();
             if(!subtitleCueDecisionScratch)subtitleCueDecisionScratch=std::make_unique<CurrentSubtitleCueDecision>();
             auto& preparedCurrentCue=*subtitlePreparedCueScratch;
@@ -13827,10 +13830,11 @@ struct LibplaceboVideoRenderer::Impl
             if(prioritizeCurrentInspection)
                 PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
                     currentSubtitlePreview,subtitleProofSource,nlsGeometry,
-                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs);
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    SubtitleCurrentCueInspectionSampleLimit,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,subtitleBacklogRetirementOnly);
             const bool allowPendingRecovery=!prioritizeCurrentInspection ||
-                preparedCurrentCue.proof.RetainsCandidateFor(currentSubtitlePreview.current.identity,
-                    currentSubtitlePreview.policyGeneration,currentSubtitlePreview.continuityGeneration);
+                preparedCurrentCue.AllowsPendingRecovery(currentSubtitlePreview);
             ++subtitlePerf.frames;
             bool& pendingCurrentPixelsVerified=currentSubtitlePendingPixelsVerified;
             pendingCurrentPixelsVerified=false;
@@ -13866,7 +13870,9 @@ struct LibplaceboVideoRenderer::Impl
             if(!prioritizeCurrentInspection)
                 PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
                     currentSubtitlePreview,subtitleProofSource,nlsGeometry,
-                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs);
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    SubtitleCurrentCueInspectionSampleLimit,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,subtitleBacklogRetirementOnly);
             ConsumePreparedCurrentSubtitleCueInto(cueDecision,subtitleCueContinuation,
                 subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
                 continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
@@ -13899,6 +13905,8 @@ struct LibplaceboVideoRenderer::Impl
             preparedCurrentCue.proof.valid=false;preparedCurrentCue.proof.completeCurrentCue=false;
             preparedCurrentCue.proof.candidateRetained=false;
             preparedCurrentCue.proof.ink.reset();preparedCurrentCue.proof.currentInk.reset();
+            preparedCurrentCue.backlogCandidate.reset();
+            preparedCurrentCue.backlogTrial=PreparedCurrentSubtitleCue::BacklogTrial::None;
             cueDecision.proof.valid=false;cueDecision.proof.completeCurrentCue=false;
             cueDecision.proof.candidateRetained=false;
             cueDecision.proof.ink.reset();cueDecision.proof.currentInk.reset();cueDecision.accepted.detected=false;

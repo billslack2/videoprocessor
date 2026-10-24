@@ -64,6 +64,93 @@ TEST_CLASS(SubtitleCutPasteTests) {
         SubtitleBoxResult r;r.detected=true;r.cue=1;r.bounds={200,295,400,330};return r;
     }
 public:
+    TEST_METHOD(CurrentCompleteBackingCannotGrowUnchangedCueIntoScenery) {
+        for(bool top:{false,true})for(bool rounded:{false,true})for(int reduction:{0,30,75}) {
+            auto p=Preview();p.current.width=3840;p.current.height=2160;
+            p.current.pictureTop=276;p.current.pictureBottom=1884;
+            auto text=Text();text.bounds={966,1670,2870,1934};text.lineCount=2;
+            text.lineBounds[0]={970,1677,2858,1776};text.lineBounds[1]={970,1821,2863,1924};
+            text.capturePanelMeasured=true;
+            const auto mirror=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top}:r;};
+            text.bounds=mirror(text.bounds);for(int i=0;i<2;++i)text.lineBounds[i]=mirror(text.lineBounds[i]);
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{60,40,21};
+            const auto compose=[&](SubtitleBoxRect local,SubtitleBoxRect proof) {
+                text.sourcePanel=mirror(local);text.provenSourcePanel=mirror(proof);text.capturePanel=text.sourcePanel;
+                p.current.text=text;++p.current.identity.acceptedSequence;
+                auto g=presentation.Consume(text,p,padding,20);
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,276,3840,1884},20),
+                    reduction,padding,rounded,false);
+                return anchor.Consume(g,text,p,padding,20,false);
+            };
+            const auto first=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(first.valid);
+            const auto larger=compose({792,1166,3530,1884},{792,1166,3530,1884});
+            Assert::IsTrue(larger.valid);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.generatedCleanup,larger.generatedCleanup,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,larger.destination,0));
+            Assert::AreEqual(first.glyphTranslateX,larger.glyphTranslateX);
+            Assert::AreEqual(first.glyphTranslateY,larger.glyphTranslateY);
+            const auto restored=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.generatedCleanup,restored.generatedCleanup,0),
+                L"Current six-pixel local fringe remains intact");
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,restored.destination,0));
+        }
+    }
+    TEST_METHOD(CurrentCompleteCorrectionShrinksDecorationWithoutMovingGlyphs) {
+        for(bool top:{false,true})for(bool rounded:{false,true})for(int reduction:{0,30,75}) {
+            auto p=Preview();p.current.width=3840;p.current.height=2160;
+            p.current.pictureTop=276;p.current.pictureBottom=1884;
+            auto text=Text();text.bounds={966,1670,2870,1934};text.lineCount=2;
+            text.lineBounds[0]={970,1677,2858,1776};text.lineBounds[1]={970,1821,2863,1924};
+            text.capturePanelMeasured=true;
+            const auto mirror=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top}:r;};
+            text.bounds=mirror(text.bounds);for(int i=0;i<2;++i)text.lineBounds[i]=mirror(text.lineBounds[i]);
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{60,40,21};
+            const auto compose=[&](SubtitleBoxRect local,SubtitleBoxRect proof,int freshness=0) {
+                text.sourcePanel=mirror(local);text.provenSourcePanel=mirror(proof);text.capturePanel=text.sourcePanel;
+                p.current.text=text;++p.current.identity.acceptedSequence;
+                p.current.pendingRefresh=freshness==1;p.current.analysisRefresh=freshness==2;
+                p.current.text.held=freshness==3;p.current.text.workLimit=freshness==4;
+                auto g=presentation.Consume(text,p,padding,20);
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,276,3840,1884},20),
+                    reduction,padding,rounded,false);
+                return anchor.Consume(g,text,p,padding,20,false);
+            };
+            const auto oversized=compose({792,1166,3530,1884},{792,1166,3530,1884});
+            Assert::IsTrue(oversized.valid);
+            const auto localOnly=compose({870,1634,2974,1884},{});
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(oversized.destination,localOnly.destination,0),
+                L"An incomplete local estimate cannot shrink accepted decoration");
+            for(int freshness=1;freshness<=4;++freshness) {
+                const auto incomplete=compose({870,1634,2974,1884},{870,1640,2974,1884},freshness);
+                Assert::IsTrue(incomplete.valid && !incomplete.currentBackingCorrection);
+                Assert::IsTrue(SubtitleBoxLookahead::SameLine(oversized.destination,incomplete.destination,0),
+                    L"Pending, refreshed, held or incomplete text cannot mint a current complete correction");
+            }
+            const auto corrected=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(corrected.valid && corrected.currentBackingCorrection);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.generatedCleanup,mirror({870,1634,2974,1884}),0));
+            Assert::IsTrue(corrected.destination.bottom-corrected.destination.top<oversized.destination.bottom-oversized.destination.top);
+            Assert::IsTrue(corrected.destination.right-corrected.destination.left<oversized.destination.right-oversized.destination.left);
+            Assert::AreEqual(oversized.glyphTranslateX,corrected.glyphTranslateX);
+            Assert::AreEqual(oversized.glyphTranslateY,corrected.glyphTranslateY);
+            const auto repeat=compose({870,1634,2974,1884},{});
+            Assert::IsFalse(repeat.currentBackingCorrection,L"The correction receipt cannot survive into an unproved later call");
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.destination,repeat.destination,0));
+            // Tracker-confirmed new picture-side glyphs may acquire their real
+            // current card; the blank-growth restriction is not a size clamp.
+            text.revised=true;text.lineCount=3;text.lineBounds[2]=mirror({1100,1420,2700,1510});
+            text.bounds=mirror({966,1410,2870,1934});
+            const auto revised=compose({792,1390,3530,1884},{792,1390,3530,1884});
+            Assert::IsTrue(revised.valid);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(revised.generatedCleanup,mirror({792,1390,3530,1884}),0));
+            p.current.analyzed=false;
+            const auto unanalyzed=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsFalse(unanalyzed.valid || unanalyzed.currentBackingCorrection);
+        }
+    }
     TEST_METHOD(TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames) {
         unsigned count=0;
         for(int i=0;i<7;++i)count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);

@@ -47,14 +47,18 @@ void Prepare(State& s,const AnalysisLumaSource& source,size_t maxSamples) {
 #ifdef VP_SUBTITLE_STACK_BASELINE_RETURN_API
     s.prepared=PrepareCurrentSubtitleCue(s.guard,s.working,source,s.base,true,250,41.708,maxSamples);
 #else
-    PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708,maxSamples);
+    const bool backlog=s.mode==5 && s.working.continuityGeneration==22;const auto witness=Identity(2);
+    PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708,maxSamples,
+        backlog?&witness:nullptr,backlog);
 #endif
 }
 void Consume(State& s,const AnalysisLumaSource& source,bool verified) {
 #ifdef VP_SUBTITLE_STACK_BASELINE_RETURN_API
     s.decision=ConsumePreparedCurrentSubtitleCue(s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared,verified);
 #else
-    ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared,verified);
+    const bool backlog=s.mode==5 && s.working.continuityGeneration==22;const auto witness=Identity(2);
+    ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,
+        s.prepared,verified,backlog?&witness:nullptr,backlog);
 #endif
 }
 __declspec(noinline) void Initialize(State& s) {
@@ -105,6 +109,7 @@ __declspec(noinline) void Initialize(State& s) {
         Require(s.cap.valid,"large cue initial cap failed");
     }
     s.raw=s.current;s.raw.available=false;s.raw.current.analyzed=false;s.raw.current.identity=Identity(3);
+    if(s.mode==5) {s.raw.current.identity=Identity(7);s.raw.continuityGeneration=s.raw.current.continuityGeneration=22;}
     if(s.mode==0) {s.guard.Reset();s.pending.Reset();}
     if(s.mode==3)for(int y=298;y<312;++y)for(int x=240;x<248;++x)s.pixels[y*640+x]=uint16_t(64<<6);
 }
@@ -116,17 +121,24 @@ __declspec(noinline) DWORD Execute(State& s) {
     for(int attempt=0;attempt<(s.mode==1?3:1);++attempt) {
         AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s.source;source.readBudget=&budget;
         s.working=s.raw;
-        const bool prioritize=s.guard.CanInspectCurrentObservation(s.working.current);
+        const auto witness=Identity(2);
+        const bool prioritize=s.guard.CanInspectCurrentObservation(s.working.current) ||
+            s.guard.CanInspectAfterBacklogRetirement(s.working.current,source,&witness,s.mode==5);
         Prepare(s,source,s.mode==1?size_t(1):SubtitleCurrentCueInspectionSampleLimit);
         bool verified=false;
-        if(!prioritize || s.prepared.proof.RetainsCandidateFor(s.working.current.identity,11,21))
+        if(!prioritize || s.prepared.AllowsPendingRecovery(s.working))
             verified=s.pending.Resolve(s.working,source,41.708,250);
         Consume(s,source,verified);
-        const bool expected=s.mode==1 || s.mode==2 || s.mode==4;
+        const bool expected=s.mode==1 || s.mode==2 || s.mode==4 || s.mode==5;
         Require(s.decision.accepted.detected==expected,"unexpected cue admission");
         if(expected)Require(s.decision.accepted.cue==s.cue,"cue identity changed");
         if(s.mode==1)Require(!s.decision.proof.valid && verified,"test must exercise incomplete pending/raw fallback");
         if(s.mode==2)Require(s.decision.proof.completeCurrentCue,"test must exercise COMPLETE current proof");
+        if(s.mode==5) {
+            Require(s.decision.proof.completeCurrentCue && s.guard.CanInspectCurrentObservation(s.working.current),
+                "queue-only trial must commit only a complete selected-source proof");
+            Require(!verified && !budget.exhausted,"queue-only complete proof must skip pending and stay bounded");
+        }
         if(s.mode==4) {
             Require(s.decision.proof.completeCurrentCue,"large cue must complete exact-plane fallback");
             Require(s.decision.proof.verifiedSearch.top==1268 && s.decision.proof.verifiedSearch.bottom==2160,
@@ -158,7 +170,7 @@ int wmain(int argc,wchar_t** argv) {
     struct Redirect {std::streambuf* previous=std::cout.rdbuf();~Redirect(){std::cout.rdbuf(previous);}} redirect;
     if(argc>1) {log.open(argv[1],std::ios::out|std::ios::trunc);if(!log)return 8;std::cout.rdbuf(log.rdbuf());}
     std::cout<<"source="<<VP_SUBTITLE_STACK_SOURCE_COMMIT<<" build="<<__DATE__<<" "<<__TIME__<<std::endl;
-    const int first=argc>2?_wtoi(argv[2]):0,last=argc>2?first:4;
+    const int first=argc>2?_wtoi(argv[2]):0,last=argc>2?first:5;
     try {
         for(int mode=first;mode<=last;++mode) {
             auto state=std::make_unique<State>();state->mode=mode;Initialize(*state);
@@ -173,7 +185,7 @@ int wmain(int argc,wchar_t** argv) {
             DWORD exitCode=10;GetExitCodeThread(thread,&exitCode);CloseHandle(thread);if(exitCode)return int(exitCode);
         }
         if(argc>2)std::cout<<"PASS mode="<<first<<std::endl;
-        else std::cout<<"PASS unavailable-reset incomplete-fallback complete-proof contradiction envelope-plane-fallback"<<std::endl;
+        else std::cout<<"PASS unavailable-reset incomplete-fallback complete-proof contradiction envelope-plane-fallback queue-witness-complete"<<std::endl;
     } catch(const std::exception& error) {std::cout<<"FAIL "<<error.what()<<std::endl;return 11;}
     return 0;
 }

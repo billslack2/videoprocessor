@@ -138,9 +138,9 @@ inline bool RefineSubtitleOpaqueCardAttempt(const AnalysisLumaSource& source,
                 left = (std::max)(left, c.left); right = (std::min)(right, c.right);
                 outerLeft = (std::min)(outerLeft, c.left); outerRight = (std::max)(outerRight, c.right);
             }
-        struct Row { int y, inkLeft, inkRight; bool opaque, centerOpaque; };
+        struct Row { int y, inkLeft, inkRight; bool opaque, centerOpaque, blankBacking; };
         auto inspect = [&](int y) {
-            Row row{ y, right, left, false, false };
+            Row row{ y, right, left, false, false, false };
             unsigned tested = 0, bad = 0, black = 0, centerTested = 0, centerBad = 0, centerBlack = 0;
             bool sideDark = true;
             const int innerLeft = left + stride, innerRight = right - stride;
@@ -165,6 +165,7 @@ inline bool RefineSubtitleOpaqueCardAttempt(const AnalysisLumaSource& source,
                     row.inkRight = (std::max)(row.inkRight, x + stride);
                 }
             }
+            row.blankBacking = tested >= 3 && black * 100 >= tested * 97;
             row.opaque = sideDark && tested >= 3 && bad * 100 <= tested * 3 && black * 100 >= tested * 25;
             row.centerOpaque = centerTested >= 3 && centerBad * 100 <= centerTested * 3 && centerBlack * 100 >= centerTested * 65;
             return row;
@@ -244,6 +245,35 @@ inline bool RefineSubtitleOpaqueCardAttempt(const AnalysisLumaSource& source,
         for (int i = 0; i < result.glyphRowCount; ++i)
             if (result.glyphRows[i].bottom - result.glyphRows[i].top > maximumRecoveredRowHeight)
                 return false;
+        // Neutral antialias values may accompany current core ink, but neutral
+        // scenery is not opaque backing. Whitespace away from that ink needs
+        // the same nearly-black coverage as an actual blank card row. This
+        // bounds no card height: a genuinely black tall margin remains valid.
+        size_t nextInk = 0;
+        int previousInkY = -source.height;
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const Row& row = rows[i];
+            if (row.inkRight > row.inkLeft) previousInkY = row.y;
+            while (nextInk < rows.size() && (nextInk < i ||
+                rows[nextInk].inkRight <= rows[nextInk].inkLeft)) ++nextInk;
+            const bool adjacentInk = row.y-previousInkY <= stride*2 ||
+                (nextInk < rows.size() && rows[nextInk].y-row.y <= stride*2);
+            if (!row.blankBacking && !adjacentInk) return false;
+
+            // Two nomination rows cannot license an unbounded scene beside
+            // the rest of a card. Witness both current sides over its body;
+            // retain the existing small inset allowance for touching shadows
+            // and rounded/stepped edges, without claiming those outside pixels.
+            const int margin = glyphHeight/2+1;
+            const auto outside = [&](int nearX, int farX) {
+                AnalysisLumaSample value;
+                if (!sample(nearX,row.y,value)) return false;
+                if (value.luma > darkLimit) return true;
+                return farX != nearX && sample(farX,row.y,value) && value.luma > darkLimit;
+            };
+            if (!outside(left-1,(std::max)(0,left-margin)) ||
+                !outside(right,(std::min)(source.width-1,right+margin-1))) return false;
+        }
         result.interior = { left, cardTop, right, cardBottom };
         result.measuredBounds = { outerLeft, cardTop, outerRight, cardBottom };
         return true;

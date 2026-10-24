@@ -34,6 +34,9 @@ struct SubtitleCueContinuation {
     }
     ActivePictureFrameIdentity identity, templateIdentity, previousIdentity;
     uint64_t policyGeneration=0, continuityGeneration=0;
+    // Set only after selected-cue COMPLETE queue recovery commits. Permits
+    // geometry-cache epoch rebinding, never old pixels or an UNKNOWN lease.
+    uint64_t recoveredFromContinuity=0;
     ActivePictureBounds physicalBase;
     SubtitleBoxResult accepted;
     std::shared_ptr<const SubtitleInkSnapshot> ink;
@@ -53,6 +56,18 @@ struct SubtitleCueContinuation {
     }
     static bool Contains(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
         return !b.Valid() || (a.Valid() && a.left<=b.left && a.top<=b.top && a.right>=b.right && a.bottom>=b.bottom);
+    }
+    bool RebindsGeometryContinuity(uint64_t prior,const ActivePictureFrameIdentity& cached,
+        int width,int height) const {
+        return valid && completeCurrentCue && ink && prior!=0 && recoveredFromContinuity==prior &&
+            continuityGeneration>prior && cached.acceptedSequence!=0 &&
+            cached.acceptedSequence<=previousIdentity.acceptedSequence &&
+            cached.transportGeneration==identity.transportGeneration &&
+            cached.sourceFormatGeneration==identity.sourceFormatGeneration &&
+            cached.analysisDomainKey==identity.analysisDomainKey &&
+            cached.viewportGeneration==identity.viewportGeneration &&
+            cached.rendererGeneration==identity.rendererGeneration &&
+            width==physicalBase.rasterWidth && height==physicalBase.rasterHeight;
     }
     bool MatchesSource(const ActivePictureFrameIdentity& current,uint64_t policy,uint64_t continuity) const {
         return completeCurrentCue && valid && ink && SameAnalysisFrameIdentity(identity,current) &&

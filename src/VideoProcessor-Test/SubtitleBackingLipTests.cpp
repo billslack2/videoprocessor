@@ -996,6 +996,138 @@ public:
                 L"A complete cue certificate cannot authorize stale backing pixels.");
         }
     }
+    TEST_METHOD(QueueWitnessCompleteInspectionSurvivesPendingExpiryWithCurrentCap) {
+        for(int distance:{20,200}) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->expected=s->frame.Lip(30,true);
+            AcquireEnvelopeCue(*s,distance);const auto witness=Identity(2);
+            auto paddingGuard=std::make_unique<SubtitlePaddingGuard>();
+            auto anchor=std::make_unique<SubtitleLayoutAnchor>();
+            const SubtitleBoxPadding requested{4,6,8};
+            auto padding=paddingGuard->Consume(s->decision.accepted,s->current,requested);
+            s->geometry=s->compositor.Consume(s->decision.accepted,s->current,padding,4);
+            s->geometry=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(s->geometry,{0,384,3840,1776},4),15,padding,true,true);
+            s->geometry=anchor->Consume(s->geometry,s->decision.accepted,s->current,padding,4,true);
+            const auto original=s->geometry;
+            for(uint64_t sequence:{7,8}) {
+                s->working=MissingCurrentWorker(s->current,sequence);
+                s->working.continuityGeneration=s->working.current.continuityGeneration=9;
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s->source;source.readBudget=&budget;
+                PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,source,s->base,true,250,41.708,
+                    SubtitleCurrentCueInspectionSampleLimit,sequence==7?&witness:nullptr,sequence==7);
+                Assert::IsTrue(s->prepared.proof.completeCurrentCue && !s->prepared.AllowsPendingRecovery(s->working));
+                const auto reads=budget.used;
+                if(sequence==7) {
+                    Assert::IsFalse(s->guard.CanInspectCurrentObservation(s->working.current),L"Trial epoch is not committed before selected-cue admission.");
+                    Assert::IsTrue(SameAnalysisFrameIdentity(witness,s->guard.LastVerifiedIdentity()));
+                }
+                ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,source,s->base,true,
+                    250,41.708,s->prepared,false,sequence==7?&witness:nullptr,sequence==7);
+                Assert::AreEqual(reads,budget.used,L"Consume must not repeat current inspection.");
+                Assert::IsTrue(s->decision.proof.completeCurrentCue && s->decision.accepted.detected);
+                Assert::AreEqual(s->cue,s->decision.accepted.cue);
+                Assert::AreEqual(uint64_t(sequence==7?8:0),s->decision.proof.recoveredFromContinuity);
+                if(sequence==7) {
+                    Assert::IsTrue(s->decision.proof.RebindsGeometryContinuity(8,witness,3840,2160));
+                    for(int fault=0;fault<5;++fault) {
+                        auto cached=witness;
+                        if(fault==0)++cached.sourceFormatGeneration;
+                        if(fault==1)++cached.rendererGeneration;
+                        if(fault==2)++cached.viewportGeneration;
+                        if(fault==3)cached.acceptedSequence=7;
+                        Assert::IsFalse(s->decision.proof.RebindsGeometryContinuity(8,cached,fault==4?1920:3840,2160));
+                    }
+                    Assert::IsFalse(s->decision.proof.RebindsGeometryContinuity(7,witness,3840,2160));
+                    auto wrongPolicyCache=std::make_unique<SubtitleCutPastePresentation>();
+                    auto oldPreview=std::make_unique<SubtitleBoxPreview>(s->current);
+                    oldPreview->policyGeneration=oldPreview->current.policyGeneration=6;
+                    Assert::IsTrue(wrongPolicyCache->Consume(s->decision.accepted,*oldPreview,padding,4).valid);
+                    Assert::IsFalse(wrongPolicyCache->Consume(s->decision.accepted,s->working,padding,4,nullptr,&s->decision.proof).valid);
+                }
+                Assert::IsTrue(s->guard.CanInspectCurrentObservation(s->working.current));
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(sequence),s->guard.LastVerifiedIdentity()));
+                Assert::AreEqual(distance==20?1448:1268,s->decision.proof.verifiedSearch.top);
+                Assert::AreEqual(2160,s->decision.proof.verifiedSearch.bottom);
+                padding=paddingGuard->Consume(s->decision.accepted,s->working,requested,{},&s->decision.proof);
+                s->geometry=s->compositor.Consume(s->decision.accepted,s->working,padding,4,nullptr,&s->decision.proof);
+                s->geometry=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(s->geometry,{0,384,3840,1776},4),15,padding,true,true);
+                s->geometry=anchor->Consume(s->geometry,s->decision.accepted,s->working,padding,4,true,&s->decision.proof);
+                AssertGeometryExceptCleanup(original,s->geometry);
+                Assert::IsFalse(s->geometry.currentBackingCorrection);
+                s->cap=s->backing.Consume(source,s->working,s->decision.accepted,Identity(sequence),7,9,
+                    SubtitleBackingLipSampleLimit,&s->geometry,&s->decision.proof);
+                s->applied=ApplyCurrentSubtitleBackingLip(s->geometry,s->cap,Identity(sequence),7,9,&s->applicationReason);
+                Assert::IsTrue(s->cap.valid && std::strcmp(s->applicationReason,"lip-current-cleanup-applied")==0);
+                Assert::IsTrue(Same(s->expected,s->applied.generatedCleanup));AssertGeometryExceptCleanup(s->geometry,s->applied);
+                Assert::IsTrue(!budget.exhausted && budget.used<SubtitleCurrentCueFrameSampleLimit);
+            }
+        }
+    }
+    TEST_METHOD(QueueWitnessInspectionRejectsContextAndChangedCurrentPixels) {
+        for(int distance:{20,200})for(int fault=0;fault<7;++fault) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->frame.Lip(30,true);AcquireEnvelopeCue(*s,distance);
+            auto witness=Identity(fault==1?1:2);s->working=MissingCurrentWorker(s->current,7);
+            s->working.continuityGeneration=s->working.current.continuityGeneration=9;
+            if(fault==2)s->working.policyGeneration=s->working.current.policyGeneration=8;
+            if(fault==3)s->working.current.discontinuity=true;
+            if(fault==4)++s->working.current.identity.rendererGeneration;
+            if(fault==5)s->frame.Fill({1440,1778,1488,1862},64);
+            if(fault==6)for(int glyph=0;glyph<4;++glyph){const int x=80+glyph*78;
+                s->frame.Fill({x,1900,x+48,1966},700);s->frame.Fill({x+12,1912,x+36,1954},64);}
+            AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s->source;source.readBudget=&budget;
+            const auto* token=fault==0?nullptr:&witness;
+            PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,source,s->base,true,250,41.708,
+                SubtitleCurrentCueInspectionSampleLimit,token,true);
+            Assert::IsFalse(s->prepared.proof.valid || s->prepared.proof.candidateRetained);
+            if(fault>=5)Assert::IsTrue(s->prepared.backlogTrial==PreparedCurrentSubtitleCue::BacklogTrial::Contradiction);
+            Assert::IsFalse(s->prepared.AllowsPendingRecovery(s->working));
+            ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,source,s->base,true,
+                250,41.708,s->prepared,false,token,true);
+            Assert::IsFalse(s->decision.accepted.detected || s->decision.proof.valid);
+        }
+    }
+    TEST_METHOD(QueueWitnessUnknownCannotCommitEpochOrRenewPendingLease) {
+        auto s=std::make_unique<EnvelopeCueState>(false);s->frame.Lip(30,true);AcquireEnvelopeCue(*s,200);
+        const auto witness=Identity(2);s->working=MissingCurrentWorker(s->current,7);
+        s->working.continuityGeneration=s->working.current.continuityGeneration=9;
+        AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s->source;source.readBudget=&budget;
+        // A one-read inspection PHASE limit leaves real shared budget for independently verified pending pixels.
+        PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,source,s->base,true,250,41.708,1,&witness,true);
+        Assert::IsTrue(s->prepared.backlogTrial==PreparedCurrentSubtitleCue::BacklogTrial::Unknown);
+        Assert::IsFalse(s->prepared.proof.valid || s->prepared.proof.candidateRetained);
+        Assert::IsTrue(s->prepared.AllowsPendingRecovery(s->working));
+        Assert::IsTrue(s->guard.HasReference() && SameAnalysisFrameIdentity(witness,s->guard.LastVerifiedIdentity()));
+        Assert::IsFalse(s->guard.CanInspectCurrentObservation(s->working.current));
+        Assert::IsTrue(s->pending.Resolve(s->working,source,41.708,250,&witness,true));
+        ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,source,s->base,true,
+            250,41.708,s->prepared,true,&witness,true);
+        Assert::IsTrue(s->decision.accepted.detected && !s->decision.proof.valid);
+        s->working=MissingCurrentWorker(s->current,8);s->working.continuityGeneration=s->working.current.continuityGeneration=9;
+        Assert::IsFalse(s->pending.Resolve(s->working,s->source,41.708,250));
+        Assert::IsTrue(std::strcmp(s->pending.DecisionReason(),"pending-budget-expired")==0);
+        PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708);
+        ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,s->source,s->base,true,250,41.708,s->prepared);
+        Assert::IsFalse(s->decision.accepted.detected || s->decision.proof.valid);
+    }
+    TEST_METHOD(QueueWitnessCompleteCommitRequiresExactSelectedCueAndInput) {
+        for(int fault=0;fault<5;++fault) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->frame.Lip(30,true);AcquireEnvelopeCue(*s,20);
+            auto witness=Identity(2);s->working=MissingCurrentWorker(s->current,7);
+            s->working.continuityGeneration=s->working.current.continuityGeneration=9;
+            PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708,
+                SubtitleCurrentCueInspectionSampleLimit,&witness,true);
+            Assert::IsTrue(s->prepared.proof.completeCurrentCue);
+            auto source=s->source;auto base=s->base;
+            if(fault==0)s->tracker.Reset();
+            if(fault==1)++base.top;
+            if(fault==2)++witness.captureTimestamp;
+            if(fault==3)source.colorspace=ColorSpace::REC_709;
+            if(fault==4)s->guard.Reset();
+            ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,source,base,true,
+                250,41.708,s->prepared,false,&witness,true);
+            Assert::IsFalse(s->decision.accepted.detected || s->guard.HasReference() || s->decision.proof.valid);
+            Assert::AreEqual(uint64_t(0),s->decision.proof.recoveredFromContinuity);
+        }
+    }
     TEST_METHOD(OptionalNativeRecurrenceCoordinatorKeepsCueGeometryAndCapWithinProductionBudgets) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_CURRENT_CAP_REPLAY_PATH");
         const std::string path=value?value:"";std::free(value);
