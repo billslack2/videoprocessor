@@ -1,0 +1,138 @@
+{
+  "windowStart": "2026-10-23 22:02:05",
+  "windowEnd": "2026-10-23 22:04:29",
+  "geometryRecords": 0,
+  "composed": {},
+  "continuationReasons": {
+    "native-base-physical-edge-mismatch": 72
+  },
+  "continuationAccepted": {
+    "1": 63,
+    "0": 9
+  },
+  "bboxObserved": {
+    "1": 26,
+    "0": 5
+  },
+  "sampledGeometry": [],
+  "caveat": "Installed SubmittedOutputGeometryTrace emits only geometry changes, not composition-only transitions or a heartbeat. No geometry change was logged in this interval. Composition policy logs are sampled, so timestamps bound observed samples rather than exact transition times. CPU/GPU tests ran concurrently; this is not an isolated performance baseline.",
+  "compositionPolicyCounts": {
+    "1": 25,
+    "0": 4
+  },
+  "compositionOffRecords": [
+    {
+      "frame": "17280",
+      "style": "3",
+      "shared_policy": "1",
+      "composed": "0",
+      "no_caption_confirmed": "0",
+      "discarded_strip_clear": "0",
+      "strip_samples": "0",
+      "cue_reason": "unavailable",
+      "owner": "translation",
+      "shared": "0,658-3840,2066",
+      "display": "0,376-3840,1784",
+      "requested_translation": "282",
+      "time": "2026-10-23 22:03:13"
+    },
+    {
+      "frame": "17400",
+      "style": "3",
+      "shared_policy": "1",
+      "composed": "0",
+      "no_caption_confirmed": "0",
+      "discarded_strip_clear": "0",
+      "strip_samples": "0",
+      "cue_reason": "unavailable",
+      "owner": "translation",
+      "shared": "0,658-3840,2066",
+      "display": "0,376-3840,1784",
+      "requested_translation": "282",
+      "time": "2026-10-23 22:03:18"
+    },
+    {
+      "frame": "17520",
+      "style": "3",
+      "shared_policy": "1",
+      "composed": "0",
+      "no_caption_confirmed": "0",
+      "discarded_strip_clear": "0",
+      "strip_samples": "0",
+      "cue_reason": "unavailable",
+      "owner": "translation",
+      "shared": "0,658-3840,2066",
+      "display": "0,376-3840,1784",
+      "requested_translation": "282",
+      "time": "2026-10-23 22:03:23"
+    },
+    {
+      "frame": "17640",
+      "style": "3",
+      "shared_policy": "1",
+      "composed": "0",
+      "no_caption_confirmed": "0",
+      "discarded_strip_clear": "0",
+      "strip_samples": "0",
+      "cue_reason": "unavailable",
+      "owner": "translation",
+      "shared": "0,658-3840,2066",
+      "display": "0,376-3840,1784",
+      "requested_translation": "282",
+      "time": "2026-10-23 22:03:28"
+    }
+  ],
+  "missingExactResultWindows": [
+    {
+      "window_s": "5.000",
+      "calls": "120",
+      "requests": "480",
+      "avg_ms": "0.155",
+      "peak_ms": "0.224",
+      "submitted": "120",
+      "exact_reads": "0",
+      "deduplicated": "1080",
+      "expired_jobs": "12",
+      "ready_seen": "0",
+      "published_future": "0",
+      "missing": "480",
+      "time": "2026-10-23 22:03:18"
+    },
+    {
+      "window_s": "5.000",
+      "calls": "120",
+      "requests": "480",
+      "avg_ms": "0.163",
+      "peak_ms": "0.256",
+      "submitted": "120",
+      "exact_reads": "0",
+      "deduplicated": "1080",
+      "expired_jobs": "13",
+      "ready_seen": "0",
+      "published_future": "0",
+      "missing": "480",
+      "time": "2026-10-23 22:03:23"
+    },
+    {
+      "window_s": "5.015",
+      "calls": "120",
+      "requests": "480",
+      "avg_ms": "0.166",
+      "peak_ms": "0.244",
+      "submitted": "120",
+      "exact_reads": "0",
+      "deduplicated": "1080",
+      "expired_jobs": "12",
+      "ready_seen": "0",
+      "published_future": "0",
+      "missing": "480",
+      "time": "2026-10-23 22:03:28"
+    }
+  ],
+  "cadenceDropCounts": {
+    "0": 29
+  },
+  "rendererDropCounts": {
+    "0": 29
+  }
+}

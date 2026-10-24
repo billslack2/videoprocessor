@@ -1,0 +1,27 @@
+[
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\release-build.log",
+    "sha256": "61f2388c005fdb0dac4ec77175ae4ecff24da9e57491292dff1e212a52bb8d32",
+    "bytes": 126626
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\native-tests.log",
+    "sha256": "77f8828ef73d411f1d275a56df7c05056c077bec820db61dc2f74cf6a22c7aa7",
+    "bytes": 308924
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\native\\deploy-pr193-combined.trx",
+    "sha256": "cf6ec5ceee19dd943d3730ecbddf2f5d761b98c5d4e59de98695385d38f69c1e",
+    "bytes": 2721927
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\deploy.ps1",
+    "sha256": "b780e233a78fcb73dbfd8d01595a3c68e5c0d2602da8a91b5ebe6707cff688be",
+    "bytes": 6937
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\postdeploy-runtime.log",
+    "sha256": "21b3779441f788b00683a61fd3554ff099f29032e9073cc66b20f35d5f3ec750",
+    "bytes": 863411
+  }
+]

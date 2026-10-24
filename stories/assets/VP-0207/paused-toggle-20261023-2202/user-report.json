@@ -1,0 +1,12 @@
+{
+  "report": "While paused sometimes it loses the subtitle relocation for seconds at a time too",
+  "installedSource": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "currentlyFailingPauseConfirmed": true,
+  "screenshots": "Computer-use kernel failed twice during startup: Windows sandbox setup refresh errors",
+  "capture": "Current and rotated VP logs copied before deployment; no video pixels captured",
+  "diagnosis": "Open. Static movie content may still have advancing capture-source identity; duration/expiry and proof rejection are hypotheses, not established causes.",
+  "confirmedReport": "paused and keeps toggling on off for periods of greater than 5 or 10 seconds at a time",
+  "confirmedWindowStart": "2026-10-23 22:02:05",
+  "confirmedWindowEnd": "2026-10-23 22:04:29",
+  "loadCaveat": "Native CPU/GPU regression tests were running during this confirmed capture; state transitions can be inspected, but timing is not an isolated performance baseline."
+}

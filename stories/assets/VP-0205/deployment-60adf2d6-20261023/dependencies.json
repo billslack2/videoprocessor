@@ -1,0 +1,92 @@
+[
+  {
+    "target": "vprenderer\\libdovi.dll",
+    "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libgcc_s_seh-1.dll",
+    "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\liblcms2-2.dll",
+    "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libplacebo-360.dll",
+    "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libshaderc_shared.dll",
+    "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libspirv-cross-c-shared.dll",
+    "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libstdc++-6.dll",
+    "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\libwinpthread-1.dll",
+    "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+    "matches": true
+  },
+  {
+    "target": "vprenderer\\vulkan-1.dll",
+    "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libdovi.dll",
+    "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libgcc_s_seh-1.dll",
+    "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\liblcms2-2.dll",
+    "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libplacebo-377.dll",
+    "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libshaderc_shared.dll",
+    "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+    "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libstdc++-6.dll",
+    "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\libwinpthread-1.dll",
+    "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+    "matches": true
+  },
+  {
+    "target": "vprenderer-beta\\vulkan-1.dll",
+    "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+    "matches": true
+  }
+]

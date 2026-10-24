@@ -1,0 +1,73 @@
+﻿{
+    "sourceCommit":  "60adf2d6cb06f53498cc0bedd1791ea3a6307603",
+    "betaCommit":  "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "preservedInstalledCommit":  "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+    "configuration":  "Release",
+    "architecture":  "x64",
+    "backup":  "C:\\Videoprocessor\\vp\\deployment-backups\\pr193-prepared-60adf2d6-20261023-220940",
+    "configurationEdits":  [
+
+                           ],
+    "status":  "deployed",
+    "files":  [
+                  {
+                      "source":  "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+                      "target":  "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+                      "sha256":  "58E81B5EC3A7C3A34AC883CE2BB65B24BAB424693599DA5EDF8A06EB98DF5841",
+                      "previousSha256":  "C767F64D6909A5CB7B9C00916CA27F820F3FAD26FE523F32B074D7E80BDF45E8"
+                  },
+                  {
+                      "source":  "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+                      "target":  "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+                      "sha256":  "610D618850ED73DF5A5CEC11F28502F5AE289FC6745B7DDD4A71C5A3EC4CA7BF",
+                      "previousSha256":  "0CF26029C526A7143BD05993571FFA193FF0C68558CCAC47474F8C0BDECC31DF"
+                  },
+                  {
+                      "source":  "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                      "target":  "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                      "sha256":  "FD224BC15A6AB384F341BF795AEA20B08CE856B2503AEF4C0FBEB5D0BC5BEF33",
+                      "previousSha256":  "7C3495E99CD03AC6C85AB41DCDD195616F59AF03A5BD78A75DEEDE744E1835D2"
+                  }
+              ],
+    "configBefore":  [
+                         {
+                             "name":  "active-output-sweep-hdr-template.cfg",
+                             "sha256":  "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+                         },
+                         {
+                             "name":  "active-output-sweep-sdr-template.cfg",
+                             "sha256":  "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+                         },
+                         {
+                             "name":  "NPNnnNPn.cfg",
+                             "sha256":  "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+                         },
+                         {
+                             "name":  "VideoProcessor.cfg",
+                             "sha256":  "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+                         }
+                     ],
+    "configAfter":  [
+                        {
+                            "name":  "active-output-sweep-hdr-template.cfg",
+                            "sha256":  "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+                        },
+                        {
+                            "name":  "active-output-sweep-sdr-template.cfg",
+                            "sha256":  "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+                        },
+                        {
+                            "name":  "NPNnnNPn.cfg",
+                            "sha256":  "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+                        },
+                        {
+                            "name":  "VideoProcessor.cfg",
+                            "sha256":  "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+                        }
+                    ],
+    "stateBefore":  "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+    "stateAfter":  "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+    "verifiedAt":  "2026-10-23T22:09:42.5735105-04:00",
+    "wasRunning":  true,
+    "startedProcessId":  45152
+}

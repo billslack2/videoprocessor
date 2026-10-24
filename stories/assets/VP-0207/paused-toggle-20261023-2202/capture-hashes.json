@@ -1,0 +1,17 @@
+[
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\predeploy-paused-report\\paused-confirmed-start.log",
+    "sha256": "c95049bfab6dd760cb6556c9af79f3ba880760f3eea28a9987bc34466e867252",
+    "bytes": 11016273
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\predeploy-paused-report\\paused-confirmed-end.log",
+    "sha256": "898b0481c197f1e62157cecbd4b3eea9a0d063ec728580a816f528f8ca91f28c",
+    "bytes": 12481396
+  },
+  {
+    "path": "E:\\codex\\videoprocessor\\pr193-deploy-preserve-subtitles-20261023\\artifacts\\deploy-pr193-20261023\\predeploy-paused-report\\paused-confirmed-focused.log",
+    "sha256": "8ef270d116438afb0a5dd4e5cdbfa4eebd9d24db46615d6daf6ae85e864d5966",
+    "bytes": 148258
+  }
+]
