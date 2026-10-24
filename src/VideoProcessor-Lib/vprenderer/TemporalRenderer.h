@@ -25,6 +25,7 @@ public:
         uint64_t viewportEpoch=0;
         int owner=0;
         bool valid=false,visibleSafe=false,emptyBandsSafe=false,cleaned=false;
+        uint64_t outputContract=0;
     };
     // Mode selection is not proof that this source picture was cleaned. A
     // rejected/pending cue keeps raw pixels and cannot blend into a repaired
@@ -115,6 +116,8 @@ private:
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
     double submittedOutputPts=0;
     bool submittedOutputAvailable=false;
+    uint64_t subtitleFallbackSequence=0;
+    const char* subtitleFallbackReason="not-selected";
     bool initialized=false,interlaced=false,topFirst=true,mixing=false,composition=false,nativeMode=false;
     int delay=0;
     MotionConfig::Settings settings;
@@ -124,6 +127,7 @@ public:
     struct ProcessingStatistics {
         uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
         uint64_t sourceRendererCreations=0,sourceRendererHistoryFlushes=0;
+        uint64_t subtitleFallbackOutputs=0;
     };
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
@@ -132,7 +136,7 @@ private:
     bool lastHdrStatusAvailable=false;
     void ResetHistory(bool keepProcessingRenderer) {
         lastHdrStatusAvailable=false;lastHdrStatus={};
-        submittedOutputAvailable=false;history.clear();
+        submittedOutputAvailable=false;subtitleFallbackSequence=0;subtitleFallbackReason="history-reset";history.clear();
         if(keepProcessingRenderer && sourceRenderer) {
             // Discard all temporal/peak evidence, retaining only the renderer's
             // reusable GPU programs. A queue gap grants no old-pixel authority.
@@ -172,12 +176,15 @@ public:
     }
     uint64_t LastSubtitleSequence() const { return lastSubtitleSequence; }
     uint64_t SelectedPacketSequence() const {
+        if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=packet->sequence;
         return selected;
     }
     double SelectedPacketPts() const {
+        if(subtitleFallbackSequence)for(const auto& packet:history)
+            if(packet->sequence==subtitleFallbackSequence)return packet->pts;
         double selected=0.0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=packet->pts;
@@ -185,6 +192,7 @@ public:
     }
     double SourceDurationSeconds() const { return sourceDuration; }
     uint64_t SelectedSubtitleSequence() const {
+        if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=(packet->subtitle||packet->hasSubtitle)?packet->sequence:0;
@@ -195,6 +203,46 @@ public:
         if(history.empty()||history.back()->sequence!=sequence)return false;
         history.back()->presentation=geometry;
         return true;
+    }
+    bool SubtitleFallbackActive() const { return subtitleFallbackSequence!=0; }
+    const char* SubtitleFallbackReason() const { return subtitleFallbackReason; }
+    // A failed source cue may repeat one complete processed picture. It never
+    // applies an old layer/cleanup to current pixels or renews source evidence.
+    // Two missing selected source intervals are allowed; output repeats do not
+    // advance this bound, and the next valid source cue always wins.
+    bool SelectSubtitleFallback(uint64_t epoch,uint64_t viewportEpoch,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        int outputWidth,int outputHeight,uint64_t outputContract=0) {
+        subtitleFallbackSequence=0;subtitleFallbackReason="not-eligible";
+        if(!mixing||!composition||interlaced||history.empty())return false;
+        const Stored* selected=nullptr;
+        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
+        if(!selected)return false;
+        if(selected->subtitle||selected->hasSubtitle) {
+            subtitleFallbackReason="current-cue";return false;
+        }
+        if(!selected->presentation.valid||selected->presentation.viewportEpoch!=viewportEpoch||
+            (outputContract&&selected->presentation.outputContract!=outputContract))
+            return false;
+        subtitleFallbackReason="no-complete-packet";
+        for(auto it=history.rbegin();it!=history.rend();++it) {
+            const auto& packet=**it;
+            if(packet.sequence>=selected->sequence||!(packet.subtitle||packet.hasSubtitle))continue;
+            if(!WithinSubtitleFallbackWindow(packet,*selected)) {
+                subtitleFallbackReason="source-window-expired";return false;
+            }
+            const auto& a=packet.presentation;const auto& b=selected->presentation;
+            if(!a.valid||!a.cleaned||a.viewportEpoch!=viewportEpoch||
+                (outputContract&&a.outputContract!=outputContract)||
+                !SameRect(a.familyBase,b.familyBase)||!SameRect(a.sourceCrop,b.sourceCrop)||
+                !MatchesProcessedOutput(packet.processed[0],source,target,params,epoch,
+                    outputWidth,outputHeight,outputContract!=0)) {
+                subtitleFallbackReason="context-or-cache-mismatch";return false;
+            }
+            subtitleFallbackSequence=packet.sequence;
+            subtitleFallbackReason="complete-packet-repeat";return true;
+        }
+        return false;
     }
     const pl_deinterlace_params& DeinterlaceParameters() const { return deinterlace; }
     const pl_filter_config* MixerParameters() const { return mixer; }
@@ -261,7 +309,7 @@ public:
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
         bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
         bool sourceSubtitleComposition=false,bool cadenceRepeat=false) {
-        outputs.clear();skipOutput=false;currentPts=pts;
+        outputs.clear();skipOutput=false;currentPts=pts;subtitleFallbackSequence=0;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
         }
@@ -674,6 +722,38 @@ public:
     static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {
         return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
     }
+    static bool WithinSubtitleFallbackWindow(const Stored& prior,const Stored& selected,
+        double duration) {
+        return prior.sequence<selected.sequence && selected.sequence-prior.sequence<=2 &&
+            std::isfinite(duration)&&duration>0 && std::isfinite(prior.pts)&&
+            std::isfinite(selected.pts)&&selected.pts>prior.pts &&
+            selected.pts-prior.pts<=2.0*duration+1e-6;
+    }
+    bool WithinSubtitleFallbackWindow(const Stored& prior,const Stored& selected) const {
+        return WithinSubtitleFallbackWindow(prior,selected,sourceDuration);
+    }
+    static bool MatchesProcessedOutput(const Stored::Processed& cached,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        uint64_t epoch,int width,int height,bool frozenOutputContract=false,
+        bool ignoreSourceAnalysis=false) {
+        const auto peak=params.peak_detect_params?params.peak_detect_params->analysis_crop:pl_rect2df{};
+        if(!cached.valid||cached.epoch!=epoch||cached.width!=width||cached.height!=height||
+            cached.sourceRotation!=source.rotation||cached.targetRotation!=target.rotation||
+            !SameCrop(cached.sourceCrop,source.crop)||!SameCrop(cached.targetCrop,target.crop))return false;
+        // The host defers acquiring the swapchain until packet selection. Its
+        // immutable output-contract annotation plus processing epoch binds all
+        // target/profile settings even though this provisional target has no
+        // color/representation metadata yet. Standalone callers use full keys.
+        if(frozenOutputContract)return true;
+        if((!ignoreSourceAnalysis&&!SameCrop(cached.peakCrop,peak))||
+            cached.hooks.size()!=size_t(params.num_hooks)||
+            !pl_color_space_equal(&cached.targetColor,&target.color)||
+            !pl_color_repr_equal(&cached.targetRepr,&target.repr)||cached.targetLut!=target.lut||
+            cached.targetIcc!=target.icc||cached.profileSignature!=target.profile.signature)return false;
+        for(int h=0;h<params.num_hooks;++h)
+            if(cached.hooks[h]!=params.hooks[h]->signature)return false;
+        return true;
+    }
     bool ProcessSource(pl_renderer renderer,size_t index,int fieldIndex,
         const pl_frame& source,const pl_frame& target,pl_render_params& params,
         uint64_t epoch,Stored::Processed*& result) {
@@ -786,8 +866,13 @@ public:
         lastHdrStatusAvailable=false;lastHdrStatus={};
         if(composition&&!PreflightCompositionOutput())return false;
         const Stored* selected=nullptr;
-        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
-        const auto entries=NativeEntriesForOutput();
+        const auto selectedSequence=SelectedPacketSequence();
+        size_t selectedIndex=history.size();
+        for(size_t i=0;i<history.size();++i)if(history[i]->sequence==selectedSequence) {
+            selected=history[i].get();selectedIndex=i;break;
+        }
+        const bool held=subtitleFallbackSequence && selectedIndex<history.size();
+        const auto entries=held?std::vector<NativeEntry>{{selectedIndex,0,0.0}}:NativeEntriesForOutput();
         std::vector<const pl_frame*> frames;
         std::vector<uint64_t> signatures;
         std::vector<RendererHdrStatus> hdrStatuses;
@@ -798,7 +883,22 @@ public:
             if(selected&&history[entry.index].get()!=selected&&
                 !CompatiblePresentation(*selected,*history[entry.index],source.crop))continue;
             Stored::Processed* processed=nullptr;
-            if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
+            if(held) {
+                // The host selected before acquiring the target. Recheck actual
+                // output metadata/mapping here; a changed contract reprocesses
+                // this same owned clean picture and matching layer, never the
+                // current raw picture. Rejecting only the cache would otherwise
+                // send the host through its acquired-frame black-clear path.
+                processed=&history[entry.index]->processed[0];
+                const pl_tex output=target.num_planes==1?target.planes[0].texture:nullptr;
+                if(output&&MatchesProcessedOutput(*processed,source,target,params,epoch,
+                    output->params.w,output->params.h,false,true)) {
+                    ++processingStatistics.sourceReuses;
+                } else {
+                    if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
+                    subtitleFallbackReason="complete-packet-remapped";
+                }
+            } else if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
             used[entry.index][entry.field]=true;
             frames.push_back(&processed->frame);signatures.push_back(processed->signature);
             hdrStatuses.push_back(processed->hdrStatus);
@@ -823,7 +923,7 @@ public:
         presentation.dynamic_constants=true;
         presentation.info_callback=params.info_callback;presentation.info_priv=params.info_priv;
         bool rendered=false;
-        if(mixing) {
+        if(mixing&&!held) {
             presentation.frame_mixer=mixer;
             pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
             mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
@@ -858,6 +958,7 @@ public:
         }
         if(rendered) {
             ++processingStatistics.outputRenders;
+            if(held)++processingStatistics.subtitleFallbackOutputs;
             // The output cue is the latest included source at/before the output
             // timestamp, exactly as in the non-mixing presentation selection.
             // Its snapshot survives later neighbour renders and cache reuse.
@@ -866,7 +967,19 @@ public:
         }
         // Keep only the active filter support. Raw history remains available
         // for deinterlacing and geometry guards; float output caches are bounded.
-        for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]) {
+        // Keep at most one already processed caption anchor for the bounded
+        // missing-source fallback. No new texture or source proof is produced.
+        const Stored* normalSelected=nullptr;size_t anchorIndex=history.size();
+        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)normalSelected=packet.get();
+        if(mixing&&composition&&!interlaced&&normalSelected)
+            for(size_t i=0;i<history.size();++i) {
+                const auto& packet=*history[i];
+                if(packet.sequence<=normalSelected->sequence && packet.subtitle &&
+                    packet.processed[0].valid && packet.presentation.valid && packet.presentation.cleaned &&
+                    (packet.sequence==normalSelected->sequence || WithinSubtitleFallbackWindow(packet,*normalSelected)))
+                    anchorIndex=i;
+            }
+        for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]&&!(i==anchorIndex&&f==0)) {
             auto& processed=history[i]->processed[f];
             pl_tex_destroy(gpu,&processed.texture);processed.valid=false;
             if(nativeMode) {
