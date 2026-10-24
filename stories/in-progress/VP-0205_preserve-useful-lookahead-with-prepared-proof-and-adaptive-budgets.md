@@ -1,8 +1,20 @@
-# VP-0205: Preserve useful lookahead with prepared proof and adaptive budgets
+# VP-0205: Preserve useful lookahead with prepared proof
 
 ## Status
 
-Review
+In Progress
+
+2026-10-23 scope split authorized by the user: retain prepared proof/cache/worker
+improvements in PR #193 and move adaptive admission plus architectural evaluation
+to [VP-0208](../backlog/VP-0208_lookahead-scheduling-and-smooth-presentation.md).
+Reduced source `acbae401` restores the exact beta budget class, GPU timer and
+budget tests and removes adaptive GPU observation/reporting. Clean Release build
+and focused native validation are underway in the existing recorded worktree.
+The prior rebase evidence below remains historical, not validation of this split.
+The user additionally requests evaluating whether the current policy makes sense,
+more async work and alternative scheduling architectures; VP-0208 records these.
+
+### Pre-split review evidence
 
 Current PR head is `13f43bcb6b99581ffcdc1e800ece471565477a80`, rebased onto
 current/default `v1.4.02-beta` at `e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a`
@@ -95,8 +107,8 @@ was `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
 Preserve lookahead as a core picture-quality feature: valid crop and caption
 proof should be available for its first eligible displayed source frame. Retain
 configured lookahead depth while reducing avoidable repeated scans, discarded
-completed work, and deadline cancellations. Protect presentation timing with
-measured admission rather than treating the existing 2 ms ceiling as an optimum.
+completed work, and deadline cancellations. Keep current beta presentation admission unchanged for this integration.
+VP-0208 evaluates its adequacy and alternatives; 2 ms is not treated as an optimum.
 
 ## Evidence
 
@@ -169,13 +181,9 @@ will be reported separately. No configuration migration or UI redesign is needed
    evidence stops the publishable prefix without casting a provisional final
    vote. Only the first three consecutive complete samples replace expansion
    authority. Existing live native-pixel/owner/model checks remain authoritative.
-5. Qualified tickets use actual reachable display lead less
-   `max(2 ms, 1.25 * (CPU tail + GPU tail))`, with eight fixed 250 ms buckets.
-   New-source CPU cost survives cheap repeats. Exact epoch/viewport and actual
-   GPU query issue age qualify timing; stale/unknown/unstable timing caps at 1 ms,
-   repeats/backlog admit no new scans, and a ticket never moves its own deadline.
-   CPU/GPU overlap makes the reserve conservative; selected-stage GPU sums are
-   not end-to-end Present/scanout completion or a future deadline guarantee.
+5. Retain exact current-beta presentation admission and timer behavior. The
+   previously implemented adaptive CPU/GPU tails, uncapped qualified allowance
+   and expanded boundary rule are deferred to VP-0208, recoverable at `13f43bcb`.
 6. Fixed aggregate telemetry separates selected/ready/required depth, stage
    cache/work/cancellation, complete work retained after cancellation, async
    ready/late/invalid/no-change/stale, raw/retention fallback/reuse, publication,
@@ -200,9 +208,8 @@ will be reported separately. No configuration migration or UI redesign is needed
 - [x] A later helper cancellation retains unrelated complete measurements safely;
       overlapping windows reuse completed proof while its full dependency key remains
       current and do not cast duplicate temporal votes.
-- [ ] An adaptive allowance respects actual presentation deadlines and conservative
-      mandatory-cost reserves for both new and repeated outputs, with explicit
-      fallback when timing evidence is unavailable or overloaded.
+- [ ] Reduced PR preserves beta admission and passes exact-head Release/native
+      validation. Adaptive policy acceptance is explicitly transferred to VP-0208.
 - [ ] Matched measurements demonstrate useful ready/adopted proof and transition
       timing alongside CPU/GPU/presentation tails, deadline misses, worker cost,
       queue depth and memory. Completion percentage alone is insufficient.
@@ -211,7 +218,8 @@ will be reported separately. No configuration migration or UI redesign is needed
 
 The native/Release implementation contracts above passed. Matched live replay,
 actual displayed-source adoption and sustained GPU-pressure/queue/memory tails
-remain outstanding; the last two acceptance criteria remain open for that reason.
+remain outstanding; live prepared-proof acceptance remains open. Adaptive architecture acceptance
+is explicitly transferred to VP-0208; it is not declared complete by this split.
 
 
 Use deterministic native tests and matched source-sequence replay for first-frame

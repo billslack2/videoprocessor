@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0207`
-- Next root story number: `VP-0208`
-- Total indexed items: 226
+- Last assigned root story: `VP-0208`
+- Next root story number: `VP-0209`
+- Total indexed items: 227
 
 ## Story locations
 
@@ -264,9 +264,10 @@ they must not contain requirements that are absent from this file.
 | VP-0202 | Done | Prevent long-uptime DirectShow reference-clock overflow |
 | VP-0203 | Review | Load calibration LUT disk changes only on explicit Config Apply |
 | VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |
-| VP-0205 | Review | Preserve useful lookahead with prepared proof and adaptive budgets |
+| VP-0205 | In Progress | Preserve useful lookahead with prepared proof |
 | VP-0206 | Done | Release retained scope for asymmetric full height picture |
 | VP-0207 | In Progress | Overlay fit stability and subtitle backing boundaries |
+| VP-0208 | Backlog | Reassess lookahead scheduling for smooth presentation |
 
 ## Codex story workflow
 
