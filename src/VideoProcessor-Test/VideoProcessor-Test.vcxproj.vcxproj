@@ -311,6 +311,7 @@
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="ActivePictureBlackReferenceTests.cpp" />
     <ClCompile Include="ActivePictureMeasurementCacheTests.cpp" />
+    <ClCompile Include="SourceOutputNormalizationTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp" />
     <ClCompile Include="LocalBoundaryRefinementTests.cpp" />
     <ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp" />

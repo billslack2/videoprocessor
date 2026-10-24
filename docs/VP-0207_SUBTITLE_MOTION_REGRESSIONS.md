@@ -73,6 +73,36 @@ expiry on the third missing source, immediate new-cue selection, cue-end expiry,
 immutable background/layer pairing, reset/context rejection and ordinary mode.
 Live diagnostics must distinguish these intentional presentation repeats from
 fresh subtitle acquisition or current cleanup authority.
+## Source preparation and output reuse
+
+Each immutable source has one preparation receipt shared by upload, early picture
+analysis and subtitle preparation. Repeated output draws may reuse its prepared
+pixels and decisions only while source ownership, timestamps, format, policy,
+viewport, output and GPU identity still match. New sources and failed attempts
+invalidate the receipt before mutable state or textures are prepared.
+
+Inserted Smooth Motion outputs may reuse a completed attempt, including an
+inconclusive result, without treating it as fresh proof. A queued repeat of the
+same source may skip picture and subtitle analysis only when both were complete;
+otherwise an exact late worker result can still recover the source. Upload reuse
+is independent. Reuse preserves the original completeness and source time.
+Results that depend on an older source's timed hold remain retryable; expiration
+forces the existing current bar inspection, without renewing the old detection.
+Scene and ambiguity holds also remain eligible for their normal expiry checks.
+
+Bar-content inspection advances every third eligible source identity, not every
+third display draw. Forced inspection still handles current changed bar content.
+Output acquisition, presentation pose, OSD, HDR publication and submission remain
+per-output. This does not change libplacebo tone mapping or the existing bounded
+subtitle packet fallback.
+
+`SourceOutputNormalizationTests` exercises actual native AR/subtitle detection,
+current-cue preparation, placement and backing cleanup through the shared receipt
+at controlled 24/48/60/120 Hz output schedules. It also checks late incomplete
+recovery, failed preparation, source/context changes and navigation content.
+These CPU cadence checks complement the dual-library GPU tests above; neither is
+physical mismatched-refresh playback acceptance.
+
 ## Transfer and chroma controls
 
 Exercise opaque HLG preparation separately from transparent subtitle layers.

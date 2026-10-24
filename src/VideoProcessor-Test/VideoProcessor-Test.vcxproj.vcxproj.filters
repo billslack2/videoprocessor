@@ -199,4 +199,5 @@
   <ItemGroup>
     <ClCompile Include="PreparedOutwardWindowTests.cpp" />
   </ItemGroup>
+  <ItemGroup><ClCompile Include="SourceOutputNormalizationTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
 </Project>
