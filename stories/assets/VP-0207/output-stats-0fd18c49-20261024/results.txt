@@ -1,0 +1,12 @@
+Output-presentation OSD follow-up: 0fd18c49
+
+Current Dropped was capture/queue loss; D/R estimate was predicted drift. Neither was actual displayed drop/repeat accounting.
+
+The reviewed candidate labels upstream drops, estimates and intentional corrections separately. Exact Display D/R is explicitly unavailable. A bounded observer counts only witnessed long holds between exact adjacent displayed present IDs, with partial coverage/status and conservative cadence allowance. Duplicate/skipped/disjoint/unavailable observations cannot manufacture drops. Known incidents survive recovery. Smooth Motion outputs use their one-refresh intent; ordinary 24-to-60 holds and deliberate source corrections are excluded. No playback, subtitle, AR, HDR or presentation-model changes.
+
+Clean x64 Release host and both renderer DLLs built; API 31. All 146 focused native/OSD/ABI/timing tests passed, including 28 new methods. Matching binary hashes/manifests are in summary.json. Independent team review found no blockers. No full GPU/cue suite rerun was required for this diagnostic-only change.
+
+NOT DEPLOYED. Installed 592d890b and user configuration remain unchanged. Latest actual player log reports DXGI_ERROR_UNSUPPORTED 0x887A0004; the new OSD would show unavailable on that path, not a clean zero. Complete madVR-style output drop/repeat accounting remains unfinished and requires fuller per-present evidence plus planned output-slot accounting. This synthetic qualification is not physical-display or visual subtitle acceptance. PR #197 remains draft and unmerged.
+
+Full logs, build/test receipts, binary hashes and review reports: E:\codex\diagnostics\vp-output-presentation-counters-20261024
+

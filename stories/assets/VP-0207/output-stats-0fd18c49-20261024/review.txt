@@ -1,0 +1,28 @@
+Independent diagnostic presentation-counter review
+Date: 2026-10-24
+Reviewer: safety_regression_design
+Result: no blocking finding in the reviewed pending source. This is a read-only source/test review, not a build, physical-display qualification, or runtime acceptance.
+
+Scope
+Reviewed the new AlphaOutputPresentationTelemetry observer, fixed-size submission ledger, OutputPresentationPublication, renderer call sites, RendererRenderLoad ABI, GUI mapping/labels, project registrations, and focused observer/publication/layout tests. No source, configuration, runtime, or process changes were made by this review. No builds or GPU tests were run.
+
+Resolved findings
+1. The early intentional cadence Drop return now resets observation continuity before returning; the observer cannot attribute that deliberate interval to an unexpected display hold. Failed work is not automatically hidden: later valid adjacent displayed observations may still prove an actual hold, without assigning its cause.
+2. Nonzero recorded incident counts remain visible even when current observation becomes unavailable, unsupported, stale or disjoint. Verified zero requires current observing evidence. ResetContinuity preserves session totals.
+3. Active Smooth Motion uses an explicit one-refresh allowance. Native 24-to-60 permits three refreshes and native 59.94-to-60 permits two; the conservative latter allowance can miss shorter delays but cannot claim them as confirmed faults.
+4. API31 matches the expanded cross-DLL RendererRenderLoad payload and both explicit compatibility assertions. Matching host and renderer binaries remain required.
+
+Observer and publication checks
+Only exact recorded present IDs are considered. An interval requires adjacent observed IDs, same intent/context, retained anchor record, monotonic display and sync/QPC progress, and validated sync clock cadence. Polling skips, duplicate submissions, wraps, evicted records, unmatched generations, invalid timing, and disjoint feedback cannot invent displayed-frame fate. Contradictory points do not become replacement anchors. Duplicate polls do not refresh witness age.
+The renderer reuses its existing DXGI queries. The additional path performs bounded array searches and small POD copies; it adds no GPU waits, flushes, resource allocation, scheduling changes, or queries. Publication uses a nonblocking producer try_lock; the UI reads a small snapshot without taking renderMutex. A contended publication can be delayed until a later publish, and stale evidence ages after one second.
+Actual early Drop, resize, swapchain recreation/pointer changes, and backlog reset paths were inspected. Their diagnostic state is renderer-owned; the UI sees only the separate publication snapshot. Source epoch/rate/intent changes break correlation. The observer's result is not consumed by playback, subtitle, AR, or pacing decisions.
+
+DXGI timing semantic correction
+A proposed PresentRefreshCount<=SyncRefreshCount validation was rejected after primary-document review. Microsoft documents SyncRefreshCount/QPC at submission-related sampling, while PresentRefreshCount identifies actual display; a queued presentation can be displayed later. Equal deltas are likewise not required. The new QueuedLateScanoutWithEarlierSyncClockRemainsCountable test correctly covers sync10-to11 versus actual20-to23. The observer must validate each timeline's monotonic/cadence contract without conflating those instants.
+Primary references:
+https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/dxgi-flip-model (Frame synchronization; Avoiding, detecting, and recovering from glitches)
+https://learn.microsoft.com/en-us/windows/win32/api/dxgi/ns-dxgi-dxgi_frame_statistics
+
+Coverage and limits
+Read 20 observer test methods, publication freshness/unavailable tests and the expanded GUI layout tests; this review does not claim their execution. git diff --check passed (line-ending warnings only). The parent is responsible for pinned Release build and selected native tests.
+These are partial directly observed long holds and excess refreshes, not total display drops/repeats, complete deadline misses, or proof of subtitle playback reliability. Successful submission alone is not display proof. Statistics support and polling coverage depend on the current presentation model; windowed BitBlt may supply zeros. The OSD labels complete Display D/R unavailable and labels observation coverage partial. Counter-wrap handling is conservative and may require a normal continuity reset before useful coverage resumes.

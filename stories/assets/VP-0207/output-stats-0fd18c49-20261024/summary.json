@@ -1,0 +1,74 @@
+{
+  "Source": "0fd18c49b4118f0ddcfb32d61a51458b12ef03da",
+  "SourceClean": true,
+  "Beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "PreviousRuntime": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+  "Build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T19:45:09.5775636-04:00",
+    "Commit": "0fd18c49b4118f0ddcfb32d61a51458b12ef03da",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "Tests": {
+    "Passed": 146,
+    "Total": 146,
+    "NewMethods": 28,
+    "Scope": "Diagnostic-only; no physical-display acceptance",
+    "Classes": [
+      "AlphaOutputPresentationTelemetryTests",
+      "OutputPresentationPublicationTests",
+      "StatsOverlayLayoutTests",
+      "AlphaPresentationTelemetryTests",
+      "AlphaCadenceCorrectionPolicyTests",
+      "AlphaRenderLoadMeterTests",
+      "LibplaceboPluginProxyTests",
+      "StartupPresentationReadinessTests",
+      "NativeStatsOverlayPlacementTests",
+      "ProcessingPerformanceWindowTests",
+      "DirectShowPresentationLeadPolicyTests",
+      "LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics"
+    ],
+    "TrxSha256": "1B25D127937A85E0DEEAB79AF5E5DCF6199ACFE683D416F7890839B6F5376CFC"
+  },
+  "Artifacts": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\output-presentation-counters-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Sha256": "7881A44E5DD345D41645AADE07C9C3B88250922F835D417DC4AFF288613BC9C0",
+      "Configuration": "Release",
+      "Architecture": "x64"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\output-presentation-counters-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Sha256": "2D6C9AA4672711E20418765368DB8781FB63F4E3FB31E74912338364F98EAC3E",
+      "Configuration": "Release",
+      "Architecture": "x64"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\output-presentation-counters-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Sha256": "0ED21B40FAE95CEF8C9890348A3CB9930E8BA55878D444F5984D49072292CEAB",
+      "Configuration": "Release",
+      "Architecture": "x64"
+    }
+  ],
+  "PluginApi": 31,
+  "Deployed": false,
+  "RuntimeAndConfigurationUnchanged": true,
+  "PullRequest": 197,
+  "Draft": true,
+  "Merged": false,
+  "Limits": [
+    "Full display drop/repeat counts remain unavailable",
+    "Current player returns DXGI_ERROR_UNSUPPORTED 0x887A0004",
+    "Observed long holds are a conservative partial lower bound",
+    "Synthetic tests do not qualify physical display or subtitle playback",
+    "No subtitle/AR/HDR/GPU preparation behavior changed"
+  ]
+}
