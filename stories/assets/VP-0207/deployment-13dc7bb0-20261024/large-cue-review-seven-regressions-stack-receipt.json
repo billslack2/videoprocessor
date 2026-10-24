@@ -1,0 +1,16 @@
+[
+  {
+    "run": "final-seven-regressions",
+    "exitCode": 0
+  },
+  {
+    "run": "stack-current",
+    "exitCode": 0
+  },
+  {
+    "probeSha256": "9cf0bd518ba59bc16b4c9c239146eded1808c4437c9af0577aea1db8d1b59d63",
+    "machine": "0x8664",
+    "stackReserve": 1048576,
+    "stackCommit": 4096
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "productionBaseline": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "librarySha256": "422cdf6cd99e249f7d0614258ce568c99efeef71565d60986adfddcba72c46ec",
+  "auditWrites": "external probes; later separately authorized regression source edits only",
+  "hashes": {
+    "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib": "422cdf6cd99e249f7d0614258ce568c99efeef71565d60986adfddcba72c46ec",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\unchanged-3ec\\SubtitleCueContinuation.h": "7c75943b183bc17905597f096ee768d00cd2a5ac61b0871412eea397022ba4d1",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\focused-path.cpp": "d48555e91f8870a2901cbbc1ebf1da4bca7bc94261f191000012dcad0580c632",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\full-path.cpp": "6e9e4a23bab1d761c367d8cbea3e1f800d9814244c37f3162cf7ad5dd0c81175",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\fixture.h": "2e2cee7599349d9bc610bd9b1e150f04ae3e246ee1f0ebc406e3559d1c6ad244",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\exact-fallback-copy\\SubtitleCueContinuation.h": "3edc460259ccaeec698b6e53cebc8776cb84dd5808476f1512257e0c533519e4",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\preflight-copy\\SubtitleCueContinuation.h": "26e56744494266e8ffc76a29ed7635d0f06c62d9964515295632516c0c161ebc",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\final-exact-adverse.csv": "63ec06e5bbc6fc7aac8b60b5d578c715abc00a854e5b562467ca3d93f32a38e3",
+    "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\production-matrix.csv": "c2e2d505a539f9fad15f7bafd7a3fd1dc44dfba243928d5e07136c3a0916fa91"
+  }
+}

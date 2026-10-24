@@ -1,0 +1,4936 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "source_dirty": false,
+  "failed_source": "43fb6cba5ba94d9ad6b91d7a8cc53399da1fe088",
+  "notes": "stack_bytes includes prologue register pushes and RSP allocation, excludes incoming return address and nested callees. Missing standalone symbols are reported, not assigned zero total nested cost.",
+  "modules": {
+    "failed-beta": {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "2fd39c5fb3835cc2d5c6b52f3141951b2a78bb09850c0cd97666cb63c429aea4",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096,
+      "functions": {
+        "PrepareCurrentSubtitleCue": {
+          "symbol_rva": "0x80c40",
+          "symbol_size": 955,
+          "function_begin_rva": "0x80c40",
+          "function_end_rva": "0x80ffb",
+          "unwind_rva": "0x2532c8",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 60,
+          "stack_bytes": 8488,
+          "codes": [
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 8424
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ConsumeCurrentSubtitleCue": {
+          "symbol_rva": "0x81bd0",
+          "symbol_size": 347,
+          "function_begin_rva": "0x81bd0",
+          "function_end_rva": "0x81d2b",
+          "unwind_rva": "0x253378",
+          "version": 1,
+          "flags": 2,
+          "prologue_bytes": 46,
+          "stack_bytes": 4392,
+          "codes": [
+            {
+              "prologue_offset": 46,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 37,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 37,
+              "opcode": 4,
+              "info": 5,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 37,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 37,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 4352
+            },
+            {
+              "prologue_offset": 24,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 22,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 18,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 16,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::ResetCurrentRawFallback": {
+          "symbol_rva": "0x32620",
+          "symbol_size": 3758,
+          "function_begin_rva": "0x32620",
+          "function_end_rva": "0x334ce",
+          "unwind_rva": "0x24e064",
+          "version": 1,
+          "flags": 2,
+          "prologue_bytes": 51,
+          "stack_bytes": 55960,
+          "codes": [
+            {
+              "prologue_offset": 51,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 42,
+              "opcode": 4,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 42,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 42,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 42,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 42,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 55952
+            },
+            {
+              "prologue_offset": 21,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::Consume": {
+          "symbol_rva": "0x2cbf0",
+          "symbol_size": 23012,
+          "function_begin_rva": "0x2cbf0",
+          "function_end_rva": "0x325d4",
+          "unwind_rva": "0x24dfe8",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 96,
+          "stack_bytes": 83480,
+          "codes": [
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 83416
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::Reset": {
+          "symbol_rva": "0x25a50",
+          "symbol_size": 16200,
+          "function_begin_rva": "0x25a50",
+          "function_end_rva": "0x29998",
+          "unwind_rva": "0x24de3c",
+          "version": 1,
+          "flags": 2,
+          "prologue_bytes": 63,
+          "stack_bytes": 96152,
+          "codes": [
+            {
+              "prologue_offset": 63,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 54,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 45,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 45,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 45,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 45,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 96112
+            },
+            {
+              "prologue_offset": 24,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 22,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 18,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 16,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ConsumePreparedCurrentSubtitleCue": {
+          "symbol_rva": "0x81250",
+          "symbol_size": 2341,
+          "function_begin_rva": "0x81250",
+          "function_end_rva": "0x81b75",
+          "unwind_rva": "0x253330",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 69,
+          "stack_bytes": 12056,
+          "codes": [
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 11992
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ProveCurrentSubtitleCueSidePlane": {
+          "symbol_rva": "0x79580",
+          "symbol_size": 2143,
+          "function_begin_rva": "0x79580",
+          "function_end_rva": "0x7965b",
+          "unwind_rva": "0x252f8c",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 47,
+          "stack_bytes": 2408,
+          "codes": [
+            {
+              "prologue_offset": 29,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 2368
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleCueContinuationGuard::InspectCurrent": {
+          "symbol_rva": "0x7be10",
+          "symbol_size": 6928,
+          "function_begin_rva": "0x7be10",
+          "function_end_rva": "0x7d920",
+          "unwind_rva": "0x2530b0",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 33448,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 33384
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::RenderLoop": {
+          "symbol_rva": "0x1289e0",
+          "symbol_size": 31599,
+          "function_begin_rva": "0x1289e0",
+          "function_end_rva": "0x13054f",
+          "unwind_rva": "0x25a318",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 131,
+          "stack_bytes": 197080,
+          "codes": [
+            {
+              "prologue_offset": 113,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 104,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 95,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 86,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 77,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 68,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 59,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 41,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 197040
+            },
+            {
+              "prologue_offset": 19,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 17,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::Impl::RenderLocked": {
+          "symbol_rva": "0xd9080",
+          "symbol_size": 88200,
+          "function_begin_rva": "0xd9080",
+          "function_end_rva": "0xee908",
+          "unwind_rva": "0x257b68",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 141,
+          "stack_bytes": 586728,
+          "codes": [
+            {
+              "prologue_offset": 124,
+              "opcode": 8,
+              "info": 15,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 115,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 106,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 97,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 88,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 1,
+              "stack_bytes": 586664
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+          "symbol_rva": "0x2bdd0",
+          "symbol_size": 3602,
+          "function_begin_rva": "0x2bdd0",
+          "function_end_rva": "0x2cbe2",
+          "unwind_rva": "0x24df7c",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 171240,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 171176
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "RevalidateSubtitleBarEvidence": {
+          "symbol_rva": "0xdce0",
+          "symbol_size": 1283,
+          "function_begin_rva": "0xdce0",
+          "function_end_rva": "0xddf2",
+          "unwind_rva": "0x24d318",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 38,
+          "stack_bytes": 840,
+          "codes": [
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 800
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        }
+      },
+      "pdb": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "pdb_matched": true,
+      "pdb_sha256": "736ef2ceed30512ef406d5c2b0dd9a5206b56a2c95f7502cc206c99e7373756e"
+    },
+    "fixed-beta": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "c7681961ba272a90f310992f95251aaad3a4631a5984af2cc696d81fabcbb345",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096,
+      "functions": {
+        "SubtitleBoxPresentation::Consume": {
+          "symbol_rva": "0x289c0",
+          "symbol_size": 23236,
+          "function_begin_rva": "0x289c0",
+          "function_end_rva": "0x2e484",
+          "unwind_rva": "0x24be90",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 96,
+          "stack_bytes": 83480,
+          "codes": [
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 83416
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::Reset": {
+          "symbol_rva": "0x25a50",
+          "symbol_size": 641,
+          "function_begin_rva": "0x25a50",
+          "function_end_rva": "0x25cd1",
+          "unwind_rva": "0x24b470",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 15,
+          "stack_bytes": 40,
+          "codes": [
+            {
+              "prologue_offset": 15,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 2,
+              "info": 3,
+              "stack_bytes": 32
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ProveCurrentSubtitleCueSidePlane": {
+          "symbol_rva": "0x74040",
+          "symbol_size": 2143,
+          "function_begin_rva": "0x74040",
+          "function_end_rva": "0x7411b",
+          "unwind_rva": "0x250d6c",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 47,
+          "stack_bytes": 2408,
+          "codes": [
+            {
+              "prologue_offset": 29,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 2368
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "PrepareCurrentSubtitleCueInto": {
+          "symbol_rva": "0x7b880",
+          "symbol_size": 1323,
+          "function_begin_rva": "0x7b880",
+          "function_end_rva": "0x7bdab",
+          "unwind_rva": "0x2510a8",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 61,
+          "stack_bytes": 8248,
+          "codes": [
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 8208
+            },
+            {
+              "prologue_offset": 29,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 27,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 25,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 23,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 21,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleCueContinuationGuard::InspectCurrent": {
+          "symbol_rva": "0x768d0",
+          "symbol_size": 7300,
+          "function_begin_rva": "0x768d0",
+          "function_end_rva": "0x78554",
+          "unwind_rva": "0x250e90",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 33560,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 33496
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::RenderLoop": {
+          "symbol_rva": "0x123610",
+          "symbol_size": 31599,
+          "function_begin_rva": "0x123610",
+          "function_end_rva": "0x12b17f",
+          "unwind_rva": "0x258050",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 131,
+          "stack_bytes": 197080,
+          "codes": [
+            {
+              "prologue_offset": 113,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 104,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 95,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 86,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 77,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 68,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 59,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 41,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 197040
+            },
+            {
+              "prologue_offset": 19,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 17,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::Impl::RenderLocked": {
+          "symbol_rva": "0xd3cb0",
+          "symbol_size": 88099,
+          "function_begin_rva": "0xd3cb0",
+          "function_end_rva": "0xe94d3",
+          "unwind_rva": "0x25589c",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 141,
+          "stack_bytes": 554968,
+          "codes": [
+            {
+              "prologue_offset": 124,
+              "opcode": 8,
+              "info": 15,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 115,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 106,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 97,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 88,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 1,
+              "stack_bytes": 554904
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ConsumePreparedCurrentSubtitleCueInto": {
+          "symbol_rva": "0x7bdb0",
+          "symbol_size": 2560,
+          "function_begin_rva": "0x7bdb0",
+          "function_end_rva": "0x7c7b0",
+          "unwind_rva": "0x2510cc",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 69,
+          "stack_bytes": 7896,
+          "codes": [
+            {
+              "prologue_offset": 69,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 7856
+            },
+            {
+              "prologue_offset": 29,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 27,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 25,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 23,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 21,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+          "symbol_rva": "0x28140",
+          "symbol_size": 1683,
+          "function_begin_rva": "0x28140",
+          "function_end_rva": "0x287d3",
+          "unwind_rva": "0x24be28",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 7960,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 7896
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "RevalidateSubtitleBarEvidence": {
+          "symbol_rva": "0xdce0",
+          "symbol_size": 1283,
+          "function_begin_rva": "0xdce0",
+          "function_end_rva": "0xddf2",
+          "unwind_rva": "0x24b218",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 38,
+          "stack_bytes": 840,
+          "codes": [
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 800
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+          "symbol_rva": "0x13a860",
+          "symbol_size": 3439,
+          "function_begin_rva": "0x13a860",
+          "function_end_rva": "0x13b5cf",
+          "unwind_rva": "0x259840",
+          "version": 1,
+          "flags": 2,
+          "prologue_bytes": 26,
+          "stack_bytes": 56,
+          "codes": [
+            {
+              "prologue_offset": 26,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 5,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 2,
+              "info": 5,
+              "stack_bytes": 48
+            },
+            {
+              "prologue_offset": 16,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+          "symbol_rva": "0x13b5d0",
+          "symbol_size": 2963,
+          "function_begin_rva": "0x13b5d0",
+          "function_end_rva": "0x13b631",
+          "unwind_rva": "0x250218",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 6,
+          "stack_bytes": 56,
+          "codes": [
+            {
+              "prologue_offset": 6,
+              "opcode": 2,
+              "info": 5,
+              "stack_bytes": 48
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            }
+          ]
+        }
+      },
+      "pdb": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "pdb_matched": true,
+      "pdb_sha256": "e5682742ab8bae9c6c986aec3adf49db84e0d74222081a0b6809a3d3408762fb"
+    },
+    "fixed-stable": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2a5b3f064606e0da3f0b47cc8529d1759db4f83c306aba28f1cb5d6320c53101",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096,
+      "functions": {
+        "SubtitleBoxPresentation::Consume": {
+          "symbol_rva": "0x28950",
+          "symbol_size": 23236,
+          "function_begin_rva": "0x28950",
+          "function_end_rva": "0x2e414",
+          "unwind_rva": "0x24be88",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 96,
+          "stack_bytes": 83480,
+          "codes": [
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 83416
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::Reset": {
+          "symbol_rva": "0x259e0",
+          "symbol_size": 641,
+          "function_begin_rva": "0x259e0",
+          "function_end_rva": "0x25c61",
+          "unwind_rva": "0x24b468",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 15,
+          "stack_bytes": 40,
+          "codes": [
+            {
+              "prologue_offset": 15,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 2,
+              "info": 3,
+              "stack_bytes": 32
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ProveCurrentSubtitleCueSidePlane": {
+          "symbol_rva": "0x74020",
+          "symbol_size": 2143,
+          "function_begin_rva": "0x74020",
+          "function_end_rva": "0x740fb",
+          "unwind_rva": "0x250d64",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 47,
+          "stack_bytes": 2408,
+          "codes": [
+            {
+              "prologue_offset": 29,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 2368
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "PrepareCurrentSubtitleCueInto": {
+          "symbol_rva": "0x7b860",
+          "symbol_size": 1323,
+          "function_begin_rva": "0x7b860",
+          "function_end_rva": "0x7bd8b",
+          "unwind_rva": "0x2510a0",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 61,
+          "stack_bytes": 8248,
+          "codes": [
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 8208
+            },
+            {
+              "prologue_offset": 29,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 27,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 25,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 23,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 21,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleCueContinuationGuard::InspectCurrent": {
+          "symbol_rva": "0x768b0",
+          "symbol_size": 7300,
+          "function_begin_rva": "0x768b0",
+          "function_end_rva": "0x78534",
+          "unwind_rva": "0x250e88",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 33560,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 33496
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::RenderLoop": {
+          "symbol_rva": "0x123610",
+          "symbol_size": 31599,
+          "function_begin_rva": "0x123610",
+          "function_end_rva": "0x12b17f",
+          "unwind_rva": "0x258078",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 131,
+          "stack_bytes": 197080,
+          "codes": [
+            {
+              "prologue_offset": 113,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 104,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 95,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 86,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 77,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 68,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 59,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 41,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 32,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 197040
+            },
+            {
+              "prologue_offset": 19,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 17,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 15,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "LibplaceboVideoRenderer::Impl::RenderLocked": {
+          "symbol_rva": "0xd3c90",
+          "symbol_size": 88083,
+          "function_begin_rva": "0xd3c90",
+          "function_end_rva": "0xe94a3",
+          "unwind_rva": "0x255894",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 141,
+          "stack_bytes": 554808,
+          "codes": [
+            {
+              "prologue_offset": 124,
+              "opcode": 8,
+              "info": 15,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 115,
+              "opcode": 8,
+              "info": 14,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 106,
+              "opcode": 8,
+              "info": 13,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 97,
+              "opcode": 8,
+              "info": 12,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 88,
+              "opcode": 8,
+              "info": 11,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 79,
+              "opcode": 8,
+              "info": 10,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 70,
+              "opcode": 8,
+              "info": 9,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 61,
+              "opcode": 8,
+              "info": 8,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 52,
+              "opcode": 8,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 43,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 1,
+              "stack_bytes": 554744
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "ConsumePreparedCurrentSubtitleCueInto": {
+          "symbol_rva": "0x7bd90",
+          "symbol_size": 2560,
+          "function_begin_rva": "0x7bd90",
+          "function_end_rva": "0x7c790",
+          "unwind_rva": "0x2510c4",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 69,
+          "stack_bytes": 7896,
+          "codes": [
+            {
+              "prologue_offset": 69,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 7,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 50,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 7856
+            },
+            {
+              "prologue_offset": 29,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 27,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 25,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 23,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 21,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+          "symbol_rva": "0x280d0",
+          "symbol_size": 1683,
+          "function_begin_rva": "0x280d0",
+          "function_end_rva": "0x28763",
+          "unwind_rva": "0x24be20",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 51,
+          "stack_bytes": 7960,
+          "codes": [
+            {
+              "prologue_offset": 34,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 7896
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 12,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 5,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 4,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 3,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 5,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "RevalidateSubtitleBarEvidence": {
+          "symbol_rva": "0xdc70",
+          "symbol_size": 1283,
+          "function_begin_rva": "0xdc70",
+          "function_end_rva": "0xdd82",
+          "unwind_rva": "0x24b210",
+          "version": 1,
+          "flags": 3,
+          "prologue_bytes": 38,
+          "stack_bytes": 840,
+          "codes": [
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 1,
+              "info": 0,
+              "stack_bytes": 800
+            },
+            {
+              "prologue_offset": 13,
+              "opcode": 0,
+              "info": 15,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 11,
+              "opcode": 0,
+              "info": 14,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 9,
+              "opcode": 0,
+              "info": 13,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 7,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            },
+            {
+              "prologue_offset": 6,
+              "opcode": 0,
+              "info": 6,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+          "symbol_rva": "0x13a860",
+          "symbol_size": 3439,
+          "function_begin_rva": "0x13a860",
+          "function_end_rva": "0x13b5cf",
+          "unwind_rva": "0x25985c",
+          "version": 1,
+          "flags": 2,
+          "prologue_bytes": 26,
+          "stack_bytes": 56,
+          "codes": [
+            {
+              "prologue_offset": 26,
+              "opcode": 8,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 6,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 5,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 4,
+              "info": 3,
+              "stack_bytes": 0
+            },
+            {
+              "prologue_offset": 20,
+              "opcode": 2,
+              "info": 5,
+              "stack_bytes": 48
+            },
+            {
+              "prologue_offset": 16,
+              "opcode": 0,
+              "info": 7,
+              "stack_bytes": 8
+            }
+          ]
+        },
+        "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+          "symbol_rva": "0x13b5d0",
+          "symbol_size": 2963,
+          "function_begin_rva": "0x13b5d0",
+          "function_end_rva": "0x13b631",
+          "unwind_rva": "0x250210",
+          "version": 1,
+          "flags": 0,
+          "prologue_bytes": 6,
+          "stack_bytes": 56,
+          "codes": [
+            {
+              "prologue_offset": 6,
+              "opcode": 2,
+              "info": 5,
+              "stack_bytes": 48
+            },
+            {
+              "prologue_offset": 2,
+              "opcode": 0,
+              "info": 3,
+              "stack_bytes": 8
+            }
+          ]
+        }
+      },
+      "pdb": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "pdb_matched": true,
+      "pdb_sha256": "e99f65e812d2ac3c0bdd67c840086ed3cc4df6e79385fefc6ba754a6382b24f9"
+    }
+  },
+  "executables": {
+    "failed-host": {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe",
+      "sha256": "7542caaf1d10c66edf81fc266d31befd1aa796b04e86267da8b3636e6f0c2a14",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    },
+    "fixed-host": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "285402f8942212bc4670405bb644330bd147f90bb976090d84f43e96a40c92e9",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    }
+  },
+  "prior_comparison": {
+    "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\compiled-stack-comparison.json",
+    "sha256": "f9c58575b74e583926ee76058180c85b24a4015804bf382fe9c822099f7d43f5",
+    "source": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+    "modules": {
+      "failed-beta": {
+        "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "2fd39c5fb3835cc2d5c6b52f3141951b2a78bb09850c0cd97666cb63c429aea4",
+        "stack_reserve": 1048576,
+        "stack_commit": 4096,
+        "functions": {
+          "PrepareCurrentSubtitleCue": {
+            "symbol_rva": "0x80c40",
+            "symbol_size": 955,
+            "function_begin_rva": "0x80c40",
+            "function_end_rva": "0x80ffb",
+            "unwind_rva": "0x2532c8",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 60,
+            "stack_bytes": 8488,
+            "codes": [
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 8424
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "ConsumeCurrentSubtitleCue": {
+            "symbol_rva": "0x81bd0",
+            "symbol_size": 347,
+            "function_begin_rva": "0x81bd0",
+            "function_end_rva": "0x81d2b",
+            "unwind_rva": "0x253378",
+            "version": 1,
+            "flags": 2,
+            "prologue_bytes": 46,
+            "stack_bytes": 4392,
+            "codes": [
+              {
+                "prologue_offset": 46,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 37,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 37,
+                "opcode": 4,
+                "info": 5,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 37,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 37,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 4352
+              },
+              {
+                "prologue_offset": 24,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 22,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 18,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 16,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::ResetCurrentRawFallback": {
+            "symbol_rva": "0x32620",
+            "symbol_size": 3758,
+            "function_begin_rva": "0x32620",
+            "function_end_rva": "0x334ce",
+            "unwind_rva": "0x24e064",
+            "version": 1,
+            "flags": 2,
+            "prologue_bytes": 51,
+            "stack_bytes": 55960,
+            "codes": [
+              {
+                "prologue_offset": 51,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 42,
+                "opcode": 4,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 42,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 42,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 42,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 42,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 55952
+              },
+              {
+                "prologue_offset": 21,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::Consume": {
+            "symbol_rva": "0x2cbf0",
+            "symbol_size": 23012,
+            "function_begin_rva": "0x2cbf0",
+            "function_end_rva": "0x325d4",
+            "unwind_rva": "0x24dfe8",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 96,
+            "stack_bytes": 83480,
+            "codes": [
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 83416
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::Reset": {
+            "symbol_rva": "0x25a50",
+            "symbol_size": 16200,
+            "function_begin_rva": "0x25a50",
+            "function_end_rva": "0x29998",
+            "unwind_rva": "0x24de3c",
+            "version": 1,
+            "flags": 2,
+            "prologue_bytes": 63,
+            "stack_bytes": 96152,
+            "codes": [
+              {
+                "prologue_offset": 63,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 54,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 45,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 45,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 45,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 45,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 96112
+              },
+              {
+                "prologue_offset": 24,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 22,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 18,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 16,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "ConsumePreparedCurrentSubtitleCue": {
+            "symbol_rva": "0x81250",
+            "symbol_size": 2341,
+            "function_begin_rva": "0x81250",
+            "function_end_rva": "0x81b75",
+            "unwind_rva": "0x253330",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 69,
+            "stack_bytes": 12056,
+            "codes": [
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 11992
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::RenderLoop": {
+            "symbol_rva": "0x1289e0",
+            "symbol_size": 31599,
+            "function_begin_rva": "0x1289e0",
+            "function_end_rva": "0x13054f",
+            "unwind_rva": "0x25a318",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 131,
+            "stack_bytes": 197080,
+            "codes": [
+              {
+                "prologue_offset": 113,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 104,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 95,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 86,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 77,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 68,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 59,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 41,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 197040
+              },
+              {
+                "prologue_offset": 19,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 17,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::Impl::RenderLocked": {
+            "symbol_rva": "0xd9080",
+            "symbol_size": 88200,
+            "function_begin_rva": "0xd9080",
+            "function_end_rva": "0xee908",
+            "unwind_rva": "0x257b68",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 141,
+            "stack_bytes": 586728,
+            "codes": [
+              {
+                "prologue_offset": 124,
+                "opcode": 8,
+                "info": 15,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 115,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 106,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 97,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 88,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 1,
+                "stack_bytes": 586664
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+            "symbol_rva": "0x2bdd0",
+            "symbol_size": 3602,
+            "function_begin_rva": "0x2bdd0",
+            "function_end_rva": "0x2cbe2",
+            "unwind_rva": "0x24df7c",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 51,
+            "stack_bytes": 171240,
+            "codes": [
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 171176
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          }
+        },
+        "pdb": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+        "pdb_matched": true,
+        "pdb_sha256": "736ef2ceed30512ef406d5c2b0dd9a5206b56a2c95f7502cc206c99e7373756e"
+      },
+      "fixed-beta": {
+        "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "73a7edda3625c6ed4eb24d167df4b3aa91c46515e33740298f7853d7063b91f4",
+        "stack_reserve": 1048576,
+        "stack_commit": 4096,
+        "functions": {
+          "SubtitleBoxPresentation::Consume": {
+            "symbol_rva": "0x289c0",
+            "symbol_size": 23236,
+            "function_begin_rva": "0x289c0",
+            "function_end_rva": "0x2e484",
+            "unwind_rva": "0x24be90",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 96,
+            "stack_bytes": 83480,
+            "codes": [
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 83416
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::Reset": {
+            "symbol_rva": "0x25a50",
+            "symbol_size": 641,
+            "function_begin_rva": "0x25a50",
+            "function_end_rva": "0x25cd1",
+            "unwind_rva": "0x24b470",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 15,
+            "stack_bytes": 40,
+            "codes": [
+              {
+                "prologue_offset": 15,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 2,
+                "info": 3,
+                "stack_bytes": 32
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "PrepareCurrentSubtitleCueInto": {
+            "symbol_rva": "0x7b770",
+            "symbol_size": 1323,
+            "function_begin_rva": "0x7b770",
+            "function_end_rva": "0x7bc9b",
+            "unwind_rva": "0x2510a8",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 61,
+            "stack_bytes": 8248,
+            "codes": [
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 8208
+              },
+              {
+                "prologue_offset": 29,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 27,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 25,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 23,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 21,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::RenderLoop": {
+            "symbol_rva": "0x123500",
+            "symbol_size": 31599,
+            "function_begin_rva": "0x123500",
+            "function_end_rva": "0x12b06f",
+            "unwind_rva": "0x258050",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 131,
+            "stack_bytes": 197080,
+            "codes": [
+              {
+                "prologue_offset": 113,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 104,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 95,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 86,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 77,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 68,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 59,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 41,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 197040
+              },
+              {
+                "prologue_offset": 19,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 17,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::Impl::RenderLocked": {
+            "symbol_rva": "0xd3ba0",
+            "symbol_size": 88099,
+            "function_begin_rva": "0xd3ba0",
+            "function_end_rva": "0xe93c3",
+            "unwind_rva": "0x25589c",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 141,
+            "stack_bytes": 554968,
+            "codes": [
+              {
+                "prologue_offset": 124,
+                "opcode": 8,
+                "info": 15,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 115,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 106,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 97,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 88,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 1,
+                "stack_bytes": 554904
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "ConsumePreparedCurrentSubtitleCueInto": {
+            "symbol_rva": "0x7bca0",
+            "symbol_size": 2560,
+            "function_begin_rva": "0x7bca0",
+            "function_end_rva": "0x7c6a0",
+            "unwind_rva": "0x2510cc",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 69,
+            "stack_bytes": 7896,
+            "codes": [
+              {
+                "prologue_offset": 69,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 7856
+              },
+              {
+                "prologue_offset": 29,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 27,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 25,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 23,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 21,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+            "symbol_rva": "0x28140",
+            "symbol_size": 1683,
+            "function_begin_rva": "0x28140",
+            "function_end_rva": "0x287d3",
+            "unwind_rva": "0x24be28",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 51,
+            "stack_bytes": 7960,
+            "codes": [
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 7896
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+            "symbol_rva": "0x13a750",
+            "symbol_size": 3439,
+            "function_begin_rva": "0x13a750",
+            "function_end_rva": "0x13b4bf",
+            "unwind_rva": "0x259840",
+            "version": 1,
+            "flags": 2,
+            "prologue_bytes": 26,
+            "stack_bytes": 56,
+            "codes": [
+              {
+                "prologue_offset": 26,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 5,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 2,
+                "info": 5,
+                "stack_bytes": 48
+              },
+              {
+                "prologue_offset": 16,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+            "symbol_rva": "0x13b4c0",
+            "symbol_size": 2963,
+            "function_begin_rva": "0x13b4c0",
+            "function_end_rva": "0x13b521",
+            "unwind_rva": "0x250218",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 6,
+            "stack_bytes": 56,
+            "codes": [
+              {
+                "prologue_offset": 6,
+                "opcode": 2,
+                "info": 5,
+                "stack_bytes": 48
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              }
+            ]
+          }
+        },
+        "pdb": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+        "pdb_matched": true,
+        "pdb_sha256": "cf8f8092ef9a9c22660354a24fd250222f9175eee60853eb69a99aaabb56ec25"
+      },
+      "fixed-stable": {
+        "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "595532754f2bb91ad98d12e07efafd209c94f8e9308d59830918fecc03868fa6",
+        "stack_reserve": 1048576,
+        "stack_commit": 4096,
+        "functions": {
+          "SubtitleBoxPresentation::Consume": {
+            "symbol_rva": "0x28950",
+            "symbol_size": 23236,
+            "function_begin_rva": "0x28950",
+            "function_end_rva": "0x2e414",
+            "unwind_rva": "0x24be88",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 96,
+            "stack_bytes": 83480,
+            "codes": [
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 83416
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::Reset": {
+            "symbol_rva": "0x259e0",
+            "symbol_size": 641,
+            "function_begin_rva": "0x259e0",
+            "function_end_rva": "0x25c61",
+            "unwind_rva": "0x24b468",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 15,
+            "stack_bytes": 40,
+            "codes": [
+              {
+                "prologue_offset": 15,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 2,
+                "info": 3,
+                "stack_bytes": 32
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "PrepareCurrentSubtitleCueInto": {
+            "symbol_rva": "0x7b750",
+            "symbol_size": 1323,
+            "function_begin_rva": "0x7b750",
+            "function_end_rva": "0x7bc7b",
+            "unwind_rva": "0x2510a0",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 61,
+            "stack_bytes": 8248,
+            "codes": [
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 8208
+              },
+              {
+                "prologue_offset": 29,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 27,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 25,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 23,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 21,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::RenderLoop": {
+            "symbol_rva": "0x123500",
+            "symbol_size": 31599,
+            "function_begin_rva": "0x123500",
+            "function_end_rva": "0x12b06f",
+            "unwind_rva": "0x258078",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 131,
+            "stack_bytes": 197080,
+            "codes": [
+              {
+                "prologue_offset": 113,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 104,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 95,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 86,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 77,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 68,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 59,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 41,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 32,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 197040
+              },
+              {
+                "prologue_offset": 19,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 17,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 15,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "LibplaceboVideoRenderer::Impl::RenderLocked": {
+            "symbol_rva": "0xd3b80",
+            "symbol_size": 88083,
+            "function_begin_rva": "0xd3b80",
+            "function_end_rva": "0xe9393",
+            "unwind_rva": "0x255894",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 141,
+            "stack_bytes": 554808,
+            "codes": [
+              {
+                "prologue_offset": 124,
+                "opcode": 8,
+                "info": 15,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 115,
+                "opcode": 8,
+                "info": 14,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 106,
+                "opcode": 8,
+                "info": 13,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 97,
+                "opcode": 8,
+                "info": 12,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 88,
+                "opcode": 8,
+                "info": 11,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 79,
+                "opcode": 8,
+                "info": 10,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 70,
+                "opcode": 8,
+                "info": 9,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 61,
+                "opcode": 8,
+                "info": 8,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 52,
+                "opcode": 8,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 43,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 1,
+                "stack_bytes": 554744
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "ConsumePreparedCurrentSubtitleCueInto": {
+            "symbol_rva": "0x7bc80",
+            "symbol_size": 2560,
+            "function_begin_rva": "0x7bc80",
+            "function_end_rva": "0x7c680",
+            "unwind_rva": "0x2510c4",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 69,
+            "stack_bytes": 7896,
+            "codes": [
+              {
+                "prologue_offset": 69,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 7,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 50,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 7856
+              },
+              {
+                "prologue_offset": 29,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 27,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 25,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 23,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 21,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+            "symbol_rva": "0x280d0",
+            "symbol_size": 1683,
+            "function_begin_rva": "0x280d0",
+            "function_end_rva": "0x28763",
+            "unwind_rva": "0x24be20",
+            "version": 1,
+            "flags": 3,
+            "prologue_bytes": 51,
+            "stack_bytes": 7960,
+            "codes": [
+              {
+                "prologue_offset": 34,
+                "opcode": 1,
+                "info": 0,
+                "stack_bytes": 7896
+              },
+              {
+                "prologue_offset": 13,
+                "opcode": 0,
+                "info": 15,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 11,
+                "opcode": 0,
+                "info": 14,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 9,
+                "opcode": 0,
+                "info": 13,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 7,
+                "opcode": 0,
+                "info": 12,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 5,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 4,
+                "opcode": 0,
+                "info": 6,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 3,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 5,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+            "symbol_rva": "0x13a750",
+            "symbol_size": 3439,
+            "function_begin_rva": "0x13a750",
+            "function_end_rva": "0x13b4bf",
+            "unwind_rva": "0x25985c",
+            "version": 1,
+            "flags": 2,
+            "prologue_bytes": 26,
+            "stack_bytes": 56,
+            "codes": [
+              {
+                "prologue_offset": 26,
+                "opcode": 8,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 6,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 5,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 4,
+                "info": 3,
+                "stack_bytes": 0
+              },
+              {
+                "prologue_offset": 20,
+                "opcode": 2,
+                "info": 5,
+                "stack_bytes": 48
+              },
+              {
+                "prologue_offset": 16,
+                "opcode": 0,
+                "info": 7,
+                "stack_bytes": 8
+              }
+            ]
+          },
+          "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+            "symbol_rva": "0x13b4c0",
+            "symbol_size": 2963,
+            "function_begin_rva": "0x13b4c0",
+            "function_end_rva": "0x13b521",
+            "unwind_rva": "0x250210",
+            "version": 1,
+            "flags": 0,
+            "prologue_bytes": 6,
+            "stack_bytes": 56,
+            "codes": [
+              {
+                "prologue_offset": 6,
+                "opcode": 2,
+                "info": 5,
+                "stack_bytes": 48
+              },
+              {
+                "prologue_offset": 2,
+                "opcode": 0,
+                "info": 3,
+                "stack_bytes": 8
+              }
+            ]
+          }
+        },
+        "pdb": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+        "pdb_matched": true,
+        "pdb_sha256": "51b48eece6d03819c6069bb7eaf5276e9894ad3b181051137315b573056c594c"
+      }
+    },
+    "executables": {
+      "failed-host": {
+        "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe",
+        "sha256": "7542caaf1d10c66edf81fc266d31befd1aa796b04e86267da8b3636e6f0c2a14",
+        "stack_reserve": 1048576,
+        "stack_commit": 4096
+      },
+      "fixed-host": {
+        "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+        "sha256": "469cf00a3169cc8d50df72806e3bcf164643a9fd61e54a090a9e5bdf3af51f37",
+        "stack_reserve": 1048576,
+        "stack_commit": 4096
+      }
+    }
+  },
+  "deltas_from_3ec": {
+    "fixed-beta": {
+      "SubtitleBoxPresentation::Consume": {
+        "current": 83480,
+        "previous": 83480,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::Reset": {
+        "current": 40,
+        "previous": 40,
+        "delta": 0
+      },
+      "PrepareCurrentSubtitleCueInto": {
+        "current": 8248,
+        "previous": 8248,
+        "delta": 0
+      },
+      "LibplaceboVideoRenderer::RenderLoop": {
+        "current": 197080,
+        "previous": 197080,
+        "delta": 0
+      },
+      "LibplaceboVideoRenderer::Impl::RenderLocked": {
+        "current": 554968,
+        "previous": 554968,
+        "delta": 0
+      },
+      "ConsumePreparedCurrentSubtitleCueInto": {
+        "current": 7896,
+        "previous": 7896,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+        "current": 7960,
+        "previous": 7960,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+        "current": 56,
+        "previous": 56,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+        "current": 56,
+        "previous": 56,
+        "delta": 0
+      }
+    },
+    "fixed-stable": {
+      "SubtitleBoxPresentation::Consume": {
+        "current": 83480,
+        "previous": 83480,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::Reset": {
+        "current": 40,
+        "previous": 40,
+        "delta": 0
+      },
+      "PrepareCurrentSubtitleCueInto": {
+        "current": 8248,
+        "previous": 8248,
+        "delta": 0
+      },
+      "LibplaceboVideoRenderer::RenderLoop": {
+        "current": 197080,
+        "previous": 197080,
+        "delta": 0
+      },
+      "LibplaceboVideoRenderer::Impl::RenderLocked": {
+        "current": 554808,
+        "previous": 554808,
+        "delta": 0
+      },
+      "ConsumePreparedCurrentSubtitleCueInto": {
+        "current": 7896,
+        "previous": 7896,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection": {
+        "current": 7960,
+        "previous": 7960,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxPreview>": {
+        "current": 56,
+        "previous": 56,
+        "delta": 0
+      },
+      "SubtitleBoxPresentation::ResetValueFromDefault<SubtitleBoxObservation>": {
+        "current": 56,
+        "previous": 56,
+        "delta": 0
+      }
+    }
+  }
+}

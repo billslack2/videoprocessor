@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "sourceDirty": false,
+  "probeOnly": true,
+  "sourceEdits": false,
+  "configuration": "O2 MD x64",
+  "stackReserve": 1048576,
+  "timestamp": "2026-10-24T02:42:19.2563814-04:00",
+  "entries": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\retention-probe.cpp",
+      "sha256": "A06CF74BE68C00D4FB09703908143DEB6F320EB02AD4FF3B61E6F59BC29CC6F8"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\retention-probe.exe",
+      "sha256": "83DBE4CBBA4BC1890F3B378525F3C4D7AB5951ADF6357AEBE0883A511D8290D2"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build.cmd",
+      "sha256": "71523C20912CE5A431E47C9DF97E12D2B1F936FDB17ABA1304A7E067D44DD92F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build.txt",
+      "sha256": "962A2F02A0A46A123A7821F7C6C99A2C8FC946D73EF7EAF89685D47BD63D0779"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\retention-probe.txt",
+      "sha256": "B14450C64E4D5865FDE0D307FB7A1E24BD3D1FEFB39F63A53C6128D50F9F7967"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "422CDF6CD99E249F7D0614258CE568C99EFEEF71565D60986ADFDDCBA72C46EC"
+    }
+  ]
+}

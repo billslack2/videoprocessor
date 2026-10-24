@@ -1,0 +1,15 @@
+{
+    "schemaVersion":  1,
+    "sourceCommit":  "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+    "sourceDirty":  false,
+    "configuration":  "Release",
+    "architecture":  "x64",
+    "toolsetVersion":  "14.29.30133",
+    "binary":  "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\test-tools\\VideoProcessor-SubtitleStackProbe.exe",
+    "sha256":  "982E0F7D3F803C68626F5348DEC08A47B353E29AD11A2D931EABFF76AE8278EF",
+    "stackReserveBytes":  1048576,
+    "stackCommitBytes":  4096,
+    "callerPressureBytes":  783808,
+    "testOnly":  true,
+    "builtAt":  "2026-10-24T03:10:20.4983787-04:00"
+}

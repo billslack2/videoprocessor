@@ -1,0 +1,32 @@
+VP-0207 padded-envelope recovery and overnight retention audit
+
+Final clean source: 13dc7bb0cc3c195035ed0f41fc81e0f749460685
+Freshly verified GitHub default/latest beta: v1.4.02-beta at b1415da4e2cc12807f390f4b722c459be9a17c08.
+PR #197 remains DRAFT and UNMERGED. Story remains In Progress. Prior 398034da FAILED user replay. This candidate is deployed for further playback, not visually accepted.
+
+Reproduced defect and narrow correction
+A native 4K two-line fixture with 26 glyphs per line, 66-pixel glyph height and 108-pixel line spacing has all actual glyphs inside the black bar, but its padded envelope crosses the picture plane. The original masked plane check unnecessarily masks the bar-contained ink and rejects its density/run shape at 78,644 reads despite remaining work allowance. Missing-worker output can disappear, or survive only the short pending lease. This is a reproduced logic defect; it is not established as the cause of the user's recorded incident.
+The original masked proof and its successes remain unchanged. Only masked failure with a crossing envelope, every accepted line wholly in its own bar, and remaining local/shared budget can retry the exact native edge helper. Complete configured search, slot/glyph identity and separate finite current backing proof still follow. Raw AR authority, fixed zoom, hold duration and read limits are untouched by this correction.
+
+Adversarial review
+A broad unmasked retry can mistake a thin glyph stroke for the true boundary. Excluding only strictly straddling lines is also insufficient: a picture-side glyph ending at the plane can supply an exact row jump. Both counterexamples are reproduced and tested. Every line must be wholly in its cue bar. Real crossing layouts retain their original masked behavior. Changed/lost/shifted edges, changed glyphs, associated new companions and budget exhaustion cannot create complete proof or stale cleanup authority. Independently verified bounded recovery retains its existing rules.
+The successful large bottom path uses 367,842 inspection + 81,830 cap = 449,672 reads; top mirror uses 451,016 total. Limits remain 393,216 inspection / 524,288 shared. Finite cap proof uses its existing 131,072 phase limit. Exact cap application and unchanged non-cleanup geometry are asserted. Wider acquisition cases remain outside existing seed capacity; no seed preflight or quota increase was added.
+
+Other audit results and limits
+Identity/queue/current sample reuse and private retention were reviewed without another reproduced defect. Unknown work does not renew proof identity or outline lifetime. Contradiction/context/expiry remain strict. Source-duration leases use accepted-source nominal duration, not wall-clock timestamp elapsed; probes cover repeats, frozen/backward timestamps, invalid duration and huge jumps without claiming a hard wall-clock lease. Full configured companion scan is preserved, but detector anchor-distance association still limits which picture-side glyphs belong to the cue.
+Renderer preparation and packet source binding have no new reproduced flaw. Early preparation failure keeps the last completed output; a later render failure on a libplacebo-owned swapchain has an existing black-clear policy. There are zero matching failure markers in this preserved runtime log. This does not establish that every GPU failure path is impossible or visually seamless.
+
+Qualification
+Matching clean x64 Release host, both renderers and test DLL build passed. 1964/1964 selected native/GPU tests passed, with all three preserved native captures enabled and 21 new methods since 6f0c02b2. The latest seven full-path tests exercise Into preparation, optional pending, tracker consumption, composition, current finite backing proof and actual Apply on both bars; source identities progress through missing-worker intervals and recover after incomplete work.
+The test-only isolated child passed five modes with real 1 MiB reserve / 4 KiB commit and 783,808 bytes of caller pressure, including the new complete proof plus cap path. Exact final probe source/hash/PE header and clean final DLL/PDB unwind allocations are verified. All stack reserves remain unchanged. The previous 43fb6cba startup stack overflow and rollback remain recorded; this candidate carries its qualified heap/Into/reset repair. No helper EXE is deployed. Full solution, entire native suite and installer packaging are not claimed.
+
+Deployment and observed runtime
+Matching host and both renderer DLLs are installed; all three loaded hashes and clean startup identities match 13dc7bb0cc3c195035ed0f41fc81e0f749460685. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-exact-plane-13dc7bb0-20261024-031849. PID 76388. Configuration and state were backed up, no persistent settings overwritten. The existing Classic startup action was suppressed for ten seconds and original configuration bytes restored exactly; Clear/Yellow remains active.
+Same process remained responsive for 229.8 seconds with zero Windows crash/hang events. Settled 2026-10-24 03:19:20 through 2026-10-24 03:22:52: 107 valid/applied cap records, zero subtitle stability transitions, pixel contradictions or submitted geometry changes. Exact cleanup: 1442,1746-2398,1776. Zero renderer failure markers. This is actual host survival and sampled stationary telemetry, not a visual verdict.
+Measured subtitle consumption peak: 3.994 ms; asynchronous full worker scan peak: 29.908 ms. Read limits and these samples do not guarantee CPU deadlines. Source/display remain matched near 23.976 Hz, not physical 24-to-60 acceptance. Prior 3ecab879 also survived at least 25 minutes with 758 valid/applied cap checks in its saved window; concurrent probes prevent an isolated performance claim.
+
+Remaining acceptance
+Actual moving Ben-Hur playback, the reported recurring subtitle/backing flash, physical mismatched-refresh cadence and visual HDR behavior remain unqualified. Controlled CPU/cue replay, offscreen GPU simulations and matched stationary telemetry cannot replace that acceptance. Keep PR #197 draft/unmerged. Native pixels, full logs/TRX, binaries and dumps remain outside Git with hashes. Existing unrelated tracker design edits remain preserved.
+
+Evidence: E:\codex\diagnostics\vp0207-exact-plane-recovery-20261024-0255
+Independent retention, work-budget, plane, capacity and renderer audits: E:\codex\diagnostics\vp0207-retention-audit-20261024-0237

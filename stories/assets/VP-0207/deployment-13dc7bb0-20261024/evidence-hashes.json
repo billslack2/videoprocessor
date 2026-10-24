@@ -1,0 +1,262 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedAssets": [
+    {
+      "file": "audit-clean-result.json",
+      "bytes": 355,
+      "sha256": "C5AB91C3DA4C378EEC8DF9B4795E36A53772A7D3D2E41EDEC6D1E5BFAD92AC07"
+    },
+    {
+      "file": "audit-file-hashes.json",
+      "bytes": 2376,
+      "sha256": "CABBE754B73F343B12A0C1B13BA207EB5E97517FD30136A7A712B81195EE8D5B"
+    },
+    {
+      "file": "audit-release-build-result.json",
+      "bytes": 356,
+      "sha256": "058C8CE997EF3B36A8055CEB03DCEC649B3F2DA2ED058F7CAEF3D3C308789982"
+    },
+    {
+      "file": "compiled-stack-comparison.json",
+      "bytes": 139571,
+      "sha256": "B44016956F6594859D2CD6E9202F5B689CB0C3A2AAB5EAACFEDC02F7E919A2C9"
+    },
+    {
+      "file": "compiled-stack-report.txt",
+      "bytes": 4793,
+      "sha256": "C30FE9F2432BB4D72DA6CC450B4499D9FFA070D2764DE923E824B3A4AAE36184"
+    },
+    {
+      "file": "cue-review-manifest.json",
+      "bytes": 1524,
+      "sha256": "D223295BBE19617EC466461B80A612B55AF81AA4156272E3502A5BBBEEAC871F"
+    },
+    {
+      "file": "cue-review-plane-review-manifest.json",
+      "bytes": 4852,
+      "sha256": "AE3D7707412C6CA9B6A2829427D8C974DA3585127795E61CA26B997C8E8455C5"
+    },
+    {
+      "file": "cue-review-plane-review.txt",
+      "bytes": 7570,
+      "sha256": "B23B41E48244C09A18C675C82F6916613A03C7CBF6C16F576F0FF1AC727F5A5A"
+    },
+    {
+      "file": "cue-review-review.txt",
+      "bytes": 7646,
+      "sha256": "1D8577AE943AF6192D51B12550B1EDA2D2B1B6AB91B993E0C75CAF39ADD7C095"
+    },
+    {
+      "file": "deployment.json",
+      "bytes": 4345,
+      "sha256": "CB9A72AB9685B62CA7C46105E2EB6256262DE3A9ACEE8C88DD1BA61326D088AB"
+    },
+    {
+      "file": "exact-plane-regressions-result.json",
+      "bytes": 2385,
+      "sha256": "BB82D61E9C5B8D7D66038FB6FFB0F6E278370428F5B5257E90CF1CD272EDC980"
+    },
+    {
+      "file": "large-cue-review-companion-selection.txt",
+      "bytes": 1262,
+      "sha256": "69D1AD1D099D017A725406B7C9D951266408CCDC6A090A6FFD621C257451DD57"
+    },
+    {
+      "file": "large-cue-review-evidence-manifest.json",
+      "bytes": 1915,
+      "sha256": "B94BF192BD062B3946F9D7B2647C0DFC122E499BD7D069E140E5A64079E0B28D"
+    },
+    {
+      "file": "large-cue-review-final-external-summary.json",
+      "bytes": 2762,
+      "sha256": "6BE6E4A74D80D2908A9109B3DCD1BCBAD47DEC1F0836E793AB3A73A120F0442D"
+    },
+    {
+      "file": "large-cue-review-final-source-hashes.json",
+      "bytes": 1116,
+      "sha256": "4392DC9BFAD98F98AA9ED1C9FE137A2F8D229BBB4357A21F9C95AB27FCD56CCC"
+    },
+    {
+      "file": "large-cue-review-review.txt",
+      "bytes": 10804,
+      "sha256": "2F9D141D83FF87750B8B0CECA518404505F4D865F1C4C8B9910B727DEDF66584"
+    },
+    {
+      "file": "large-cue-review-seven-regressions-stack-receipt.json",
+      "bytes": 311,
+      "sha256": "B8EFB1F173172A43B033CCCEA7C8FC8658675F44AFEE719DB6F076AB4329B565"
+    },
+    {
+      "file": "loaded-modules.json",
+      "bytes": 514,
+      "sha256": "A425799AB0052FC83EA19C2135DAC1BE0329446245C3DCB796BC7C07EA55A88C"
+    },
+    {
+      "file": "native-stack-probe-build.json",
+      "bytes": 639,
+      "sha256": "F80F185FB41999E02930D2CF65F07798D7500E3A255BC78B4ECAB107CEBCCA0B"
+    },
+    {
+      "file": "post-deploy-observation.json",
+      "bytes": 1043,
+      "sha256": "C691230D80C7405EA238D005C9747A8A37DA99BF83574E4FA74F4A150CB041C3"
+    },
+    {
+      "file": "post-deploy-performance.json",
+      "bytes": 1845,
+      "sha256": "63ABC5D7AB074DEF6B7D7E4629394DB31739FF672B57559947E501631AD6C739"
+    },
+    {
+      "file": "pr-body.md",
+      "bytes": 4844,
+      "sha256": "8861EAD10A9A3AC84F339BE191DCFD3476065E93801684188F736A08C3527C83"
+    },
+    {
+      "file": "pr-status.json",
+      "bytes": 5076,
+      "sha256": "49C536E85522245E06BD6BAA330AC4A966A2A4C1EA2BEF34169FE96128B00487"
+    },
+    {
+      "file": "presentation-final-diff-review.txt",
+      "bytes": 3004,
+      "sha256": "B15F74B029C75449D07FAF97807ED43BC643F71A9B3DD110838AB4864A4764FE"
+    },
+    {
+      "file": "preserved-runtime-artifacts.json",
+      "bytes": 3930,
+      "sha256": "E305EA5C8B90DC0EA4309EF32D1F64517D0698A85C081E9BC27749EBD83EBFC4"
+    },
+    {
+      "file": "prior-3ec-github-beta-branches.txt",
+      "bytes": 1264,
+      "sha256": "4164D8D4AE3847733439DC7CC781E7C8C7595F6C6E9C949A8292994D5FDD4327"
+    },
+    {
+      "file": "prior-3ec-observation-end.json",
+      "bytes": 2829,
+      "sha256": "1B6B3C254E3FCE5E7FAE2B3747C8C5BF3DA8C5F2D86CFD580F1B375712E8E537"
+    },
+    {
+      "file": "prior-3ec-root-read-budget-review.txt",
+      "bytes": 2593,
+      "sha256": "4E8428B5A5416CD8F60C7D9A0792BD259E508F916511F0F0986EA16BAB940F46"
+    },
+    {
+      "file": "prior-3ec-runtime-end.json",
+      "bytes": 1145,
+      "sha256": "F7B56199AFF6427019C193E034919285847D2232A9E038EBDBE5DF302DCB47C8"
+    },
+    {
+      "file": "renderer-failure-markers.json",
+      "bytes": 306,
+      "sha256": "757C42316B656C6AE1CA846D374BF4FD1BE141AA3D7D4219F707325489768BAF"
+    },
+    {
+      "file": "renderer-review-exact-plane-fallback-review-hashes.json",
+      "bytes": 1296,
+      "sha256": "FAF6322A009144AD9ACFF2284EDA3D4AB7F4530273C602D23A94E69C60498A16"
+    },
+    {
+      "file": "renderer-review-exact-plane-fallback-review.txt",
+      "bytes": 5170,
+      "sha256": "B924D1C6F738554DD9F18E3F76F32A0C93EDF79251CAA92F86AFABBED4A91887"
+    },
+    {
+      "file": "renderer-review-failure-log-search.json",
+      "bytes": 457,
+      "sha256": "071812A488CE8296A1BCBB83F911E047264D67F515E3C24DB93C2585E3D840BE"
+    },
+    {
+      "file": "renderer-review-review-hashes.json",
+      "bytes": 1542,
+      "sha256": "8DFBAB8E765542A2C237C986DDA269183DFD07C74EC389B2ADDF4045217983BF"
+    },
+    {
+      "file": "renderer-review-review.txt",
+      "bytes": 7403,
+      "sha256": "43345D45823ACE6FF2E964B722465413053149B39386B34A91884AA858B9AFD4"
+    },
+    {
+      "file": "reviewed-source-hashes.json",
+      "bytes": 1057,
+      "sha256": "551F93A837BF724DA764771348FC66599E2570002E19587C4C2DD27337B402AB"
+    },
+    {
+      "file": "runtime-health.json",
+      "bytes": 1038,
+      "sha256": "6B97747FADECD8D8C4AEBF0DD454ADFEBFBF69D33C6B0FBAE803B9E0BF0B1EEF"
+    },
+    {
+      "file": "summary.txt",
+      "bytes": 6460,
+      "sha256": "0A900C3B71E2657B60D055C3F1CC847B16074A43A2A2F63E4F0B91EBF5510A2C"
+    },
+    {
+      "file": "validation.json",
+      "bytes": 11346,
+      "sha256": "2204C0CBF3F391F2E3C19DB0BFFF8B65BA2D0DD9286F546ACE451F637BF554B9"
+    }
+  ],
+  "localOnly": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\audit-clean.log",
+      "bytes": 9321,
+      "sha256": "D57D760F1D32F2388B90CD71A0ECCDE6FB281B61C374BDFF08D94B8A1F15557D"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\audit-release-build.log",
+      "bytes": 121490,
+      "sha256": "17FD22F99D07527A277743B0DDCA3E755900EB03BD2887F5CC414BD569B83841"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\exact-plane-regressions.trx",
+      "bytes": 3030842,
+      "sha256": "0503092C72A9AA75D9D37C47310DE726BC7BE9CC825BDC3804268566813EE437"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\exact-plane-regressions-console.txt",
+      "bytes": 354392,
+      "sha256": "3B7CC0DBC62A88746303E8F424034D6C90FD47B41ED540F4ADFAB244A36E1D01"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\post-deploy-observation.log",
+      "bytes": 2251857,
+      "sha256": "ADA0C33FD87FFB7023D3417E93079B4DC79155F77993057707BA796296375EC0"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+      "bytes": 33177600,
+      "sha256": "F0587DB80E8924DDC0A312A9DCF37BFD14BBCC66688EA9548573C82647693827"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-paused-backing-20261023\\paused-native.bin",
+      "bytes": 33177600,
+      "sha256": "9047EF0C5C2B0BFC938F0C530DAF2D7DE22DF660D96D2A96A0B42A25B1C1DAB3"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+      "bytes": 33177600,
+      "sha256": "8771C3C3693737F39204216895509D4229FF8BCF401C107599DC2DBAC32B6490"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\test-tools\\VideoProcessor-SubtitleStackProbe.exe",
+      "bytes": 730112,
+      "sha256": "982E0F7D3F803C68626F5348DEC08A47B353E29AD11A2D931EABFF76AE8278EF"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "bytes": 3069952,
+      "sha256": "285402F8942212BC4670405BB644330BD147F90BB976090D84F43E96A40C92E9"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2585088,
+      "sha256": "2A5B3F064606E0DA3F0B47CC8529D1759DB4F83C306ABA28F1CB5D6320C53101"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2584576,
+      "sha256": "C7681961BA272A90F310992F95251AAAD3A4631A5984AF2CC696D81FABCBB345"
+    }
+  ]
+}

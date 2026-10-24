@@ -1,0 +1,96 @@
+{
+  "baselineCommit": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "productionHeaderChanged": true,
+  "integratedBuild": false,
+  "deployment": false,
+  "entries": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\plane-review.txt",
+      "sha256": "B23B41E48244C09A18C675C82F6916613A03C7CBF6C16F576F0FF1AC727F5A5A"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\plane-boundary-probe.cpp",
+      "sha256": "11557D0AA9306490B3F7E8D31D6E2EE975429874A9C573E5FEBD649E233DBB7F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\plane-boundary-probe.csv",
+      "sha256": "61031093184370238DCF469E8BAB809B046C1CA144F7C0D8E2E3620E53D31505"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\picture-edge-probe.cpp",
+      "sha256": "E954A9B0CA646A101BEDB87C85A61668196BD040D2A5793B113DC6230AA07F54"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\picture-edge-probe.csv",
+      "sha256": "BBAC65974FF5CE3DD90AE1FBB2F22397F9312140D3AAD22C46A6041F62FE4BCE"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\thin-edge-path.cpp",
+      "sha256": "3E025B08D6321AA6E3403940FBBAF9E58F2F065AD9D3CA66831286FBB3A2E0BC"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\baseline-thin.csv",
+      "sha256": "0E840DA1CD764567E27D56A80A65D84EE3D039FA46CB1D6258CD264495925DF9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\unmasked-thin.csv",
+      "sha256": "1530F4E56068464224C2E7D55D211A847F2E2FF98572FE8BCEA9D0C220DD9080"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\exact-thin.csv",
+      "sha256": "219148A4C9A031F6B3ABBA306864EA75447AC6AEC15CF7D56507447535682156"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\production-thin.csv",
+      "sha256": "2D7DDD6A6A84952C84D3289539BAB626AE60B78BD70F9EC9E43FA25E2E24AD18"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-baseline-thin.cmd",
+      "sha256": "0AAD4EEAD9214E8E2FFEFF61710E6F70C4C8AA2221BF420DAD85F66492F06539"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-unmasked-thin.cmd",
+      "sha256": "A39A712FC324F4FB3FCDC66DC3A7AA84590ED9AF530C035F0D7A4148BA3EBD88"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-exact-thin.cmd",
+      "sha256": "4B58FB9234CE92C062647BC02C1FB64FBA2CCD3265776113678C324F98A1FF1B"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-production-thin.cmd",
+      "sha256": "D6906DFBCAF1B2ABDB3413ECAFE6531DB5CEEB30943F0A8CA1F27A923C659504"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-picture-edge.cmd",
+      "sha256": "6821CFB276E900999339DED21487A608F7E2FEDC48A3D590CF69FB7DAFD2777D"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\build-plane.cmd",
+      "sha256": "FF25EE330BCC00D6C34D3592ACE582B72E9BEE06A0D0B3618C32C811D4DD2B16"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\baseline-thin.exe",
+      "sha256": "1C8278C281038F6CB5DD7001DC24E3270FFF99555AAC902D0A5A252FC7D88205"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\unmasked-thin.exe",
+      "sha256": "02777B95B571DEFD4C22D0D1D8CC6400E1256894AA92CE75C2CC1E454633A40F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\exact-thin.exe",
+      "sha256": "8D68FDEB58F7F64EBC5F0BF1F7EFA6DBC2BF114E39BEE8D4E9EB03D31DAD25B4"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\production-thin.exe",
+      "sha256": "8C967DB9BE97FE9B6E0BC59FB4A0F17795FEBA1BFD4E2EC6D8DD5857A4EA7477"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "sha256": "1DC4F4B2D5691A8C890597B640C5EF313B68AF63D97AA05ADB58EFD8254C48B0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "422CDF6CD99E249F7D0614258CE568C99EFEEF71565D60986ADFDDCBA72C46EC"
+    }
+  ]
+}

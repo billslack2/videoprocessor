@@ -1,0 +1,41 @@
+Clean Release compiled-stack review: 13dc7bb0
+
+The actual completed x64 Release host and both renderer DLLs were inspected read-only. Source HEAD was clean at 13dc7bb0cc3c195035ed0f41fc81e0f749460685 before and after extraction. The parent reported a successful clean build finished 03:10:20 with exit 0 and dirty=false. Only the diagnostic symbols utility was compiled here; no production source/output was changed or rebuilt by this audit.
+
+Exact symbol and binary qualification
+The final stable DLL, final beta DLL, and preserved failed 43fb6cba beta DLL all loaded real matched PDBs (SymPdb, matched=true, nonempty filename, age 1). compiled-stack-comparison.json records actual module/PDB SHA-256 hashes, paths, symbol/function RVAs and PE unwind codes. It preserves the earlier source/modules/executables schema, including stack_reserve and stack_commit, embeds the SHA-256-qualified prior 3ec comparison, and records common-function deltas. All functions common to the final and prior 3ec inventories have identical prologue stack allocation.
+
+Actual prologue stack bytes
+Includes saved-register pushes and RSP allocation, excludes incoming return addresses and nested callees. Missing standalone symbols are not assigned zero nested cost.
+
+Function                                 Failed43 beta  Prior 3ec beta  Final13dc beta  Final13dc stable
+RenderLoop                                    197080          197080            197080              197080
+Impl::RenderLocked                            586728          554968            554968              554808
+SubtitleBoxPresentation::Consume               83480           83480             83480               83480
+SubtitleBoxPresentation::Reset                 96152              40                40                  40
+CurrentRawFallbackForIncompleteInspection     171240            7960              7960                7960
+PrepareCurrentSubtitleCueInto                   n/a            8248              8248                8248
+ConsumePreparedCurrentSubtitleCueInto           n/a            7896              7896                7896
+ResetValueFromDefault<Preview>                  n/a              56                56                  56
+ResetValueFromDefault<Observation>              n/a              56                56                  56
+InspectCurrent                               33448    not inventoried             33560               33560
+ProveCurrentSubtitleCueSidePlane               2408    not inventoried              2408                2408
+RevalidateSubtitleBarEvidence                   840    not inventoried               840                 840
+
+The prior 3ec stable RenderLocked frame was 554808 and is unchanged too. InspectCurrent is 112 bytes larger than the preserved failed 43 function. The earlier 3ec report did not enumerate this function/helper, and no matching preserved 3ec PDB was found; therefore this audit makes no invented exact 3ec helper delta. The exact-plane helper remains a separate 2408-byte compiled frame in both final DLLs, rather than a new large tracker/preview aggregate. Its stack cost is nested and must be included with InspectCurrent.
+
+The final DLLs have no standalone ResetCurrentRawFallback or by-value ConsumeCurrentSubtitleCue hot-path symbols. Existing reset helpers and Into frames are explicitly accounted above. The earlier stack-overflow reductions remain intact.
+
+Stack reserve/commit unchanged
+Failed host and final VideoProcessor-GUI.exe: 1048576 / 4096 bytes.
+Failed beta DLL and both final renderer DLLs: 1048576 / 4096 bytes.
+There was no stack-reserve increase.
+
+Limits and relationship to testing
+The separate scratch stack-current.log exercised all five modes, including this 4K exact-plane fallback through Into, compositor and finite-cap application, using a real 1 MiB thread and 783808 bytes of caller pressure. That is scratch/header-linked CPU qualification. The parent's final integrated native/GPU suite, including its newly built isolated mode 4 launcher, was still running when this report was written; this report does not substitute the scratch result for that final test. Nor does compiled unwind inspection prove a global maximum stack depth, GPU tone mapping, or actual mismatched 24-to-60 display playback.
+
+Reproduction and receipts
+symbols.cpp + build-tool.cmd build only the local diagnostic utility.
+failed-beta-symbols.tsv, fixed-beta-symbols.tsv and fixed-stable-symbols.tsv contain exact matching-PDB inventories.
+compare.py --source 13dc7bb0cc3c195035ed0f41fc81e0f749460685 rejects dirty/mismatched source and changed stack reserve/commit; compiled-stack-summary.txt is its saved output.
+compiled-stack-comparison.json is the detailed machine-readable record; audit-file-hashes.json records tools and report/receipt hashes.

@@ -1,0 +1,26 @@
+[
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+    "Hash": "91FED63C680E12AE4D08C2D48582E14ED170BB19555BD122D30C5B530171584D"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueSidePlane.h",
+    "Hash": "0068595112BEBA2C0F5AC40149670967B5BA14658B22ABE229A4BB5925AD2D1C"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\exact-fallback-copy\\SubtitleCueContinuation.h",
+    "Hash": "3EDC460259CCAEEC698B6E53CEBC8776CB84DD5808476F1512257E0C533519E4"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\exact-fallback-results.csv",
+    "Hash": "7F69701BFC00D3BE9C29C5D8C376C6A8C01B815A1B4301ADE578ADE3CC65B7F0"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\picture-edge-probe.cpp",
+    "Hash": "E954A9B0CA646A101BEDB87C85A61668196BD040D2A5793B113DC6230AA07F54"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\cue-review\\picture-edge-probe.csv",
+    "Hash": "BBAC65974FF5CE3DD90AE1FBB2F22397F9312140D3AAD22C46A6041F62FE4BCE"
+  }
+]

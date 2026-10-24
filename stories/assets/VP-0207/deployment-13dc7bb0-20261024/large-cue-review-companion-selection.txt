@@ -1,0 +1,10 @@
+top=0 near=20 mode=0 detected=1 lines=3 anchor=1780:1844 search=0:1448 reason=detected line0=1778:1844 line1=1520:1592 line2=1888:1952
+top=0 near=20 mode=1 detected=1 lines=3 anchor=1780:1844 search=0:1448 reason=detected line0=1778:1844 line1=1520:1592 line2=1888:1952
+top=0 near=200 mode=0 detected=1 lines=2 anchor=1520:1588 search=0:1268 reason=detected line0=1520:1592 line1=1778:1844
+top=0 near=200 mode=1 detected=1 lines=2 anchor=1520:1588 search=0:1268 reason=detected line0=1520:1592 line1=1778:1844
+top=1 near=200 mode=0 detected=1 lines=2 anchor=208:276 search=892:2160 reason=detected line0=208:276 line1=316:380
+top=0 near=20 mode=0 detected=1 lines=3 anchor=1780:1844 search=0:1448 reason=detected line0=1778:1844 line1=1520:1592 line2=1888:1952
+top=0 near=20 mode=1 detected=1 lines=3 anchor=1780:1844 search=0:1448 reason=detected line0=1778:1844 line1=1520:1592 line2=1888:1952
+top=0 near=200 mode=0 detected=1 lines=2 anchor=1520:1588 search=0:1268 reason=detected line0=1520:1592 line1=1778:1844
+top=0 near=200 mode=1 detected=1 lines=2 anchor=1520:1588 search=0:1268 reason=detected line0=1520:1592 line1=1778:1844
+top=1 near=200 mode=0 detected=1 lines=2 anchor=208:276 search=892:2160 reason=detected line0=208:276 line1=316:380

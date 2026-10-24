@@ -1,0 +1,13 @@
+Read-budget and backing authority review, clean 3ecab879
+
+Review scope: actual RenderLocked preparation order, synchronous native reads, backing-outline retention, and runtime telemetry meanings. No production edits or new playback/cadence qualification.
+
+LibplaceboVideoRenderer.cpp:13709 creates one synchronous 524288-read counter for current proof, pending verification, reference refresh and optional backing cleanup. The source pointer is borrowed for this call, not queued. Lines 13819-13872 run complete current inspection before weaker pending work when eligible. Only retained UNKNOWN can then invoke pending recovery; COMPLETE and hard contradiction skip it. Into storage is reinitialized before consumption, copied to current output, and source/proof ownership is cleared afterwards (13897 onward).
+
+SubtitleCueContinuation.h:135-142 caps the local counter by both phase ceiling and remaining whole-frame reads. Its scope guard charges the outer counter once on every return; local exhaustion marks the outer counter exhausted only when the local allowance was the entire remaining whole-frame allowance. Incomplete search does not become complete evidence (179 onward). Reuse of an immutable current identity is distinct from reusing unproved pixels on a new identity.
+
+SubtitleBackingLip.h:531-560 retains coordinates only on an exact matching context and lip-work-budget. The last successful source identity stays unchanged on timeout. Eight accepted-source advancement limit is checked against that original identity, so repeated failures do not renew retention. Every returned incomplete proof remains invalid. ApplyCurrentSubtitleBackingLip:481-518 requires current identity, current policy/continuity and cleanup containment in BOTH physical and composed pictures; no stale cleanup authority or AR change is introduced. Source/layout/mode changes reset these caches.
+
+No new defect reproduced in these reviewed branches. Existing regression receipts already cover budget-only retention, eight-source expiry, changed contexts and contradictions, so no duplicate tests were added. This is a focused source review, not a global proof of every renderer branch.
+
+Telemetry limit: the optional lookahead allowance/deadline is separate from current-source read allowance and asynchronous subtitle worker scans. Worker full scan wall peaks exceeding 16.7 ms alone do not prove a 60Hz render deadline miss. Actual current source/display telemetry is matched around 23.976 Hz. Do not infer physical mismatched-refresh success or tone-mapping brightness behavior from it.

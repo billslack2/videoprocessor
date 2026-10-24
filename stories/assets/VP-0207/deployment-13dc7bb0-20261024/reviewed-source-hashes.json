@@ -1,0 +1,22 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "matchesFrozenReviewerFiles": true,
+  "files": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "sha256": "1dc4f4b2d5691a8c890597b640c5ef313b68af63d97aa05adb58efd8254c48b0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleBackingLipTests.cpp",
+      "sha256": "6c5359778758c1763a14e849b31125862ae7f1182764363f1a6ba1a1aa1e9dff"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleNativeStackProbe.cpp",
+      "sha256": "819438f7b0c43184b37bb6da4d64412c9268f1bf27e3e2000ca862c4895c244e"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleMeasurementWorkerTests.cpp",
+      "sha256": "16770d714db06eec2b49f5f77653816917a33e7f0663fdd1c22195c92619e334"
+    }
+  ]
+}

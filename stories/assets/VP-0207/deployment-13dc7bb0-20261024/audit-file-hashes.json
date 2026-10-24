@@ -1,0 +1,46 @@
+[
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\build-tool.cmd",
+    "Hash": "CA1455B71E09A3C7F48C326E2889558484886DEEDECBE5FCBE8916382B782E28"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\compare.py",
+    "Hash": "B85312C3D769F4F0EB09E75305C2575A284A0300113D0DAA4B5E1404FE9681D3"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\compiled-stack-comparison.json",
+    "Hash": "B44016956F6594859D2CD6E9202F5B689CB0C3A2AAB5EAACFEDC02F7E919A2C9"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\compiled-stack-report.txt",
+    "Hash": "C30FE9F2432BB4D72DA6CC450B4499D9FFA070D2764DE923E824B3A4AAE36184"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\compiled-stack-summary.txt",
+    "Hash": "C89999F3809DE0C0C80F740FD85CDEFD320452A3C8A5FAC1DF3E453B7C45353D"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\failed-beta-symbols.tsv",
+    "Hash": "5DE8793BB3D4526275718FE1AA3987B81066B46D17498F9C7268EF469FC7F371"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\fixed-beta-symbols.tsv",
+    "Hash": "2886D00D4266E62B7A34B018913B867D7660ACD460891E6CD7E17B4C150E3155"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\fixed-stable-symbols.tsv",
+    "Hash": "52419BE6506F62AAE28241C50790DD347D3B8679F068788C6C22E4A1E30F6F02"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\README.txt",
+    "Hash": "38A59D593D8232B72A09FC9138066A16C7C95F1B80879EDBABCBC0CF88651EAB"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\symbols.cpp",
+    "Hash": "43FAB82B35751DBE7DC44C4523CD2134FAB63F50D9D56EBD0E4BA28CDE3BE70D"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\compiled-stack-audit\\symbols.exe",
+    "Hash": "521C0E8A8C7FBAD74EC6F5937B256B72848B6A93A354651D74A63107711BA71D"
+  }
+]

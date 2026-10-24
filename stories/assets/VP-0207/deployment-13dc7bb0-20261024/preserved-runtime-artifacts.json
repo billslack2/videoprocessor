@@ -1,0 +1,60 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "files": [
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\VideoProcessor-GUI.exe",
+      "sha256": "285402F8942212BC4670405BB644330BD147F90BB976090D84F43E96A40C92E9",
+      "bytes": 3069952
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\VideoProcessor-GUI.exe.runtime.json",
+      "sha256": "66623FEC42D42C45FDA3CBD6A5A411F3FDEF141F8954E5EB22A566A39C7A2B39",
+      "bytes": 220
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2A5B3F064606E0DA3F0B47CC8529D1759DB4F83C306ABA28F1CB5D6320C53101",
+      "bytes": 2585088
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "2FDBBFC7EC6DCD0C74268FFC98F227AEAC9212D4BB00BEF6948C21CCEF9E0C68",
+      "bytes": 220
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "C7681961BA272A90F310992F95251AAAD3A4631A5984AF2CC696D81FABCBB345",
+      "bytes": 2584576
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "5C71D73F53BAE9E24BEB63B5381EF2FECC663EBFA1A5EFE6FDD09BA7E7C6EEB7",
+      "bytes": 220
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\VideoProcessor-GUI.pdb",
+      "sha256": "B523847A4DC4142E97BB63BF760DB734F962C910CD6DC93B0CE904019F803924",
+      "bytes": 27357184
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "E5682742AB8BAE9C6C986AEC3ADF49DB84E0D74222081A0B6809A3D3408762FB",
+      "bytes": 20426752
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "preserved": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\qualified-artifacts\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "E99F65E812D2AC3C0BDD67C840086ED3CC4DF6E79385FEFC6BA754A6382B24F9",
+      "bytes": 20434944
+    }
+  ],
+  "scope": "Exact verified Release runtime and symbols, local only; test helper is not deployed"
+}

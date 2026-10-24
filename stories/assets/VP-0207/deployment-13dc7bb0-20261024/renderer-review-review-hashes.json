@@ -1,0 +1,30 @@
+[
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+    "Hash": "61B7E9C4439F35E4EEA4BD319EBBA89CF02EA931310A73DBF3F3271B238170FA"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\TemporalRenderer.h",
+    "Hash": "EF0CBE1E3A31D61A4E894777944B68BAD5EF07C4090F01EE33859A038AB3E34F"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\TemporalPresentationLedger.h",
+    "Hash": "42F14551CEB1B39E0A0C8AA737C872C1B3D8843E3DC5B96C055F77E0169A3B4B"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCutPasteShader.h",
+    "Hash": "BEB95983DA20E833CE0506FAEAD10751C47F7530518E3207EBC0BA9923F6896D"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\stack-recovery-regressions.trx",
+    "Hash": "FECCA1EA5BAF4A1B66B84FB2F87CABA3912E18BD8C3DDED096B71D991BB1E8F9"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\summary.txt",
+    "Hash": "35F0D299B045ED983992FC3CBC0759E98EA2A45646E33C90381B06520582B030"
+  },
+  {
+    "Path": "C:\\Users\\bslac\\vp\\story-tracker\\stories\\in-progress\\VP-0207_overlay-fit-stability-and-subtitle-backing-boundaries.md",
+    "Hash": "B26EBAD53B717D9BE56F16A05BC60AFC9FC3EAD579C50CBAEFE0CACB753B6E3D"
+  }
+]

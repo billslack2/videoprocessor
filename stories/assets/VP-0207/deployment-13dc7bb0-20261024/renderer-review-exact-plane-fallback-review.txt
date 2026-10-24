@@ -1,0 +1,29 @@
+Masked-first exact-row fallback review (read-only, 2026-10-24)
+
+Baseline: clean production source 3ecab879096bbe501117025bf2bb3ff886cd1ee9. No source edit, production build, configuration change, runtime restart, deployment, or merge was performed by this review.
+
+Disposition: the proposed fallback is acceptable only with every accepted line wholly in its acquired cue bar. For a bottom cue require line.top >= plane for every line; for a top cue require line.bottom <= plane. Preserve the original masked RevalidateSubtitleBarEvidence call and every successful masked result. Apply the narrower fallback gate only to masked failures whose padded envelope crosses the plane. Direct unmasked max-jump revalidation is rejected.
+
+Confirmed adverse case requiring that gate
+SubtitleCueContinuation::CueSide only requires upper != lower. It admits mixed picture/bar lines. The initial scratch gate merely excluded a line strictly straddling the plane. Cue review then reproduced a false positive from actual detector bounds: bottom lines 1886..1952 and 1712..1776; top mirror lines 208..276 and 384..452. Neither line strictly straddles. Flattening the real plane while leaving the glyphs unchanged makes the masked proof reject, but the exact native helper accepts 44 boundary columns supplied by the picture-side glyph. picture-edge-probe.csv records both sides. Requiring all lines in their own bar excludes the counterexample while leaving masked successes unchanged.
+
+Lifetime, authority, and work accounting
+InspectCurrent already binds source identity, dimensions, generation, format, encoding, range, colorspace, policy, continuity and acquired side before sampling. Its exact same-source cache is checked after those guards. The proposed helper receives currentSource and its existing local read budget; the local budget is charged exactly once to the shared source budget on every return. No new budget, seed capacity, worker authority, timestamp or lease renewal is introduced. A failed proof returns invalid candidate-only state. A successful plane alone cannot publish cleanup: unchanged full configured coverage, slot/ink equality and companion checks must still pass before completeCurrentCue becomes valid. Raw bar/AR evidence and the fixed-zoom transform remain untouched. Renderer prepared-token/source binding and atomic cleanup-plus-replacement paths are unchanged.
+
+Measured scratch positive, not production qualification
+For the 26x66 two-line native fixture at distance 200, the proposed exact fallback consumes 367842 inspector reads plus 81830 backing-cap reads = 449672 total for bottom placement; top placement consumes 369186 + 81830 = 451016. These fit the unchanged 393216 inspection and 524288 shared ceilings. The successful original masked branch does not call the fallback. Measured selected CPU samples are roughly 16-19 ms; read-cap headroom is not a frame-time guarantee or physical 24-to-60 display qualification.
+
+Stack implication
+The existing exact native helper uses fixed arrays of 128 and 384 ints and a nine-int row window, rather than a large preview/tracker aggregate. This is a modest approximately 2 KiB payload, but compiler inlining and surrounding renderer frames still require final Release unwind comparison and the normal 1 MiB pressured-path regression including this newly reachable branch. The previous clean build's stack reserve was 1048576 bytes and must remain unchanged. No new GPU packet or scratch-owner lifetime is added by this fallback.
+
+Required focused acceptance
+- Original masked success unchanged, including genuine mixed/crossing layouts.
+- Padded-envelope-only, all-glyphs-in-bar positive on both sides.
+- Mixed picture-side touching line cannot enter the fallback (confirmed counterexample above).
+- Actual crossing line, flattened or shifted plane, changed/blank glyphs, and full configured companion contradictions cannot become complete through the fallback.
+- Local or shared budget exhaustion returns invalid proof with no cleanup authority; pending behavior retains its existing bounded contract.
+- Repeated identical source identities preserve the existing cache/lease contract; source/context changes are rejected before reuse.
+- Final actual Release stack and integrated tests remain prerequisites to deployment; this review itself does not qualify output cadence or tone mapping.
+Final production-header review (before build)
+The saved diff at SubtitleCueContinuation.h lines 164-183 was inspected independently. No blocking finding remains in this header: original masked positives bypass retry; local exhaustion, positive remaining capacity and outer exhaustion are checked; the envelope is valid/in-raster and strictly crosses; every one of 1-3 accepted valid lines lies wholly in its cue bar. This closes the confirmed mixed-line counterexample. No subsequent complete-search, slot, ink, source binding, renderer, or lease logic changed. Tests, new isolated stack mode, final compiled DLL unwind comparison, and deployment qualification remain separate and pending the owning agents/parent.
+Reviewed header SHA-256: 1DC4F4B2D5691A8C890597B640C5EF313B68AF63D97AA05ADB58EFD8254C48B0

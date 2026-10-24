@@ -1,0 +1,18 @@
+{
+  "sha256": "609659C05124A3F1B16A7795BA9A0481EE1A0958C40167A545D99BA10B5788C9",
+  "searches": [
+    {
+      "pattern": "VP anamorphic render failure:",
+      "matches": 0
+    },
+    {
+      "pattern": "present_policy=black_clear",
+      "matches": 0
+    },
+    {
+      "pattern": "SUBTITLE MOTION:.*failure=",
+      "matches": 0
+    }
+  ],
+  "log": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\observation-start.log"
+}

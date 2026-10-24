@@ -1,0 +1,46 @@
+Renderer preparation / publication follow-up — 2026-10-24
+Source: clean 3ecab879096bbe501117025bf2bb3ff886cd1ee9.
+Disposition: NO NEW REPRODUCED DEFECT; NO SOURCE CHANGE.
+
+Scope and receipts
+Read the latest canonical VP-0207 story at C:\Users\bslac\vp\story-tracker\stories\in-progress\VP-0207_overlay-fit-stability-and-subtitle-backing-boundaries.md. The older E: story worktree ends at the 22:23 entry and was not used as the current status. Read the clean native-stack recovery summary, validation and full selected-test TRX under vp0207-native-stack-recovery-20261024-0203. Those receipts report 1957 passing tests and a surviving matched-23.976 Hz stationary deployment. This review did not change profiles, displays, configuration, source, or the running player, and did not restart it.
+
+Current cleanup / replacement publication
+- LibplaceboVideoRenderer.cpp 14180–14245: progressive temporal cleanup is not accepted on its own. A failed layer preparation returns through failSubtitleMotion before packet capture; compositionSucceeded is assigned only after successful cleanup and layer work. In the non-temporal path, unsuccessful All-phase composition leaves the original image and normal viewport path available, rather than selecting partially repaired scratch pixels.
+- SubtitleCutPasteShader.h 1047–1106: preparation uses its separate renderer, checks pl_render_image success and checks disabled-hook signatures before publishing its composed frame. A hook silently disabled by libplacebo therefore is not accepted as successful subtitle cleanup.
+- LibplaceboVideoRenderer.cpp 14449–14490: delayed native preparation captures geometry/style/source-processing options by value; each callback binds its own cleanup and layer phases. A donor is privately retained with its bounded region. The callback returns false if either required phase fails.
+- TemporalRenderer.h 428–526: native field validity is published only after owned clean and layer copies complete. PreflightCompositionOutput (573–592) clears packet history and returns false on any required field preparation failure. Renderer 14676–14678 exits before selected presentation when this preflight fails.
+- Optional finite-cap proof remains subordinate to current geometry and current native proof; this review found no path that publishes an old cap after its current proof fails. A failed optional cap can leave the original narrow backing visible, but cannot authorize stale cleanup. No cap-proof, pixel, or budget thresholds were changed.
+
+Preparation receipt versus actual submission
+The source preparation record can describe deferred native work before the current packet's fields have been materialized, especially while buffering. That record is not itself a presentation receipt. The selected output must complete preflight and rendering; the renderer commits submitted-caption and presentation state only inside rendered && submitted (19061 onward). Early preparation failure returns before that boundary. This distinction prevents treating sourcePrepared as proof that the GPU has already presented a repaired frame.
+
+Scratch lifetime / repeats / metadata
+- Renderer 13892–13904 copies the current decision out before clearing heap scratch source pointers, validity flags and shared owners. Both future call branches run PrepareInto before consuming this scratch. No later-source dereference or stale proof reauthorization was found.
+- Captured GPU packets own their texture copies. The current-frame preparation cache's images remain scratch references, but its exact source/generation/viewport/mode key only reuses them on the repeated temporal output path; later source capture does not borrow previous packet GPU storage.
+- Renderer 14519–14533 binds the presentation ring only on actual new-capture receipts, both initially and after recovery recapture. Native duplicate capture preserves the first callback. Renderer 18420–18425 takes composed/geometry from the selected packet's matching generation/sequence, so its HDR subtitle protection uses that packet rather than a later duplicate's tentative preparation.
+- TemporalRenderer::ProcessSource (609 onward) keys processed reuse by input/predecessor/successor signatures, processing epoch, source/target crop, rotation, peak-analysis crop, hook signatures, target color/repr and output calibration identity. Existing packet data and HDR source snapshots are copied into processed output; final HDR publication is gated by actual render/submission.
+
+Retained source ledger after failSubtitleMotion
+failSubtitleMotion clears temporal GPU history while leaving source evidence/presentation journals intact. Those journals freeze policy once per captured source and avoid advancing leases twice. The exact same-source recovery path recaptures the prepared source and rebinds packet metadata on its real capture receipt. An earlier idea that preserving the ledger necessarily causes stale crop/cleanup authority remains UNPROVEN: this review did not reproduce a production preparation-state transition plus failure/retry that makes selected output disagree with its valid source evidence. No speculative ledger clearing or broad recovery change is proposed. A synthetic test that simply assigns contradictory same-source metadata would not establish that the current production coordinator can generate it.
+
+Failure-policy wording limit
+The early failSubtitleMotion path retains the last complete presentation by exiting before target submission. That wording is not universal for every GPU failure. At 19033–19045 the libplacebo-owned swapchain must consume an acquired target; a late final render failure explicitly clears that target to black before submission. VP-owned presentation skips Present on failure. This is existing output-failure policy, not a newly demonstrated subtitle-flash cause.
+
+Existing integrated evidence checked (not rerun)
+All of these methods are Passed in the clean 3ec TRX:
+CompositionCaptureFailureDoesNotRetainBorrowedPixels
+CompositionRejectsNonNormalizedCleanFrameAndClearsHistory
+CompositionSnapshotDoesNotBorrowUploadTextures
+CompositionCaptureReceiptKeepsMetadataWithItsGpuPacket
+CaptureReceiptDistinguishesBypassRejectionAndDeferredFailure
+NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer
+NativeCompositionPreparationFailureClearsHistory
+SubtitleStyleEpochChangeClearsSameSourceBeforeRecapture
+HdrToneMappedSourceIsReusedAtOutputRate
+
+Limits
+This is a read-only code/receipt review, with no new GPU probe or fault injection and no duplicated cadence test run. It does not prove every GPU allocation/device-removal path, the entire private renderer under injected failures, live moving Ben-Hur behavior, HDR brightness equality, or physical 24-to-60 display playback. Existing offscreen cadence simulations and matched-refresh stationary telemetry remain separately scoped. User visual acceptance remains pending; no merge or completion claim is made.
+
+Active-session snapshot follow-up
+The preserved observation-start.log snapshot was searched for the exact early/late failure markers. No matches were found for VP anamorphic render failure:, present_policy=black_clear, or SUBTITLE MOTION: followed by failure=. failure-log-search.json records patterns, counts and the snapshot hash. This establishes absence of those logged errors in that snapshot only; it is not a visual playback verdict.

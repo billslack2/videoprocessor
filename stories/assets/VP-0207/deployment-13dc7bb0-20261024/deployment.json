@@ -1,0 +1,93 @@
+{
+  "sourceCommit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "betaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-exact-plane-13dc7bb0-20261024-031849",
+  "configurationEdits": [],
+  "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+  "files": [
+    {
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "previousSha256": "469CF00A3169CC8D50DF72806E3BCF164643A9FD61E54A090A9E5BDF3AF51F37",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "285402F8942212BC4670405BB644330BD147F90BB976090D84F43E96A40C92E9"
+    },
+    {
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "previousSha256": "595532754F2BB91AD98D12E07EFAFD209C94F8E9308D59830918FECC03868FA6",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2A5B3F064606E0DA3F0B47CC8529D1759DB4F83C306ABA28F1CB5D6320C53101"
+    },
+    {
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "previousSha256": "73A7EDDA3625C6ED4EB24D167DF4B3AA91C46515E33740298F7853D7063B91F4",
+      "source": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "C7681961BA272A90F310992F95251AAAD3A4631A5984AF2CC696D81FABCBB345"
+    }
+  ],
+  "configBefore": [
+    {
+      "name": "active-output-sweep-hdr-template.cfg",
+      "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "name": "active-output-sweep-sdr-template.cfg",
+      "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "name": "NPNnnNPn.cfg",
+      "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "name": "VideoProcessor.cfg",
+      "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+    }
+  ],
+  "configAfter": [
+    {
+      "name": "active-output-sweep-hdr-template.cfg",
+      "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "name": "active-output-sweep-sdr-template.cfg",
+      "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "name": "NPNnnNPn.cfg",
+      "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "name": "VideoProcessor.cfg",
+      "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+    }
+  ],
+  "stateBeforeShutdown": "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+  "stateAfterShutdown": "CB0ABDB5E44C6F68684091B28E5E2E2D9AB23FC68D53896FD70B468450DF0D03",
+  "stateNote": "No state writes by deployment; application may save its state on close",
+  "startedProcessId": 76388,
+  "verifiedAt": "2026-10-24T03:19:00.9275103-04:00",
+  "status": "deployed-identity-verified-replay-pending",
+  "activeSubtitleProfileEvidence": {
+    "savedState": "profile.subtitles: clear__yellow",
+    "runtimeMode": "2026-10-24 03:19:06 | SUBTITLE MODE: box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=22 source_pixels text_reduction_percent=25 rounded_corners=0 background_edge=float",
+    "currentLipChecks": 107
+  },
+  "loadedModules": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "285402F8942212BC4670405BB644330BD147F90BB976090D84F43E96A40C92E9"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2A5B3F064606E0DA3F0B47CC8529D1759DB4F83C306ABA28F1CB5D6320C53101"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "C7681961BA272A90F310992F95251AAAD3A4631A5984AF2CC696D81FABCBB345"
+    }
+  ],
+  "observedThrough": "2026-10-24 03:22:52",
+  "activeSubtitleProfile": "clear__yellow",
+  "configurationRestored": true
+}

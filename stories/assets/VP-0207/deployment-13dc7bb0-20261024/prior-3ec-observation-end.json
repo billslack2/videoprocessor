@@ -1,0 +1,126 @@
+{
+  "source": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "start": "2026-10-24 02:31:25",
+  "end": "2026-10-24 02:56:42",
+  "lipRecords": 758,
+  "invalidOrUnappliedLips": [],
+  "cleanupRectangles": [
+    "1442,1746-2398,1776"
+  ],
+  "stabilityTransitions": [],
+  "pixelContradictions": [],
+  "submittedGeometryChanges": [],
+  "subtitleCpu": {
+    "windows": 303,
+    "metrics": {
+      "consume_avg_ms": {
+        "min": 2.192,
+        "max": 2.687
+      },
+      "consume_peak_ms": {
+        "min": 2.534,
+        "max": 4.34
+      },
+      "full_avg_ms": {
+        "min": 17.387,
+        "max": 22.351
+      },
+      "full_peak_ms": {
+        "min": 18.682,
+        "max": 32.896
+      },
+      "pending_frames": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "verified_pending": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "queue_wait_avg_ms": {
+        "min": 0.032,
+        "max": 0.057
+      },
+      "queue_wait_peak_ms": {
+        "min": 0.044,
+        "max": 2.174
+      },
+      "dropped_jobs": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "failed_jobs": {
+        "min": 0.0,
+        "max": 0.0
+      }
+    }
+  },
+  "analysis": {
+    "windows": 758,
+    "metrics": {
+      "source_hz": {
+        "min": 23.97646,
+        "max": 23.97646
+      },
+      "display_hz": {
+        "min": 23.976,
+        "max": 23.9766
+      },
+      "deadline_overruns": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "active_avg_ms": {
+        "min": 10.805,
+        "max": 14.218
+      },
+      "active_peak_ms": {
+        "min": 12.32,
+        "max": 33.406
+      },
+      "source_period_exceeded": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "display_period_exceeded": {
+        "min": 0.0,
+        "max": 0.0
+      }
+    }
+  },
+  "gpu": {
+    "windows": 303,
+    "metrics": {
+      "display_hz": {
+        "min": 0.0,
+        "max": 23.97644
+      },
+      "gpu_frame_avg_ms": {
+        "min": 4.054,
+        "max": 4.399
+      },
+      "gpu_frame_peak_ms": {
+        "min": 4.106,
+        "max": 23.335
+      },
+      "gpu_overruns": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "gpu_disjoint": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "gpu_query_failures": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "gpu_lock_drops": {
+        "min": 0.0,
+        "max": 0.0
+      }
+    }
+  },
+  "logSha256": "75851FED54B25EC90CF91DAE73A7DB806EB140CFA044162189C6269DD2980CAA",
+  "limits": "Stationary sampled/event telemetry on matched source and display; no visual, moving-scene or physical 24-to-60 acceptance. Async subtitle full scan wall cost is separate from foreground consumption and the optional lookahead deadline."
+}

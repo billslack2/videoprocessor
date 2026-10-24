@@ -1,0 +1,10 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "count": 0,
+  "markers": [
+    "VP anamorphic render failure:",
+    "present_policy=black_clear",
+    "SUBTITLE MOTION:.*failure="
+  ],
+  "scope": "Entire preserved post-deployment startup/session log; no pixel or brightness verdict"
+}
