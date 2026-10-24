@@ -4449,7 +4449,6 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t subtitleReuseRejectNextTick=0;
     double subtitlePrimeMs=0, subtitlePrimePeakMs=0;
     PresentationAnalysisBudget analysisWorkBudget;
-    uint64_t analysisGpuEpoch=0,analysisGpuMinimumSubmissionSerial=0;
     uint64_t nextOutputCorrelationLogTick=0;
     AnalysisPerformanceWindow analysisPerformance;
     QueuedFrame::LookaheadWorker::Metrics previousWorkerMetrics;
@@ -13310,12 +13309,7 @@ struct LibplaceboVideoRenderer::Impl
 		// Resolve only old query slots and never flush. Drain a small bounded
 		// number if the driver made several available together; stop immediately
 		// at the first unresolved oldest slot.
-        const uint64_t gpuBudgetEpoch=frameGeneration*1315423911ULL+viewportRequestSerial;
-        if (analysisGpuEpoch!=gpuBudgetEpoch) {
-            analysisGpuEpoch=gpuBudgetEpoch;
-            analysisGpuMinimumSubmissionSerial=renderLoadSubmissionSerial+1;
-        }
-		auto resolveGpuTiming = [this,viewportRequestSerial]()
+		auto resolveGpuTiming = [this]()
 		{
 			for (size_t resolved = 0; resolved < 4; ++resolved)
 			{
@@ -13331,16 +13325,6 @@ struct LibplaceboVideoRenderer::Impl
 						gpuSample.milliseconds, gpuSample.lagFrames);
 					if (matched)
 					{
-                        // Reuse already-resolved DONOTFLUSH timestamp evidence.
-                        // Old viewport/source submissions cannot qualify a new epoch.
-                        if (gpuSample.submissionSerial>=analysisGpuMinimumSubmissionSerial &&
-                            gpuSample.generation*1315423911ULL+viewportRequestSerial==analysisGpuEpoch) {
-                            static const int64_t frequency=[] {
-                                LARGE_INTEGER value{};QueryPerformanceFrequency(&value);return value.QuadPart;
-                            }();
-                            analysisWorkBudget.ObserveGpu(analysisGpuEpoch,PerformanceCounterNow(),
-                                frequency,gpuSample.milliseconds,gpuSample.issuedQpc);
-                        }
 						for(int mode=0;mode<2;++mode) {
                             const double ms=mode?gpuSample.subtitleGeneratedMilliseconds:gpuSample.subtitleBlackMilliseconds;
                             if(ms>0){++subtitlePerf.gpuSamples[mode];subtitlePerf.gpuMs[mode]+=ms;subtitlePerf.gpuPeak[mode]=(std::max)(subtitlePerf.gpuPeak[mode],ms);}
@@ -19446,7 +19430,7 @@ releaseDriftBaseRetention =
             analysisWorkBudget.Observe(frameGeneration*1315423911ULL+viewportRequestSerial,sample.syncQpc,swapEndQpc,
                 sample.qpcFrequency,sample.expectedDisplayHz,
                 sample.available && !sample.disjoint && presentationSnapshot.evidence==AlphaPresentationEvidence::Stable,
-                preRenderTimings.renderLockWaitMs+livePreparationMs+renderMs,repeatedTemporalOutput);
+                preRenderTimings.renderLockWaitMs+livePreparationMs+renderMs);
             analysisPerformance.preparation.Add(livePreparationMs);
             analysisPerformance.Submission(beforeRenderMs+livePreparationMs+renderMs,
                 renderMs,swapBlockMs,captureRateHz,sample.expectedDisplayHz);
@@ -24035,14 +24019,12 @@ void LibplaceboVideoRenderer::RenderLoop()
                  budgetLogTick-m_impl->lastAnalysisBudgetLogTick>=250)) {
                 m_impl->lastAnalysisBudgetLogTick=budgetLogTick;
                 m_impl->lastAnalysisBudgetSkippedBoundary=lookaheadTicket.skippedBoundary;
-                DebugLog::Log("Alpha look-ahead budget: generation=%llu sequence=%llu epoch=%llu phase_known=%d next_lead_ms=%.3f mandatory_ms=%.3f mandatory_tail_ms=%.3f mandatory_known=%d gpu_tail_ms=%.3f gpu_known=%d mandatory_envelope_ms=%.3f reserve_ms=%.3f target_lead_ms=%.3f skipped_boundary=%d allowance_ms=%.3f repeat=%d backlog=%d",
+                DebugLog::Log("Alpha look-ahead budget: generation=%llu sequence=%llu epoch=%llu phase_known=%d next_lead_ms=%.3f mandatory_ms=%.3f reserve_ms=%.3f target_lead_ms=%.3f skipped_boundary=%d allowance_ms=%.3f repeat=%d backlog=%d",
                     activePicturePreviewFrames.front().activePictureIdentity.transportGeneration,
                     activePicturePreviewFrames.front().activePictureIdentity.acceptedSequence,
                     activePicturePreviewFrames.front().activePictureIdentity.viewportGeneration,
                     lookaheadTicket.phaseKnown?1:0,lookaheadTicket.nextBoundaryLeadMs,
-                    lookaheadTicket.mandatoryMs,lookaheadTicket.mandatoryTailMs,
-                    lookaheadTicket.mandatoryKnown?1:0,lookaheadTicket.gpuTailMs,
-                    lookaheadTicket.gpuKnown?1:0,lookaheadTicket.mandatoryEnvelopeMs,lookaheadTicket.reserveMs,
+                    lookaheadTicket.mandatoryMs,lookaheadTicket.reserveMs,
                     lookaheadTicket.targetLeadMs,lookaheadTicket.skippedBoundary?1:0,
                     lookaheadTicket.allowanceMs,
                     activePicturePreviewFrames.front().cadenceRepeat?1:0,previewBacklog?1:0);

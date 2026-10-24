@@ -2,12 +2,13 @@
 
 Lookahead enables crop and caption decisions on their first eligible displayed
 source frame. This design preserves configured future-frame depth while moving
-more complete proof ahead of presentation and replacing the fixed 2 ms ceiling
-with admission based on measured presentation headroom.
+more complete proof ahead of presentation. PR #193 now retains the current beta
+presentation-admission policy unchanged; timing-policy redesign is tracked in
+[VP-0208](https://github.com/billslack2/videoprocessor/blob/main/stories/backlog/VP-0208_lookahead-scheduling-and-smooth-presentation.md).
 
 ## Status and branch scope
 
-Implementation on separate draft [PR #193](https://github.com/billslack2/videoprocessor/pull/193),
+Prepared-proof implementation on [PR #193](https://github.com/billslack2/videoprocessor/pull/193),
 2026-10-23. The canonical
 [VP-0205 story](https://github.com/billslack2/videoprocessor/blob/main/stories/review/VP-0205_preserve-useful-lookahead-with-prepared-proof-and-adaptive-budgets.md)
 tracks acceptance and outstanding live qualification.
@@ -60,14 +61,19 @@ the reachable display boundary after mandatory work can fund foreground scans.
 For example, a 5 ms remaining lead with 3 ms reserved leaves 2 ms; 24 fps content
 on a 60 Hz output still has 16.7 ms display intervals.
 
-Removing the fixed ceiling is technically reasonable when measured slack is
-available, but the prediction can be wrong on the next frame. This PR's CPU/GPU
-history does not measure complete end-to-end Present/scanout cost, and cooperative
-checkpoints are not hard real-time preemption. A larger grant therefore needs
-matched live deadline/adoption and pressure evidence. Existing synthetic results
-support prepared reuse strongly but do not establish a useful-proof benefit from
-raising the cap. The adaptive algorithm remains unchanged by this rebase while
-that merge-risk decision is reviewed.
+The reduced PR restores the exact beta budget class, GPU query timer and budget
+regressions. This preserves both the 2 ms qualified ceiling / 1 ms fallback and
+beta's existing limited boundary-skip heuristic. It adds no new GPU-tail reserve,
+uncapped foreground allowance or boundary-skipping behavior. Retaining beta here
+is an integration choice, not evidence that its scheduling policy is optimal.
+
+VP-0208 will assess the current policy itself, more asynchronous preparation,
+deliberate stable buffering, and optional adaptive work within a presentation
+schedule that analysis cannot move. The user's priority is continuous, smooth
+presentation; some steady added latency is acceptable. A retained GPU peak must
+not be mistaken for proof that the next boundary is unreachable. The deferred
+implementation remains recoverable at `13f43bcb` and in VP-0208's forward patch.
+
 ## Measured evidence
 
 The preserved capture has these observed synchronous analysis results:
@@ -146,23 +152,20 @@ Current native-pixel, owner, stable-reference and live-model admission still run
 at consumption. A prepared result does not bypass these checks. Changing context
 invalidates reuse; partial scans never become darkness, clearance or crop evidence.
 
-## Implemented presentation admission
+## Presentation admission retained from beta
 
-Qualified foreground allowance is the reachable display-boundary lead less
-`max(2 ms, 1.25 * (CPU tail + GPU tail))`. CPU and GPU maxima use eight fixed
-250 ms buckets (about two seconds). New-source CPU cost is tracked independently
-of cheaper repeated outputs. CPU/GPU overlap can make this sum conservative.
-There is no universal 2 or 4 ms qualified ceiling. Unknown/stale/unstable timing falls back
-to at most 1 ms; repeated outputs and backlog get no new foreground ticket.
-Discontinuity, resize and output renegotiation also suppress new foreground scans. The deadline is fixed and cannot roll into the next interval.
+`PresentationAnalysisBudget.h`, `AlphaD3D11FrameGpuTimer.h` and
+`MotionRendererTests.cpp` match integration `e3dcad1a` exactly. Renderer GPU
+sampling, mandatory-cost observation and budget reporting use that same API.
+Prepared caches and cooperative scan cancellation do not require the deferred
+adaptive algorithm. Ready proof can still be consumed with zero new-pixel
+allowance; missing proof falls back through existing validation.
 
-Only existing nonblocking D3D11 timing results feed the GPU estimate. Source and
-viewport epoch fencing rejects old samples, and confidence requires an actual
-issue age within four qualified display periods. A delayed result cannot appear
-fresh merely because it just resolved. A stale GPU maximum can preserve reserve
-but cannot qualify a later boundary. These queries measure selected rendering
-stages, not end-to-end Present or scanout completion; admission remains a
-conservative heuristic that requires live GPU-pressure qualification.
+The prepared workers are bounded and never joined on the render publication
+path, but they still use CPU and memory bandwidth. Native tests establish
+ownership, cache and cancellation contracts. Live cadence under worker/GPU
+pressure remains a separate qualification; no zero-jitter guarantee follows
+from unit tests or this split.
 
 ## Telemetry and validation
 
@@ -176,8 +179,7 @@ publication and actual adoption are reported separately.
 
 Native tests cover exact key invalidation, owner/storage/domain changes, caption
 nomination equivalence and rejection, cancellation, nearest-source scheduling,
-queue bounds, GPU issue-age/epoch freshness, presentation cadence and fixed
-deadlines. Whole outward-window tests exercise three distinct sources, cold
+queue bounds, existing presentation cadence and fixed deadlines. Whole outward-window tests exercise three distinct sources, cold
 raw/retention dependencies, raw completion after priming, zero-foreground proof,
 first-source identity, no-change/invalid outcomes and obsolete-slot isolation.
 
@@ -189,7 +191,7 @@ library hashes are identical across those builds. Independent threading and
 principal reviews found no remaining blocker. Initial incremental PDB corruption
 was resolved by the clean Rebuild. Nonfatal conversion/shadow warnings remain.
 
-## Controlled three-source results
+## Historical controlled three-source results
 
 The final clean `be23c69f` harness passed all 15 synthetic owned 4K fixtures:
 P010/P210/BGRA8, with three separate allocations and source identities 100–102.
