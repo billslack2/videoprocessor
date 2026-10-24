@@ -1,0 +1,29 @@
+VP-0207 oversized replacement background — preserved08:49:51 log
+
+Confirmed geometry matches the user's new symptom. Same cue7 keeps glyph bounds966,1670–2870,1934, glyph scale0.700 and translation574.45,482.15, while the displayed replacement rectangle grows from243 to704 source-coordinate pixels high (2.897x). This is displayed-background growth, not merely a larger source-cleanup rectangle. No source/runtime/configuration/test changes were made during this review.
+
+Exact sequence (all renderer generation1, same PID14372)
+Time       Source cue  Accepted cleanup             Display destination           Height
+08:49:27   344    7    810,1634–2934,1884           798,1621–2946,1864              243
+08:49:29   387    7    798,1633–2948,1884           786,1621–2960,1864              243
+08:49:29   397    7    798,1462–3521,1884           786,1450–3533,1864              414
+08:49:29   399    7    798,1456–3521,1884           786,1444–3533,1864              420
+08:49:30   403    7    798,1441–3522,1884           786,1429–3534,1864              435
+08:49:30   404    7    798,1172–3524,1884           786,1160–3536,1864              704
+08:49:31   426    7    789,1172–3531,1884           777,1160–3543,1864              704
+08:49:31   427    0    reset                       hidden                           0
+08:49:32   457    8    814,1634–3174,1884           802,1621–3186,1864              243
+
+Normal source387 cleanup is2150x251; source426 accepted cleanup is2742x712:2.837x taller. Display expands2174x243→2766x704:2.897x taller and1.272x wider. Native glyph box remains1904x264; 0.7-scaled box height is184.8, so normal/expanded display height is1.315x/3.810x that transformed box. These are common source-coordinate dimensions, not absolute monitor pixel measurements.
+
+The critical retention mismatch at426 is explicit: current measured cleanup814,1634–3174,1884 is only250 high, and current captured card820,1640–3168,1887 is247 high, but accepted cleanup remains712 high and displayed background704 high. BACKING reason is retained-cue-footprint, held_measurements35, complete_card0. Both actual glyph capture rows are unchanged from344:970,1821–2863,1924 and970,1677–2858,1776. Earlier growth397/399/403/404 is labelled complete-card-proof with glyphs-match/backing1 and zero glyph transform change. Thus the current local card shrank while the same-cue accepted union retained an earlier larger proof.
+
+Exact production mechanism
+SubtitleBoxDetector.cpp1862–1917 attempts RefineSubtitleOpaqueCard for an accepted picture row; a successful refined cleanup covering accepted picture ink becomes current.text.provenSourcePanel. SubtitleCutPaste.h785–797 accepts that current proof when valid/current/nonheld, containing picture glyph rows and overlapping the prior panel. Lines859–876 union it into the accepted same-cue footprint. When there is no fresh complete proof,877–880 retain the prior footprint. CoverMeasuredSubtitleBacking464–486 then grows the DISPLAY destination to layoutCoverage/generatedCleanup plus the rounded margin. The recorded top1172→display top1160 is exactly its12-pixel margin. This explains the logged propagation and persistence. The log alone cannot prove which image pixels made the native full-card refiner accept the excessive1172 top; that remains the reproduction target. It does not justify trusting stale erasure or simply removing original backing coverage.
+
+Presentation and normalization
+Reconstruction was selected08:49:25 and unchanged through the expansion and normalization. Motion is Off; output correlations393/399/406/425/455 have temporal0 and selected==source. The last submitted geometry before growth is source288: actual_source30,276–3808,1884 and actual_target0.11,71.22–1039.89,513.78, composed1. No submitted movie-geometry change occurs during growth. There is no temporal packet mismatch evidence here; the source cleanup/display coverage path already accounts for the symptom.
+At427 the current glyph proof fails component coverage (44owned/32covered), retires cue7 and resets backing.457 reacquires same logged glyph bounds with a normal243-high destination. This establishes normalization through cue reset/reacquisition. No source-player pause marker proves the pause caused it. Subsequent Clear/Yellow/Black/Off/Classic profile cycling08:49:34–35 and Reconstruction08:49:36 occur AFTER normalization; cue12 then stays243-high through08:49:48.
+
+Evidence references
+runtime-observation.log:62346–62355 (acquisition/capture),62516 (normal387),62553–62579 (growth),62596–62608 (retained oversize then retirement),62682–62689 (normal reacquisition),62121/62548/62555/62572/62588/62675 (output),62874–63227 (later profiles),63527–63532 (settled normal capture). No screenshot/native capture of the actual growth frame was available to this audit. Source and input hashes accompany this report; no broader flash or zoom root-cause claim is made.

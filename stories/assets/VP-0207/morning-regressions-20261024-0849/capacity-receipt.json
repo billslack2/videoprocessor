@@ -1,0 +1,211 @@
+{
+  "commit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "status": "",
+  "source_edits": false,
+  "runtime_changes": false,
+  "variants": "Only Remember full expanded ROI Sample ceiling changed in external copied header:65536->98304/131072. All production budgets/coverage unchanged.",
+  "files": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072-adverse.csv",
+      "bytes": 26106,
+      "sha256": "19aaa0796b7923ca148cc41f9a726e8d84b990b0925cb3773d7351a57b9faba3"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072-adverse.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072.csv",
+      "bytes": 78788,
+      "sha256": "abc0e56df915eed594c464ca5475e7172f1a6f6c69fb3417e79d56816e91e4fa"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072.exe",
+      "bytes": 420864,
+      "sha256": "73a54b8f7972c08f14a89356b0651b4ebf75af8f48743f8972267615cc07be47"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304-adverse.csv",
+      "bytes": 26102,
+      "sha256": "6df8587ca078379ee50f511367f760ba86395c01a2a36272365586f9b69d1a5f"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304-adverse.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304.csv",
+      "bytes": 78042,
+      "sha256": "a83e5c528548dbf063a51cd0c084397a406dc4c9b6d6e9f6fb15578c2eded078"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304.exe",
+      "bytes": 420864,
+      "sha256": "c9ae7c85c6985c17e8e7056b0dba52ca6921c12f01f47e1bdd4138a9a793f426"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\baseline-adverse.csv",
+      "bytes": 25915,
+      "sha256": "defb0c8dc213bb03ab8f53eaf41c6bced7139e031e5bc70690a147507cc0c2a0"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\baseline-adverse.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\baseline.csv",
+      "bytes": 70223,
+      "sha256": "7e9bd137dac4481843f64cbe62792177f0e5d9d1135d43eda27441ede94738a9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\baseline.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\baseline.exe",
+      "bytes": 420864,
+      "sha256": "44bcd1078e874250a6dd7042dd2856edfd8273fc38d65bdd48277021e669a8e9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\build-131072.cmd",
+      "bytes": 705,
+      "sha256": "3cb4d6d30267c9852e1ed24cd7872e42914f9c2776b8b5c70c53dfb4b29c1603"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\build-98304.cmd",
+      "bytes": 702,
+      "sha256": "1759aa93bc891eb64f0f7e6eeb729c14cdf39ca4261f1340bf6ef6be3c2c9e76"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\build-baseline.cmd",
+      "bytes": 621,
+      "sha256": "9709a0f8af857cc26e515eefebee892aef3d9598066a220e5bfc34893d84786f"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\build-card.cmd",
+      "bytes": 642,
+      "sha256": "f3a400719bd277bccda7e2395f5e3ae4fcc8b557784890d3b4c3778075a1e627"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\build-seed-boundary.cmd",
+      "bytes": 723,
+      "sha256": "4fd53f677435cf74a9af9bc92139f9ddee9bd058b542c29783ad3d9a415fc07e"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\capacity-boundary-helper.h",
+      "bytes": 8102,
+      "sha256": "549d1b79a062e9b0445f91186ee42d7f365f9d494a738913420989e884914746"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\capacity-for-diagnostic.h",
+      "bytes": 8120,
+      "sha256": "378813fe028ce3af67a5a3844d534aaa9f00a1bf4684bb0cd4cd975542a36613"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\capacity.cpp",
+      "bytes": 8027,
+      "sha256": "93bb1c64ec8814f79caf013ad21e1d75ff987d5696c95987f0937512afb06433"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\card-diagnostic.cpp",
+      "bytes": 1906,
+      "sha256": "e1117052c1ca8fe508df79b0673906babb23169bcda63e10a38a8a27dba12515"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\card-diagnostic.exe",
+      "bytes": 205824,
+      "sha256": "a7d2660138cf57cc0d0de54b2712a0dbd2ca4ed28bd177230341e7939c64deb9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\card-diagnostic.txt",
+      "bytes": 2650,
+      "sha256": "e9c09e8d69d5bffc462688c75c31ad9214964c985cadfa81c7fc1f968c5071bc"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\fixture.h",
+      "bytes": 19359,
+      "sha256": "cca6b3e35d2fc2e59699f3178d508a9e78e06d189e5848eab6466952b30c85d9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\seed-boundary.cpp",
+      "bytes": 4264,
+      "sha256": "b55c00587932b72a8f4869add279db1ed970c10bcd0a4fdf0abde3b37c70e82c"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\seed-boundary.err",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\seed-boundary.exe",
+      "bytes": 423936,
+      "sha256": "305b3239cfebc387ba0ed792d5b31361acaf75ae167f9a272f4fbfb462e85d18"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\seed-boundary.txt",
+      "bytes": 3247,
+      "sha256": "49fcd1298d9864d4fdac714ff21d454cd2634ff257bca8316fa93e59de452dc1"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\131072\\SubtitleCueContinuation.h",
+      "bytes": 37337,
+      "sha256": "fb70103970d3174258e7e51862ac9b994e503c5750639ee13cb0f3fce452ab62"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\capacity-review\\98304\\SubtitleCueContinuation.h",
+      "bytes": 37336,
+      "sha256": "20978472507c854e7a5df8f4d395dc7dd272d8f78b2fa537970f9c9cbb7bbd9a"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "bytes": 125710350,
+      "sha256": "2e10a08004538077f6e153733a8e2282a0b5d8643285bce46e031efe81ba6196"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "bytes": 37336,
+      "sha256": "1dc4f4b2d5691a8c890597b640c5ef313b68af63d97aa05adb58efd8254c48b0"
+    }
+  ],
+  "executables": {
+    "baseline": {
+      "machine": "0x8664",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    },
+    "98304": {
+      "machine": "0x8664",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    },
+    "131072": {
+      "machine": "0x8664",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    },
+    "card-diagnostic": {
+      "machine": "0x8664",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    },
+    "seed-boundary": {
+      "machine": "0x8664",
+      "stack_reserve": 1048576,
+      "stack_commit": 4096
+    }
+  }
+}

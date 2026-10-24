@@ -1,0 +1,97 @@
+{
+  "createdUtc": "2026-10-24T12:54:28.6044752Z",
+  "head": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "sourceStatus": [],
+  "testRows": 38,
+  "sourceChanges": "none",
+  "runtimeActions": "none",
+  "inputs": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\morning-event-review.txt",
+      "bytes": 6004,
+      "sha256": "3E2CDA55FFE1AAABE01140B4C337165E530474B044E7DD27CB691B0F056916F8"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\runtime-observation.log",
+      "bytes": 145787485,
+      "sha256": "B2BA3FCA94519FD530B32F71D8BDB426ACD4400EB8C9B9EDFE2C27C8CBA0E35C"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\runtime-observation.log",
+      "bytes": 21162649,
+      "sha256": "2E172D613158E9641E0FBE56CA8DDDC3391D549785FB34ED16C24BCC67B66F14"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\fixture.h",
+      "bytes": 8887,
+      "sha256": "2E2CEE7599349D9BC610BD9B1E150F04AE3E246EE1F0EBC406E3559D1C6AD244"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+      "bytes": 7663,
+      "sha256": "D8089C71D260BF713FA4080B0528C2DE96E7388B67522B4977EA32AF9F049E29"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "bytes": 37336,
+      "sha256": "1DC4F4B2D5691A8C890597B640C5EF313B68AF63D97AA05ADB58EFD8254C48B0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "bytes": 47535,
+      "sha256": "F9F38F8ACD2847F92F6117C8BF4D48BAEA724F1E865F0CC28B8FE7E7CF54F284"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "bytes": 196890,
+      "sha256": "4467472B8FF7925138F5F0CAC0FD147E777EA36BB9160E54A455A848294B6875"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "bytes": 1346926,
+      "sha256": "61B7E9C4439F35E4EEA4BD319EBBA89CF02EA931310A73DBF3F3271B238170FA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "bytes": 125710350,
+      "sha256": "2E10A08004538077F6E153733A8E2282A0B5D8643285BCE46E031EFE81BA6196"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\backlog-recovery.cpp",
+      "bytes": 7189,
+      "sha256": "C7F6FA308B849B70B0712A78C505174BEB8B9E2F351EACA6A97358F7173BD467"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\backlog-recovery.exe",
+      "bytes": 417792,
+      "sha256": "1A5977A5990E22778FAAFA400C52F6CE8A5267E345068609A3A2ED0BE2539630"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\build.cmd",
+      "bytes": 611,
+      "sha256": "42F580BAA89566BEE62E22E127AB9865B304C5E434343E67EB642D56BB1B187D"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\build.txt",
+      "bytes": 259,
+      "sha256": "DCD6F7649218070F421C675E7C410139BD75AD45D8DC876520823DB368E674CE"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\probe-stderr.txt",
+      "bytes": 53,
+      "sha256": "31D8439027F90A3CC84DBE514919C08AE5A650DD0621120CBA20D029E9AF1DC1"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\results.csv",
+      "bytes": 5882,
+      "sha256": "27938E18733464F170CBFFC0D454918F53F68C5EF204E5374E2105D758D02214"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-recovery-followup-20261024-0842\\cue-recovery-review\\review.txt",
+      "bytes": 7679,
+      "sha256": "D243A38ABBE9E666E7AE917ECEF31BF2962F866D183248F68339B898C227D782"
+    }
+  ]
+}

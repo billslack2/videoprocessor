@@ -1,0 +1,51 @@
+{
+  "created_at": "2026-10-24T08:53:24.4889940-04:00",
+  "outputs": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-oversized-background-20261024\\presentation-review\\review.txt",
+      "sha256": "33c8bd8ed9374bb3e3ac16a536bc08b99439e8a12432ea8178a9253e5481b512"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-oversized-background-20261024\\presentation-review\\event-excerpts.txt",
+      "sha256": "8a20ab7a0edcb7be92e54a6834a1791996f6a07b5d737c1622fd21d348e963fa"
+    }
+  ],
+  "schema": 1,
+  "source_references": {
+    "SubtitleCutPaste": "464-486;779-880;923-926",
+    "SubtitleBoxDetector": "1862-1917;2766-2768"
+  },
+  "source_clean": true,
+  "inputs": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-oversized-background-20261024\\runtime-observation.log",
+      "sha256": "f95dc5d8ade7229acc84130263e630277651f4ac1d59baedb1c24a694322aaee"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-oversized-background-20261024\\capture.json",
+      "sha256": "a2f23c7308ea67d3df558b088ffc7290e95af62e61aa142cd6e40ee66c86505c"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-oversized-background-20261024\\observed-VideoProcessor.state",
+      "sha256": "50b90dd2d1aa7ea2433dd27df4053c16c50a46cb7cefa70e29392a76d2818da1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCutPaste.h",
+      "sha256": "08c0444ee8a43f325e112735d7017db5c9449148a78d2d93ba546b66cd8743a2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "sha256": "78e6b0816bd2e57c7449ac405c815c7cd0ce53e78d686fda92c96299b431778f"
+    }
+  ],
+  "scope": "Read-only exact logged geometry and source path audit; not a native/GPU replay",
+  "ratios": {
+    "expanded_display_to_scaled_glyph_box": 3.8095238095238098,
+    "cleanup_height": 2.8366533864541834,
+    "display_height": 2.897119341563786,
+    "display_width": 1.2723091076356945
+  },
+  "source_commit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "changes": false,
+  "tests_run": false
+}
