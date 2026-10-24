@@ -1,0 +1,106 @@
+MODULE VideoProcessor.exe base=0x7ff618b50000 size=0xaf5000 load=0x7ff618b50000 path=..\VideoProcessor.exe
+MODULE VideoProcessorVPRenderer.dll base=0x7ffa4f480000 size=0x281000 load=0x7ffa4f480000 path=..\vprenderer\VideoProcessorVPRenderer.dll
+MODULE VideoProcessorVPRendererBeta.dll base=0x7ffa2fef0000 size=0x281000 load=0x7ffa2fef0000 path=..\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+EXCEPTION tid=83132 code=0xc00000fd address=0x7ffa300f1497 flags=0x0
+REG RIP=0x7ffa300f1497 RSP=0x74dfa10338 RBP=0x74dfa029c0 RAX=0xda90 RCX=0x2507e46d260 R11=0x74dfa03000
+THREAD stack_start=0x74dfa10338 size=0xefcc8 teb=0x74ddb6d000
+TIB stack_base=0x74dfb00000 stack_limit=0x74dfa01000 remaining_to_limit=0xf338 used_from_base=0xefcc8
+0x7ffa300f1497 __chkstk+0x37 size=0x4e module=0x7ffa2fef0000 D:\a\_work\1\s\src\vctools\crt\vcstartup\src\misc\amd64\chkstk.asm:109+0
+CHKSTK_SAVED r11=0x7ffaadbf0000 r10=0x7ffaadc0ddd5 return=0x7ffa2ff22647
+MANUAL_FRAME 0 sp=0x74dfa10350 0x7ffa2ff22647 SubtitleBoxPresentation::ResetCurrentRawFallback+0x27 size=0xeae module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleBoxLookahead.h:2592+39
+ UNWIND range=0x32620..0x334ce xdata=0x24e064
+MANUAL_FRAME 1 sp=0x74dfa10360 0x7ffa2ff15a97 SubtitleBoxPresentation::Reset+0x47 size=0x3f48 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleBoxLookahead.h:1951+0
+ UNWIND range=0x25a50..0x29998 xdata=0x24de3c
+MANUAL_FRAME 2 sp=0x74dfa27b00 0x7ffa2ff1cf74 SubtitleBoxPresentation::Consume+0x384 size=0x59e4 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleBoxLookahead.h:2163+8
+ UNWIND range=0x2cbf0..0x325d4 xdata=0x24dfe8
+MANUAL_FRAME 3 sp=0x74dfa3c120 0x7ffa2ff71a7c ConsumePreparedCurrentSubtitleCue+0x82c size=0x925 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleCurrentCue.h:84+82
+ UNWIND range=0x81250..0x81b75 xdata=0x253330
+MANUAL_FRAME 4 sp=0x74dfa3f040 0x7ffa2ff71cb0 ConsumeCurrentSubtitleCue+0xe0 size=0x15b module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleCurrentCue.h:102+89
+ UNWIND range=0x81bd0..0x81d2b xdata=0x253378
+MANUAL_FRAME 5 sp=0x74dfa40170 0x7ffa2ffd147c LibplaceboVideoRenderer::Impl::RenderLocked+0x83fc size=0x15888 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp:13859+222
+ UNWIND range=0xd9080..0xee908 xdata=0x257b68
+MANUAL_FRAME 6 sp=0x74dfacf560 0x7ffa3001bfc6 LibplaceboVideoRenderer::RenderLoop+0x35e6 size=0x7b6f module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp:24609+943
+ UNWIND range=0x1289e0..0x13054f xdata=0x25a318
+MANUAL_FRAME 7 sp=0x74dfaff740 0x7ffa3005b2cf std::thread::_Invoke<std::tuple<void (__cdecl LibplaceboVideoRenderer::*)(void),LibplaceboVideoRenderer *>,0,1>+0xf size=0x2a module=0x7ffa2fef0000 C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\include\thread:56+0
+ UNWIND range=0x16b2c0..0x16b2ea xdata=0x25f114
+MANUAL_FRAME 8 sp=0x74dfaff770 0x7ffab51a1bb2 configthreadlocale+0x92 size=0x220 module=0x0
+ UNWIND range=0x21b70..0x21c0f xdata=0xd7208
+MANUAL_FRAME 9 sp=0x74dfaff7a0 0x7ffab5f67374 BaseThreadInitThunk+0x14 size=0xad0 module=0x0
+ UNWIND range=0x17360..0x173a4 xdata=0x96ad0
+MANUAL_FRAME 10 sp=0x74dfaff7d0 0x7ffab72fcc91 RtlUserThreadStart+0x21 size=0x50 module=0x0
+ UNWIND range=0x4cc70..0x4ccb9 xdata=0x146ea0
+LARGE_FRAME 0x7ffa2ff139c0 SubtitleBoxLookahead::ResolveOwnedWindow+0x0 size=0x1f50 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleBoxLookahead.h:1900+0
+LARGE_FRAME 0x7ffa300189e0 LibplaceboVideoRenderer::RenderLoop+0x0 size=0x7b6f module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp:23848+0
+LARGE_FRAME 0x7ffa2ff1bdd0 SubtitleBoxPresentation::CurrentRawFallbackForIncompleteInspection+0x0 size=0xe12 module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\SubtitleBoxLookahead.h:2093+0
+LARGE_FRAME 0x7ffa3000ce20 LibplaceboVideoRenderer::PrimeSubtitleMeasurements+0x0 size=0x192c module=0x7ffa2fef0000 E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp:22511+0
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$101 address=0x7ffa300fa6b7 rva=0x20a6b7 size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$27 address=0x7ffa300fa4a8 rva=0x20a4a8 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$2 address=0x7ffa300fa410 rva=0x20a410 size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$32 address=0x7ffa300fa4b4 rva=0x20a4b4 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$100 address=0x7ffa300fa6ab rva=0x20a6ab size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$33 address=0x7ffa300fa4c0 rva=0x20a4c0 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$34 address=0x7ffa300fa4cc rva=0x20a4cc size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$35 address=0x7ffa300fa4d8 rva=0x20a4d8 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$3 address=0x7ffa300fa41e rva=0x20a41e size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$18 address=0x7ffa300fa49c rva=0x20a49c size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$102 address=0x7ffa300fa6c5 rva=0x20a6c5 size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$13 address=0x7ffa300fa46c rva=0x20a46c size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$10 address=0x7ffa300fa460 rva=0x20a460 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$17 address=0x7ffa300fa490 rva=0x20a490 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$14 address=0x7ffa300fa478 rva=0x20a478 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$15 address=0x7ffa300fa484 rva=0x20a484 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$68 address=0x7ffa300fa5c7 rva=0x20a5c7 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$69 address=0x7ffa300fa5d3 rva=0x20a5d3 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$62 address=0x7ffa300fa580 rva=0x20a580 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$60 address=0x7ffa300fa574 rva=0x20a574 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$66 address=0x7ffa300fa598 rva=0x20a598 size=0x2f
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$64 address=0x7ffa300fa58c rva=0x20a58c size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$78 address=0x7ffa300fa61b rva=0x20a61b size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$79 address=0x7ffa300fa627 rva=0x20a627 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$72 address=0x7ffa300fa5f7 rva=0x20a5f7 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$70 address=0x7ffa300fa5df rva=0x20a5df size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$71 address=0x7ffa300fa5eb rva=0x20a5eb size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$77 address=0x7ffa300fa60f rva=0x20a60f size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$74 address=0x7ffa300fa603 rva=0x20a603 size=0xc
+SYMBOL LibplaceboVideoRenderer::Impl::RenderLocked address=0x7ffa2ffc9080 rva=0xd9080 size=0x15888
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$42 address=0x7ffa300fa4e4 rva=0x20a4e4 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$46 address=0x7ffa300fa4fc rva=0x20a4fc size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$47 address=0x7ffa300fa508 rva=0x20a508 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$44 address=0x7ffa300fa4f0 rva=0x20a4f0 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$4 address=0x7ffa300fa42c rva=0x20a42c size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$59 address=0x7ffa300fa568 rva=0x20a568 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$52 address=0x7ffa300fa52c rva=0x20a52c size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$53 address=0x7ffa300fa538 rva=0x20a538 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$50 address=0x7ffa300fa514 rva=0x20a514 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$51 address=0x7ffa300fa520 rva=0x20a520 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$57 address=0x7ffa300fa55c rva=0x20a55c size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$54 address=0x7ffa300fa544 rva=0x20a544 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$55 address=0x7ffa300fa550 rva=0x20a550 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$5 address=0x7ffa300fa43a rva=0x20a43a size=0xe
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$89 address=0x7ffa300fa64b rva=0x20a64b size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$88 address=0x7ffa300fa63f rva=0x20a63f size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$87 address=0x7ffa300fa633 rva=0x20a633 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$8 address=0x7ffa300fa448 rva=0x20a448 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$99 address=0x7ffa300fa69f rva=0x20a69f size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$93 address=0x7ffa300fa67b rva=0x20a67b size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$92 address=0x7ffa300fa66f rva=0x20a66f size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$91 address=0x7ffa300fa663 rva=0x20a663 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$90 address=0x7ffa300fa657 rva=0x20a657 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$95 address=0x7ffa300fa693 rva=0x20a693 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$94 address=0x7ffa300fa687 rva=0x20a687 size=0xc
+SYMBOL `LibplaceboVideoRenderer::Impl::RenderLocked'::`1'::dtor$9 address=0x7ffa300fa454 rva=0x20a454 size=0xc
+SYMBOL ConsumePreparedCurrentSubtitleCue address=0x7ffa2ff71250 rva=0x81250 size=0x925
+SYMBOL `ConsumePreparedCurrentSubtitleCue'::`1'::dtor$0 address=0x7ffa300f6500 rva=0x206500 size=0xc
+SYMBOL PrepareCurrentSubtitleCue address=0x7ffa2ff70c40 rva=0x80c40 size=0x3bb
+SYMBOL `PrepareCurrentSubtitleCue'::`1'::dtor$0 address=0x7ffa300f64f0 rva=0x2064f0 size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`2'::Charge::~Charge address=0x7ffa2ff6d920 rva=0x7d920 size=0x39
+SYMBOL SubtitleCueContinuationGuard::InspectCurrent address=0x7ffa2ff6be10 rva=0x7be10 size=0x1b10
+SYMBOL SubtitleCueContinuationGuard::CanInspectCurrentObservation address=0x7ffa2ff6bda0 rva=0x7bda0 size=0x66
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$3 address=0x7ffa300f6458 rva=0x206458 size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$2 address=0x7ffa300f644c rva=0x20644c size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$0 address=0x7ffa300f6440 rva=0x206440 size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$6 address=0x7ffa300f647c rva=0x20647c size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$5 address=0x7ffa300f6470 rva=0x206470 size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$4 address=0x7ffa300f6464 rva=0x206464 size=0xc
+SYMBOL `SubtitleCueContinuationGuard::InspectCurrent'::`1'::dtor$8 address=0x7ffa300f6488 rva=0x206488 size=0xc
+BETA_SYMBOLS pdb=E:\codex\videoprocessor\subtitle-current-cap-fix-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.pdb matched=1 age=1

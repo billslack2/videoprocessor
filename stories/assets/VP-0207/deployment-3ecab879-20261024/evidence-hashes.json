@@ -1,0 +1,217 @@
+{
+  "source": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "trackedAssets": [
+    {
+      "file": "audit-clean-result.json",
+      "bytes": 355,
+      "sha256": "E220738C85D802D82EECB0B4544F5F03DD3685CFCFF4E32445916901D157BBC8"
+    },
+    {
+      "file": "audit-release-build-result.json",
+      "bytes": 356,
+      "sha256": "8517BAA3648DD76195AE2DB2C048AB7F91A45B7D5A347345BBC2E95EAFC98B54"
+    },
+    {
+      "file": "audit-tool-hashes.json",
+      "bytes": 1082,
+      "sha256": "BD8F42E98E857F8943402A63A568C7E2D768C07A3E16E7813DCDFCB6447D9086"
+    },
+    {
+      "file": "compiled-stack-comparison.json",
+      "bytes": 58946,
+      "sha256": "F9C58575B74E583926EE76058180C85B24A4015804BF382FE9C822099F7D43F5"
+    },
+    {
+      "file": "compiled-stack-report.txt",
+      "bytes": 4061,
+      "sha256": "BDACE5EB95C48B78CA557E0FA3879AC4B33AD0005E0FBB1BE76383997D80092F"
+    },
+    {
+      "file": "crash-provenance.json",
+      "bytes": 3231,
+      "sha256": "12529A0A497F0B5524E0CD76054737658C1BF1E5048ABA183F06CC94681AF761"
+    },
+    {
+      "file": "crash-reset-ownership-results.txt",
+      "bytes": 41,
+      "sha256": "DCE4CBAFBEFEE6F7C5AECC9FF626612385A28F6A8C1EF217B6AF647546CB0F90"
+    },
+    {
+      "file": "crash-review.txt",
+      "bytes": 5215,
+      "sha256": "5403F801F5C1BA8867E6A7BB2146A70246D34676282680911A3C8E525EC66398"
+    },
+    {
+      "file": "crash-stack-manual.txt",
+      "bytes": 12614,
+      "sha256": "08C99AFE50B78DF06830921AB8E9BDF64753465019FF9128DDC6E70B5FAAE26A"
+    },
+    {
+      "file": "deployment.json",
+      "bytes": 4347,
+      "sha256": "78553BE0783F4886BFDCDCB19DFD15FA538CFB08381D0B3EB8B9B2281E13DC13"
+    },
+    {
+      "file": "independent-review.txt",
+      "bytes": 1952,
+      "sha256": "C8C4FEB08E224C432F1FB1465E4514E574AB334611A3C6FCB0C254C1C7DDD7B3"
+    },
+    {
+      "file": "loaded-modules.json",
+      "bytes": 514,
+      "sha256": "9BE2097B0C7DFAFF9CE38859FB137CF81B2A15F83D0D7886525065879E658629"
+    },
+    {
+      "file": "native-stack-probe-build.json",
+      "bytes": 639,
+      "sha256": "C9D6752683D2BE2BB27706232D994E7B8D40125A11DAFF754EB89DBAE59D86D8"
+    },
+    {
+      "file": "post-deploy-observation.json",
+      "bytes": 1042,
+      "sha256": "652960A14174A83152567061C193FDBFB1BFFD03434A8E1A74AD74F4BE970960"
+    },
+    {
+      "file": "post-deploy-performance.json",
+      "bytes": 1847,
+      "sha256": "0F2FAD2395561AAD9753067C96AEC19EF1671CB027D8EA21B5046DCEA7588C70"
+    },
+    {
+      "file": "pr-body.md",
+      "bytes": 4211,
+      "sha256": "FAA162431D22F54C604B4607654C003F6421B7A99A7D7381711BDF8156B0B30C"
+    },
+    {
+      "file": "pr-status.json",
+      "bytes": 248,
+      "sha256": "89C2F7184980D31CBA8E915A6A7C41A79ACD53A8EE3F02008D256168D0090297"
+    },
+    {
+      "file": "prior-evidence.txt",
+      "bytes": 442,
+      "sha256": "3781723ABA4050AD07EB577D40F6EE39BF154DAD7B749F1A2F8CD17803552EE6"
+    },
+    {
+      "file": "runtime-health.json",
+      "bytes": 1041,
+      "sha256": "53021028A5D2FCF973557E75FEB6295B1410906D21B56ED7E2A733F5C2B78B25"
+    },
+    {
+      "file": "stack-evidence-hashes.json",
+      "bytes": 2126,
+      "sha256": "282CE3C00A6D11116F2C20263C3E57AB40117093535E36ABA8760B5B8E5C89D3"
+    },
+    {
+      "file": "stack-probe-baseline-outcomes.json",
+      "bytes": 359,
+      "sha256": "F735EAB9AD101B55C680FBE11BB523B251BCF28A1F2A0929CC0444549D6A82ED"
+    },
+    {
+      "file": "stack-probe-final-all.txt",
+      "bytes": 999,
+      "sha256": "0604405FA9A42E03443FE0DCDACC8D18DA739916C29AB8BBE370EB94A21D75D4"
+    },
+    {
+      "file": "stack-probe-final-outcomes.json",
+      "bytes": 396,
+      "sha256": "B24567F4C5F6728F220F2C9F839D29ADE6796F653BEFFEE381FF93EB4A337F96"
+    },
+    {
+      "file": "stack-probe-launcher-exact-test.txt",
+      "bytes": 1027,
+      "sha256": "3B3C323C8372FC4224D7F5788ABD0C2D0036EF1D05553B6941263937A92AB9EF"
+    },
+    {
+      "file": "stack-probe-review.txt",
+      "bytes": 4371,
+      "sha256": "5F2F4BCD5F8A3282447DC3501ED3B3F1F8C9BF7BEE775E5278351632F45982EA"
+    },
+    {
+      "file": "stack-recovery-regressions-result.json",
+      "bytes": 2385,
+      "sha256": "81030EFB33B14FA245760D778E3EF073C39E4BABA14D3930E3D236173929A55D"
+    },
+    {
+      "file": "stack-report.txt",
+      "bytes": 3181,
+      "sha256": "F7F318A123DC79CE6D04DD2DE259E385C15A32B9B8627B067401B0CE45CC1E88"
+    },
+    {
+      "file": "summary.txt",
+      "bytes": 5022,
+      "sha256": "35F0D299B045ED983992FC3CBC0759E98EA2A45646E33C90381B06520582B030"
+    },
+    {
+      "file": "validation.json",
+      "bytes": 10826,
+      "sha256": "19484A368C8A2464E7C3754799CE8B85E4B861774BAD00E6B8F0772D49D82F1D"
+    }
+  ],
+  "localOnly": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\audit-clean.log",
+      "bytes": 9321,
+      "sha256": "B39E0112D2454F9E043AC0C0F056C61ACCC6111B1607D070FE1BE6631EA5AA4E"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\audit-release-build.log",
+      "bytes": 121466,
+      "sha256": "C6838DDC73F9E3F82FCB1BDA08B6957F5DCBA8B74ED903F376AAAEAF14717C37"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\stack-recovery-regressions.trx",
+      "bytes": 3021131,
+      "sha256": "FECCA1EA5BAF4A1B66B84FB2F87CABA3912E18BD8C3DDED096B71D991BB1E8F9"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\stack-recovery-regressions-console.txt",
+      "bytes": 353623,
+      "sha256": "352F63586B4DD38D69FD049BA49A20649C59752B901505223764FA091D8ACD8F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\post-deploy-observation.log",
+      "bytes": 2028318,
+      "sha256": "ED1C5319BEBA0C84603E7A151C3C039112361C2B1532EBD13971D18BF31FB4C2"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+      "bytes": 33177600,
+      "sha256": "F0587DB80E8924DDC0A312A9DCF37BFD14BBCC66688EA9548573C82647693827"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-paused-backing-20261023\\paused-native.bin",
+      "bytes": 33177600,
+      "sha256": "9047EF0C5C2B0BFC938F0C530DAF2D7DE22DF660D96D2A96A0B42A25B1C1DAB3"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+      "bytes": 33177600,
+      "sha256": "8771C3C3693737F39204216895509D4229FF8BCF401C107599DC2DBAC32B6490"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe.39136.dmp",
+      "bytes": 44971825,
+      "sha256": "BDF37AB1E0B2248229B60E986475CFE017137FB649206E9E0583C573B24F4EF7"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\test-tools\\VideoProcessor-SubtitleStackProbe.exe",
+      "bytes": 684544,
+      "sha256": "0309F3DEEFA8202806A03A81C11417B4FA775DB5C64A8A91A9E8B24E525F7481"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "bytes": 3069952,
+      "sha256": "469CF00A3169CC8D50DF72806E3BCF164643A9FD61E54A090A9E5BDF3AF51F37"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2584576,
+      "sha256": "595532754F2BB91AD98D12E07EFAFD209C94F8E9308D59830918FECC03868FA6"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2584576,
+      "sha256": "73A7EDDA3625C6ED4EB24D167DF4B3AA91C46515E33740298F7853D7063B91F4"
+    }
+  ]
+}

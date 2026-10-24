@@ -1,0 +1,9 @@
+Independent integration review — 3ecab879096bbe501117025bf2bb3ff886cd1ee9
+
+Cue reviewer: no blocker. Static default storage contains empty snapshot owners; ordinary live-object assignment preserves original member defaults and releases current/queued/raw ink. Owner regression covers current, seven following snapshots, raw cursor, repeated reset and reacquisition. Heap trial copies the same tracker values/immutable snapshots and commits only existing verified raw cursor fields after unchanged gates; no trial lease is committed.
+
+Presentation reviewer: no blocker in Into/scratch integration. Both branches prepare before consumption, every output is fully replaced, final proof/result copied before scratch invalidation, borrowed data and budget cannot authorize a later source. Normal-stack reset owner/default test passes. Actual old dump is the unavailable-preview reset chain; raw fallback overflow is independently reproduced by the isolated test.
+
+Safety reviewer: no blocker. The test-only companion uses actual Into/pending/Consume callees, normal1MiB reserve/4KiB commit, and783808 bytes caller pressure from failed RenderLoop+RenderLocked. All four final paths pass; old43 reset/fallback/contradiction controls overflow while COMPLETE passes. Host test requires child completion, fails on overflow or timeout, and preserves failure logs. Build verifies compiler exit, PE contract and hash/source sidecar. This is deterministic stack/state qualification, not private RenderLocked or physical mismatched-refresh playback acceptance.
+
+Root review: storage-only changes preserve native current-pixel/companion/context authority and original lease semantics. No stack reserve increase and no read-budget changes. Source pinned clean; clean Release build, full selected tests, final DLL unwind review, loaded hashes and real host startup remain gates. Prior43 passed1955 tests but failed host startup and is recorded as FAILED/rolled back.

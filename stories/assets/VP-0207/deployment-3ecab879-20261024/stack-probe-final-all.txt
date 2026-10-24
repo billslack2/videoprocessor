@@ -1,0 +1,12 @@
+source=43fb6cba5ba94d9ad6b91d7a8cc53399da1fe088 build=Oct 24 2026 02:12:53
+mode=0 stack_reserve=1048576 caller_pressure=783808 remaining=263576
+attempt=0 detected=0 proof=not-eligible tracker=preview-unavailable reads=0
+mode=1 stack_reserve=1048576 caller_pressure=783808 remaining=263512
+attempt=0 detected=1 proof=sample-budget tracker=current-raw-fallback-incomplete-inspection reads=39880
+attempt=1 detected=1 proof=sample-budget tracker=current-raw-fallback-incomplete-inspection reads=39880
+attempt=2 detected=1 proof=sample-budget tracker=current-raw-fallback-incomplete-inspection reads=39880
+mode=2 stack_reserve=1048576 caller_pressure=783808 remaining=263544
+attempt=0 detected=1 proof=current-complete-cue tracker=current-complete-cue reads=104478
+mode=3 stack_reserve=1048576 caller_pressure=783808 remaining=263816
+attempt=0 detected=0 proof=glyph-proof-failed tracker=preview-unavailable reads=21150
+PASS unavailable-reset incomplete-fallback complete-proof contradiction

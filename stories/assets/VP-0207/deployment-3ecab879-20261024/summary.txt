@@ -1,0 +1,29 @@
+VP-0207 subtitle recovery candidate with verified stack repair
+
+Clean source: 3ecab879096bbe501117025bf2bb3ff886cd1ee9; beta v1.4.02-beta at b1415da4e2cc12807f390f4b722c459be9a17c08. PR #197 remains DRAFT and UNMERGED. Prior 398034da failed user replay. Interim 43fb6cba passed 1,955 selected tests but FAILED actual host startup and was rolled back to 6f0c02b2; this receipt does not erase that failure.
+
+Reproduced correctness repairs carried forward:
+- Natural stationary 4K wide-cue cleanup starvation is fixed by prioritizing one complete current inspection over weaker pending work. Reproduced cases finish in 447,100–452,197 / 524,288 reads with full configured companion coverage. Complete companion contradictions cannot promote old pending cues.
+- Exact repeated source identities recheck current pixels without discarding pending recovery or renewing the original lease. Budget-only failure keeps only private recovery state; contradiction/context/expiry and incomplete acquisition remain strict.
+- Subtitle metadata follows the actual new immutable GPU packet. Offscreen hardware simulation has 0 metadata/HDR-key mismatches versus 544 old mismatches, without changing tone-mapping policy. No physical cadence or brightness success is inferred.
+
+Observed host failure and narrow recovery:
+The preserved 43 dump resolves RenderLoop→RenderLocked→ConsumeCurrent→ConsumePrepared→Presentation::Consume→Reset→ResetCurrentRawFallback→__chkstk. RenderLocked had grown 24,000 bytes. The thread already used 982,216 bytes and reset requested 55,952 more; normal 1 MiB reserve was insufficient on this path. Raw fallback is a separately reproduced overflowing branch, not the original crash stack.
+Reusable heap outputs and Into helpers remove prepared/decision return temporaries. Reset assigns immutable default values to live members instead of constructing large automatic aggregate temporaries; all original default fields and owner release semantics are verified. A temporary heap tracker preserves exact raw-fallback admission without copying 159,608 bytes onto the stack. The stack reserve and native read ceilings are unchanged.
+
+Validation:
+Clean matching x64 Release host, standard/beta renderer and test DLL build passed. 1957/1957 selected native/GPU regressions passed, including all three explicitly enabled native captures and 14 new methods since 6f. The isolated test-only child has actual PE reserve 1,048,576 / commit 4,096 and 783,808 bytes of caller pressure from the failed renderer frames. Old reset/fallback/contradiction controls overflow; final four paths including COMPLETE and exact repeats pass. The owner/default test releases current, seven following and raw snapshots and verifies retirement/reacquisition. Helper hash, source pin and PE header checked. Independent semantic reviews and final DLL stack analysis recorded separately. Whole solution/all native tests/installer not claimed.
+
+Deployment:
+Matching host and both renderers installed; all loaded module hashes/startup identities verified. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-stack-recovery-3ecab879-20261024-023053. PID 83516. Clear/Yellow selected. No persistent config edits; existing Classic startup action suppressed 10 seconds then original cfg bytes restored. State was not overwritten. Failed candidate, rollback and original config/state/log backups remain preserved.
+
+Runtime:
+The same process remained responsive for 215.2 seconds with zero Windows crash/hang events and unchanged loaded hashes.
+Settled 2026-10-24 02:31:25–2026-10-24 02:34:30: 92 valid/applied cap records, zero subtitle stability events, pixel contradictions or submitted geometry changes. Exact cleanup rectangles: 1442,1746-2398,1776. This is actual host runtime survival and sampled stationary telemetry, not a visual or moving-playback verdict. Source/display telemetry remains matched about 23.976 Hz; physical mismatched-refresh playback remains unqualified.
+
+Measured subtitle consumption peaks at 4.115 ms; asynchronous full worker scans peak at 27.782 ms. No worker drops/failures or GPU overruns appear in the observed windows. These are measured stationary-session results, not a CPU deadline guarantee.
+
+Limits:
+Wider two-line acquisition/masked-plane cases remain conservative finite limits; no arbitrary quota/plane gate relaxation. Large full inspections still have meaningful CPU cost; read/operation counts are not wall-time deadlines. Offscreen GPU and isolated-pressure child tests do not instantiate the entire private renderer path or prove live Ben-Hur flicker resolved. Actual moving Ben-Hur replay and user visual acceptance remain pending. Story stays In Progress; PR #197 must stay draft until actual playback acceptance.
+
+Evidence lives at E:\codex\diagnostics\vp0207-native-stack-recovery-20261024-0203. Full movie pixels, logs/TRX, dump and binaries stay outside Git with hashes. Existing unrelated team-design/design.txt work is preserved and excluded.

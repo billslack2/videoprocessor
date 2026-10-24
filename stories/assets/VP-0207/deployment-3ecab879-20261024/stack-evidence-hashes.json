@@ -1,0 +1,42 @@
+[
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+    "Hash": "D8089C71D260BF713FA4080B0528C2DE96E7388B67522B4977EA32AF9F049E29"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+    "Hash": "61B7E9C4439F35E4EEA4BD319EBBA89CF02EA931310A73DBF3F3271B238170FA"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleBackingLipTests.cpp",
+    "Hash": "1C8B10DE918E21E487AF69CBA21025257FFDBDF7E1A0E3D87818162490EDDC34"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\stack-safe-priority-tests.cpp",
+    "Hash": "A059F8D8106DEC206E87F66E6D7C28B577740E6B9414927B39BEFE08888990CA"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\stack-safe-priority-tests.exe",
+    "Hash": "B935045F0D81E6FFE7EA5B86F03AD280ACA11520F785BC1BC16B66448ACC916E"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\stack-safe-priority-tests.txt",
+    "Hash": "257A46EFCEB2D06A1611920565C896D1141AE9DA3D4CB0DCD849C7492E6E131A"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\failed-unwind.json",
+    "Hash": "898F52CDB90B6C652DB070591F5E60F90B4C8D68E640DDC91F8F70D18ACE3E9D"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\prior-unwind.json",
+    "Hash": "99FA815716137778CFD9BEAEA094D7546C5A3CD3663F7A61D04D45B611B6DA51"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\sizes.txt",
+    "Hash": "FB77272D36483AC342244695C31C858D4650E94C4C265AD5EBE32358000A7D44"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\stack-audit\\stack-report.txt",
+    "Hash": "F7F318A123DC79CE6D04DD2DE259E385C15A32B9B8627B067401B0CE45CC1E88"
+  }
+]

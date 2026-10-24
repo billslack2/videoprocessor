@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\symbols.cpp",
+    "Hash": "7922E99B4C7DFCD1F678B0F71E1A76DB497FE132563EF875BA27DE9A6BAEF346"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\symbols.exe",
+    "Hash": "C436466BA58DA674804785882DAC0FFEA8504B7DA343763ADCC7BC8C44DB9770"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\compare.py",
+    "Hash": "FBB0593247D2F2ABC064BE83FA668BA3289497AE16FDFAF569160E1011315F96"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\compiled-stack-comparison.json",
+    "Hash": "F9C58575B74E583926EE76058180C85B24A4015804BF382FE9C822099F7D43F5"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-native-stack-recovery-20261024-0203\\compiled-stack-audit\\compiled-stack-report.txt",
+    "Hash": "BDACE5EB95C48B78CA557E0FA3879AC4B33AD0005E0FBB1BE76383997D80092F"
+  }
+]

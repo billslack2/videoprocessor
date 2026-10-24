@@ -1,0 +1,30 @@
+VideoProcessor native renderer stack-overflow audit, 2026-10-24
+
+Failed runtime: source43fb6cba5ba94d9ad6b91d7a8cc53399da1fe088, live startup after approximately16seconds. The parent preserved the exact EXE/DLL/PDB/dump and rolled back to verified6f0c02b2. This audit does not claim a subtitle pixel/brightness cause for this separate startup crash.
+
+Definitive dump evidence
+- Exceptionc00000fd on thread83132. Exact beta DLL base0x7ffa2fef0000, faultRVA0x201497=__chkstk+0x37. Matching PDB reportsmatched=1,age1.
+- RSP0x74dfa10338; TIB stackbase0x74dfb00000; limit0x74dfa01000. Used982216bytes; distance to recordedlimit62264bytes.
+- Failing allocationRAX0xda90=55952bytes. ProbeR11=0x74dfa03000. Only6312nominalbytes would remain relative to TIB limit; this is not a usable-stack guarantee because guard/emergency handling also needs space.
+- Manual exact PE unwind chain (stack-manual.txt): RenderLoop -> Impl::RenderLocked13859 -> ConsumeCurrentSubtitleCue102 -> ConsumePreparedCurrentSubtitleCue84 -> SubtitleBoxPresentation::Consume2163 -> Reset1951 -> ResetCurrentRawFallback2592 -> __chkstk.
+- Inter-frame RSP deltas: RenderLoop197088; RenderLocked586736; ConsumeCurrent wrapper4400; ConsumePrepared12064; Presentation Consume83488; Reset96160. The raw transactional fallback is NOT on the actual crashing chain.
+- The first stack.txt / stack-corrected.txt used generic StackWalk and do not represent a valid complete stack. stack-manual.txt is authoritative here: dump-stack.cpp reads exact module .pdata/.xdata unwind records, applies prologue offsets/chained records, restores nonvolatile registers from captured memory, and separately unwinds __chkstk's two temporary pushes. Its complete chain reaches the Windows thread entry.
+
+Narrow changes and separate reproduction
+- Reset()/ResetCurrentRawFallback() now assign from immutable value-initialized static defaults. This preserves live object lifetime, nonzero default fields and old owner release without large RHS aggregate temporaries. Existing potentially-throwing reset signatures remain unchanged. std::string reason makes copy assignment not formally noexcept; no false noexcept guarantee is added. Current empty default strings/owners are handled normally; no claim is made about all future T types.
+- A distinct safety-agent normal1MiB probe with measured783808bytes caller pressure reproduced raw fallback overflow even after reset/Into fixes. Parent then separately authorized moving only the159608-byte transactional tracker copy into make_unique storage. Every copied field, current-pixel admission gate, rejection and committed raw cursor remains unchanged. This fixes a separately reproduced branch, not the observed startup chain.
+- Cue agent changed renderer to heap-owned reusable prepared/decision outputs with out-parameter cores and compatible by-value wrappers. Independent read-only review found no blocker: prepare always precedes consume on both branches, input/source binding remains exact, outputs are replaced, copied outputs survive scratch invalidation, and borrowed source pointers are never inspected on a later source before replacement.
+
+Validation available before pinned clean build
+- reset-baseline.exe/reset-fixed.exe are isolated v142/O2/MD/EHsc/std:c++17 Release probes with1MiB stack. Baseline Reset96184bytes, ResetCurrentRawFallback59720bytes; fixed each40bytes. The baseline scratch layout differs slightly from failed production DLL; do not substitute those scratch numbers for the dump.
+- reset-fixed-unwind.json records the whole isolated executable's largest unwind allocation1480bytes (including first-use initialization helpers); no large reset default-initialization frame remains. reset-fixed.exe first-call reset passed.
+- Exact production test body PresentationResetReleasesAllRetainedOwnersAndPreservesDefaultState passes in reset-ownership-tests.exe with1MiB stack. It establishes acquired current/raw/following owners, drops external holders, verifies all released by reset, checks empty cursors/default diagnostics and fresh reacquisition. Initial scratch final assertion incorrectly expected tracker-assigned cue to equal detector cue42; corrected to nonzero acquisition because monotonic tracker numbering intentionally survives Reset. No production semantics changed for that correction.
+- Parent/safety report all four coordinator stress modes and combined run now pass1MiB/783808bytes caller pressure. Their separate probe receipt owns that result; this audit does not present it as actual GPU/display qualification.
+- git diff --check passed on our two frozen files. Parent owns clean pinned build/full tests/actual module qualification. No stack reserve increase.
+
+Artifacts
+- dump-stack.cpp/build.cmd/dump-stack.exe/stack-manual.txt: exact preserved crash decoding.
+- baseline/SubtitleBoxLookahead.h: original43fb reset/trial implementation for comparison.
+- reset-probe.cpp/build-reset-baseline.cmd/build-reset-fixed.cmd/*.asm/*-unwind.json: repeatable compiler evidence.
+- reset-ownership-tests.cpp/build-reset-ownership-tests.cmd/reset-ownership-results.txt: isolated exact-body test.
+- source-review.patch and provenance.json: frozen source changes and hashes before parent pin.

@@ -1,0 +1,26 @@
+{
+  "source": "3ecab879096bbe501117025bf2bb3ff886cd1ee9",
+  "pid": 83516,
+  "start": "2026-10-24T02:30:55.3328518-04:00",
+  "observedAt": "2026-10-24T02:34:30.4871468-04:00",
+  "aliveSeconds": 215.154295,
+  "responding": true,
+  "cpuSeconds": 219.890625,
+  "logLastWrite": "2026-10-24T02:34:30.3566193-04:00",
+  "crashOrHangEvents": 0,
+  "modules": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "469CF00A3169CC8D50DF72806E3BCF164643A9FD61E54A090A9E5BDF3AF51F37"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "595532754F2BB91AD98D12E07EFAFD209C94F8E9308D59830918FECC03868FA6"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "73A7EDDA3625C6ED4EB24D167DF4B3AA91C46515E33740298F7853D7063B91F4"
+    }
+  ],
+  "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+}

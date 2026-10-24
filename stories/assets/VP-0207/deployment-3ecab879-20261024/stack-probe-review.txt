@@ -1,0 +1,27 @@
+VP-0207 focused native stack regression — implementation and evidence
+Source worktree: E:\codex\videoprocessor\subtitle-current-cap-fix-20261023
+Failed baseline:43fb6cba5ba94d9ad6b91d7a8cc53399da1fe088.
+All production semantic edits are owned by cue/presentation agents. This reviewer implemented test-only regression/build files.
+
+The crash dump's actual branch was unavailable preview -> Presentation.Consume -> Reset -> ResetCurrentRawFallback. The large transactional fallback was not on that dump. Normal-stack tests retain this distinction.
+
+TRACKED TEST
+SubtitleNativeStackProbe.cpp is a separate console child, built by VideoProcessor-Test's BuildSubtitleNativeStackProbe AfterTargets=Build target in Release x64 only. No solution/project churn. Output x64/Release/test-tools/VideoProcessor-SubtitleStackProbe.exe and .exe.test.json stays outside runtime package layout; not deployed. tools/build_subtitle_stack_probe.ps1 invokes pinned current VC toolset, includes actual production headers and Release library, validates actual PE x64/stack reserve1048576/commit4096, embeds source commit and records sourceDirty/hash/toolset/pressure/testOnly in its receipt. Compile or receipt failures fail the selected test build.
+
+Worker-test method ProductionSubtitlePathsRespectNativeOneMiBStackInIsolatedProcess resolves companion relative to loaded test DLL, requires exe and sidecar, launches an isolated process with finite30s timeout, prints full child log, fails on any nonzero/crash/timeout or missing completion marker, preserves failure log. Child itself creates explicitly1MiB-reserved thread, does not enlarge testhost stack, uses heap fixture/state, and applies783808 bytes caller pressure from actual failed RenderLoop197080 + RenderLocked586728 decoded frame reservations. Child uses actual out-param production Prepare/Consume functions and native pending Resolve, not duplicate cue decision logic. The pressure harness is not a replacement for executing full RenderLocked; real renderer/runtime acceptance remains separate.
+
+SEPARATE PATHS
+mode0: no eligible continuation + unavailable preview reaches actual ordinary Consume/Reset path. This is the observed incident branch.
+mode1: forced bounded local incomplete scan -> real current pending-native proof -> admitted raw fallback, repeated exact source three times. This is a separately adversarial reachable branch, not attributed to the incident dump.
+mode2: complete own-side current proof, same cue admitted.
+mode3: changed current glyph -> contradiction -> unavailable reset; no pending resurrection.
+Each mode checks current cue/expected admission, logs proof/tracker/read counts. All data/current packets are constructed from actual detector/native source operations. All modes use the same1MiB stack and faithful conservative caller pressure.
+
+NEGATIVE CONTROL
+stack-probe-control/43fb6cba-headers preserves exact old SubtitleCurrentCue.h and SubtitleBoxLookahead.h from43fb6cba. build-baseline.cmd selects the old return-value API path through a test-only macro. It links the matching43 Release library before root's next full rebuild. baseline-outcomes.json and individual logs: modes0/1/3 exitedc00000fd; mode2 passed. Thus the original actual unavailable-reset branch is caught, independently from the fallback test.
+
+INTERMEDIATE FIX AND FINAL PASS
+After reusable heap output APIs + direct reset change, fixed-outcomes.json: mode0 PASS,mode2 PASS,mode3 PASS,mode1 stillc00000fd. This independently justified parent-approved heap transactional trial without mislabeling it the original crash cause.
+After heap trial, final-outcomes.json: all four modes PASS individually and combined. final-all.log records normal1048576 reserve,783808 caller pressure, available remaining~263KB; mode1 retains cue across three exact repeated pending packets; complete/contradiction semantics are preserved. Final precommit receipt correctly states sourceDirty=true. A clean pinned rebuild is required before deployment.
+
+The exact VSTest launcher body was also compiled/executed standalone and passed; launcher-exact-test.txt proves child path/quoting/timeout/log behavior. Independent cross-review requested from cue agent. Root owns full Release build, selected runtime tests, clean receipt validation, actual plugin startup/replay smoke, and deployment. No source edits after freeze by this reviewer.

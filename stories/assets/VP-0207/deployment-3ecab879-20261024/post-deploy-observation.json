@@ -1,0 +1,16 @@
+{
+  "start": "2026-10-24 02:31:25",
+  "end": "2026-10-24 02:34:30",
+  "lipRecords": 92,
+  "invalidOrUnappliedLipRecords": [],
+  "cleanupRectangles": [
+    "1442,1746-2398,1776"
+  ],
+  "stabilityTransitions": [],
+  "pixelContradictions": [],
+  "submittedGeometryChanges": [],
+  "lastSubmittedGeometry": "2026-10-24 02:31:10 | VP submitted geometry: schema=1 generation=1 viewport=3 source=180 selected=180 source_pts=1241191.442470 output_pts=1241191.442470 actual_source=0.00,376.00-3840.00,1784.00 actual_target=0.00,376.00-3840.00,1784.00 packet_crop=0.00,376.00-3840.00,1784.00 pose_eligible=0 pose_delta_y=0.00 routed_translation=0 mode=3 owner=1 composed=1 cleaned=0 cue_source=180 temporal=0 mixing=0 nls=off hooks=0 retry=0",
+  "continuationProofEvents": [],
+  "logSha256": "ED1C5319BEBA0C84603E7A151C3C039112361C2B1532EBD13971D18BF31FB4C2",
+  "limits": "Sampled/event runtime logs of the currently stationary source after startup/profile settling; not visual observation or sustained moving playback qualification."
+}

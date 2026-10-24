@@ -1,0 +1,22 @@
+[
+  {
+    "mode": 0,
+    "exitCode": -1073741571,
+    "log": "baseline-mode-0.log"
+  },
+  {
+    "mode": 1,
+    "exitCode": -1073741571,
+    "log": "baseline-mode-1.log"
+  },
+  {
+    "mode": 2,
+    "exitCode": 0,
+    "log": "baseline-mode-2.log"
+  },
+  {
+    "mode": 3,
+    "exitCode": -1073741571,
+    "log": "baseline-mode-3.log"
+  }
+]

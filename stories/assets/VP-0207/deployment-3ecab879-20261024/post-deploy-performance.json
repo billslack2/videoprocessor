@@ -1,0 +1,81 @@
+{
+  "subtitle_cpu": {
+    "windows": 37,
+    "metrics": {
+      "consume_avg_ms": {
+        "minimum": 2.242,
+        "maximum": 2.422
+      },
+      "consume_peak_ms": {
+        "minimum": 2.679,
+        "maximum": 4.115
+      },
+      "full_avg_ms": {
+        "minimum": 17.579,
+        "maximum": 18.863
+      },
+      "full_peak_ms": {
+        "minimum": 19.96,
+        "maximum": 27.782
+      },
+      "pending_frames": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "verified_pending": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "queue_wait_avg_ms": {
+        "minimum": 0.035,
+        "maximum": 0.038
+      },
+      "queue_wait_peak_ms": {
+        "minimum": 0.047,
+        "maximum": 0.224
+      },
+      "dropped_jobs": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "failed_jobs": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      }
+    }
+  },
+  "gpu": {
+    "windows": 37,
+    "metrics": {
+      "display_hz": {
+        "minimum": 23.97633,
+        "maximum": 23.97641
+      },
+      "gpu_frame_avg_ms": {
+        "minimum": 4.058,
+        "maximum": 4.142
+      },
+      "gpu_frame_peak_ms": {
+        "minimum": 4.106,
+        "maximum": 4.771
+      },
+      "gpu_overruns": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "gpu_disjoint": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "gpu_query_failures": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      },
+      "gpu_lock_drops": {
+        "minimum": 0.0,
+        "maximum": 0.0
+      }
+    }
+  },
+  "scope": "Observed stationary matched-rate session, not a stress test or 24-to-60 playback qualification; worker scans occur asynchronously and their wall time is not mandatory renderer CPU time."
+}

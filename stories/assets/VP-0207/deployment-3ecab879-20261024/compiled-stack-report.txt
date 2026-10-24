@@ -1,0 +1,39 @@
+Clean Release compiled-stack review: 3ecab879
+
+The actual x64 Release host and both renderer DLLs were inspected read-only after the successful clean build. The source worktree was clean at 3ecab879096bbe501117025bf2bb3ff886cd1ee9. No source was edited and no production target was rebuilt during this inspection.
+
+Exact symbol qualification
+Both current DLLs and the preserved failed 43fb6cba beta DLL loaded their matching PDBs (matched=true, age=1). compiled-stack-comparison.json records binary and PDB SHA-256 hashes, actual symbol/function RVAs, individual unwind codes, and stack sizes. The clean beta PDB resolves from the clean x64/Release/vprenderer-beta directory; the failed PDB resolves from the preserved failed-43fb6cba directory.
+
+Actual prologue stack bytes (includes register pushes, excludes incoming return address and nested callees)
+Function                                      Failed beta43    Clean beta3ec    Clean stable3ec
+RenderLoop                                           197080           197080             197080
+Impl::RenderLocked                                   586728           554968             554808
+SubtitleBoxPresentation::Consume                      83480            83480              83480
+SubtitleBoxPresentation::Reset                        96152               40                 40
+ResetCurrentRawFallback                               55960          inlined            inlined
+CurrentRawFallbackForIncompleteInspection             171240             7960               7960
+PrepareCurrentSubtitleCue / Prepare...Into              8488             8248               8248
+ConsumePreparedCurrentSubtitleCue / Consume...Into     12056             7896               7896
+ConsumeCurrentSubtitleCue wrapper                      4392    absent from DLL    absent from DLL
+ResetValueFromDefault<SubtitleBoxPreview>                n/a               56                 56
+ResetValueFromDefault<SubtitleBoxObservation>            n/a               56                 56
+
+The clean DLL has no standalone ResetCurrentRawFallback symbol; its reset operations compile into callers. This is not a claim that resetting has zero nested cost: the called default-assignment helpers have the explicit 56-byte frames above. The by-value wrappers remain source compatible for other callers but are absent from this compiled renderer hot path.
+
+The beta RenderLocked frame shrank by 31,760 bytes. The reset frame shrank by 96,112 bytes. The separately reproduced transactional raw fallback frame shrank by 163,280 bytes. The unchanged large RenderLoop and Presentation::Consume frames remain accounted for in the normal-stack regression; this review does not claim all renderer branches have a globally proven maximum stack depth.
+
+Stack reserve/commit unchanged
+Preserved failed host: 1,048,576 / 4,096 bytes.
+Clean VideoProcessor-GUI.exe: 1,048,576 / 4,096 bytes.
+Failed beta DLL and both clean renderer DLL PE values: 1,048,576 / 4,096 bytes.
+There is no stack-reserve increase.
+
+Relationship to runtime qualification
+The original dump's exact chain is documented in failed-43fb6cba/presentation-stack-audit/stack-manual.txt. This compiled audit validates the intended reductions in the actual clean DLLs, rather than substituting isolated header probe figures. The safety agent's normal 1 MiB child-process tests independently exercise reset, complete proof, contradiction, and incomplete-to-pending-to-raw-fallback with 783,808 bytes of measured caller pressure; their receipts remain separate. Parent owns the integrated test result and live deployment check. This stack audit itself does not prove display cadence, tone mapping, or subtitle visual behavior.
+
+Reproduction
+symbols.cpp + build-tool.cmd produce the read-only matching-PDB symbol inventory utility.
+compare.py parses exact x64 PE runtime function tables/unwind codes and records executable stack headers.
+*-symbols.tsv and compiled-stack-summary.txt preserve the human-readable output.
+compiled-stack-comparison.json is the detailed machine-readable receipt.

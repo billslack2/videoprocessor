@@ -1,0 +1,19 @@
+VP-0207 stack-overflow audit — failed43fb6cba, 2026-10-24
+
+Preserved failed beta DLL/PDB: ../failed-43fb6cba/vprenderer-beta. Dump exception c00000fd occurred in __chkstk+0x37. Presentation agent decoded exact chain: RenderLoop -> RenderLocked13859 -> ConsumeCurrentSubtitleCue -> ConsumePreparedCurrentSubtitleCue -> SubtitleBoxPresentation::Consume2163 -> Reset1951 -> ResetCurrentRawFallback2592 -> __chkstk. This is ordinary unavailable-preview retirement, not transactional CurrentRawFallbackForIncompleteInspection.
+
+Direct compiled evidence (PE x64 unwind records)
+Failed RenderLocked RVA0xd9080..0xee908:586728 bytes stack allocation.
+Prior6f RenderLocked RVA0xd8210..0xed864:562728 bytes.
+Increase:24000 bytes. The new prepared value and branch-return decision temporaries enlarged an already large caller frame. Other large frames remained unchanged.
+RenderLoop:197080 bytes. Presentation::Consume:approximately83488; Reset:approximately96160. At failing ResetCurrentRawFallback entry,982216 bytes were already used and __chkstk requested55952 more. These exact dump/unwind observations explain why passing normal functional tests did not qualify the renderer's real nested stack.
+
+sizeof from current production headers
+SubtitleBoxResult3696; Observation6520; Preview55904; continuation4064; prepared token4216; decision7760; tracker159608; guard11016; pending guard66360.
+
+Changes owned by cue-continuity agent (not deployed)
+PrepareCurrentSubtitleCueInto and ConsumePreparedCurrentSubtitleCueInto fill caller-owned outputs; existing return APIs remain compatible wrappers. RenderLocked uses two Impl-owned unique_ptr scratch objects, allocated once under its existing serialization, total object payload11976 bytes. It no longer has large prepared/decision locals or a return-value conditional. Both priority and ordinary paths prepare exactly once and consume through Into. Output storage is reset each use. After copying current proof/result into existing locals, borrowed source data binding, authority flags and shared ink ownership are cleared. No readBudget/backingOwner is retained by the prepared binding. Standard allocation failure propagates to the existing RenderLoop exception boundary; no per-frame allocations after first initialization.
+One existing binding regression now reuses the same heap output objects across a positive call then ten context cases, checking no prior accepted result survives a rejection. Four exact production regression bodies pass (stack-safe-priority-tests.txt). That diagnostic harness still uses its preexisting8MiB console stack and is behavioral evidence only, NOT the required normal1MiB qualification. Safety agent owns faithful normal1MiB child-thread coverage and presentation agent owns reset-temporary elimination. No stack reserve change is proposed.
+
+Pending acceptance
+Root must compile the combined frozen source and compare actual new RenderLocked unwind allocation, matched reset frame and normal1MiB regression before deployment. This audit has not yet measured the final combined compiled frame. No conclusions about image cadence or the original Ben-Hur artifact follow from this startup crash diagnosis.

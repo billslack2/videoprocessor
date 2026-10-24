@@ -1,0 +1,58 @@
+[
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\dump-stack.cpp",
+    "Hash": "F22FF4D7DA0243D732D81CBAC3DCE2F99739F10D0115F7BA03FDC4FDCE26D042"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\dump-stack.exe",
+    "Hash": "0C000DBF83382EB104C6C9A90C3FF4C4E361B92B0F333CAB768168988769F82A"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\stack-manual.txt",
+    "Hash": "08C99AFE50B78DF06830921AB8E9BDF64753465019FF9128DDC6E70B5FAAE26A"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\reset-baseline.exe",
+    "Hash": "E4490E861E3CDEF803DFE088392F3B390F7373860FBD03EEC737770B6A568B27"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\reset-fixed.exe",
+    "Hash": "9E7BC8B98FAE5603E002AB4BFDAF49A8BAB916EC6085B33CFB4EA05D2DCD7AD0"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\reset-ownership-tests.cpp",
+    "Hash": "05B7C86A93AC95850A8B385E3BA5C97C2CF35ABE72FE4CEFD00E4E0E11F6C36D"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\presentation-stack-audit\\reset-ownership-tests.exe",
+    "Hash": "70671D4D659A8E74BFCB20A250B0C57A55E6EAFBA26CFACA31FB748933A35FEF"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\VideoProcessor.exe.39136.dmp",
+    "Hash": "BDF37AB1E0B2248229B60E986475CFE017137FB649206E9E0583C573B24F4EF7"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "Hash": "2FD39C5FB3835CC2D5C6B52F3141951B2A78BB09850C0CD97666CB63C429AEA4"
+  },
+  {
+    "Path": "E:\\codex\\diagnostics\\vp0207-overnight-followup-20261024-0119\\failed-43fb6cba\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+    "Hash": "736EF2CEED30512EF406D5C2B0DD9A5206B56A2C95F7502CC206C99E7373756E"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+    "Hash": "4467472B8FF7925138F5F0CAC0FD147E777EA36BB9160E54A455A848294B6875"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleBoxLookaheadTests.cpp",
+    "Hash": "1BE2A3159D36C8265F09CBAF42523864826C2BE082864015B8D0265CBF43D0C6"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+    "Hash": "D8089C71D260BF713FA4080B0528C2DE96E7388B67522B4977EA32AF9F049E29"
+  },
+  {
+    "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+    "Hash": "61B7E9C4439F35E4EEA4BD319EBBA89CF02EA931310A73DBF3F3271B238170FA"
+  }
+]
