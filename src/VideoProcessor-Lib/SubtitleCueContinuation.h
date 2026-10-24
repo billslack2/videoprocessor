@@ -29,8 +29,23 @@ public:
         if(!c.sharedPicture.AvailableFor(c.identity,c.width,c.height))
             return reject("shared-hint-unavailable");
         if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
-        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom)
-            return reject("native-base-physical-edge-mismatch");
+        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom) {
+            // AR uses a coarse stable viewport; subtitle analysis measures its
+            // own native planes. A small independently measured inset can seed
+            // current-pixel verification without changing either authority.
+            const int tolerance=(std::max)(2,c.height/180);
+            const bool physicalInset=c.independentBarAnalysis && c.barAuthority &&
+                c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
+                !c.barEvidence.captionBackedTop && !c.barEvidence.captionBackedBottom &&
+                !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby &&
+                !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby &&
+                c.pictureTop==c.barEvidence.top && c.pictureBottom==c.barEvidence.bottom &&
+                c.pictureTop>0 && c.pictureBottom<c.height && c.pictureTop<c.pictureBottom &&
+                base.rasterWidth==c.width && base.rasterHeight==c.height &&
+                base.top>0 && base.bottom<c.height && base.top<=c.pictureTop && base.bottom>=c.pictureBottom &&
+                c.pictureTop-base.top<=tolerance && base.bottom-c.pictureBottom<=tolerance;
+            if(!physicalInset)return reject("native-base-physical-edge-mismatch");
+        }
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
         // Rendering the same strong source frame does not renew a later lease.
@@ -126,7 +141,7 @@ public:
         if(!fresh)return fail(out.reason);
         out.valid=true;out.reason=missingOpposite?"current-cue-pixels-opposite-edge":"current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
         out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
-        out.accepted=m_reference.text;out.accepted.held=!missingOpposite;out.ink=fresh;m_cached=out;return out;
+        out.accepted=m_reference.text;out.accepted.held=!missingOpposite;out.oppositeBarUnavailable=missingOpposite;out.ink=fresh;m_cached=out;return out;
     }
     // Advances only the source cursor after fresh verification. It neither
     // replaces acquisition evidence nor renews its finite lease once an edge is missing.

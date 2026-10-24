@@ -314,6 +314,59 @@ public:
         Assert::AreEqual(1u,SubtitleBoxLookahead::ResolveOwnedWindow(frames.data(),owned.data(),frames.size(),7,8).matchingFrames);
     }
 
+    TEST_METHOD(CoarseArViewportCanSeedOppositeBarRecoveryWithoutChangingNativePlanes) {
+        for(bool p210:{false,true}) {
+            ContinuationFixture f(p210);f.base.top=44;f.base.bottom=316;
+            auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
+            c.independentBarAnalysis=c.barEvidence.available=true;
+            c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            const auto accepted=tracker.Consume(f.acquired);
+            const auto geometry=compositor.Consume(accepted,f.acquired);
+            Assert::IsTrue(geometry.valid);
+            Assert::IsTrue(guard.Remember(f.acquired,accepted,f.base,f.Native()));
+            auto next=f.acquired;next.current.identity=Identity(2);next.current.identity.transportGeneration=2;
+            next.current.sharedPicture.identity=next.current.identity;
+            next.current.pictureTop=next.current.barEvidence.top=46;
+            const auto still=tracker.Consume(next);
+            Assert::IsTrue(still.detected);
+            Assert::IsTrue(guard.Remember(next,still,f.base,f.Native()));
+            auto lost=next;lost.current.identity=Identity(3);lost.current.identity.transportGeneration=2;
+            lost.current.sharedPicture.identity=lost.current.identity;
+            lost.current.pictureTop=lost.current.barEvidence.top=0;
+            lost.currentLinesConfirmed=false;lost.matchingFrames=1;
+            const auto proof=guard.Prepare(lost,f.Native(),f.base,250,41.708);
+            Assert::IsTrue(proof.valid && proof.oppositeBarUnavailable);
+            Assert::AreEqual(44,proof.physicalBase.top);Assert::AreEqual(316,proof.physicalBase.bottom);
+            Assert::AreEqual(46,proof.pictureTop);Assert::AreEqual(315,proof.pictureBottom);
+            const auto result=tracker.Consume(lost,250,41.708,nullptr,false,false,&proof);
+            Assert::IsTrue(result.detected && !result.held);Assert::AreEqual(accepted.cue,result.cue);
+            const auto continued=compositor.Consume(result,lost,{},0,nullptr,&proof);
+            Assert::IsTrue(continued.valid,L"Opposite-plane wobble must not invalidate the cached lower cue layout.");
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,continued.source));
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,continued.destination));
+            Assert::AreEqual(geometry.pictureTop,continued.pictureTop);
+            Assert::AreEqual(0,lost.current.pictureTop);Assert::AreEqual(44,lost.current.sharedPicture.bounds.top);
+        }
+    }
+    TEST_METHOD(CoarseArSeedRequiresIndependentContainedAndBoundedNativePlanes) {
+        for(int fault=0;fault<8;++fault) {
+            ContinuationFixture f;f.base.top=44;f.base.bottom=316;
+            auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
+            c.independentBarAnalysis=c.barEvidence.available=true;
+            c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
+            if(fault==0)c.independentBarAnalysis=false;
+            if(fault==1)c.barEvidence.topRevalidatedAtReference=true;
+            if(fault==2)c.currentAnchorUsesTrackedEdge=true;
+            if(fault==3)c.pictureTop=0;
+            if(fault==4){f.base.top=42;c.sharedPicture.bounds=f.base;}
+            if(fault==5){f.base.top=46;c.sharedPicture.bounds=f.base;}
+            if(fault==6){f.base.rasterHeight=361;c.sharedPicture.bounds=f.base;}
+            if(fault==7)c.sharedPicture.bounds.bottom=317;
+            SubtitleCueContinuationGuard guard;
+            Assert::IsFalse(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+        }
+    }
     TEST_METHOD(DetectedCueSurvivesOppositeBarLossWithExactCurrentPixelProof) {
         for(bool p210:{false,true})for(bool top:{false,true}) {
             ContinuationFixture f(p210);
