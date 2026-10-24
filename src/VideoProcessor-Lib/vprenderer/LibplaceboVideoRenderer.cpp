@@ -13722,7 +13722,7 @@ struct LibplaceboVideoRenderer::Impl
                   latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
                   CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
             if(!continuationBaseAvailable) subtitleCueContinuation.Reset();
-            else if(!currentSubtitlePreview.current.text.detected) {
+            else if(subtitleCueContinuation.NeedsCurrentPixelRevalidation(currentSubtitlePreview)) {
                 currentCueContinuation=subtitleCueContinuation.Prepare(currentSubtitlePreview,
                     analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
                 const auto now=GetTickCount64();

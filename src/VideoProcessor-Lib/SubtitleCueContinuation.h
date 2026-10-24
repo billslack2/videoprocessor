@@ -8,6 +8,10 @@ class SubtitleCueContinuationGuard {
 public:
     void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
     bool HasReference() const { return m_valid; }
+    bool NeedsCurrentPixelRevalidation(const SubtitleBoxPreview& preview) const {
+        return m_valid && (!preview.current.text.detected ||
+            !SubtitleBoxLookahead::SameContext(m_reference,preview.current));
+    }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
     bool Remember(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
@@ -83,7 +87,7 @@ public:
             source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
             source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration)
             return fail("context-changed");
-        if(c.text.detected)return fail("current-detector-positive");
+
         bool topCue=false,bottomCue=false;
         for(int i=0;i<m_reference.text.lineCount;++i) {
             topCue|=m_reference.text.lineBounds[i].top<m_reference.pictureTop;
@@ -93,7 +97,18 @@ public:
             c.pictureBottom==c.height && c.pictureTop==m_reference.pictureTop && c.pictureTop>0;
         const bool missingTop=topCue && !bottomCue && m_reference.pictureTop>0 &&
             c.pictureTop==0 && c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height;
-        if((!missingBottom && !missingTop) || !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
+        // The opposite bar can lose its measurement while this cue and its
+        // own bar remain independently detected. That context change cannot
+        // certify new glyphs; recheck the exact acquired native pixels instead.
+        const bool missingOpposite=c.text.detected && !c.text.held &&
+            !c.text.confirmationPending && SameFreshSubtitleGlyphs(m_reference.text,c.text,0) &&
+            ((bottomCue && !topCue && m_reference.pictureTop>0 && c.pictureTop==0 &&
+                c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height) ||
+             (topCue && !bottomCue && m_reference.pictureBottom<c.height && c.pictureBottom==c.height &&
+                c.pictureTop==m_reference.pictureTop && c.pictureTop>0));
+        if(c.text.detected && !missingOpposite)return fail("current-detector-positive");
+        if((!missingBottom && !missingTop && !missingOpposite) ||
+            !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
         if(SameAnalysisFrameIdentity(c.identity,m_last))return m_cached;
         if(c.identity.acceptedSequence!=m_last.acceptedSequence+1)return fail("sequence-gap");
         if(!std::isfinite(frameMs) || frameMs<=0)return fail("invalid-source-duration");
@@ -101,9 +116,9 @@ public:
         if(m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
         auto fresh=Verify(c,source,maxSamples,out.samples,out.reason);
         if(!fresh)return fail(out.reason);
-        out.valid=true;out.reason="current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
+        out.valid=true;out.reason=missingOpposite?"current-cue-pixels-opposite-edge":"current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
         out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
-        out.accepted=m_reference.text;out.accepted.held=true;out.ink=fresh;m_cached=out;return out;
+        out.accepted=m_reference.text;out.accepted.held=!missingOpposite;out.ink=fresh;m_cached=out;return out;
     }
     // Advances only the source cursor after fresh verification. It neither
     // replaces acquisition evidence nor renews its finite lease once an edge is missing.

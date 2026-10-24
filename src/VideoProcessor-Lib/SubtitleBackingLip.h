@@ -64,16 +64,28 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const bool boundedOutline=candidateContext && candidate->bodyRowCount>=2 &&
         candidate->bodyRowCount<=128 && candidate->measured.Valid() &&
         candidate->measured.top>=current.pictureTop && candidate->measured.bottom<=current.pictureBottom &&
-        std::abs(int64_t(current.pictureTop)-candidate->pictureTop)<=3 &&
-        std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)<=3;
+        (candidate->fromTopBar?
+            std::abs(int64_t(current.pictureTop)-candidate->pictureTop)<=3:
+            std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)<=3);
     const bool captionEdgeOutward=boundedOutline && (candidate->fromTopBar?
         current.barEvidence.captionBackedTop && current.pictureTop<candidate->pictureTop:
         current.barEvidence.captionBackedBottom && current.pictureBottom>candidate->pictureBottom);
-    const bool anchorOutlineBase=boundedOutline && (independentPhysical || captionEdgeOutward);
+    // Only the cue-side plane bounds this finite cleanup. A changing or
+    // revalidated opposite bar must not retire an unchanged current card.
+    const bool unchangedCuePlane=boundedOutline && !current.barTrackingAuthority &&
+        !current.currentAnchorUsesTrackedEdge && (candidate->fromTopBar?
+            current.pictureTop==candidate->pictureTop &&
+                !current.barEvidence.captionBackedTop && !current.barEvidence.topRevalidatedAtReference &&
+                !current.barEvidence.topRevalidatedNearby:
+            current.pictureBottom==candidate->pictureBottom &&
+                !current.barEvidence.captionBackedBottom && !current.barEvidence.bottomRevalidatedAtReference &&
+                !current.barEvidence.bottomRevalidatedNearby);
+    const bool anchorOutlineBase=boundedOutline &&
+        (independentPhysical || captionEdgeOutward || unchangedCuePlane);
     if(!expectedIdentity.acceptedSequence || !preview.available || !current.analyzed || current.discontinuity ||
         current.analysisRefresh || current.cadenceSkipped || current.glyphLocalTop || current.glyphLocalBottom ||
         !current.barAuthority || !current.barEvidence.available ||
-        (!independentPhysical && !captionEdgeOutward) ||
+        (!independentPhysical && !captionEdgeOutward && !unchangedCuePlane) ||
         !SameAnalysisFrameIdentity(current.identity,expectedIdentity) ||
         preview.policyGeneration!=policy || current.policyGeneration!=policy ||
         preview.continuityGeneration!=continuity || current.continuityGeneration!=continuity)
