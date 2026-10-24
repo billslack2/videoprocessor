@@ -1,0 +1,55 @@
+{
+  "source": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-motion-packet-b81e1b8b-20261024-151642",
+  "configurationEdits": [],
+  "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+  "stateSelectionEdit": null,
+  "savedStatePreserved": true,
+  "runtimeHealth": {
+    "source": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+    "pid": 51108,
+    "start": "2026-10-24T15:16:44.8686947-04:00",
+    "observedAt": "2026-10-24T15:20:19.4300122-04:00",
+    "aliveSeconds": 214.5613175,
+    "responding": true,
+    "cpuSeconds": 158.859375,
+    "logLastWrite": "2026-10-24T15:20:19.3721073-04:00",
+    "crashOrHangEvents": 0,
+    "modules": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "014B356475DEEB627B99B1043D1507815A7221804B8BBDE67157C32B969E9353"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "02B2BF5B11619CE92CF2655E961C6B6DBF1B4886AE31ACDF91A5E47974272A3B"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "8F8234ADE83CB7976C0F9B1170A2D9D2DEDA63A29B6171EAAFF5A3D1A16D40EE"
+      }
+    ],
+    "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+  },
+  "files": [
+    {
+      "previousSha256": "9BF2D00FD6878C3A7ACB0BCC247279037659FF73C8D11D83FE3E4E1F205FB116",
+      "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "014B356475DEEB627B99B1043D1507815A7221804B8BBDE67157C32B969E9353"
+    },
+    {
+      "previousSha256": "7B62BA9ECF4DD5BE00E4B97D3842A44DAE95F39274B2711E0F478991EB904A30",
+      "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "02B2BF5B11619CE92CF2655E961C6B6DBF1B4886AE31ACDF91A5E47974272A3B"
+    },
+    {
+      "previousSha256": "ED3166BB5D23BCE1D264AFDA82BAFAA46CC9F96CE6BC3435042A7096DA8E3114",
+      "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "8F8234ADE83CB7976C0F9B1170A2D9D2DEDA63A29B6171EAAFF5A3D1A16D40EE"
+    }
+  ],
+  "observation": "Current source/display are matched near59.94Hz and saved subtitle selection is Classic; no actual new fallback replay acceptance."
+}

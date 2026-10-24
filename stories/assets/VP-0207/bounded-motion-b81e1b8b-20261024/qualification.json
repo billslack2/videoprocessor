@@ -1,0 +1,96 @@
+{
+  "source": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "sourceClean": true,
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T14:56:33.3965189-04:00",
+    "Commit": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "nativePassed": 1838,
+  "selectedStandardTotal": 2008,
+  "betaGpuPassed": 170,
+  "dualDependencyGpu": {
+    "schemaVersion": 1,
+    "sourceCommit": "b81e1b8b201c7810c68010cecac51f88336df7b9",
+    "sourceDirty": false,
+    "configuration": "Release",
+    "architecture": "x64",
+    "classes": [
+      "MotionRendererTests",
+      "SourceUploadBatchTests",
+      "TemporalCleanPacketGpuTests",
+      "RetainedEnvelopeSelectionGpuTests",
+      "SubtitleCutPasteTests",
+      "SubtitleCutPasteShaderTests",
+      "RendererDependencyTests"
+    ],
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\VideoProcessor-Test.dll",
+        "sha256": "2289170BBA179CF010A3621312C776B377D0965C3EB5209D4090AE94AA98EFE4",
+        "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+        "passed": 170
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "sha256": "60B7296F97FD6D8B4CA0F6BFBF676FBC0EE8292B8822EE319A2726BB9DDE6DC6",
+        "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+        "passed": 170
+      }
+    ],
+    "receiptPaths": [
+      "dual-dependency/motion-renderer-tests.json",
+      "dual-dependency-beta-fresh-link/motion-renderer-tests.json"
+    ],
+    "buildFailure": "Original beta test-only incremental link failed LNK1103; exact ipdb/iobj caches preserved, fresh link rerun without source changes."
+  },
+  "runtimeRecords": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "014B356475DEEB627B99B1043D1507815A7221804B8BBDE67157C32B969E9353",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "02B2BF5B11619CE92CF2655E961C6B6DBF1B4886AE31ACDF91A5E47974272A3B",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "8F8234ADE83CB7976C0F9B1170A2D9D2DEDA63A29B6171EAAFF5A3D1A16D40EE",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "VideoProcessor-Test.dll",
+      "sha256": "2289170BBA179CF010A3621312C776B377D0965C3EB5209D4090AE94AA98EFE4",
+      "toolset": "14.29.30133"
+    }
+  ],
+  "nativeFixtureCount": 5,
+  "stackQualification": "Exact standard/beta DLL/PDB and six normal-stack plus two private-native pressured cases passed; original 1 MiB reserve retained.",
+  "limitations": [
+    "Selected runtime/test target build and regression classes, not full solution or entire native test suite.",
+    "Five preserved native 4K frames are replayed with controlled metadata and failure cases; these are not a captured native flicker sequence.",
+    "Live replay acceptance remains pending."
+  ],
+  "localEvidence": "E:\\codex\\diagnostics\\vp0207-smooth-motion-regression-20261024-1238\\bounded-motion-packet",
+  "immutableBuildManifest": "E:\\codex\\diagnostics\\vp0207-smooth-motion-regression-20261024-1238\\bounded-motion-packet\\qualified-build\\manifest.json"
+}
