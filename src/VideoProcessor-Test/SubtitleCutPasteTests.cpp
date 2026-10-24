@@ -16,6 +16,7 @@
 #include <memory>
 #include <SubtitlePreviewMode.h>
 #include <climits>
+#include <limits>
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
 #include <RendererConfigView.h>
@@ -1954,8 +1955,11 @@ struct SubtitleShaderGpuFixture {
         }
         uint16_t half=0;std::memcpy(&half,bytes,sizeof(half));
         const int exponent=(half>>10)&31,significand=half&1023;
-        return exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
+        const float magnitude=exponent==31?
+            (significand?std::numeric_limits<float>::quiet_NaN():std::numeric_limits<float>::infinity()):
+            exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
             std::ldexp(float(significand),-24);
+        return (half&0x8000)?-magnitude:magnitude;
     }
     std::vector<float> ReadLinear(pl_tex texture) {
         const pl_fmt format=texture->params.format;
@@ -2713,8 +2717,7 @@ struct SubtitleShaderGpuFixture {
                 L"A next source with no lip cannot reuse the old source cleanup or erase its current picture.");
     }
 
-    std::vector<float> ReadPreparedRaster(pl_frame composed,bool encoded=false) {
-        if(encoded)composed.color.transfer=PL_COLOR_TRC_LINEAR;
+    std::vector<float> ReadPreparedRaster(pl_frame composed) {
         composed.crop={0,0,64,64};composed.rotation=PL_ROTATION_0;
         pl_frame target{};target.num_planes=1;target.planes[0].texture=allOutput;
         target.planes[0].components=4;
@@ -2779,6 +2782,18 @@ struct SubtitleShaderGpuFixture {
         }
         input=original;
     }
+    std::vector<float> ReadPreparedEncoded(const pl_frame& composed) {
+        const auto texture=composed.planes[0].texture;
+        Assert::IsTrue(texture && texture->params.blit_src,L"Encoded readback requires the production copy-source surface option");
+        pl_tex_params storage{};storage.w=texture->params.w;storage.h=texture->params.h;
+        storage.format=texture->params.format;storage.blit_dst=true;storage.host_readable=true;
+        auto staging=pl_tex_create(device->gpu,&storage);
+        Assert::IsNotNull(staging,L"Encoded preparation readback allocation failed");
+        pl_tex_blit_params copy{};copy.src=texture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const auto pixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        return pixels;
+    }
     void VerifyRealSourceAlphaRemainsComposited() {
         const auto original=input;auto geometry=Geometry();geometry.valid=false;
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,input.color.transfer),
@@ -2795,12 +2810,12 @@ struct SubtitleShaderGpuFixture {
                 pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
                 Assert::IsTrue(pl_tex_upload(device->gpu,&upload),L"Real-alpha control upload failed");
                 pl_frame composed{};
-                Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,composed),
+                Assert::IsTrue(RenderSubtitleFullRaster(preparation,device->gpu,input,hook,&allTexture,composed,true,false),
                     L"Real source alpha must retain the original opaque-background composition");
                 Assert::IsTrue(composed.repr.alpha==PL_ALPHA_NONE,L"Opaque preparation target metadata changed");
                 // Compare native encoded pixels against a separate no-hook render
                 // with the original opaque-background policy and same metadata.
-                const auto output=ReadPreparedRaster(composed,true);
+                const auto output=ReadPreparedEncoded(composed);
                 pl_frame reference{};reference.num_planes=1;
                 reference.planes[0].texture=allOutput;reference.planes[0].components=4;
                 for(int c=0;c<4;++c)reference.planes[0].component_mapping[c]=c;
@@ -3005,6 +3020,19 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(HalfFloatReadbackPreservesSignedAndNonFiniteValues) {
+        const auto read=[](uint16_t bits) {
+            return SubtitleShaderGpuFixture::FloatChannel(reinterpret_cast<const uint8_t*>(&bits),16);
+        };
+        Assert::AreEqual(0.0f,read(0x0000));Assert::IsFalse(std::signbit(read(0x0000)));
+        Assert::AreEqual(0.0f,read(0x8000));Assert::IsTrue(std::signbit(read(0x8000)));
+        Assert::AreEqual(std::ldexp(1.0f,-24),read(0x0001));
+        Assert::AreEqual(-std::ldexp(1.0f,-24),read(0x8001));
+        Assert::AreEqual(1.5f,read(0x3e00));Assert::AreEqual(-1.5f,read(0xbe00));
+        Assert::IsTrue(std::isinf(read(0x7c00)) && !std::signbit(read(0x7c00)));
+        Assert::IsTrue(std::isinf(read(0xfc00)) && std::signbit(read(0xfc00)));
+        Assert::IsTrue(std::isnan(read(0x7e00)) && std::isnan(read(0xfe00)));
+    }
     TEST_METHOD(OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata) {
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_HLG);
         gpu.VerifyOpaquePreparationCoverage();
