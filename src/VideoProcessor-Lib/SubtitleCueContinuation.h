@@ -165,7 +165,7 @@ public:
             return finish("complete-cue-side-unproved");
         auto local=raw;
         const bool reusable=preview.available && raw.analyzed && !raw.analysisRefresh && !raw.pendingRefresh &&
-            !raw.cadenceSkipped && CurrentCueSide(raw,m_fromTop,plane) &&
+            !raw.cadenceSkipped && CurrentWorkerAtReprovedCuePlane(raw,m_fromTop,plane) &&
             CompleteCoverage(raw,m_fromTop) && raw.text.detected && !raw.text.held &&
             !raw.text.confirmationPending && !raw.text.workLimit;
         if(!reusable) {
@@ -323,6 +323,17 @@ private:
             c.ink->width!=(c.width+step-1)/step || c.ink->height!=(c.height+step-1)/step ||
             c.ink->sourceRows.size()!=size_t(c.ink->height))return false;
         return top?c.text.topSearchEnd>=plane:c.text.bottomSearchStart<=plane;
+    }
+    // This nominates current WORKER coverage only after InspectCurrent has
+    // freshly re-proved the exact acquired native plane above. Nearby/reference
+    // provenance cannot defeat that new pixel proof, nor supply it by itself.
+    // Tracking, caption-derived placement and incomplete coverage still cannot
+    // substitute for the independent full current inspector.
+    static bool CurrentWorkerAtReprovedCuePlane(const SubtitleBoxObservation& c,bool top,int plane) {
+        return c.barAuthority && c.barEvidence.available && !c.glyphLocalTop && !c.glyphLocalBottom &&
+            !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge && plane>0 && plane<c.height &&
+            (top?c.pictureTop==plane && c.barEvidence.top==plane && !c.barEvidence.captionBackedTop:
+                c.pictureBottom==plane && c.barEvidence.bottom==plane && !c.barEvidence.captionBackedBottom);
     }
     static bool CompleteCoverage(const SubtitleBoxObservation& c,bool top) {
         if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete || !c.text.configuredSearchComplete ||

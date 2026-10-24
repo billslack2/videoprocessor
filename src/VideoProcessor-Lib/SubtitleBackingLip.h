@@ -7,6 +7,11 @@
 #include <cstdint>
 #include <cstring>
 
+// Exhaustive native body validation scales with the actual backing area. Keep
+// this phase bounded while allowing ordinary wide 4K captions plus current
+// plane proof. The caller's shared frame budget remains an independent ceiling.
+constexpr size_t SubtitleBackingLipSampleLimit=131072;
+
 // Exact-current cleanup only. Never an acquired card, glyph/capture mask,
 // retained display envelope, or aspect-ratio certificate.
 struct CurrentSubtitleBackingLipProof
@@ -40,7 +45,7 @@ struct CurrentSubtitleBackingLipProof
 inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const AnalysisLumaSource& source,const SubtitleBoxPreview& preview,
     const SubtitleBoxResult& accepted,const ActivePictureFrameIdentity& expectedIdentity,
-    uint64_t policy,uint64_t continuity,size_t maxSamples=65536,
+    uint64_t policy,uint64_t continuity,size_t maxSamples=SubtitleBackingLipSampleLimit,
     const CurrentSubtitleBackingLipProof* candidate=nullptr,
     const SubtitleCutPasteGeometry* composition=nullptr,
     const SubtitleCueContinuation* completeCue=nullptr)
@@ -512,8 +517,9 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
 }
 
 // State contains coordinates only, never pixels or a reusable cleanup authority.
-// A failed current validation immediately retires it. Mode/source/layout resets
-// retire it too; it cannot transfer to changed text, a new cue, or an epoch.
+// Contradictions retire it immediately. Incomplete budget work may retain only
+// the old coordinates; it emits no cleanup and never renews the source window.
+// Mode/source/layout changes cannot transfer it to changed text or an epoch.
 class SubtitleBackingLipContinuity
 {
     CurrentSubtitleBackingLipProof m_outline;
@@ -523,7 +529,7 @@ public:
     CurrentSubtitleBackingLipProof Consume(const AnalysisLumaSource& source,
         const SubtitleBoxPreview& preview,const SubtitleBoxResult& text,
         const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity,
-        size_t maxSamples=65536,const SubtitleCutPasteGeometry* composition=nullptr,
+        size_t maxSamples=SubtitleBackingLipSampleLimit,const SubtitleCutPasteGeometry* composition=nullptr,
         const SubtitleCueContinuation* completeCue=nullptr)
     {
         auto previous=m_outline.identity;
@@ -537,7 +543,12 @@ public:
             text.cue==m_text.cue && SameFreshSubtitleGlyphs(m_text,text,0);
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
             maxSamples,matches?&m_outline:nullptr,composition,completeCue);
-        if(proof.valid) {m_outline=proof;m_text=text;} else Reset();
+        if(proof.valid) {m_outline=proof;m_text=text;}
+        else if(!matches || std::strcmp(proof.reason,"lip-work-budget")!=0) Reset();
+        // Budget exhaustion is UNKNOWN, not evidence against the old outline.
+        // Keep its ORIGINAL last-success identity and coordinates privately.
+        // This returned proof is still invalid; the next source must recheck
+        // every body pixel and boundary before any cleanup can be emitted.
         return proof;
     }
 };

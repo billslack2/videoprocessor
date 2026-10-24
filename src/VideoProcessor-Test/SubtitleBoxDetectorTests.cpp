@@ -1057,6 +1057,97 @@ public:
             AssertSameCurrentGridEvidence(b,repeat,cached.InkSnapshot(),cached.InkSnapshot());
         }
     }
+    TEST_METHOD(CallerReadExhaustionStopsCardTrialsWithoutRevokingLocalQuotaProof) {
+        auto fixture=Frame();PanelToBar(fixture,206,250,434);
+        Text(fixture,241,255,12);Text(fixture,215,279,16);Text(fixture,297,303,3);
+        Fill(fixture,202,260,207,315,64);
+        const SubtitleBoxRect seed{215,279,418,293};
+        for(bool p210:{false,true}) {
+            auto pixels=ScaledFixture(fixture,1,p210);auto source=ScaledSource(pixels,1,p210);
+            SubtitleOpaqueCardRefinement complete;
+            Assert::IsTrue(RefineSubtitleOpaqueCard(source,seed,14,45,315,72,375,512,512,complete));
+            Assert::IsTrue(!complete.workLimit && complete.sampledPixels>100);
+            // A completed narrow proof survives exhausting only optional LOCAL
+            // improvement work, just as before; the caller's quota is different.
+            unsigned remaining=complete.sampledPixels-1;
+            SubtitleOpaqueCardRefinement local;
+            Assert::IsTrue(RefineSubtitleOpaqueCardAttempt(source,seed,14,45,315,72,375,
+                512,512,local,-1,14,false,28,remaining));
+            Assert::IsTrue(local.workLimit && local.interior.Valid());
+            for(size_t limit:{size_t(0),size_t(1),size_t(complete.sampledPixels/2),
+                size_t(complete.sampledPixels-1)}) {
+                AnalysisLumaReadBudget budget{limit};auto bounded=source;bounded.readBudget=&budget;
+                SubtitleOpaqueCardRefinement incomplete;
+                Assert::IsFalse(RefineSubtitleOpaqueCard(bounded,seed,14,45,315,72,375,
+                    512,512,incomplete));
+                Assert::IsTrue(budget.exhausted && budget.used==limit && incomplete.workLimit);
+                Assert::IsTrue(incomplete.sampledPixels<=budget.used+1,
+                    L"Stop after the first rejected caller read, including optional/broad trials.");
+                Assert::IsFalse(incomplete.interior.Valid());
+                Assert::IsFalse(incomplete.measuredBounds.Valid());
+                Assert::AreEqual(0,incomplete.glyphRowCount);
+            }
+            // Using the last allowed read is success; only a FAILED extra read
+            // means exhaustion. No >= limit checkpoint may revoke this result.
+            AnalysisLumaReadBudget exact{complete.sampledPixels};source.readBudget=&exact;
+            SubtitleOpaqueCardRefinement same;
+            Assert::IsTrue(RefineSubtitleOpaqueCard(source,seed,14,45,315,72,375,512,512,same));
+            Assert::IsFalse(exact.exhausted || same.workLimit);
+            Assert::AreEqual(exact.limit,exact.used);
+            Assert::IsTrue(same.interior.left==complete.interior.left && same.interior.top==complete.interior.top &&
+                same.interior.right==complete.interior.right && same.interior.bottom==complete.interior.bottom &&
+                same.glyphRowCount==complete.glyphRowCount);
+        }
+    }
+    TEST_METHOD(CurrentReadExhaustionKeepsUnknownAcrossFormatsAndRecoversOnNewSource) {
+        for(int format=0;format<4;++format)for(bool upper:{false,true}) {
+            auto fixture=Frame();PanelToBar(fixture,180,298,465);Text(fixture,195,305,18);
+            if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(fixture[y*W+x],fixture[(H-1-y)*W+x]);
+            const bool p210=format==1 || format==2;
+            auto pixels=ScaledFixture(fixture,6,p210);auto source=ScaledSource(pixels,6,p210);
+            if(format==2)source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+            std::vector<uint8_t> rgb;
+            if(format==3) {
+                rgb.resize(size_t(source.width)*source.height*4);
+                for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x) {
+                    const size_t i=(size_t(y)*source.width+x)*4;
+                    rgb[i]=rgb[i+1]=rgb[i+2]=uint8_t(pixels[size_t(y)*source.width+x]>>8);rgb[i+3]=255;
+                }
+                source.data=rgb.data();source.dataBytes=rgb.size();source.rowBytes=source.width*4;
+                source.format=AnalysisLumaFormat::NativeRgb;source.encoding=VideoFrameEncoding::BGRA_8BIT;
+            }
+            const int top=upper?270:0,bottom=upper?source.height:1890;
+            SubtitleBoxDetector direct,measured;direct.SetNearBarDistance(20);measured.SetNearBarDistance(20);
+            direct.SetOptimizationMode(format%3);measured.SetOptimizationMode(format%3);
+            const auto original=direct.Analyze(source,top,bottom,1,1,true);
+            AnalysisLumaReadBudget ample{2000000};auto bounded=source;bounded.readBudget=&ample;
+            const auto full=measured.Analyze(bounded,top,bottom,1,1,true);
+            Assert::IsTrue(full.detected && !ample.exhausted && ample.used>100);
+            AssertSameCurrentGridEvidence(original,full,direct.InkSnapshot(),measured.InkSnapshot());
+            const auto fullInk=measured.InkSnapshot();
+            // Both an early stop and a late native-refinement stop remain
+            // UNKNOWN, and cannot inherit the previous accepted source packet.
+            uint64_t sequence=2;
+            for(size_t limit:{size_t(1),ample.used/2,ample.used-1}) {
+                AnalysisLumaReadBudget limited{limit};bounded.readBudget=&limited;
+                const auto missing=measured.Analyze(bounded,top,bottom,sequence++,1,true);
+                Assert::IsTrue(limited.exhausted && limited.used==limit && missing.workLimit);
+                Assert::IsFalse(missing.detected || missing.held || missing.configuredSearchComplete ||
+                    missing.topSearchComplete || missing.bottomSearchComplete);
+                Assert::AreEqual(std::string("sample-budget"),std::string(missing.diagnosticReason));
+            }
+            AnalysisLumaReadBudget alreadyExhausted{10,10,true};bounded.readBudget=&alreadyExhausted;
+            const auto stopped=measured.Analyze(bounded,top,bottom,sequence++,1,false);
+            Assert::IsTrue(stopped.workLimit && !stopped.detected && !measured.InkSnapshot());
+            Assert::AreEqual(size_t(10),alreadyExhausted.used);
+            AnalysisLumaReadBudget exact{ample.used};bounded.readBudget=&exact;
+            const auto recovered=measured.Analyze(bounded,top,bottom,sequence,1,true);
+            Assert::IsTrue(recovered.detected && !recovered.workLimit && !exact.exhausted);
+            Assert::AreEqual(exact.limit,exact.used);
+            AssertSameCurrentGridEvidence(full,recovered,fullInk,measured.InkSnapshot());
+        }
+    }
     TEST_METHOD(CurrentGridCacheCannotCompleteAfterNativeReadBudgetExhaustion) {
         auto fixture=Frame();PanelToBar(fixture,180,298,465);Text(fixture,195,305,18);
         auto native=ScaledFixture(fixture,6,true);auto source=ScaledSource(native,6,true);

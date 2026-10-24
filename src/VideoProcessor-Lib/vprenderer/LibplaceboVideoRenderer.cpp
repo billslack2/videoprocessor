@@ -14053,7 +14053,7 @@ struct LibplaceboVideoRenderer::Impl
                     lipSource.generation=subtitleIdentity.transportGeneration;
                     const auto lip=subtitleBackingLipContinuity.Consume(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,65536,&move,
+                        localBoundaryContinuityGeneration,SubtitleBackingLipSampleLimit,&move,
                         currentCueContinuation.valid?&currentCueContinuation:nullptr);
                     const char* lipApplicationReason=nullptr;
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,

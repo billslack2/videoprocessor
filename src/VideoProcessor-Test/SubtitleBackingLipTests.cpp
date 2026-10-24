@@ -109,6 +109,23 @@ TEST_CLASS(SubtitleBackingLipTests) {
                 Identity(sequence),false,{},7,8);
         }
     };
+    static SubtitleBoxRect WideCaptionAndLip(Frame& frame,int glyphCount,int depth) {
+        frame.Fill({0,frame.pictureBottom,frame.width,frame.height},frame.floor);
+        const int glyphWidth=(glyphCount-1)*13*frame.scale+8*frame.scale;
+        const int left=(frame.width-glyphWidth)/2;
+        for(int row=0;row<2;++row)for(int glyph=0;glyph<glyphCount;++glyph) {
+            const int x=left+glyph*13*frame.scale,y=frame.pictureBottom+2+row*28*frame.scale;
+            frame.Fill({x,y,x+8*frame.scale,y+14*frame.scale},700);
+            frame.Fill({x+2*frame.scale,y+2*frame.scale,x+6*frame.scale,y+12*frame.scale},frame.floor);
+        }
+        const SubtitleBoxRect cap{left-16*frame.scale,frame.pictureBottom-depth,
+            left+glyphWidth+16*frame.scale,frame.pictureBottom};
+        for(int y=cap.top;y<cap.bottom;++y) {
+            const int inset=(std::max)(0,2*frame.scale-(y-cap.top));
+            frame.Fill({cap.left+inset,y,cap.right-inset,y+1},frame.floor);
+        }
+        return frame.Rect(cap);
+    }
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> list) {
         return SubtitleBoxLookahead::Resolve(list.begin(),list.size(),7,8);
     }
@@ -190,6 +207,96 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
 public:
+    TEST_METHOD(WideCurrentBackingUsesBoundedPhaseAllowanceAndSharedFrameLimit) {
+        Assert::AreEqual(size_t(131072),SubtitleBackingLipSampleLimit);
+        Assert::AreEqual(size_t(524288),SubtitleCurrentCueFrameSampleLimit);
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+        for(bool top:{false,true})for(int glyphCount:{20,34}) {
+            Frame frame(6,format,top);const auto expected=WideCaptionAndLip(frame,glyphCount,30);
+            const auto cue=Acquire(frame);auto preview=cue.preview;
+            preview.current.independentBarAnalysis=false;
+            if(top)preview.current.barEvidence.topRevalidatedNearby=true;
+            else preview.current.barEvidence.bottomRevalidatedNearby=true;
+            const auto geometry=Geometry(cue);
+            const auto legacy=ProveCurrentSubtitleBackingLip(frame.Source(),preview,cue.accepted,Identity(2),7,8,65536);
+            Assert::IsFalse(legacy.valid);Assert::IsTrue(std::strcmp(legacy.reason,"lip-work-budget")==0);
+            AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=frame.Source();source.readBudget=&budget;
+            const auto current=ProveCurrentSubtitleBackingLip(source,preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(current.valid && current.cuePlaneVerified && Same(current.cleanup,expected));
+            Assert::IsTrue(current.samples>65536 && current.samples<=SubtitleBackingLipSampleLimit);
+            const auto reads=budget.used;Assert::IsTrue(reads>65536 && reads<=SubtitleBackingLipSampleLimit && !budget.exhausted);
+            // Full inspector allowance and the recorded pending+inspector cost
+            // both leave enough shared capacity for this wider exact body.
+            for(size_t priorReads:{SubtitleCurrentCueInspectionSampleLimit,size_t(397101),SubtitleCurrentCueFrameSampleLimit-reads}) {
+                budget={SubtitleCurrentCueFrameSampleLimit,priorReads,false};
+                const auto fitting=ProveCurrentSubtitleBackingLip(source,preview,cue.accepted,Identity(2),7,8);
+                Assert::IsTrue(fitting.valid && Same(fitting.cleanup,expected));
+                Assert::AreEqual(priorReads+reads,budget.used);Assert::IsFalse(budget.exhausted);
+            }
+            // One native read short never exports a partial cleanup. The new
+            // local ceiling cannot bypass or replenish the shared frame cap.
+            budget={SubtitleCurrentCueFrameSampleLimit,SubtitleCurrentCueFrameSampleLimit-reads+1,false};
+            const auto insufficient=ProveCurrentSubtitleBackingLip(source,preview,cue.accepted,Identity(2),7,8);
+            Assert::IsFalse(insufficient.valid);Assert::IsTrue(budget.exhausted);
+            Assert::AreEqual(SubtitleCurrentCueFrameSampleLimit,budget.used);
+            Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,insufficient,Identity(2),7,8).generatedCleanup.Valid());
+            // More capacity must not erase a newly bright native body pixel.
+            frame.Pixel(frame.width/2,frame.pictureBottom-4,700);budget={SubtitleCurrentCueFrameSampleLimit};
+            Assert::IsFalse(ProveCurrentSubtitleBackingLip(source,preview,cue.accepted,Identity(2),7,8).valid);
+        }
+    }
+    TEST_METHOD(IncompleteBackingBudgetKeepsOnlyUnrenewedOutlineCoordinates) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::P210,top);const auto expected=WideCaptionAndLip(frame,12,30);
+            const auto cue=Acquire(frame);const auto geometry=Geometry(cue);
+            SubtitleBackingLipContinuity state;
+            const auto seeded=state.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,
+                SubtitleBackingLipSampleLimit,&geometry);
+            Assert::IsTrue(seeded.valid && Same(seeded.cleanup,expected));
+            auto expiring=state;auto changedContext=state;
+            auto previewFor=[&](uint64_t seq){return Resolve({frame.Measure(seq)});};
+            const auto third=previewFor(3);
+            for(int repeat=0;repeat<3;++repeat) {
+                const auto unknown=state.Consume(frame.Source(),third,cue.accepted,Identity(3),7,8,1,&geometry);
+                Assert::IsFalse(unknown.valid);Assert::IsTrue(std::strcmp(unknown.reason,"lip-work-budget")==0);
+                Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,unknown,Identity(3),7,8).generatedCleanup.Valid());
+            }
+            // A small OUTSIDE flank shadow is allowed by the established
+            // outline's distributed current boundary proof, but defeats cold
+            // acquisition. It cannot enlarge the old removal rectangle.
+            frame.Pixel(expected.left-1,frame.pictureBottom-10,frame.floor);
+            const auto fourth=previewFor(4);SubtitleBackingLipContinuity cold;
+            Assert::IsFalse(cold.Consume(frame.Source(),fourth,cue.accepted,Identity(4),7,8,
+                SubtitleBackingLipSampleLimit,&geometry).valid);
+            const auto recovered=state.Consume(frame.Source(),fourth,cue.accepted,Identity(4),7,8,
+                SubtitleBackingLipSampleLimit,&geometry);
+            Assert::IsTrue(recovered.valid && recovered.revalidatedOutline && Same(recovered.cleanup,expected));
+            Assert::IsTrue(SameAnalysisFrameIdentity(recovered.identity,Identity(4)));
+            for(uint64_t seq=3;seq<=10;++seq) {
+                const auto current=previewFor(seq);
+                const auto unknown=expiring.Consume(frame.Source(),current,cue.accepted,Identity(seq),7,8,1,&geometry);
+                Assert::IsFalse(unknown.valid);Assert::IsTrue(std::strcmp(unknown.reason,"lip-work-budget")==0);
+            }
+            // Eight failed/repeated sources never renew the last-success cursor.
+            const auto expired=previewFor(11);
+            Assert::IsFalse(expiring.Consume(frame.Source(),expired,cue.accepted,Identity(11),7,8,
+                SubtitleBackingLipSampleLimit,&geometry).valid);
+            // A real body contradiction discards the retained outline. Restoring
+            // pixels later must reacquire; it cannot revive discarded authority.
+            frame.Pixel(frame.width/2,frame.pictureBottom-4,700);
+            const auto fifth=previewFor(5);
+            Assert::IsFalse(state.Consume(frame.Source(),fifth,cue.accepted,Identity(5),7,8,
+                SubtitleBackingLipSampleLimit,&geometry).valid);
+            frame.Pixel(frame.width/2,frame.pictureBottom-4,frame.floor);
+            const auto sixth=previewFor(6);
+            Assert::IsFalse(state.Consume(frame.Source(),sixth,cue.accepted,Identity(6),7,8,
+                SubtitleBackingLipSampleLimit,&geometry).valid);
+            auto changed=fourth;changed.policyGeneration=changed.current.policyGeneration=9;
+            Assert::IsFalse(changedContext.Consume(frame.Source(),changed,cue.accepted,Identity(4),9,8,1,&geometry).valid);
+            Assert::IsFalse(changedContext.Consume(frame.Source(),sixth,cue.accepted,Identity(6),7,8,
+                SubtitleBackingLipSampleLimit,&geometry).valid);
+        }
+    }
     TEST_METHOD(ColdCurrentPlaneReproofAdmitsNearbySidesWithoutChangingRawAuthority) {
         for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
             Frame frame(6,format,top);const auto lip=frame.Lip(30,true);const auto cue=Acquire(frame);
@@ -420,6 +527,76 @@ public:
             Assert::IsFalse(next.accepted.detected && next.accepted.cue==cue.accepted.cue);
             auto missing=changed;missing.current.identity=Identity(5);missing.available=false;missing.current.analyzed=false;missing.current.text={};
             const auto after=unknown(missing);Assert::IsFalse(after.accepted.detected);
+        }
+    }
+    TEST_METHOD(CompleteCurrentWorkerCoverageReusesNearbyPlaneOnlyAfterFreshNativeProof) {
+        for(bool top:{false,true})for(int provenance=0;provenance<3;++provenance) {
+            Frame frame(1,Format::P210,top);frame.Lip(4,true);auto cue=Acquire(frame,20);
+            const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+            SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+            auto raw=frame.Measure(3,20);SubtitleBoxDetector complete;complete.SetNearBarDistance(20);
+            raw.text=complete.Analyze(frame.Source(),raw.pictureTop,raw.pictureBottom,3,raw.identity.viewportGeneration,true);
+            raw.ink=complete.InkSnapshot();Assert::IsTrue(raw.text.detected && raw.text.configuredSearchComplete && raw.ink);
+            raw.independentBarAnalysis=false;
+            if(top) {raw.barEvidence.topRevalidatedNearby=provenance!=1;raw.barEvidence.topRevalidatedAtReference=provenance!=0;}
+            else {raw.barEvidence.bottomRevalidatedNearby=provenance!=1;raw.barEvidence.bottomRevalidatedAtReference=provenance!=0;}
+            const auto preview=Resolve({raw});AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};
+            auto source=frame.Source();source.readBudget=&budget;const auto proof=guard.InspectCurrent(preview,source);
+            Assert::IsTrue(proof.completeCurrentCue && proof.valid && proof.currentInk==raw.ink,
+                L"Exact complete current worker coverage can follow fresh own-plane proof regardless of nearby/reference nomination.");
+            Assert::IsTrue(proof.samples>0 && proof.ink!=raw.ink && !proof.ink->rawEvidenceComplete && !budget.exhausted);
+            Assert::IsTrue(proof.MatchesSource(raw.identity,7,8) && proof.MatchesCue(cue.accepted));
+            Assert::IsFalse(preview.current.independentBarAnalysis);
+        }
+    }
+    TEST_METHOD(CompleteWorkerReuseCannotPromoteIncompleteWeakOrNoncurrentCoverage) {
+        for(int fault=0;fault<12;++fault) {
+            Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame,20);
+            const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+            SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+            auto raw=frame.Measure(3,20);SubtitleBoxDetector complete;complete.SetNearBarDistance(20);
+            raw.text=complete.Analyze(frame.Source(),raw.pictureTop,raw.pictureBottom,3,raw.identity.viewportGeneration,true);
+            raw.ink=complete.InkSnapshot();Assert::IsTrue(raw.text.detected && raw.text.configuredSearchComplete && raw.ink);
+            raw.independentBarAnalysis=false;raw.barEvidence.bottomRevalidatedNearby=true;
+            if(fault==0)raw.text.configuredSearchComplete=false;
+            if(fault==1)raw.text.bottomSearchStart=raw.pictureBottom;
+            if(fault==2)raw.pendingRefresh=true;
+            if(fault==3)raw.analysisRefresh=true;
+            if(fault==4)raw.barTrackingAuthority=true;
+            if(fault==5)raw.currentAnchorUsesTrackedEdge=true;
+            if(fault==6)raw.barEvidence.captionBackedBottom=true;
+            if(fault==7)raw.glyphLocalBottom=true;
+            if(fault==8){auto ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);ink->rawEvidenceComplete=false;raw.ink=ink;}
+            if(fault==9)raw.cadenceSkipped=true;
+            if(fault==10)++raw.barEvidence.bottom;
+            if(fault==11)raw.analyzed=false;
+            const auto preview=Resolve({raw});const auto proof=guard.InspectCurrent(preview,frame.Source());
+            Assert::IsTrue(proof.completeCurrentCue && proof.valid && proof.currentInk!=raw.ink,
+                L"Weak or incomplete worker provenance still requires a complete fresh native detector scan.");
+        }
+    }
+    TEST_METHOD(CompleteWorkerReuseRejectsChangedPlaneEpochAndNewBarInk) {
+        for(int fault=0;fault<8;++fault) {
+            Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame,20);
+            const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+            SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+            if(fault==3)frame.Fill({0,frame.pictureTop,frame.width,frame.pictureBottom},frame.floor);
+            if(fault==7)frame.Fill({240,frame.pictureBottom+2,248,frame.pictureBottom+16},frame.floor);
+            if(fault==4)for(int n=0;n<6;++n) {
+                const int x=24+n*13,y=frame.pictureBottom+8;
+                frame.Fill({x,y,x+8,y+14},700);frame.Fill({x+2,y+2,x+6,y+12},frame.floor);
+            }
+            auto raw=cue.preview.current;raw.identity=Identity(3);SubtitleBoxDetector complete;complete.SetNearBarDistance(20);
+            raw.text=complete.Analyze(frame.Source(),raw.pictureTop,raw.pictureBottom,3,raw.identity.viewportGeneration,true);
+            raw.ink=complete.InkSnapshot();raw.independentBarAnalysis=false;raw.barEvidence.bottomRevalidatedNearby=true;
+            if(fault==0){++raw.pictureBottom;++raw.barEvidence.bottom;}
+            if(fault==1)++raw.policyGeneration;
+            if(fault==2)raw.identity=Identity(1);
+            if(fault==5)++raw.identity.transportGeneration;
+            if(fault==6)++raw.identity.sourceFormatGeneration;
+            const auto proof=guard.InspectCurrent(Resolve({raw}),frame.Source());
+            Assert::IsFalse(proof.valid || proof.completeCurrentCue);
+            Assert::IsFalse(proof.currentInk!=nullptr,L"No current worker shortcut may precede native/context/residual verification.");
         }
     }
     TEST_METHOD(CurrentPlaneReproofRejectsWrongNativeRowSceneBlackAndBarIntrusion) {
@@ -709,6 +886,25 @@ public:
                     <<" retained="<<next.proof.candidateRetained<<" reads="<<budget.used<<" reason="<<next.proof.reason;
                 Logger::WriteMessage(out.str().c_str());
             }
+            // Simulate a completed current worker packet, not a copied or
+            // promoted narrow observation. Its full scan runs outside the
+            // render-thread budget, as the actual worker does.
+            auto completeWorker=measure(10);SubtitleBoxDetector completeDetector;
+            completeDetector.SetScriptHint(static_cast<SubtitleScriptHint>(script));completeDetector.SetNearBarDistance(nearBar);
+            completeWorker.text=completeDetector.Analyze(source,completeWorker.pictureTop,completeWorker.pictureBottom,
+                10,completeWorker.identity.viewportGeneration,true);completeWorker.ink=completeDetector.InkSnapshot();
+            Assert::IsTrue(completeWorker.text.detected && completeWorker.text.configuredSearchComplete);
+            completeWorker.independentBarAnalysis=false;completeWorker.barEvidence.bottomRevalidatedNearby=true;
+            const auto workerPreview=Resolve({completeWorker});AnalysisLumaReadBudget reuseBudget{SubtitleCurrentCueFrameSampleLimit};
+            auto reuseSource=source;reuseSource.readBudget=&reuseBudget;
+            const auto reused=ConsumeCurrentSubtitleCue(guard,tracker,workerPreview,reuseSource,base,true,250,41.708);
+            Assert::IsTrue(reused.proof.completeCurrentCue && reused.accepted.detected && reused.proof.currentInk==completeWorker.ink);
+            const auto reusedGeometry=compositor.Consume(reused.accepted,workerPreview,{},0,nullptr,&reused.proof);
+            Assert::IsTrue(reusedGeometry.valid);AssertGeometryExceptCleanup(original,reusedGeometry);
+            const auto reusedCap=backing.Consume(reuseSource,workerPreview,reused.accepted,Identity(10),7,8,65536,&reusedGeometry,&reused.proof);
+            Assert::IsTrue(reusedCap.valid && Same(nativeCap,reusedCap.cleanup) && !reuseBudget.exhausted);
+            std::ostringstream reuse;reuse<<"stationary complete-worker reuse near="<<nearBar<<" inspector="<<reused.proof.samples
+                <<" cap="<<reusedCap.samples<<" total="<<reuseBudget.used;Logger::WriteMessage(reuse.str().c_str());
         }
     }
     TEST_METHOD(OptionalPausedRecurrenceColdCapUsesCurrentPixelsWithLoggedNearbyMetadata) {
