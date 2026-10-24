@@ -16759,6 +16759,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		if (m_videoRenderer->GetRenderLoad(renderLoad))
 		{
 			stats.renderLoadKnown = true;
+            stats.processingPerformance = renderLoad.processing;
 			stats.renderLoadGpuValid = renderLoad.gpuValid;
 			stats.renderLoadSettling = renderLoad.settling;
 			stats.renderLoadFrames = renderLoad.frames;

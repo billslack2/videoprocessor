@@ -88,6 +88,8 @@ struct RendererHdrStatus
 	uint64_t sourceSequence = 0;       // selected capture packet, not newest ingress
 	uint64_t sourceGeneration = 0;
 	uint64_t processingEpoch = 0;
+	// Appended so the optional status size check also rejects the older layout.
+	bool detectedFromMix = false; // measured temporal output; authored identity remains the selected source
 	bool Supported() const { return size == sizeof(RendererHdrStatus) && version == 1; }
 };
 

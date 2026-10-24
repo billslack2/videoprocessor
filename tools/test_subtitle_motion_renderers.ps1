@@ -18,7 +18,7 @@ $vpCommit=(& git -C $vpRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0){throw 'Cannot identify test source'}
 $vpDirty=@(& git -C $vpRoot status --porcelain).Count -ne 0
 $vpClasses=@('MotionRendererTests','SourceUploadBatchTests','TemporalCleanPacketGpuTests',
-    'RetainedEnvelopeSelectionGpuTests','SubtitleCutPasteTests','SubtitleCutPasteShaderTests','RendererDependencyTests')
+    'RetainedEnvelopeSelectionGpuTests','ReconstructionMotionTests','SubtitleCutPasteTests','SubtitleCutPasteShaderTests','RendererDependencyTests')
 $vpFilter=($vpClasses | ForEach-Object {"FullyQualifiedName~$_"}) -join '|'
 $vpRuns=@()
 try {

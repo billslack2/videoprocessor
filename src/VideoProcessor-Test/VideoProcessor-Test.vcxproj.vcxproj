@@ -318,6 +318,8 @@
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="ActivePictureBlackReferenceTests.cpp" />
     <ClCompile Include="ActivePictureMeasurementCacheTests.cpp" />
+    <ClCompile Include="ReconstructionMotionTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
+    <ClCompile Include="ProcessingPerformanceWindowTests.cpp" />
     <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp" />
     <ClCompile Include="LocalBoundaryRefinementTests.cpp" />
     <ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp" />
