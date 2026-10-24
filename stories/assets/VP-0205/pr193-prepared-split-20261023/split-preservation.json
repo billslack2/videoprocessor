@@ -1,0 +1,20 @@
+{
+  "testedSource": "acbae401f553ba2561c457ed94c31766335c0822",
+  "base": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "preSplit": "13f43bcb6b99581ffcdc1e800ece471565477a80",
+  "splitChangedPaths": [
+    "docs/VP-0205_LOOKAHEAD_WORK.md",
+    "src/VideoProcessor-Lib/vprenderer/AlphaD3D11FrameGpuTimer.h",
+    "src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+    "src/VideoProcessor-Lib/vprenderer/PresentationAnalysisBudget.h",
+    "src/VideoProcessor-Test/MotionRendererTests.cpp"
+  ],
+  "exactBetaPolicyAndTests": [
+    "src/VideoProcessor-Lib/vprenderer/AlphaD3D11FrameGpuTimer.h",
+    "src/VideoProcessor-Lib/vprenderer/PresentationAnalysisBudget.h",
+    "src/VideoProcessor-Test/MotionRendererTests.cpp"
+  ],
+  "otherPreparedAndBetaFixPathsUnchangedFromPreviouslyTestedHead": true,
+  "recoveryPatchApplies": true,
+  "removedAdaptiveRendererReferences": true
+}

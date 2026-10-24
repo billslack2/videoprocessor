@@ -136,4 +136,4 @@ non-analysis causes; measure it and ensure analysis does not trigger it.
 - Tracker allocation audit: 226 canonical files and 226 indexed items, maximum
   root 0207, no duplicate/missing/orphan IDs or registry/count mismatch. Allocated
   root 0208, next 0209, total 227. Historical VP-0070 status-heading absence and
-  VP-0168 lowercase status are left unchanged; no unrelated tracker repair.
+  VP-0088/VP-0168 lowercase status are left unchanged; no unrelated tracker repair.

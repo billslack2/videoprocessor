@@ -1,0 +1,1614 @@
+Build started 10/23/2026 8:37:24 PM.
+Logging verbosity is set to: Normal.
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" on node 1 (Rebuild target(s)).
+ValidateSolutionConfiguration:
+  Building solution configuration "Release|x64".
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\blackmagic_decklink\BlackMagicDeckLink.vcxproj" (2) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\BlackMag.50140967.tlog\BlackMagic DeckLink SDK.lastbuildstate".
+InitializeBuildStatus:
+  Creating "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild".
+Midl:
+  C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\midl.exe /W1 /nologo /char signed /env x64 /h "DeckLinkAPI_h.h" /tlb "x64\Release\BlackMagic DeckLink SDK.tlb" /target "NT60" DeckLinkAPI.idl 
+  64 bit Processing .\DeckLinkAPI.idl
+  DeckLinkAPI.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\unknwn.idl
+  unknwn.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\wtypes.idl
+  wtypes.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\wtypesbase.idl
+  wtypesbase.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\basetsd.h
+  basetsd.h
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\guiddef.h
+  guiddef.h
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\oaidl.idl
+  oaidl.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\objidl.idl
+  objidl.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\oaidl.acf
+  oaidl.acf
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.pdb" /external:W3 /Gd /TC /FC /errorReport:queue DeckLinkAPI_i.c
+  DeckLinkAPI_i.c
+Lib:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\Lib.exe /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" /NOLOGO /MACHINE:X64 /LTCG x64\Release\DeckLinkAPI_i.obj
+  BlackMagicDeckLink.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib
+FinalizeBuildStatus:
+  Deleting file "x64\Release\BlackMag.50140967.tlog\unsuccessfulbuild".
+  Touching "x64\Release\BlackMag.50140967.tlog\BlackMagic DeckLink SDK.lastbuildstate".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\blackmagic_decklink\BlackMagicDeckLink.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\microsoft_directshow_baseclasses\MicrosoftDirectshowBaseclasses.vcxproj" (3) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\Microsof.fbc2d6cb.tlog\Microsoft Directshow Baseclasses.lastbuildstate".
+InitializeBuildStatus:
+  Creating "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.pdb" /external:W3 /Gd /TP /FC /errorReport:queue amextra.cpp amfilter.cpp amvideo.cpp arithutil.cpp combase.cpp cprop.cpp ctlutil.cpp ddmm.cpp dllentry.cpp dllsetup.cpp mtype.cpp outputq.cpp perflog.cpp pstream.cpp pullpin.cpp refclock.cpp renbase.cpp schedule.cpp seekpt.cpp source.cpp strmctl.cpp sysclock.cpp transfrm.cpp transip.cpp videoctl.cpp vtrans.cpp winctrl.cpp winutil.cpp wxdebug.cpp wxlist.cpp wxutil.cpp
+  amextra.cpp
+  amfilter.cpp
+  amvideo.cpp
+  arithutil.cpp
+  combase.cpp
+  cprop.cpp
+  ctlutil.cpp
+  ddmm.cpp
+  dllentry.cpp
+  dllsetup.cpp
+  mtype.cpp
+  outputq.cpp
+  perflog.cpp
+  pstream.cpp
+  pullpin.cpp
+  refclock.cpp
+  renbase.cpp
+  schedule.cpp
+  seekpt.cpp
+  source.cpp
+  Compiling...
+  strmctl.cpp
+  sysclock.cpp
+  transfrm.cpp
+  transip.cpp
+  videoctl.cpp
+  vtrans.cpp
+  winctrl.cpp
+  winutil.cpp
+  wxdebug.cpp
+  wxlist.cpp
+  wxutil.cpp
+Lib:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\Lib.exe /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" /NOLOGO /MACHINE:X64 /LTCG x64\Release\amextra.obj
+  x64\Release\amfilter.obj
+  x64\Release\amvideo.obj
+  x64\Release\arithutil.obj
+  x64\Release\combase.obj
+  x64\Release\cprop.obj
+  x64\Release\ctlutil.obj
+  x64\Release\ddmm.obj
+  x64\Release\dllentry.obj
+  x64\Release\dllsetup.obj
+  x64\Release\mtype.obj
+  x64\Release\outputq.obj
+  x64\Release\perflog.obj
+  x64\Release\pstream.obj
+  x64\Release\pullpin.obj
+  x64\Release\refclock.obj
+  x64\Release\renbase.obj
+  x64\Release\schedule.obj
+  x64\Release\seekpt.obj
+  x64\Release\source.obj
+  x64\Release\strmctl.obj
+  x64\Release\sysclock.obj
+  x64\Release\transfrm.obj
+  x64\Release\transip.obj
+  x64\Release\videoctl.obj
+  x64\Release\vtrans.obj
+  x64\Release\winctrl.obj
+  x64\Release\winutil.obj
+  x64\Release\wxdebug.obj
+  x64\Release\wxlist.obj
+  x64\Release\wxutil.obj
+  MicrosoftDirectshowBaseclasses.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib
+FinalizeBuildStatus:
+  Deleting file "x64\Release\Microsof.fbc2d6cb.tlog\unsuccessfulbuild".
+  Touching "x64\Release\Microsof.fbc2d6cb.tlog\Microsoft Directshow Baseclasses.lastbuildstate".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\microsoft_directshow_baseclasses\MicrosoftDirectshowBaseclasses.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\lavfilters\LAVFilters.vcxproj" (4) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\LAVFilters.tlog\LAVFilters.lastbuildstate".
+InitializeBuildStatus:
+  Creating "x64\Release\LAVFilters.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\LAVFilters.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W1 /WX- /diagnostics:column /O2 /Gm- /EHsc /MD /GS /arch:AVX /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.pdb" /external:W1 /Gd /TP /FC /errorReport:queue lavfilters.cpp
+  lavfilters.cpp
+Lib:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\Lib.exe /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" /NOLOGO /MACHINE:X64 x64\Release\lavfilters.obj
+  LAVFilters.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib
+FinalizeBuildStatus:
+  Deleting file "x64\Release\LAVFilters.tlog\unsuccessfulbuild".
+  Touching "x64\Release\LAVFilters.tlog\LAVFilters.lastbuildstate".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\lavfilters\LAVFilters.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj" (5) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\MPC Vide.0b36de56.tlog\MPC Video Renderer.lastbuildstate".
+InitializeBuildStatus:
+  Creating "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.pdb" /external:W3 /Gd /TP /FC /errorReport:queue mpc_video_renderer.cpp
+  mpc_video_renderer.cpp
+Lib:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\Lib.exe /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" /NOLOGO /MACHINE:X64 /LTCG x64\Release\mpc_video_renderer.obj
+  mpc_video_renderer.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib
+FinalizeBuildStatus:
+  Deleting file "x64\Release\MPC Vide.0b36de56.tlog\unsuccessfulbuild".
+  Touching "x64\Release\MPC Vide.0b36de56.tlog\MPC Video Renderer.lastbuildstate".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (6) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\VideoPro.85f8c0f9.tlog\VideoProcessor-Lib.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+InitializeBuildStatus:
+  Creating "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I..\..\3rdparty\blackmagic_decklink /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\onnxruntime_directml\include /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Ob2 /Oi /Ot /GL /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /Qpar /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Yc"pch.h" /Fp"x64\Release\VideoProcessor-Lib.pch" /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS pch.cpp
+  pch.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I..\..\3rdparty\blackmagic_decklink /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\onnxruntime_directml\include /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Ob2 /Oi /Ot /GL /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /Qpar /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS ShaderConfigValidation.cpp DisplayRefreshRatePolicy.cpp
+  ShaderConfigValidation.cpp
+  DisplayRefreshRatePolicy.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I..\..\3rdparty\blackmagic_decklink /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\onnxruntime_directml\include /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Ob2 /Oi /Ot /GL /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /Qpar /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"pch.h" /Fp"x64\Release\VideoProcessor-Lib.pch" /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS WindowsDisplayDiagnostics.cpp ACaptureDevice.cpp ActivePictureDecisionTimeline.cpp ActivePictureTransitionModel.cpp AnalysisLumaSource.cpp AnalysisFrame.cpp AnalysisDiagnosticTrace.cpp SubtitleBoxDetector.cpp ActivePictureAnalyzer.cpp ActivePictureEvidence.cpp LocalBoundaryDiagnostics.cpp SparseBoundaryCropExperiment.cpp vprenderer\InwardCaptionEvidence.cpp ACaptureDeviceDiscoverer.cpp AutoPpmCalibrator.cpp BitDepth.cpp blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.cpp magewell\MagewellSdkInstance.cpp magewell\MagewellSdkApi.cpp magewell\MagewellBackend.cpp magewell\MagewellCaptureDevice.cpp magewell\MagewellCaptureDeviceDiscoverer.cpp blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp blackmagic_decklink\BlackMagicDeckLinkTranslate.cpp CaptureInput.cpp cie.cpp ColorSpace.cpp DisplayMode.cpp DisplayRefreshRateEstimator.cpp DisplayRefreshRateWindow.cpp DirectShowFrameDeliverer.cpp DirectShowDeliveryOutcome.cpp DirectShowSegmentTransition.cpp ColorFormat.cpp FrameProcessor.cpp LiveEpochConvergenceController.cpp OutputReadinessController.cpp RationalLiveOutputSequencer.cpp ConfigFile.cpp ConfigurationDiscovery.cpp DisplayTopologySession.cpp EOTF.cpp guid.cpp HDRData.cpp InputLocked.cpp IRenderer.cpp EotfTransitionStabilizer.cpp RendererResetCoordinator.cpp RendererTransitionModel.cpp RendererQueueLaunchContractModel.cpp vprenderer\\AlphaCadenceCorrectionPolicy.cpp vprenderer\\AlphaPresentationTelemetry.cpp vprenderer\\BufferedPictureExpansion.cpp vprenderer\\AlphaSourceCropPolicy.cpp vprenderer\\LibplaceboOutputPolicy.cpp vprenderer\\LibplaceboPluginVideoRenderer.cpp microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp microsoft_directshow\DirectShowTimingClock.cpp microsoft_directshow\DirectShowQueueConstructionContract.cpp microsoft_directshow\DirectShowVideoTimingAdapter.cpp microsoft_directshow\DirectShowTranslations.cpp microsoft_directshow\MadVRShaderRuntimeState.cpp NlsGeometryPolicy.cpp microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.cpp microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.cpp microsoft_directshow\live_source_filter\CLiveSource.cpp microsoft_directshow\live_source_filter\CUnbufferedLiveSourceVideoOutputPin.cpp microsoft_directshow\video_renderers\DirectShowEnhancedVideoRenderer.cpp microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.cpp microsoft_directshow\video_renderers\DirectShowGenericVideoRenderer.cpp microsoft_directshow\video_renderers\DirectShowMPCVideoRenderer.cpp microsoft_directshow\video_renderers\DirectShowVideoRenderer.cpp microsoft_directshow\video_renderers\DirectShowVideoRenderers.cpp PixelValueRange.cpp PPMCorrectionLoader.cpp EventActionLauncher.cpp RendererId.cpp StateVariables.cpp UnifiedProfileRuntime.cpp SceneDetector.cpp StringUtils.cpp TimingClock.cpp VideoTimingController.cpp VideoConversionOverride.cpp VideoFrame.cpp VideoFrameEncoding.cpp VideoState.cpp video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.cpp video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp video_frame_formatter\CR210DolbyVisionTunnelFormatter.cpp video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp video_frame_formatter\CNoopVideoFrameFormatter.cpp video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp video_frame_formatter\CUYVYtoP210VideoFrameFormatter.cpp video_frame_formatter\CV210toP010VideoFrameFormatter.cpp video_frame_formatter\CV210toP210VideoFrameFormatter.cpp WallClock.cpp CpuFeatures.cpp RememberedEdgeReturn.cpp LocalBoundaryRefinement.cpp
+  WindowsDisplayDiagnostics.cpp
+  ACaptureDevice.cpp
+  ActivePictureDecisionTimeline.cpp
+  ActivePictureTransitionModel.cpp
+  AnalysisLumaSource.cpp
+  AnalysisFrame.cpp
+  AnalysisDiagnosticTrace.cpp
+  SubtitleBoxDetector.cpp
+  ActivePictureAnalyzer.cpp
+  ActivePictureEvidence.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,51): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,31): warning C4244: 'initializing': conversion from 'double' to 'const int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,42): warning C4244: 'initializing': conversion from 'const _Ty' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+          with
+          [
+              _Ty=double
+          ]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,33): warning C4244: 'initializing': conversion from 'const _Ty' to 'const int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+          with
+          [
+              _Ty=double
+          ]
+  LocalBoundaryDiagnostics.cpp
+  SparseBoundaryCropExperiment.cpp
+  InwardCaptionEvidence.cpp
+  ACaptureDeviceDiscoverer.cpp
+  AutoPpmCalibrator.cpp
+  BitDepth.cpp
+  BlackMagicDeckLinkCaptureDevice.cpp
+  MagewellSdkInstance.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellSdkApi.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellBackend.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  Compiling...
+  MagewellCaptureDevice.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellCaptureDeviceDiscoverer.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp
+  BlackMagicDeckLinkTranslate.cpp
+  CaptureInput.cpp
+  cie.cpp
+  ColorSpace.cpp
+  DisplayMode.cpp
+  DisplayRefreshRateEstimator.cpp
+  DisplayRefreshRateWindow.cpp
+  DirectShowFrameDeliverer.cpp
+  DirectShowDeliveryOutcome.cpp
+  DirectShowSegmentTransition.cpp
+  ColorFormat.cpp
+  FrameProcessor.cpp
+  LiveEpochConvergenceController.cpp
+  OutputReadinessController.cpp
+  RationalLiveOutputSequencer.cpp
+  ConfigFile.cpp
+  ConfigurationDiscovery.cpp
+  Compiling...
+  DisplayTopologySession.cpp
+  EOTF.cpp
+  guid.cpp
+  HDRData.cpp
+  InputLocked.cpp
+  IRenderer.cpp
+  EotfTransitionStabilizer.cpp
+  RendererResetCoordinator.cpp
+  RendererTransitionModel.cpp
+  RendererQueueLaunchContractModel.cpp
+  AlphaCadenceCorrectionPolicy.cpp
+  AlphaPresentationTelemetry.cpp
+  BufferedPictureExpansion.cpp
+  AlphaSourceCropPolicy.cpp
+  LibplaceboOutputPolicy.cpp
+  LibplaceboPluginVideoRenderer.cpp
+  DirectShowRendererStartStopTimeMethod.cpp
+  DirectShowTimingClock.cpp
+  DirectShowQueueConstructionContract.cpp
+  DirectShowVideoTimingAdapter.cpp
+  Compiling...
+  DirectShowTranslations.cpp
+  MadVRShaderRuntimeState.cpp
+  NlsGeometryPolicy.cpp
+  ALiveSourceVideoOutputPin.cpp
+  CBufferedLiveSourceVideoOutputPin.cpp
+  CLiveSource.cpp
+  CUnbufferedLiveSourceVideoOutputPin.cpp
+  DirectShowEnhancedVideoRenderer.cpp
+  DirectShowGenericHDRVideoRenderer.cpp
+  DirectShowGenericVideoRenderer.cpp
+  DirectShowMPCVideoRenderer.cpp
+  DirectShowVideoRenderer.cpp
+  DirectShowVideoRenderers.cpp
+  PixelValueRange.cpp
+  PPMCorrectionLoader.cpp
+  EventActionLauncher.cpp
+  RendererId.cpp
+  StateVariables.cpp
+  UnifiedProfileRuntime.cpp
+  SceneDetector.cpp
+  Compiling...
+  StringUtils.cpp
+  TimingClock.cpp
+  VideoTimingController.cpp
+  VideoConversionOverride.cpp
+  VideoFrame.cpp
+  VideoFrameEncoding.cpp
+  VideoState.cpp
+  CARGBtoP010VideoFrameFormatter.cpp
+  CDeckLinkRGBToP010VideoFrameFormatter.cpp
+  CR210toRGB48VideoFrameFormatter.cpp
+  CR210DolbyVisionTunnelFormatter.cpp
+  CR12BtoRGB48VideoFrameFormatter.cpp
+  CNoopVideoFrameFormatter.cpp
+  CUYVYtoP010VideoFrameFormatter.cpp
+  CUYVYtoP210VideoFrameFormatter.cpp
+  CV210toP010VideoFrameFormatter.cpp
+  CV210toP210VideoFrameFormatter.cpp
+  WallClock.cpp
+  CpuFeatures.cpp
+  RememberedEdgeReturn.cpp
+  Compiling...
+  LocalBoundaryRefinement.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I..\..\3rdparty\blackmagic_decklink /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\onnxruntime_directml\include /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Ob2 /Oi /Ot /GL /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /Qpar /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS microsoft_directshow\MadVRShaderLoader.cpp microsoft_directshow\live_source_filter\GpuSubtitleDetector.cpp microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.cpp
+  MadVRShaderLoader.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  GpuSubtitleDetector.cpp
+  WindowsOcrSubtitleDetector.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I..\..\3rdparty\blackmagic_decklink /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\onnxruntime_directml\include /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Ob2 /Oi /Ot /D NDEBUG /D _LIB /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /Qpar /arch:AVX2 /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS video_frame_formatter\CARGBtoP010VideoFrameFormatter.AVX2.cpp video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp video_frame_formatter\CR210toRGB48VideoFrameFormatter.AVX2.cpp video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.AVX2.cpp video_frame_formatter\CUYVYtoP010VideoFrameFormatter.AVX2.cpp video_frame_formatter\CUYVYtoP210VideoFrameFormatter.AVX2.cpp video_frame_formatter\CV210toP210VideoFrameFormatter.AVX2.cpp video_frame_formatter\CV210toP010VideoFrameFormatter.AVX2.cpp CpuProbe.AVX2.cpp
+  CARGBtoP010VideoFrameFormatter.AVX2.cpp
+  CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp
+  CR210DolbyVisionTunnelFormatter.AVX2.cpp
+  CR210toRGB48VideoFrameFormatter.AVX2.cpp
+  CR12BtoRGB48VideoFrameFormatter.AVX2.cpp
+  CUYVYtoP010VideoFrameFormatter.AVX2.cpp
+  CUYVYtoP210VideoFrameFormatter.AVX2.cpp
+  CV210toP210VideoFrameFormatter.AVX2.cpp
+  CV210toP010VideoFrameFormatter.AVX2.cpp
+  CpuProbe.AVX2.cpp
+  Generating Code...
+Lib:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\Lib.exe /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" /NOLOGO /MACHINE:X64 /LTCG x64\Release\ShaderConfigValidation.obj
+  x64\Release\WindowsDisplayDiagnostics.obj
+  x64\Release\ACaptureDevice.obj
+  x64\Release\ActivePictureDecisionTimeline.obj
+  x64\Release\ActivePictureTransitionModel.obj
+  x64\Release\AnalysisLumaSource.obj
+  x64\Release\AnalysisFrame.obj
+  x64\Release\AnalysisDiagnosticTrace.obj
+  x64\Release\SubtitleBoxDetector.obj
+  x64\Release\ActivePictureAnalyzer.obj
+  x64\Release\ActivePictureEvidence.obj
+  x64\Release\LocalBoundaryDiagnostics.obj
+  x64\Release\SparseBoundaryCropExperiment.obj
+  x64\Release\InwardCaptionEvidence.obj
+  x64\Release\ACaptureDeviceDiscoverer.obj
+  x64\Release\AutoPpmCalibrator.obj
+  x64\Release\BitDepth.obj
+  x64\Release\BlackMagicDeckLinkCaptureDevice.obj
+  x64\Release\MagewellSdkInstance.obj
+  x64\Release\MagewellSdkApi.obj
+  x64\Release\MagewellBackend.obj
+  x64\Release\MagewellCaptureDevice.obj
+  x64\Release\MagewellCaptureDeviceDiscoverer.obj
+  x64\Release\BlackMagicDeckLinkCaptureDeviceDiscoverer.obj
+  x64\Release\BlackMagicDeckLinkTranslate.obj
+  x64\Release\CaptureInput.obj
+  x64\Release\cie.obj
+  x64\Release\ColorSpace.obj
+  x64\Release\DisplayMode.obj
+  x64\Release\DisplayRefreshRatePolicy.obj
+  x64\Release\DisplayRefreshRateEstimator.obj
+  x64\Release\DisplayRefreshRateWindow.obj
+  x64\Release\DirectShowFrameDeliverer.obj
+  x64\Release\DirectShowDeliveryOutcome.obj
+  x64\Release\DirectShowSegmentTransition.obj
+  x64\Release\ColorFormat.obj
+  x64\Release\FrameProcessor.obj
+  x64\Release\LiveEpochConvergenceController.obj
+  x64\Release\OutputReadinessController.obj
+  x64\Release\RationalLiveOutputSequencer.obj
+  x64\Release\ConfigFile.obj
+  x64\Release\ConfigurationDiscovery.obj
+  x64\Release\DisplayTopologySession.obj
+  x64\Release\EOTF.obj
+  x64\Release\guid.obj
+  x64\Release\HDRData.obj
+  x64\Release\InputLocked.obj
+  x64\Release\IRenderer.obj
+  x64\Release\EotfTransitionStabilizer.obj
+  x64\Release\RendererResetCoordinator.obj
+  x64\Release\RendererTransitionModel.obj
+  x64\Release\RendererQueueLaunchContractModel.obj
+  x64\Release\AlphaCadenceCorrectionPolicy.obj
+  x64\Release\AlphaPresentationTelemetry.obj
+  x64\Release\BufferedPictureExpansion.obj
+  x64\Release\AlphaSourceCropPolicy.obj
+  x64\Release\LibplaceboOutputPolicy.obj
+  x64\Release\LibplaceboPluginVideoRenderer.obj
+  x64\Release\DirectShowRendererStartStopTimeMethod.obj
+  x64\Release\DirectShowTimingClock.obj
+  x64\Release\DirectShowQueueConstructionContract.obj
+  x64\Release\DirectShowVideoTimingAdapter.obj
+  x64\Release\DirectShowTranslations.obj
+  x64\Release\MadVRShaderLoader.obj
+  x64\Release\MadVRShaderRuntimeState.obj
+  x64\Release\NlsGeometryPolicy.obj
+  x64\Release\ALiveSourceVideoOutputPin.obj
+  x64\Release\CBufferedLiveSourceVideoOutputPin.obj
+  x64\Release\GpuSubtitleDetector.obj
+  x64\Release\WindowsOcrSubtitleDetector.obj
+  x64\Release\CLiveSource.obj
+  x64\Release\CUnbufferedLiveSourceVideoOutputPin.obj
+  x64\Release\DirectShowEnhancedVideoRenderer.obj
+  x64\Release\DirectShowGenericHDRVideoRenderer.obj
+  x64\Release\DirectShowGenericVideoRenderer.obj
+  x64\Release\DirectShowMPCVideoRenderer.obj
+  x64\Release\DirectShowVideoRenderer.obj
+  x64\Release\DirectShowVideoRenderers.obj
+  x64\Release\pch.obj
+  x64\Release\PixelValueRange.obj
+  x64\Release\PPMCorrectionLoader.obj
+  x64\Release\EventActionLauncher.obj
+  x64\Release\RendererId.obj
+  x64\Release\StateVariables.obj
+  x64\Release\UnifiedProfileRuntime.obj
+  x64\Release\SceneDetector.obj
+  x64\Release\StringUtils.obj
+  x64\Release\TimingClock.obj
+  x64\Release\VideoTimingController.obj
+  x64\Release\VideoConversionOverride.obj
+  x64\Release\VideoFrame.obj
+  x64\Release\VideoFrameEncoding.obj
+  x64\Release\VideoState.obj
+  x64\Release\CARGBtoP010VideoFrameFormatter.obj
+  x64\Release\CDeckLinkRGBToP010VideoFrameFormatter.obj
+  x64\Release\CR210toRGB48VideoFrameFormatter.obj
+  x64\Release\CR210DolbyVisionTunnelFormatter.obj
+  x64\Release\CR12BtoRGB48VideoFrameFormatter.obj
+  x64\Release\CNoopVideoFrameFormatter.obj
+  x64\Release\CUYVYtoP010VideoFrameFormatter.obj
+  x64\Release\CUYVYtoP210VideoFrameFormatter.obj
+  x64\Release\CV210toP010VideoFrameFormatter.obj
+  x64\Release\CV210toP210VideoFrameFormatter.obj
+  x64\Release\WallClock.obj
+  x64\Release\CARGBtoP010VideoFrameFormatter.AVX2.obj
+  x64\Release\CDeckLinkRGBToP010VideoFrameFormatter.AVX2.obj
+  x64\Release\CR210DolbyVisionTunnelFormatter.AVX2.obj
+  x64\Release\CR210toRGB48VideoFrameFormatter.AVX2.obj
+  x64\Release\CR12BtoRGB48VideoFrameFormatter.AVX2.obj
+  x64\Release\CUYVYtoP010VideoFrameFormatter.AVX2.obj
+  x64\Release\CUYVYtoP210VideoFrameFormatter.AVX2.obj
+  x64\Release\CV210toP210VideoFrameFormatter.AVX2.obj
+  x64\Release\CV210toP010VideoFrameFormatter.AVX2.obj
+  x64\Release\CpuFeatures.obj
+  x64\Release\CpuProbe.AVX2.obj
+  x64\Release\RememberedEdgeReturn.obj
+  x64\Release\LocalBoundaryRefinement.obj
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  VideoProcessor-Lib.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+FinalizeBuildStatus:
+  Deleting file "x64\Release\VideoPro.85f8c0f9.tlog\unsuccessfulbuild".
+  Touching "x64\Release\VideoPro.85f8c0f9.tlog\VideoProcessor-Lib.lastbuildstate".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (7) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\VideoPro.3AA709FC.tlog\VideoProcessor-Test.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+InitializeBuildStatus:
+  Touching "x64\Release\VideoPro.3AA709FC.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\libplacebo\include /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\include" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Yc"pch.h" /Fp"x64\Release\VideoProcessor-Test.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS pch.cpp
+  pch.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\libplacebo\include /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\include" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"pch.h" /Fp"x64\Release\VideoProcessor-Test.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS StartupPresentationReadinessTests.cpp QueueNativeContinuityTests.cpp Bt2020SignalControllerTests.cpp CpuFeaturesTests.cpp VideoFrameFormatterTests.cpp DolbyVisionLuminancePolicyTests.cpp DolbyVisionTunnelFormatterTests.cpp MovingPictureTransitionTests.cpp SubtitleBoxDetectorTests.cpp SubtitleOpaqueCardRefinementTests.cpp SubtitleBoxLookaheadTests.cpp SubtitleHandoffTests.cpp SubtitleBackingLipTests.cpp AnalysisRecoveryParityTests.cpp AnalysisRecoveryDvTests.cpp SubtitleMeasurementWorkerTests.cpp SubtitleCutPasteTests.cpp LookaheadOutwardProofTests.cpp PictureTransitionHandoffTests.cpp FitLookaheadDiagnosticTests.cpp PresentationEnvelopeCompositionTests.cpp NearBlackNativeBoundaryRecoveryTests.cpp SubtitleTranslationReversalTests.cpp RetainedScopeUnknownPresentationTests.cpp SubmittedNativeFillRetentionTests.cpp AlphaSourceCropPolicyTests.cpp HdrPeakAnalysisCropTests.cpp LibplaceboOutputPolicyTests.cpp NativeStatsOverlayPlacementTests.cpp LibplaceboLutParserTests.cpp MotionRendererTests.cpp LibplaceboRenderParametersTests.cpp SceneDetectorTests.cpp WindowResizeLayoutTests.cpp AlphaPresentationTelemetryTests.cpp AlphaRenderLoadMeterTests.cpp AlphaCadenceCorrectionPolicyTests.cpp ProcessCpuUsageWindowTests.cpp ConfigFileTests.cpp ConfigEditorCoreTests.cpp ConfigurationRpcServerTests.cpp DebugLogRetentionTests.cpp AnalysisDiagnosticTraceTests.cpp DisplayRefreshRatePolicyTests.cpp DisplayWindowGeometryTests.cpp DisplayRasterInfoTests.cpp "..\VideoProcessor-GUI\StatsOverlayWindow.cpp" DisplayRefreshRateEstimatorTests.cpp DisplayRefreshRateWindowTests.cpp CadenceIntervalEstimateTests.cpp AlphaQueuePolicyTests.cpp RendererPostStallResetAdvisorTests.cpp MadVRShaderRuntimeStateTests.cpp ActivePictureDecisionTimelineTests.cpp FullRasterLookaheadTests.cpp LibplaceboPluginProxyTests.cpp ActivePictureTransitionModelTests.cpp ActivePictureAnalyzerTests.cpp ActivePictureEvidenceTests.cpp ActivePictureBlackReferenceTests.cpp ActivePictureMeasurementCacheTests.cpp LocalBoundaryDiagnosticsTests.cpp LocalBoundaryRefinementTests.cpp SparseEntryEpisodeRecoveryTests.cpp LocalBoundaryAnchorDiagnosticsTests.cpp SparseBoundaryCropExperimentTests.cpp SparseBoundaryTransitionExperimentTests.cpp SidePictureDiagnosticsTests.cpp DimSideCompositionGuardTests.cpp OpposingBoundaryDiagnosticsTests.cpp InwardCaptionEvidenceTests.cpp FullRasterColorEvidenceFormatTests.cpp InvalidCaptureStateGraceTests.cpp EotfTransitionStabilizerTests.cpp NativeRgbAnalysisTests.cpp RendererIdTests.cpp RendererResetPolicyTests.cpp RendererResetCoordinatorTests.cpp RendererResetRequestLatchTests.cpp RendererTransitionModelTests.cpp RendererQueueLaunchContractModelTests.cpp RendererGenerationGateTests.cpp RendererLivenessTests.cpp DirectShowPresentationLeadPolicyTests.cpp DirectShowEpochPrimePolicyTests.cpp LiveOutputTraceTests.cpp VideoTimingControllerTests.cpp CaptureClockConversionTests.cpp DirectShowTimingClockTests.cpp DirectShowVideoTimingAdapterTests.cpp DirectShowFrameDelivererTests.cpp DirectShowDeliveryOutcomeTests.cpp DirectShowSegmentTransitionTests.cpp CaptureResyncHardeningTests.cpp DirectShowGraphExecutorTests.cpp DirectShowQueueConstructionContractTests.cpp EpochBoundedQueueTests.cpp FrameProcessorTests.cpp LiveEpochConvergenceControllerTests.cpp LiveFrameCounterTrackerTests.cpp OutputReadinessControllerTests.cpp TemporalPresentationLedgerTests.cpp MagewellCaptureTests.cpp MagewellDiscoveryTests.cpp MagewellSdkInstanceTests.cpp RationalLiveOutputSequencerTests.cpp ConsecutiveFrameDurationHistoryTests.cpp RememberedEdgeReturnTests.cpp AnalysisEvaluationBudgetTests.cpp LookaheadPerformanceWindowTests.cpp PreparedPictureEvidenceTests.cpp OptionalAnalysisWorkerTests.cpp PreparedOutwardWindowTests.cpp
+  StartupPresentationReadinessTests.cpp
+  QueueNativeContinuityTests.cpp
+  Bt2020SignalControllerTests.cpp
+  CpuFeaturesTests.cpp
+  VideoFrameFormatterTests.cpp
+  DolbyVisionLuminancePolicyTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  DolbyVisionTunnelFormatterTests.cpp
+  MovingPictureTransitionTests.cpp
+  SubtitleBoxDetectorTests.cpp
+  SubtitleOpaqueCardRefinementTests.cpp
+  SubtitleBoxLookaheadTests.cpp
+  SubtitleHandoffTests.cpp
+  SubtitleBackingLipTests.cpp
+  AnalysisRecoveryParityTests.cpp
+  AnalysisRecoveryDvTests.cpp
+  SubtitleMeasurementWorkerTests.cpp
+  SubtitleCutPasteTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp(336,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp(336,41): warning C4244: 'initializing': conversion from 'int' to 'const float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  LookaheadOutwardProofTests.cpp
+  PictureTransitionHandoffTests.cpp
+  FitLookaheadDiagnosticTests.cpp
+  Compiling...
+  PresentationEnvelopeCompositionTests.cpp
+  NearBlackNativeBoundaryRecoveryTests.cpp
+  SubtitleTranslationReversalTests.cpp
+  RetainedScopeUnknownPresentationTests.cpp
+  SubmittedNativeFillRetentionTests.cpp
+  AlphaSourceCropPolicyTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\AlphaSourceCropPolicyTests.cpp(2492,43): warning C4244: '=': conversion from 'const float' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\AlphaSourceCropPolicyTests.cpp(5362,59): warning C4244: '=': conversion from 'float' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  HdrPeakAnalysisCropTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  LibplaceboOutputPolicyTests.cpp
+  NativeStatsOverlayPlacementTests.cpp
+  LibplaceboLutParserTests.cpp
+  MotionRendererTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  LibplaceboRenderParametersTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  SceneDetectorTests.cpp
+  WindowResizeLayoutTests.cpp
+  AlphaPresentationTelemetryTests.cpp
+  AlphaRenderLoadMeterTests.cpp
+  AlphaCadenceCorrectionPolicyTests.cpp
+  ProcessCpuUsageWindowTests.cpp
+  ConfigFileTests.cpp
+  ConfigEditorCoreTests.cpp
+  Compiling...
+  ConfigurationRpcServerTests.cpp
+  DebugLogRetentionTests.cpp
+  AnalysisDiagnosticTraceTests.cpp
+  DisplayRefreshRatePolicyTests.cpp
+  DisplayWindowGeometryTests.cpp
+  DisplayRasterInfoTests.cpp
+  StatsOverlayWindow.cpp
+  DisplayRefreshRateEstimatorTests.cpp
+  DisplayRefreshRateWindowTests.cpp
+  CadenceIntervalEstimateTests.cpp
+  AlphaQueuePolicyTests.cpp
+  RendererPostStallResetAdvisorTests.cpp
+  MadVRShaderRuntimeStateTests.cpp
+  ActivePictureDecisionTimelineTests.cpp
+  FullRasterLookaheadTests.cpp
+  LibplaceboPluginProxyTests.cpp
+  ActivePictureTransitionModelTests.cpp
+  ActivePictureAnalyzerTests.cpp
+  ActivePictureEvidenceTests.cpp
+  ActivePictureBlackReferenceTests.cpp
+  Compiling...
+  ActivePictureMeasurementCacheTests.cpp
+  LocalBoundaryDiagnosticsTests.cpp
+  LocalBoundaryRefinementTests.cpp
+  SparseEntryEpisodeRecoveryTests.cpp
+  LocalBoundaryAnchorDiagnosticsTests.cpp
+  SparseBoundaryCropExperimentTests.cpp
+  SparseBoundaryTransitionExperimentTests.cpp
+  SidePictureDiagnosticsTests.cpp
+  DimSideCompositionGuardTests.cpp
+  OpposingBoundaryDiagnosticsTests.cpp
+  InwardCaptionEvidenceTests.cpp
+  FullRasterColorEvidenceFormatTests.cpp
+  InvalidCaptureStateGraceTests.cpp
+  EotfTransitionStabilizerTests.cpp
+  NativeRgbAnalysisTests.cpp
+  RendererIdTests.cpp
+  RendererResetPolicyTests.cpp
+  RendererResetCoordinatorTests.cpp
+  RendererResetRequestLatchTests.cpp
+  RendererTransitionModelTests.cpp
+  Compiling...
+  RendererQueueLaunchContractModelTests.cpp
+  RendererGenerationGateTests.cpp
+  RendererLivenessTests.cpp
+  DirectShowPresentationLeadPolicyTests.cpp
+  DirectShowEpochPrimePolicyTests.cpp
+  LiveOutputTraceTests.cpp
+  VideoTimingControllerTests.cpp
+  CaptureClockConversionTests.cpp
+  DirectShowTimingClockTests.cpp
+  DirectShowVideoTimingAdapterTests.cpp
+  DirectShowFrameDelivererTests.cpp
+  DirectShowDeliveryOutcomeTests.cpp
+  DirectShowSegmentTransitionTests.cpp
+  CaptureResyncHardeningTests.cpp
+  DirectShowGraphExecutorTests.cpp
+  DirectShowQueueConstructionContractTests.cpp
+  EpochBoundedQueueTests.cpp
+  FrameProcessorTests.cpp
+  LiveEpochConvergenceControllerTests.cpp
+  LiveFrameCounterTrackerTests.cpp
+  Compiling...
+  OutputReadinessControllerTests.cpp
+  TemporalPresentationLedgerTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  MagewellCaptureTests.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  MagewellDiscoveryTests.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  MagewellSdkInstanceTests.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  RationalLiveOutputSequencerTests.cpp
+  ConsecutiveFrameDurationHistoryTests.cpp
+  RememberedEdgeReturnTests.cpp
+  AnalysisEvaluationBudgetTests.cpp
+  LookaheadPerformanceWindowTests.cpp
+  PreparedPictureEvidenceTests.cpp
+  OptionalAnalysisWorkerTests.cpp
+  PreparedOutwardWindowTests.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\libplacebo\include /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\include" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS "..\VideoProcessor-Lib\vprenderer\LibplaceboDisplayLut.cpp" "..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp" "..\VideoProcessor-GUI\ConfigurationRpcServer.cpp" "..\VideoProcessor-ConfigCore\ConfigurationRpcClient.cpp" "..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp" MadVROsdSizingTests.cpp
+  LibplaceboDisplayLut.cpp
+  LibplaceboRenderParameters.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  ConfigurationRpcServer.cpp
+  ConfigurationRpcClient.cpp
+  ConfigEditorCore.cpp
+  MadVROsdSizingTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I..\..\3rdparty\libplacebo\include /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\include" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Z7 /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /FS AnalysisDiagnosticReplayTests.cpp OutputOsdTelemetryCacheTests.cpp HdrStatusTests.cpp OsdInputColorInfoTests.cpp StatsOverlayLayoutTests.cpp
+  AnalysisDiagnosticReplayTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  OutputOsdTelemetryCacheTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  HdrStatusTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  OsdInputColorInfoTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  StatsOverlayLayoutTests.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+Link:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.dll" /INCREMENTAL:NO /NOLOGO /LIBPATH:..\..\3rdparty\libplacebo\lib /LIBPATH:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\UnitTest\lib" /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-360.lib" Ws2_32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG:FULL /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"x64\Release\VideoProcessor-Test.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.lib" /MACHINE:X64 /DLL x64\Release\StartupPresentationReadinessTests.obj
+  x64\Release\QueueNativeContinuityTests.obj
+  x64\Release\Bt2020SignalControllerTests.obj
+  x64\Release\pch.obj
+  x64\Release\CpuFeaturesTests.obj
+  x64\Release\VideoFrameFormatterTests.obj
+  x64\Release\DolbyVisionLuminancePolicyTests.obj
+  x64\Release\DolbyVisionTunnelFormatterTests.obj
+  x64\Release\MovingPictureTransitionTests.obj
+  x64\Release\SubtitleBoxDetectorTests.obj
+  x64\Release\SubtitleOpaqueCardRefinementTests.obj
+  x64\Release\SubtitleBoxLookaheadTests.obj
+  x64\Release\SubtitleHandoffTests.obj
+  x64\Release\SubtitleBackingLipTests.obj
+  x64\Release\AnalysisRecoveryParityTests.obj
+  x64\Release\AnalysisRecoveryDvTests.obj
+  x64\Release\SubtitleMeasurementWorkerTests.obj
+  x64\Release\SubtitleCutPasteTests.obj
+  x64\Release\LookaheadOutwardProofTests.obj
+  x64\Release\PictureTransitionHandoffTests.obj
+  x64\Release\FitLookaheadDiagnosticTests.obj
+  x64\Release\PresentationEnvelopeCompositionTests.obj
+  x64\Release\NearBlackNativeBoundaryRecoveryTests.obj
+  x64\Release\SubtitleTranslationReversalTests.obj
+  x64\Release\RetainedScopeUnknownPresentationTests.obj
+  x64\Release\SubmittedNativeFillRetentionTests.obj
+  x64\Release\AlphaSourceCropPolicyTests.obj
+  x64\Release\HdrPeakAnalysisCropTests.obj
+  x64\Release\LibplaceboOutputPolicyTests.obj
+  x64\Release\NativeStatsOverlayPlacementTests.obj
+  x64\Release\LibplaceboLutParserTests.obj
+  x64\Release\MotionRendererTests.obj
+  x64\Release\LibplaceboRenderParametersTests.obj
+  x64\Release\LibplaceboDisplayLut.obj
+  x64\Release\LibplaceboRenderParameters.obj
+  x64\Release\SceneDetectorTests.obj
+  x64\Release\WindowResizeLayoutTests.obj
+  x64\Release\AlphaPresentationTelemetryTests.obj
+  x64\Release\AlphaRenderLoadMeterTests.obj
+  x64\Release\AlphaCadenceCorrectionPolicyTests.obj
+  x64\Release\ProcessCpuUsageWindowTests.obj
+  x64\Release\ConfigFileTests.obj
+  x64\Release\ConfigEditorCoreTests.obj
+  x64\Release\ConfigurationRpcServerTests.obj
+  x64\Release\ConfigurationRpcServer.obj
+  x64\Release\ConfigurationRpcClient.obj
+  x64\Release\ConfigEditorCore.obj
+  x64\Release\DebugLogRetentionTests.obj
+  x64\Release\AnalysisDiagnosticTraceTests.obj
+  x64\Release\AnalysisDiagnosticReplayTests.obj
+  x64\Release\DisplayRefreshRatePolicyTests.obj
+  x64\Release\DisplayWindowGeometryTests.obj
+  x64\Release\DisplayRasterInfoTests.obj
+  x64\Release\StatsOverlayWindow.obj
+  x64\Release\DisplayRefreshRateEstimatorTests.obj
+  x64\Release\DisplayRefreshRateWindowTests.obj
+  x64\Release\CadenceIntervalEstimateTests.obj
+  x64\Release\AlphaQueuePolicyTests.obj
+  x64\Release\RendererPostStallResetAdvisorTests.obj
+  x64\Release\MadVRShaderRuntimeStateTests.obj
+  x64\Release\ActivePictureDecisionTimelineTests.obj
+  x64\Release\FullRasterLookaheadTests.obj
+  x64\Release\LibplaceboPluginProxyTests.obj
+  x64\Release\ActivePictureTransitionModelTests.obj
+  x64\Release\ActivePictureAnalyzerTests.obj
+  x64\Release\ActivePictureEvidenceTests.obj
+  x64\Release\ActivePictureBlackReferenceTests.obj
+  x64\Release\ActivePictureMeasurementCacheTests.obj
+  x64\Release\LocalBoundaryDiagnosticsTests.obj
+  x64\Release\LocalBoundaryRefinementTests.obj
+  x64\Release\SparseEntryEpisodeRecoveryTests.obj
+  x64\Release\LocalBoundaryAnchorDiagnosticsTests.obj
+  x64\Release\SparseBoundaryCropExperimentTests.obj
+  x64\Release\SparseBoundaryTransitionExperimentTests.obj
+  x64\Release\SidePictureDiagnosticsTests.obj
+  x64\Release\DimSideCompositionGuardTests.obj
+  x64\Release\OpposingBoundaryDiagnosticsTests.obj
+  x64\Release\InwardCaptionEvidenceTests.obj
+  x64\Release\FullRasterColorEvidenceFormatTests.obj
+  x64\Release\InvalidCaptureStateGraceTests.obj
+  x64\Release\EotfTransitionStabilizerTests.obj
+  x64\Release\NativeRgbAnalysisTests.obj
+  x64\Release\RendererIdTests.obj
+  x64\Release\RendererResetPolicyTests.obj
+  x64\Release\RendererResetCoordinatorTests.obj
+  x64\Release\RendererResetRequestLatchTests.obj
+  x64\Release\RendererTransitionModelTests.obj
+  x64\Release\RendererQueueLaunchContractModelTests.obj
+  x64\Release\RendererGenerationGateTests.obj
+  x64\Release\RendererLivenessTests.obj
+  x64\Release\DirectShowPresentationLeadPolicyTests.obj
+  x64\Release\DirectShowEpochPrimePolicyTests.obj
+  x64\Release\LiveOutputTraceTests.obj
+  x64\Release\VideoTimingControllerTests.obj
+  x64\Release\CaptureClockConversionTests.obj
+  x64\Release\DirectShowTimingClockTests.obj
+  x64\Release\DirectShowVideoTimingAdapterTests.obj
+  x64\Release\DirectShowFrameDelivererTests.obj
+  x64\Release\DirectShowDeliveryOutcomeTests.obj
+  x64\Release\DirectShowSegmentTransitionTests.obj
+  x64\Release\CaptureResyncHardeningTests.obj
+  x64\Release\DirectShowGraphExecutorTests.obj
+  x64\Release\DirectShowQueueConstructionContractTests.obj
+  x64\Release\EpochBoundedQueueTests.obj
+  x64\Release\FrameProcessorTests.obj
+  x64\Release\LiveEpochConvergenceControllerTests.obj
+  x64\Release\LiveFrameCounterTrackerTests.obj
+  x64\Release\OutputReadinessControllerTests.obj
+  x64\Release\TemporalPresentationLedgerTests.obj
+  x64\Release\MagewellCaptureTests.obj
+  x64\Release\MagewellDiscoveryTests.obj
+  x64\Release\MagewellSdkInstanceTests.obj
+  x64\Release\RationalLiveOutputSequencerTests.obj
+  x64\Release\ConsecutiveFrameDurationHistoryTests.obj
+  x64\Release\RememberedEdgeReturnTests.obj
+  x64\Release\OutputOsdTelemetryCacheTests.obj
+  x64\Release\HdrStatusTests.obj
+  x64\Release\OsdInputColorInfoTests.obj
+  x64\Release\StatsOverlayLayoutTests.obj
+  x64\Release\MadVROsdSizingTests.obj
+  x64\Release\AnalysisEvaluationBudgetTests.obj
+  x64\Release\LookaheadPerformanceWindowTests.obj
+  x64\Release\PreparedPictureEvidenceTests.obj
+  x64\Release\OptionalAnalysisWorkerTests.obj
+  x64\Release\PreparedOutwardWindowTests.obj
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+     Creating library E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.lib and object E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 41154 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-Test.vcxproj.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.dll
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+PostBuildEvent:
+  xcopy /D /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\..\..\3rdparty\libplacebo\bin\*.dll" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\" >nul
+  :VCEnd
+FinalizeBuildStatus:
+  Deleting file "x64\Release\VideoPro.3AA709FC.tlog\unsuccessfulbuild".
+  Touching "x64\Release\VideoPro.3AA709FC.tlog\VideoProcessor-Test.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Test.dll" -ToolsetVersion "14.29.30133"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\VideoProcessor-GUI.vcxproj" (8) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "x64\Release\VideoPro.a2af7b35.tlog\VideoProcessor-GUI.lastbuildstate".
+InitializeBuildStatus:
+  Creating "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild".
+PreBuildEvent:
+  powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\." -GitRoot "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\..\.."
+  :VCEnd
+  Written E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/acbae401f553ba2561c457ed94c31766335c0822");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-23 20:35:05 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("git-acbae40");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/vp-0205-lookahead-workahead");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("acbae40");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"..\VideoProcessor-ConfigCore" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I"..\VideoProcessor-Lib" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Yc"pch.h" /Fp"x64\Release\VideoProcessor-GUI.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue pch.cpp
+  pch.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"..\VideoProcessor-ConfigCore" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I"..\VideoProcessor-Lib" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"pch.h" /Fp"x64\Release\VideoProcessor-GUI.pch" /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue CCie1931Control.cpp FullscreenVideoWindow.cpp ModernOperatorView.cpp RendererTransitionWindow.cpp ShaderLoadingWindow.cpp StatsOverlayWindow.cpp version.cpp VideoProcessorApp.cpp VideoProcessorDlg.cpp ConfigurationRpcServer.cpp WindowedVideoWindow.cpp
+  CCie1931Control.cpp
+  FullscreenVideoWindow.cpp
+  ModernOperatorView.cpp
+  RendererTransitionWindow.cpp
+  ShaderLoadingWindow.cpp
+  StatsOverlayWindow.cpp
+  version.cpp
+  VideoProcessorApp.cpp
+  VideoProcessorDlg.cpp
+  ConfigurationRpcServer.cpp
+  WindowedVideoWindow.cpp
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I. /I"..\VideoProcessor-ConfigCore" /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /I"..\VideoProcessor-Lib" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"x64\Release\\" /Fd"x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue "..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp"
+  ConfigEditorCore.cpp
+ResourceCompile:
+  C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\rc.exe /D _UNICODE /D UNICODE /D _AFXDLL /l"0x0409" /nologo /fo"x64\Release\VideoProcessor.res" VideoProcessor.rc 
+Link:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-GUI.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-GUI.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"x64\Release\VideoProcessor-GUI.iobj" /TLBID:1 /ENTRY:"wWinMainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-GUI.lib" /MACHINE:X64 x64\Release\VideoProcessor.res
+  x64\Release\CCie1931Control.obj
+  x64\Release\ConfigEditorCore.obj
+  x64\Release\FullscreenVideoWindow.obj
+  x64\Release\ModernOperatorView.obj
+  x64\Release\RendererTransitionWindow.obj
+  x64\Release\ShaderLoadingWindow.obj
+  x64\Release\pch.obj
+  x64\Release\StatsOverlayWindow.obj
+  x64\Release\version.obj
+  x64\Release\VideoProcessorApp.obj
+  x64\Release\VideoProcessorDlg.obj
+  x64\Release\ConfigurationRpcServer.obj
+  x64\Release\WindowedVideoWindow.obj
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 20485 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-GUI.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-GUI.exe
+PostBuildEvent:
+  if not exist "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor.cfg" if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.cfg" copy "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.cfg" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor.cfg" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\CONFIGURATION.html" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\CONFIGURATION.html" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\CONFIGURATION.html"
+  :VCEnd
+FinalizeBuildStatus:
+  Deleting file "x64\Release\VideoPro.a2af7b35.tlog\unsuccessfulbuild".
+  Touching "x64\Release\VideoPro.a2af7b35.tlog\VideoProcessor-GUI.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-GUI.exe" -ToolsetVersion "14.29.30133"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-GUI\VideoProcessor-GUI.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (9) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\VideoProcessor-VPRenderer.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLSPlus.glsl".
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild".
+PreBuildEvent:
+  powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\." -GitRoot "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\..\.."
+  :VCEnd
+  Written E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/acbae401f553ba2561c457ed94c31766335c0822");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-23 20:35:05 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("git-acbae40");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/vp-0205-lookahead-workahead");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("acbae40");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Lib" /I..\..\3rdparty\libplacebo\include /I..\..\3rdparty\nvapi /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _USRDLL /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue LibplaceboPluginExports.cpp "..\VideoProcessor-Lib\vprenderer\LibplaceboDisplayLut.cpp" "..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp" "..\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp"
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  LibplaceboDisplayLut.cpp
+  LibplaceboRenderParameters.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  LibplaceboVideoRenderer.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11665,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+Link:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll" /NOLOGO /LIBPATH:..\..\3rdparty\libplacebo\lib /LIBPATH:..\..\3rdparty\nvapi\amd64 /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-360.lib" nvapi64.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib windowscodecs.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoProcessorVPRenderer.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.lib" /MACHINE:X64 /DLL "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboPluginExports.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboDisplayLut.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboRenderParameters.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\LibplaceboVideoRenderer.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+     Creating library E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.lib and object E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 14898 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-VPRenderer.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLS.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\NLSPlus.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\shaders\Invert.hlsl".
+PostBuildEvent:
+  if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\*.dll" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\*.dll" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses" xcopy /Y /I /E "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\third_party_licenses" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\LICENSE.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\LICENSE.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\third_party_licenses\libplacebo-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\nvapi\License.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\nvapi\License.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\third_party_licenses\nvapi-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\README.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\README.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\README.txt"
+  :VCEnd
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libdovi.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libplacebo-360.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\gcc-libs\README
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRenderer\VideoPro.C72197B6.tlog\VideoProcessor-VPRenderer.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer\VideoProcessorVPRenderer.dll" -ToolsetVersion "14.29.30133"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (10) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\VideoProcessor-Config.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (10) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (11) on node 1 (Clean target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\VideoProcessor-ConfigDiscovery.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLSPlus.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll".
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (Clean target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (10) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (11:2) on node 1 (default targets).
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Lib" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D _USRDLL /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue ConfigurationDiscoveryBridge.cpp
+  ConfigurationDiscoveryBridge.cpp
+Link:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll" /NOLOGO /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" ole32.lib oleaut32.lib shell32.lib comctl32.lib strmiids.lib Propsys.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.pdb" /SUBSYSTEM:WINDOWS /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.lib" /MACHINE:X64 /DLL "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\ConfigurationDiscoveryBridge.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+     Creating library E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.lib and object E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 2493 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-ConfigDiscovery.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLS.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Invert.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\shaders\NLSPlus.glsl".
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoPro.B4D5DC2E.tlog\VideoProcessor-ConfigDiscovery.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll" -ToolsetVersion "14.29.30133"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj" (default targets).
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus AppMain.cpp ConfigEditorWindow.cpp VpTheme.cpp
+  AppMain.cpp
+  ConfigEditorWindow.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  VpTheme.cpp
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigEditorCore.obj" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus "..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp"
+  ConfigEditorCore.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigurationRpcClient.obj" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus "..\VideoProcessor-ConfigCore\ConfigurationRpcClient.cpp"
+  ConfigurationRpcClient.cpp
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ShaderConfigValidation.obj" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus "..\VideoProcessor-Lib\ShaderConfigValidation.cpp"
+  ShaderConfigValidation.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigFileStandalone.obj" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus "..\VideoProcessor-Lib\ConfigFile.cpp"
+  ConfigFile.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(376,10): warning C4456: declaration of 'sectionLineNumbers' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(305,29):
+      see declaration of 'sectionLineNumbers'
+  
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtNetwork /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /I"C:\Program Files (x86)\Visual Leak Detector\include" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _WINDOWS /D VP_CONFIGFILE_STANDALONE /D QT_NO_DEBUG /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\DisplayRefreshRatePolicy.obj" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus "..\VideoProcessor-Lib\DisplayRefreshRatePolicy.cpp"
+  DisplayRefreshRatePolicy.cpp
+ResourceCompile:
+  C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\rc.exe /D _UNICODE /D UNICODE /l"0x0409" /nologo /fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoProcessorConfig.res" VideoProcessorConfig.rc 
+Link:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.exe" /NOLOGO /LIBPATH:C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\lib /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" Qt6Widgets.lib Qt6Gui.lib Qt6Core.lib Qt6Network.lib Ws2_32.lib shell32.lib user32.lib ole32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessorConfig.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoProcessorConfig.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.lib" /MACHINE:X64 "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoProcessorConfig.res"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\AppMain.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigEditorWindow.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VpTheme.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigEditorCore.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigurationRpcClient.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ShaderConfigValidation.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\ConfigFileStandalone.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\DisplayRefreshRatePolicy.obj"
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 14220 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-Config.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.exe
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Invert.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLS.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\shaders\NLSPlus.glsl".
+PostBuildEvent:
+  copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\..\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\"
+  copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\..\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll.runtime.json" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\"
+  "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.exe"
+  :VCEnd
+          1 file(s) copied.
+          1 file(s) copied.
+  E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  vc_redist.x64.exe is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\x64\Release\VideoPro.55B7BC27.tlog\VideoProcessor-Config.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfig.exe" -ToolsetVersion "14.44.35207"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj" (12) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\VideoProcessor-ConfigTests.lastbuildstate".
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Config\standalone" /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtWidgets /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtGui /IC:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\include\QtCore /I"..\VideoProcessor-Config" /I"..\VideoProcessor-Lib" /I"..\VideoProcessor-ConfigCore" /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /D NDEBUG /D _CONSOLE /D VP_CONFIGFILE_STANDALONE /D QT_WIDGETS_LIB /D QT_GUI_LIB /D QT_CORE_LIB /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus ConfigEditorWindowTests.cpp "..\VideoProcessor-Config\ConfigEditorWindow.cpp" "..\VideoProcessor-Config\VpTheme.cpp" "..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp" "..\VideoProcessor-ConfigCore\ConfigurationRpcClient.cpp" "..\VideoProcessor-Lib\ShaderConfigValidation.cpp" "..\VideoProcessor-Lib\ConfigFile.cpp" "..\VideoProcessor-Lib\DisplayRefreshRatePolicy.cpp"
+  ConfigEditorWindowTests.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  ConfigEditorWindow.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  VpTheme.cpp
+  ConfigEditorCore.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  ConfigurationRpcClient.cpp
+  ShaderConfigValidation.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(268,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(1937,15):
+      see declaration of 'value'
+  
+  ConfigFile.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(376,10): warning C4456: declaration of 'sectionLineNumbers' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+      E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(305,29):
+      see declaration of 'sectionLineNumbers'
+  
+  DisplayRefreshRatePolicy.cpp
+  Generating Code...
+Link:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.exe" /NOLOGO /LIBPATH:C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\lib Qt6Widgets.lib Qt6Gui.lib Qt6Core.lib Ws2_32.lib shell32.lib user32.lib ole32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.lib" /MACHINE:X64 "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ConfigEditorWindowTests.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ConfigEditorWindow.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VpTheme.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ConfigEditorCore.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ConfigurationRpcClient.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ShaderConfigValidation.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\ConfigFile.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\DisplayRefreshRatePolicy.obj"
+  VideoProcessor-ConfigTests.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.exe
+PostBuildEvent:
+  "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.exe"
+  copy /Y "C:\Users\bslac\AppData\Local\VideoProcessor\dependencies\Qt\6.8.3\msvc2022_64\plugins\platforms\qoffscreen.dll" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\platforms\qoffscreen.dll"
+  :VCEnd
+  E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding Qt6Network for qtuiotouchplugin.dll from plugin type: generic
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  vc_redist.x64.exe is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+          1 file(s) copied.
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\x64\Release\VideoPro.C8CA4B71.tlog\VideoProcessor-ConfigTests.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorConfigTests.exe" -ToolsetVersion "14.44.35207"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\VideoProcessor-OutputProbe.vcxproj" (13) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\VideoProcessor-OutputProbe.lastbuildstate".
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild".
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\CL.exe /c /Zi /nologo /W4 /WX- /diagnostics:column /sdl /O2 /GL /D NDEBUG /D _CONSOLE /D UNICODE /D _UNICODE /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /permissive- /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\vc143.pdb" /external:W4 /Gd /TP /FC /errorReport:queue /utf-8 /Zc:__cplusplus OutputProbe.cpp
+  OutputProbe.cpp
+Link:
+  C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorOutputProbe.exe" /NOLOGO d3d11.lib dxgi.lib user32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorOutputProbe.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoProcessorOutputProbe.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorOutputProbe.lib" /MACHINE:X64 "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\OutputProbe.obj"
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 405 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-OutputProbe.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorOutputProbe.exe
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\x64\Release\VideoPro.3F68A7E3.tlog\VideoProcessor-OutputProbe.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessorOutputProbe.exe" -ToolsetVersion "14.44.35207"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-OutputProbe\VideoProcessor-OutputProbe.vcxproj" (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (1) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (14) on node 1 (Rebuild target(s)).
+Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (14) is building "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj" (15) on node 1 (Rebuild target(s)).
+_PrepareForClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\VideoProcessor-VPRendererBeta.lastbuildstate".
+CoreClean:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Adaptive sharpen.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Debanding mild.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Denoise.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Invert.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLS.hlsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLS.glsl".
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLSPlus.glsl".
+InitializeBuildStatus:
+  Creating "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild".
+PreBuildEvent:
+  powershell.exe -ExecutionPolicy RemoteSigned -File "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\..\..\tools\generate_version.ps1" -Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\." -GitRoot "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\..\.."
+  :VCEnd
+  Written E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/acbae401f553ba2561c457ed94c31766335c0822");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-23 20:35:05 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("git-acbae40");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/vp-0205-lookahead-workahead");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("acbae40");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /I"..\VideoProcessor-Lib" /I"..\..\3rdparty\libplacebo-beta\include" /I..\..\3rdparty\nvapi /I..\..\3rdparty\blackmagic_decklink /I..\..\3rdparty\microsoft_directshow_baseclasses /I..\..\3rdparty\lavfilters /I..\..\3rdparty\mpc_video_renderer /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D NDEBUG /D _WINDOWS /D _USRDLL /D VP_LIBPLACEBO_BETA /D _WINDLL /D _UNICODE /D UNICODE /D _AFXDLL /Gm- /EHsc /MD /GS /Gy /arch:AVX /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\\" /Fd"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\vc142.pdb" /external:W3 /Gd /TP /FC /errorReport:queue LibplaceboPluginExports.cpp "..\VideoProcessor-Lib\vprenderer\LibplaceboDisplayLut.cpp" "..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp" "..\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp"
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  LibplaceboDisplayLut.cpp
+  LibplaceboRenderParameters.cpp
+E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  LibplaceboVideoRenderer.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11665,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+Link:
+  C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll" /NOLOGO /LIBPATH:"..\..\3rdparty\libplacebo-beta\lib" /LIBPATH:..\..\3rdparty\nvapi\amd64 /LIBPATH:"C:\Program Files (x86)\Visual Leak Detector\lib\Win64" "libplacebo-377.lib" nvapi64.lib opengl32.lib strmiids.lib winmm.lib bcrypt.lib Propsys.lib windowscodecs.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoProcessorVPRendererBeta.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib" /MACHINE:X64 /DLL "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboPluginExports.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboDisplayLut.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboRenderParameters.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\LibplaceboVideoRenderer.obj"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\BlackMagic DeckLink SDK.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\Microsoft Directshow Baseclasses.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\LAVFilters.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\MPC Video Renderer.lib"
+  "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\VideoProcessor-Lib.lib"
+     Creating library E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib and object E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 14858 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-VPRendererBeta.vcxproj -> E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+_CopyOutOfDateSourceItemsToOutputDirectory:
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLS.glsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Denoise.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Denoise.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Adaptive sharpen.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Adaptive sharpen.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLS.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLS.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Debanding mild.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Debanding mild.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\Invert.hlsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\Invert.hlsl".
+  Copying file from "E:\codex\videoprocessor\pr193-safety-review-20261023\shaders\NLSPlus.glsl" to "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\shaders\NLSPlus.glsl".
+PostBuildEvent:
+  if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\*.dll" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\*.dll" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses" xcopy /Y /I /E "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\third_party_licenses" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\LICENSE.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\LICENSE.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\third_party_licenses\libplacebo-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\nvapi\License.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\nvapi\License.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\third_party_licenses\nvapi-LICENSE.txt" & if exist "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\README.txt" copy /Y "E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\README.txt" "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\README.txt"
+  :VCEnd
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libdovi.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libplacebo-377.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\gcc-libs\README
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.
+FinalizeBuildStatus:
+  Deleting file "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\unsuccessfulbuild".
+  Touching "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\obj\VideoProcessor-VPRendererBeta\VideoPro.D4AB7E36.tlog\VideoProcessor-VPRendererBeta.lastbuildstate".
+RecordVpRuntimeRequirement:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "E:\codex\videoprocessor\pr193-safety-review-20261023\tools\record_runtime_requirement.ps1" -BinaryPath "E:\codex\videoprocessor\pr193-safety-review-20261023\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll" -ToolsetVersion "14.29.30133"
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj" (Rebuild target(s)).
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (Rebuild target(s)).
+Done Building Project "E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target(s)).
+
+Build succeeded.
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj" (Rebuild target) (6) ->
+(ClCompile target) -> 
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,51): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,31): warning C4244: 'initializing': conversion from 'double' to 'const int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,42): warning C4244: 'initializing': conversion from 'const _Ty' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,33): warning C4244: 'initializing': conversion from 'const _Ty' to 'const int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (Rebuild target) (7) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp(336,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp(336,41): warning C4244: 'initializing': conversion from 'int' to 'const float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\AlphaSourceCropPolicyTests.cpp(2492,43): warning C4244: '=': conversion from 'const float' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\AlphaSourceCropPolicyTests.cpp(5362,59): warning C4244: '=': conversion from 'float' to 'int', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+  E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (Rebuild target) (7) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj" (Rebuild target) (7) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj" (Rebuild target) (9) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11665,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (Rebuild target) (10) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (Rebuild target) (10) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (Rebuild target) (10) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj" (Rebuild target) (10) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(376,10): warning C4456: declaration of 'sectionLineNumbers' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj" (Rebuild target) (12) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\MainConfigSchema.h(301,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2096,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2116,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2232,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\RendererProfileConfig.h(2305,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\ConfigFile.cpp(376,10): warning C4456: declaration of 'sectionLineNumbers' hides previous local declaration [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+
+
+"E:\codex\videoprocessor\pr193-safety-review-20261023\VideoProcessor.sln" (Rebuild target) (1) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj.metaproj" (Rebuild target) (14) ->
+"E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj" (Rebuild target) (15) ->
+  E:\codex\videoprocessor\pr193-safety-review-20261023\3rdparty\libplacebo-beta\include\libplacebo\common.h(233,17): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11665,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11666,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11691,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\pr193-safety-review-20261023\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+
+    73 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:07:05.76

@@ -2,17 +2,42 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-23 scope split authorized by the user: retain prepared proof/cache/worker
-improvements in PR #193 and move adaptive admission plus architectural evaluation
-to [VP-0208](../backlog/VP-0208_lookahead-scheduling-and-smooth-presentation.md).
-Reduced source `acbae401` restores the exact beta budget class, GPU timer and
-budget tests and removes adaptive GPU observation/reporting. Clean Release build
-and focused native validation are underway in the existing recorded worktree.
-The prior rebase evidence below remains historical, not validation of this split.
-The user additionally requests evaluating whether the current policy makes sense,
-more async work and alternative scheduling architectures; VP-0208 records these.
+Reduced PR #193 is validated and ready for the user-authorized merge into current
+`v1.4.02-beta`. Exact clean source: `acbae401f553ba2561c457ed94c31766335c0822`;
+base: `e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a`. Worktree remains
+`E:\codex\videoprocessor\pr193-safety-review-20261023`.
+
+The user requested the scope split: keep prepared proof/cache/worker improvements,
+and move adaptive timing plus architectural evaluation to
+[VP-0208](../backlog/VP-0208_lookahead-scheduling-and-smooth-presentation.md).
+The budget class, GPU timer and timing tests exactly match beta. Renderer adaptive
+GPU observations/expanded allowance are removed. Beta's pre-existing limited
+boundary-skip heuristic is retained and explicitly subject to VP-0208 review.
+All other prepared-proof code and the previously reviewed fixes remain unchanged
+from the pre-split head; protected recent LUT/crop/subtitle paths match beta.
+
+- Clean serial full x64 Release solution Rebuild passed: 73 warnings, zero errors,
+  host and both renderers included. Initial incremental LNK1318 PDB failure is
+  preserved; the clean rebuild resolved it.
+- **1,588/1,588 selected native regressions passed**, zero failures/skips, across
+  39 classes, including late/cold workers, zero-new-pixel proof, exact ownership,
+  cancellation retention, existing budget/cadence, black reference/crop policy,
+  API29/LUT and GPU subtitle composition. All five named critical regressions
+  and every selected class are present in the TRX.
+- Eight genuine runtime records match their Release/x64 binaries before/after
+  tests; source stayed clean and binaries unchanged.
+- [Exact-head validation and preservation evidence](../assets/VP-0205/pr193-prepared-split-20261023/validation.json).
+- No deployment, playback restart or active configuration edit. PR #192 is still
+  separate and needs rebase/combined validation after this integration.
+
+Retain Review after merge: live prepared-proof adoption and sustained worker/GPU/
+queue/memory/cadence qualification remain open. The adaptive policy criterion is
+transferred to VP-0208, not marked satisfied. The user also asked to evaluate
+whether the current policy is sound, whether more work should be async, and
+alternative scheduling architectures; VP-0208 records those options and a bounded
+comparison spike with no analysis-caused jitter or source dropping as its goal.
 
 ### Pre-split review evidence
 
@@ -208,7 +233,7 @@ will be reported separately. No configuration migration or UI redesign is needed
 - [x] A later helper cancellation retains unrelated complete measurements safely;
       overlapping windows reuse completed proof while its full dependency key remains
       current and do not cast duplicate temporal votes.
-- [ ] Reduced PR preserves beta admission and passes exact-head Release/native
+- [x] Reduced PR preserves beta admission and passes exact-head Release/native
       validation. Adaptive policy acceptance is explicitly transferred to VP-0208.
 - [ ] Matched measurements demonstrate useful ready/adopted proof and transition
       timing alongside CPU/GPU/presentation tails, deadline misses, worker cost,
@@ -235,7 +260,7 @@ analysis-caused misses and distinguish new-source from repeated-output tails.
 ## Dependencies and scope
 
 VP-0204 / [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is a
-separate unmerged draft at `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`. Its
+separate open PR at `43b81e9063e0531f7ac2b1f589238d6ad6d37d33`. Its
 cooperative helper budget, exact-worker imports and telemetry contracts are
 explicit analysis prerequisites. Include only the necessary analysis support in
 this implementation and reconcile with its final APIs when beta accepts it. The
