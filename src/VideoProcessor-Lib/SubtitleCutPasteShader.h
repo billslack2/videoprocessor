@@ -1256,6 +1256,10 @@ inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl
         // Every pixel is written by this full-raster pass.
         params.background=PL_CLEAR_SKIP;
         params.background_transparency=1.0f;
+    } else if(source.color.transfer==PL_COLOR_TRC_HLG && source.repr.alpha==PL_ALPHA_NONE) {
+        // Every pixel is written, and opaque source alpha is one. Avoid the
+        // beta renderer's undefined HLG encoding of a redundant black background.
+        params.background=PL_CLEAR_SKIP;
     }
     params.hooks=hook?&hook:nullptr;params.num_hooks=hook?1:0;
     if(!pl_render_image(renderer,&input,&target,&params))return false;

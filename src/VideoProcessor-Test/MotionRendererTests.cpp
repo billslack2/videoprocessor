@@ -1531,18 +1531,34 @@ TEST_CLASS(MotionRendererTests){public:
                 L" native="+std::to_wstring(nativeDelta)).c_str());
     }
     TEST_METHOD(NativeP010ChromaFieldsMatchDirectLibplacebo){
+        // A null plane scaler inherits the main scaler. Normalization uses
+        // fast defaults, whereas the independent raw render uses quality
+        // defaults, so compare the same chroma policy on all routes. Keep the
+        // default normalization branch as well as explicit configured scalers.
+        for(const pl_filter_config* filter:{static_cast<const pl_filter_config*>(nullptr),
+            &pl_filter_bilinear,&pl_filter_lanczos})
         for(const char* algorithm:{"bob","yadif","bwdif"})for(int order:{1,2}){
             GpuFixture g;g.CreateP010AlternatingChroma();
+            auto sourceParams=pl_render_default_params;
+            sourceParams.plane_upscaler=filter?filter:&pl_filter_bilinear;
+            sourceParams.plane_downscaler=sourceParams.plane_upscaler;
+            sourceParams.dither_params=nullptr;sourceParams.deband_params=nullptr;
+            sourceParams.peak_detect_params=nullptr;
+            const auto sourceOptions=CaptureSubtitleSourceProcessingOptions(sourceParams);
+            Assert::IsTrue(sourceOptions.planeUpscaler==sourceParams.plane_upscaler,
+                L"Configured chroma upscaler must reach source normalization");
+            Assert::IsTrue(sourceOptions.planeDownscaler==sourceParams.plane_downscaler,
+                L"Configured chroma downscaler must reach source normalization");
             MotionConfig::Settings settings;settings.cadence="field";
             settings.algorithm=algorithm;settings.deinterlace="force";
             for(uint64_t i=0;i<5;++i){
                 g.temporal.Begin(settings,30,60,true,order,1,i+1,double(i)/30,false,true);
                 Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.p010Input,i+1,
-                    [&g](const pl_frame& field,const pl_deinterlace_params& deinterlace,
+                    [&g,sourceOptions,filter](const pl_frame& field,const pl_deinterlace_params& deinterlace,
                         pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                         layer=nullptr;bounds={};
                         return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
-                            &g.clean,clean,true,false,false,&deinterlace);
+                            &g.clean,clean,true,false,false,&deinterlace,filter?&sourceOptions:nullptr);
                     }));
             }
             auto renderDirect=[&](pl_field parity){
@@ -1551,7 +1567,7 @@ TEST_CLASS(MotionRendererTests){public:
                 const auto deinterlace=g.temporal.DeinterlaceParameters();
                 pl_frame normalized{};
                 Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,raw,nullptr,
-                    &g.clean,normalized,true,false,false,&deinterlace),L"Direct P010 normalization failed");
+                    &g.clean,normalized,true,false,false,&deinterlace,filter?&sourceOptions:nullptr),L"Direct P010 normalization failed");
                 auto params=pl_render_default_params;
                 params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
                 Assert::IsTrue(pl_render_image(g.renderer,&normalized,&g.output,&params),L"Direct P010 output failed");
@@ -1561,8 +1577,7 @@ TEST_CLASS(MotionRendererTests){public:
                 pl_frame raw=g.p010Input;raw.first_field=order==1?PL_FIELD_TOP:PL_FIELD_BOTTOM;
                 raw.field=parity;raw.prev=&g.p010Input;raw.next=&g.p010Input;
                 auto deinterlace=g.temporal.DeinterlaceParameters();
-                auto params=pl_render_default_params;
-                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                auto params=sourceParams;
                 params.deinterlace_params=&deinterlace;
                 Assert::IsTrue(pl_render_image(g.renderer,&raw,&g.output,&params),
                     L"Independent raw P010 deinterlace failed");
@@ -1577,7 +1592,9 @@ TEST_CLASS(MotionRendererTests){public:
             const auto nativeFirst=g.Draw();
             g.temporal.outputPts=3.5/30;
             const auto nativeSecond=g.Draw();
-            const std::wstring label=std::wstring(algorithm,algorithm+strlen(algorithm))+
+            const std::wstring label=std::wstring(!filter?L"fast defaults ":
+                filter==&pl_filter_bilinear?L"bilinear ":L"Lanczos ")+
+                std::wstring(algorithm,algorithm+strlen(algorithm))+
                 L" order "+std::to_wstring(order)+L" direct "+GpuFixture::PixelText(directFirst)+
                 L"/"+GpuFixture::PixelText(directSecond)+L" raw "+
                 GpuFixture::PixelText(rawFirst)+L"/"+GpuFixture::PixelText(rawSecond)+
