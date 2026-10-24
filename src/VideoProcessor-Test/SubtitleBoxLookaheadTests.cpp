@@ -314,6 +314,145 @@ public:
         Assert::AreEqual(1u,SubtitleBoxLookahead::ResolveOwnedWindow(frames.data(),owned.data(),frames.size(),7,8).matchingFrames);
     }
 
+    TEST_METHOD(CoarseArViewportCanSeedOppositeBarRecoveryWithoutChangingNativePlanes) {
+        for(bool p210:{false,true})for(int viewportTop:{44,46,60}) {
+            ContinuationFixture f(p210);f.base.top=viewportTop;f.base.bottom=360-viewportTop;
+            auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
+            c.independentBarAnalysis=c.barEvidence.available=true;
+            c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            const auto accepted=tracker.Consume(f.acquired);
+            const auto geometry=compositor.Consume(accepted,f.acquired);
+            Assert::IsTrue(geometry.valid);
+            Assert::IsTrue(guard.Remember(f.acquired,accepted,f.base,f.Native()));
+            auto next=f.acquired;next.current.identity=Identity(2);next.current.identity.transportGeneration=2;
+            next.current.sharedPicture.identity=next.current.identity;
+            next.current.pictureTop=next.current.barEvidence.top=46;
+            const auto still=tracker.Consume(next);
+            Assert::IsTrue(still.detected);
+            Assert::IsTrue(guard.Remember(next,still,f.base,f.Native()));
+            auto lost=next;lost.current.identity=Identity(3);lost.current.identity.transportGeneration=2;
+            lost.current.sharedPicture.identity=lost.current.identity;
+            lost.current.pictureTop=lost.current.barEvidence.top=0;
+            lost.currentLinesConfirmed=false;lost.matchingFrames=1;
+            const auto proof=guard.Prepare(lost,f.Native(),f.base,250,41.708);
+            Assert::IsTrue(proof.valid && proof.oppositeBarUnavailable);
+            Assert::AreEqual(viewportTop,proof.physicalBase.top);Assert::AreEqual(360-viewportTop,proof.physicalBase.bottom);
+            Assert::AreEqual(46,proof.pictureTop);Assert::AreEqual(315,proof.pictureBottom);
+            const auto result=tracker.Consume(lost,250,41.708,nullptr,false,false,&proof);
+            Assert::IsTrue(result.detected && !result.held);Assert::AreEqual(accepted.cue,result.cue);
+            const auto continued=compositor.Consume(result,lost,{},0,nullptr,&proof);
+            Assert::IsTrue(continued.valid,L"Opposite-plane wobble must not invalidate the cached lower cue layout.");
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,continued.source));
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,continued.destination));
+            Assert::AreEqual(geometry.pictureTop,continued.pictureTop);
+            Assert::AreEqual(0,lost.current.pictureTop);Assert::AreEqual(viewportTop,lost.current.sharedPicture.bounds.top);
+        }
+    }
+    TEST_METHOD(CoarseArSeedRequiresIndependentAndRasterBoundedNativePlanes) {
+        for(int fault=0;fault<8;++fault) {
+            ContinuationFixture f;f.base.top=44;f.base.bottom=316;
+            auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
+            c.independentBarAnalysis=c.barEvidence.available=true;
+            c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
+            if(fault==0)c.independentBarAnalysis=false;
+            if(fault==1)c.barEvidence.topRevalidatedAtReference=true;
+            if(fault==2)c.currentAnchorUsesTrackedEdge=true;
+            if(fault==3)c.pictureTop=0;
+            if(fault==4){f.base.top=-1;c.sharedPicture.bounds=f.base;}
+            if(fault==5){f.base.bottom=361;c.sharedPicture.bounds=f.base;}
+            if(fault==6){f.base.rasterHeight=361;c.sharedPicture.bounds=f.base;}
+            if(fault==7)c.sharedPicture.bounds.bottom=317;
+            SubtitleCueContinuationGuard guard;
+            Assert::IsFalse(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+        }
+    }
+    TEST_METHOD(DetectedCueSurvivesOppositeBarLossWithExactCurrentPixelProof) {
+        for(bool p210:{false,true})for(bool top:{false,true}) {
+            ContinuationFixture f(p210);
+            if(top) {
+                const auto original=f.pixels;
+                for(int y=0;y<360;++y)for(int x=0;x<640;++x)
+                    f.pixels[size_t(y)*640+x]=original[size_t(359-y)*640+x];
+                auto& o=f.acquired.current;
+                o.text.bounds={236,32,395,54};o.text.lineBounds[0]={240,36,391,50};
+                o.text.sourcePanel=o.text.capturePanel=o.text.bounds;f.acquired.text=o.text;
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*o.ink);
+                std::fill(ink->rawInk.begin(),ink->rawInk.end(),0);
+                std::fill(ink->ownedInk.begin(),ink->ownedInk.end(),0);
+                std::fill(ink->blackBacking.begin(),ink->blackBacking.end(),0);
+                for(int y=0;y<360;++y)for(int x=0;x<640;++x) {
+                    const size_t i=size_t(y)*640+x;const auto bit=uint64_t(1)<<(i%64);
+                    const int v=f.pixels[i]>>6;
+                    if(v>=ink->inkFloor){ink->rawInk[i/64]|=bit;ink->ownedInk[i/64]|=bit;}
+                    if(v<=ink->blackLimit)ink->blackBacking[i/64]|=bit;
+                }
+                o.ink=ink;
+            }
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;
+            SubtitleCutPastePresentation compositor;
+            const auto accepted=tracker.Consume(f.acquired);
+            Assert::IsTrue(guard.Remember(f.acquired,accepted,f.base,f.Native()));
+            Assert::IsFalse(guard.NeedsCurrentPixelRevalidation(f.acquired));
+            const auto geometry=compositor.Consume(accepted,f.acquired);
+            auto current=f.acquired;current.current.identity=Identity(2);
+            current.current.identity.transportGeneration=2;
+            current.current.sharedPicture.identity=current.current.identity;
+            if(top)current.current.pictureBottom=360;else current.current.pictureTop=0;
+            current.currentLinesConfirmed=false;current.matchingFrames=1;
+            const auto raw=current;
+            Assert::IsFalse(SubtitleBoxLookahead::SameContext(f.acquired.current,current.current));
+            Assert::IsTrue(guard.NeedsCurrentPixelRevalidation(current));
+            const auto proof=guard.Prepare(current,f.Native(),f.base,250,41.708);
+            Assert::IsTrue(proof.valid);Assert::IsFalse(proof.accepted.held);
+            Assert::IsTrue(proof.samples>0 && proof.samples<=65536);
+            const auto result=tracker.Consume(current,250,41.708,nullptr,false,false,&proof);
+            Assert::IsTrue(result.detected && !result.held);Assert::AreEqual(accepted.cue,result.cue);
+            const auto continued=compositor.Consume(result,current,{},0,nullptr,&proof);
+            Assert::IsTrue(continued.valid);
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,continued.source));
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,continued.destination));
+            Assert::AreEqual(raw.current.pictureTop,current.current.pictureTop);
+            Assert::AreEqual(raw.current.pictureBottom,current.current.pictureBottom);
+            Assert::IsTrue(raw.current.ink==current.current.ink && current.current.text.detected);
+            auto recovered=f.acquired;recovered.current.identity=Identity(3);
+            recovered.current.identity.transportGeneration=2;
+            recovered.current.sharedPicture.identity=recovered.current.identity;
+            const auto again=tracker.Consume(recovered);
+            Assert::IsTrue(again.detected && !again.held);Assert::AreEqual(accepted.cue,again.cue);
+        }
+    }
+    TEST_METHOD(OppositeBarLossCannotBorrowChangedNativeSubtitlePixels) {
+        for(bool p210:{false,true})for(int change=0;change<6;++change) {
+            ContinuationFixture f(p210);SubtitleCueContinuationGuard guard;
+            Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+            auto current=f.acquired;current.current.identity=Identity(2);
+            current.current.identity.transportGeneration=2;
+            current.current.sharedPicture.identity=current.current.identity;current.current.pictureTop=0;
+            if(change==0)Fill(f.pixels,236,306,395,328,64);
+            if(change==1)Text(f.pixels,240,310,1,true);
+            if(change==2)Text(f.pixels,240,338,8);
+            if(change==3)Fill(f.pixels,0,315,640,335,300);
+            if(change==4)++current.current.text.lineBounds[0].right;
+            if(change==5)++current.continuityGeneration;
+            Assert::IsFalse(guard.Prepare(current,f.Native(),f.base,250,41.708).valid);
+        }
+    }
+    TEST_METHOD(OppositeBarRevalidationHasANonrenewingSourceTimeLimit) {
+        ContinuationFixture f;SubtitleCueContinuationGuard guard;
+        Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+        for(uint64_t sequence=2;sequence<=7;++sequence) {
+            auto current=f.acquired;current.current.identity=Identity(sequence);
+            current.current.identity.transportGeneration=2;current.current.sharedPicture.identity=current.current.identity;
+            current.current.pictureTop=0;
+            const auto proof=guard.Prepare(current,f.Native(),f.base,250,50);
+            Assert::AreEqual(sequence<=6,proof.valid);
+            if(proof.valid)for(int repeat=0;repeat<3;++repeat) {
+                const auto same=guard.Prepare(current,f.Native(),f.base,250,50);
+                Assert::IsTrue(same.valid);Assert::AreEqual(proof.elapsedMs,same.elapsedMs);
+            }
+        }
+    }
     TEST_METHOD(ContinuationRevalidatesNativeCueWithoutChangingMissingEdgeObservation) {
         for(bool p210:{false,true}) {
             ContinuationFixture f(p210);SubtitleCueContinuationGuard guard;

@@ -188,6 +188,41 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
 public:
+    TEST_METHOD(KnownCurrentBackingIgnoresOppositeBarMeasurementLossAndReferenceFlags) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
+            Frame frame(6,format,top);const auto strip=frame.Lip(30);const auto cue=Acquire(frame);
+            const auto geometry=Geometry(cue);SubtitleBackingLipContinuity continuity;
+            const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,65536,&geometry);
+            Assert::IsTrue(first.valid);
+            for(int mode=0;mode<4;++mode) {
+                const uint64_t seq=uint64_t(mode+3);auto preview=cue.preview;auto& c=preview.current;
+                c.identity=Identity(seq);c.independentBarAnalysis=false;
+                if(top) {
+                    if(mode==0)c.pictureBottom=c.barEvidence.bottom=frame.height;
+                    if(mode==1)c.barEvidence.captionBackedBottom=true;
+                    if(mode==2)c.barEvidence.bottomRevalidatedAtReference=true;
+                    if(mode==3)c.barEvidence.bottomRevalidatedNearby=true;
+                }else {
+                    if(mode==0)c.pictureTop=c.barEvidence.top=0;
+                    if(mode==1)c.barEvidence.captionBackedTop=true;
+                    if(mode==2)c.barEvidence.topRevalidatedAtReference=true;
+                    if(mode==3)c.barEvidence.topRevalidatedNearby=true;
+                }
+                Assert::IsFalse(ProveCurrentSubtitleBackingLip(frame.Source(),preview,cue.accepted,Identity(seq),7,8).valid,
+                    L"An opposite-bar reference cannot acquire a new backing card.");
+                const auto proof=continuity.Consume(frame.Source(),preview,cue.accepted,Identity(seq),7,8,65536,&geometry);
+                LogProof(proof,frame,"opposite-bar-current-card");
+                Assert::IsTrue(proof.valid && proof.revalidatedOutline && proof.outlineBaseAnchored);
+                Assert::IsTrue(Same(proof.cleanup,strip) && proof.samples<=65536);
+                const auto result=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(seq),7,8);
+                AssertGeometryExceptCleanup(geometry,result);Assert::IsTrue(Same(result.generatedCleanup,strip));
+                Assert::IsFalse(c.independentBarAnalysis);
+            }
+            auto preview=cue.preview;preview.current.identity=Identity(7);
+            frame.Pixel(300*frame.scale,frame.pictureBottom-2,700);
+            Assert::IsFalse(continuity.Consume(frame.Source(),preview,cue.accepted,Identity(7),7,8,65536,&geometry).valid);
+        }
+    }
     TEST_METHOD(KnownBackingSurvivesCaptionPlaneJitterWithoutBorrowingCropAuthority) {
         for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
             for(bool top:{false,true})for(int delta:{1,2}) {

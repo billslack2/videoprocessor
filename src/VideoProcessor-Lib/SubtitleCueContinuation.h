@@ -8,6 +8,10 @@ class SubtitleCueContinuationGuard {
 public:
     void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
     bool HasReference() const { return m_valid; }
+    bool NeedsCurrentPixelRevalidation(const SubtitleBoxPreview& preview) const {
+        return m_valid && (!preview.current.text.detected ||
+            !SubtitleBoxLookahead::SameContext(m_reference,preview.current));
+    }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
     bool Remember(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
@@ -25,8 +29,22 @@ public:
         if(!c.sharedPicture.AvailableFor(c.identity,c.width,c.height))
             return reject("shared-hint-unavailable");
         if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
-        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom)
-            return reject("native-base-physical-edge-mismatch");
+        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom) {
+            // Source glyph proof and AR presentation use separate planes.
+            // Current independent physical bars can seed the glyph reference;
+            // the stable AR base remains separately bound by shared identity.
+            const bool independentPhysical=c.independentBarAnalysis && c.barAuthority &&
+                c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
+                !c.barEvidence.captionBackedTop && !c.barEvidence.captionBackedBottom &&
+                !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby &&
+                !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby &&
+                c.pictureTop==c.barEvidence.top && c.pictureBottom==c.barEvidence.bottom &&
+                c.pictureTop>0 && c.pictureBottom<c.height && c.pictureTop<c.pictureBottom &&
+                base.rasterWidth==c.width && base.rasterHeight==c.height &&
+                base.left>=0 && base.right<=c.width && base.left<base.right &&
+                base.top>=0 && base.bottom<=c.height && base.top<base.bottom;
+            if(!independentPhysical)return reject("native-base-physical-edge-mismatch");
+        }
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
         // Rendering the same strong source frame does not renew a later lease.
@@ -83,7 +101,7 @@ public:
             source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
             source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration)
             return fail("context-changed");
-        if(c.text.detected)return fail("current-detector-positive");
+
         bool topCue=false,bottomCue=false;
         for(int i=0;i<m_reference.text.lineCount;++i) {
             topCue|=m_reference.text.lineBounds[i].top<m_reference.pictureTop;
@@ -93,7 +111,26 @@ public:
             c.pictureBottom==c.height && c.pictureTop==m_reference.pictureTop && c.pictureTop>0;
         const bool missingTop=topCue && !bottomCue && m_reference.pictureTop>0 &&
             c.pictureTop==0 && c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height;
-        if((!missingBottom && !missingTop) || !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
+        // The opposite bar can lose its measurement while this cue and its
+        // own bar remain independently detected. That context change cannot
+        // certify new glyphs; recheck the exact acquired native pixels instead.
+        const bool sameDetectedSlots=[&]() {
+            if(!c.text.detected || c.text.held || c.text.confirmationPending ||
+                c.text.lineCount<1 || c.text.lineCount>3 ||
+                c.text.lineCount!=m_reference.text.lineCount)return false;
+            for(int i=0;i<c.text.lineCount;++i)
+                if(!SubtitleCueContinuation::SameRect(c.text.lineBounds[i],
+                    m_reference.text.lineBounds[i]))return false;
+            return true;
+        }();
+        const bool missingOpposite=sameDetectedSlots &&
+            ((bottomCue && !topCue && m_reference.pictureTop>0 && c.pictureTop==0 &&
+                c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height) ||
+             (topCue && !bottomCue && m_reference.pictureBottom<c.height && c.pictureBottom==c.height &&
+                c.pictureTop==m_reference.pictureTop && c.pictureTop>0));
+        if(c.text.detected && !missingOpposite)return fail("current-detector-positive");
+        if((!missingBottom && !missingTop && !missingOpposite) ||
+            !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
         if(SameAnalysisFrameIdentity(c.identity,m_last))return m_cached;
         if(c.identity.acceptedSequence!=m_last.acceptedSequence+1)return fail("sequence-gap");
         if(!std::isfinite(frameMs) || frameMs<=0)return fail("invalid-source-duration");
@@ -101,9 +138,9 @@ public:
         if(m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
         auto fresh=Verify(c,source,maxSamples,out.samples,out.reason);
         if(!fresh)return fail(out.reason);
-        out.valid=true;out.reason="current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
+        out.valid=true;out.reason=missingOpposite?"current-cue-pixels-opposite-edge":"current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
         out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
-        out.accepted=m_reference.text;out.accepted.held=true;out.ink=fresh;m_cached=out;return out;
+        out.accepted=m_reference.text;out.accepted.held=!missingOpposite;out.oppositeBarUnavailable=missingOpposite;out.ink=fresh;m_cached=out;return out;
     }
     // Advances only the source cursor after fresh verification. It neither
     // replaces acquisition evidence nor renews its finite lease once an edge is missing.

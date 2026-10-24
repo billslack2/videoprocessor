@@ -138,6 +138,30 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return guard.Resolve(preview,source,frameMs,holdMs);
     }
 public:
+    TEST_METHOD(VisibleCueGapCaptureSelectsCurrentOppositeBarLossAndRejectsNavigation) {
+        auto pixels=Pixels();const auto source=Source(pixels);const auto key=Ready(17).current;
+        for(bool top:{false,true}) {
+            auto result=key;result.text.lineCount=1;
+            result.text.bounds=result.text.lineBounds[0]=top?SubtitleBoxRect{50,3,110,9}:SubtitleBoxRect{50,80,110,86};
+            if(top)result.pictureBottom=90;else result.pictureTop=0;
+            auto ink=std::make_shared<SubtitleInkSnapshot>();ink->rawEvidenceComplete=true;result.ink=ink;
+            Assert::IsTrue(IsSubtitleVisibleCueGapCaptureCandidate(source,key,result));
+            for(int fault=0;fault<8;++fault) {
+                auto changed=result;auto buffer=source;
+                if(fault==0)changed.text.detected=false;
+                if(fault==1)changed.text.workLimit=true;
+                if(fault==2)changed.pendingRefresh=true;
+                if(fault==3)changed.identity.acceptedSequence++;
+                if(fault==4)changed.ink.reset();
+                if(fault==5)buffer.dataBytes=1;
+                if(fault==6)buffer.dataBytes=65u*1024u*1024u;
+                // A caption moved into the picture by navigation controls is
+                // not the positive cue-side-bar loss this capture targets.
+                if(fault==7)changed.text.lineBounds[0]={50,50,110,56};
+                Assert::IsFalse(IsSubtitleVisibleCueGapCaptureCandidate(buffer,key,changed));
+            }
+        }
+    }
     TEST_METHOD(FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource) {
         auto pixels=Pixels();
         auto source=Source(pixels);
