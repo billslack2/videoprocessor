@@ -19,7 +19,9 @@ whether adaptive admission makes sense and whether the current policy makes
 sense at all. More async work may help, but it still competes for CPU, memory
 bandwidth and GPU resources and must have explicit capacity and overload behavior.
 
-PR #193 / VP-0205 retains the prepared-result caches, bounded worker preparation,
+PR #193 / VP-0205 merged its prepared-only scope into beta as `b1415da4` on
+2026-10-23, after a clean Release build and 1,588 native tests. It retains the
+prepared-result caches, bounded worker preparation,
 exact ownership/context checks, complete-work retention after cancellation and
 usefulness telemetry. Its reduced version restores the current beta admission
 and GPU-timer code. This story owns the deferred adaptive policy and the larger

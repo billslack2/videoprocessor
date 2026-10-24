@@ -4,8 +4,9 @@
 
 Review
 
-Reduced PR #193 is validated and ready for the user-authorized merge into current
-`v1.4.02-beta`. Exact clean source: `acbae401f553ba2561c457ed94c31766335c0822`;
+Reduced [PR #193](https://github.com/billslack2/videoprocessor/pull/193) merged into
+`v1.4.02-beta` as `b1415da4e2cc12807f390f4b722c459be9a17c08` on 2026-10-23.
+The merge tree exactly matches the reviewed/tested feature tree. Exact clean source: `acbae401f553ba2561c457ed94c31766335c0822`;
 base: `e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a`. Worktree remains
 `E:\codex\videoprocessor\pr193-safety-review-20261023`.
 

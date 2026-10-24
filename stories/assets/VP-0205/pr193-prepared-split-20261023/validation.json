@@ -108,5 +108,13 @@
     "Existing beta limited boundary-skip heuristic is retained, not endorsed as optimal.",
     "PR192 remains separate and needs rebase/combined validation.",
     "Historical 2525-test pass belongs to pre-split source, not this exact head."
-  ]
+  ],
+  "merge": {
+    "pullRequest": 193,
+    "url": "https://github.com/billslack2/videoprocessor/pull/193",
+    "commit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "branch": "v1.4.02-beta",
+    "treeMatchesTestedSource": true,
+    "deployed": false
+  }
 }
