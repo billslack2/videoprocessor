@@ -1,0 +1,76 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedReceipts": [
+    {
+      "file": "backing-review-receipt.json",
+      "sha256": "7BAE4B0B4EB966BF73A012EF7CE3986A3EC68ABF6CC4F887D6EC8DD528669D9F",
+      "bytes": 2508
+    },
+    {
+      "file": "backing-review-review.txt",
+      "sha256": "69FB4368F20E7D0A40940BF0214A6561BCEF343A46A2FFBC2515CA908F9C9E03",
+      "bytes": 5041
+    },
+    {
+      "file": "beta.json",
+      "sha256": "EA1F22B617EF54DAF5BBB0B0CA0C950C6DBE2B291DF32AF16A4C5F08A41DD32A",
+      "bytes": 88
+    },
+    {
+      "file": "cue-capacity-review-manifest.json",
+      "sha256": "816AF7FEA21D57F8E312B1EF40F3533045784C048EAE0395B43D39067ED9344E",
+      "bytes": 2812
+    },
+    {
+      "file": "cue-capacity-review-review.txt",
+      "sha256": "FB8692D95534396ABF80BAB8EB4137B24BDDE0B95AC6A6BC7D2E71D8DF2E4C58",
+      "bytes": 5885
+    },
+    {
+      "file": "observation.json",
+      "sha256": "4E5C33EB047F276A07F2547AF10E9F9AD332958809F86782A1EACCAB1AFFFDD1",
+      "bytes": 3905
+    },
+    {
+      "file": "pr-status.json",
+      "sha256": "8A8BCE320407079708564C6A2745E9B3F3D8ECA3C2275938335BC1B4FBA80C5F",
+      "bytes": 178
+    },
+    {
+      "file": "presentation-review-provenance.json",
+      "sha256": "E8D3661E85053AF4E480B228FBF88848064BE18B66B0F4079C4C5FADC6B1EC95",
+      "bytes": 3903
+    },
+    {
+      "file": "presentation-review-review.txt",
+      "sha256": "DD546493134CC552A6FB70C6AF11AFED606C8070889AF7B358B7FCA65F833B32",
+      "bytes": 5569
+    },
+    {
+      "file": "root-work-accounting-review.txt",
+      "sha256": "B42E6D3FC4DF4532FB276DF9264624834CBC1BA5012333AD9691C6988A759A5D",
+      "bytes": 2883
+    },
+    {
+      "file": "runtime-end-process.json",
+      "sha256": "BA6E56FD7060C3B351145BB30C9D322BAC167348D976DBC574CEE661B06ED2DA",
+      "bytes": 176
+    },
+    {
+      "file": "runtime-health.json",
+      "sha256": "DC9C9D6F0126C61B95B98380F3DA54546F35AD85180EF4C8E050A7ED954ACC0C",
+      "bytes": 1151
+    },
+    {
+      "file": "summary.txt",
+      "sha256": "5A052CB3EF422C91A8CF4EAE52C372F45A45A44B88859179DA432AA474BEA3F7",
+      "bytes": 4300
+    }
+  ],
+  "localFullLog": {
+    "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\runtime-observation.log",
+    "sha256": "D1C05EB6A8637FA85A701DDC89108F63E9BEF142578C7E6783368B100C1E9A28",
+    "bytes": 12397023
+  },
+  "externalProbeHashes": "See the three reviewer provenance files for exact source/library/executable/output hashes; no movie pixels or full logs copied into Git."
+}

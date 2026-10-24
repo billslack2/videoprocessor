@@ -1,0 +1,57 @@
+{
+  "createdUtc": "2026-10-24T07:49:16.0937155Z",
+  "sourceHead": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "sourceStatus": [],
+  "resultRows": 20,
+  "hashes": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\capacity-accounting.cpp",
+      "sha256": "E3A0BBEE612BDEC36DC482D1D71DAC25D475487CC85DCBABB91994463EDF47C2"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\build.cmd",
+      "sha256": "C1723DE72C66FB6516C0761E565860A3F07299B9FCA081CFBB471AD67F9FDDDB"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\build.txt",
+      "sha256": "E8A2802F661F48149D2EE877EE074000EC12C3EDACB3C4A5D92AD2F0CC9707E3"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\capacity-accounting.exe",
+      "sha256": "24D74CDA771FFB159A0B0619404428726D84F3A86A5AECBCF3FF3413F1119AF3"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\results.csv",
+      "sha256": "95A3234F6ACB50037DBF2EEAD9B078603EEE2683A81ADC82839F46674160B0C5"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\probe-stderr.txt",
+      "sha256": "3FA5B3DE0825A9D85F33F7D965E70CB095C2FEC1BD4E8209AC04CB7C9AA47407"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\cue-capacity-review\\review.txt",
+      "sha256": "FB8692D95534396ABF80BAB8EB4137B24BDDE0B95AC6A6BC7D2E71D8DF2E4C58"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "sha256": "1DC4F4B2D5691A8C890597B640C5EF313B68AF63D97AA05ADB58EFD8254C48B0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+      "sha256": "D8089C71D260BF713FA4080B0528C2DE96E7388B67522B4977EA32AF9F049E29"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "sha256": "78E6B0816BD2E57C7449AC405C815C7CD0CE53E78D686FDA92C96299B431778F"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "2E10A08004538077F6E153733A8E2282A0B5D8643285BCE46E031EFE81BA6196"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-retention-audit-20261024-0237\\large-cue-review\\fixture.h",
+      "sha256": "2E2CEE7599349D9BC610BD9B1E150F04AE3E246EE1F0EBC406E3559D1C6AD244"
+    }
+  ],
+  "disposition": "No new actionable finding; no production changes"
+}

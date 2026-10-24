@@ -1,0 +1,15 @@
+Read-only work-accounting follow-up, clean 13dc7bb0
+
+Scope: remaining current-inspection native sampler, shared-budget ownership, detector exhaustion and runtime timing. This review makes no source changes and does not repeat the prior native/GPU suite.
+
+AnalysisLumaReadBudget::Spend charges once before each permitted native sample and refuses work after used reaches limit. Current inspection caps its local allowance by remaining shared reads; its scope guard charges that outer counter once on every exit. The new exact-plane retry uses the same local source and only runs with remaining budget. Failure remains incomplete/private and cannot renew a valid proof.
+
+SubtitleCueContinuation::Sample returns immediately at its local sample ceiling or failed underlying read. It does allocate bounded grid storage before the first read; this is finite setup cost, not a demonstrated runaway or a reproduced incident cause. Verify performs bounded in-memory comparisons only after a complete sampled ROI exists. No unbounded post-exhaustion sampling loop was found here. The remaining large-acquisition capacity question belongs to the cue review, not a speculative quota increase.
+
+SubtitleBoxDetector::Analyze stops widened retry after caller read exhaustion and reports detected=false/workLimit=true. Previously repaired opaque-card paths propagate caller exhaustion and stop additional trials. Existing complete detector and row-format regressions are already qualified in the 1,964-test receipt; they were not duplicated.
+
+New untouched-runtime interval 03:22:53-03:42:23 has 584 valid/applied cap records and zero logged subtitle stability events, pixel contradictions, geometry changes or renderer failures. Same process/loaded hashes/settings persist. Reported source/display remains near 23.976 Hz. Measured subtitle consume peak4.157ms and asynchronous full worker peak30.988ms do not alone establish a display deadline miss or physical24-to-60 qualification. No drops/failures/GPU overruns appear in these sampled windows.
+
+Disposition: no new actionable defect reproduced in these read-accounting paths. Read limits are bounded work, not a hard CPU deadline, and stationary telemetry is not visual acceptance. Exact module and log hashes are in runtime-health.json and observation.json. PR197 remains draft/unmerged.
+
+Budget-pointer lifetime cross-check: the only production assignments are the synchronous current-proof source and nested inspector. PreparedCurrentSubtitleCue explicitly clears readBudget and backingOwner; renderer clears borrowed input data and proof owners after copying the decision. Worker requests capture the separately prepared source by value, not the local subtitleProofSource. No stack-bound read counter was found escaping into worker work or packet callbacks. This is a targeted source inspection, not sanitizer qualification.

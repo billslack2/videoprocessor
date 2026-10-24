@@ -1,0 +1,35 @@
+VP-0207 larger two-line acquisition capacity review — 2026-10-24 03:40 follow-up
+
+Disposition: no new actionable correctness or read-accounting defect found. No production source/configuration/runtime changes; no integrated build, suite rerun or deployment. Preserve the current finite acquisition limit.
+
+Scope and provenance
+Read the latest 13dc deployment/test receipt before this audit. Source is clean 13dc7bb0cc3c195035ed0f41fc81e0f749460685 in E:\codex\videoprocessor\subtitle-current-cap-fix-20261023. The external probe links that build's Release VideoProcessor-Lib.lib (SHA256 2E10A08004538077F6E153733A8E2282A0B5D8643285BCE46E031EFE81BA6196). All scratch files are outside Git. Build command is preserved in build.cmd; normal linker stack reserve is 1 MiB. Results and executable/source hashes accompany this report.
+
+Probe contract
+capacity-accounting.cpp uses the existing native P210 3840x2160 synthetic fixture, physical planes384/1776, unchanged current headers and actual detector/Resolve/PrepareCurrentSubtitleCueInto/ConsumePreparedCurrentSubtitleCueInto calls. Two rows are drawn at1778/1886; each glyph is48 pixels wide,78-pixel pitch. Observations use actual complete detector Analyze(requireConfiguredSearch=true); no fabricated nearby/reference provenance flag is added. This is a complete-current synthetic acquisition probe, not a claim about which asynchronous worker path naturally supplies such evidence live. Native pixels are stationary across the two source identities.
+
+Configured full-width lower-side scan starts at1448 for nearBar20 and1268 for nearBar200, ending at2160. The complete detector work occurs before coordinator admission, as worker-style evidence; reported native_reads are the shared coordinator budget reads, not the sum of detector measurement and coordinator work. A cold invalid guard has zero Prepare reads. The probe independently counts the exact native grid points that Remember is supposed to sample and asserts stage0 native_reads == min(65536, bounding ROI points). It also computes an unapplied counterfactual union count to explain the geometry. It does not alter source sampling, masks, quotas, proof rules or configured companion coverage.
+
+New asymmetric two-line result
+30 glyphs x66 pixels on the first row and4 glyphs x66 pixels on the second row are measured as TWO lines. Both nearBar20 and200 produce:
+- bounding ROI [567,1646..3274,2080],73,116 native grid points;
+- union of individual expanded line/source-panel rectangles59,856 points;
+-13,260 additional points in bounding-rectangle corners;
+- stage0 accepted.detected=1 but guard.HasReference=0, reason sample-budget, reads65,536 exactly;
+- shared frame budget is not exhausted;
+- stage1 remains unseeded with same reason;77,870 coordinator reads include the separate current reference-refresh operation before the65,536-point seed attempt.
+The34x66/8x66 case is also measured as TWO lines:81,540 bounding points,68,280 union points,13,260 corner points,65,536 acquisition reads. Mixed54/84-pixel rows in this probe are grouped by the detector into ONE larger measured line. Their larger ROI failures must not be presented as accepted two-line capacity evidence.
+
+Why this is not a safe union-only optimization
+SubtitleCueContinuation.h:68-86 builds one bounding rectangle from all expanded lines (3 line heights horizontally and2 vertically) plus sourcePanel, then samples that rectangle with a65,536-read ceiling. Sample at466-493 visits each sorted unique grid row and each x point once. There is no per-line overlap double charge; the exact-read assertion passed all20 case/stage rows.
+
+The additional corner points are part of the current proof contract. Verify at389 and397-438 resamples the entire saved rectangle and rejects newly introduced unowned bar ink; it also protects acquired source backing. Only a complete configured inspection may defer unrelated picture-side points (414-420). A partial proof has no substitute full-side detector check. Removing those corner samples would change what partial continuation can detect, not merely remove duplicate work. Any future union-only design would need an explicitly separate complete-only candidate contract plus regressions for companion/new bar ink in the omitted region. This audit proposes no such change.
+
+Why current raw masks cannot simply replace acquisition pixels
+Detector raw ink is local-contrast/classification output (SubtitleBoxDetector.cpp around initial snapshot creation409-418, plus later component/panel refinement). Acquisition Sample classifies fresh native luma/chroma using the accepted palette and stores exact native samples used by later Verify/mismatch diagnostics (SubtitleCueContinuation.h:85-99,466-493). These are not interchangeable representations. Complete detector coverage does not itself prove equivalent baseline semantics, and ordinary narrower raw observations need not cover the whole expanded acquisition rectangle.
+
+No duplicated experiments or new causal claim
+The earlier exact-count seed preflight experiment and prior two-line capacity matrix were reviewed, not repeated as new findings. The already-fixed padded-envelope plane defect is not reclassified here. No false current ownership, stale cap application or whole-frame overrun was reproduced. This probe does not establish the cause of the user's earlier stationary flicker, does not test live frame-rate mismatch and does not extend support beyond the deliberate finite seed allowance. Existing complete configured companion coverage and current-pixel authority remain unchanged.
+
+Evidence
+results.csv:20 case/stage rows. probe-stderr.txt: PASS unique seed read accounting. build.txt: successful external build. manifest.json records source status and SHA256 for the relevant production headers, linked library, donor fixture, probe/build/executable/results/report. Source remains clean.

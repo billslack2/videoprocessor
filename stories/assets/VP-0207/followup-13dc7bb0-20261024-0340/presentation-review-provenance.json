@@ -1,0 +1,79 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "sourceDirty": false,
+  "scope": "external joined CPU/current-cap/GPU packet repeat recovery; no physical cadence qualification",
+  "buildExit": 0,
+  "probeExit": 0,
+  "hardware": true,
+  "cases": 2,
+  "softwareDevice": false,
+  "sourceBytesComparedUnchanged": true,
+  "productionEdits": false,
+  "runtimeChanges": false,
+  "hashes": [
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\build-joined.cmd",
+      "Hash": "738A03DCDDEC3426D815B11230EE8B49846713A8F9E4F27790944447DC7B8725"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\build-joined.log",
+      "Hash": "4901CAA72F715D9D260F6E5EB2D8B35505FFC89F2DDF00DEE01D490D45D88E1C"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\fixture.h",
+      "Hash": "2E2CEE7599349D9BC610BD9B1E150F04AE3E246EE1F0EBC406E3559D1C6AD244"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\joined-cap-repeat.cpp",
+      "Hash": "6435D5DF4A048A70AFC3DB8A411BA1917111DC66D2D89D653E83915E33237777"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\joined-cap-repeat.exe",
+      "Hash": "BCE58D6A50AD50F8E81B9F24962E820139227CB3F88411A20B5BD27F650E2533"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\joined-cap-repeat-results.txt",
+      "Hash": "1748CCB897F415C295F504EB8584C683D24268E082786CD4A2174ED6A4DFABEA"
+    },
+    {
+      "Path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\presentation-review\\review.txt",
+      "Hash": "DD546493134CC552A6FB70C6AF11AFED606C8070889AF7B358B7FCA65F833B32"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "Hash": "2E10A08004538077F6E153733A8E2282A0B5D8643285BCE46E031EFE81BA6196"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\3rdparty\\libplacebo\\lib\\libplacebo-360.lib",
+      "Hash": "8844BDDF7DD5406B40E05B339476DF2B24426F2C1705BB24F015E719B76A1725"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\libplacebo-360.dll",
+      "Hash": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+      "Hash": "D8089C71D260BF713FA4080B0528C2DE96E7388B67522B4977EA32AF9F049E29"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBackingLip.h",
+      "Hash": "9D3595BB9CD456FB55332D00FD971F5C0D3474033BFFDB69D7EC02E3A0BFBDA5"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "Hash": "1DC4F4B2D5691A8C890597B640C5EF313B68AF63D97AA05ADB58EFD8254C48B0"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCutPasteShader.h",
+      "Hash": "BEB95983DA20E833CE0506FAEAD10751C47F7530518E3207EBC0BA9923F6896D"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\TemporalRenderer.h",
+      "Hash": "EF0CBE1E3A31D61A4E894777944B68BAD5EF07C4090F01EE33859A038AB3E34F"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "Hash": "61B7E9C4439F35E4EEA4BD319EBBA89CF02EA931310A73DBF3F3271B238170FA"
+    }
+  ]
+}

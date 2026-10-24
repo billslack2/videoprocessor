@@ -1,0 +1,28 @@
+03:40 finite backing revalidation audit — no actionable finding
+
+Pinned production source: 13dc7bb0cc3c195035ed0f41fc81e0f749460685, clean before and after. Current production Release library linked. No production edits, integrated build, runtime/config change, or quota relaxation. Canonical VP-0207 story and exact-plane deployment receipts reviewed.
+
+Existing coverage already verifies helper-level budget-only private outline retention, original expiry, contradiction/context retirement, and no partial cleanup: SubtitleBackingLipTests.cpp:576,950,1430,1454. The current-raw fallback test at763 also proves fresh cap pixels remain mandatory. These tests were read, not rerun as a redundant suite.
+
+New external qualification uses the real CPU production interfaces in their order: two actual Measure/Resolve observations acquire a cue, then PrepareCurrentSubtitleCueInto -> optional pending Resolve -> ConsumePreparedCurrentSubtitleCueInto -> subtitle compositor -> SubtitleBackingLipContinuity::Consume -> ApplyCurrentSubtitleBackingLip. The cap reset predicate for invalid/already-cleaned geometry matches the renderer. The fixture stays in transparent reconstruction with valid default geometry. This does not call private renderer layout adaptations, prepared GPU erasure, final submission, or the display.
+
+68 checked transitions: native P210 3840x2160, 26 glyphs on each of two 66-pixel lines, lower and mirrored upper bars, configured near-bar distances20/200. Every transition kept a valid exact-current COMPLETE cue and valid glyph geometry. Budget interruption is explicit test injection AFTER the real coordinator by reducing the same shared budget's remaining ceiling; it is not a naturally reproduced production overrun. The normal393216 inspection /524288 shared /131072 cap quotas are unchanged.
+
+Results:
+- Current outline revalidation used81,830 native reads (81,833 logical cap samples). One read short returned lip-work-budget, no generated cleanup, and unchanged glyph geometry. A repeated identical source with1 read also emitted no cleanup. Exactly81,830 allowed reads on that same source revalidated and applied the original rectangle without growing it.
+- Native body mutation on the repeated identity was an explicit adversarial immutability violation: the complete cue proof reused its source cache, but cap pixels were freshly read, found lip-outline-body-changed, and emitted no cleanup. Restoration on the next source cold-acquired; it did not reuse the retired outline.
+- Eight subsequent incomplete cap sources advanced the COMPLETE glyph cursor but did not renew the cap's last-success source3. Source12 (gap9) could not reuse the private outline to tolerate an outside flank shadow; it cold-rejected with lip-non-card-side-geometry. Removing that shadow allowed fresh acquisition at13, with revalidatedOutline=false.
+- Applying a valid cap with changed full source identity, policy or continuity rejected all12 adverse attempts.
+- All successful cap proofs actually passed Apply and produced the expected finite cleanup rectangle. Invalid proofs produced no cleanup.
+
+Normal full-path totals were406,472/449,672 reads for lower near20/200 and407,816/451,016 for upper. Repeat source cache naturally saved prior inspector reads, but never cap native revalidation. The probe executable has the ordinary1,048,576-byte stack reserve /4096 commit; this is not a replacement for the separate pressured production-stack regression.
+
+Code review:
+- SubtitleBackingLip.h:523-554 retains only original outline coordinates on lip-work-budget; successful proof alone updates its identity. Context/cue/epoch mismatches or other failures reset it. The eight-source window is accepted-sequence based, not wall-clock or timeout authority.
+- ProveCurrentSubtitleBackingLip at45 binds current cue/context/native source, reproves the current side plane where required, and checks every body pixel plus finite current closure before validity. Contradictory interior body samples at320/325 immediately reject.
+- ApplyCurrentSubtitleBackingLip at484 binds the resulting proof to exact selected source, policy, continuity, and composed native limits.
+- LibplaceboVideoRenderer.cpp:14085/14091/14096 resets, proves, then applies; the private outline itself is never submitted.
+
+Disposition: no missed expiry, identity, or partial-current contradiction defect reproduced. No source change recommended. Finite cleanup may intentionally be absent on a frame whose current cap proof is incomplete; this audit does not claim all playback workloads fit the quota, that old cleanup can safely be held, or physical display/GPU flicker is ruled out. Existing broader full-path and runtime qualifications remain separate.
+
+Reproduce: build.cmd in this directory, then run backing-cycles.exe with the current x64/Release directory on PATH. backing-cycles-output.txt contains all68 transitions; receipt.json records pinned identity, clean status, hashes and PE stack properties. All textual evidence is UTF-8.

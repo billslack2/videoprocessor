@@ -1,0 +1,57 @@
+{
+  "source_commit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "source_status": "",
+  "scope": "External read-only CPU current-cue/backing integration qualification; no runtime/config changes.",
+  "machine": "0x8664",
+  "stack_reserve": 1048576,
+  "stack_commit": 4096,
+  "completed_rows": 68,
+  "pass": true,
+  "files": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\backing-review\\backing-cycles.cpp",
+      "bytes": 25575,
+      "sha256": "21ffc520612c2ddebf795643adce2132a1df405f7c2859fb68cacdb45a22dbf0"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\backing-review\\build.cmd",
+      "bytes": 639,
+      "sha256": "8ba8fdd349e6896dbd4d211789d86f189eeaf5178567aa9355c9b8837b1755f1"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\backing-review\\backing-cycles.exe",
+      "bytes": 428544,
+      "sha256": "94934e0cd5b2a910955f92b69caf3209bccf77ace7e65e04988e5bee9b7f7e85"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\backing-review\\backing-cycles-output.txt",
+      "bytes": 7185,
+      "sha256": "52a20f092847f86038b538f6eef46cacd8d8ed204cde0e1e7902d6ff525cde5b"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\x64\\Release\\VideoProcessor-Lib.lib",
+      "bytes": 125710350,
+      "sha256": "2e10a08004538077f6e153733a8e2282a0b5d8643285bce46e031efe81ba6196"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBackingLip.h",
+      "bytes": 36482,
+      "sha256": "9d3595bb9cd456fb55332d00fd971f5c0d3474033bffdb69d7ec02e3a0bfbda5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCurrentCue.h",
+      "bytes": 7663,
+      "sha256": "d8089c71d260bf713fa4080b0528c2de96e7388b67522b4977ea32af9f049e29"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleCueContinuation.h",
+      "bytes": 37336,
+      "sha256": "1dc4f4b2d5691a8c890597b640c5ef313b68af63d97aa05adb58efd8254c48b0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Test\\SubtitleBackingLipTests.cpp",
+      "bytes": 177860,
+      "sha256": "6c5359778758c1763a14e849b31125862ae7f1182764363f1a6ba1a1aa1e9dff"
+    }
+  ]
+}

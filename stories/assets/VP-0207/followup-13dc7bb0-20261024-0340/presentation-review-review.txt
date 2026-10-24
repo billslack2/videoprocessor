@@ -1,0 +1,30 @@
+Follow-up presentation review: current cap failure, output repeats and recovery
+
+Result: no new actionable defect was reproduced. Source remains clean 13dc7bb0cc3c195035ed0f41fc81e0f749460685. No production source, runtime, display, active profile, configuration or story was changed; no full GPU suite ran.
+
+Specific gap in existing coverage
+SubtitleBackingLipTests::EnvelopeOnlyPlaneFallbackKeepsGlyphAndBackingAuthoritiesSeparate already proves complete glyph evidence can survive an invalid current finite cap, but stops at CPU geometry. MotionRendererTests::CompositionCaptureReceiptKeepsMetadataWithItsGpuPacket tests real GPU duplicate capture, recovery, ring replacement and HDR metadata generally, without feeding actual current-cap failure/recovery geometry. The new external probe joins those boundaries; it does not replace the production host's RenderLocked loop.
+
+Production ordering reviewed
+LibplaceboVideoRenderer.cpp13725: reuseSubtitlePreparation is restricted to repeatedTemporalOutput and matching generation/source sequence/viewport/mode. RenderLoop24644 passes motionDraw>0 separately from cadenceRepeat, so later outputs within one source batch reuse the original preparation and do not re-run cap proof. A distinct cadence-repeat queue entry at motionDraw0 can re-evaluate current evidence. At14090–14098, finite cap proof and Apply remain separate from glyph admission. A failed optional cap does not authorize erasure and does not revoke an otherwise valid glyph composition. At14486–14529, CaptureComposition/CaptureNativeComposition return a real insertion receipt; packet geometry is updated only on that receipt. A duplicate retains its first owned GPU pixels/callback and first metadata. After history loss,14517–14524 permits real recapture of already prepared values and binds the new receipt. Existing selected-packet and source-ledger contracts remain unchanged.
+
+Focused external reproduction
+joined-cap-repeat.cpp uses actual unchanged PrepareCurrentSubtitleCueInto/ConsumePreparedCurrentSubtitleCueInto, presentation tracker, compositor, SubtitleBackingLipContinuity, ApplyCurrentSubtitleBackingLip, cleanup/layer shaders, TemporalRenderer capture/preflight/render and real D3D11 texture download. Fixture is a synthetic 640x360 P210 source with measured two-line glyphs and a finite rounded five-row cap. The same native P210 planes are uploaded to GPU and consumed by CPU proof. Full source vectors are compared unchanged after the sequence.
+
+Controlled fault injection limits the cap phase to one read; this deliberately creates lip-work-budget while complete current glyph proof remains valid. This is not a reproduced natural exhaustion of the production 131072 cap ceiling, nor a production limit change. All other CPU work uses the normal 524288 shared ceiling. The fixture remains immutable when the same source identity is revisited.
+
+Each of two cases, progressive and deferred native/bob, ran this exact sequence:
+1. Source 3: complete glyph proof, injected invalid cap, actual capture with no generated cleanup.
+2. Three modeled motionDraw repeat passes reuse the same selected packet; no current proof is re-run.
+3. Fresh current cap reproof for the same immutable source 3 succeeds, but duplicate capture returns no insertion receipt. Old pixels and old metadata remain paired.
+4. History clear permits actual recapture of recovered preparation; pixels and metadata change together.
+5. New accepted source 4 with identical bytes obtains fresh complete proof and publishes valid cleanup normally.
+
+Observed results
+Both hardware D3D11 cases report software=0 and exit 0. Before true recapture, all outputs have cap pixel 0 and 1728 yellow relocated-glyph pixels; repeat and duplicate outputs are byte-identical to the original complete output image. After actual clear/recapture, and on source 4, cap pixel 69 shows current cleanup and all 1728 glyph pixels remain visible. No selected-sequence, caption-presence or cleanup-metadata mismatch occurred. New source proof used 117278 reads; recovered cap used 10888. Same-source cached proof reports its originating sample count but consumes zero additional native reads, shown by total_reads=10888 for that repeat. No stale cap cleanup was emitted on the failed first attempt.
+
+Scope of conclusion
+The probe mirrors the host's reviewed repeat-versus-reprepare branch and receipt assignment while exercising the actual production proof/shader/packet APIs. It is not direct execution of private RenderLocked or its complete source/presentation ledger. Repeats use a fixed selected source/output timestamp to test immutable packet consistency; 24/60 are TemporalRenderer settings, not real physical refresh qualification or a new scheduled cadence sweep. Output is offscreen SDR/full-raster and native bob; moving Ben-Hur, HDR brightness, the actual display mismatch, other deinterlacers and full viewport policy remain outside this focused probe. Conservative cap omission under insufficient current evidence remains expected; this test found no separate same-packet inconsistency.
+
+Evidence
+build-joined.cmd, build-joined.log, fixture.h, joined-cap-repeat.cpp/.exe and joined-cap-repeat-results.txt preserve the exact narrow reproduction. The build links the existing clean Release VideoProcessor-Lib.lib and libplacebo import library; provenance.json records exact hashes and source identity. Existing MFC default-library linker warnings are retained in the build log. Source remained clean after the probe. No production change is recommended from these results.

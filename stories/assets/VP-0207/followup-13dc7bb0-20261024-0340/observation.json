@@ -1,0 +1,160 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "pid": 76388,
+  "afterPriorReceipt": {
+    "start": "2026-10-24 03:22:53",
+    "end": "2026-10-24 03:42:23",
+    "lipRecords": 584,
+    "invalidOrUnapplied": [],
+    "rectangles": [
+      "1442,1746-2398,1776"
+    ],
+    "subtitleTransitions": [],
+    "pixelContradictions": [],
+    "geometryChanges": [],
+    "rendererFailures": [],
+    "performance": {
+      "subtitle": {
+        "windows": 234,
+        "metrics": {
+          "consume_avg_ms": {
+            "min": 2.13,
+            "max": 2.473
+          },
+          "consume_peak_ms": {
+            "min": 2.369,
+            "max": 4.157
+          },
+          "full_peak_ms": {
+            "min": 19.367,
+            "max": 30.988
+          },
+          "pending_frames": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "verified_pending": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "dropped_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "failed_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "gpu": {
+        "windows": 234,
+        "metrics": {
+          "display_hz": {
+            "min": 23.97641,
+            "max": 23.97641
+          },
+          "gpu_frame_peak_ms": {
+            "min": 4.299,
+            "max": 5.011
+          },
+          "gpu_overruns": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_disjoint": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_query_failures": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_lock_drops": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      }
+    }
+  },
+  "completeSettledWindow": {
+    "start": "2026-10-24 03:19:20",
+    "end": "2026-10-24 03:42:23",
+    "lipRecords": 691,
+    "invalidOrUnapplied": [],
+    "rectangles": [
+      "1442,1746-2398,1776"
+    ],
+    "subtitleTransitions": [],
+    "pixelContradictions": [],
+    "geometryChanges": [],
+    "rendererFailures": [],
+    "performance": {
+      "subtitle": {
+        "windows": 276,
+        "metrics": {
+          "consume_avg_ms": {
+            "min": 2.13,
+            "max": 2.473
+          },
+          "consume_peak_ms": {
+            "min": 2.369,
+            "max": 4.157
+          },
+          "full_peak_ms": {
+            "min": 19.367,
+            "max": 30.988
+          },
+          "pending_frames": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "verified_pending": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "dropped_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "failed_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "gpu": {
+        "windows": 276,
+        "metrics": {
+          "display_hz": {
+            "min": 23.97641,
+            "max": 23.97643
+          },
+          "gpu_frame_peak_ms": {
+            "min": 4.299,
+            "max": 5.07
+          },
+          "gpu_overruns": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_disjoint": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_query_failures": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_lock_drops": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      }
+    }
+  },
+  "logSha256": "D1C05EB6A8637FA85A701DDC89108F63E9BEF142578C7E6783368B100C1E9A28",
+  "scope": "Extended sampled stationary session; no visual or physical mismatched-refresh qualification. No build/test/deployment or setting changes during this observation."
+}
