@@ -1,0 +1,21 @@
+Qualified caption recovery and delayed picture-fit correction - 2026-10-24
+
+Source: 12f49352697d709dccd74ff4ab86e61d2ce4c7cb (clean), beta v1.4.02-beta b1415da4e2cc12807f390f4b722c459be9a17c08.
+PR #197 remains OPEN DRAFT and unmerged. All 1,990 selected native/GPU regressions passed on matching x64 Release host, standard renderer, beta renderer and test targets. These are selected targets/classes, not the entire solution/suite.
+
+Framing: the saved first-play session alternated two submitted fits at about 8.7% scale difference; full-raster output was not established. The actual policy reproduction showed 15/15 alternations at one-source selection lag. An exact uncertainty-derived retained copy may now expand only to a newer actually submitted containing extent. It cannot contract, invent a union, renew native authority, or authorize cleanup. Current authoritative decisions remain separate. Delays 0/1/3 and actual GPU neighbor/output-contract tests pass.
+
+Caption: native capture contains a second lower-bar line absent from the user's cropped screenshot. A failed current edge cluster only nominates a subtitle placement coordinate. Complete current glyph/card coverage and an exact edge outside the entire caption width are required; bar-body evidence remains unmasked. Raw AR evidence, tracking and ordinary pending authority are unchanged. Exact native mixed picture/bar and separate wholly-in-picture 30% reconstruction regressions pass. Native cue 1 survives six simulated worker gaps and both honest partial/full-raster base variants, with cleanup 1710..1896 and stable 265px background. Removal/context/budget/false-edge/known-side-caption controls pass.
+
+Capacity: the actual native reference needs 79,650 samples, above the old 65,536 seed cap. Only COMPLETE private acquisitions get a 131,072 seed ceiling; ordinary/partial paths remain 65,536. Private references always require complete current inspection and cannot use partial AdvanceVerified. Inspector 393,216/frame 524,288 limits and leases are unchanged. Native seed 89,240, current-worker reuse 108,942, missing-worker full proof 379,391 total reads. Synchronous gap proof measured roughly 19-23ms; this is not a 60Hz performance guarantee.
+
+Stack: six built-in modes and a seventh external actual-native acquisition/continuation/compositor probe pass with normal 1 MiB reserve/4 KiB commit and 783,808-byte caller pressure. Matching PDB/unwind audit passes. Beta caller frames total 755,392, leaving 28,416 below the conservative modeled caller pressure; this is not total nested stack usage.
+
+Deployment backup: C:\Videoprocessor\vp\deployment-backups\vp0207-envelope-recovery-12f49352-20261024-114617
+Loaded host and both renderer hashes match qualification. PID 29876 survived 245.6s with zero matching crash/hang events. Configuration bytes restored exactly. Only saved profile.subtitles changed classic to reconstruction, after backup; the startup Classic action was suppressed 10 seconds then byte-exact cfg restored. The initial script stopped before startup/state edit because its CRLF regex check failed. Original backups/settings were preserved, installed hashes reverified, and the same deployment completed with the corrected check.
+
+Observation: 2026-10-24 11:48:37 through 2026-10-24 11:52:34; counts={"backing": 0, "continuation": 0, "layout": 0, "lip": 0, "pixelContradiction": 0, "stability": 0, "submittedGeometry": 0}. No detected caption/layout was exercised. Startup observation does not establish the captured cue or visual success. Actual live scene replay, moving content and physical mismatched-refresh/HDR acceptance remain pending. Prior failed replay receipts are preserved; generic large-cue limits and excluded framing paths are not claimed solved.
+
+Full logs/TRX, five native movie captures, compiled probes, PDBs and binaries stay outside Git.
+Build/test/deployment/observation: E:\codex\diagnostics\vp0207-start-playback-bounce-20261024-104206
+New native cue and team reviews: E:\codex\diagnostics\vp0207-in-picture-approved-20261024-1047

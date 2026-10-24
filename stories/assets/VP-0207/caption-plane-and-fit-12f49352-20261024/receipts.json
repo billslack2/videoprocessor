@@ -1,0 +1,91 @@
+{
+  "source": "12f49352697d709dccd74ff4ab86e61d2ce4c7cb",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "passed": 1990,
+  "pr": 197,
+  "draft": true,
+  "merged": false,
+  "runtime": [
+    {
+      "source": "E:\\codex\\videoprocessor\\submitted-envelope-bounce-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "previousSha256": "6699EAE92FBDCD172D7290532F5C6C555D1D27F87CB04E0CB88D86D94E8CFCEB",
+      "sha256": "00C09D314D837B3138EF0D2046CFE767C6C6F865F02B685CF215628E81BB65BB"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\submitted-envelope-bounce-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "previousSha256": "B47A892BE7A37DC5752BED019E2124DEB2585CFBA33A6AC4E0554F79E1E8A287",
+      "sha256": "F0BA7411EF253A194B663F9C8F2D575523C42CDCA88DAC1A3F50A53BD31CF1E0"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\submitted-envelope-bounce-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "previousSha256": "3705FAF4761E90F5ACEEFE08978B3581EBB330A608B244426545506ECBE12E7E",
+      "sha256": "0E7FE5D667430F1197CB3AD3ED1AAC27FD7E6978A4F3AE28C3C229996CA1C5B2"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\audit-release-build-result.json",
+      "bytes": 356,
+      "sha256": "17837409BCA984B250A5F76F4E02F9346DCBD32F1525C0D42DE8E862BF3EB88A"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\envelope-regressions-result.json",
+      "bytes": 2712,
+      "sha256": "AFD8286FD95216EB36331C63FF58E5796A4B3A89EA241DEFD34FFB5FB24F734B"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\envelope-regressions.trx",
+      "bytes": 3076800,
+      "sha256": "A314238E4DA7F10DCAB776F603FB6C01BBFFF3029588A656E055AFA04D87F80C"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\validation.json",
+      "bytes": 20093,
+      "sha256": "BEDAB9C3C032E137F8B752E820459FC83F69202564AE4897653E270B477F483D"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\deployment.json",
+      "bytes": 4591,
+      "sha256": "F8CAB40FEBFFD3A39F84A11456CDF7B0F11774063BCF6035BC3AC0DD08B8F47A"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\deployment-interruption.json",
+      "bytes": 478,
+      "sha256": "4D2E19B107F1A946B1C738718EE1FEC2F17D20CDE9235B6144036FBD3EE6C11F"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\runtime-health.json",
+      "bytes": 1042,
+      "sha256": "90E10640B8018EAFEF8C8F00D497F4447A7FE529BE5124EF8292135FC7481251"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\post-deploy-observation.json",
+      "bytes": 1094,
+      "sha256": "A21B8B86CE1D139EC512A38A1A5BB29CDD7124C9B8B43B6B57F44BC2C276DA4E"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\post-deploy-observation.log",
+      "bytes": 3040286,
+      "sha256": "3C74CE38C9C16366E799BAD44C3AECBADB43457AF9FF7C194166A7BBB385DD21"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\compiled-stack-audit\\audit-receipt.json",
+      "bytes": 2905,
+      "sha256": "924AE6A754FEAFE1F3FF87D0C961241443295030A23AFE0557776521717CCE46"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\compiled-stack-audit\\private-native-stack-receipt.json",
+      "bytes": 6033,
+      "sha256": "DB2B9A20B050C41B4205DA47B807130E26DF616E30111AFE21CD7FA97FB48CCC"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-start-playback-bounce-20261024-104206\\compiled-stack-audit\\compiled-stack-comparison.json",
+      "bytes": 158495,
+      "sha256": "5E5BC2B68EA90B724755847DD5B37ECC955B1AA5D22BE3170FEA9393B84DD0E2"
+    }
+  ],
+  "limits": "Selected tests and controlled native proofs; actual playback acceptance pending."
+}
