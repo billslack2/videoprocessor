@@ -4,6 +4,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
+#include "ProcessingPerformanceWindow.h"
 #include "LookaheadPerformanceWindow.h"
 #include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
@@ -4452,6 +4453,7 @@ struct LibplaceboVideoRenderer::Impl
     PresentationAnalysisBudget analysisWorkBudget;
     uint64_t nextOutputCorrelationLogTick=0;
     AnalysisPerformanceWindow analysisPerformance;
+    ProcessingPerformanceWindow processingPerformance;
     QueuedFrame::LookaheadWorker::Metrics previousWorkerMetrics;
     uint64_t lastLookaheadAbortTick=0;
     std::string lastLookaheadAbortStage;
@@ -4503,7 +4505,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t loggedSourceDecisionEvaluations=0,loggedSourceDecisionReuses=0,loggedSourceSubtitleReuses=0;
     struct SubtitleSourcePreparation {
         bool valid=false,composed=false,captionConfirmed=false,captionMeasured=false,noCaptionConfirmed=false;
-        bool completeForRepeat=false;
+        bool completeForRepeat=false,completePacket=false;
         uint64_t generation=0,sequence=0,viewportEpoch=0;
         SubtitlePreviewMode mode=SubtitlePreviewMode::None;
         pl_frame image{};
@@ -5459,6 +5461,7 @@ struct LibplaceboVideoRenderer::Impl
 	RendererRenderLoad RenderLoadSnapshot() const
 	{
 		RendererRenderLoad load = renderLoadMeter.Snapshot();
+        load.processing=processingPerformance.Snapshot(GetTickCount64());
 		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
 			gpuFrameTimer.Snapshot();
 		load.supported = timing.supported;
@@ -13797,11 +13800,27 @@ struct LibplaceboVideoRenderer::Impl
         const bool temporalSubtitleComposition=temporalRenderer.Active() && subtitleCutPasteTest;
         const bool nativeSubtitleComposition=temporalSubtitleComposition &&
             temporalRenderer.NativeCompositionRequired();
+        const bool completeSubtitleComposition=temporalSubtitleComposition &&
+            temporalRenderer.Mixing() && !nativeSubtitleComposition;
         // Chroma reconstruction and debanding must run before RGB normalization.
         // Keep a value snapshot so delayed native fields never read later settings.
         const auto subtitleSourceProcessing=CaptureSubtitleSourceProcessingOptions(renderParams);
         const auto* subtitleSourceProcessingOptions=temporalSubtitleComposition?
             &subtitleSourceProcessing:nullptr;
+        const auto measureSubtitlePreparation=[&](auto&& prepare) {
+            const auto before=subtitlePreparationRenderer.RenderCallCount();
+            const auto started=SteadyClock::now();
+            const bool result=prepare();
+            // Each helper below issues at most one actual pl_render_image call.
+            // Binding failures and cached output draws are not preparation calls.
+            if(subtitlePreparationRenderer.RenderCallCount()!=before)
+                processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
+                    static_cast<uint64_t>(sourceSubtitleMode) |
+                    (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
+                    (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},
+                    GetTickCount64(),std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+            return result;
+        };
         const auto failSubtitleMotion=[&](const char* reason) {
             const std::string failure=reason;
             temporalRenderer.Clear();
@@ -14138,7 +14157,7 @@ struct LibplaceboVideoRenderer::Impl
                 currentMeasuredCaptionAvailable = true;
                 currentConfirmedCaptionAvailable = subtitleBoxResult.observations >= 2;
             }
-            const bool temporalCaptureEnabled=subtitleCutPasteTest && activeSettings.subtitleTemporalFill &&
+            const bool temporalCaptureEnabled=subtitleCutPasteTest && !completeSubtitleComposition && activeSettings.subtitleTemporalFill &&
                 subtitleCutPasteBackground==5 && !subtitleBoxResult.detected && !videoFrame.IsSourceDiscontinuity();
             bool temporalSourceClean=analysisSource.IsValid() && subtitlePreview->available && currentNoCaptionConfirmed;
             if(temporalCaptureEnabled && temporalSourceClean) {
@@ -14317,29 +14336,34 @@ struct LibplaceboVideoRenderer::Impl
                         relocatedSubtitle=move;
                         subtitleCompositionSucceeded=true;
                     }
-                    else if (subtitleCutPasteHook && BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
+                    else if (subtitleCutPasteHook && (completeSubtitleComposition || BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
 						subtitleCutPasteBackground, image.color.transfer,
                         activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
-                        temporalSubtitleComposition?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All))
+                        temporalSubtitleComposition?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All)))
                     {
                         pl_frame composed{};
                         const int perfMode=subtitleCutPasteBackground==5?1:0;
                         const auto compositionStart=SteadyClock::now();
                         frameGpuTiming.BeginStage(perfMode?AlphaD3D11FrameGpuTimer::Stage::SubtitleGenerated:AlphaD3D11FrameGpuTimer::Stage::SubtitleBlack);
-                        subtitleHookBound=RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,
-                            image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
-                            temporalSubtitleComposition,
-                            activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5,
-                            false,nullptr,subtitleSourceProcessingOptions);
-                        if(subtitleHookBound && temporalSubtitleComposition) {
+                        subtitleHookBound=measureSubtitlePreparation([&] { return completeSubtitleComposition?
+                            PrepareCompleteSubtitleSourcePacket(subtitlePreparationRenderer,d3d11->gpu,
+                                image,subtitleCutPasteHook,move,subtitleCutPasteBackground,
+                                activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
+                                &subtitleCompositionTexture,composed,subtitleSourceProcessingOptions):
+                            RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,
+                                image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
+                                temporalSubtitleComposition,
+                                activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5,
+                                false,nullptr,subtitleSourceProcessingOptions); });
+                        if(subtitleHookBound && temporalSubtitleComposition && !completeSubtitleComposition) {
                             pl_frame layer{};
-                            subtitleHookBound=BindSubtitleCutPasteHook(subtitleCutPasteHook,move,
+                            subtitleHookBound=measureSubtitlePreparation([&] { return BindSubtitleCutPasteHook(subtitleCutPasteHook,move,
                                 subtitleCutPasteBackground,image.color.transfer,
                                 activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
                                 SubtitleCompositionPhase::LayerOnly) &&
                                 ComposeSubtitleLayerBeforeCrop(subtitlePreparationRenderer,d3d11->gpu,image,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,layer,
-                                    nullptr,subtitleSourceProcessingOptions);
+                                    nullptr,subtitleSourceProcessingOptions); });
                             // Never retain a repaired picture without its matching subtitle.
                             if(!subtitleHookBound)return failSubtitleMotion("Motion: subtitle layer preparation failed");
                         }
@@ -14349,7 +14373,7 @@ struct LibplaceboVideoRenderer::Impl
                         if(subtitleHookBound) {
                             const auto tick=GetTickCount64();
                             const auto& cleanup=move.generatedCleanup;
-                            const bool donorReady=activeSettings.subtitleTemporalFill &&
+                            const bool donorReady=!completeSubtitleComposition && activeSettings.subtitleTemporalFill &&
                                 subtitleCutPasteBackground==5 && subtitleTemporalValid &&
                                 subtitleTemporalTexture && subtitleCompositionTexture &&
                                 subtitleTemporalTexture->params.blit_src &&
@@ -14545,12 +14569,13 @@ struct LibplaceboVideoRenderer::Impl
             if(temporalSubtitleComposition) {
                 if(!subtitleCompositionSucceeded && !nativeSubtitleComposition) {
                     PipelinePreparationScope preparing(libplaceboRenderStartedTick);
-                    if(!RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,image,nullptr,
+                    if(!measureSubtitlePreparation([&] { return RenderSubtitleFullRaster(
+                        subtitlePreparationRenderer,d3d11->gpu,image,nullptr,
                         &subtitleCompositionTexture,subtitleComposedImage,true,false,false,
-                        nullptr,subtitleSourceProcessingOptions))return failSubtitleMotion("Motion: subtitle normalization failed");
+                        nullptr,subtitleSourceProcessingOptions); }))return failSubtitleMotion("Motion: subtitle normalization failed");
                 }
                 pl_rect2d layerBounds{};
-                if(subtitleCompositionSucceeded)
+                if(subtitleCompositionSucceeded && !completeSubtitleComposition)
                     layerBounds=ComputeSubtitleLayerBounds(relocatedSubtitle,width,height);
                 subtitleSourcePreparation.layerBounds=layerBounds;
                 if(nativeSubtitleComposition) {
@@ -14631,6 +14656,10 @@ struct LibplaceboVideoRenderer::Impl
                     };
                     if(!temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
                         subtitleSourcePreparation.nativePrepare,hasCue,&capturedSubtitlePacketNew))return failSubtitleMotion(temporalRenderer.status.c_str());
+                } else if(completeSubtitleComposition) {
+                    if(!temporalRenderer.CaptureCompleteComposition(d3d11->gpu,subtitleComposedImage,
+                        sourceSequence,subtitleCompositionSucceeded,&capturedSubtitlePacketNew))
+                        return failSubtitleMotion(temporalRenderer.status.c_str());
                 } else if(!temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds,&capturedSubtitlePacketNew))
                     return failSubtitleMotion(temporalRenderer.status.c_str());
@@ -14643,6 +14672,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.image=subtitleComposedImage;
             subtitleSourcePreparation.geometry=relocatedSubtitle;
             subtitleSourcePreparation.composed=subtitleCompositionSucceeded;
+            subtitleSourcePreparation.completePacket=completeSubtitleComposition;
             subtitleSourcePreparation.ownershipObservation=currentSubtitlePreview.current;
             subtitleSourcePreparation.continuation=currentCueContinuation;
             subtitleSourcePreparation.ownershipAccepted=subtitleBoxResult;
@@ -14665,6 +14695,9 @@ struct LibplaceboVideoRenderer::Impl
             const bool captured=nativeSubtitleComposition?
                 temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
                     subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
+                subtitleSourcePreparation.completePacket?
+                temporalRenderer.CaptureCompleteComposition(d3d11->gpu,subtitleComposedImage,
+                    sourceSequence,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
                 temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,
                     subtitleSourcePreparation.layerBounds,&capturedSubtitlePacketNew);
@@ -19720,6 +19753,12 @@ releaseDriftBaseRetention =
             // Charge preview only once when this source produces multiple outputs.
             const double livePreparationMs=std::chrono::duration<double,std::milli>(renderStart-renderWorkStarted).count();
             const double beforeRenderMs=repeatedTemporalOutput?0:preRenderTimings.activeMs+preRenderTimings.renderLockWaitMs;
+            // Total active CPU submission/wait work, including the preparation
+            // row as a subset. Present/VSync waiting is reported separately.
+            processingPerformance.RecordDraw({frameGeneration,pictureProcessingEpoch,
+                static_cast<uint64_t>(sourceSubtitleMode) | (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
+                (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},correlationNow,
+                repeatedTemporalOutput || cadenceRepeat,beforeRenderMs+livePreparationMs+renderMs);
             analysisWorkBudget.Observe(frameGeneration*1315423911ULL+viewportRequestSerial,sample.syncQpc,swapEndQpc,
                 sample.qpcFrequency,sample.expectedDisplayHz,
                 sample.available && !sample.disjoint && presentationSnapshot.evidence==AlphaPresentationEvidence::Stable,
@@ -19731,10 +19770,11 @@ releaseDriftBaseRetention =
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
                 const auto& oldProcessing=lastPictureProcessingStatistics;
-                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s source_decisions=%llu source_decision_reuses=%llu subtitle_preparation_reuses=%llu",
+                DebugLog::Log("VP source/output processing: manual_source_renders=%llu manual_source_reuses=%llu output_renders=%llu input_analysis_stride=%d processing_path=%s complete_library_outputs=%llu subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s source_decisions=%llu source_decision_reuses=%llu subtitle_preparation_reuses=%llu",
                     processed.sourceRenders-oldProcessing.sourceRenders,
                     processed.sourceReuses-oldProcessing.sourceReuses,
                     processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride,
+                    temporalRenderer.ProcessingPath(),processed.completeOutputRenders-oldProcessing.completeOutputRenders,
                     processed.sourceRendererCreations-oldProcessing.sourceRendererCreations,
                     processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes,
                     processed.subtitleFallbackOutputs-oldProcessing.subtitleFallbackOutputs,

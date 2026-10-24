@@ -1028,12 +1028,15 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
 class SubtitlePreparationRenderer {
     pl_renderer renderer=nullptr;
     pl_gpu owner=nullptr;
+    uint64_t renderCalls=0;
 public:
     SubtitlePreparationRenderer()=default;
     SubtitlePreparationRenderer(const SubtitlePreparationRenderer&)=delete;
     SubtitlePreparationRenderer& operator=(const SubtitlePreparationRenderer&)=delete;
     ~SubtitlePreparationRenderer() { Reset(); }
     void Reset() { pl_renderer_destroy(&renderer);owner=nullptr; }
+    uint64_t RenderCallCount() const { return renderCalls; }
+    void RecordRenderCall() { ++renderCalls; }
     pl_renderer Get(pl_gpu gpu) {
         if(owner!=gpu)Reset();
         if(!renderer && gpu) { renderer=pl_renderer_create(nullptr,gpu);owner=gpu; }
@@ -1099,6 +1102,7 @@ inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl
         params.background=PL_CLEAR_SKIP;
     }
     params.hooks=hook?&hook:nullptr;params.num_hooks=hook?1:0;
+    preparation.RecordRenderCall();
     if(!pl_render_image(renderer,&input,&target,&params))return false;
     if(hook) {
         const auto errors=pl_renderer_get_errors(renderer);
@@ -1108,6 +1112,23 @@ inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl
     composed=target;composed.crop=source.crop;composed.rotation=source.rotation;
     composed.overlays=source.overlays;composed.num_overlays=source.num_overlays;
     return true;
+}
+
+// Progressive Smooth Motion retains this complete source presentation as one
+// immutable packet. The picture, repair, background and glyphs are prepared
+// together, matching the non-motion composition order.
+inline bool PrepareCompleteSubtitleSourcePacket(SubtitlePreparationRenderer& preparation,pl_gpu gpu,
+    const pl_frame& source,const pl_hook* hook,const SubtitleCutPasteGeometry& geometry,
+    int backgroundMode,const SubtitleGeneratedGrayStyle& style,int spatialFill,
+    pl_tex* surface,pl_frame& composed,
+    const SubtitleSourceProcessingOptions* sourceProcessing=nullptr)
+{
+    composed={};
+    return geometry.valid &&
+        BindSubtitleCutPasteHook(hook,geometry,backgroundMode,source.color.transfer,
+            style,spatialFill,SubtitleCompositionPhase::All) &&
+        RenderSubtitleFullRaster(preparation,gpu,source,hook,surface,composed,
+            true,false,false,nullptr,sourceProcessing);
 }
 
 inline bool ComposeSubtitleBeforeCrop(SubtitlePreparationRenderer& preparation,pl_gpu gpu,

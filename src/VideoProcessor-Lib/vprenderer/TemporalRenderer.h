@@ -64,22 +64,28 @@ private:
             pl_deinterlace_algorithm algorithm=PL_DEINTERLACE_BOB;
             bool valid=false;
         };
-        struct Processed {
-            pl_frame frame{};
-            RendererHdrStatus hdrStatus{};
-            pl_tex texture=nullptr;
+        struct OutputContract {
             pl_rect2df sourceCrop{},targetCrop{},peakCrop{};
             pl_color_space targetColor{};
             pl_color_repr targetRepr{};
             pl_rotation sourceRotation=PL_ROTATION_0,targetRotation=PL_ROTATION_0;
             const pl_custom_lut* targetLut=nullptr;
             pl_icc_object targetIcc=nullptr;
-            uint64_t epoch=0,inputSignature=0,signature=0,profileSignature=0;
-            uint64_t prevSignature=0,nextSignature=0;
+            uint64_t epoch=0,profileSignature=0;
             std::vector<uint64_t> hooks;
             int width=0,height=0;
             bool valid=false;
         };
+        struct Processed : OutputContract {
+            pl_frame frame{};
+            RendererHdrStatus hdrStatus{};
+            pl_tex texture=nullptr;
+            uint64_t inputSignature=0,signature=0,prevSignature=0,nextSignature=0;
+        };
+        // Records an actual successful output of this complete packet. It is
+        // not a processed texture or a claim about libplacebo's internal cache.
+        OutputContract completeOutput;
+        bool completeComposition=false;
         std::array<Prepared,2> prepared{};
         std::array<Processed,2> processed{};
         NativePrepare nativePrepare;
@@ -111,6 +117,7 @@ private:
     pl_gpu gpu=nullptr;
     pl_renderer sourceRenderer=nullptr;
     uint64_t sourceRendererEpoch=0;
+    bool sourceRendererCompleteMode=false;
     pl_tex compositionSurface=nullptr;
     uint64_t generation=0,lastSequence=0,nextSignature=1;
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
@@ -128,6 +135,7 @@ public:
         uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
         uint64_t sourceRendererCreations=0,sourceRendererHistoryFlushes=0;
         uint64_t subtitleFallbackOutputs=0;
+        uint64_t completeOutputRenders=0;
     };
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
@@ -144,7 +152,7 @@ private:
             pl_renderer_reset_errors(sourceRenderer,nullptr);
             ++processingStatistics.sourceRendererHistoryFlushes;
         } else {
-            pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;
+            pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;sourceRendererCompleteMode=false;
         }
         if(gpu)pl_tex_destroy(gpu,&compositionSurface);
         nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();
@@ -206,6 +214,16 @@ public:
     }
     bool SubtitleFallbackActive() const { return subtitleFallbackSequence!=0; }
     const char* SubtitleFallbackReason() const { return subtitleFallbackReason; }
+    bool CompleteCompositionSelected() const {
+        if(!mixing||!composition||interlaced)return false;
+        const auto selected=SelectedPacketSequence();
+        for(const auto& packet:history)
+            if(packet->sequence==selected)return packet->completeComposition;
+        return false;
+    }
+    const char* ProcessingPath() const {
+        return CompleteCompositionSelected()?"complete_packet_library_mix":"source_before_blend";
+    }
     // A failed source cue may repeat one complete processed picture. It never
     // applies an old layer/cleanup to current pixels or renews source evidence.
     // Two missing selected source intervals are allowed; output repeats do not
@@ -235,8 +253,10 @@ public:
             if(!a.valid||!a.cleaned||a.viewportEpoch!=viewportEpoch||
                 (outputContract&&a.outputContract!=outputContract)||
                 !SameRect(a.familyBase,b.familyBase)||!SameRect(a.sourceCrop,b.sourceCrop)||
-                !MatchesProcessedOutput(packet.processed[0],source,target,params,epoch,
-                    outputWidth,outputHeight,outputContract!=0)) {
+                packet.completeComposition!=selected->completeComposition ||
+                !MatchesProcessedOutput(packet.completeComposition?packet.completeOutput:
+                    static_cast<const Stored::OutputContract&>(packet.processed[0]),
+                    source,target,params,epoch,outputWidth,outputHeight,outputContract!=0)) {
                 subtitleFallbackReason="context-or-cache-mismatch";return false;
             }
             subtitleFallbackSequence=packet.sequence;
@@ -346,6 +366,7 @@ public:
         else stored=std::make_unique<Stored>();
         stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
         stored->nativePrepare={};stored->hasSubtitle=false;stored->hdrSourceAvailable=false;
+        stored->completeComposition=false;stored->completeOutput.valid=false;
         for(auto& field:stored->prepared)field.valid=false;
         for(auto& field:stored->processed)field.valid=false;
         stored->subtitleBounds={};
@@ -445,6 +466,27 @@ public:
             }
         }
         return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds,capturedNew);
+    }
+    // This explicit packet kind also applies to normalized no-caption sources.
+    // The first capture owns its immutable pixels and marker; a duplicate may
+    // not relabel them with a later preparation result for the same PTS.
+    bool CaptureCompleteComposition(pl_gpu device,const pl_frame& completeRgb,
+        uint64_t sequence,bool hasSubtitle,bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
+        if(!mixing||!composition||interlaced)return false;
+        if(gpu&&gpu!=device)Clear();
+        if(!history.empty()&&history.back()->pts==currentPts) {
+            if(history.back()->sequence==sequence&&history.back()->completeComposition)return true;
+            status="Motion: complete packet duplicate identity or kind changed";return false;
+        }
+        bool added=false;
+        if(!CaptureComposition(device,completeRgb,nullptr,sequence,{},&added))return false;
+        if(added) {
+            history.back()->completeComposition=true;
+            history.back()->hasSubtitle=hasSubtitle;
+        }
+        if(capturedNew)*capturedNew=added;
+        return true;
     }
     // The callback owns its shader inputs and may use scratch textures only for
     // the duration of a call. Capture immediately copies raw planes; prepared
@@ -687,7 +729,7 @@ public:
     bool WithinSubtitleFallbackWindow(const Stored& prior,const Stored& selected) const {
         return WithinSubtitleFallbackWindow(prior,selected,sourceDuration);
     }
-    static bool MatchesProcessedOutput(const Stored::Processed& cached,
+    static bool MatchesProcessedOutput(const Stored::OutputContract& cached,
         const pl_frame& source,const pl_frame& target,const pl_render_params& params,
         uint64_t epoch,int width,int height,bool frozenOutputContract=false,
         bool ignoreSourceAnalysis=false) {
@@ -782,6 +824,12 @@ public:
         // Float storage defers only output-depth dithering to presentation.
         ProcessingRenderer(renderer);
         if(!sourceRenderer)return false;
+        if(sourceRendererCompleteMode) {
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+            sourceRendererCompleteMode=false;
+        }
         if(sourceRendererEpoch!=epoch) {
             pl_renderer_reset_errors(sourceRenderer,nullptr);
             sourceRendererEpoch=epoch;
@@ -815,6 +863,87 @@ public:
         cached.prevSignature=prevSignature;cached.nextSignature=nextSignature;
         cached.hooks=std::move(hookSignatures);cached.signature=this->nextSignature++;
         cached.valid=true;++processingStatistics.sourceRenders;result=&cached;return true;
+    }
+    static void RecordOutputContract(Stored::OutputContract& receipt,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        uint64_t epoch,int width,int height) {
+        receipt.sourceCrop=source.crop;receipt.targetCrop=target.crop;
+        receipt.peakCrop=params.peak_detect_params?params.peak_detect_params->analysis_crop:pl_rect2df{};
+        receipt.sourceRotation=source.rotation;receipt.targetRotation=target.rotation;
+        receipt.targetColor=target.color;receipt.targetRepr=target.repr;
+        receipt.targetLut=target.lut;receipt.targetIcc=target.icc;
+        receipt.profileSignature=target.profile.signature;receipt.epoch=epoch;
+        receipt.width=width;receipt.height=height;
+        receipt.hooks.clear();
+        for(int h=0;h<params.num_hooks;++h)receipt.hooks.push_back(params.hooks[h]->signature);
+        receipt.valid=true;
+    }
+    bool RenderCompleteComposition(const pl_frame& source,const pl_frame& target,
+        pl_render_params& params,uint64_t epoch,
+        const PresentationGeometry* selectedOutputGeometry=nullptr) {
+        const auto selectedSequence=SelectedPacketSequence();
+        size_t selectedIndex=history.size();
+        for(size_t i=0;i<history.size();++i)
+            if(history[i]->sequence==selectedSequence)selectedIndex=i;
+        const pl_tex output=target.num_planes==1?target.planes[0].texture:nullptr;
+        if(selectedIndex==history.size()||!output)return false;
+        auto& selected=*history[selectedIndex];
+        if(!selected.completeComposition)return false;
+        const bool held=subtitleFallbackSequence!=0;
+        const auto entries=held?std::vector<NativeEntry>{{selectedIndex,0,0.0}}:NativeEntriesForOutput();
+        std::vector<pl_frame> owned;
+        std::vector<const pl_frame*> frames;
+        std::vector<uint64_t> signatures;
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        std::vector<Timestamp> timestamps;
+        owned.reserve(entries.size());
+        for(const auto& entry:entries) {
+            const auto& packet=*history[entry.index];
+            if(!packet.completeComposition)continue;
+            if(entry.index!=selectedIndex&&!CompatiblePresentationGeometry(
+                selectedOutputGeometry?*selectedOutputGeometry:selected.presentation,
+                packet.presentation,source.crop))continue;
+            auto frame=packet.frame;frame.crop=source.crop;frame.rotation=source.rotation;
+            owned.push_back(frame);signatures.push_back(packet.signature);
+            timestamps.push_back(static_cast<Timestamp>(entry.offset));
+        }
+        for(const auto& frame:owned)frames.push_back(&frame);
+        if(frames.empty())return false;
+        ProcessingRenderer(nullptr);
+        if(!sourceRenderer)return false;
+        // The existing processing renderer owns the library cache and remains
+        // the target of host hook-error recovery. Hard mode/epoch changes and
+        // source gaps discard peak/mix history. Ordinary crop/target changes
+        // are checked by the library's frame cache, without resetting peaks.
+        if(!sourceRendererCompleteMode || sourceRendererEpoch!=epoch) {
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+        }
+        sourceRendererCompleteMode=true;sourceRendererEpoch=epoch;
+        auto rendering=params;
+        rendering.frame_mixer=mixer;
+        rendering.deband_params=nullptr; // Native source preparation already did this.
+        pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
+        mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
+        mix.vsync_duration=static_cast<float>(displayDuration/sourceDuration);
+        // Tone mapping and blending deliberately use the normal library path,
+        // including the reconstructed text, matching non-motion preparation.
+        // A late target change simply renders this same owned complete packet.
+        if(!pl_render_image_mix(sourceRenderer,&mix,&target,&rendering))return false;
+        RecordOutputContract(selected.completeOutput,source,target,params,epoch,
+            output->params.w,output->params.h);
+        ++processingStatistics.outputRenders;++processingStatistics.completeOutputRenders;
+        if(held)++processingStatistics.subtitleFallbackOutputs;
+        lastSubtitleSequence=SelectedSubtitleSequence();
+        const auto authored=selected.hdrSourceAvailable?selected.hdrSource:
+            FrameHdrStatus::Source(selected.frame,selected.sequence);
+        // Keep the authored selected-source identity, but label detector state
+        // as belonging to the library render/mix rather than that source alone.
+        lastHdrStatus=FrameHdrStatus::Capture(authored,sourceRenderer,params.peak_detect_params!=nullptr);
+        lastHdrStatus.detectedFromMix=true;
+        lastHdrStatusAvailable=true;
+        return true;
     }
     bool RenderProcessed(pl_renderer renderer,const pl_frame& source,
         const pl_frame& target,pl_render_params& params,uint64_t epoch,
@@ -931,7 +1060,7 @@ public:
         if(mixing&&composition&&!interlaced&&normalSelected)
             for(size_t i=0;i<history.size();++i) {
                 const auto& packet=*history[i];
-                if(packet.sequence<=normalSelected->sequence && packet.subtitle &&
+                if(packet.sequence<=normalSelected->sequence && (packet.subtitle||packet.hasSubtitle) &&
                     packet.processed[0].valid && packet.presentation.valid && packet.presentation.cleaned &&
                     (packet.sequence==normalSelected->sequence || WithinSubtitleFallbackWindow(packet,*normalSelected)))
                     anchorIndex=i;
@@ -956,6 +1085,7 @@ public:
         const PresentationGeometry* selectedOutputGeometry=nullptr) {
         lastSubmittedField=PL_FIELD_NONE;
         lastHdrStatusAvailable=false;lastHdrStatus={};
+        if(CompleteCompositionSelected())return RenderCompleteComposition(source,target,params,epoch,selectedOutputGeometry);
         if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch,selectedOutputGeometry);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
         return RenderProcessed(renderer,source,target,params,epoch,selectedOutputGeometry);
