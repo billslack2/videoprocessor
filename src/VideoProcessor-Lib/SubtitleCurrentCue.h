@@ -39,6 +39,20 @@ struct PreparedCurrentSubtitleCue {
     }
 };
 
+// Reconnect only the actual selected source cursor to a still-valid private
+// native candidate. This supplies a timeline nomination, never pixel authority.
+inline bool TryGetCurrentSubtitleCueInspectionCursor(const SubtitleCueContinuationGuard& guard,
+    const SubtitleBoxPresentation& presentation,ActivePictureFrameIdentity& identity,
+    uint64_t& continuity) {
+    identity={};continuity=0;
+    ActivePictureFrameIdentity selected;uint64_t selectedContinuity=0;
+    if(!guard.HasReference() ||
+        !presentation.TryGetSelectedCueInspectionCursor(selected,selectedContinuity) ||
+        !SameAnalysisFrameIdentity(selected,guard.LastVerifiedIdentity()) ||
+        selectedContinuity!=guard.ReferenceContinuityGeneration())return false;
+    identity=selected;continuity=selectedContinuity;
+    return true;
+}
 // Prepare once before optional pending work. A COMPLETE proof supersedes that
 // weaker work; only an exact retained UNKNOWN may request pending fallback.
 inline void PrepareCurrentSubtitleCueInto(

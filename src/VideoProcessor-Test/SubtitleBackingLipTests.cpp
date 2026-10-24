@@ -996,6 +996,110 @@ public:
                 L"A complete cue certificate cannot authorize stale backing pixels.");
         }
     }
+    TEST_METHOD(QueueWitnessUsesSelectedCurrentCursorAfterMissingRawProof) {
+        for(int distance:{20,200})for(int metadata=0;metadata<3;++metadata) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->expected=s->frame.Lip(30,true);
+            AcquireEnvelopeCue(*s,distance);
+            s->working=MissingCurrentWorker(s->current,574);
+            if(metadata) {
+                s->working=s->current;s->working.current.identity=Identity(574);
+                s->working.current.sharedPicture.identity=Identity(574);
+                if(metadata==1){s->working.current.pictureTop=0;s->working.current.barEvidence.top=0;}
+            }
+            PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,s->source,s->base,true,250,41.708,s->prepared);
+            Assert::IsTrue(s->decision.accepted.detected);
+            Assert::AreEqual(metadata!=2,s->decision.proof.completeCurrentCue);
+            Assert::AreEqual(metadata==2,s->tracker.HasAcceptedSourceTemplate());
+            // The tested queue gap begins after the selected source574.
+            s->cue=s->decision.accepted.cue;
+            s->geometry=s->compositor.Consume(s->decision.accepted,s->working,{},0,nullptr,
+                s->decision.proof.valid?&s->decision.proof:nullptr);
+            Assert::IsTrue(s->geometry.valid);
+            auto timeline=std::make_unique<ActivePictureDecisionTimeline>();timeline->Reset(2);
+            while(timeline->ContinuityGeneration()<8)timeline->BreakContinuity(0);
+            for(uint64_t seq=574;seq<=580;++seq)Assert::IsTrue(timeline->TrackAcceptedFrame(Identity(seq)));
+            for(uint64_t seq:{577,580}) {
+                const uint64_t previous=seq-3;
+                timeline->MarkConsumed(Identity(previous));
+                timeline->MarkDiscarded(Identity(seq-2),seq-2,ActivePictureDiscardReason::BacklogRecovery);
+                timeline->MarkDiscarded(Identity(seq-1),seq-1,ActivePictureDiscardReason::BacklogRecovery);
+                ActivePictureFrameIdentity cursor;uint64_t continuity=0;
+                Assert::IsTrue(TryGetCurrentSubtitleCueInspectionCursor(s->guard,s->tracker,cursor,continuity));
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(previous),cursor));
+                Assert::IsTrue(timeline->OnlyBacklogRetirementBetween(cursor,Identity(seq),continuity,timeline->ContinuityGeneration()));
+                s->working=MissingCurrentWorker(s->current,seq);
+                s->working.continuityGeneration=s->working.current.continuityGeneration=timeline->ContinuityGeneration();
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s->source;source.readBudget=&budget;
+                PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,source,s->base,true,250,41.708,
+                    SubtitleCurrentCueInspectionSampleLimit,&cursor,true);
+                Assert::IsTrue(s->prepared.proof.completeCurrentCue && !s->prepared.AllowsPendingRecovery(s->working));
+                ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,source,s->base,true,
+                    250,41.708,s->prepared,false,&cursor,true);
+                Assert::IsTrue(s->decision.proof.completeCurrentCue && s->decision.accepted.detected);
+                Assert::AreEqual(s->cue,s->decision.accepted.cue);
+                Assert::IsFalse(s->working.available || s->working.current.analyzed || s->tracker.HasAcceptedSourceTemplate());
+                Assert::AreEqual(distance==20?1448:1268,s->decision.proof.verifiedSearch.top);
+                Assert::AreEqual(2160,s->decision.proof.verifiedSearch.bottom);
+                s->geometry=s->compositor.Consume(s->decision.accepted,s->working,{},0,nullptr,&s->decision.proof);
+                s->cap=s->backing.Consume(source,s->working,s->decision.accepted,Identity(seq),7,timeline->ContinuityGeneration(),
+                    SubtitleBackingLipSampleLimit,&s->geometry,&s->decision.proof);
+                s->applied=ApplyCurrentSubtitleBackingLip(s->geometry,s->cap,Identity(seq),7,timeline->ContinuityGeneration(),&s->applicationReason);
+                Assert::IsTrue(s->cap.valid && Same(s->expected,s->applied.generatedCleanup));
+                Assert::IsTrue(std::strcmp(s->applicationReason,"lip-current-cleanup-applied")==0 && !budget.exhausted);
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(seq),s->guard.LastVerifiedIdentity()));
+            }
+        }
+    }
+    TEST_METHOD(QueueInspectionCursorDoesNotAdvanceOnUnknownOrUnselectedProof) {
+        for(int fault=0;fault<4;++fault) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->frame.Lip(30,true);AcquireEnvelopeCue(*s,20);
+            s->working=MissingCurrentWorker(s->current,3);
+            PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,s->source,s->base,true,250,41.708,s->prepared);
+            ActivePictureFrameIdentity cursor;uint64_t continuity=0;
+            Assert::IsTrue(TryGetCurrentSubtitleCueInspectionCursor(s->guard,s->tracker,cursor,continuity));
+            if(fault==0)s->tracker.Reset();
+            if(fault==1)s->guard.Reset();
+            if(fault>=2) {
+                s->working=MissingCurrentWorker(s->current,4);
+                PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708,
+                    fault==2?SubtitleCurrentCueInspectionSampleLimit:size_t(1));
+                if(fault==3) {
+                    Assert::IsTrue(s->prepared.proof.candidateRetained && !s->prepared.proof.valid);
+                    ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,s->source,s->base,true,250,41.708,s->prepared);
+                    Assert::IsFalse(s->decision.accepted.detected);
+                }
+            }
+            const bool nominated=TryGetCurrentSubtitleCueInspectionCursor(s->guard,s->tracker,cursor,continuity);
+            Assert::AreEqual(fault==3,nominated);
+            Assert::AreEqual(uint64_t(fault==3?3:0),cursor.acceptedSequence);
+            Assert::AreEqual(uint64_t(fault==3?8:0),continuity);
+        }
+    }
+    TEST_METHOD(QueueInspectionCursorKeepsTimelineBoundaryRejections) {
+        for(int fault=0;fault<6;++fault) {
+            auto s=std::make_unique<EnvelopeCueState>(false);s->frame.Lip(30,true);AcquireEnvelopeCue(*s,20);
+            s->working=MissingCurrentWorker(s->current,3);
+            PrepareCurrentSubtitleCueInto(s->prepared,s->guard,s->working,s->source,s->base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s->decision,s->guard,s->tracker,s->working,s->source,s->base,true,250,41.708,s->prepared);
+            ActivePictureFrameIdentity cursor;uint64_t continuity=0;
+            Assert::IsTrue(TryGetCurrentSubtitleCueInspectionCursor(s->guard,s->tracker,cursor,continuity));
+            auto timeline=std::make_unique<ActivePictureDecisionTimeline>();timeline->Reset(2);
+            while(timeline->ContinuityGeneration()<8)timeline->BreakContinuity(0);
+            for(uint64_t seq=3;seq<=7;++seq)Assert::IsTrue(timeline->TrackAcceptedFrame(Identity(seq)));
+            timeline->MarkConsumed(Identity(3));
+            timeline->MarkDiscarded(Identity(4),4,fault==1?ActivePictureDiscardReason::Unknown:ActivePictureDiscardReason::BacklogRecovery);
+            timeline->MarkDiscarded(Identity(5),5,ActivePictureDiscardReason::BacklogRecovery);
+            if(fault==0)timeline->MarkDiscarded(Identity(7),7,ActivePictureDiscardReason::BacklogRecovery);
+            auto current=Identity(6);
+            if(fault==2)current=Identity(3);
+            if(fault==3)current=Identity(2);
+            if(fault==4)current.captureTimestamp=cursor.captureTimestamp;
+            if(fault==5)++current.rendererGeneration;
+            Assert::IsFalse(timeline->OnlyBacklogRetirementBetween(cursor,current,continuity,timeline->ContinuityGeneration()));
+        }
+    }
     TEST_METHOD(QueueWitnessCompleteInspectionSurvivesPendingExpiryWithCurrentCap) {
         for(int distance:{20,200}) {
             auto s=std::make_unique<EnvelopeCueState>(false);s->expected=s->frame.Lip(30,true);
@@ -1127,6 +1231,107 @@ public:
             Assert::IsFalse(s->decision.accepted.detected || s->guard.HasReference() || s->decision.proof.valid);
             Assert::AreEqual(uint64_t(0),s->decision.proof.recoveredFromContinuity);
         }
+    }
+    TEST_METHOD(OptionalNativeQueueCursorSurvivesCompleteMissingWorkerAndTwoRetirements) {
+        char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_QUEUE_CURSOR_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()){Logger::WriteMessage("Native queue cursor replay not requested");return;}
+        std::ifstream data(path,std::ios::binary),metadata(path+".txt");
+        Assert::IsTrue(bool(data) && bool(metadata));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(data)),{});
+        AnalysisLumaSource source;int format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+        metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>color>>top>>bottom>>script>>range;
+        source.data=bytes.data();source.dataBytes=bytes.size();source.generation=2;
+        source.format=static_cast<AnalysisLumaFormat>(format);source.encoding=static_cast<VideoFrameEncoding>(encoding);
+        source.colorspace=static_cast<ColorSpace>(color);source.range=static_cast<AnalysisLumaRange>(range);
+        Assert::IsTrue(source.IsValid());Assert::AreEqual(3840,source.width);Assert::AreEqual(2160,source.height);
+        Assert::AreEqual(384,top);Assert::AreEqual(1776,bottom);
+        // This is the live paused GO BACK cue, not the missing offending frame.
+        // Only worker availability/opposite-edge metadata and queue scheduling
+        // are staged; every native byte stays identical across all sources.
+        struct State {
+            ActivePictureDecisionTimeline timeline;
+            SubtitleBoxObservation observed[3];SubtitleBoxPreview acquired,working;
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;
+            PreparedCurrentSubtitleCue prepared;CurrentSubtitleCueDecision decision;
+            SubtitleCutPastePresentation compositor;SubtitleBackingLipContinuity backing;
+            SubtitleCutPasteGeometry geometry,initial;
+            SubtitleBoxRect initialCap;
+        };
+        const ActivePictureBounds base{0,382,3840,1776,3840,2160};
+        for(bool missingWorker:{false,true}) {
+            auto state=std::make_unique<State>();auto& s=*state;s.timeline.Reset(2);
+            for(uint64_t n=1;n<=12;++n)Assert::IsTrue(s.timeline.TrackAcceptedFrame(Identity(n)));
+            const auto measure=[&](SubtitleBoxObservation& out,uint64_t n) {
+                SubtitleBoxDetector detector;detector.SetScriptHint(static_cast<SubtitleScriptHint>(script));detector.SetNearBarDistance(20);
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(n);shared.bounds=base;
+                out=SubtitleBoxLookahead::Measure(detector,source,{},Identity(n),false,{},7,s.timeline.ContinuityGeneration(),shared);
+                Assert::IsTrue(out.text.detected && !out.text.workLimit);
+            };
+            const auto consume=[&](const ActivePictureFrameIdentity* witness=nullptr,bool queueOnly=false) {
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto current=source;current.readBudget=&budget;
+                PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,current,base,true,250,41.708,
+                    SubtitleCurrentCueInspectionSampleLimit,witness,queueOnly);
+                const auto preparedReads=budget.used;
+                ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,current,base,true,250,41.708,
+                    s.prepared,false,witness,queueOnly);
+                if(s.prepared.proof.valid)Assert::AreEqual(preparedReads,budget.used);
+                Assert::IsTrue(s.decision.accepted.detected && !s.decision.accepted.held);
+                s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,&s.decision.proof);
+                Assert::IsTrue(s.geometry.valid && !s.geometry.generatedCleanup.Valid());
+                const auto cap=s.backing.Consume(current,s.working,s.decision.accepted,s.working.current.identity,7,
+                    s.working.continuityGeneration,SubtitleBackingLipSampleLimit,&s.geometry,s.decision.proof.valid?&s.decision.proof:nullptr);
+                const char* reason=nullptr;const auto applied=ApplyCurrentSubtitleBackingLip(s.geometry,cap,
+                    s.working.current.identity,7,s.working.continuityGeneration,&reason);
+                Assert::IsTrue(cap.valid && applied.generatedCleanup.Valid() && reason && std::strcmp(reason,"lip-current-cleanup-applied")==0);
+                if(s.initialCap.Valid())Assert::IsTrue(Same(s.initialCap,applied.generatedCleanup));
+                else s.initialCap=applied.generatedCleanup;
+                Assert::AreEqual(1746,s.initialCap.top);Assert::AreEqual(1776,s.initialCap.bottom);
+                Assert::IsTrue(!budget.exhausted && budget.used<SubtitleCurrentCueFrameSampleLimit);
+                std::ostringstream log;log<<"native queue cursor source="<<s.working.current.identity.acceptedSequence
+                    <<" missing_worker="<<missingWorker<<" complete="<<s.decision.proof.completeCurrentCue
+                    <<" certificate_samples="<<s.decision.proof.samples<<" preparation_reads="<<preparedReads<<" total_reads="<<budget.used;
+                Logger::WriteMessage(log.str().c_str());
+            };
+            measure(s.observed[0],1);measure(s.observed[1],2);
+            s.working=SubtitleBoxLookahead::Resolve(s.observed,2,7,s.timeline.ContinuityGeneration());consume();
+            s.acquired=SubtitleBoxLookahead::Resolve(&s.observed[1],1,7,s.timeline.ContinuityGeneration());s.working=s.acquired;consume();
+            s.initial=s.geometry;const auto cue=s.decision.accepted.cue;s.timeline.MarkConsumed(Identity(2));
+            if(missingWorker)s.working=MissingCurrentWorker(s.acquired,3);
+            else {
+                measure(s.observed[2],3);s.working=SubtitleBoxLookahead::Resolve(&s.observed[2],1,7,s.timeline.ContinuityGeneration());
+                // Controlled opposite-edge loss, retaining the actual current lower-bar measurement.
+                s.working.current.pictureTop=0;s.working.current.barEvidence.top=0;s.working.current.text.topSearchComplete=false;
+            }
+            consume();Assert::IsTrue(s.decision.proof.completeCurrentCue);
+            Assert::IsFalse(s.tracker.HasAcceptedSourceTemplate(),L"The obsolete raw-template gate must genuinely exclude this accepted COMPLETE source.");
+            s.timeline.MarkConsumed(Identity(3));
+            for(uint64_t n:{6,9}) {
+                ActivePictureFrameIdentity cursor;uint64_t continuity=0;
+                Assert::IsTrue(TryGetCurrentSubtitleCueInspectionCursor(s.guard,s.tracker,cursor,continuity));
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(n-3),cursor));
+                s.timeline.MarkDiscarded(Identity(n-2),n-2,ActivePictureDiscardReason::BacklogRecovery);
+                s.timeline.MarkDiscarded(Identity(n-1),n-1,ActivePictureDiscardReason::BacklogRecovery);
+                Assert::IsTrue(s.timeline.OnlyBacklogRetirementBetween(cursor,Identity(n),continuity,s.timeline.ContinuityGeneration()));
+                s.working=MissingCurrentWorker(s.acquired,n);
+                s.working.continuityGeneration=s.working.current.continuityGeneration=s.timeline.ContinuityGeneration();
+                consume(&cursor,true);
+                Assert::IsTrue(s.decision.proof.completeCurrentCue);
+                Assert::AreEqual(continuity,s.decision.proof.recoveredFromContinuity);
+                Assert::AreEqual(cue,s.decision.accepted.cue);AssertGeometryExceptCleanup(s.initial,s.geometry);
+                Assert::IsFalse(s.working.available || s.working.current.analyzed || s.working.current.barAuthority);
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(n),s.guard.LastVerifiedIdentity()));
+                Assert::IsFalse(s.tracker.HasAcceptedSourceTemplate());
+                s.timeline.MarkConsumed(Identity(n));
+                // Repeating the exact source has no new queue witness or epoch.
+                Assert::IsFalse(s.timeline.OnlyBacklogRetirementBetween(Identity(n),Identity(n),
+                    s.timeline.ContinuityGeneration(),s.timeline.ContinuityGeneration()));
+                consume();Assert::AreEqual(cue,s.decision.accepted.cue);
+                Assert::AreEqual(uint64_t(0),s.decision.proof.recoveredFromContinuity);
+                AssertGeometryExceptCleanup(s.initial,s.geometry);
+            }
+        }
+        Logger::WriteMessage("Native queue cursor replay executed with both metadata paths and two actual timeline retirements.");
     }
     TEST_METHOD(OptionalNativeRecurrenceCoordinatorKeepsCueGeometryAndCapWithinProductionBudgets) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_CURRENT_CAP_REPLAY_PATH");

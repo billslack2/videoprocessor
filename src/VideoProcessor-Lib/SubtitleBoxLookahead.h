@@ -1974,6 +1974,20 @@ public:
     uint64_t AcceptedTemplateContinuity() const {
         return HasAcceptedSourceTemplate()?m_previous.continuityGeneration:0;
     }
+    // Nomination only: a selected COMPLETE cue may truthfully retain unavailable
+    // raw metadata. Its source cursor is not an independent raw-pixel template.
+    bool TryGetSelectedCueInspectionCursor(ActivePictureFrameIdentity& identity,
+        uint64_t& continuity) const {
+        identity={};continuity=0;
+        if(!m_hasPrevious || m_handoffActive || !m_result.detected || m_result.held ||
+            m_result.confirmationPending || m_result.workLimit ||
+            !m_previous.current.identity.acceptedSequence || m_previous.current.discontinuity ||
+            !m_previous.continuityGeneration ||
+            m_previous.current.continuityGeneration!=m_previous.continuityGeneration ||
+            m_previous.current.policyGeneration!=m_previous.policyGeneration)return false;
+        identity=m_previous.current.identity;continuity=m_previous.continuityGeneration;
+        return true;
+    }
     const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }

@@ -24547,16 +24547,24 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_activePictureTimeline.LookaheadPolicyGeneration();
 				m_impl->localBoundaryPolicyGeneration = activePictureCurrentPolicyGeneration;
 				m_impl->localBoundaryContinuityGeneration = m_activePictureTimeline.ContinuityGeneration();
-                if (!staleGeneration && cachedQueuedDomain &&
-                    m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate()) {
+                if (!staleGeneration && cachedQueuedDomain) {
                     auto currentSubtitleIdentity=activePictureIdentity;
                     currentSubtitleIdentity.analysisDomainKey=cachedQueuedDomain;
-                    const auto templateIdentity=
-                        m_impl->subtitleBoxPresentation.AcceptedTemplateIdentity();
-                    subtitleBacklogRetirementOnly=
+                    ActivePictureFrameIdentity templateIdentity;uint64_t templateContinuity=0;
+                    const bool rawTemplate=m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate();
+                    if(rawTemplate) {
+                        templateIdentity=m_impl->subtitleBoxPresentation.AcceptedTemplateIdentity();
+                        templateContinuity=m_impl->subtitleBoxPresentation.AcceptedTemplateContinuity();
+                    }
+                    // A selected COMPLETE source may have no raw worker/bar
+                    // authority. Nominate its exact native-verified cursor for
+                    // the same timeline witness; fresh inspection remains mandatory.
+                    const bool inspectionCursor=!rawTemplate && TryGetCurrentSubtitleCueInspectionCursor(
+                        m_impl->subtitleCueContinuation,m_impl->subtitleBoxPresentation,
+                        templateIdentity,templateContinuity);
+                    subtitleBacklogRetirementOnly=(rawTemplate || inspectionCursor) &&
                         m_activePictureTimeline.OnlyBacklogRetirementBetween(
-                            templateIdentity,currentSubtitleIdentity,
-                            m_impl->subtitleBoxPresentation.AcceptedTemplateContinuity(),
+                            templateIdentity,currentSubtitleIdentity,templateContinuity,
                             m_impl->localBoundaryContinuityGeneration);
                     if(subtitleBacklogRetirementOnly)
                         backlogTemplateIdentity=templateIdentity;
