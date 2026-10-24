@@ -18286,6 +18286,7 @@ releaseDriftBaseRetention =
                         static_cast<int>(std::lround(renderImage.crop.x1)),
                         static_cast<int>(std::lround(renderImage.crop.y1))};
                     sourceSnapshot.presentation.viewportEpoch=viewportRequestSerial;
+                    sourceSnapshot.presentation.outputContract=temporalOutputContract;
                     sourceSnapshot.presentation.cleaned=TemporalRenderer::HasCleanPresentation(
                         temporalSubtitleComposition,subtitleCompositionSucceeded,currentNoCaptionConfirmed);
                     if (!sourceSnapshot.presentation.valid) {
@@ -18379,7 +18380,13 @@ releaseDriftBaseRetention =
                 frameGpuTiming.EndRender();
                 return true;
             }
+            // Missing reconstructed cues may repeat an immutable complete
+            // processed packet for two source intervals. Select before binding
+            // geometry/HDR so every part of the output names the same source.
+            temporalRenderer.SelectSubtitleFallback(pictureProcessingEpoch,viewportRequestSerial,
+                renderImage,target,renderParams,temporalOutputWidth,temporalOutputHeight,temporalOutputContract);
             const uint64_t selected=temporalRenderer.SelectedPacketSequence();
+            ensureFrozenPresentation(selected);
             const TemporalPresentationSnapshot* selectedSnapshot=
                 temporalPresentations.Find({frameGeneration,selected,
                     viewportRequestSerial,temporalOutputContract});
@@ -19602,12 +19609,14 @@ releaseDriftBaseRetention =
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
                 const auto& oldProcessing=lastPictureProcessingStatistics;
-                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet renderer_creations=%llu history_flushes=%llu",
+                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s",
                     processed.sourceRenders-oldProcessing.sourceRenders,
                     processed.sourceReuses-oldProcessing.sourceReuses,
                     processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride,
                     processed.sourceRendererCreations-oldProcessing.sourceRendererCreations,
-                    processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes);
+                    processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes,
+                    processed.subtitleFallbackOutputs-oldProcessing.subtitleFallbackOutputs,
+                    temporalRenderer.SubtitleFallbackReason());
                 lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;
