@@ -1,0 +1,237 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "pid": 76388,
+  "afterPriorReceipt": {
+    "start": "2026-10-24 03:42:24",
+    "end": "2026-10-24 04:39:05",
+    "lipRecords": 1698,
+    "invalidOrUnapplied": [],
+    "rectangles": [
+      "1442,1746-2398,1776"
+    ],
+    "subtitleTransitions": [],
+    "pixelContradictions": [],
+    "geometryChanges": [],
+    "rendererFailures": [],
+    "performance": {
+      "subtitle": {
+        "windows": 680,
+        "metrics": {
+          "consume_avg_ms": {
+            "min": 2.132,
+            "max": 2.558
+          },
+          "consume_peak_ms": {
+            "min": 2.326,
+            "max": 4.26
+          },
+          "full_peak_ms": {
+            "min": 18.715,
+            "max": 33.336
+          },
+          "pending_frames": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "verified_pending": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "dropped_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "failed_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "gpu": {
+        "windows": 680,
+        "metrics": {
+          "display_hz": {
+            "min": 23.97641,
+            "max": 23.97641
+          },
+          "gpu_frame_peak_ms": {
+            "min": 4.317,
+            "max": 5.086
+          },
+          "gpu_overruns": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_disjoint": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_query_failures": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_lock_drops": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      }
+    }
+  },
+  "completeSettledWindow": {
+    "start": "2026-10-24 03:19:20",
+    "end": "2026-10-24 04:39:05",
+    "lipRecords": 2390,
+    "invalidOrUnapplied": [],
+    "rectangles": [
+      "1442,1746-2398,1776"
+    ],
+    "subtitleTransitions": [],
+    "pixelContradictions": [],
+    "geometryChanges": [],
+    "rendererFailures": [],
+    "performance": {
+      "subtitle": {
+        "windows": 956,
+        "metrics": {
+          "consume_avg_ms": {
+            "min": 2.13,
+            "max": 2.558
+          },
+          "consume_peak_ms": {
+            "min": 2.326,
+            "max": 4.26
+          },
+          "full_peak_ms": {
+            "min": 18.715,
+            "max": 33.336
+          },
+          "pending_frames": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "verified_pending": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "dropped_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "failed_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "gpu": {
+        "windows": 956,
+        "metrics": {
+          "display_hz": {
+            "min": 23.97641,
+            "max": 23.97643
+          },
+          "gpu_frame_peak_ms": {
+            "min": 4.299,
+            "max": 5.086
+          },
+          "gpu_overruns": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_disjoint": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_query_failures": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_lock_drops": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      }
+    }
+  },
+  "afterExternalProbes": {
+    "start": "2026-10-24 04:00:00",
+    "end": "2026-10-24 04:39:05",
+    "lipRecords": 1171,
+    "invalidOrUnapplied": [],
+    "rectangles": [
+      "1442,1746-2398,1776"
+    ],
+    "subtitleTransitions": [],
+    "pixelContradictions": [],
+    "geometryChanges": [],
+    "rendererFailures": [],
+    "performance": {
+      "subtitle": {
+        "windows": 469,
+        "metrics": {
+          "consume_avg_ms": {
+            "min": 2.132,
+            "max": 2.441
+          },
+          "consume_peak_ms": {
+            "min": 2.326,
+            "max": 4.152
+          },
+          "full_peak_ms": {
+            "min": 18.715,
+            "max": 29.963
+          },
+          "pending_frames": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "verified_pending": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "dropped_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "failed_jobs": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      },
+      "gpu": {
+        "windows": 469,
+        "metrics": {
+          "display_hz": {
+            "min": 23.97641,
+            "max": 23.97641
+          },
+          "gpu_frame_peak_ms": {
+            "min": 4.347,
+            "max": 4.923
+          },
+          "gpu_overruns": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_disjoint": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_query_failures": {
+            "min": 0.0,
+            "max": 0.0
+          },
+          "gpu_lock_drops": {
+            "min": 0.0,
+            "max": 0.0
+          }
+        }
+      }
+    }
+  },
+  "logSha256": "B5DB38C1F495B1592B543FBF41631335C2C7922577A0190B327F85E6D084D2F5",
+  "scope": "Extended sampled stationary session; no visual or physical mismatched-refresh qualification. The full interval includes focused external probes around03:45-03:50; the post04:00 window is also reported separately. No production build/deployment or setting changes."
+}

@@ -1,0 +1,51 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedReceipts": [
+    {
+      "file": "beta.json",
+      "sha256": "EA1F22B617EF54DAF5BBB0B0CA0C950C6DBE2B291DF32AF16A4C5F08A41DD32A",
+      "bytes": 88
+    },
+    {
+      "file": "observation.json",
+      "sha256": "23BF6CB62EA3515A3002B3D5F1607D746D8818B023F72C71F633EE528F8ED62E",
+      "bytes": 5794
+    },
+    {
+      "file": "pr-status.json",
+      "sha256": "65F5D475ED97DA3B8A31219A5D23D759D5B812A707A84CC479E20EBF5D595654",
+      "bytes": 248
+    },
+    {
+      "file": "runtime-end-process.json",
+      "sha256": "E16083D9B8F4187C3EB9C63F696CBE4F0AB3EBAD1984FABC8E0CA5A69017C5B9",
+      "bytes": 181
+    },
+    {
+      "file": "runtime-health.json",
+      "sha256": "91335A85C34B55994E28269D9F892EAE5D13A35E341B8ECA319C6BFFE89EBAFC",
+      "bytes": 1151
+    },
+    {
+      "file": "summary.txt",
+      "sha256": "CEA86FF32955009833CC3550C508BFDA4543AD28725CD3EA4BB3B2F5170EC7ED",
+      "bytes": 3654
+    },
+    {
+      "file": "telemetry-review-provenance.json",
+      "sha256": "B5962C523202D555CE6A09B65D4E1E5CF87F0B8FEC014D5595FDB487B80127E1",
+      "bytes": 2338
+    },
+    {
+      "file": "telemetry-review-review.txt",
+      "sha256": "140FC4F7F9C88D96FABD84ED4607370291B7A8206DCE5124EDD1F24F33E00ACE",
+      "bytes": 7236
+    }
+  ],
+  "localFullLog": {
+    "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0437\\runtime-observation.log",
+    "sha256": "B5DB38C1F495B1592B543FBF41631335C2C7922577A0190B327F85E6D084D2F5",
+    "bytes": 41930619
+  },
+  "scope": "Read-only runtime monitoring and source telemetry audit; no new tests/build/deployment/visual acceptance."
+}

@@ -1,0 +1,57 @@
+{
+  "created_at": "2026-10-24T04:43:38.2707262-04:00",
+  "source_repository": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023",
+  "runtime_counts": "Supplied by parent from preserved session through 04:39:05; not independently recounted",
+  "production_or_runtime_changes": false,
+  "source_clean": true,
+  "report": {
+    "sha256": "140fc4f7f9c88d96fabd84ed4607370291b7a8206dce5124edd1f24f33e00ace",
+    "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0437\\telemetry-review\\review.txt"
+  },
+  "source_commit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "canonical_story": {
+    "sha256": "450ef1353f0e95ceb51c422f13febbb2e6dabecadba6f4a985300bb1d7923af6",
+    "path": "C:\\Users\\bslac\\vp\\story-tracker\\stories\\in-progress\\VP-0207_overlay-fit-stability-and-subtitle-backing-boundaries.md"
+  },
+  "tests_run": false,
+  "kind": "read-only source predicate audit; not an executed logging regression",
+  "source_files": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "sha256": "61b7e9c4439f35e4eea4bd319ebba89cf02ea931310a73dbf3f3271b238170fa",
+      "line_references": [
+        "13725-13743",
+        "13905-13958",
+        "14083-14159",
+        "14240-14394",
+        "13677-13686",
+        "19033-19092",
+        "24644-24658"
+      ]
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "sha256": "4467472b8ff7925138f5f0cac0fd147e777ea36bb9160e54a455a848294b6875",
+      "line_references": [
+        "3053-3114"
+      ]
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\SubmittedOutputGeometryTrace.h",
+      "sha256": "f76ae29a5dba1380658bde2c170b3043b6009612cdce42bfa6e3dea6ee1d5c31",
+      "line_references": [
+        "12-23"
+      ]
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\DebugLog.h",
+      "sha256": "510422712aa48510b9c5e301302c00de947c6b80a6613d6e71679b882df16d6d",
+      "line_references": [
+        "55-66",
+        "204-232",
+        "263-278"
+      ]
+    }
+  ],
+  "schema": 1
+}
