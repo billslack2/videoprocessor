@@ -629,9 +629,23 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     {
         CString gpuTime(L"measuring...");
         if (OsdTimingPolicy::WarmingEnabled && stats.renderLoadSettling) gpuTime = L"settling...";
-        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg %.2f, max %.2f ms (10 s)",
-            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs);
+        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg/max %.2f / %.2f ms; %zu/%zu async (10 s)",
+            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs,
+            stats.renderLoadGpuFrames, stats.renderLoadFrames);
         add(L"GPU frame:", gpuTime);
+        if (stats.isAlphaRenderer)
+        {
+            const auto& timing=stats.processingPerformance;
+            const auto cpuTiming=[&](const RendererRenderLoadStat& cost,uint64_t count) {
+                if(!timing.available)return CString(L"measuring...");
+                if(!count)return CString(L"no calls in window");
+                return format(L"avg/max %.2f / %.2f ms; n=%llu (%.1f s)",cost.average,cost.peak,
+                    static_cast<unsigned long long>(count),timing.windowMilliseconds/1000.0);
+            };
+            add(L"Prep CPU/wait:",cpuTiming(timing.preparationCpu,timing.preparationCalls));
+            add(L"New CPU/wait:",cpuTiming(timing.sourceDrawCpu,timing.sourceDraws));
+            add(L"Reuse CPU/wait:",cpuTiming(timing.reusedDrawCpu,timing.reusedDraws));
+        }
         const CString cpuLoad = stats.cpuUsageKnown ? format(L"%.0f/%.0f%%", stats.cpuUsageAvgPercent,
             stats.cpuUsagePeakPercent) : CString(L"measuring");
         const CString gpuLoad = stats.renderLoadGpuPercentValid ? format(L"%.0f/%.0f%%",

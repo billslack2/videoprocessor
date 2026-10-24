@@ -79,6 +79,34 @@ public:
         Assert::IsTrue(HdrOsdFormatting::Static(status).Find(_T("M 0-1000"))>=0);
         Assert::IsTrue(HdrOsdFormatting::Measured(status)==_T("peak 0"));
     }
+    TEST_METHOD(MixedDetectionLabelsOnlyMeasuredOutputAndKeepsAuthoredIdentity)
+    {
+        RendererHdrStatus status;status.hdr=true;status.peakDetectionEnabled=true;
+        status.detectedValid=true;status.detectedFromMix=true;status.detectedPeakNits=400;
+        status.detectedLinearAvgNits=120;status.sceneValid=true;status.scenePeakNits=800;
+        status.sceneAvgNits=200;status.sourceSequence=17;status.sourceGeneration=3;status.processingEpoch=9;
+        Assert::IsTrue(HdrOsdFormatting::Measured(status)==_T("mixed peak 400 / avg 120 | frame 800 / 200"));
+        Assert::AreEqual(uint64_t(17),status.sourceSequence);
+        Assert::AreEqual(uint64_t(3),status.sourceGeneration);
+        Assert::AreEqual(uint64_t(9),status.processingEpoch);
+        status.detectedFromMix=false;
+        Assert::IsTrue(HdrOsdFormatting::Measured(status)==_T("peak 400 / avg 120 | frame 800 / 200"));
+        status.detectedFromMix=true;status.detectedValid=false;
+        Assert::IsTrue(HdrOsdFormatting::Measured(status)==_T("--- | frame 800 / 200"));
+        status.peakDetectionEnabled=false;
+        Assert::IsTrue(HdrOsdFormatting::Measured(status)==_T("off | frame 800 / 200"));
+    }
+    TEST_METHOD(RefreshingDetectionClearsPriorMixedOutputProvenance)
+    {
+        RendererHdrStatus mixed;mixed.hdr=true;mixed.detectedFromMix=true;
+        mixed.detectedValid=true;mixed.detectedPeakNits=400;mixed.sourceSequence=17;
+        for(bool enabled:{false,true}) {
+            const auto refreshed=FrameHdrStatus::WithDetection(mixed,enabled,nullptr);
+            Assert::IsFalse(refreshed.detectedFromMix||refreshed.detectedValid);
+            Assert::AreEqual(0.0,refreshed.detectedPeakNits);
+            Assert::AreEqual(uint64_t(17),refreshed.sourceSequence);
+        }
+    }
     TEST_METHOD(NonfiniteAndNegativeMetadataNeverLeaksIntoOsd)
     {
         const double nan=std::numeric_limits<double>::quiet_NaN(),inf=std::numeric_limits<double>::infinity();

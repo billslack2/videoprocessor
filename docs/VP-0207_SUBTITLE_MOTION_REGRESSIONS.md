@@ -86,3 +86,55 @@ scalers. A null plane scaler inherits the main scaler; fast and default renderin
 presets therefore do not express the same policy. Check explicit bilinear and
 Lanczos policies through all three paths, both field orders and each deinterlacer,
 without widening pixel tolerances to accommodate a mismatched reference.
+
+
+## Complete reconstructed pictures during progressive Smooth Motion
+
+Progressive Smooth Motion reconstructs one complete source picture with the same
+All composition used without Smooth Motion, then passes the owned pictures to
+libplacebo's frame mixer. Reconstructed glyphs and their replacement background
+can blend with the picture. This is an accepted visual tradeoff; it avoids a
+separate full-raster subtitle-layer pass and VP's extra processed-picture mixing
+and encoding stages. Source tone mapping, HDR peak detection and dithering retain
+the configured parameters. The measured HDR detector state belongs to the render
+pass, which can include a blend; it is not proof of a new source measurement.
+
+The progressive complete-picture path uses the configured spatial replacement.
+It skips the later temporal-donor copy and unused donor capture: copying a donor
+onto an already reconstructed picture could erase the relocated glyphs. Native
+interlaced composition retains its separate field preparation and layer path.
+Smooth Motion Off retains its existing processing.
+
+Completed-picture receipt, source ownership, presentation context and successful
+render are required for bounded subtitle fallback. A failed capture, failed render
+or repeated output cannot create or renew that receipt. No-caption sources do not
+claim a subtitle. The existing two-source-interval limit, new-cue selection,
+geometry/context rejection and source-gap invalidation still apply. Reusing a
+complete presentation never grants cleanup authority over new source pixels.
+
+Qualification must include actual UHD native detection, placement and GPU
+preparation through the production helper before temporal capture and rendering.
+Exercise Reconstruction with surround fill, blur, HDR, a glyph-free backing lip,
+cue changes, empty cues, repeated outputs, source gaps and context changes on both
+shipped graphics dependencies. A small already-prepared texture is insufficient
+coverage for this path. Controlled paced timings must compare the alternatives
+under the same running-process and GPU conditions. Record cold compilation
+separately from warm work, and do not present CPU wall time as shader execution.
+
+## OSD processing costs
+
+The statistics OSD separates actual subtitle-preparation calls from new-source and
+reused-output render calls. Each row shows average/maximum milliseconds and its
+own sample count in a completed two-second window. These are CPU submission and
+driver/GPU wait times, excluding Present/VSync; they are not GPU timestamps. New
+and reused draw costs include their active analysis, upload and preparation work.
+Subtitle preparation is a subset of that work, so it must not be added again. A
+reused output must not dilute the mean preparation cost. No calls and unavailable
+measurements are shown explicitly. Mode/context changes invalidate prior figures,
+and old publications expire.
+
+The GPU frame row retains its independent ten-second asynchronous measurement
+window and shows matched sample count versus submitted output count. Sampling
+can miss subtitle-preparation outputs; low coverage or no samples cannot establish
+that preparation is free. Never sum CPU/wait rows with GPU frame time. Telemetry
+must not introduce a GPU finish, blocking query or render-mutex wait on the UI.
