@@ -12,8 +12,15 @@ Implementation on separate draft [PR #193](https://github.com/billslack2/videopr
 [VP-0205 story](https://github.com/billslack2/videoprocessor/blob/main/stories/review/VP-0205_preserve-useful-lookahead-with-prepared-proof-and-adaptive-budgets.md)
 tracks acceptance and outstanding live qualification.
 
-The branch starts from the discovered current/default beta `v1.4.02-beta` at
-`f7c7a8204f7a2cace68b3b40774406680af6c0d8`. Required cooperative analysis-budget
+Rebased onto the discovered current/default beta `v1.4.02-beta` at
+`e3dcad1a` on 2026-10-23, including merged PRs #191, #194, #195 and #196.
+The original implementation started at `f7c7a820`.
+The evidence conflict retains #194's unresolved Full-range matte rejection and
+shared retention black reference, adding cooperative budget checks around them.
+The test-registration conflict retains both suites. A cross-format regression
+checks budgeted/raw measurement and retained black-reference parity.
+PR #196's subtitle preparation renderer, transparent-edge handling and backing
+revalidation remain inherited from beta. Required cooperative analysis-budget
 and immutable raw-result APIs are selectively reused from separate, unmerged
 [PR #192](https://github.com/billslack2/videoprocessor/pull/192) at
 `6e7ce51103269a5fd27ac5adcaa40c3b12a3635a`. Logger transport, NVIDIA, fullscreen,
@@ -35,6 +42,32 @@ source intervals later in one conservative fallback fixture (about 125 ms at
 allowance. The objective is to retain that value while controlling work that can
 hold presentation.
 
+## Origin and meaning of the 2 ms limit
+
+The limit first appears in repository history in `12b2dfaf` (2026-10-15),
+which introduced `PresentationAnalysisBudget` during subtitle/AR stabilization.
+The original policy grants at most `min(2 ms, target lead - mandatory reserve)`
+with qualified display phase and a 1 ms fallback otherwise. Its comments and
+contemporaneous renderer notes describe bounding optional synchronous work;
+no measured optimization for the numeric 2 ms choice was found in that history.
+It is a conservative policy value, not a demonstrated hardware limit.
+
+The ticket is shared by optional foreground lookahead work in that render-loop
+iteration. It is neither a per-future-frame allowance nor the whole lookahead
+horizon. Background jobs execute outside it, and current-frame safety work is
+mandatory. A 24 fps source interval is about 41.7 ms, but only time remaining to
+the reachable display boundary after mandatory work can fund foreground scans.
+For example, a 5 ms remaining lead with 3 ms reserved leaves 2 ms; 24 fps content
+on a 60 Hz output still has 16.7 ms display intervals.
+
+Removing the fixed ceiling is technically reasonable when measured slack is
+available, but the prediction can be wrong on the next frame. This PR's CPU/GPU
+history does not measure complete end-to-end Present/scanout cost, and cooperative
+checkpoints are not hard real-time preemption. A larger grant therefore needs
+matched live deadline/adoption and pressure evidence. Existing synthetic results
+support prepared reuse strongly but do not establish a useful-proof benefit from
+raising the cap. The adaptive algorithm remains unchanged by this rebase while
+that merge-risk decision is reviewed.
 ## Measured evidence
 
 The preserved capture has these observed synchronous analysis results:
@@ -148,7 +181,7 @@ deadlines. Whole outward-window tests exercise three distinct sources, cold
 raw/retention dependencies, raw completion after priming, zero-foreground proof,
 first-source identity, no-change/invalid outcomes and obsolete-slot isolation.
 
-Runtime source `be23c69ffb41bf54d3e112f37692a607d593930b` passed the full x64
+Historical pre-rebase runtime source `be23c69ffb41bf54d3e112f37692a607d593930b` passed the full x64
 Release solution build, including standard and beta renderer variants. It follows
 a successful clean serial solution Rebuild at `19767f74`. All 1,801 selected
 native regressions passed (zero errors/skips/failures); the native DLL and analysis
