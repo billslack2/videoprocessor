@@ -123,12 +123,28 @@ private:
 public:
     struct ProcessingStatistics {
         uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
+        uint64_t sourceRendererCreations=0,sourceRendererHistoryFlushes=0;
     };
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
     ProcessingStatistics processingStatistics;
     RendererHdrStatus lastHdrStatus{};
     bool lastHdrStatusAvailable=false;
+    void ResetHistory(bool keepProcessingRenderer) {
+        lastHdrStatusAvailable=false;lastHdrStatus={};
+        submittedOutputAvailable=false;history.clear();
+        if(keepProcessingRenderer && sourceRenderer) {
+            // Discard all temporal/peak evidence, retaining only the renderer's
+            // reusable GPU programs. A queue gap grants no old-pixel authority.
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+        } else {
+            pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;
+        }
+        if(gpu)pl_tex_destroy(gpu,&compositionSurface);
+        nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();
+    }
 public:
     std::vector<double> outputs;
     double currentPts=0,outputPts=0;
@@ -184,7 +200,11 @@ public:
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
     void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
-    void Clear(){lastHdrStatusAvailable=false;lastHdrStatus={};submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
+    // Full resource release remains mandatory for renderer/device teardown.
+    void Clear(){ResetHistory(false);}
+    // Same-device queue recovery drops every packet and HDR/mix observation.
+    // Keeping compiled programs prevents recovery from recompiling each frame.
+    void ResetHistoryAfterSourceGap(){ResetHistory(true);}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
@@ -263,7 +283,12 @@ public:
             } else skipOutput=true;
             return; // No new source fact, cadence tick, or history reset.
         }
-        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz)))Clear();
+        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz))) {
+            const bool forwardGap=!changed && !discontinuity && initialized &&
+                sequence>lastSequence && sequence-lastSequence>1 && pts>previousPts;
+            if(forwardGap)ResetHistoryAfterSourceGap();
+            else Clear();
+        }
         settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;composition=sourceSubtitleComposition;
         topFirst=newTopFirst;measuredDisplayHz=displayHz;
         sourceDuration=1.0/sourceHz;
@@ -298,7 +323,11 @@ public:
             (composition?"; subtitles synchronized":"");
         previousPts=pts;lastSequence=sequence;
     }
-    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={}) {
+    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        // A successful duplicate keeps its first immutable GPU packet. The
+        // host must bind presentation metadata only when this receipt is true.
+        if(capturedNew)*capturedNew=false;
+        if(gpu && gpu!=device)Clear(); // Release resources with their original GPU owner.
         gpu=device;if(!Active())return true;
         auto fail=[&](const char* reason) {
             if(composition)Clear(); // Never mix around a partially captured packet.
@@ -374,10 +403,12 @@ public:
         } else pl_tex_destroy(device,&stored->subtitle);
         history.push_back(std::move(stored));
         while(history.size()>8)history.pop_front();
+        if(capturedNew)*capturedNew=true;
         return true;
     }
     bool CaptureComposition(pl_gpu device,const pl_frame& cleanRgbFullRaster,
-        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={}) {
+        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!composition||NativeCompositionRequired())return false;
         if(nativeMode){Clear();nativeMode=false;}
         const bool normalized=cleanRgbFullRaster.num_planes==1 &&
@@ -410,13 +441,14 @@ public:
                 Clear();status="Motion: subtitle picture format changed";return false;
             }
         }
-        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds);
+        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds,capturedNew);
     }
     // The callback owns its shader inputs and may use scratch textures only for
     // the duration of a call. Capture immediately copies raw planes; prepared
     // field pictures and layers are copied when the output field is rendered.
     bool CaptureNativeComposition(pl_gpu device,const pl_frame& raw,
-        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false) {
+        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false,bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!NativeCompositionRequired()||!prepare)return false;
         if(!history.empty()&&history.back()->pts==currentPts) {
             if(history.back()->sequence==sequence)return true;
@@ -454,11 +486,13 @@ public:
             }
             if(!compatible){Clear();status="Motion: native subtitle picture format changed";return false;}
         }
-        if(!Capture(device,raw,sequence))return false;
+        bool added=false;
+        if(!Capture(device,raw,sequence,nullptr,{},&added))return false;
         auto& packet=*history.back();
         packet.nativePrepare=std::move(prepare);packet.hasSubtitle=hasSubtitle;
         if(raw.repr.dovi){packet.dovi=*raw.repr.dovi;packet.frame.repr.dovi=&packet.dovi;}
         else packet.frame.repr.dovi=nullptr;
+        if(capturedNew)*capturedNew=added;
         return true;
     }
     bool PrepareNativeField(size_t index,int fieldIndex) {
@@ -631,7 +665,10 @@ public:
     // output passes (which deliberately have peak detection disabled).
     pl_renderer ProcessingRenderer(pl_renderer fallback) {
         if(!Active()||!gpu||history.empty())return fallback;
-        if(!sourceRenderer)sourceRenderer=pl_renderer_create(nullptr,gpu);
+        if(!sourceRenderer) {
+            sourceRenderer=pl_renderer_create(nullptr,gpu);
+            if(sourceRenderer)++processingStatistics.sourceRendererCreations;
+        }
         return sourceRenderer?sourceRenderer:fallback;
     }
     static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {
