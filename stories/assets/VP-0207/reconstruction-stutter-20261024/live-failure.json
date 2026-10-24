@@ -1,0 +1,68 @@
+{
+  "candidate": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+  "result": "FAILED user live Smooth Motion + Reconstruction replay",
+  "capturedAt": "2026-10-24T16:52:40.9430288-04:00",
+  "pid": 84000,
+  "modules": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "C42A4D69C1912C6E738A52A69720A059E3F1E5D6177E08E92237B4E52B74A147"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "39254BE82C57CCCBFEA72580B2506C07A5CD1571CF746960C3226B615A223CB6"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "FAD8856ED30E9256C64DCE757B61373CFDFB25C0E236AD972A92CE600B21CA6D"
+    }
+  ],
+  "rawEvidence": "E:\\codex\\diagnostics\\vp0207-reconstruction-stutter-20261024-1653",
+  "peakWindow": {
+    "line": 35257,
+    "time": "2026-10-24 16:51:08",
+    "window_ms": 2032.0,
+    "source_hz": 23.97642,
+    "display_hz": 59.95069,
+    "submissions": 36.0,
+    "preview_attempts": 24.0,
+    "preview_complete": 24.0,
+    "preview_skipped": 0.0,
+    "phase_known": 0.0,
+    "preview_avg_ms": 0.104,
+    "preview_peak_ms": 0.212,
+    "deadline_overruns": 0.0,
+    "deadline_overrun_peak_ms": 0.0,
+    "active_avg_ms": 39.341,
+    "active_peak_ms": 130.763,
+    "source_period_exceeded": 12.0,
+    "display_period_exceeded": 12.0,
+    "live_prep_avg_ms": 5.814,
+    "live_prep_peak_ms": 25.637,
+    "render_avg_ms": 33.438,
+    "render_peak_ms": 116.747,
+    "swap_avg_ms": 10.174,
+    "swap_peak_ms": 20.733,
+    "worker_threads": 1.0,
+    "logical_processors": 16.0,
+    "worker_submitted": 50.0,
+    "worker_completed": 50.0,
+    "worker_failed": 0.0,
+    "worker_cancelled": 0.0,
+    "worker_duplicate": 31.0,
+    "worker_contended": 3.0,
+    "worker_full": 0.0,
+    "worker_queued": 0.0,
+    "worker_queue_high_lifetime": 4.0,
+    "worker_active_age_ms": 0.0,
+    "worker_queue_avg_ms": 0.709,
+    "worker_queue_peak_lifetime_ms": 4.296,
+    "worker_wall_avg_ms": 0.978,
+    "worker_wall_peak_lifetime_ms": 4.771,
+    "worker_cpu_avg_ms": 1.25,
+    "worker_cpu_samples": 50.0,
+    "worker_completed_cpu_ms": 62.5,
+    "worker_completed_wall_ms": 48.898
+  },
+  "limits": "Peak render timing is host-side wall time, not isolated GPU execution. Cause is still under investigation. Existing selected tests did not combine the full native Reconstruction preparation and actual temporal GPU path. No new binaries deployed or rollback executed."
+}

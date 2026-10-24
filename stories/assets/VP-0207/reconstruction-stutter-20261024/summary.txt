@@ -1,0 +1,6 @@
+25f14e2c live replay FAILED: user reports stuttering with Smooth Motion only when Reconstruction is enabled.
+All three loaded runtime hashes match the qualified candidate; process84000 started16:40:58.
+Actual23.97642-to59.95069Hz window at16:51:08 submitted36frames in2032ms; render average33.438ms, peak116.747ms; active peak130.763ms.
+The burst has active exact-source preparation reuse and no new temporal renderer creations. Bounded subtitle packet fallback is not the dominant event.
+Existing GPU hold tests manually upload small prepared textures; native source normalization tests do not run the real GPU composition/temporal path. Team is designing a combined regression and reproducing the blocking render work before changing production.
+PR197 stays draft/unmerged; story In Progress. Raw logs, native/movie pixels and binaries remain outside Git at E:\codex\diagnostics\vp0207-reconstruction-stutter-20261024-1653.
