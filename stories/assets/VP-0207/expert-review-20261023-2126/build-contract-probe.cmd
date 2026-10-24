@@ -1,0 +1,3 @@
+@call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul
+@cl.exe /nologo /O2 /MD /EHsc /std:c++17 /I "E:\codex\videoprocessor\subtitle-expert-review-20261023\src\VideoProcessor-Lib" /I "E:\codex\videoprocessor\subtitle-packet-flicker-20261023\3rdparty\libplacebo\include" contract-review-probe.cpp /Fecontract-review-probe.exe /link /LIBPATH:"E:\codex\videoprocessor\subtitle-packet-flicker-20261023\3rdparty\libplacebo\lib" libplacebo-360.lib "E:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\Release\VideoProcessor-Lib.lib"
+@exit /b %errorlevel%

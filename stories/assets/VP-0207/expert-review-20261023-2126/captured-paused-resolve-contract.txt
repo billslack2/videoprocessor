@@ -1,0 +1,28 @@
+RAW capture: detected=1 lines=2 physical=383:1776 independent=1 nearby=0/0
+CASE 0 acquired=1 seed=1 reason=seeded
+ frame=3 detected=1 verified=1 samples=39562 elapsed=41.708 reason=current-cue-pixels-opposite-edge visible=1 cue=1
+ frame=4 detected=1 verified=1 samples=39562 elapsed=83.416 reason=current-cue-pixels-opposite-edge visible=1 cue=1
+ frame=5 detected=1 verified=1 samples=39562 elapsed=125.124 reason=current-cue-pixels-opposite-edge visible=1 cue=1
+ frame=6 detected=1 verified=1 samples=39562 elapsed=166.832 reason=current-cue-pixels-opposite-edge visible=1 cue=1
+ frame=7 detected=1 verified=1 samples=39562 elapsed=208.540 reason=current-cue-pixels-opposite-edge visible=1 cue=1
+ frame=8 detected=1 verified=0 samples=0 elapsed=250.248 reason=lease-expired visible=0 cue=0
+ frame=9 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=10 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+CASE 1 acquired=1 seed=0 reason=native-base-physical-edge-mismatch
+ frame=3 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=4 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=5 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=6 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=7 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=8 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=9 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=10 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+CASE 2 acquired=1 seed=0 reason=shared-hint-unavailable
+ frame=3 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=4 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=5 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=6 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=7 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=8 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=9 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0
+ frame=10 detected=1 verified=0 samples=0 elapsed=0.000 reason=not-eligible visible=0 cue=0

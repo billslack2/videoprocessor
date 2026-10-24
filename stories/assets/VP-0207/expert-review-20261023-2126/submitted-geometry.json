@@ -1,0 +1,98 @@
+[
+  {
+    "time": "2026-10-23 21:26:08",
+    "line": 16953,
+    "source": 1265,
+    "source_pts": "1222889.116800",
+    "actual_source": "0.00,404.00-3840.00,2004.00",
+    "actual_target": "0.00,280.00-3840.00,1880.00",
+    "composed": "0",
+    "cue_source": "0",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:08",
+    "line": 16981,
+    "source": 1266,
+    "source_pts": "1222889.158510",
+    "actual_source": "250.00,384.00-3590.00,1776.00",
+    "actual_target": "0.00,279.81-3840.00,1880.19",
+    "composed": "1",
+    "cue_source": "1266",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:09",
+    "line": 17019,
+    "source": 1284,
+    "source_pts": "1222889.909250",
+    "actual_source": "0.00,404.00-3840.00,2004.00",
+    "actual_target": "0.00,280.00-3840.00,1880.00",
+    "composed": "0",
+    "cue_source": "0",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:09",
+    "line": 17047,
+    "source": 1285,
+    "source_pts": "1222889.950960",
+    "actual_source": "250.00,384.00-3590.00,1776.00",
+    "actual_target": "0.00,279.81-3840.00,1880.19",
+    "composed": "1",
+    "cue_source": "1285",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:29",
+    "line": 18167,
+    "source": 1767,
+    "source_pts": "1222910.054060",
+    "actual_source": "0.00,404.00-3840.00,2004.00",
+    "actual_target": "0.00,280.00-3840.00,1880.00",
+    "composed": "0",
+    "cue_source": "0",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:29",
+    "line": 18200,
+    "source": 1768,
+    "source_pts": "1222910.095760",
+    "actual_source": "250.00,384.00-3590.00,1776.00",
+    "actual_target": "0.00,279.81-3840.00,1880.19",
+    "composed": "1",
+    "cue_source": "1768",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:30",
+    "line": 18234,
+    "source": 1786,
+    "source_pts": "1222910.846500",
+    "actual_source": "0.00,404.00-3840.00,2004.00",
+    "actual_target": "0.00,280.00-3840.00,1880.00",
+    "composed": "0",
+    "cue_source": "0",
+    "temporal": "0",
+    "mixing": "0"
+  },
+  {
+    "time": "2026-10-23 21:26:30",
+    "line": 18262,
+    "source": 1787,
+    "source_pts": "1222910.888210",
+    "actual_source": "250.00,384.00-3590.00,1776.00",
+    "actual_target": "0.00,279.81-3840.00,1880.19",
+    "composed": "1",
+    "cue_source": "1787",
+    "temporal": "0",
+    "mixing": "0"
+  }
+]

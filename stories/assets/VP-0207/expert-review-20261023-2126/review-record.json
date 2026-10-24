@@ -1,0 +1,37 @@
+{
+  "deployedSource": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "reviewHead": "13577069fa4b51f13587eb1d43f5fdbb9fed9fce",
+  "sameSourceTree": "7989b6545b0fc33c85a6953d0d5bbadf3a88e19c",
+  "latestBeta": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "userConfirmedIncident": "just before 21:26 restart",
+  "liveResult": "FAILED",
+  "newProductionEdits": false,
+  "newDeployment": false,
+  "nativeCapture": {
+    "path": "E:\\codex\\diagnostics\\vp0207-subtitle-flicker-20261023-2018\\independent-visible-cue-gap.bin",
+    "bytes": 33177600,
+    "sha256": "f2136d109dc1ab1d76531146113197a8fdd05a1fdde4d5498e11c3575ad7cdd7",
+    "time": "2026-10-23 21:18:00",
+    "limitation": "Earlier replay; not the 21:26 native frame. Contract probe uses fixed pixels and injected metadata."
+  },
+  "logs": [
+    {
+      "name": "vp.log",
+      "sha256": "7ca1479eadba303f46a9e370609e0b63b4f927f3703afe05891ba4a9630f02f8"
+    },
+    {
+      "name": "vp.log.0",
+      "sha256": "e92a17c0ec7ce166e01310b90ea91210136ea7e0adbfbc47a6994950c638a1d6"
+    },
+    {
+      "name": "vp.log.1",
+      "sha256": "86f9ec0db817d4acf4ec5e582d930f68c26324ad4a0d712c98e4a54d73215a2f"
+    }
+  ],
+  "mergeAuthorized": false,
+  "reviewFindings": [
+    "P1 fixed zoom oscillates on subtitle preparation success",
+    "P1 source cue continuity depends on volatile AR hint",
+    "P2 positive proof incorrectly expires after 250 ms"
+  ]
+}
