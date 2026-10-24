@@ -1,0 +1,55 @@
+{
+  "reviewDate": "2026-10-24",
+  "repository": "billslack2/videoprocessor",
+  "betaBranch": "v1.4.02-beta",
+  "betaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "pr197": {
+    "head": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+    "status": "OPEN DRAFT",
+    "merged": false
+  },
+  "pr192": {
+    "head": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+    "status": "OPEN",
+    "merged": false
+  },
+  "reviewWorktree": "E:\\codex\\videoprocessor\\vp0208-impact-review-20261024",
+  "sourceUnmodified": true,
+  "newBuildOrTestsRun": false,
+  "runtimeChanged": false,
+  "identicalSourceChecks": [
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/PresentationAnalysisBudget.h",
+      "comparedCommit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+      "betaBlob": "d29b13a1c556ee1af38cc63dac65062f8048a5ff",
+      "otherBlob": "d29b13a1c556ee1af38cc63dac65062f8048a5ff",
+      "identical": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/AnalysisEvaluationBudget.h",
+      "comparedCommit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+      "betaBlob": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "otherBlob": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "identical": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/AnalysisEvaluationBudget.h",
+      "comparedCommit": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+      "betaBlob": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "otherBlob": "c4fc9b05ce48232c661c5ee69e3745ebea547964",
+      "identical": true
+    },
+    {
+      "path": "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+      "comparedCommit": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+      "betaBlob": "0012c9e98e9aeb8e86eac3c143729831180c9c88",
+      "otherBlob": "0012c9e98e9aeb8e86eac3c143729831180c9c88",
+      "identical": true
+    }
+  ],
+  "unrelatedTrackerEditPreserved": {
+    "path": "stories/assets/VP-0207/team-design-20261023/design.txt",
+    "sha256": "02901c8b60fcfae405a97f686b5a2b0120818d95a2afbdad624502bb8ea6caec"
+  },
+  "evidenceScope": "Pinned source diffs and existing independently recorded tracker reports. No fresh runtime measurements, raw runtime logs or movie pixels copied."
+}
