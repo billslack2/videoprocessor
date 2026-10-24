@@ -1,0 +1,145 @@
+{
+  "incidentLocalTime": "2026-10-23 22:23:54 America/New_York",
+  "runtime": "60adf2d6cb06f53498cc0bedd1791ea3a6307603",
+  "sourceParents": [
+    "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "26934dc8b2fed266f19e898a05e0a1bafe61b66f"
+  ],
+  "status": "Live failure unresolved; design amendment only",
+  "newDeployment": false,
+  "configurationEdits": [],
+  "records": [
+    {
+      "line": 8877,
+      "frame": 234,
+      "valid": true,
+      "applied": true,
+      "reason": "current-finite-rounded-backing-lip",
+      "samples": 41206
+    },
+    {
+      "line": 8901,
+      "frame": 235,
+      "valid": true,
+      "applied": true,
+      "reason": "current-revalidated-backing-outline",
+      "samples": 41145
+    },
+    {
+      "line": 8926,
+      "frame": 239,
+      "valid": false,
+      "applied": false,
+      "reason": "lip-current-context-unavailable",
+      "samples": 0
+    },
+    {
+      "line": 8935,
+      "frame": 240,
+      "valid": true,
+      "applied": true,
+      "reason": "current-finite-rounded-backing-lip",
+      "samples": 41214
+    },
+    {
+      "line": 8955,
+      "frame": 241,
+      "valid": false,
+      "applied": false,
+      "reason": "lip-current-context-unavailable",
+      "samples": 0
+    },
+    {
+      "line": 8965,
+      "frame": 242,
+      "valid": true,
+      "applied": true,
+      "reason": "current-finite-rounded-backing-lip",
+      "samples": 41208
+    },
+    {
+      "line": 8988,
+      "frame": 243,
+      "valid": true,
+      "applied": true,
+      "reason": "current-revalidated-backing-outline",
+      "samples": 41147
+    },
+    {
+      "line": 8996,
+      "frame": 244,
+      "valid": false,
+      "applied": false,
+      "reason": "lip-current-context-unavailable",
+      "samples": 0
+    },
+    {
+      "line": 9004,
+      "frame": 245,
+      "valid": true,
+      "applied": true,
+      "reason": "current-finite-rounded-backing-lip",
+      "samples": 41198
+    },
+    {
+      "line": 9008,
+      "frame": 246,
+      "valid": true,
+      "applied": true,
+      "reason": "current-revalidated-backing-outline",
+      "samples": 41137
+    }
+  ],
+  "files": [
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\vp.log",
+      "bytes": 4578282,
+      "sha256": "2e32d2adbfdf34df1fbc9df2348fb4936f515cd711bea217db8ebf0d2d512a76"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\vp-before-restart.log",
+      "bytes": 6211028,
+      "sha256": "71e24b47a4bd0b9cd0087eaa1f78cefe27fa01ccee6b61477aebbf94a3ed7a07"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\vp-after-capture.log",
+      "bytes": 1310797,
+      "sha256": "7846c7c6462029e55474cfe2a76ce55b194821815ac2f98118ee42680837ebc8"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\vp-occlusion-burst.log",
+      "bytes": 3938248,
+      "sha256": "5876ab709b0dbebf2e2892e60c73c586237db0ce2ba5778a18298dd367cb1705"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-output.png",
+      "bytes": 449180,
+      "sha256": "5e3ad47f17b9a44090e4f8aeded4bfef8ab96cd76f9d928738c48e57dbca58f6"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+      "bytes": 33177600,
+      "sha256": "f0587db80e8924ddc0a312a9dcf37bfd14bbcc66688ea9548573c82647693827"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin.txt",
+      "bytes": 40,
+      "sha256": "feb2c688ceae6daa772e7275a76008daef26675215336235975f738591c09f39"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\native-summary.json",
+      "bytes": 1521,
+      "sha256": "88a207d96ccfa3812afa5b0b98db2f6bc0dc5326dec6ef6fc4d2d72bced65adc"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\diagnostic-restart.json",
+      "bytes": 343,
+      "sha256": "a3663685d553f61629eb385aff314448df48d8b50379443128c57d352a427952"
+    },
+    {
+      "localPath": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\runtime-after.json",
+      "bytes": 586,
+      "sha256": "b81c1b074126ee88963e00d77bb4c39269485fef8ba41afb756c36fd75a69c6d"
+    }
+  ]
+}

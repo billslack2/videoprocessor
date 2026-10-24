@@ -1,0 +1,26 @@
+VP-0207: paused source cap and rapid backing-cleanup recurrence
+Date: 2026-10-23, America/New_York
+Status: unresolved. No production source edit, new build or binary replacement in this review.
+
+Runtime identity
+Installed clean 60adf2d6 merges current beta/PR193 b1415da4 with subtitle candidate 26934dc8. SubtitleBackingLip.h, SubtitleCueContinuation.h and SubtitleCutPasteShader.h are unchanged between 26934dc8 and this runtime. Host and both renderers matched their Release deployment receipt and remained unchanged after a diagnostic restart. Redeploying the same code would not repair this recurrence.
+At 22:19:49, restarted the same executable to acquire a one-shot native paused frame. No cfg files were edited and all four cfg hashes remained unchanged. The application's state/profile selection did change (Classic logged at 22:19:58; advanced mode 3 active by the later burst); no inference about who selected it and no state restoration. Another renderer startup is logged at 22:23:44.
+
+Paused native finding
+Before restart, a read-only output capture shows reconstructed yellow text plus the original black backing cap intruding into the picture. The exact native frame captured at 22:19:58 shows original text 'THAT GOD HAS LET ME / LIVE THESE THREE YEARS', bounds 1338,1778-2510,2022, below the physical picture edge 1776. Its glyph-free rounded black cap extends upward to row 1746 (30 native rows). Finite candidate extent is approximately 1285,1746-2555,1776; this measurement alone does not authorize cleanup. Native metadata and SHA256 are in native-summary.json.
+Current accepted glyphs/layout can remain valid while cap cleanup stays unavailable. The deployed helper's first context gate rejects nearby/reference evidence before any cap body pixels are sampled. With no prior valid outline, it has no finite-outline revalidation route. Fixing cue continuation alone therefore does not fix cold cap acquisition.
+The paused capture is a single source frame, not a captured sequence of the later rapid flash.
+
+Rapid backing-cleanup finding
+At 22:23:54, renderer generation 2, cue 4 remains the same. Source frames 239..245 record cap application off/on/off/on/on/off/on. Rejected frames 239,241,244 report lip-current-context-unavailable and samples=0. Accepted intervening frames prove approximately 41,200 current samples with unchanged finite cap 1254,1746-2586,1776. See burst-excerpt.txt with original log line numbers.
+No subtitle stability loss/reset is logged between cue 4 acquisition and the next cue. The printed final presentation and movie picture rectangles stay 0,376-3840,1784 and 0.0,101.8-1040.0,483.2 throughout these transitions; subtitle shift requests change during their normal settling. No submitted movie geometry change is logged during this burst. This event uses advanced mode with auto_crop=1/fixed_crop=0; it is distinct from the earlier fixed-zoom mapping defect.
+This directly supports rapid cap-cleanup admission toggling independently of whole-cue loss or logged movie mapping change. It does not identify which individual context predicate fails: the generic rejection does not log a predicate mask. It does not verify the user's approximate two-dozen transition count, prove a tone-mapping cause, or establish final-output photometry.
+
+Capture limitations
+A short read-only output recording was started after the report, around 22:25:08. It is post-event and is not evidence of the 22:23:54 burst. Its nominal AVI cadence differs from actual sampling timestamps. Exploratory ROI metrics used unverified coordinates and are excluded. PrintWindow sampling also adds work, so this is not an isolated performance baseline.
+Original movie pixels, screenshots, recording and full logs remain only in the local diagnostics directory. This tracker stores text, metadata and hashes.
+
+Required design amendment
+Add a separate exact-current cue-side physical-plane certificate for optional finite-cap acquisition/revalidation. A nearby or remembered plane can nominate inspection coordinates only; independent current native boundary/bar support, conflicting-edge checks and exact identity must authorize it. Opposite-edge/global AR instability must not substitute for or negate this local proof. Never rewrite raw nearby/reference flags, promote old rectangles to erasure authority or widen black thresholds.
+Before changing admission, log individual failed context predicates and add integrated regressions reproducing cold start and the observed off/on pattern. Preserve exhaustive finite current body/chroma/flank/closure/extent checks and sample budget. A cap failure must not reset valid glyph relocation; genuine scene shadow, conflicting plane, missing current ownership, changed epochs or exhausted budget must still reject cleanup.
+Team cross-review: cue-continuity reviewer identified cold-acquisition and cue-side-nearby gaps; safety reviewer confirmed the burst distinction and requires exact predicate diagnostics before relaxing any context guard. All earlier fixed-transform, atomic preparation, complete search coverage and live playback qualification gates remain required. PR197 remains draft; no merge or live acceptance.

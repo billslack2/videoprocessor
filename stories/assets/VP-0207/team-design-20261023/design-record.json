@@ -1,6 +1,6 @@
 {
   "status": "design recommended; implementation pending",
-  "currentRuntime": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "currentRuntime": "60adf2d6cb06f53498cc0bedd1791ea3a6307603",
   "liveResult": "FAILED",
   "reviewHead": "13577069fa4b51f13587eb1d43f5fdbb9fed9fce",
   "teamRoles": [
@@ -10,7 +10,8 @@
   ],
   "userClarifications": [
     "Fixed zoom is intended; do not assume perceived flashing was zoom.",
-    "Playback is not paused on an offending frame."
+    "Playback is not paused on an offending frame.",
+    "Later paused source was captured; subsequent rapid backing-only flash is separately logged."
   ],
   "primaryDesign": "Independent complete current cue proof, atomic current preparation, fixed transform under metadata jitter.",
   "deferred": "New automatic outward/inward recovery and color-path changes require separate evidence.",
@@ -20,5 +21,8 @@
   "newConfigurationEdits": false,
   "mergeAuthorized": false,
   "evidence": "recording-audit.json; ../expert-review-20261023-2126",
-  "crossReview": "All three reviewers approve with incorporated scan-coverage, direct-read budget, optional-cap, completed-GPU-receipt and fallback-clipping qualification clarifications."
+  "crossReview": "All three reviewers approve with incorporated scan-coverage, direct-read budget, optional-cap, completed-GPU-receipt and fallback-clipping qualification clarifications.",
+  "originalReviewRuntime": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "additionalEvidence": "../paused-native-and-cap-flash-20261023",
+  "capProofAmendment": "Independent exact-current cue-side physical-plane certificate for cold acquisition and revalidation; diagnose individual rejection predicates; retain finite pixel and identity checks."
 }

@@ -1,0 +1,72 @@
+{
+  "sha256": "f0587db80e8924ddc0a312a9dcf37bfd14bbcc66688ea9548573c82647693827",
+  "bytes": 33177600,
+  "nativeMetadata": "3840 2160 7680 7680 4 6 8 384 1776 1 2",
+  "description": "Exact paused native source captured after restarting unchanged60adf2d6. Luma preview is native upper10bit>>2; this is not an HDR color-rendering comparison.",
+  "rowRuns": [
+    {
+      "y": 1744,
+      "neutral_black_run_containing_center": [
+        1920,
+        1921
+      ],
+      "center_luma": 141
+    },
+    {
+      "y": 1745,
+      "neutral_black_run_containing_center": [
+        1920,
+        1921
+      ],
+      "center_luma": 147
+    },
+    {
+      "y": 1746,
+      "neutral_black_run_containing_center": [
+        1309,
+        2531
+      ],
+      "center_luma": 0
+    },
+    {
+      "y": 1747,
+      "neutral_black_run_containing_center": [
+        1302,
+        2538
+      ],
+      "center_luma": 0
+    },
+    {
+      "y": 1750,
+      "neutral_black_run_containing_center": [
+        1296,
+        2544
+      ],
+      "center_luma": 0
+    },
+    {
+      "y": 1760,
+      "neutral_black_run_containing_center": [
+        1288,
+        2552
+      ],
+      "center_luma": 0
+    },
+    {
+      "y": 1775,
+      "neutral_black_run_containing_center": [
+        1285,
+        2555
+      ],
+      "center_luma": 0
+    },
+    {
+      "y": 1776,
+      "neutral_black_run_containing_center": [
+        0,
+        3840
+      ],
+      "center_luma": 0
+    }
+  ]
+}

@@ -110,3 +110,13 @@ AlphaSourceCropPolicy.cpp:4440,6211 — immediate prepared recovery release/fixe
 
 Final cross-review disposition
 All three reviewers approve this design with the incorporated clarifications: explicit scan coverage beyond completeness flags; accounting for direct planar reads; optional-cap failure isolation; actual GPU success before issuing preparation receipts; and a hard qualification block if genuine fallback failure clips current required text. No change to fixed-zoom semantics is implicitly authorized by this design.
+
+
+Additional evidence and cap-proof amendment - 2026-10-23 22:23
+The earlier source pins above describe the original review. Runtime is now clean 60adf2d6 (beta/PR193 b1415da4 plus subtitle candidate 26934dc8); the relevant subtitle proof code is unchanged. See ../paused-native-and-cap-flash-20261023 for exact paused native metadata and rapid cap-only transitions.
+
+Separate cold finite-cap acquisition from established cue continuity. A valid current cue can have a real glyph-free cap while nearby cue-side bar classification blocks the cap context gate before any cap pixels are read. Without a prior outline, continuity alone cannot help. Add an exact-current independent cue-side physical-plane certificate from bounded native inspection. Nearby/reference or previous coordinates nominate only; current distributed boundary/bar support and conflict checks establish authority. Retain immutable raw bar flags and all current finite body/chroma/flank/closure/extent/budget checks. An unstable opposite edge is irrelevant when the finite cap's own side is independently proved.
+
+The 22:23:54 log shows same-cue cap off/on/off/on/on/off/on on consecutive source frames 239..245, with zero samples on rejected frames and stable logged movie mapping. Add rejection-condition bits to identify the exact failing predicate before relaxing any guard. Reproduce the actual admission transition through production orchestration, not only a helper with manually cleared nearby flags.
+Qualification additions: cold start/new cue with no outline; independently verified own-side nearby candidate; opposite missing/nearby/reference edge; repeated admission transitions; conflicting current plane; scene shadows resembling caps; changed ownership/epochs; work exhaustion. Require cap pixel correctness and unchanged transparent destination edges. A real cap proof failure drops only optional cap cleanup, never an otherwise valid current cue. Do not use a hold timer or stale erasure to hide this failure.
+This is a design amendment, not an implemented or deployed fix. The native paused frame and later burst are separate observations; no captured output sequence of the burst or brightness diagnosis is claimed.

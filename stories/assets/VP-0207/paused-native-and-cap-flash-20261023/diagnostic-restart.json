@@ -1,0 +1,9 @@
+{
+  "RestartedAt": "2026-10-23T22:19:49.1467603-04:00",
+  "SourceCommit": "60adf2d6cb06f53498cc0bedd1791ea3a6307603",
+  "OldProcessId": 45152,
+  "NewProcessId": 84824,
+  "BinaryReplaced": false,
+  "ConfigurationEdits": [],
+  "DiagnosticCapture": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native.bin"
+}
