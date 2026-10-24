@@ -30,7 +30,10 @@ struct SourcePreparationContext {
             !b.backingOwner.owner_before(a.backingOwner);
     }
     bool Matches(const SourcePreparationContext& b) const {
-        return !discontinuity && !b.discontinuity && identity.transportGeneration && identity.acceptedSequence &&
+        // The event belongs to this immutable captured source. NewSource always
+        // rejects reuse; after its reset and successful preparation, repeated
+        // draws of the exact same event may reuse the sealed result.
+        return discontinuity==b.discontinuity && identity.transportGeneration && identity.acceptedSequence &&
             identity.analysisDomainKey && gpu && gpu==b.gpu &&
             SameAnalysisFrameIdentity(identity,b.identity) &&
             SameSource(source,b.source) && SameSource(queuedSource,b.queuedSource) &&
@@ -82,6 +85,16 @@ inline SourceBarInspectionSchedule ScheduleSourceBarInspection(
 }
 
 struct SourcePreparationReuse { bool upload=false,analysis=false,subtitle=false; };
+
+// A complete progressive packet and its frozen source mapping already own this
+// exact source's subtitle result. An AR-only cadence retry must not overwrite
+// that fact with a duplicate preparation; other incomplete pairs still retry.
+inline bool ReuseConclusiveSubtitlePacketForSourceRetry(const SourcePreparationReuse& reuse,
+    SourceRepeatKind repeat,bool cacheMatches,bool subtitleConclusive,bool completePacket,
+    bool ownedCompletePacket,bool sourceSnapshotAvailable) {
+    return repeat==SourceRepeatKind::CadenceRepeat && reuse.upload && cacheMatches &&
+        subtitleConclusive && completePacket && ownedCompletePacket && sourceSnapshotAvailable;
+}
 
 class SourcePreparationReceipt {
     SourcePreparationContext context;

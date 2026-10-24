@@ -334,6 +334,99 @@ TEST_CLASS(SourceOutputNormalizationTests) { public:
             }
         }
     }
+    TEST_METHOD(DiscontinuitySourcePreparationIsReusedAcrossInsertedOutputRates) {
+        const NormalizationFrame frame;NormalizationSnapshot reference{};
+        size_t referenceAnalysisReads=0,referenceSubtitleReads=0;
+        for(double displayRate:{24.,48.,60.,120.}) {
+            // Acquire a usable native cue after the host's boundary reset. The
+            // event bit remains attached to this exact captured source on every draw.
+            auto p=std::make_unique<NativeNormalizationPipeline>();p->Acquire(frame);
+            auto c=NormalizationContext(frame,3);c.discontinuity=true;
+            auto cadence=std::make_unique<TemporalRenderer>();MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.deinterlace="off";
+            cadence->Begin(settings,24,displayRate,false,0,2,3,3.0/24,true,true);
+            const size_t draws=(std::max)(size_t(1),cadence->outputs.size());
+            p->Draw(c,SourceRepeatKind::NewSource);
+            Assert::IsTrue(p->saved.accepted.detected&&p->saved.geometry.valid&&p->saved.capSequence==3);
+            const auto first=p->saved;
+            const auto analysisReads=p->analysisReads,subtitleReads=p->subtitleReads;
+            Assert::IsTrue(p->receipt.ReuseSubtitle(c,SourceRepeatKind::InsertedOutput),
+                L"A successfully prepared discontinuity source must seal its exact event receipt");
+            for(size_t draw=1;draw<draws+6;++draw) {
+                p->Draw(c,draw<draws?SourceRepeatKind::InsertedOutput:SourceRepeatKind::CadenceRepeat,false);
+                AssertSameNormalization(first,p->saved);
+            }
+            Assert::AreEqual(size_t(1),p->analysisPasses);Assert::AreEqual(size_t(1),p->subtitlePasses);
+            Assert::AreEqual(analysisReads,p->analysisReads);Assert::AreEqual(subtitleReads,p->subtitleReads);
+            if(displayRate==24.) {
+                reference=first;referenceAnalysisReads=analysisReads;referenceSubtitleReads=subtitleReads;
+            } else {
+                AssertSameNormalization(reference,p->saved);
+                Assert::AreEqual(referenceAnalysisReads,analysisReads);Assert::AreEqual(referenceSubtitleReads,subtitleReads);
+            }
+        }
+    }
+    TEST_METHOD(DiscontinuityReceiptRequiresExactEventAndSuccessfulPreparation) {
+        const NormalizationFrame frame,replacement;SourcePreparationReceipt receipt;
+        const auto before=NormalizationContext(frame,3);auto event=before;event.discontinuity=true;
+        receipt.Commit(before,true,true);
+        Assert::IsFalse(receipt.ReuseUpload(event,SourceRepeatKind::InsertedOutput),
+            L"A first discontinuity event cannot borrow the prior ordinary source receipt");
+        auto begun=receipt.Begin(event,SourceRepeatKind::NewSource);
+        Assert::IsFalse(begun.upload||begun.analysis||begun.subtitle);
+        Assert::IsFalse(receipt.ReuseUpload(before,SourceRepeatKind::InsertedOutput));
+        // A reset/completed-source receipt is published only by a successful
+        // invocation. Exact event equality must not admit any altered context.
+        receipt.Commit(event,true,true);
+        Assert::IsTrue(receipt.ReuseSubtitle(event,SourceRepeatKind::InsertedOutput));
+        Assert::IsTrue(receipt.ReuseSubtitle(event,SourceRepeatKind::CadenceRepeat));
+        Assert::IsFalse(receipt.ReuseUpload(event,SourceRepeatKind::NewSource));
+        for(int change=0;change<25;++change) {
+            auto c=event;
+            switch(change) {
+            case 0:c.discontinuity=false;break;case 1:++c.identity.acceptedSequence;break;
+            case 2:++c.identity.sourceFrameNumber;break;case 3:++c.identity.captureTimestamp;break;
+            case 4:++c.identity.transportGeneration;break;case 5:++c.identity.analysisDomainKey;break;
+            case 6:++c.identity.sourceFormatGeneration;break;case 7:++c.identity.viewportGeneration;break;
+            case 8:++c.identity.rendererGeneration;break;case 9:++c.resetEpoch;break;
+            case 10:++c.processingEpoch;break;case 11:++c.policyGeneration;break;
+            case 12:++c.continuityGeneration;break;case 13:++c.viewportEpoch;break;
+            case 14:++c.sceneGeneration;break;case 15:++c.outputContract;break;
+            case 16:++c.subtitleMode;break;case 17:c.configuredScreen=false;break;
+            case 18:c.statisticsAnalysis=true;break;case 19:c.gpu=reinterpret_cast<const void*>(uintptr_t(2));break;
+            case 20:c.source=replacement.Source();break;case 21:c.queuedSource=replacement.Source();break;
+            case 22:c.source.backingOwner.reset();break;case 23:c.source.range=AnalysisLumaRange::Full;break;
+            case 24:c.source.dataBytes-=2;break;
+            }
+            Assert::IsFalse(receipt.ReuseUpload(c,SourceRepeatKind::InsertedOutput));
+            Assert::IsFalse(receipt.ReuseAnalysis(c,SourceRepeatKind::CadenceRepeat));
+            Assert::IsFalse(receipt.ReuseSubtitle(c,SourceRepeatKind::InsertedOutput));
+        }
+        // Even a matching invocation invalidates the old publication before
+        // fallible preparation; failure cannot restore it without Commit.
+        begun=receipt.Begin(event,SourceRepeatKind::InsertedOutput);
+        Assert::IsTrue(begun.upload&&begun.analysis&&begun.subtitle);
+        Assert::IsFalse(receipt.ReuseUpload(event,SourceRepeatKind::InsertedOutput));
+        for(bool analysisComplete:{false,true}) {
+            receipt.Commit(event,analysisComplete,!analysisComplete);
+            Assert::IsTrue(receipt.ReuseSubtitle(event,SourceRepeatKind::InsertedOutput));
+            Assert::IsFalse(receipt.ReuseAnalysis(event,SourceRepeatKind::CadenceRepeat));
+            Assert::IsFalse(receipt.ReuseSubtitle(event,SourceRepeatKind::CadenceRepeat));
+            begun=receipt.Begin(event,SourceRepeatKind::InsertedOutput);
+            Assert::IsTrue(begun.analysis&&begun.subtitle);
+            receipt.Commit(event,analysisComplete,!analysisComplete);
+            Assert::IsFalse(receipt.ReuseSubtitle(event,SourceRepeatKind::CadenceRepeat),
+                L"Inserted event reuse cannot promote an incomplete source attempt");
+        }
+        receipt.Reset();Assert::IsFalse(receipt.ReuseSubtitle(event,SourceRepeatKind::InsertedOutput));
+        auto p=std::make_unique<NativeNormalizationPipeline>();p->Acquire(frame);
+        p->Draw(event,SourceRepeatKind::NewSource,true,SubtitleCurrentCueFrameSampleLimit,false);
+        Assert::IsFalse(p->receipt.ReuseUpload(event,SourceRepeatKind::InsertedOutput));
+        const auto passes=p->subtitlePasses;p->Draw(event,SourceRepeatKind::CadenceRepeat,true);
+        Assert::AreEqual(passes+1,p->subtitlePasses);
+        Assert::IsTrue(p->saved.geometry.valid&&p->saved.capSequence==3);
+        Assert::IsTrue(p->receipt.ReuseSubtitle(event,SourceRepeatKind::InsertedOutput));
+    }
     TEST_METHOD(IncompleteSameSourceCanRecoverFromLateCurrentEvidenceWithoutRenewingSourceTime) {
         const NormalizationFrame frame;auto p=std::make_unique<NativeNormalizationPipeline>();p->Acquire(frame);
         const auto c=NormalizationContext(frame,3);
