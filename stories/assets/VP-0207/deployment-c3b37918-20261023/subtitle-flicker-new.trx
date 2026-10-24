@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="596c0ee5-75ab-4863-b5af-5ab636f89bab" name="bslac@DESKTOP-3G35SCJ 2026-10-23 20:31:13" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-23T20:31:13.5396888-04:00" queuing="2026-10-23T20:31:13.5396888-04:00" start="2026-10-23T20:31:12.3125514-04:00" finish="2026-10-23T20:31:13.5597061-04:00" />
+  <TestSettings name="default" id="e3abf623-52f6-4172-9361-63038229a344">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-23_20_31_13" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="d69d6355-3806-40f9-ad7b-5f6bc3108914" testId="13457cea-6156-5cb0-b09a-ff685ed07bfa" testName="OppositeBarLossCannotBorrowChangedNativeSubtitlePixels" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0123807" startTime="2026-10-23T20:31:12.9480992-04:00" endTime="2026-10-23T20:31:12.9604799-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d69d6355-3806-40f9-ad7b-5f6bc3108914" />
+    <UnitTestResult executionId="15937c7f-8d5a-4a94-ac6c-dfff463625dd" testId="2b36b05b-f0cc-509b-8362-c7097ad627f8" testName="OppositeBarRevalidationHasANonrenewingSourceTimeLimit" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0025479" startTime="2026-10-23T20:31:12.9400925-04:00" endTime="2026-10-23T20:31:12.9426404-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="15937c7f-8d5a-4a94-ac6c-dfff463625dd" />
+    <UnitTestResult executionId="a5331340-29a9-49df-a427-fdb04ea94096" testId="3e8f45c1-febd-0758-aed8-c560375e5922" testName="KnownCurrentBackingIgnoresOppositeBarMeasurementLossAndReferenceFlags" computerName="DESKTOP-3G35SCJ" duration="00:00:00.5570040" startTime="2026-10-23T20:31:12.9691178-04:00" endTime="2026-10-23T20:31:13.5261218-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a5331340-29a9-49df-a427-fdb04ea94096">
+      <Output>
+        <StdOut>scale=6 format=0 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=0 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=1 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=1 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=2 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=2 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=3 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=3 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="4314187c-5ea2-4948-adb6-7eabb667ca10" testId="d03f3086-a8a9-fd7e-3230-4cdad757af1c" testName="DetectedCueSurvivesOppositeBarLossWithExactCurrentPixelProof" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0075275" startTime="2026-10-23T20:31:12.9611110-04:00" endTime="2026-10-23T20:31:12.9686385-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4314187c-5ea2-4948-adb6-7eabb667ca10" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="OppositeBarRevalidationHasANonrenewingSourceTimeLimit" storage="e:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\release\videoprocessor-test.dll" id="2b36b05b-f0cc-509b-8362-c7097ad627f8">
+      <Execution id="15937c7f-8d5a-4a94-ac6c-dfff463625dd" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleBoxLookaheadTests" name="Tests::SubtitleBoxLookaheadTests::OppositeBarRevalidationHasANonrenewingSourceTimeLimit" />
+    </UnitTest>
+    <UnitTest name="OppositeBarLossCannotBorrowChangedNativeSubtitlePixels" storage="e:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\release\videoprocessor-test.dll" id="13457cea-6156-5cb0-b09a-ff685ed07bfa">
+      <Execution id="d69d6355-3806-40f9-ad7b-5f6bc3108914" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleBoxLookaheadTests" name="Tests::SubtitleBoxLookaheadTests::OppositeBarLossCannotBorrowChangedNativeSubtitlePixels" />
+    </UnitTest>
+    <UnitTest name="DetectedCueSurvivesOppositeBarLossWithExactCurrentPixelProof" storage="e:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\release\videoprocessor-test.dll" id="d03f3086-a8a9-fd7e-3230-4cdad757af1c">
+      <Execution id="4314187c-5ea2-4948-adb6-7eabb667ca10" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleBoxLookaheadTests" name="Tests::SubtitleBoxLookaheadTests::DetectedCueSurvivesOppositeBarLossWithExactCurrentPixelProof" />
+    </UnitTest>
+    <UnitTest name="KnownCurrentBackingIgnoresOppositeBarMeasurementLossAndReferenceFlags" storage="e:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\release\videoprocessor-test.dll" id="3e8f45c1-febd-0758-aed8-c560375e5922">
+      <Execution id="a5331340-29a9-49df-a427-fdb04ea94096" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-packet-flicker-20261023\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleBackingLipTests" name="Tests::SubtitleBackingLipTests::KnownCurrentBackingIgnoresOppositeBarMeasurementLossAndReferenceFlags" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="13457cea-6156-5cb0-b09a-ff685ed07bfa" executionId="d69d6355-3806-40f9-ad7b-5f6bc3108914" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2b36b05b-f0cc-509b-8362-c7097ad627f8" executionId="15937c7f-8d5a-4a94-ac6c-dfff463625dd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3e8f45c1-febd-0758-aed8-c560375e5922" executionId="a5331340-29a9-49df-a427-fdb04ea94096" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d03f3086-a8a9-fd7e-3230-4cdad757af1c" executionId="4314187c-5ea2-4948-adb6-7eabb667ca10" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="4" executed="4" passed="4" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>scale=6 format=0 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=0 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=0 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=0 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=1 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=1 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=1 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=1 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=2 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=2 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=2 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=2 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+scale=6 format=3 top=0 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+opposite-bar-current-card scale=6 format=3 top=0 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,1746-2496,1776&#xD;
+scale=6 format=3 top=1 first=detected current=detected physical=384:1776 lines=2&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+opposite-bar-current-card scale=6 format=3 top=1 valid=1 reason=current-revalidated-backing-outline samples=35882 measured=1344,384-2496,414&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

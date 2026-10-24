@@ -1,0 +1,50 @@
+{
+  "commit": "c3b37918ec57ba68868578b6aef79fcbdd4f2d34",
+  "configuration": "Release",
+  "architecture": "x64",
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip",
+    "clean Apply notifies without saving",
+    "clean remote Apply uses unchanged RPC candidate"
+  ],
+  "nativeValidation": {
+    "trx": "TestResults\\subtitle-flicker-final.trx",
+    "passed": "1082",
+    "total": "1082",
+    "commit": "c3b37918ec57ba68868578b6aef79fcbdd4f2d34"
+  },
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-subtitle-flicker-c3b37918-20261023-203447",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "8FC8257F2FCC3CDB9F71E2F4948D113A330B4E9E435B8B1D4DF11D73E641122D",
+      "previousSha256": "DB8055CEA6536CD65A296F5F8B4904BDB1F40FA3C0EF31EEC35352B77B73203D"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "910506B1276F051AA4B29CC5402CF98517D227E4D33BC6142C720E2EE4A96046",
+      "previousSha256": "20B6DB7F32599FB9C2024EE0284240A1D343135F03686CFF458981C298579E96"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "49AD65AA2B90871B52E87901FE1BF5F5282CD7978BB18E0F20D4B8F5B1B3CB40",
+      "previousSha256": "AE6473AD148659D71E95CDC416E631AB9F59C724B6A4DE45D61281438A09E39E"
+    }
+  ],
+  "configurationEditorPreserved": "existing Config binaries and open session unchanged; runtime-only correction",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+  },
+  "verifiedAt": "2026-10-23T20:34:47.2696711-04:00"
+}

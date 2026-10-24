@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "c3b37918ec57ba68868578b6aef79fcbdd4f2d34",
+  "integrationBase": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "releaseRebuildPassed": true,
+  "selectedNativeTestsPassed": 1082,
+  "newRegressionTestsPassed": 4,
+  "qtChecksPassed": 4,
+  "pr": "https://github.com/billslack2/videoprocessor/pull/197",
+  "liveResult": "FAILED: user replayed and reports same result. New log confirms no continuation seed because coarse AR 376..1784 differs from subtitle physical 384..1776. Unit fixtures used equal planes and missed this upstream gate.",
+  "configurationEdits": [],
+  "moviePixelsCommitted": false,
+  "videoReview": "Opening section only. Playback source has moved on; user clarified no paused offending frame."
+}
