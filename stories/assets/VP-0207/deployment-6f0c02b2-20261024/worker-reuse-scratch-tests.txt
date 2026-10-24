@@ -1,0 +1,50 @@
+RUN CompleteCurrentWorkerCoverageReusesNearbyPlaneOnlyAfterFreshNativeProof
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=1 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=1 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=1 first=detected current=detected physical=64:296 lines=2
+PASS CompleteCurrentWorkerCoverageReusesNearbyPlaneOnlyAfterFreshNativeProof
+RUN CompleteWorkerReuseCannotPromoteIncompleteWeakOrNoncurrentCoverage
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+PASS CompleteWorkerReuseCannotPromoteIncompleteWeakOrNoncurrentCoverage
+RUN CompleteWorkerReuseRejectsChangedPlaneEpochAndNewBarInk
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=1 top=0 first=detected current=detected physical=64:296 lines=2
+PASS CompleteWorkerReuseRejectsChangedPlaneEpochAndNewBarInk
+RUN OptionalStationaryNativeBudgetCannotConvertCandidateIntoOutputAuthority
+stationary complete near=20 pending=60943 inspector=332074 cap=51867 total=444884
+stationary native near=20 seq=4 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=20 seq=5 complete=1 retained=0 reads=375547 reason=current-complete-cue
+stationary native near=20 seq=6 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=20 seq=7 complete=1 retained=0 reads=375547 reason=current-complete-cue
+stationary native near=20 seq=8 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=20 seq=9 complete=1 retained=0 reads=375547 reason=current-complete-cue
+stationary complete-worker reuse near=20 inspector=60064 cap=43422 total=103476
+stationary complete near=200 pending=60943 inspector=336158 cap=51867 total=448968
+stationary native near=200 seq=4 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=200 seq=5 complete=1 retained=0 reads=379631 reason=current-complete-cue
+stationary native near=200 seq=6 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=200 seq=7 complete=1 retained=0 reads=379631 reason=current-complete-cue
+stationary native near=200 seq=8 complete=0 retained=1 reads=1 reason=complete-sample-budget
+stationary native near=200 seq=9 complete=1 retained=0 reads=379631 reason=current-complete-cue
+stationary complete-worker reuse near=200 inspector=60064 cap=43422 total=103476
+PASS OptionalStationaryNativeBudgetCannotConvertCandidateIntoOutputAuthority

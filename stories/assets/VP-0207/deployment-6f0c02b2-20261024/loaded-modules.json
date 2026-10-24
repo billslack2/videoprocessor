@@ -1,0 +1,14 @@
+[
+  {
+    "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+    "sha256": "F61B0ECA9B28B5B5E597B570AE004A79BAFA660E988974CEBBC0B66F212319AE"
+  },
+  {
+    "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "sha256": "9FBA29A5040B7FF6C84AE5B568439749959B69DDA3819F543D80238B9A4F12C6"
+  },
+  {
+    "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "sha256": "A7018156CA6AC0BBA06D8EF0AC653BA23B61E3FA792AD97D8D30C455825B8EA0"
+  }
+]

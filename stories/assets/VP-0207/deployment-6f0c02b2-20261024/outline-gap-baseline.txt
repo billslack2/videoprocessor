@@ -1,0 +1,1 @@
+seed=1:current-finite-rounded-backing-lip unknown=0:lip-work-budget lost=0:lip-non-card-side-geometry warm=1:current-revalidated-backing-outline reads=34030

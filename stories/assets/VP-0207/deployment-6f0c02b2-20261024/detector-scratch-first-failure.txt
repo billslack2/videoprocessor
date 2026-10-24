@@ -1,0 +1,5 @@
+RUN CallerReadExhaustionStopsCardTrialsWithoutRevokingLocalQuotaProof
+PASS
+RUN CurrentReadExhaustionKeepsUnknownAcrossFormatsAndRecoversOnNewSource
+expected=1 actual=2
+AreEqual failed

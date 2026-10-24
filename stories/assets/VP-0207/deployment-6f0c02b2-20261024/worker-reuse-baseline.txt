@@ -1,0 +1,6 @@
+near=20 mode=0 worker_detected=1 configured=0 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=0 proof=current-complete-cue complete=1 inspector_reads=332074 ms=21.839
+near=20 mode=1 worker_detected=1 configured=1 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=442890 proof=current-complete-cue complete=1 inspector_reads=60064 ms=4.4488
+near=20 mode=2 worker_detected=1 configured=1 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=442890 proof=current-complete-cue complete=1 inspector_reads=332074 ms=25.2582
+near=200 mode=0 worker_detected=1 configured=0 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=0 proof=current-complete-cue complete=1 inspector_reads=336158 ms=17.1098
+near=200 mode=1 worker_detected=1 configured=1 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=490174 proof=current-complete-cue complete=1 inspector_reads=60064 ms=2.1313
+near=200 mode=2 worker_detected=1 configured=1 raw_planes=384,1776 raw_bounds=1486,1778-2346,2038 worker_reads=490174 proof=current-complete-cue complete=1 inspector_reads=336158 ms=15.3134

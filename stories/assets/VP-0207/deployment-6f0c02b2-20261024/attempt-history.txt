@@ -1,0 +1,7 @@
+Attempt history retained for this candidate
+
+8b82bccc: first incremental x64 Release build failed with LNK1103 (corrupt incremental linker debugging information). No deployment occurred. Resolved by cleaning generated Release targets before rebuilding. A scratch detector recovery test also had an incorrect fixed cue-counter expectation; the approved correction asserts cue advancement and normalizes only that expected counter before full geometry/ink parity.
+
+ee45a947: clean x64 Release build succeeded. Full selected run completed 1,943 tests: 1,942 passed, one failed. The sole failure was CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure, which asserted the old unconditional discard behavior for budget failure. All seven new regression methods, all native captures and GPU checks passed. Reviewed test-only correction keeps the four contradiction cases strict, requires no cleanup on every failed current frame, and requires fresh current-identity revalidation after budget-only failure.
+
+6f0c02b2034b47e8b71aababaf47cb1ab96c8358 is the final source pin. Runtime production sources are byte-identical to ee45a947; only the obsolete regression expectation changed. Rebuild and full rerun are required before deployment. Actual final receipts determine the outcome; this file alone is not a validation receipt.

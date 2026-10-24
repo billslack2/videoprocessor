@@ -1,0 +1,212 @@
+[
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\summary.txt",
+    "bytes": 2496,
+    "sha256": "2C8ADF8724F6806B0809AC0F897C4930E4C6370548CF066466B358202A20955E"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\investigation.txt",
+    "bytes": 3186,
+    "sha256": "55790D621961D26F5691B2F42CE9A3CF0892BB2C2589BBEDE3DE417B8509B16D"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-history.txt",
+    "bytes": 1340,
+    "sha256": "6B909268194EA8B0A91042FBD538C103069C5B51DEFDCC1672F7B4AD12557567"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\validation.json",
+    "bytes": 9085,
+    "sha256": "E38F90F0AE9206C95067B7FD9AC3A1D56468FF33D459F87C365F7ECA44B54A81"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\deployment.json",
+    "bytes": 4350,
+    "sha256": "A0068A28BCCBA6245D6360FB300548CFDE8988B1822A56EBC9E48854004118CE"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\loaded-modules.json",
+    "bytes": 514,
+    "sha256": "DD31614B3E305236A2C2D2733DE7B292FD6D1999156BEC43D7CA7153F2721437"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\post-deploy-observation.json",
+    "bytes": 1042,
+    "sha256": "CDB534904D35C5895152AE92B0C5B3CC0A8587363521B9F0C71FADF0F18043D6"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\audit-release-build-result.json",
+    "bytes": 356,
+    "sha256": "C924798C9AB0829C3484143ADA619599FAF57DFE38B0AFB5F5996E6F0FAE9B54"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\efficiency-release-regressions-result.json",
+    "bytes": 2385,
+    "sha256": "B35953645EA1B06D13C8C6990666F6E98C8C5F183DDCCFABE8E9361F83C200D0"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\tail-review.txt",
+    "bytes": 4422,
+    "sha256": "64CBD1326C20042CEBFBF5C10D455D2C0D9494D7BC027A37E592C316891DC2F2"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\tail-baseline.csv",
+    "bytes": 1115,
+    "sha256": "4CEF0D4B1E77198E1E280AECC4F5E22E36CC3E58C9FE7F97DBE990F97E87CB59"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\tail-current.csv",
+    "bytes": 1056,
+    "sha256": "37806B112C3FBD9A557D4AD445D375A1844776221638521184454FB34B12E115"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\detector-scratch-tests.txt",
+    "bytes": 434,
+    "sha256": "1AA07195CC829383619249F8E7C915F1C00B4BDBF5ED5BF16A8B450C858AFC6E"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\detector-scratch-first-failure.txt",
+    "bytes": 189,
+    "sha256": "979FF03261F5241CE92B7D44F0C8C4FEB0CCF3A84376FEC2990BB7153DB58823"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\backing-review.txt",
+    "bytes": 5794,
+    "sha256": "26629A9FD1CB33D1EF1ACD8FE7141689DDC0148D77F664FADFF5DBE831747939"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\cap-width-baseline.csv",
+    "bytes": 5280,
+    "sha256": "58D953CA5EECEF6332617E3AAFDA2327DC69530EF96803BFDA445AE1485FC0A0"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\priority-cadence-replay.csv",
+    "bytes": 10875,
+    "sha256": "B359D555B381548F190BF84E95CCF5465FD71D26BC47C65CE2AF9316550E594A"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\backing-scratch-tests.txt",
+    "bytes": 1528,
+    "sha256": "4728DD40941A1AD993E3B80996BC858631109F1317FE1CEE4BBAC296FF51A59E"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\outline-gap-baseline.txt",
+    "bytes": 158,
+    "sha256": "B60A1DE50F8872EBEB4BE3E13600C74128E7E7989CF619DB748DB24A8FEB62D2"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\worker-reuse-baseline.txt",
+    "bytes": 1128,
+    "sha256": "D8F47ADC2D4CB8E1ACD7F7A59B439A65DABA1A952CEAB36F57F35624D41A12D0"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\worker-reuse-prototype.txt",
+    "bytes": 1124,
+    "sha256": "648CECBBE9D12D7E71786840FF2CD1C839FD7DA048BF01576ACDF46EEFBFF74A"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\independent-review.txt",
+    "bytes": 2984,
+    "sha256": "742F0E5818C90B6D4659A92918147F7283A33AA539A468415E7188B3C2BA8160"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\worker-reuse-scratch-tests.txt",
+    "bytes": 4128,
+    "sha256": "7732F0BAB9BA5930F2D92C3342F7B47AF62242B8267A1A79891002D82BD80F58"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\prior-contract-scratch.txt",
+    "bytes": 429,
+    "sha256": "D12E0C136A65A67E82E30D38E5FECFF62EFF42FBDC74B5F34AE0DD8300FFD0D8"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\pr-body.md",
+    "bytes": 3066,
+    "sha256": "490CDB4E7ED4F16C32DA1CDE459C83B99D1BBC815C0C39496EEE53BC8CBB778B"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\audit-release-build.log",
+    "bytes": 119317,
+    "sha256": "4BCECCBCB53C892F222993AB26B92865F26D88CFD7B1FD929C480895AC74941F"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\audit-release-build-console.txt",
+    "bytes": 32693,
+    "sha256": "786194C630975D27E1CF2F8CFA12EE5355D7AE5D7EA16A5FC1B2290AD1B4A1AC"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\efficiency-release-regressions.trx",
+    "bytes": 2998203,
+    "sha256": "329EA56FD2B7F8122D9C00DD2B8BB93641CB2C807AAACD3E11D8AC618AAA2BA0"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\efficiency-release-regressions-console.txt",
+    "bytes": 350500,
+    "sha256": "B92955F2BFEF4FC4A4BBC93B90F3C4EDE07E7A04C0130E868013C016B6A7D37C"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\post-deploy-observation.log",
+    "bytes": 2113939,
+    "sha256": "741BC724A2B424B92382902EDB8C9864B90DB67A0BB2EE8A2652672DAA3E1102"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-8b82bccc\\audit-release-build-console.txt",
+    "bytes": 5183,
+    "sha256": "7E66CA2BD5B9F28969E5BD1687F36118169B5F6083599FCCA1B01A4BC99BC5D0"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-8b82bccc\\audit-release-build-result.json",
+    "bytes": 356,
+    "sha256": "9325EF0D68C0432CCDC20BBF5D065A5F562C78779FE0B78D562A4D23080AE1B5"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-8b82bccc\\audit-release-build.log",
+    "bytes": 30690,
+    "sha256": "1717512F3F85D2CC018028B53138AD3FFBC25404119A0C014F07CDA9B48BF2C3"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-clean-console.txt",
+    "bytes": 0,
+    "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-clean-result.json",
+    "bytes": 355,
+    "sha256": "69012C949609734867712EF65F08B51C35548E4E5AAB2290361AFB896DAB4117"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-clean.log",
+    "bytes": 9322,
+    "sha256": "8E7E5F052C6D76B64E40F72178074A4576D833F9B5D2E83973092A079518BE6A"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-release-build-console.txt",
+    "bytes": 32693,
+    "sha256": "90C86E30D32307038AEF80517426258452C7A37460A413F4100C7BA8379FCA0D"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-release-build-result.json",
+    "bytes": 356,
+    "sha256": "DBC6D3400D43B5CAA3CABC9638806A9B52AFDEB08AD0B04552E8BD780DC28A2F"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\audit-release-build.log",
+    "bytes": 119268,
+    "sha256": "D102B06139452AE33C8B2A4E78EF8F10048CD5AB0FE76C039895AA221A03D8E2"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\efficiency-release-regressions-console.txt",
+    "bytes": 351268,
+    "sha256": "E2215E1B98737B63941D9B0031DE03D02E2518D8696099C802F6113F43EE2CE3"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\efficiency-release-regressions-result.json",
+    "bytes": 2385,
+    "sha256": "65FCE83069C2F100A438AD12590F77B28C71C2876B998F20BF1849774B3EDB58"
+  },
+  {
+    "path": "E:\\codex\\diagnostics\\vp0207-budget-efficiency-20261024\\attempt-ee45a947\\efficiency-release-regressions.trx",
+    "bytes": 2998602,
+    "sha256": "0DF3AA684CA72DE5FE6884AD96010E46B4CF72D1BA4F8B2F21BACD53B6895D94"
+  }
+]

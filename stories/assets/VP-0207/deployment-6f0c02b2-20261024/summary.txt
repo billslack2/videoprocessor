@@ -1,0 +1,19 @@
+Budget efficiency and reliable recovery candidate — 2026-10-24
+
+Clean source: 6f0c02b2034b47e8b71aababaf47cb1ab96c8358
+Beta/default: v1.4.02-beta at b1415da4e2cc12807f390f4b722c459be9a17c08
+Build: successful x64 Release host, standard/beta renderers and test assembly.
+Selected regressions: 1943/1943 passed with three preserved native captures enabled. All seven new methods plus the revised prior contract test executed. This is selected runtime/native/GPU coverage, not the entire solution/test suite or installer qualification.
+
+Changes: prompt termination after caller read exhaustion; current complete-worker evidence reuse only after fresh own-plane proof; backing phase ceiling 131,072 inside unchanged 524,288 frame ceiling; private original-outline retention only on budget failure. Current identity, full search/ink/body/boundary proof, contradiction rejection and eight-source expiry remain enforced. Read investigation.txt and the three independent audit notes for measured costs and limits.
+
+Matching host and both renderers deployed. Loaded host/selected renderer hashes and embedded clean identities verified. Backup: C:\Videoprocessor\vp\deployment-backups\vp0207-budget-efficiency-6f0c02b2-20261024-011349
+No persistent configuration edits. The four-line startup action forcing Classic was temporarily commented for 10 seconds and then restored byte-for-byte. Clear/Yellow remains active. Application-managed saved-state values are preserved; see deployment receipt for exact before/after hashes.
+
+Settled log observation: 2026-10-24 01:14:32 through 2026-10-24 01:17:34.
+Lip checks: 92; invalid/unapplied: 0.
+Subtitle stability transitions: 0; native pixel contradictions: 0; submitted geometry changes: 0.
+Cleanup rectangles: 1442,1746-2398,1776.
+These are sampled/event logs of the stationary source, not visual acceptance. Current source/display are approximately 24 Hz matched. Moving playback and 24-to-60 refresh mismatch remain unqualified. Prior 398034da failed live replay. Keep PR #197 draft/unmerged and VP-0207 In Progress.
+
+Failed attempts preserved locally: 8b82bccc incremental LNK1103; ee45a947 clean build/full suite: 1,942 passed plus one obsolete outline-discard expectation. The final revision changes only that expectation while retaining all contradiction tests. Scratch default-stack harness overflow is documented separately; the actual VSTest run passed without stack configuration changes. No captured movie pixels are committed.

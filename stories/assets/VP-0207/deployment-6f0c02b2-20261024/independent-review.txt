@@ -1,0 +1,24 @@
+Independent read-only review: detector and opaque-card budget fail-fast
+Reviewer: cue_continuity_design subagent
+Date: 2026-10-24
+Base: 7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973 plus current working diff
+
+Files reviewed:
+  src/VideoProcessor-Lib/SubtitleBoxDetector.cpp
+  src/VideoProcessor-Lib/SubtitleOpaqueCardRefinement.h
+
+No blocking logical defect found in the reviewed diff.
+
+1. Unbudgeted behavior: every new budget-specific branch is conditional on a non-null exhausted source read budget. New m_workLimit checks do not remove previously successful unbudgeted paths: the pre-existing other assignments of this flag (calibration/component caps) already returned immediately. Optional local native/card quotas retain their existing behavior.
+
+2. Shared exhaustion cannot become success: detector Analyze forces detected=false, workLimit=true, incomplete top/bottom/configured search flags, and sample-budget diagnostics. It skips the configured broad retry after shared exhaustion. The opaque helper marks actual source exhaustion, zeros remaining attempt allowance, suppresses its broad retry, and cannot return an earlier best card after the global budget has failed. Optional local quota exhaustion remains separate.
+
+3. Partial snapshots: a later detector-stage failure can still expose the completed coarse-grid InkSnapshot with rawEvidenceComplete=true. That existing flag describes raw grid sampling, not a completed subtitle grouping or current cleanup proof. It is not appropriate to claim all failure snapshots are cleared. Relevant current inspector, raw fallback and cap consumers also require non-work-limit current text / complete search, so this snapshot cannot authorize output by itself. Early pre-exhaustion returns clear the snapshot.
+
+4. Failure propagation: direct planar reads remain charged. Other member reads set sample-budget state through sampleCurrent; static boundary helpers exit on failed exhausted reads. Caller phase/row checks and final Analyze rejection prevent partial positive output. The retained current-grid cache is same-call/current-source only; cached reads do not bypass final exhaustion rejection.
+
+5. This is a native-read limit with bounded algorithm loops, not a hard CPU deadline. Some bounded loop/cleanup work can occur between the failing read and the next phase or row check. No wall-clock guarantee is justified by this patch.
+
+Related independently checked cap change: default phase cap131072 still obeys the unchanged shared frame limit; private outline retention after lip-work-budget emits invalid proof and does not renew its original eight-source nomination window. No geometry or pixel thresholds weakened.
+
+Validation status: code review complete. Integrated Release and focused detector tests are owned by the root/safety agents. My exact-body complete-worker reuse tests (three synthetic methods plus stationary native integration) pass in selected-worker-reuse-tests.txt; they do not replace the integrated build.

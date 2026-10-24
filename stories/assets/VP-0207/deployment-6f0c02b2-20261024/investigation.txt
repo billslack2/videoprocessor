@@ -1,0 +1,17 @@
+Budget and efficiency follow-up, 2026-10-24
+
+Baseline deployed candidate: 7a8bfb83a341a6338ac109a0abb4ec9f8c2ae973.
+Beta/default freshly checked: v1.4.02-beta, b1415da4e2cc12807f390f4b722c459be9a17c08.
+This investigation does not attribute stationary subtitle/cap flashing to zoom movement.
+
+Measured findings and scoped fixes:
+- Complete current worker evidence with nearby/reference own-plane provenance was redundantly segmented even after a fresh current-native exact-plane proof. Reuse now follows that proof, exact current identity/context, complete configured coverage, accepted slot and ink comparisons. On preserved native pixels the inspector falls from 332074/336158 to60064 reads for genuinely complete worker evidence. Ordinary narrow worker positives remain incomplete and take the full scan. No threshold loosening or synthesized raw/AR authority.
+- Read-budget exhaustion stopped source reads but not CPU work. The instrumented preserved-frame detector made52933 further failed Sample calls and24918 cached hits after exhaustion during panel tracing, with2.521ms post-exhaustion CPU. Row/stage/native-recovery checkpoints terminate that work; the scratch prototype observed zero further calls/cache hits and~0.228ms exit tail at the same budget. Opaque-card helper now propagates the caller's exhausted budget and skips further trials/broad retry. Its separate optional local quota behavior is preserved. This is not a wall-clock deadline guarantee.
+- Exhaustive current backing proof has a real65536-local-cutoff defect for wide4K captions. A1722px-wide,30-row rounded cap with own-plane reproof fails at65536 and succeeds at67383 native reads. A2814px-wide case needs101235 reads (~1.22ms mean over six trials here). Raise only this local phase ceiling to131072, bounded by unchanged shared524288 frame ceiling. Exact body/chroma/boundary/identity rules remain. Global insufficient capacity still returns invalid current proof.
+- A transient backing budget failure discarded coordinates and forced cold reacquisition. A concrete same-cue case fails cold reacquisition with a single outside flank shadow while exact revalidation of the prior finite outline succeeds. Retain only coordinates on lip-work-budget, inside the existing matching context/eight-source window; do not renew identity or emit cleanup on failure. Current pixels must revalidate every body pixel and boundary before recovery. Contradictions/context/expiry reset normally.
+
+Rejected hypotheses and qualification limits:
+- Optional pending-guard seeding did not starve cap cleanup in96 production-header/library cases. Changing seed/cap order changed neither reads nor outcomes. No ordering change made.
+- Successful same-selected-identity cadence repeats reused current cue proof and cost~0.47-0.94ms in the scratch orchestration. No speculative GPU texture cache lifetime change made.
+- Current live source and display are both~23.976Hz. This does NOT qualify the user's24-to60 refresh mismatch or moving playback. No current visual acceptance is claimed.
+- Native captured movie pixels remain local. Prior398034da replay failed. PR197 must remain draft/unmerged until actual playback acceptance.

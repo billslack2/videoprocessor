@@ -1,0 +1,40 @@
+Bounded detector exhaustion audit and fail-fast verification
+
+Source: E:\codex\videoprocessor\subtitle-current-cap-fix-20261023. Parent owns final commit/build identity. This is scratch evidence, not a deployment receipt.
+Native fixture: stationary-native-a.bin; identical stationary A/B capture already preserved. No motion or tone-mapping inference is made.
+
+Instrumented detector-only replay used the exact production current-side geometry (top=0, bottom=1776), near-bar distances20/200, and16 repetitions per read limit. The limits in CSV are detector-remaining limits, excluding the preceding guard/physical-plane samples. Instrumentation records the first failed read, later native Sample calls, successful cache hits after that failure, and elapsed time to Detect return (including local cleanup). No production counters were introduced.
+
+Confirmed pre-change issue:
+- near20,190000 reads:52933 further failing Sample calls and24918 cache hits after exhaustion; average total7.679ms, tail2.521ms.
+- near20,230000 reads:36290 further failing calls and2463 cache hits; average tail1.059ms.
+- All exhausted results still had detected=false and workLimit=true. This was wasted CPU after known UNKNOWN, not demonstrated stale output authority.
+
+Actual production checkpoint result:
+- near20,190000 reads:0 further calls and0 cache hits; total5.095ms, tail0.248ms.
+- near20,230000 reads:0 further calls and0 cache hits; tail0.257ms.
+- Every exhausted case in production-checkpoints.csv had0 further native calls/cache hits. Remaining tail0.14-0.42ms includes cleanup.
+- Successful read counts unchanged:272010 near20;276094 near200. Normal complete timings were approximately9-12ms in these runs. Baseline near20 at393216 was9.248ms versus9.203ms after; near200 was9.569 versus10.065ms. Concurrent builds, allocation and instrumentation make these insufficient to claim a reliable normal-path speedup or slowdown. The deterministic result is elimination of known post-exhaustion calls while preserving successful native evidence.
+
+Implementation:
+- Detector records actual failed source budget as workLimit/sample-budget and exits at stage, candidate, row and native-recovery boundaries. Cached successful sampling does not gain a new budget lookup per pixel. Already-exhausted entry resets current output first and avoids scratch allocation. Analyze skips the widened retry when the source budget is already exhausted.
+- Opaque-card helper separately propagates actual source-budget failure, stops further trials and broad retry, and rejects/clears a previously completed partial best result on caller-budget exhaustion.
+- Optional LOCAL refinement quota semantics remain: a best proof completed before optional local improvement exhaustion stays valid. The exact-last-allowed-read remains valid; only an actually failed extra read sets exhaustion.
+- The existing coarse InkSnapshot contract is retained on later-stage failure. It is not a selected packet; result.workLimit=true, detection/held=false and incomplete side/configured coverage prevent output authority. No hard CPU deadline is claimed.
+
+Focused exact-production-body tests passed:
+CallerReadExhaustionStopsCardTrialsWithoutRevokingLocalQuotaProof
+CurrentReadExhaustionKeepsUnknownAcrossFormatsAndRecoversOnNewSource
+CurrentGridCacheMatchesNativeFormatsAndRemappedEdgeRows
+CurrentGridCacheDoesNotClaimUnscannedSideOrExpandedPanelRows
+CurrentGridCacheDoesNotSurviveSourceOrAnalysisChanges
+CurrentGridCacheCannotCompleteAfterNativeReadBudgetExhaustion
+
+Coverage includes P010/P210/decoded-DV/RGB, top/bottom and remapped edge phases, expanded panels, full masks/palette/geometry parity, tiny and late budgets, clearing an earlier source result, recovery on a new source, exact-last-read success and optional-local-quota preservation. First test-only run exposed expected cue1 vs correctly reacquired cue2; the correction asserts cue advance and normalizes ONLY that cue in expected evidence before the unchanged full parity assertion. Failure and corrected output both preserved.
+
+Artifacts:
+baseline.csv; checkpoint-prototype.csv; production-checkpoints.csv
+refinement-budgets.txt
+selected-detector-tests-before-cue-correction.txt
+selected-detector-tests-cue-corrected.txt
+Instrumented and exact-body scratch sources/build scripts remain alongside these files. Full pinned x64 Release validation remains parent-owned.

@@ -1,0 +1,6 @@
+scale=1 format=0 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=0 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=0 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=0 top=0 first=detected current=detected physical=64:296 lines=2
+scale=1 format=0 top=0 first=detected current=detected physical=64:296 lines=2
+PASS updated prior contract

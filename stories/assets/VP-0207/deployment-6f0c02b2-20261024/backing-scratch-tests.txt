@@ -1,0 +1,22 @@
+RUN wide
+scale=6 format=0 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=0 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=0 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=0 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=1 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=1 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=1 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=1 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=2 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=2 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=2 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=2 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=3 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=3 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=3 top=1 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=3 top=1 first=detected current=detected physical=384:1776 lines=2
+PASS wide
+RUN retention
+scale=6 format=1 top=0 first=detected current=detected physical=384:1776 lines=2
+scale=6 format=1 top=1 first=detected current=detected physical=384:1776 lines=2
+PASS retention
