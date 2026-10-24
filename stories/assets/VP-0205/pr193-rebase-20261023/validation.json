@@ -1,0 +1,83 @@
+{
+  "sourceCommit": "13f43bcb6b99581ffcdc1e800ece471565477a80",
+  "baseBranch": "v1.4.02-beta",
+  "baseCommit": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "originalPrHead": "a23c211877685fbe31223c9d9c246ccf3bea008f",
+  "originalBase": "f7c7a8204f7a2cace68b3b40774406680af6c0d8",
+  "rebaseConflictFiles": [
+    "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+    "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters"
+  ],
+  "conflictResolution": "Retain unresolved Full-range matte rejection and shared retention black reference; add budget checks to eligible recovery. Retain both test registrations.",
+  "integrationRegression": "BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference",
+  "budgetPolicyChangedByRebase": false,
+  "budgetOriginCommit": "12b2dfaf78faa60fe92772a888d5c7ca3f3cd60e",
+  "preservedMergedPullRequests": [
+    191,
+    194,
+    195,
+    196
+  ],
+  "releaseBuild": {
+    "configuration": "Release",
+    "platform": "x64",
+    "exitCode": 0,
+    "warnings": 73,
+    "errors": 0,
+    "log": "release-build.log",
+    "verifiedRuntimeRecords": 8
+  },
+  "limitations": [
+    "No deployment, playback restart or configuration change.",
+    "No matched live playback A/B, displayed-source adoption, sustained GPU pressure or queue/memory qualification for the rebased combination.",
+    "PR192 remains unmerged and is not included beyond the cooperative helpers originally selected by PR193.",
+    "Historical proof-delivery benchmarks predate this rebase; no new performance claim is made.",
+    "Adaptive budget policy remains unchanged; no fixed-ceiling split was implemented."
+  ],
+  "adaptiveBoundaryProbe": {
+    "source": "budget-risk-probe.cpp",
+    "result": "budget-risk-probe.json",
+    "testedHeaderCommit": "13f43bcb6b99581ffcdc1e800ece471565477a80",
+    "observation": "Retained 8ms GPU peak plus fresh 1/2ms CPU/GPU samples grant 10.416ms optional work when the next refresh is about 5ms away.",
+    "implication": "Historical tail can classify a potentially reachable next boundary as unreachable. Review this rule before merging unrestricted adaptive admission.",
+    "limitation": "Deterministic policy demonstration only. Actual next-frame work, grant utilization and live deadline misses are not measured."
+  },
+  "nativeTests": {
+    "counters": {
+      "total": 2525,
+      "executed": 2525,
+      "passed": 2525,
+      "failed": 0,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "trx": "pr193-rebase.trx",
+    "trxSha256": "BE7123FEC119BEEAC460F472A45B1B65D43966E07DFDCB19AEABE6B8A4445561",
+    "start": "2026-10-23T20:05:40.9286675-04:00",
+    "finish": "2026-10-23T20:22:15.1184681-04:00",
+    "requiredRegressions": [
+      "BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference",
+      "AdaptiveExpansionRequiresRecentResolvedGpuTiming",
+      "StaleGpuTailCannotMoveOtherwiseReachableBoundary",
+      "KnownCpuAndGpuCostsStillPermitUsefulFilmCadenceLookahead"
+    ]
+  },
+  "userTimingRequirement": "Some additional steady latency is acceptable. Jitter or dropped frames caused by optional analysis are unacceptable.",
+  "schedulingTrace": {
+    "budget": "PresentationAnalysisBudget.h:99-109 changes targetLeadMs and allowance only.",
+    "consumer": "LibplaceboVideoRenderer.cpp:24025-24068 consumes the allowance/deadline and logs the shifted target; it does not update steady queue depth or temporal output PTS.",
+    "queue": "PrefillTargetLocked at LibplaceboVideoRenderer.cpp:25234 returns configured desired depth. AlphaQueuePolicy.h:147-167 defines stall/age backlog thresholds; LibplaceboVideoRenderer.cpp:24652-24670 can discard queued sources during recovery.",
+    "conclusion": "A skipped analysis boundary does not establish stable added presentation latency. Actual visible jitter/drop impact remains unmeasured.",
+    "recommendedDirection": "Use deliberate bounded buffering/preparation ahead of a stable presentation schedule; constrain optional foreground work to verified spare time. Qualify steady-state interval variance, source continuity, drops/repeats, adoption and resource tails."
+  }
+}

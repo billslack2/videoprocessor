@@ -1,0 +1,16 @@
+[
+  "src/VideoProcessor-Config",
+  "src/VideoProcessor-ConfigCore",
+  "src/VideoProcessor-Lib/IRenderer.h",
+  "src/VideoProcessor-Lib/vprenderer/LibplaceboDisplayLut.cpp",
+  "src/VideoProcessor-Lib/vprenderer/LibplaceboDisplayLut.h",
+  "src/VideoProcessor-Lib/vprenderer/LibplaceboPluginVideoRenderer.cpp",
+  "src/VideoProcessor-Lib/StartupPresentationReadiness.h",
+  "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp",
+  "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h",
+  "src/VideoProcessor-Lib/SubtitleBackingLip.h",
+  "src/VideoProcessor-Lib/SubtitleCutPasteShader.h",
+  "src/VideoProcessor-Lib/vprenderer/SubtitleAspectRetention.h",
+  "src/VideoProcessor-Lib/RendererProfileConfig.h",
+  "src/VideoProcessor-Lib/vprenderer/LibplaceboRendererPluginApi.h"
+]

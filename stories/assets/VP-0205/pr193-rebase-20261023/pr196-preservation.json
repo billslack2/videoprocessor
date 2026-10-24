@@ -1,0 +1,50 @@
+[
+  {
+    "file": "src/VideoProcessor-Lib/SubtitleBackingLip.h",
+    "recentAddedLines": 83,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  },
+  {
+    "file": "src/VideoProcessor-Lib/SubtitleCutPasteShader.h",
+    "recentAddedLines": 43,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  },
+  {
+    "file": "src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+    "recentAddedLines": 12,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": false
+  },
+  {
+    "file": "src/VideoProcessor-Test/ConfigFileTests.cpp",
+    "recentAddedLines": 6,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  },
+  {
+    "file": "src/VideoProcessor-Test/LibplaceboLutParserTests.cpp",
+    "recentAddedLines": 2,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  },
+  {
+    "file": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+    "recentAddedLines": 12,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": false
+  },
+  {
+    "file": "src/VideoProcessor-Test/SubtitleBackingLipTests.cpp",
+    "recentAddedLines": 181,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  },
+  {
+    "file": "src/VideoProcessor-Test/SubtitleCutPasteTests.cpp",
+    "recentAddedLines": 142,
+    "missingAddedLines": [],
+    "exactFileMatchesBeta": true
+  }
+]

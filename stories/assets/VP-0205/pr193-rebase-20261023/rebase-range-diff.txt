@@ -1,0 +1,59 @@
+1:  3946bb3a = 1:  f7d50ca6 docs: plan VP-0205 lookahead proof delivery and adaptive budgets
+2:  19767f74 ! 2:  a4bf2735 Preserve useful lookahead with prepared proofs and measured admission
+    @@ src/VideoProcessor-Lib/ActivePictureEvidence.cpp: ActivePictureEvidence ExtractA
+      	perimeter.reserve(256);
+      	for (int i = 0; i < 64; ++i)
+     @@ src/VideoProcessor-Lib/ActivePictureEvidence.cpp: ActivePictureEvidence ExtractActivePictureEvidence(
+    - 		"candidate lacks coherent opposing black-bar evidence";
+    - 	result.lumaSamples = samples.lumaSamples;
+    - 	result.chromaSamples = samples.chromaSamples;
+    --	RecoverLowContrastOpposingBoundary(source,result);
+    -+	RecoverLowContrastOpposingBoundary(source,result,budget);
+    +         rejectRaisedBars(result.axisEvidence.vertical);
+    +         result.reason = "raised Full-range matte reference is unresolved; no new crop or full-raster authority";
+    +     }
+    +-    else RecoverLowContrastOpposingBoundary(source,result);
+    ++    else RecoverLowContrastOpposingBoundary(source,result,budget);
+     +    CheckAnalysisEvaluationBudget(budget);
+      	return result;
+      }
+      
+    +@@ src/VideoProcessor-Lib/ActivePictureEvidence.cpp: const char* ActivePictureBlackReferenceModeName(ActivePictureBlackReferenceMode
+      ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
+      	const AnalysisLumaSource& source,
+      	const ActivePictureEvidence& observed,
+    @@ src/VideoProcessor-Lib/ActivePictureEvidence.cpp: ActivePicturePresentationReten
+      	SampleContext samples{ source };
+     +    samples.budget = budget;
+      
+    - 	std::vector<int> perimeter;
+    - 	perimeter.reserve(256);
+    +     result.blackReference = result.activePicture.blackReference;
+    +     const int blackFloor = result.blackReference.floor;
+     @@ src/VideoProcessor-Lib/ActivePictureEvidence.cpp: ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
+      		result.reason = "current excluded bands remain pixel-safe despite unavailable geometry";
+      	else
+    @@ src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj
+     
+      ## src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters ##
+     @@
+    -     <ClCompile Include="CaptureClockConversionTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    -     <ClCompile Include="DirectShowTimingClockTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    -   </ItemGroup>
+    -+  <ItemGroup>
+    +     <ClCompile Include="ActivePictureBlackReferenceTests.cpp">
+    +       <Filter>Source Files</Filter>
+    +     </ClCompile>
+     +    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" />
+     +    <ClCompile Include="LookaheadPerformanceWindowTests.cpp" />
+     +    <ClCompile Include="PreparedPictureEvidenceTests.cpp" />
+    @@ src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters
+     +  </ItemGroup>
+     +  <ItemGroup>
+     +    <ClCompile Include="PreparedOutwardWindowTests.cpp" />
+    -+  </ItemGroup>
+    +   </ItemGroup>
+      </Project>
+3:  be23c69f = 3:  8648c3e9 Avoid unused prepared retention work for full-raster bases
+4:  bf9e270e = 4:  3646afa1 Record VP-0205 Release validation and measured proof delivery
+5:  a23c2118 = 5:  73e8142f Clarify fallback admission and existing subtitle queue locking

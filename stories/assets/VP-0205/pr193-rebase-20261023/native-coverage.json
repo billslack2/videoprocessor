@@ -1,0 +1,326 @@
+[
+  {
+    "class": "MotionRendererTests",
+    "count": 72
+  },
+  {
+    "class": "Tests.ActivePictureAnalyzerTests",
+    "count": 2
+  },
+  {
+    "class": "Tests.AdvancedPhysicalScopeFillAdmissionTests",
+    "count": 4
+  },
+  {
+    "class": "Tests.AlphaQueuePolicyTests",
+    "count": 29
+  },
+  {
+    "class": "Tests.AlphaSourceCropPolicyTests",
+    "count": 331
+  },
+  {
+    "class": "Tests.AnalysisDiagnosticReplayTests",
+    "count": 7
+  },
+  {
+    "class": "Tests.AnalysisDiagnosticTraceTests",
+    "count": 9
+  },
+  {
+    "class": "Tests.AnalysisRecoveryDvTests",
+    "count": 10
+  },
+  {
+    "class": "Tests.AnalysisRecoveryParityTests",
+    "count": 12
+  },
+  {
+    "class": "Tests.ApprovedGenericFitHoldTests",
+    "count": 5
+  },
+  {
+    "class": "Tests.AsyncOutwardWindowSafetyTests",
+    "count": 6
+  },
+  {
+    "class": "Tests.AutomaticPictureContinuityTests",
+    "count": 22
+  },
+  {
+    "class": "Tests.DenseFitExtentLifetimeTests",
+    "count": 14
+  },
+  {
+    "class": "Tests.FinalAspectLimitFillRoutingTests",
+    "count": 4
+  },
+  {
+    "class": "Tests.FitLookaheadDiagnosticTests",
+    "count": 7
+  },
+  {
+    "class": "Tests.FrameProcessorTests",
+    "count": 4
+  },
+  {
+    "class": "Tests.GradualPictureBoundaryRetentionTests",
+    "count": 3
+  },
+  {
+    "class": "Tests.HdrPeakAnalysisCropTests",
+    "count": 16
+  },
+  {
+    "class": "Tests.InwardCaptionEvidenceTests",
+    "count": 17
+  },
+  {
+    "class": "Tests.LibplaceboOutputPolicyTests",
+    "count": 55
+  },
+  {
+    "class": "Tests.LookaheadOutwardProofTests",
+    "count": 31
+  },
+  {
+    "class": "Tests.LookaheadPerformanceWindowTests",
+    "count": 10
+  },
+  {
+    "class": "Tests.MadVROsdSizingTests",
+    "count": 18
+  },
+  {
+    "class": "Tests.MagewellCaptureTests",
+    "count": 26
+  },
+  {
+    "class": "Tests.MovingPictureDownstreamOwnershipTests",
+    "count": 4
+  },
+  {
+    "class": "Tests.MovingPictureNativePositionTests",
+    "count": 22
+  },
+  {
+    "class": "Tests.MovingPictureTransitionTests",
+    "count": 34
+  },
+  {
+    "class": "Tests.NativeRgbAnalysisTests",
+    "count": 14
+  },
+  {
+    "class": "Tests.NativeStatsOverlayPlacementTests",
+    "count": 33
+  },
+  {
+    "class": "Tests.PendingOverlayEnvelopeTests",
+    "count": 3
+  },
+  {
+    "class": "Tests.PictureTransitionHandoffTests",
+    "count": 20
+  },
+  {
+    "class": "Tests.PresentationEnvelopeCompositionTests",
+    "count": 24
+  },
+  {
+    "class": "Tests.QueueNativeContinuityTests",
+    "count": 9
+  },
+  {
+    "class": "Tests.RendererResetPolicyTests",
+    "count": 26
+  },
+  {
+    "class": "Tests.RetainedScopeUnknownPresentationTests",
+    "count": 25
+  },
+  {
+    "class": "Tests.SamplingRefinementOutwardFitTests",
+    "count": 4
+  },
+  {
+    "class": "Tests.SceneDetectorTests",
+    "count": 14
+  },
+  {
+    "class": "Tests.SubmittedEnvelopeContinuityTests",
+    "count": 6
+  },
+  {
+    "class": "Tests.SubmittedNativeFillRetentionTests",
+    "count": 17
+  },
+  {
+    "class": "Tests.SubtitleBackingLipTests",
+    "count": 46
+  },
+  {
+    "class": "Tests.SubtitleBoxDetectorTests",
+    "count": 136
+  },
+  {
+    "class": "Tests.SubtitleBoxLookaheadTests",
+    "count": 188
+  },
+  {
+    "class": "Tests.SubtitleCutPasteShaderTests",
+    "count": 12
+  },
+  {
+    "class": "Tests.SubtitleCutPasteTests",
+    "count": 78
+  },
+  {
+    "class": "Tests.SubtitleHandoffTests",
+    "count": 27
+  },
+  {
+    "class": "Tests.SubtitleMeasurementWorkerTests",
+    "count": 32
+  },
+  {
+    "class": "Tests.SubtitleOpaqueCardRefinementTests",
+    "count": 8
+  },
+  {
+    "class": "Tests.SubtitleTranslationReversalTests",
+    "count": 6
+  },
+  {
+    "class": "Tests.TemporalPresentationGeometrySafetyTests",
+    "count": 6
+  },
+  {
+    "class": "Tests.TemporalPresentationLedgerTests",
+    "count": 7
+  },
+  {
+    "class": "Tests.VideoFrameFormatterTests",
+    "count": 82
+  },
+  {
+    "class": "VideoProcessorTest.ActivePictureBlackReferenceTests",
+    "count": 15
+  },
+  {
+    "class": "VideoProcessorTest.ActivePictureDecisionTimelineTests",
+    "count": 44
+  },
+  {
+    "class": "VideoProcessorTest.ActivePictureEvidenceTests",
+    "count": 205
+  },
+  {
+    "class": "VideoProcessorTest.ActivePictureMeasurementCacheTests",
+    "count": 11
+  },
+  {
+    "class": "VideoProcessorTest.ActivePictureTransitionModelTests",
+    "count": 62
+  },
+  {
+    "class": "VideoProcessorTest.AnalysisEvaluationBudgetTests",
+    "count": 8
+  },
+  {
+    "class": "VideoProcessorTest.BufferedInwardSafetyReviewTests",
+    "count": 5
+  },
+  {
+    "class": "VideoProcessorTest.ConfigFileTests",
+    "count": 165
+  },
+  {
+    "class": "VideoProcessorTest.DimSideCompositionGuardTests",
+    "count": 23
+  },
+  {
+    "class": "VideoProcessorTest.FullRasterColorEvidenceFormatTests",
+    "count": 3
+  },
+  {
+    "class": "VideoProcessorTest.FullRasterLookaheadTests",
+    "count": 11
+  },
+  {
+    "class": "VideoProcessorTest.LibplaceboLutParserTests",
+    "count": 75
+  },
+  {
+    "class": "VideoProcessorTest.LibplaceboPluginProxyTests",
+    "count": 7
+  },
+  {
+    "class": "VideoProcessorTest.LocalBoundaryDiagnosticsTests",
+    "count": 18
+  },
+  {
+    "class": "VideoProcessorTest.LocalBoundaryRefinementTests",
+    "count": 19
+  },
+  {
+    "class": "VideoProcessorTest.MadVRShaderRuntimeStateTests",
+    "count": 48
+  },
+  {
+    "class": "VideoProcessorTest.NearBlackNativeBoundaryRecoveryTests",
+    "count": 12
+  },
+  {
+    "class": "VideoProcessorTest.OptionalAnalysisWorkerTests",
+    "count": 8
+  },
+  {
+    "class": "VideoProcessorTest.PreparedOutwardWindowTests",
+    "count": 8
+  },
+  {
+    "class": "VideoProcessorTest.PreparedPictureEvidenceTests",
+    "count": 12
+  },
+  {
+    "class": "VideoProcessorTest.RememberedEdgePresentationPolicyTests",
+    "count": 3
+  },
+  {
+    "class": "VideoProcessorTest.RememberedEdgeProfileTests",
+    "count": 72
+  },
+  {
+    "class": "VideoProcessorTest.RememberedEdgeQualificationTests",
+    "count": 19
+  },
+  {
+    "class": "VideoProcessorTest.RememberedEdgeRuntimeTests",
+    "count": 1
+  },
+  {
+    "class": "VideoProcessorTest.RememberedRuntimeModeTests",
+    "count": 3
+  },
+  {
+    "class": "VideoProcessorTest.SourceUploadBatchTests",
+    "count": 5
+  },
+  {
+    "class": "VideoProcessorTest.SparseBoundaryCropExperimentTests",
+    "count": 30
+  },
+  {
+    "class": "VideoProcessorTest.SparseBoundaryTransitionExperimentTests",
+    "count": 19
+  },
+  {
+    "class": "VideoProcessorTest.StartupPresentationReadinessTests",
+    "count": 16
+  },
+  {
+    "class": "VideoProcessorTest.TemporalCleanPacketGpuTests",
+    "count": 1
+  }
+]

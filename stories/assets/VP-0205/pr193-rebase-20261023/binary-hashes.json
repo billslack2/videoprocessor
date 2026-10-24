@@ -1,0 +1,66 @@
+[
+  {
+    "binary": "x64\\Release\\VideoProcessor-GUI.exe",
+    "sha256": "436626A5962D2EECAF2B8B63CA17275B311EB5EB5798C38E7EAB6351F198C61E",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.29.30133",
+    "runtimeRecord": "x64\\Release\\VideoProcessor-GUI.exe.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\VideoProcessor-Test.dll",
+    "sha256": "7FF1E3868EEAFFA04D13CD1FB74377AEA18FA0ECCD32118505C34E8DD1273612",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.29.30133",
+    "runtimeRecord": "x64\\Release\\VideoProcessor-Test.dll.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\VideoProcessorConfig.exe",
+    "sha256": "DF3D163C36A0BBA8AD501E22675C9C448F5E86A260DD391CF6C95D3E331BCA28",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.44.35207",
+    "runtimeRecord": "x64\\Release\\VideoProcessorConfig.exe.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\VideoProcessorConfigDiscovery.dll",
+    "sha256": "9F6F8F5BD906511DD7FD49E3B97D507D09B4560F6DB38D34B20CE460148EB9E9",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.29.30133",
+    "runtimeRecord": "x64\\Release\\VideoProcessorConfigDiscovery.dll.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\VideoProcessorConfigTests.exe",
+    "sha256": "7F56C380F1DBF39F2BF68B17FD9E6CB2477970DCBD111D6370AEF0320A14B60E",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.44.35207",
+    "runtimeRecord": "x64\\Release\\VideoProcessorConfigTests.exe.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\VideoProcessorOutputProbe.exe",
+    "sha256": "058898A5EF57FE607D92DEA9A01F7EAB06C856E443EC195CA805362C64711196",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.44.35207",
+    "runtimeRecord": "x64\\Release\\VideoProcessorOutputProbe.exe.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "sha256": "8ED066A291169B161C140308394364F1A1F562B7F73D90AAD97C915F561D55FE",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.29.30133",
+    "runtimeRecord": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+  },
+  {
+    "binary": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "sha256": "7EB054A423BB6924D5DC2179B27BA6DDE8E674E2CFB6343873F82E59F89C4496",
+    "configuration": "Release",
+    "architecture": "x64",
+    "toolsetVersion": "14.29.30133",
+    "runtimeRecord": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+  }
+]

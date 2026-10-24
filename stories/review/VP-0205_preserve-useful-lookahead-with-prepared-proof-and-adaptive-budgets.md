@@ -4,12 +4,67 @@
 
 Review
 
+Current PR head is `13f43bcb6b99581ffcdc1e800ece471565477a80`, rebased onto
+current/default `v1.4.02-beta` at `e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a`
+on 2026-10-23. [PR #193](https://github.com/billslack2/videoprocessor/pull/193)
+remains draft and unmerged. The clean review/build worktree is
+`E:\codex\videoprocessor\pr193-safety-review-20261023`.
+
+- Preserves merged #191, #194, #195 and #196. The two rebase conflicts were
+  picture evidence and test registration: retain unresolved Full-range matte
+  rejection/shared retention reference, add budgeted eligible recovery, and
+  retain both test sets. Added cross-format measurement/retention parity coverage.
+- Full x64 Release solution build passed (73 warnings, zero errors), including
+  host and both renderer variants. Eight genuine runtime records match the
+  produced binaries before and after testing.
+- All **2,525/2,525 selected native regressions passed**, zero failures/skips,
+  covering prepared proof, cancellation, ownership, adaptive admission, current
+  black-reference/crop policy, API29/LUT and subtitle/GPU composition behavior.
+- No new deployment, playback restart or active configuration change. Historical
+  performance/deployment measurements below predate this rebase. PR #192 remains
+  separate and unmerged; the full combination still needs conflict resolution
+  and validation.
+
+### Timing requirement and remaining merge concern
+
+The user explicitly accepts some additional steady latency, but does not accept
+jitter or dropped frames caused by optional analysis. Qualification must therefore
+measure presentation interval variation and source continuity, not reject a stable
+buffered delay merely because latency increases.
+
+The original 2 ms qualified ceiling first appears in stabilization commit
+`12b2dfaf` on 2026-10-15. It bounds optional synchronous render-thread work,
+not the whole lookahead window or background jobs. No measured optimum for the
+numeric 2 ms choice was found in that history. The adaptive policy is unchanged
+by this rebase.
+
+A deterministic probe of the actual budget class supplies a specific concern:
+with about 5 ms before the next refresh, latest CPU/GPU samples of 1/2 ms, and
+an older 8 ms GPU peak retained in history, it skips that boundary and grants
+10.416 ms of optional foreground work. The older peak is useful as a conservative
+reserve, but does not establish that the next frame must miss the earlier boundary.
+A grant is a maximum; the probe does not show actual grant utilization or a live hitch.
+
+Code tracing shows the skipped-boundary flag only extends the analysis ticket;
+it does not shift output PTS or establish a larger steady queue target. Persistent
+stall/backlog can trigger existing source-dropping recovery. Thus this mechanism
+has not established the user's acceptable steady-latency tradeoff. Before merging
+the adaptive part, review the boundary rule against a stable presentation schedule
+and qualify actual interval variance, dropped/unintended repeated frames, useful
+proof adoption and sustained worker/GPU/queue-memory pressure. Deliberate bounded
+buffering and earlier prepared work are the preferred way to trade latency for
+smooth delivery. Native tests validate implemented policy and pixel contracts;
+they do not establish these live performance properties.
+
+[Current rebase validation, preservation checks, probe and raw test/build evidence](../assets/VP-0205/pr193-rebase-20261023/validation.json)
+
+## Historical pre-rebase implementation and deployment
 Implementation is ready for code/build/test review in separate draft
 [PR #193](https://github.com/billslack2/videoprocessor/pull/193). Standalone PR runtime source is
 `be23c69ffb41bf54d3e112f37692a607d593930b` (prepared-proof implementation
 `19767f74d5a6e7cfb2509abcf2a051227502c9a6`, followed by the reviewed guard
-avoiding unused full-raster retention priming). The discovered integration base
-remains `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
+avoiding unused full-raster retention priming). The discovered integration base at that time
+was `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8`.
 
 - Published PR head: `a23c211877685fbe31223c9d9c246ccf3bea008f`; the last
   two commits change documentation only after the tested runtime `be23c69f`.
