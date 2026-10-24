@@ -1,0 +1,164 @@
+{
+  "source": "39c8e870f1d6bb01d8d7ebcdb6b6be3cbe5a6654",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "sourceCleanAtQualification": true,
+  "selectedStandardCases": 2000,
+  "nativeCases": {
+    "total": "1838",
+    "executed": "1838",
+    "passed": "1838",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "standardGpuCases": 162,
+  "betaGpuCases": 162,
+  "runtimeRecords": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "9BF2D00FD6878C3A7ACB0BCC247279037659FF73C8D11D83FE3E4E1F205FB116",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "7B62BA9ECF4DD5BE00E4B97D3842A44DAE95F39274B2711E0F478991EB904A30",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "ED3166BB5D23BCE1D264AFDA82BAFAA46CC9F96CE6BC3435042A7096DA8E3114",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "VideoProcessor-Test.dll",
+      "sha256": "04EEC16876A1CD41C3B94445C7361B6B3408BF227D6D0CAB1339F53E0AE7C921",
+      "toolset": "14.29.30133"
+    }
+  ],
+  "deployment": {
+    "sourceCommit": "39c8e870f1d6bb01d8d7ebcdb6b6be3cbe5a6654",
+    "betaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "configuration": "Release",
+    "architecture": "x64",
+    "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-smooth-recovery-39c8e870-20261024-142840",
+    "configurationEdits": [],
+    "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+    "files": [
+      {
+        "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "9BF2D00FD6878C3A7ACB0BCC247279037659FF73C8D11D83FE3E4E1F205FB116",
+        "previousSha256": "00C09D314D837B3138EF0D2046CFE767C6C6F865F02B685CF215628E81BB65BB",
+        "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\VideoProcessor-GUI.exe"
+      },
+      {
+        "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "7B62BA9ECF4DD5BE00E4B97D3842A44DAE95F39274B2711E0F478991EB904A30",
+        "previousSha256": "F0BA7411EF253A194B663F9C8F2D575523C42CDCA88DAC1A3F50A53BD31CF1E0",
+        "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll"
+      },
+      {
+        "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "ED3166BB5D23BCE1D264AFDA82BAFAA46CC9F96CE6BC3435042A7096DA8E3114",
+        "previousSha256": "0E7FE5D667430F1197CB3AD3ED1AAC27FD7E6978A4F3AE28C3C229996CA1C5B2",
+        "source": "E:\\codex\\videoprocessor\\smooth-subtitle-root-cause-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+      }
+    ],
+    "configBefore": [
+      {
+        "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+        "name": "active-output-sweep-hdr-template.cfg"
+      },
+      {
+        "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+        "name": "active-output-sweep-sdr-template.cfg"
+      },
+      {
+        "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+        "name": "NPNnnNPn.cfg"
+      },
+      {
+        "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7",
+        "name": "VideoProcessor.cfg"
+      }
+    ],
+    "configAfter": [
+      {
+        "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+        "name": "active-output-sweep-hdr-template.cfg"
+      },
+      {
+        "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+        "name": "active-output-sweep-sdr-template.cfg"
+      },
+      {
+        "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+        "name": "NPNnnNPn.cfg"
+      },
+      {
+        "sha256": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7",
+        "name": "VideoProcessor.cfg"
+      }
+    ],
+    "stateBeforeShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+    "stateAfterShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+    "stateSelectionEdit": {
+      "from": "classic",
+      "afterSHA256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "beforeSHA256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "key": "profile.subtitles",
+      "to": "reconstruction",
+      "authorization": "User authorized selecting Reconstruction or Clear / Yellow for testing"
+    },
+    "stateNote": "Saved settings preserved; only explicitly requested test subtitle profile may be selected after a separate backup",
+    "startedProcessId": 86740,
+    "verifiedAt": "2026-10-24T14:28:57.7607529-04:00",
+    "status": "deployed-runtime-startup-pending"
+  },
+  "health": {
+    "source": "39c8e870f1d6bb01d8d7ebcdb6b6be3cbe5a6654",
+    "pid": 86740,
+    "start": "2026-10-24T14:28:41.8315319-04:00",
+    "observedAt": "2026-10-24T14:33:11.1669650-04:00",
+    "aliveSeconds": 269.3354331,
+    "responding": true,
+    "cpuSeconds": 243.296875,
+    "logLastWrite": "2026-10-24T14:33:11.0352976-04:00",
+    "crashOrHangEvents": 0,
+    "modules": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "9BF2D00FD6878C3A7ACB0BCC247279037659FF73C8D11D83FE3E4E1F205FB116"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "7B62BA9ECF4DD5BE00E4B97D3842A44DAE95F39274B2711E0F478991EB904A30"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "ED3166BB5D23BCE1D264AFDA82BAFAA46CC9F96CE6BC3435042A7096DA8E3114"
+      }
+    ],
+    "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+  },
+  "fixtureCount": 5,
+  "qualificationRoot": "E:\\codex\\diagnostics\\vp0207-smooth-motion-regression-20261024-1238\\final-qualified",
+  "preservedBuild": "E:\\codex\\diagnostics\\vp0207-smooth-motion-regression-20261024-1238\\qualified-39c8e870-build",
+  "limits": [
+    "Selected runtime/test target build and regression classes, not full solution or entire native test suite.",
+    "Five preserved native 4K frames are replayed with controlled metadata and failure cases; these are not a captured native flicker sequence.",
+    "Live replay acceptance remains pending."
+  ],
+  "liveResult": "User confirms performance improved but Smooth Motion subtitle flashes persist. Two logged 41.7ms proof-loss/recovery events in the new mismatched-refresh session. Not playback acceptance."
+}

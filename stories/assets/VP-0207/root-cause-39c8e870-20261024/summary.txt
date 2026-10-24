@@ -1,0 +1,15 @@
+Clean 39c8e870 x64 Release test deployment, 2026-10-24 14:28 EDT
+
+Qualification: 1,838 selected native cases plus 162 standard-library GPU cases (2,000 distinct cases); all 162 GPU cases also pass on the beta library. All five preserved native fixtures executed and remained unchanged. Matching host, both renderers and test targets built successfully. Normal-stack and exact native-pressure qualification passed. This is a selected suite, not every solution target/test.
+
+The initial final beta attempt failed in its post-build hash-record PowerShell step. Its receipt is preserved. An explicit beta-only retry generated genuine build records and passed all 162 tests. No failed receipt was rewritten. Prior test/compiler/HLG/chroma failures remain documented in preceding entries.
+
+Deployment: host and both renderer DLLs copied from the qualified clean Release build; all loaded hashes verified. PID86740 started14:28:41, responsive at269.3seconds with fresh log and no crash/hang events. This health observation includes operator renderer/profile changes; it is not a continuously settled playback window.
+
+Configuration backup: C:\Videoprocessor\vp\deployment-backups\vp0207-smooth-recovery-39c8e870-20261024-142840. All cfg files retained byte-identical values. The existing renderer.ready Classic-reset action was suppressed for the first10seconds, then original bytes restored. Only backed-up saved profile.subtitles changed Classic to Reconstruction. Later operator/renderer actions selected Classic, Reconstruction and Clear / Yellow; those were preserved.
+
+Actual playback result: user confirms performance seems fixed, but Smooth Motion subtitles still flash. At14:30 the new runtime logs23 recoveries/42 dropped sources and two41.7ms subtitle loss/recovery events at sources364/398. Only one source-renderer creation occurred across sampled recovery windows, confirming the expensive recreation cascade was removed. Neither cue loss exhausted its budget. Exact failing native pixels are absent, so these logs do not establish which pixel changed. Current native capture UI helper could not initialize because its Windows sandbox setup failed; no app input was sent by that attempt.
+
+Next authorized tradeoff: the user explicitly accepts minor interpolation artifacts and brief cue-end repeats. Implement Smooth-Motion-only reuse of one complete processed source presentation packet, including its cleaned picture, subtitle and replacement background, bounded to two source intervals. Do not renew this hold on interpolated outputs or extend ordinary mode. New valid cues and hard source/policy/geometry/GPU resets replace/clear it. No additional scans or general budget/cleanup-authority change is planned. PR197 remains draft and unmerged; story remains In Progress.
+
+Full logs, native captures, immutable qualification binaries/PDBs and test output remain outside Git under E:\codex\diagnostics\vp0207-smooth-motion-regression-20261024-1238.
