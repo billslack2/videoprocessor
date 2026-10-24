@@ -372,6 +372,7 @@ namespace SubtitleBoxLookahead
                 auto bars=ResolveCurrentSubtitleAnalysisBars(source,current,
                     sharedPicture.bounds.top,sharedPicture.bounds.bottom);
                 SubtitleBoxResult candidate;
+                int candidateTop=0,candidateBottom=0;
                 std::shared_ptr<const SubtitleInkSnapshot> candidateInk;
                 if((bars.top==0 && sharedPicture.bounds.top>0) ||
                     (bars.bottom==source.height && sharedPicture.bounds.bottom<source.height) ||
@@ -386,6 +387,7 @@ namespace SubtitleBoxLookahead
                         sharedPicture.bounds.bottom;
                     if(probeTop<probeBottom) {
                         result.sharedProbeAttempted=true;
+                        candidateTop=probeTop;candidateBottom=probeBottom;
                         scanner.Reset();
                         candidate=scanner.Analyze(source,probeTop,probeBottom,
                             identity.acceptedSequence,identity.viewportGeneration);
@@ -455,10 +457,18 @@ namespace SubtitleBoxLookahead
                 if(result.barAuthority && !result.glyphLocalTop &&
                     !result.glyphLocalBottom && !result.privateCuePlaneTop && !result.privateCuePlaneBottom &&
                     !(source.readBudget && source.readBudget->exhausted)) {
-                    scanner.Reset();
-                    result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
-                        identity.acceptedSequence,identity.viewportGeneration);
-                    result.ink=scanner.InkSnapshot();
+                    // The provisional scan already covered these exact current
+                    // coordinates. Pixel reproof changes authority, not pixels.
+                    if(result.sharedProbeAttempted && candidate.detected && !candidate.workLimit &&
+                        candidateInk && candidateInk->rawEvidenceComplete &&
+                        candidateTop==result.pictureTop && candidateBottom==result.pictureBottom) {
+                        result.text=candidate;result.ink=candidateInk;
+                    } else {
+                        scanner.Reset();
+                        result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
+                            identity.acceptedSequence,identity.viewportGeneration);
+                        result.ink=scanner.InkSnapshot();
+                    }
                 }
             }
             RecoverCurrentCaptionPlane(scanner,source,result);

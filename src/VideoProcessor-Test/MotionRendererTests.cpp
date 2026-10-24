@@ -169,6 +169,108 @@ TEST_CLASS(MotionRendererTests){public:
             Assert::AreEqual(hz<=30.0?120u:60u,analyses);
         }
     }
+    TEST_METHOD(SourceGapRetainsProgramsButClearsSubtitlePixelsAndHdrState) {
+        for(bool explicitBacklog:{false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+            g.cleanInput.color=pl_color_space_hdr10;g.cleanInput.color.hdr.max_luma=1000;
+            g.UploadComposition(true,1);
+            g.temporal.Begin(settings,24,60,false,0,1,10,0,false,true);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,10));
+            g.temporal.outputPts=0;
+            auto params=pl_render_default_params;params.deband_params=nullptr;params.dither_params=nullptr;
+            params.peak_detect_params=&pl_peak_detect_high_quality_params;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            g.temporal.MarkSubmitted();pl_gpu_finish(g.device->gpu);
+            const auto processingRenderer=g.temporal.ProcessingRenderer(g.renderer);
+            RendererHdrStatus status;Assert::IsTrue(g.temporal.HdrStatusSnapshot(status));
+            Assert::AreEqual(uint64_t(10),status.sourceSequence);
+            pl_hdr_metadata peak{};
+            Assert::IsTrue(pl_renderer_get_hdr_metadata(processingRenderer,&peak),
+                L"Control must create actual HDR peak state before recovery");
+            const auto before=g.temporal.ProcessingSnapshot();
+            Assert::AreEqual(uint64_t(1),before.sourceRendererCreations);
+            if(explicitBacklog)g.temporal.ResetHistoryAfterSourceGap();
+            g.temporal.Begin(settings,24,60,false,0,1,13,3./24,false,true);
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::AreEqual(uint64_t(0),g.temporal.SelectedPacketSequence());
+            Assert::AreEqual(uint64_t(0),g.temporal.SelectedSubtitleSequence());
+            Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+            Assert::IsFalse(g.temporal.HdrStatusSnapshot(status));
+            Assert::IsFalse(pl_renderer_get_hdr_metadata(processingRenderer,&peak),
+                L"Compiled program reuse must not retain detected peaks");
+            Assert::AreEqual(before.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+            Assert::AreEqual(before.sourceRendererHistoryFlushes+1,g.temporal.ProcessingSnapshot().sourceRendererHistoryFlushes);
+
+            // The new packet is dark and has no glyph layer. No old bright
+            // movie pixels, red caption, or old HDR-source identity may leak.
+            g.UploadComposition(false,0);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,13));
+            g.temporal.outputPts=3./24;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            const auto pixel=g.Read(32,32);
+            Assert::IsTrue(pixel[0]<5 && pixel[1]<5 && pixel[2]<5,GpuFixture::PixelText(pixel).c_str());
+            Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+            Assert::IsTrue(g.temporal.HdrStatusSnapshot(status));Assert::AreEqual(uint64_t(13),status.sourceSequence);
+            Assert::AreEqual(before.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+            Assert::IsTrue(g.temporal.ProcessingRenderer(g.renderer)==processingRenderer);
+            const auto recovered=g.temporal.ProcessingSnapshot();
+            g.temporal.outputPts=3./24+.005;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            Assert::AreEqual(recovered.sourceRenders,g.temporal.ProcessingSnapshot().sourceRenders);
+            Assert::IsTrue(g.temporal.ProcessingSnapshot().sourceReuses>recovered.sourceReuses);
+            g.temporal.Clear();
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            g.temporal.Begin(settings,24,60,false,0,1,14,4./24,false,true);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,14));
+            g.temporal.outputPts=4./24;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            Assert::AreEqual(before.sourceRendererCreations+1,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        }
+    }
+    TEST_METHOD(HardTemporalBoundariesStillReleaseProcessingRenderer) {
+        for(int boundary=0;boundary<5;++boundary) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+            g.Upload(128);g.temporal.Begin(settings,24,60,false,0,1,10,1,false);
+            Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,10));g.temporal.outputPts=1;g.Draw();
+            const auto before=g.temporal.ProcessingSnapshot();
+            auto generation=uint64_t(1),sequence=uint64_t(13);double pts=1+3./24;bool discontinuity=false;
+            if(boundary==0)++generation;
+            if(boundary==1)settings.mixer="linear";
+            if(boundary==2)discontinuity=true;
+            if(boundary==3){sequence=9;pts=.9;}
+            if(boundary==4){sequence=11;pts=2;}
+            g.temporal.Begin(settings,24,60,false,0,generation,sequence,pts,discontinuity);
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::AreEqual(before.sourceRendererHistoryFlushes,g.temporal.ProcessingSnapshot().sourceRendererHistoryFlushes);
+            Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,sequence));g.temporal.outputPts=pts;g.Draw();
+            Assert::AreEqual(before.sourceRendererCreations+1,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        }
+    }
+    TEST_METHOD(SourceGapRendererProgramsCannotCrossGpuOwners) {
+        GpuFixture first,second;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        first.UploadComposition(false,1);
+        first.temporal.Begin(settings,24,60,false,0,1,1,0,false,true);
+        Assert::IsTrue(first.temporal.CaptureComposition(first.device->gpu,first.cleanInput,first.layer,1));
+        first.temporal.outputPts=0;
+        auto params=pl_render_fast_params;
+        Assert::IsTrue(first.temporal.Render(first.renderer,first.cleanInput,first.output,params));
+        const auto before=first.temporal.ProcessingSnapshot();
+        first.temporal.ResetHistoryAfterSourceGap();
+        first.temporal.Begin(settings,24,60,false,0,1,4,3./24,false,true);
+        second.UploadComposition(true,0);
+        Assert::IsTrue(first.temporal.CaptureComposition(second.device->gpu,second.cleanInput,nullptr,4));
+        first.temporal.outputPts=3./24;
+        Assert::IsTrue(first.temporal.Render(second.renderer,second.cleanInput,second.output,params));
+        Assert::AreEqual(before.sourceRendererCreations+1,first.temporal.ProcessingSnapshot().sourceRendererCreations);
+        const auto pixel=second.Read(32,32);
+        Assert::IsTrue(pixel[0]>220 && pixel[1]>220 && pixel[2]>220,GpuFixture::PixelText(pixel).c_str());
+        Assert::AreEqual(uint64_t(0),first.temporal.LastSubtitleSequence());
+        // Release the retained second-device owner before that fixture dies.
+        first.temporal.Clear();
+    }
     TEST_METHOD(ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch) {
         GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
         settings.deinterlace="off";g.Upload(128);

@@ -123,12 +123,28 @@ private:
 public:
     struct ProcessingStatistics {
         uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
+        uint64_t sourceRendererCreations=0,sourceRendererHistoryFlushes=0;
     };
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
     ProcessingStatistics processingStatistics;
     RendererHdrStatus lastHdrStatus{};
     bool lastHdrStatusAvailable=false;
+    void ResetHistory(bool keepProcessingRenderer) {
+        lastHdrStatusAvailable=false;lastHdrStatus={};
+        submittedOutputAvailable=false;history.clear();
+        if(keepProcessingRenderer && sourceRenderer) {
+            // Discard all temporal/peak evidence, retaining only the renderer's
+            // reusable GPU programs. A queue gap grants no old-pixel authority.
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+        } else {
+            pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;
+        }
+        if(gpu)pl_tex_destroy(gpu,&compositionSurface);
+        nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();
+    }
 public:
     std::vector<double> outputs;
     double currentPts=0,outputPts=0;
@@ -184,7 +200,11 @@ public:
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
     void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
-    void Clear(){lastHdrStatusAvailable=false;lastHdrStatus={};submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
+    // Full resource release remains mandatory for renderer/device teardown.
+    void Clear(){ResetHistory(false);}
+    // Same-device queue recovery drops every packet and HDR/mix observation.
+    // Keeping compiled programs prevents recovery from recompiling each frame.
+    void ResetHistoryAfterSourceGap(){ResetHistory(true);}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
@@ -219,7 +239,12 @@ public:
             } else skipOutput=true;
             return; // No new source fact, cadence tick, or history reset.
         }
-        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz)))Clear();
+        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz))) {
+            const bool forwardGap=!changed && !discontinuity && initialized &&
+                sequence>lastSequence && sequence-lastSequence>1 && pts>previousPts;
+            if(forwardGap)ResetHistoryAfterSourceGap();
+            else Clear();
+        }
         settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;composition=sourceSubtitleComposition;
         topFirst=newTopFirst;measuredDisplayHz=displayHz;
         sourceDuration=1.0/sourceHz;
@@ -257,6 +282,7 @@ public:
         // A successful duplicate keeps its first immutable GPU packet. The
         // host must bind presentation metadata only when this receipt is true.
         if(capturedNew)*capturedNew=false;
+        if(gpu && gpu!=device)Clear(); // Release resources with their original GPU owner.
         gpu=device;if(!Active())return true;
         auto fail=[&](const char* reason) {
             if(composition)Clear(); // Never mix around a partially captured packet.
@@ -594,7 +620,10 @@ public:
     // output passes (which deliberately have peak detection disabled).
     pl_renderer ProcessingRenderer(pl_renderer fallback) {
         if(!Active()||!gpu||history.empty())return fallback;
-        if(!sourceRenderer)sourceRenderer=pl_renderer_create(nullptr,gpu);
+        if(!sourceRenderer) {
+            sourceRenderer=pl_renderer_create(nullptr,gpu);
+            if(sourceRenderer)++processingStatistics.sourceRendererCreations;
+        }
         return sourceRenderer?sourceRenderer:fallback;
     }
     static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {

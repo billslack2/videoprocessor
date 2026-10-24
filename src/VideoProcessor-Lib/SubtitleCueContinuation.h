@@ -182,7 +182,8 @@ public:
             m_incompleteCurrent=out.candidateRetained;return out;
         };
         unsigned verifiedSamples=0;const char* reason="not-eligible";
-        auto fresh=Verify(raw,currentSource,maxSamples,verifiedSamples,reason,true);
+        bool cleanupFringeDeferred=false;
+        auto fresh=Verify(raw,currentSource,maxSamples,verifiedSamples,reason,true,&cleanupFringeDeferred);
         if(!fresh) {
             // Native contradiction ends ownership. Exhausted/incomplete work
             // retains only an unrendered candidate, never a cleanup lease.
@@ -241,6 +242,9 @@ public:
         if(!local.text.detected || local.text.held || local.text.confirmationPending ||
             !SameSlots(local.text,m_reference.text) || !NoNewBarInk(local)) {
             Reset();return finish("complete-cue-changed");
+        }
+        if(cleanupFringeDeferred && !SameCurrentCleanup(m_reference.text,local.text)) {
+            Reset();return finish("complete-cleanup-changed");
         }
         if(privateSide) {
             const auto currentPlane=ProveCurrentSubtitleCaptionPlane(currentSource,local.text,
@@ -439,8 +443,9 @@ private:
         return true;
     }
     std::shared_ptr<SubtitleInkSnapshot> Verify(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
-        size_t maxSamples,unsigned& samples,const char*& reason,bool completePictureInspection=false) const {
-        m_lastPixelMismatch={};
+        size_t maxSamples,unsigned& samples,const char*& reason,bool completePictureInspection=false,
+        bool* cleanupFringeDeferred=nullptr) const {
+        m_lastPixelMismatch={};if(cleanupFringeDeferred)*cleanupFringeDeferred=false;
         auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason,&m_currentNativeSamples);
         if(!fresh)return {};
         size_t sampleIndex=0;
@@ -458,10 +463,22 @@ private:
                     line|=sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
                 }
                 const auto& panel=m_reference.text.sourcePanel;
+                const auto contains=[&](const SubtitleBoxRect& b) {
+                    return b.Valid() && sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
+                };
+                const auto canDeferCleanupFringe=[&]() {
+                    if(!completePictureInspection || !cleanupFringeDeferred || line ||
+                        !m_reference.text.capturePanelMeasured ||
+                        !InRaster(m_reference.text.capturePanel,c.width,c.height) ||
+                        !contains(panel) || contains(m_reference.text.bounds) ||
+                        contains(m_reference.text.capturePanel) || contains(m_reference.text.provenSourcePanel) ||
+                        m_baseline->Get(x,y,true) || sy<m_reference.pictureTop || sy>=m_reference.pictureBottom ||
+                        !(m_fromTop?sy<searchEdge:sy>=searchEdge))return false;
+                    for(int i=0;i<m_reference.text.lineCount;++i)
+                        if(contains(m_reference.text.lineCapturePanels[i]))return false;
+                    return true;
+                };
                 if(!line && fresh->Get(x,y) && !m_baseline->Get(x,y)) {
-                    const auto contains=[&](const SubtitleBoxRect& b) {
-                        return b.Valid() && sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
-                    };
                     bool protectedSource=contains(panel) || contains(m_reference.text.bounds) ||
                         contains(m_reference.text.capturePanel) || m_baseline->Get(x,y,true);
                     for(int i=0;i<m_reference.text.lineCount;++i)
@@ -473,7 +490,11 @@ private:
                     const bool deferPicture=completePictureInspection && !protectedSource &&
                         sy>=m_reference.pictureTop && sy<m_reference.pictureBottom &&
                         (m_fromTop?sy<searchEdge:sy>=searchEdge);
-                    if(deferPicture) {++sampleIndex;continue;}
+                    const bool deferCleanup=canDeferCleanupFringe();
+                    if(deferPicture || deferCleanup) {
+                        if(deferCleanup)*cleanupFringeDeferred=true;
+                        ++sampleIndex;continue;
+                    }
                     if(sampleIndex<m_baselineNativeSamples.size() && sampleIndex<m_currentNativeSamples.size()) {
                         auto& d=m_lastPixelMismatch;d.valid=true;d.x=sx;d.y=sy;
                         d.prior=m_baselineNativeSamples[sampleIndex];d.current=m_currentNativeSamples[sampleIndex];
@@ -490,7 +511,13 @@ private:
                 }
                 ++sampleIndex;
                 if(panel.Valid() && sx>=panel.left && sx<panel.right && sy>=panel.top && sy<panel.bottom &&
-                    m_baseline->Black(x,y) && !fresh->Black(x,y)){reason="backing-changed";return {};}
+                    m_baseline->Black(x,y) && !fresh->Black(x,y)) {
+                    // Cleanup padding includes ordinary picture pixels. Only a
+                    // full current scan may re-authorize this exact same card
+                    // and cleanup geometry after a change outside its interior.
+                    if(canDeferCleanupFringe()){*cleanupFringeDeferred=true;continue;}
+                    reason="backing-changed";return {};
+                }
             }
         }
         // Geometry is local to comparison: raw measurement and AR stay untouched.
@@ -499,6 +526,21 @@ private:
         if(!SubtitleBoxLookahead::ConfidentSameInk(m_reference,comparison)){reason="glyph-proof-failed";return {};}
         for(size_t i=0;i<fresh->rawInk.size();++i)fresh->ownedInk[i]=m_baseline->ownedInk[i]&fresh->rawInk[i];
         return fresh;
+    }
+    static bool SameCurrentCleanup(const SubtitleBoxResult& acquired,const SubtitleBoxResult& current) {
+        // Exact equality deliberately cannot expand cached cleanup authority.
+        // This gate follows COMPLETE configured current glyph/card detection.
+        if(!acquired.capturePanelMeasured || !current.capturePanelMeasured ||
+            !acquired.capturePanel.Valid() || !current.capturePanel.Valid() ||
+            !SubtitleCueContinuation::SameRect(acquired.bounds,current.bounds) ||
+            !SubtitleCueContinuation::SameRect(acquired.sourcePanel,current.sourcePanel) ||
+            !SubtitleCueContinuation::SameRect(acquired.capturePanel,current.capturePanel) ||
+            !SubtitleCueContinuation::SameRect(acquired.provenSourcePanel,current.provenSourcePanel) ||
+            acquired.lineCount!=current.lineCount || current.lineCount<1 || current.lineCount>3)return false;
+        for(int i=0;i<current.lineCount;++i)
+            if(!SubtitleCueContinuation::SameRect(acquired.linePanels[i],current.linePanels[i]) ||
+                !SubtitleCueContinuation::SameRect(acquired.lineCapturePanels[i],current.lineCapturePanels[i]))return false;
+        return true;
     }
     static bool SameBase(const ActivePictureBounds& a,const ActivePictureBounds& b) {
         return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&

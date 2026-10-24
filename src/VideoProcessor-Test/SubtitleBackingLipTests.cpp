@@ -1441,6 +1441,214 @@ public:
             Assert::IsFalse(s.decision.accepted.detected || s.guard.HasReference());
         }
     }
+    TEST_METHOD(CurrentCleanupFringeNeedsFullInspectionEvenWithAnUnchangedCard) {
+        auto state=std::make_unique<EnvelopeCueState>(false);auto& s=*state;
+        s.frame=Frame(1,Format::P210);s.frame.pictureTop=44;s.frame.pictureBottom=316;
+        s.frame.Fill({0,0,640,360},64);s.frame.Fill({0,44,640,100},300);s.frame.Fill({0,100,185,316},300);
+        for(int row=0;row<2;++row)for(int glyph=0;glyph<(row?20:13);++glyph) {
+            const int x=(row?190:230)+13*glyph,y=row?318:292;
+            s.frame.Fill({x,y,x+8,y+16},700);s.frame.Fill({x+2,y+2,x+6,y+14},64);
+        }
+        s.source=s.frame.Source();s.base={0,44,640,360,640,360};
+        for(int i=0;i<2;++i) {
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(i+1);
+            s.observed[i]=SubtitleBoxLookahead::Measure(detector,s.source,{},Identity(i+1),false,{},7,8,shared);
+        }
+        for(int seq=1;seq<=2;++seq) {
+            s.working=SubtitleBoxLookahead::Resolve(s.observed.data()+seq-1,seq==1?2:1,7,8);
+            PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,s.source,s.base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,s.source,s.base,true,250,41.708,s.prepared);
+            Assert::IsTrue(s.decision.accepted.detected && s.guard.HasReference());
+        }
+        s.current=s.working;s.cue=s.decision.accepted.cue;
+        const auto& t=s.observed[1].text;const auto& ink=*s.observed[1].ink;
+        s.applied=s.compositor.Consume(s.decision.accepted,s.current);Assert::IsTrue(s.applied.valid);
+        const auto contains=[](const SubtitleBoxRect& r,int x,int y){return r.Valid() && x>=r.left && x<r.right && y>=r.top && y<r.bottom;};
+        int changedX=-1,changedY=-1;
+        for(int y=t.sourcePanel.top;y<t.sourcePanel.bottom && changedX<0;++y)for(int x=t.sourcePanel.left;x<t.sourcePanel.right && changedX<0;++x) {
+            if(x%ink.step || y%ink.step || contains(t.capturePanel,x,y) || contains(t.bounds,x,y) || contains(t.provenSourcePanel,x,y))continue;
+            bool glyphCapture=false;for(int i=0;i<t.lineCount;++i)glyphCapture|=contains(t.lineCapturePanels[i],x,y);
+            if(glyphCapture)continue;
+            AnalysisLumaSample sample;if(s.source.Sample(x,y,sample) && sample.luma<=ink.blackLimit){changedX=x;changedY=y;}
+        }
+        Assert::IsTrue(changedX>=0 && changedY>=44 && changedY<316);
+        for(uint64_t seq=3;seq<=6;++seq) {
+        s.frame.Pixel(changedX,changedY,seq==5?64:ink.blackLimit+(seq==4?4:2));
+        s.working=MissingCurrentWorker(s.current,seq);
+        auto partial=std::make_unique<SubtitleCueContinuationGuard>(s.guard);
+        Assert::IsFalse(partial->AdvanceVerified(s.working,t,s.source,s.base,250,41.708));
+        AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s.source;source.readBudget=&budget;
+        PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708);
+        ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared);
+        std::ostringstream log;log<<"Synthetic cleanup fringe seq="<<seq<<" point="<<changedX<<","<<changedY<<" valid="<<s.decision.proof.valid<<" reason="<<s.decision.proof.reason;Logger::WriteMessage(log.str().c_str());
+        Assert::IsTrue(s.decision.proof.valid && s.decision.proof.completeCurrentCue && s.decision.accepted.detected);
+        Assert::AreEqual(s.cue,s.decision.accepted.cue);Assert::IsFalse(budget.exhausted);
+        Assert::IsTrue(Same(s.decision.proof.backingVerifiedBounds,t.sourcePanel));
+        const auto geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,&s.decision.proof);
+        Assert::IsTrue(geometry.valid && Same(geometry.generatedCleanup,s.applied.generatedCleanup) &&
+            Same(geometry.pictureCapture,s.applied.pictureCapture) && Same(geometry.destination,s.applied.destination));
+        }
+    }
+    TEST_METHOD(OptionalNativeCleanupFringeRequiresCompleteCurrentCardProof) {
+        char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_APPROVED_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()){Logger::WriteMessage("Native shared-probe replay not requested");return;}
+        std::ifstream data(path,std::ios::binary),metadata(path+".txt");Assert::IsTrue(bool(data) && bool(metadata));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(data)),{});
+        AnalysisLumaSource source;int format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+        metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>color>>top>>bottom>>script>>range;
+        source.data=bytes.data();source.dataBytes=bytes.size();source.generation=2;
+        source.format=static_cast<AnalysisLumaFormat>(format);source.encoding=static_cast<VideoFrameEncoding>(encoding);
+        source.colorspace=static_cast<ColorSpace>(color);source.range=static_cast<AnalysisLumaRange>(range);
+        Assert::IsTrue(source.IsValid());Assert::AreEqual(3840,source.width);Assert::AreEqual(2160,source.height);
+
+        auto state=std::make_unique<EnvelopeCueState>(false);auto& s=*state;s.source=source;
+        s.base={0,263,3840,2160,3840,2160};
+        for(int i=0;i<2;++i) {
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(i+1);
+            s.observed[i]=SubtitleBoxLookahead::Measure(detector,source,{},Identity(i+1),false,{},7,8,shared);
+        }
+        for(int seq=1;seq<=2;++seq) {
+            s.working=SubtitleBoxLookahead::Resolve(s.observed.data()+seq-1,seq==1?2:1,7,8);
+            PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared);
+            Assert::IsTrue(s.decision.accepted.detected && s.guard.HasReference());
+            s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,s.decision.proof.valid?&s.decision.proof:nullptr);
+            Assert::IsTrue(s.geometry.valid);
+        }
+        s.current=s.working;s.applied=s.geometry;s.cue=s.decision.accepted.cue;
+        Assert::AreEqual(1710,s.decision.accepted.sourcePanel.top);Assert::AreEqual(1716,s.decision.accepted.capturePanel.top);
+        for(int fault=0;fault<10;++fault) {
+            auto guard=std::make_unique<SubtitleCueContinuationGuard>(s.guard);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>(s.tracker);
+            auto compositor=std::make_unique<SubtitleCutPastePresentation>(s.compositor);
+            auto changed=bytes;
+            const auto luma=[&](int x,int y,int value) {
+                const size_t at=size_t(y)*source.rowBytes+x*2;const auto code=uint16_t(value<<6);
+                changed[at]=uint8_t(code);changed[at+1]=uint8_t(code>>8);
+            };
+            // A measured cleanup guard includes this ordinary picture point.
+            // Its 12->14 change alone must not invalidate an unchanged card.
+            luma(1896,1712,fault==1 || fault==2?700:14);
+            if(fault==2) {
+                const size_t at=size_t(source.rowBytes)*source.height+size_t(1712)*source.chromaRowBytes+1896*2;
+                const uint16_t u=900<<6,v=100<<6;changed[at]=uint8_t(u);changed[at+1]=uint8_t(u>>8);
+                changed[at+2]=uint8_t(v);changed[at+3]=uint8_t(v>>8);
+            }
+            if(fault==3)luma(1200,1720,100); // Actual measured card stays strict.
+            if(fault==4)for(int y=1754;y<1852;++y)for(int x=1397;x<1445;++x)luma(x,y,0);
+            if(fault==5)for(int n=0;n<12;++n)for(int y=2070;y<2130;++y)for(int x=1480+n*70;x<1518+n*70;++x)
+                luma(x,y,(x<1490+n*70 || x>=1508+n*70 || y<2080 || y>=2120)?700:0);
+            auto current=source;current.data=changed.data();
+            s.working=MissingCurrentWorker(s.current,3);
+            if(fault==8 || fault==9) {
+                SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(3);
+                auto observed=std::make_unique<SubtitleBoxObservation>(
+                    SubtitleBoxLookahead::Measure(detector,current,{},Identity(3),false,{},7,8,shared));
+                Assert::IsTrue(observed->text.detected && observed->text.configuredSearchComplete);
+                // Independently current worker evidence with incompatible
+                // measured geometry cannot authorize the old cleanup cache.
+                if(fault==8)observed->text.capturePanel.left-=4;
+                else observed->text.sourcePanel.top-=4;
+                s.working=SubtitleBoxLookahead::Resolve(observed.get(),1,7,8);
+            }
+            AnalysisLumaReadBudget budget{fault==7?size_t(79650):SubtitleCurrentCueFrameSampleLimit};current.readBudget=&budget;
+            const size_t phase=fault==6?size_t(80000):SubtitleCurrentCueInspectionSampleLimit;
+            PrepareCurrentSubtitleCueInto(s.prepared,*guard,s.working,current,s.base,true,250,41.708,phase);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,*guard,*tracker,s.working,current,s.base,true,250,41.708,s.prepared);
+            const bool positive=fault<=2;
+            std::ostringstream log;log<<"Native cleanup fringe fault="<<fault<<" valid="<<s.decision.proof.valid<<" accepted="<<s.decision.accepted.detected<<" reason="<<s.decision.proof.reason<<" reads="<<budget.used;Logger::WriteMessage(log.str().c_str());
+            Assert::AreEqual(positive,s.decision.proof.valid);
+            // Changed complete raw geometry may be admitted independently; it
+            // cannot inherit the rejected old COMPLETE cleanup certificate.
+            Assert::AreEqual(positive || fault>=8,s.decision.accepted.detected);
+            if(fault>=8)Assert::IsTrue(Same(s.decision.accepted.capturePanel,s.working.current.text.capturePanel) &&
+                Same(s.decision.accepted.sourcePanel,s.working.current.text.sourcePanel));
+            if(positive) {
+                Assert::IsTrue(s.decision.proof.completeCurrentCue);Assert::AreEqual(s.cue,s.decision.accepted.cue);
+                Assert::IsTrue(Same(s.decision.proof.backingVerifiedBounds,s.observed[0].text.sourcePanel));
+                const auto geometry=compositor->Consume(s.decision.accepted,s.working,{},0,nullptr,&s.decision.proof);
+                Assert::IsTrue(geometry.valid && Same(geometry.generatedCleanup,s.applied.generatedCleanup) &&
+                    Same(geometry.pictureCapture,s.applied.pictureCapture) && Same(geometry.destination,s.applied.destination));
+            } else {
+                Assert::IsFalse(s.decision.proof.completeCurrentCue || s.decision.proof.backingVerifiedBounds.Valid());
+                if(fault==8 || fault==9) {
+                    Assert::IsTrue(std::strcmp(s.decision.proof.reason,"complete-cleanup-changed")==0);
+                    const auto geometry=compositor->Consume(s.decision.accepted,s.working,{},0,nullptr,nullptr);
+                    Assert::IsFalse(std::strcmp(compositor->BackingDecisionReason(),"current-cue-missing-edge")==0);
+                    if(geometry.valid)Assert::IsTrue(Contains(s.working.current.text.sourcePanel,geometry.generatedCleanup) &&
+                        Contains(s.working.current.text.capturePanel,geometry.pictureCapture));
+                }
+                // No partial method may upgrade an incomplete private result.
+                Assert::IsFalse(guard->AdvanceVerified(s.working,s.observed[1].text,current,s.base,250,41.708));
+            }
+        }
+        Logger::WriteMessage("Native cleanup-fringe current-proof regression executed.");
+    }
+    TEST_METHOD(OptionalNativeCurrentSharedProbeAvoidsDuplicateScanWithoutChangingEvidence) {
+        char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_APPROVED_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()){Logger::WriteMessage("Native shared-probe replay not requested");return;}
+        std::ifstream data(path,std::ios::binary),metadata(path+".txt");Assert::IsTrue(bool(data) && bool(metadata));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(data)),{});
+        AnalysisLumaSource source;int format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+        metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>color>>top>>bottom>>script>>range;
+        source.data=bytes.data();source.dataBytes=bytes.size();source.generation=2;
+        source.format=static_cast<AnalysisLumaFormat>(format);source.encoding=static_cast<VideoFrameEncoding>(encoding);
+        source.colorspace=static_cast<ColorSpace>(color);source.range=static_cast<AnalysisLumaRange>(range);
+        Assert::IsTrue(source.IsValid());Assert::AreEqual(3840,source.width);Assert::AreEqual(2160,source.height);
+        for(int sharedBottom:{1896,1898}) {
+            SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);scanner.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(1);
+            shared.bounds={0,262,3840,sharedBottom,3840,2160};
+            AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto current=source;current.readBudget=&budget;
+            const auto measured=std::make_unique<SubtitleBoxObservation>(
+                SubtitleBoxLookahead::Measure(scanner,current,{},Identity(1),false,{},7,8,shared));
+            const auto& o=*measured;
+            // The old double Analyze exhausted this existing whole-frame cap.
+            Assert::IsTrue(!budget.exhausted && budget.used<SubtitleCurrentCueFrameSampleLimit);
+            Assert::IsTrue(o.sharedProbeAttempted && o.sharedProbeDetected && !o.sharedProbeWorkLimit);
+            Assert::IsTrue(o.text.detected && !o.text.workLimit && o.ink && o.ink->rawEvidenceComplete);
+            Assert::AreEqual(263,o.pictureTop);Assert::AreEqual(sharedBottom,o.pictureBottom);
+            Assert::IsFalse(o.privateCuePlaneTop || o.privateCuePlaneBottom || o.glyphLocalTop || o.glyphLocalBottom);
+            Assert::IsFalse(o.independentBarAnalysis || o.subtitleArProof.accepted || o.barTrackingAuthority);
+            // Compare against a genuinely independent fresh final-coordinate
+            // scan, including companion coverage, card bounds and every mask.
+            SubtitleBoxDetector independent;independent.SetNearBarDistance(20);independent.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+            const auto expected=independent.Analyze(source,o.pictureTop,o.pictureBottom,1,Identity(1).viewportGeneration);
+            const auto ink=independent.InkSnapshot();Assert::IsTrue(bool(ink));
+            Assert::AreEqual(expected.detected,o.text.detected);Assert::AreEqual(expected.lineCount,o.text.lineCount);
+            Assert::IsTrue(Same(expected.bounds,o.text.bounds) && Same(expected.sourcePanel,o.text.sourcePanel) && Same(expected.capturePanel,o.text.capturePanel));
+            for(int line=0;line<expected.lineCount;++line)Assert::IsTrue(Same(expected.lineBounds[line],o.text.lineBounds[line]));
+            Assert::AreEqual(expected.topSearchComplete,o.text.topSearchComplete);Assert::AreEqual(expected.bottomSearchComplete,o.text.bottomSearchComplete);
+            Assert::AreEqual(expected.configuredSearchComplete,o.text.configuredSearchComplete);
+            Assert::IsTrue(ink->rawInk==o.ink->rawInk && ink->ownedInk==o.ink->ownedInk && ink->blackBacking==o.ink->blackBacking && ink->sourceRows==o.ink->sourceRows);
+            // An incomplete current reproof cannot publish the otherwise valid
+            // provisional scan just because it was already computed.
+            AnalysisLumaReadBudget shortBudget{1};current.readBudget=&shortBudget;
+            const auto shortResult=std::make_unique<SubtitleBoxObservation>(
+                SubtitleBoxLookahead::Measure(scanner,current,{},Identity(1),false,{},7,8,shared));
+            Assert::IsTrue(shortBudget.exhausted);Assert::IsFalse(shortResult->text.detected);
+            // Reusing a detector instance across new pixels must not reuse the
+            // old source's provisional result or source ownership.
+            auto changed=bytes;
+            for(const auto rect:{SubtitleBoxRect{1150,1900,2685,2000},SubtitleBoxRect{1390,1750,2450,1855}})
+                for(int y=rect.top;y<rect.bottom;++y)
+                    std::fill(changed.begin()+size_t(y)*source.rowBytes+rect.left*2,
+                        changed.begin()+size_t(y)*source.rowBytes+rect.right*2,uint8_t(0));
+            auto changedSource=source;changedSource.data=changed.data();shared.identity=Identity(2);
+            const auto changedResult=std::make_unique<SubtitleBoxObservation>(
+                SubtitleBoxLookahead::Measure(scanner,changedSource,{},Identity(2),false,{},7,8,shared));
+            Assert::IsFalse(changedResult->text.detected);
+            Assert::IsTrue(SameAnalysisFrameIdentity(changedResult->identity,Identity(2)));
+            std::ostringstream log;log<<"Native current shared probe plane="<<sharedBottom<<" reads="<<budget.used<<" ms="<<o.analysisMs;
+            Logger::WriteMessage(log.str().c_str());
+        }
+        Logger::WriteMessage("Native current shared-probe regression executed.");
+    }
     TEST_METHOD(OptionalNativeApprovedCaptionUsesPrivatePlaneWithoutArPromotion) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_APPROVED_REPLAY_PATH");
         const std::string path=value?value:"";std::free(value);

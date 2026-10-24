@@ -5416,7 +5416,9 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
 	{
-		temporalRenderer.Clear();
+        // Drop all source/cue/HDR history without recompiling the same GPU
+        // programs after every recovery. Device and policy resets still tear down.
+        temporalRenderer.ResetHistoryAfterSourceGap();
         cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
 		renderLoadMeter.DiscardPendingSamples();
@@ -19600,10 +19602,12 @@ releaseDriftBaseRetention =
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
                 const auto& oldProcessing=lastPictureProcessingStatistics;
-                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet",
+                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet renderer_creations=%llu history_flushes=%llu",
                     processed.sourceRenders-oldProcessing.sourceRenders,
                     processed.sourceReuses-oldProcessing.sourceReuses,
-                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride);
+                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride,
+                    processed.sourceRendererCreations-oldProcessing.sourceRendererCreations,
+                    processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes);
                 lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;
