@@ -1,0 +1,4 @@
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=0
+3 proof=complete-sample-budget cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=60943 pending=verified-current-pixels inspector_reads=393216 total_reads=492074 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.6804

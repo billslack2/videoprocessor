@@ -1,0 +1,10 @@
+{
+  "edit": "profile.subtitles: classic -> clear__yellow",
+  "started": "2026-10-23T23:37:55.0423149-04:00",
+  "cfgBackup": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg.before-native-capture-20261023-2340.bak",
+  "stateBackup": "C:\\Videoprocessor\\vp\\VideoProcessor.state.before-native-capture-20261023-2340.bak",
+  "pid": 18140,
+  "source": "398034dadd09911d5b7554cab5bf24cfcee7cc10",
+  "capture": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+  "temporaryEdit": "Comment Reset_Shader_and_Sub-Titles startup action; restore after startup"
+}
