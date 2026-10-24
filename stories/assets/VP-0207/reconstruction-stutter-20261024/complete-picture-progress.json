@@ -1,0 +1,76 @@
+{
+  "observedAt": "2026-10-24T18:11:08.960287-04:00",
+  "source": "45ee62f90feaf526285735d6458991d6bb967a84",
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T18:07:00.1482745-04:00",
+    "Commit": "45ee62f90feaf526285735d6458991d6bb967a84",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "nativePassed": 1897,
+  "currentDualGpu": "running under qualification-api30/dual-dependency; do not duplicate",
+  "previousProductionIdenticalGpu": {
+    "source": "082a4aab5146aeb2980a4ba9cae7c6adbb00c64e",
+    "standardPassed": 174,
+    "betaPassed": 174
+  },
+  "testCorrection": "Two stale API29 test assertions corrected toAPI30; no production source change. Original failed native receipt retained (1880 passed,1 failed).",
+  "benchmark": {
+    "summary": {
+      "direct_all_no_smooth_motion": {
+        "sources": 32,
+        "outputs": 32,
+        "render_cpu_ms_per_source": 1.6036906249999998,
+        "render_cpu_ms_per_output": 1.6036906249999998,
+        "prepare_cpu_ms_per_source": 0.3403875,
+        "capture_cpu_ms_per_source": 0.0,
+        "max_render_cpu_ms_per_source": 5.2207,
+        "median_render_cpu_ms_per_source": 1.50155,
+        "p95_nearest_rank_render_cpu_ms_per_source": 1.9864
+      },
+      "existing_split_manual_smooth_motion": {
+        "sources": 32,
+        "outputs": 80,
+        "render_cpu_ms_per_source": 12.073271875,
+        "render_cpu_ms_per_output": 4.82930875,
+        "prepare_cpu_ms_per_source": 0.6169968749999999,
+        "capture_cpu_ms_per_source": 0.005009375000000001,
+        "max_render_cpu_ms_per_source": 26.7896,
+        "median_render_cpu_ms_per_source": 16.7652,
+        "p95_nearest_rank_render_cpu_ms_per_source": 21.9428
+      },
+      "production_complete_library_mix_with_hdr_capture": {
+        "sources": 32,
+        "outputs": 80,
+        "render_cpu_ms_per_source": 3.8957812499999998,
+        "render_cpu_ms_per_output": 1.5583125,
+        "prepare_cpu_ms_per_source": 0.30850312500000004,
+        "capture_cpu_ms_per_source": 0.003503125,
+        "max_render_cpu_ms_per_source": 57.5442,
+        "median_render_cpu_ms_per_source": 1.1564,
+        "p95_nearest_rank_render_cpu_ms_per_source": 9.1409
+      }
+    },
+    "scope": "Paired forward/reverse offscreen service-cost control at configured source/output cadence. Current production header-defined complete preparation/capture/Render includes mixed HDR polling. Warmup first8 of each24 excluded; zero-output sources included. Not live DXGI/visual acceptance. GPU work is asynchronous and wall calls may wait for earlier submissions.",
+    "rows_used": 96,
+    "remaining_limit": "One production complete-path warmed-source output group took57.5442ms. Lower average does not demonstrate elimination of stalls or live visual acceptance.",
+    "workload": "3840x2160 PQ source;2000x1125 output; configured peak detection,contrast recovery,Sierra3,ewa_lanczossharp/mitchell,75%Reconstruction opacity,blur30,surround2; actual source/output pacing23.97642/59.95066."
+  },
+  "deployed": false,
+  "installedSource": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+  "runtime": "Closed cleanly17:14:16; no candidate launched yet",
+  "qualificationDirectory": "E:\\codex\\diagnostics\\vp0207-reconstruction-stutter-20261024-1653\\qualification-api30",
+  "limitations": [
+    "Tests and offscreen controls do not establish live playback acceptance.",
+    "One57.54ms warmed render outlier remains in the control.",
+    "PR197 stays draft/unmerged; final dual-library qualification and authorized deployment still pending."
+  ]
+}
