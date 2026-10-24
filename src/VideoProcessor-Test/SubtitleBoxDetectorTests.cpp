@@ -1015,6 +1015,32 @@ public:
         Assert::IsTrue(result.bounds.top<=266 && result.bounds.bottom>=307);
         Assert::IsTrue(result.sourcePanel.bottom<=315);
     }
+    TEST_METHOD(CompleteConfiguredSearchDoesNotReusePositiveNarrowSearchAtSameIdentity) {
+        auto pixels=Frame();
+        // Separate finite backing prevents narrow card tracing from finding
+        // the farther line before the configured search actually reads it.
+        Fill(pixels,236,250,395,272,64);Fill(pixels,236,274,395,296,64);Fill(pixels,236,306,395,328,64);
+        Text(pixels,240,254,12);Text(pixels,240,278,12);Text(pixels,240,310,12);
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        const auto narrow=detector.Analyze(Source(pixels),45,315,1,1);
+        Assert::IsTrue(narrow.detected && !narrow.configuredSearchComplete);
+        Assert::AreEqual(264,narrow.bottomSearchStart);
+        const auto complete=detector.Analyze(Source(pixels),45,315,1,1,true);
+        Assert::IsTrue(complete.configuredSearchComplete && complete.bottomSearchComplete);
+        Assert::AreEqual(244,complete.bottomSearchStart);Assert::AreEqual(1,complete.searchStep);
+        const auto ink=detector.InkSnapshot();Assert::IsTrue(ink && ink->rawEvidenceComplete);
+        Assert::IsTrue(ink->Get(240,254),L"Farther companion pixels must actually be read despite the earlier positive cue.");
+        Assert::IsTrue(!complete.detected || complete.lineCount>narrow.lineCount,
+            L"Full reinspection must not silently certify the incomplete narrow cue.");
+    }
+    TEST_METHOD(CompleteConfiguredSearchPublishesNoCoverageOnSharedBudgetExhaustion) {
+        auto pixels=Frame();Text(pixels,240,310,12);
+        AnalysisLumaReadBudget budget{100};auto source=Source(pixels);source.readBudget=&budget;
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        const auto incomplete=detector.Analyze(source,45,315,1,1,true);
+        Assert::IsTrue(budget.exhausted && budget.used==100);
+        Assert::IsTrue(incomplete.workLimit && !incomplete.configuredSearchComplete && !incomplete.detected);
+    }
     TEST_METHOD(DiagnosticFlagLoadsFromRendererRoot) {
         char directory[MAX_PATH]{},path[MAX_PATH]{};
         Assert::IsTrue(GetTempPathA(MAX_PATH,directory)!=0);

@@ -42,6 +42,15 @@ struct AnalysisLumaRowContent
     int left = 0, right = 0;
 };
 
+// Optional synchronous caller-owned budget. Copies share this counter only
+// during one inspection; never attach it to a worker-retained source.
+struct AnalysisLumaReadBudget
+{
+    size_t limit=0, used=0;
+    bool exhausted=false;
+    bool Spend() { if(used>=limit) {exhausted=true;return false;} ++used;return true; }
+};
+
 struct AnalysisLumaSource
 {
 	const uint8_t* data = nullptr;
@@ -57,6 +66,7 @@ struct AnalysisLumaSource
 	uint8_t rgbBitAlignment = 0; // SDR tunnel: 1 high, 2 low eight bits
 	std::shared_ptr<const void> backingOwner;
 	AnalysisLumaRange range = AnalysisLumaRange::Unknown;
+    AnalysisLumaReadBudget* readBudget = nullptr;
 
 	bool IsValid() const;
 	bool Sample(int x, int y, AnalysisLumaSample& result) const;

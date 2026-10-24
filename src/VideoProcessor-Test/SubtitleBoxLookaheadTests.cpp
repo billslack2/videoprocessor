@@ -5,6 +5,7 @@
 #include <SubtitleCutPaste.h>
 #include <SubtitleMeasurementWorker.h>
 #include <SubtitleCueContinuation.h>
+#include <SubtitleCurrentCue.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <future>
 #include <atomic>
@@ -239,7 +240,10 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
             auto& o=acquired.current;
             o.identity=Identity(1);o.identity.transportGeneration=2;
             o.width=640;o.height=360;o.pictureTop=45;o.pictureBottom=315;
-            o.analyzed=o.barAuthority=true;
+            o.analyzed=o.barAuthority=o.independentBarAnalysis=o.barEvidence.available=true;
+            o.barEvidence.top=45;o.barEvidence.bottom=315;
+            o.text.topSearchComplete=o.text.bottomSearchComplete=o.text.configuredSearchComplete=true;
+            o.text.searchStep=1;o.text.topSearchEnd=96;o.text.bottomSearchStart=264;
             o.policyGeneration=acquired.policyGeneration=7;
             o.continuityGeneration=acquired.continuityGeneration=9;
             o.text.detected=true;o.text.lineCount=1;o.text.cue=42;
@@ -349,20 +353,20 @@ public:
             Assert::AreEqual(0,lost.current.pictureTop);Assert::AreEqual(viewportTop,lost.current.sharedPicture.bounds.top);
         }
     }
-    TEST_METHOD(CoarseArSeedRequiresIndependentAndRasterBoundedNativePlanes) {
+    TEST_METHOD(CoarseArSeedRequiresCurrentCueSideAndRasterBoundedBase) {
         for(int fault=0;fault<8;++fault) {
             ContinuationFixture f;f.base.top=44;f.base.bottom=316;
             auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
             c.independentBarAnalysis=c.barEvidence.available=true;
             c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
-            if(fault==0)c.independentBarAnalysis=false;
-            if(fault==1)c.barEvidence.topRevalidatedAtReference=true;
+            if(fault==0)c.barEvidence.available=false;
+            if(fault==1)c.barEvidence.bottomRevalidatedAtReference=true;
             if(fault==2)c.currentAnchorUsesTrackedEdge=true;
-            if(fault==3)c.pictureTop=0;
+            if(fault==3)c.pictureBottom=360;
             if(fault==4){f.base.top=-1;c.sharedPicture.bounds=f.base;}
             if(fault==5){f.base.bottom=361;c.sharedPicture.bounds=f.base;}
             if(fault==6){f.base.rasterHeight=361;c.sharedPicture.bounds=f.base;}
-            if(fault==7)c.sharedPicture.bounds.bottom=317;
+            if(fault==7)c.barEvidence.captionBackedBottom=true;
             SubtitleCueContinuationGuard guard;
             Assert::IsFalse(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
         }
@@ -438,18 +442,136 @@ public:
             Assert::IsFalse(guard.Prepare(current,f.Native(),f.base,250,41.708).valid);
         }
     }
-    TEST_METHOD(OppositeBarRevalidationHasANonrenewingSourceTimeLimit) {
+    TEST_METHOD(CompleteOppositeBarRevalidationRemainsCurrentBeyondOldLease) {
         ContinuationFixture f;SubtitleCueContinuationGuard guard;
         Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
-        for(uint64_t sequence=2;sequence<=7;++sequence) {
+        for(uint64_t sequence=2;sequence<=61;++sequence) {
             auto current=f.acquired;current.current.identity=Identity(sequence);
             current.current.identity.transportGeneration=2;current.current.sharedPicture.identity=current.current.identity;
             current.current.pictureTop=0;
             const auto proof=guard.Prepare(current,f.Native(),f.base,250,50);
-            Assert::AreEqual(sequence<=6,proof.valid);
+            Assert::IsTrue(proof.valid && proof.completeCurrentCue);
             if(proof.valid)for(int repeat=0;repeat<3;++repeat) {
                 const auto same=guard.Prepare(current,f.Native(),f.base,250,50);
                 Assert::IsTrue(same.valid);Assert::AreEqual(proof.elapsedMs,same.elapsedMs);
+            }
+        }
+    }
+    TEST_METHOD(CompleteInspectorRejectsNewCompanionOutsideAcquiredRoiDespitePositiveNarrowWorker) {
+        ContinuationFixture f;f.acquired.current.nearBarDistance=20;
+        f.acquired.current.text.configuredSearchComplete=false;
+        SubtitleCueContinuationGuard guard;
+        Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+        Text(f.pixels,240,254,12); // Outside acquired310px row's bounded ROI, inside configured band.
+        auto current=f.acquired;current.current.identity=Identity(2);current.current.identity.transportGeneration=2;
+        current.current.sharedPicture.identity=current.current.identity;
+        SubtitleBoxDetector narrow;narrow.SetNearBarDistance(20);
+        current.current.text=narrow.Analyze(f.Native(),45,315,2,3);
+        current.current.ink=narrow.InkSnapshot();
+        Assert::IsTrue(current.current.text.detected && current.current.text.lineCount==1 &&
+            !current.current.text.configuredSearchComplete);
+        const auto proof=guard.InspectCurrent(current,f.Native());
+        Assert::IsFalse(proof.valid);Assert::IsFalse(guard.HasReference());
+        Assert::AreEqual(std::string("complete-cue-changed"),std::string(proof.reason));
+    }
+    TEST_METHOD(CompleteInspectorRejectsChangedContextBeforeSameSourceCache) {
+        for(int fault=0;fault<6;++fault) {
+            ContinuationFixture f;SubtitleCueContinuationGuard guard;
+            Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+            auto pending=f.Missing(2);pending.available=false;pending.current.analyzed=false;
+            pending.current.barAuthority=false;pending.current.barEvidence={};
+            const auto complete=guard.InspectCurrent(pending,f.Native());
+            Logger::WriteMessage(complete.reason);Assert::IsTrue(complete.completeCurrentCue);
+            auto source=f.Native();
+            if(fault==0)++pending.policyGeneration;
+            if(fault==1)++pending.continuityGeneration;
+            if(fault==2)pending.current.discontinuity=true;
+            if(fault==3)source.range=AnalysisLumaRange::Full;
+            if(fault==4)++source.generation;
+            if(fault==5) {pending.current.analyzed=pending.current.barAuthority=pending.current.barEvidence.available=true;
+                pending.current.pictureBottom=314;}
+            Assert::IsFalse(guard.InspectCurrent(pending,source).valid);
+            Assert::IsFalse(guard.HasReference());
+        }
+    }
+    TEST_METHOD(CompleteInspectorDoesNotReviveAnAcquiredCueAfterNativeContradiction) {
+        for(int fault=0;fault<3;++fault) {
+            ContinuationFixture f;SubtitleCueContinuationGuard guard;
+            Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+            const auto original=f.pixels;
+            auto pending=f.Missing(2);pending.available=false;pending.current.analyzed=false;
+            pending.current.barAuthority=false;pending.current.barEvidence={};
+            if(fault==0)Fill(f.pixels,236,306,395,328,64);
+            if(fault==1)Text(f.pixels,240,310,1,true);
+            if(fault==2)Text(f.pixels,240,338,8);
+            Assert::IsFalse(guard.InspectCurrent(pending,f.Native()).valid);
+            Assert::IsFalse(guard.HasReference());
+            f.pixels=original;pending.current.identity=Identity(3);pending.current.identity.transportGeneration=2;
+            Assert::IsFalse(guard.InspectCurrent(pending,f.Native()).valid);
+        }
+    }
+    TEST_METHOD(CompleteInspectorChargesOneSharedReadBudgetAndDoesNotRenewOnExhaustion) {
+        ContinuationFixture f;SubtitleCueContinuationGuard guard;
+        Assert::IsTrue(guard.Remember(f.acquired,f.acquired.text,f.base,f.Native()));
+        auto pending=f.Missing(2);pending.available=false;pending.current.analyzed=false;
+        pending.current.barAuthority=false;pending.current.barEvidence={};
+        AnalysisLumaReadBudget budget{100};auto source=f.Native();source.readBudget=&budget;
+        const auto limited=guard.InspectCurrent(pending,source);
+        Assert::IsFalse(limited.valid);Assert::IsTrue(guard.HasReference());
+        Assert::IsTrue(budget.exhausted && budget.used<=budget.limit);
+        Assert::AreEqual(static_cast<unsigned>(budget.used),limited.samples);
+        AnalysisLumaReadBudget fullBudget{393216};source.readBudget=&fullBudget;
+        const auto full=guard.InspectCurrent(pending,source);
+        Logger::WriteMessage(full.reason);Assert::IsTrue(full.completeCurrentCue);
+        Assert::IsTrue(full.samples>100 && full.samples<=262144);
+        Assert::AreEqual(static_cast<unsigned>(fullBudget.used),full.samples);
+        const auto reads=fullBudget.used;
+        Assert::IsTrue(guard.InspectCurrent(pending,source).valid);
+        Assert::AreEqual(reads,fullBudget.used);
+    }
+    TEST_METHOD(CurrentCueCoordinatorKeepsActualMeasuredCueThroughTenSecondsOfMissingWorkerResults) {
+        for(bool p210:{false,true}) {
+            auto pixels=Pixels();Text(pixels,240,310,12);
+            if(p210)pixels.resize(640*360*2,uint16_t(512<<6));
+            auto source=Source(pixels);if(p210)source.format=AnalysisLumaFormat::P210;
+            const auto measure=[&](uint64_t sequence) {
+                auto identity=Identity(sequence);identity.transportGeneration=2;
+                SubtitleBoxDetector detector;
+                return SubtitleBoxLookahead::Measure(detector,source,ExtractActivePictureEvidence(source),
+                    identity,false,{},7,9);
+            };
+            const auto first=measure(1),second=measure(2);
+            Assert::IsTrue(first.text.detected && second.text.detected);
+            const SubtitleBoxObservation frames[]={first,second};
+            auto acquire=SubtitleBoxLookahead::Resolve(frames,2,7,9);
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            const ActivePictureBounds base{0,45,640,315,640,360};
+            auto decision=ConsumeCurrentSubtitleCue(guard,tracker,acquire,source,base,true,250,50);
+            auto current=SubtitleBoxLookahead::Resolve(&second,1,7,9);
+            decision=ConsumeCurrentSubtitleCue(guard,tracker,current,source,base,true,250,50);
+            Assert::IsTrue(decision.accepted.detected && guard.HasReference());
+            const auto cue=decision.accepted.cue;
+            const auto geometry=compositor.Consume(decision.accepted,current);
+            Assert::IsTrue(geometry.valid);
+            for(uint64_t sequence=3;sequence<=202;++sequence) {
+                auto pending=current;pending.available=false;pending.current.analyzed=false;
+                pending.current.barAuthority=false;pending.current.independentBarAnalysis=false;
+                pending.current.barEvidence={};pending.current.pictureTop=0;pending.current.pictureBottom=360;
+                pending.current.ink.reset();pending.current.text={};pending.text={};
+                pending.current.text.workLimit=(sequence%2)==0; // Unknown worker result; local full proof remains required.
+                pending.current.identity=Identity(sequence);pending.current.identity.transportGeneration=2;
+                pending.current.sharedPicture={};
+                AnalysisLumaReadBudget budget{393216};auto proofSource=source;proofSource.readBudget=&budget;
+                const auto next=ConsumeCurrentSubtitleCue(guard,tracker,pending,proofSource,base,true,250,50);
+                if(!next.proof.completeCurrentCue)Logger::WriteMessage(next.proof.reason);
+                Assert::IsTrue(next.proof.completeCurrentCue && next.accepted.detected && !next.accepted.held);
+                Assert::AreEqual(cue,next.accepted.cue);
+                const auto composed=compositor.Consume(next.accepted,pending,{},0,nullptr,&next.proof);
+                Assert::IsTrue(composed.valid);
+                Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,composed.source));
+                Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,composed.destination));
+                Assert::IsFalse(pending.available || pending.current.analyzed || pending.current.barAuthority);
+                Assert::IsTrue(budget.used<=budget.limit);
             }
         }
     }

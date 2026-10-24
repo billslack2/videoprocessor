@@ -404,6 +404,7 @@ bool AnalysisLumaSource::RowWithinLimits(int y, uint16_t lumaMax,
 
 bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
+    if(readBudget && !readBudget->Spend())return false;
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)
 		return false;
 	if (format != AnalysisLumaFormat::NativeRgb &&

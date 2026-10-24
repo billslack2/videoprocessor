@@ -2068,7 +2068,9 @@ public:
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
-        if (!preview.available) {
+        const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration);
+        if (!preview.available && !completeSource) {
             // A queue-only gap can retain the template internally. Unknown
             // source pixels never emit a cue or renew the lease.
             if (backlogRetirementOnly && backlogTemplateIdentity && m_hasPrevious &&
@@ -2088,20 +2090,26 @@ public:
             m_previous.continuityGeneration == preview.continuityGeneration &&
             m_previous.current.scriptHint==preview.current.scriptHint) return m_handoffActive?m_handoffResult:m_result;
         if(cueContinuation && m_hasPrevious && m_result.detected &&
-            cueContinuation->Matches(preview.current.identity,preview.policyGeneration,
+            (completeSource || (cueContinuation->Matches(preview.current.identity,preview.policyGeneration,
                 preview.continuityGeneration,preview.current.sharedPicture.bounds) &&
-            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height) &&
+                preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height))) &&
             cueContinuation->MatchesCue(m_result) &&
             SameAnalysisFrameIdentity(cueContinuation->previousIdentity,m_previous.current.identity) &&
-            preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1) {
+            (completeSource?preview.current.identity.acceptedSequence>m_previous.current.identity.acceptedSequence:
+                preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1)) {
             // Explicit current proof retains geometry only; do not renew the
             // acquisition template, bar tracking, or ordinary weak-ink lease.
             m_result=cueContinuation->accepted;
             m_previous=preview;m_previous.current.text=m_result;
-            m_decisionReason="current-cue-missing-edge";
+            m_decisionReason=completeSource?"current-complete-cue":"current-cue-missing-edge";
             m_diagnosticWeakMs=cueContinuation->elapsedMs;
             m_refreshedReference={};
             return m_result;
+        }
+        if(completeSource) {
+            // Complete local proof may continue only the already selected cue.
+            // It cannot become a new acquisition when its previous packet is absent.
+            Reset();m_decisionReason="complete-cue-not-bound";return {};
         }
         auto continuityPreview=preview;
         if(m_refreshedReference.ink &&

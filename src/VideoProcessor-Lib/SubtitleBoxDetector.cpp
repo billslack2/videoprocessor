@@ -179,6 +179,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
             else if(planar)
             {
+                if(source.readBudget && !source.readBudget->Spend()) {
+                    m_workLimit=true;m_diagnosticReason="sample-budget";return false;
+                }
                 const auto* row=reinterpret_cast<const uint16_t*>(source.data+static_cast<size_t>(sy)*source.rowBytes);
                 luma=row[sx]>>6;
                 const int cy=source.format==AnalysisLumaFormat::P010?sy/2:sy;
@@ -2592,7 +2595,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
 }
 
 SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
-    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration)
+    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration,bool requireConfiguredSearch)
 {
     if(!source.IsValid() || source.width>8192 || source.height>4320 || top<0 ||
         bottom<=top || bottom>source.height || (top==0 && bottom==source.height))
@@ -2604,24 +2607,36 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         Reset(); m_generation=source.generation; m_viewport=viewportGeneration;
         m_width=source.width; m_height=source.height; m_top=top; m_bottom=bottom;
     }
-    if(m_hasSequence && sequence==m_sequence) return m_result;
+    if(m_hasSequence && sequence==m_sequence &&
+        (!requireConfiguredSearch || m_result.configuredSearchComplete)) return m_result;
     m_sequence=sequence; m_hasSequence=true;
     m_sharedSampleCount=0;
     if(m_optimizationMode==2)m_sampledRows.assign((source.height+SamplingStep(source.width,source.height)-1)/SamplingStep(source.width,source.height),0);
     SubtitleBoxRect box; int lines=0; std::array<uint64_t,16> signature{};
     // Preserve the established overlap detector. Only widen nomination when
     // that detector finds no valid cue; near-picture noise cannot displace it.
-    bool detected=Detect(source,top,bottom,box,lines,signature,0);
+    bool configuredSearch=requireConfiguredSearch || m_nearBarDistance==0;
+    bool detected=Detect(source,top,bottom,box,lines,signature,
+        requireConfiguredSearch?m_nearBarDistance:0);
     bool topSearchComplete=!m_workLimit && m_topSearchComplete;
     bool bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
-    if(!detected && m_nearBarDistance>0) {
+    if(!detected && m_nearBarDistance>0 && !requireConfiguredSearch) {
+        configuredSearch=true;
         detected=Detect(source,top,bottom,box,lines,signature,m_nearBarDistance);
         // The widened pass is the final configured search result. Do not let
         // a complete narrower attempt mask an incomplete widened scan.
         topSearchComplete=!m_workLimit && m_topSearchComplete;
         bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
     }
+    if(source.readBudget && source.readBudget->exhausted) {m_workLimit=true;detected=false;}
     auto diagnostics=[&]() {
+        m_result.configuredSearchComplete=configuredSearch && !m_workLimit;
+        const int step=SamplingStep(source.width,source.height);
+        const int rows=(source.height+step-1)/step;
+        const int depth=(std::max)(24,rows/7)+(configuredSearch?m_nearBarDistance+step-1:0)/step;
+        m_result.searchStep=step;
+        m_result.topSearchEnd=topSearchComplete?(std::min)(source.height,((top+step-1)/step+depth)*step):0;
+        m_result.bottomSearchStart=bottomSearchComplete?(std::max)(0,((std::min)(rows-1,(bottom+step-1)/step)-depth)*step):source.height;
         m_result.diagnosticReason=detected?"detected":m_diagnosticReason;
         m_result.diagnosticComponentCount=m_diagnosticComponentCount;
         m_result.diagnosticPictureGlyphProofRequired=m_diagnosticPictureGlyphProofRequired;

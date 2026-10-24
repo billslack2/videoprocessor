@@ -57,7 +57,7 @@
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/ActivePictureMeasurementCache.h>
 #include <SubtitleBoxDetector.h>
-#include <SubtitleCueContinuation.h>
+#include <SubtitleCurrentCue.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
@@ -4606,6 +4606,8 @@ struct LibplaceboVideoRenderer::Impl
     const char* subtitleLipLogReason="not-evaluated";
     SubtitleBoxRect subtitleLipLogCleanup;
     uint64_t subtitleLipLogTick=0;
+    uint32_t subtitleLipLogContextRejectMask=0;
+    const char* subtitleLipLogPlaneReason="not-required";
 	SubtitleBoxResult subtitleBoxResult;
     SubtitleCutPastePresentation subtitleCutPastePresentation;
     const pl_hook* subtitleCutPasteHook = nullptr;
@@ -13698,6 +13700,12 @@ struct LibplaceboVideoRenderer::Impl
         bool currentSubtitlePendingPixelsVerified = false;
         SubtitleBoxPreview currentSubtitlePreview;
         SubtitleCueContinuation currentCueContinuation;
+        // One synchronous current-source budget covers pending glyph checks,
+        // complete local inspection, tracker refresh and optional backing repair.
+        // This borrowed pointer is never attached to a queued/retained source.
+        AnalysisLumaReadBudget subtitleReadBudget{SubtitleCurrentCueFrameSampleLimit};
+        auto subtitleProofSource=analysisSource;
+        subtitleProofSource.readBudget=&subtitleReadBudget;
         bool currentNoCaptionConfirmed = false;
         SubtitleBarStripClearance currentSubtitleBarStripClearance;
         std::string currentSubtitleScanReason="unavailable";
@@ -13796,7 +13804,7 @@ struct LibplaceboVideoRenderer::Impl
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
                 pendingCurrentPixelsVerified=subtitlePendingGuard.Resolve(currentSubtitlePreview,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    subtitleProofSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                     subtitleBacklogRetirementOnly);
                 if(pendingCurrentPixelsVerified) {
@@ -13830,39 +13838,35 @@ struct LibplaceboVideoRenderer::Impl
                 !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
                   latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
                   CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
-            if(!continuationBaseAvailable) subtitleCueContinuation.Reset();
-            else if(subtitleCueContinuation.NeedsCurrentPixelRevalidation(currentSubtitlePreview)) {
-                currentCueContinuation=subtitleCueContinuation.Prepare(currentSubtitlePreview,
-                    analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
+            const auto cueDecision=ConsumeCurrentSubtitleCue(subtitleCueContinuation,
+                subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                pendingCurrentPixelsVerified,
+                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                subtitleBacklogRetirementOnly);
+            currentCueContinuation=cueDecision.proof;
+            subtitleBoxResult=cueDecision.accepted;
+            if(currentCueContinuation.templateIdentity.acceptedSequence) {
                 const auto now=GetTickCount64();
                 if(std::strcmp(currentCueContinuation.reason,"not-eligible")!=0 &&
                     (subtitleContinuationLogReason!=currentCueContinuation.reason ||
                      now-subtitleContinuationLogTick>=2000)) {
                     subtitleContinuationLogReason=currentCueContinuation.reason;
                     subtitleContinuationLogTick=now;
-                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d",
+                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d complete=%d coverage=%d,%d-%d,%d step=%d proof_phase_reads=%zu",
                         sourceSequence,currentCueContinuation.templateIdentity.acceptedSequence,
                         currentCueContinuation.valid?1:0,currentCueContinuation.reason,
                         currentCueContinuation.samples,currentCueContinuation.elapsedMs,
                         currentSubtitlePreview.current.pictureTop,currentSubtitlePreview.current.pictureBottom,
-                        currentCueContinuation.pictureTop,currentCueContinuation.pictureBottom);
+                        currentCueContinuation.pictureTop,currentCueContinuation.pictureBottom,
+                        currentCueContinuation.completeCurrentCue?1:0,
+                        currentCueContinuation.verifiedSearch.left,currentCueContinuation.verifiedSearch.top,
+                        currentCueContinuation.verifiedSearch.right,currentCueContinuation.verifiedSearch.bottom,
+                        currentCueContinuation.searchStep,subtitleReadBudget.used);
                 }
             }
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
-            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
-            subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview,
-                activeSettings.subtitleHoldMs,subtitleFrameMs,
-                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
-            if(subtitleBoxResult.confirmationPending)subtitleCueContinuation.Reset();
-            else if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
-                if(!subtitleCueContinuation.Remember(currentSubtitlePreview,subtitleBoxResult,nlsGeometry,analysisSource))
-                    subtitleCueContinuation.AdvanceVerified(currentSubtitlePreview,subtitleBoxResult,
-                        analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
-            }
-            else if(!subtitleBoxResult.detected)
-                subtitleCueContinuation.Reset();
 
             // State-only telemetry: no extra source scan or continuation attempt.
             const bool continuationHasReference=subtitleCueContinuation.HasReference();
@@ -13971,7 +13975,7 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
+                    subtitleProofSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     &subtitleBoxPresentation.AcceptedCueSeedCertificate());
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
@@ -14011,7 +14015,8 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitleTextReductionPercent, safeSubtitlePadding,
                     activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
                 move=subtitleLayoutAnchor.Consume(move,subtitleBoxResult,*subtitlePreview,
-                    safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground);
+                    safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground,
+                    cueContinuation);
                 // Display backing width is independent of reduced letters. Keep
                 // both decorations outside the stable glyph/layout caches.
                 move=PreserveExtendedSubtitleBackingWidth(move,safeSubtitlePadding,
@@ -14022,11 +14027,12 @@ struct LibplaceboVideoRenderer::Impl
                 if(move.valid && !move.generatedCleanup.Valid() &&
                     (subtitleCutPasteBackground==3 || subtitleCutPasteBackground==5)) {
                     const auto lipStarted=SteadyClock::now();
-                    auto lipSource=analysisSource;
+                    auto lipSource=subtitleProofSource;
                     lipSource.generation=subtitleIdentity.transportGeneration;
                     const auto lip=subtitleBackingLipContinuity.Consume(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,65536,&move);
+                        localBoundaryContinuityGeneration,65536,&move,
+                        currentCueContinuation.valid?&currentCueContinuation:nullptr);
                     const char* lipApplicationReason=nullptr;
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,&lipApplicationReason);
@@ -14036,10 +14042,12 @@ struct LibplaceboVideoRenderer::Impl
                     const auto now=GetTickCount64();
                     const auto& prior=subtitleLipLogCleanup;
                     const bool changed=std::strcmp(subtitleLipLogReason,lip.reason)!=0 ||
+                        subtitleLipLogContextRejectMask!=lip.contextRejectMask ||
+                        std::strcmp(subtitleLipLogPlaneReason,lip.cuePlaneReason)!=0 ||
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_reject_mask=0x%08x cue_plane_verified=%d cue_plane_samples=%zu cue_plane_reason=%s",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
@@ -14050,8 +14058,11 @@ struct LibplaceboVideoRenderer::Impl
                             lip.pictureTop,lip.pictureBottom,move.pictureTop,move.pictureBottom,
                             lip.closureDark,lip.closureSamples,lip.closureLongestDarkRun,
                             lip.attachmentSeamClipped?1:0,subtitlePreview->current.pictureTop,
-                            subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0);
+                            subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0,
+                            lip.contextRejectMask,lip.cuePlaneVerified?1:0,lip.cuePlaneSamples,lip.cuePlaneReason);
                         subtitleLipLogTick=now;subtitleLipLogReason=lip.reason;
+                        subtitleLipLogContextRejectMask=lip.contextRejectMask;
+                        subtitleLipLogPlaneReason=lip.cuePlaneReason;
                         subtitleLipLogCleanup=move.generatedCleanup;
                     }
                 }

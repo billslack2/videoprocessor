@@ -6790,6 +6790,54 @@ namespace Tests
 				true, true, true, false, true, true, false));
 		}
 
+        TEST_METHOD(FixedZoomCurrentPreparedCaptionKeepsExactMappingAcrossUnknownAr)
+        {
+            auto crop=TrustedScopeCrop();
+            crop.geometry={0,384,3840,1776,3840,2160,3840.0/1392.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            crop.framePresentationEpoch=5;
+            crop.frameLocalPresentationRetentionEvaluated=true;
+            crop.frameLocalPresentationRetentionSafe=true;
+            for(uint64_t sequence=1766;sequence<=1768;++sequence) {
+                crop.frameSourceSequence=sequence;
+                crop.latestObservationSupportsCrop=sequence!=1767;
+                crop.latestObservationIsProvisional=sequence==1767;
+                crop.latestObservationClassification=sequence==1767 ?
+                    ActivePictureClassification::PROVISIONAL : ActivePictureClassification::BAR_CROP_TRUSTED;
+                // This is the receipt from exact current source preparation,
+                // not a saved erasure footprint or a detector/AR observation.
+                crop.preparedSubtitle.available=true;
+                crop.preparedSubtitle.nativeBase=crop.geometry;
+                crop.preparedSubtitle.sourceGeneration=crop.frameSourceGeneration;
+                crop.preparedSubtitle.sourceSequence=sequence;
+                crop.preparedSubtitle.presentationEpoch=crop.framePresentationEpoch;
+                const auto candidate=Evaluate(crop);
+                const auto admitted=AdmitCropPresentation({},crop,candidate,crop.framePresentationEpoch);
+                Assert::IsFalse(admitted.blocked);
+                Assert::IsTrue(admitted.presentation.applyCrop);
+                FinalAspectLimitFillInput fill;
+                fill.crop=crop;fill.presentation=admitted.presentation;
+                fill.fixedCropAspectConfigured=true;fill.fixedCropAspect=2.4;
+                fill.configuredScreenActive=true;
+                const auto fixed=EvaluateFinalAspectLimitFill(fill);
+                Assert::IsTrue(fixed.applied);
+                Assert::AreEqual(250,fixed.sourceBounds.left);
+                Assert::AreEqual(384,fixed.sourceBounds.top);
+                Assert::AreEqual(3590,fixed.sourceBounds.right);
+                Assert::AreEqual(1776,fixed.sourceBounds.bottom);
+                const auto fit=FitAspect(double(fixed.sourceBounds.right-fixed.sourceBounds.left)/
+                    (fixed.sourceBounds.bottom-fixed.sourceBounds.top),{0,0,3840,2160},
+                    VerticalPictureAlignment::CENTER);
+                Assert::IsTrue(fit.valid);
+                Assert::AreEqual(3840.0,fit.picture.right-fit.picture.left,0.001);
+                Assert::AreEqual(1600.383233532934,fit.picture.bottom-fit.picture.top,0.001);
+                Assert::AreEqual(279.808383233533,fit.picture.top,0.001);
+                auto stale=crop;--stale.preparedSubtitle.sourceSequence;
+                Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(stale),
+                    L"A prior prepared frame cannot preserve fixed zoom by hiding a current raw caption.");
+            }
+        }
+
 		TEST_METHOD(FixedCropTracksMenusOnlyWhenDynamicGeometryIsEnabled)
 		{
 			Assert::IsFalse(ShouldTrackDynamicPresentationGeometry(

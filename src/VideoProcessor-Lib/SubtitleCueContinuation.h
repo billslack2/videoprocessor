@@ -2,15 +2,17 @@
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCueContinuationProof.h>
 
-// A non-renewing lease for an established cue whose detector search side was
-// omitted after one edge became unavailable. Never modifies worker evidence.
+// Current complete source proof is independent of unrelated AR hints. Only
+// incomplete missing-edge evidence uses a non-renewing lease. Raw worker/AR
+// observations are never rewritten.
 class SubtitleCueContinuationGuard {
 public:
-    void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
+    void Reset() { m_valid=false; m_reference={}; m_baseline.reset();m_acquiredInk.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
     bool HasReference() const { return m_valid; }
     bool NeedsCurrentPixelRevalidation(const SubtitleBoxPreview& preview) const {
         return m_valid && (!preview.current.text.detected ||
-            !SubtitleBoxLookahead::SameContext(m_reference,preview.current));
+            !SubtitleBoxLookahead::SameContext(m_reference,preview.current) ||
+            !preview.current.sharedPicture.Matches(m_reference.sharedPicture));
     }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
@@ -26,25 +28,13 @@ public:
         if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete)
             return reject("ink-unavailable");
         if(!ValidSource(c,source))return reject("source-mismatch");
-        if(!c.sharedPicture.AvailableFor(c.identity,c.width,c.height))
-            return reject("shared-hint-unavailable");
-        if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
-        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom) {
-            // Source glyph proof and AR presentation use separate planes.
-            // Current independent physical bars can seed the glyph reference;
-            // the stable AR base remains separately bound by shared identity.
-            const bool independentPhysical=c.independentBarAnalysis && c.barAuthority &&
-                c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
-                !c.barEvidence.captionBackedTop && !c.barEvidence.captionBackedBottom &&
-                !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby &&
-                !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby &&
-                c.pictureTop==c.barEvidence.top && c.pictureBottom==c.barEvidence.bottom &&
-                c.pictureTop>0 && c.pictureBottom<c.height && c.pictureTop<c.pictureBottom &&
-                base.rasterWidth==c.width && base.rasterHeight==c.height &&
-                base.left>=0 && base.right<=c.width && base.left<base.right &&
-                base.top>=0 && base.bottom<=c.height && base.top<base.bottom;
-            if(!independentPhysical)return reject("native-base-physical-edge-mismatch");
-        }
+        if(!ValidBase(base,c.width,c.height))return reject("invalid-native-base");
+        bool fromTop=false;
+        if(!CueSide(c.text,c.pictureTop,c.pictureBottom,fromTop) ||
+            !CurrentCueSide(c,fromTop,fromTop?c.pictureTop:c.pictureBottom))
+            return reject("cue-side-placement-unavailable");
+        if(!(fromTop?c.text.topSearchComplete:c.text.bottomSearchComplete))
+            return reject("cue-side-search-incomplete");
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
         // Rendering the same strong source frame does not renew a later lease.
@@ -79,19 +69,118 @@ public:
         if(c.ink->ownedInk.size()!=words)return reject("owned-grid-mismatch");
         for(size_t i=0;i<words;++i)sampled->ownedInk[i]=c.ink->ownedInk[i]&sampled->rawInk[i];
         m_reference=acceptedObservation;m_reference.ink=sampled;
-        m_baseline=sampled;m_base=base;m_roi=roi;m_last=c.identity;m_elapsed=0;m_missingStarted=false;m_valid=true;m_cached={};
+        m_baseline=sampled;m_acquiredInk=c.ink;m_fromTop=fromTop;m_base=base;m_roi=roi;m_last=c.identity;m_elapsed=0;m_missingStarted=false;m_valid=true;m_cached={};
         m_format=source.format;m_encoding=source.encoding;m_range=source.range;m_colorspace=source.colorspace;
         m_sourceGeneration=source.generation;
         m_lastSeedReason="seeded";
         return true;
     }
+    // Admission predicate only; current pixels still have to pass InspectCurrent.
+    bool CanInspectCurrentObservation(const SubtitleBoxObservation& c) const {
+        return m_valid && !c.discontinuity && Context(c,m_reference) &&
+            c.identity.acceptedSequence>=m_last.acceptedSequence &&
+            c.policyGeneration==m_reference.policyGeneration &&
+            c.continuityGeneration==m_reference.continuityGeneration;
+    }
+    const ActivePictureFrameIdentity& LastVerifiedIdentity() const {return m_last;}
+    SubtitleCueContinuation InspectCurrent(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
+        size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
+        SubtitleCueContinuation out;const auto& raw=preview.current;
+        out.identity=raw.identity;out.templateIdentity=m_reference.identity;out.previousIdentity=m_last;
+        out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
+        out.fromTopBar=m_fromTop;
+        const auto fail=[&](const char* reason) {out.reason=reason;Reset();return out;};
+        if(!CanInspectCurrentObservation(raw) || !ValidSource(raw,source) ||
+            preview.policyGeneration!=m_reference.policyGeneration ||
+            preview.continuityGeneration!=m_reference.continuityGeneration ||
+            source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
+            source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration)
+            return fail("complete-context-changed");
+        const int plane=m_fromTop?m_reference.pictureTop:m_reference.pictureBottom;
+        const int rawPlane=m_fromTop?raw.pictureTop:raw.pictureBottom;
+        if(raw.analyzed && raw.barAuthority && raw.barEvidence.available &&
+            rawPlane>0 && rawPlane<source.height && rawPlane!=plane)
+            return fail("complete-cue-side-changed");
+        if(m_cached.MatchesSource(raw.identity,preview.policyGeneration,preview.continuityGeneration))return m_cached;
+        const auto remaining=source.readBudget && source.readBudget->used<source.readBudget->limit?
+            source.readBudget->limit-source.readBudget->used:(source.readBudget?0:maxSamples);
+        AnalysisLumaReadBudget budget{(std::min)(maxSamples,remaining)};
+        auto currentSource=source;currentSource.readBudget=&budget;
+        // Charge the outer synchronous frame budget exactly once on every exit.
+        struct Charge {AnalysisLumaReadBudget* outer;AnalysisLumaReadBudget& local;size_t remaining;
+            ~Charge(){if(outer){outer->used+=local.used;outer->exhausted|=local.exhausted && local.limit==remaining;}}
+        } charge{source.readBudget,budget,remaining};
+        const size_t startReads=0;
+        const auto finish=[&](const char* reason) {
+            out.samples=static_cast<unsigned>(currentSource.readBudget->used-startReads);
+            out.reason=currentSource.readBudget->exhausted?"complete-sample-budget":reason;return out;
+        };
+        unsigned verifiedSamples=0;const char* reason="not-eligible";
+        auto fresh=Verify(raw,currentSource,maxSamples,verifiedSamples,reason);
+        if(!fresh) {
+            // Native contradiction ends ownership. Exhausted/incomplete work
+            // retains only an unrendered candidate, never a cleanup lease.
+            if(!budget.exhausted && (std::strcmp(reason,"glyph-proof-failed")==0 ||
+                std::strcmp(reason,"new-ink-outside-cue")==0 || std::strcmp(reason,"backing-changed")==0))Reset();
+            return finish(reason);
+        }
+        // Re-prove only the acquired side against CURRENT pixels. The opposite
+        // retained coordinate is never submitted as measured bar evidence.
+        SubtitleBarEvidence neutral;neutral.bottom=source.height;
+        const auto bars=RevalidateSubtitleBarEvidence(currentSource,neutral,
+            m_fromTop?plane:0,m_fromTop?source.height:plane,fresh.get(),&m_reference.text.bounds);
+        if(!(m_fromTop?bars.topRevalidatedAtReference:bars.bottomRevalidatedAtReference))
+            return finish("complete-cue-side-unproved");
+        auto local=raw;
+        const bool reusable=preview.available && raw.analyzed && !raw.analysisRefresh && !raw.pendingRefresh &&
+            !raw.cadenceSkipped && CurrentCueSide(raw,m_fromTop,plane) &&
+            CompleteCoverage(raw,m_fromTop) && raw.text.detected && !raw.text.held &&
+            !raw.text.confirmationPending && !raw.text.workLimit;
+        if(!reusable) {
+            SubtitleBoxDetector detector;detector.SetScriptHint(raw.scriptHint);
+            detector.SetNearBarDistance(raw.nearBarDistance);detector.SetOptimizationMode(raw.optimizationMode);
+            local.pictureTop=m_fromTop?plane:0;local.pictureBottom=m_fromTop?source.height:plane;
+            local.text=detector.Analyze(currentSource,local.pictureTop,local.pictureBottom,
+                raw.identity.acceptedSequence,raw.identity.viewportGeneration,true);
+            local.ink=detector.InkSnapshot();
+        }
+        if(currentSource.readBudget->exhausted)return finish("complete-sample-budget");
+        if(!CompleteCoverage(local,m_fromTop) || local.text.workLimit)
+            return finish("complete-search-incomplete");
+        if(!local.text.detected || local.text.held || local.text.confirmationPending ||
+            !SameSlots(local.text,m_reference.text) || !NoNewBarInk(local)) {
+            Reset();return finish("complete-cue-changed");
+        }
+        // The full current detector must agree with the acquired strokes too;
+        // unchanged rectangles alone cannot certify replacement text.
+        // The ink matcher uses an acquisition-coordinate comparison wrapper;
+        // this private wrapper is never returned as measured physical evidence.
+        auto comparison=m_reference;comparison.identity=raw.identity;
+        comparison.text=local.text;comparison.ink=local.ink;
+        if(!SubtitleBoxLookahead::ConfidentSameInk(m_reference,comparison)) {
+            Reset();return finish("complete-detector-ink-changed");
+        }
+        out.valid=out.completeCurrentCue=true;out.oppositeBarUnavailable=true;
+        out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
+        out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
+        out.accepted=m_reference.text;out.accepted.held=false;
+        out.ink=fresh;out.currentInk=local.ink;out.searchStep=local.text.searchStep;
+        out.verifiedSearch={0,m_fromTop?0:local.text.bottomSearchStart,source.width,
+            m_fromTop?local.text.topSearchEnd:source.height};
+        out=finish("current-complete-cue");m_last=raw.identity;m_elapsed=0;m_missingStarted=false;m_cached=out;
+        return out;
+    }
     SubtitleCueContinuation Prepare(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
-        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=65536) {
+        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
         SubtitleCueContinuation out;const auto& c=preview.current;
         out.identity=c.identity;out.templateIdentity=m_reference.identity;out.previousIdentity=m_last;
         out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
         auto fail=[&](const char* why) {out.reason=why;m_valid=false;m_cached=out;return out;};
         if(!m_valid)return out;
+        if(c.text.detected || !preview.available ||
+            !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
+            !c.sharedPicture.Matches(m_reference.sharedPicture))
+            return InspectCurrent(preview,source,maxSamples);
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.analysisRefresh ||
             c.text.workLimit || !ValidSource(c,source) || !SameBase(base,m_base) ||
             !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) || !SameBase(base,c.sharedPicture.bounds) ||
@@ -169,6 +258,57 @@ public:
         m_last=c.identity;m_cached={};return true;
     }
 private:
+    static bool ValidBase(const ActivePictureBounds& b,int w,int h) {
+        return b.rasterWidth==w && b.rasterHeight==h && b.left>=0 && b.right<=w && b.left<b.right &&
+            b.top>=0 && b.bottom<=h && b.top<b.bottom;
+    }
+    static bool CueSide(const SubtitleBoxResult& text,int top,int bottom,bool& fromTop) {
+        bool upper=false,lower=false;
+        for(int i=0;i<text.lineCount;++i) {upper|=text.lineBounds[i].top<top;lower|=text.lineBounds[i].bottom>bottom;}
+        fromTop=upper;return upper!=lower;
+    }
+    static bool SameSlots(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
+        if(a.lineCount!=b.lineCount || a.lineCount<1 || a.lineCount>3)return false;
+        for(int i=0;i<a.lineCount;++i)if(!SubtitleCueContinuation::SameRect(a.lineBounds[i],b.lineBounds[i]))return false;
+        return true;
+    }
+    static bool CurrentCueSide(const SubtitleBoxObservation& c,bool top,int plane) {
+        return c.barAuthority && c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
+            plane>0 && plane<c.height && (top?c.pictureTop==plane && c.barEvidence.top==plane &&
+                !c.barEvidence.captionBackedTop && !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby:
+                c.pictureBottom==plane && c.barEvidence.bottom==plane && !c.barEvidence.captionBackedBottom &&
+                !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby);
+    }
+    static bool CompleteCoverage(const SubtitleBoxObservation& c,bool top) {
+        if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete || !c.text.configuredSearchComplete ||
+            !(top?c.text.topSearchComplete:c.text.bottomSearchComplete) || c.text.workLimit)return false;
+        const int step=SubtitleBoxDetector::SamplingStep(c.width,c.height);
+        const int rows=(c.height+step-1)/step;
+        const int depth=(std::max)(24,rows/7)+(c.nearBarDistance+step-1)/step;
+        const int required=top?(std::min)(c.height,((c.pictureTop+step-1)/step+depth)*step):
+            (std::max)(0,((std::min)(rows-1,(c.pictureBottom+step-1)/step)-depth)*step);
+        return c.text.searchStep==step && (top?c.text.topSearchEnd>=required:c.text.bottomSearchStart<=required);
+    }
+    bool NoNewBarInk(const SubtitleBoxObservation& c) const {
+        if(!c.ink || !m_acquiredInk)return false;
+        const auto& now=*c.ink;const auto& prior=*m_acquiredInk;
+        if(now.width!=prior.width || now.height!=prior.height || now.step!=prior.step ||
+            now.sourceRows.size()!=size_t(now.height) || prior.sourceRows.size()!=size_t(prior.height))return false;
+        const int plane=m_fromTop?m_reference.pictureTop:m_reference.pictureBottom;
+        for(int y=0;y<now.height;++y) {
+            const int sy=now.sourceRows[size_t(y)];if(m_fromTop?sy>=plane:sy<plane)continue;
+            if(prior.sourceRows[size_t(y)]!=sy)return false;
+            for(int x=0;x<now.width;++x) {
+                const int sx=x*now.step;bool ownedLine=false;
+                for(int line=0;line<m_reference.text.lineCount;++line) {
+                    const auto& b=m_reference.text.lineBounds[line];
+                    ownedLine|=sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
+                }
+                if(!ownedLine && now.Get(x,y) && !prior.Get(x,y))return false;
+            }
+        }
+        return true;
+    }
     std::shared_ptr<SubtitleInkSnapshot> Verify(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
         size_t maxSamples,unsigned& samples,const char*& reason) const {
         auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason);
@@ -188,7 +328,7 @@ private:
             }
         }
         // Geometry is local to comparison: raw measurement and AR stay untouched.
-        auto comparison=c;comparison.pictureTop=m_reference.pictureTop;comparison.pictureBottom=m_reference.pictureBottom;
+        auto comparison=m_reference;comparison.identity=c.identity;
         comparison.ink=fresh;
         if(!SubtitleBoxLookahead::ConfidentSameInk(m_reference,comparison)){reason="glyph-proof-failed";return {};}
         for(size_t i=0;i<fresh->rawInk.size();++i)fresh->ownedInk[i]=m_baseline->ownedInk[i]&fresh->rawInk[i];
@@ -240,7 +380,8 @@ private:
     }
     bool m_valid=false,m_missingStarted=false;const char* m_lastSeedReason="not-attempted";
     SubtitleBoxObservation m_reference;ActivePictureBounds m_base;
-    std::shared_ptr<SubtitleInkSnapshot> m_baseline;SubtitleBoxRect m_roi;
+    std::shared_ptr<SubtitleInkSnapshot> m_baseline;
+    std::shared_ptr<const SubtitleInkSnapshot> m_acquiredInk;bool m_fromTop=false;SubtitleBoxRect m_roi;
     ActivePictureFrameIdentity m_last;double m_elapsed=0;SubtitleCueContinuation m_cached;
     AnalysisLumaFormat m_format=AnalysisLumaFormat::P010;VideoFrameEncoding m_encoding=VideoFrameEncoding::UNKNOWN;
     AnalysisLumaRange m_range=AnalysisLumaRange::Unknown;ColorSpace m_colorspace=ColorSpace::UNKNOWN;uint64_t m_sourceGeneration=0;

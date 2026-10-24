@@ -179,14 +179,16 @@ public:
         SubtitleBoxPadding requested,SubtitlePaddingPolicy scalePolicy={},
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
-        if(!preview.available || (!text.detected && !text.held) || !text.bounds.Valid()) {
+        const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if((!preview.available && !completeSource) || (!text.detected && !text.held) || !text.bounds.Valid()) {
             Reset();return requested;
         }
         if(cueContinuation && m_valid && m_cue==text.cue && m_requested==requested && m_scalePolicy==scalePolicy &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
-            cueContinuation->Matches(preview.current.identity,preview.policyGeneration,preview.continuityGeneration,
+            (completeSource || (cueContinuation->Matches(preview.current.identity,preview.policyGeneration,preview.continuityGeneration,
                 text,preview.current.sharedPicture.bounds) &&
-            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height))
+                preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height))))
             return m_safe;
         const bool same=m_valid && m_cue==text.cue && m_requested==requested && m_scalePolicy==scalePolicy &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
@@ -559,9 +561,12 @@ public:
     void Reset() { m_valid=false; m_geometry={}; m_reference={}; m_text={}; }
     SubtitleCutPasteGeometry Consume(SubtitleCutPasteGeometry g,
         const SubtitleBoxResult& text,const SubtitleBoxPreview& preview,
-        SubtitleBoxPadding padding,int offset,bool floatBackground=false)
+        SubtitleBoxPadding padding,int offset,bool floatBackground=false,
+        const SubtitleCueContinuation* continuation=nullptr)
     {
-        if(!g.valid || !text.detected || !preview.available || preview.current.discontinuity) {
+        const bool complete=continuation && continuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if(!g.valid || !text.detected || (!preview.available && !complete) || preview.current.discontinuity) {
             Reset();return g;
         }
         const auto& a=m_reference.identity;const auto& b=preview.current.identity;
@@ -668,8 +673,10 @@ public:
         const SubtitleBoxRect* displayBounds=nullptr,
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
-        if (!text.detected || !text.bounds.Valid() || !preview.available ||
-            !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current) || text.workLimit ||
+        const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
+            preview.policyGeneration,preview.continuityGeneration,text);
+        if (!text.detected || !text.bounds.Valid() || (!completeSource && (!preview.available ||
+            !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current))) || text.workLimit ||
             (text.nearBarEligibilityMeasured && !text.nearBarEligible)) {
             Reset();return {};
         }
@@ -728,9 +735,9 @@ public:
             !containsLocal(SubtitleGlyphCaptureBounds(text,current.width,current.height)))) {
             Reset();return {};
         }
-        if(cueContinuation && cueContinuation->Matches(current.identity,preview.policyGeneration,
+        if(cueContinuation && (completeSource || (cueContinuation->Matches(current.identity,preview.policyGeneration,
                 preview.continuityGeneration,current.sharedPicture.bounds) &&
-            current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+                current.sharedPicture.AvailableFor(current.identity,current.width,current.height))) &&
             cueContinuation->MatchesCue(text) && cueContinuation->MatchesCue(m_cachedText) &&
             m_geometry.valid && m_cue==text.cue && m_policy==preview.policyGeneration &&
             m_continuity==preview.continuityGeneration && m_padding==padding && m_gap==gap &&

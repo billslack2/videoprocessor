@@ -2325,6 +2325,12 @@ namespace VideoProcessorTest
             for(bool p210:{false,true})for(int invalid=0;invalid<8;++invalid) {
                 LoggedRelocatedCaptionFixture f(p210,true);
                 for(int line=0;line<2;++line)f.observation.text.lineSignatures[line].fill(0x55);
+                // Seed from an independently measured, fully searched cue side.
+                // The following frame intentionally loses that measured edge.
+                f.observation.barEvidence.available=true;
+                f.observation.barEvidence.top=f.observation.pictureTop;
+                f.observation.barEvidence.bottom=f.observation.pictureBottom;
+                f.observation.text.bottomSearchComplete=true;
                 f.accepted=f.observation.text;
                 f.observation.sharedPicture.required=true;
                 f.observation.sharedPicture.identity=f.observation.identity;
@@ -2337,7 +2343,8 @@ namespace VideoProcessorTest
                 ++current.current.identity.acceptedSequence;++current.current.identity.sourceFrameNumber;
                 current.current.identity.captureTimestamp+=417000;
                 current.current.sharedPicture.identity=current.current.identity;
-                current.current.pictureBottom=2160;current.current.text={};current.text={};current.current.ink.reset();
+                current.current.pictureBottom=2160;current.current.barEvidence.bottom=2160;
+                current.current.text={};current.text={};current.current.ink.reset();
                 current.current.text.diagnosticReason="no-bright-ink";
                 auto continued=guard.Prepare(current,f.Source(),f.base,250,41.7);
                 Assert::IsTrue(continued.valid,L"Missing detector search coverage must first pass current native cue proof.");
@@ -2566,6 +2573,85 @@ namespace VideoProcessorTest
                 Assert::IsTrue(view.qualified);
                 Assert::AreEqual(274,view.currentBounds.top);Assert::AreEqual(1884,view.currentBounds.bottom);
                 Assert::AreEqual(uint64_t(33),f.accepted.cue,L"Pending proof does not synthesize a new cue.");
+            }
+        }
+
+        TEST_METHOD(CompleteCurrentCuePreparationSurvivesMissingSharedBarMetadata)
+        {
+            for(bool outwardGuard:{false,true}) {
+                LoggedRelocatedCaptionFixture f;
+                SubtitleCueContinuation continuation;
+                continuation.valid=continuation.completeCurrentCue=true;
+                continuation.identity=f.observation.identity;
+                continuation.policyGeneration=f.observation.policyGeneration;
+                continuation.continuityGeneration=f.observation.continuityGeneration;
+                continuation.physicalBase=f.base;
+                continuation.accepted=f.accepted;
+                continuation.ink=f.observation.ink;
+                continuation.sampledBounds={0,0,3840,2160};
+                continuation.pictureTop=f.observation.pictureTop;
+                continuation.pictureBottom=f.observation.pictureBottom;
+                auto display=f.base;
+                if(outwardGuard) { display.top-=4;display.bottom+=4; }
+                f.observation.analyzed=false;f.observation.barAuthority=false;
+                f.observation.pendingRefresh=true;
+                f.observation.sharedPicture={};
+                f.observation.text={};
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),display);
+                auto input=f.Input();input.continuation=&continuation;
+                input.physicalBase=display;
+                input.currentDisplayPicture.required=true;
+                input.currentDisplayPicture.identity=f.observation.identity;
+                input.currentDisplayPicture.bounds=display;
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(semantic.qualified,L"Missing raw bar metadata cannot become semantic picture ownership.");
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(prepared.qualified,L"Complete current local cue proof may certify its exact prepared packet.");
+                Assert::IsTrue(prepared.preparedErasureOnly);
+                Assert::IsFalse(prepared.renewsHold);
+                const auto projected=ProjectQualifiedSubtitlePresentationEvidence(prepared,{},display,display,
+                    f.observation.identity,raw);
+                Assert::IsTrue(projected.qualified);
+                Assert::AreEqual(display.top,projected.currentBounds.top);
+                Assert::AreEqual(display.bottom,projected.currentBounds.bottom);
+                Assert::IsFalse(f.observation.barAuthority,L"Presentation proof must leave raw worker evidence untouched.");
+                Assert::IsFalse(raw.excludedBandsPixelSafe);
+            }
+        }
+        TEST_METHOD(CompleteCurrentCuePreparationRejectsStalePartialAndUnsafeSources)
+        {
+            for(int scenario=0;scenario<8;++scenario) {
+                LoggedRelocatedCaptionFixture f;
+                SubtitleCueContinuation continuation;
+                continuation.valid=continuation.completeCurrentCue=true;
+                continuation.identity=f.observation.identity;
+                continuation.physicalBase=f.base;
+                continuation.accepted=f.accepted;
+                continuation.ink=f.observation.ink;
+                continuation.sampledBounds={0,0,3840,2160};
+                continuation.pictureTop=f.observation.pictureTop;
+                continuation.pictureBottom=f.observation.pictureBottom;
+                f.observation.analyzed=false;f.observation.barAuthority=false;
+                f.observation.sharedPicture={};f.observation.text={};
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                auto input=f.Input();input.continuation=&continuation;
+                if(scenario==0)input.sourcePrepared=false;
+                if(scenario==1)--continuation.identity.acceptedSequence;
+                if(scenario==2)continuation.completeCurrentCue=false;
+                if(scenario==3)++continuation.policyGeneration;
+                if(scenario==4)continuation.sampledBounds.bottom=f.composition.content.bottom-1;
+                if(scenario==5)continuation.accepted.workLimit=true;
+                if(scenario==6) {
+                    raw.activePicture.available=true;
+                    raw.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                    raw.activePicture.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                }
+                if(scenario==7) {
+                    f.frame.FillRectangle(100,2040,300,2080,700);
+                    raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                }
+                Assert::IsFalse(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input).qualified,
+                    L"Local cue proof cannot license an unprepared/stale packet, incomplete capture or independent content.");
             }
         }
 

@@ -4,6 +4,88 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+
+// Cleanup-only proof of one nominated physical plane. A nearby/reference AR
+// nomination supplies a coordinate, never authority: this function reads the
+// exact current boundary and bar itself, without changing raw bar evidence.
+struct CurrentSubtitleBackingPlaneProof {
+    bool valid=false;
+    int plane=0,blackFloor=0;
+    bool fromTopBar=false;
+    size_t samples=0;
+    unsigned boundarySupport=0,boundaryZones=0,maxIntrusion=0;
+    double blackFraction=0.0;
+    const char* reason="plane-invalid-source";
+};
+
+inline CurrentSubtitleBackingPlaneProof ProveCurrentSubtitleBackingPlane(
+    const AnalysisLumaSource& source,int plane,bool fromTopBar,size_t maxSamples)
+{
+    CurrentSubtitleBackingPlaneProof out;out.plane=plane;out.fromTopBar=fromTopBar;
+    const auto reject=[&](const char* why){out.reason=why;return out;};
+    if(!source.IsValid() || source.width<64 || source.height<48 ||
+        source.width>8192 || source.height>4320 || plane<=0 || plane>=source.height)
+        return out;
+    const int step=(std::max)(1,source.height/540);
+    const int depth=fromTopBar?plane:source.height-plane;
+    if(depth<2*step+1 || depth>=source.height/3)return reject("plane-invalid-depth");
+    constexpr int columns=128;
+    std::array<int,columns> xs{};
+    for(int i=0;i<columns;++i)xs[i]=(source.width*(4*columns+96*(2*i+1)))/(200*columns);
+    const auto row=[&](int d){return fromTopBar?d:source.height-1-d;};
+    bool exhausted=false;
+    const auto sample=[&](int x,int y,AnalysisLumaSample& value){
+        if(out.samples>=maxSamples){exhausted=true;return false;}
+        ++out.samples;
+        if(!source.Sample(x,y,value)) {
+            exhausted=source.readBudget && source.readBudget->exhausted;return false;
+        }
+        return true;
+    };
+    const auto failed=[&](){return reject(exhausted?"plane-work-budget":"plane-native-sample-unavailable");};
+    const auto neutral=[](const AnalysisLumaSample& value){
+        return std::abs(int(value.chromaU)-512)<=32 && std::abs(int(value.chromaV)-512)<=32;
+    };
+    std::array<int,columns*3> levels{};unsigned count=0,neutralCount=0;
+    for(int d:{0,step,2*step})for(int x:xs){
+        AnalysisLumaSample value;if(!sample(x,row(d),value))return failed();
+        levels[count++]=value.luma;neutralCount+=neutral(value);
+    }
+    std::nth_element(levels.begin(),levels.begin()+count/2,levels.begin()+count);
+    out.blackFloor=levels[count/2];
+    if(out.blackFloor>96 || neutralCount*100<count*95)return reject("plane-nonneutral-bar-floor");
+    // Require contrast at THIS native row, with distributed scene support.
+    // The wider nine-row window corroborates sharpness but cannot move the
+    // edge to a neighboring row or turn the top of a caption into a plane.
+    for(int i=0;i<columns;++i){
+        std::array<int,9> values{};
+        for(int k=0;k<9;++k){
+            AnalysisLumaSample value;if(!sample(xs[i],row(depth-4+k),value))return failed();
+            values[k]=value.luma;
+        }
+        const int jump=values[4]-values[3];
+        const int neighboringRise=(std::max)({0,values[1]-values[0],values[8]-values[7]});
+        if(jump>=8 && jump>neighboringRise*3/2+2){
+            ++out.boundarySupport;out.boundaryZones|=1u<<(i/32);
+        }
+    }
+    unsigned zones=0;for(unsigned bits=out.boundaryZones;bits;bits>>=1)zones+=bits&1;
+    if(out.boundarySupport<8 || zones<2)return reject("plane-no-distributed-exact-boundary");
+    size_t total=0,blackCount=0;
+    for(int d=0;d<depth;d=(d+step>=depth && d!=depth-1)?depth-1:d+step){
+        unsigned intrusion=0;
+        for(int x:xs){
+            AnalysisLumaSample value;if(!sample(x,row(d),value))return failed();
+            const bool black=neutral(value) && std::abs(int(value.luma)-out.blackFloor)<=12;
+            ++total;blackCount+=black;intrusion=black?0:intrusion+1;
+            out.maxIntrusion=(std::max)(out.maxIntrusion,intrusion);
+        }
+    }
+    out.blackFraction=total?double(blackCount)/total:0.0;
+    if(out.blackFraction<0.85 || out.maxIntrusion>=columns/5)return reject("plane-current-bar-content-conflict");
+    out.valid=true;out.reason="current-exact-cue-side-plane";return out;
+}
 
 // Exact-current cleanup only. Never an acquired card, glyph/capture mask,
 // retained display envelope, or aspect-ratio certificate.
@@ -11,6 +93,12 @@ struct CurrentSubtitleBackingLipProof
 {
     bool valid=false;
     const char* reason="not-evaluated";
+    // Bits identify the rejected current-context predicate; plane sampling is
+    // included in samples even when that independent proof fails.
+    uint32_t contextRejectMask=0;
+    bool cuePlaneVerified=false;
+    size_t cuePlaneSamples=0;
+    const char* cuePlaneReason="not-required";
     ActivePictureFrameIdentity identity;
     uint64_t policyGeneration=0,continuityGeneration=0;
     int width=0,height=0,pictureTop=0,pictureBottom=0;
@@ -34,14 +122,24 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const SubtitleBoxResult& accepted,const ActivePictureFrameIdentity& expectedIdentity,
     uint64_t policy,uint64_t continuity,size_t maxSamples=65536,
     const CurrentSubtitleBackingLipProof* candidate=nullptr,
-    const SubtitleCutPasteGeometry* composition=nullptr)
+    const SubtitleCutPasteGeometry* composition=nullptr,
+    const SubtitleCueContinuation* completeCue=nullptr)
 {
     CurrentSubtitleBackingLipProof result;
     result.identity=expectedIdentity;result.policyGeneration=policy;result.continuityGeneration=continuity;
     result.width=source.width;result.height=source.height;
     const auto reject=[&](const char* why){result.reason=why;return result;};
     const auto& current=preview.current;
-    result.pictureTop=current.pictureTop;result.pictureBottom=current.pictureBottom;
+    // A complete local inspector is an explicit alternate source of current
+    // cue pixels, not an observation with fabricated bar/AR flags. It proves
+    // only its own cue side; the native plane below is always checked again.
+    const bool completeLocal=completeCue && completeCue->MatchesSource(expectedIdentity,policy,continuity,accepted) &&
+        completeCue->currentInk && completeCue->currentInk->rawEvidenceComplete;
+    const int sourcePictureTop=completeLocal?completeCue->pictureTop:current.pictureTop;
+    const int sourcePictureBottom=completeLocal?completeCue->pictureBottom:current.pictureBottom;
+    const auto& currentText=completeLocal?completeCue->accepted:current.text;
+    const auto& currentInk=completeLocal?completeCue->currentInk:current.ink;
+    result.pictureTop=sourcePictureTop;result.pictureBottom=sourcePictureBottom;
     auto candidateEpoch=candidate?candidate->identity:ActivePictureFrameIdentity{};
     candidateEpoch.acceptedSequence=expectedIdentity.acceptedSequence;
     candidateEpoch.sourceFrameNumber=expectedIdentity.sourceFrameNumber;
@@ -52,7 +150,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         expectedIdentity.acceptedSequence>=candidate->identity.acceptedSequence &&
         expectedIdentity.acceptedSequence-candidate->identity.acceptedSequence<=8 &&
         candidate->width==source.width && candidate->height==source.height;
-    const bool independentPhysical=current.independentBarAnalysis &&
+    const bool independentPhysical=!completeLocal && current.independentBarAnalysis &&
         !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
         !current.barEvidence.captionBackedTop && !current.barEvidence.captionBackedBottom &&
         !current.barEvidence.topRevalidatedAtReference && !current.barEvidence.topRevalidatedNearby &&
@@ -63,47 +161,49 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     // Every old body pixel and the surrounding boundary are checked below.
     const bool boundedOutline=candidateContext && candidate->bodyRowCount>=2 &&
         candidate->bodyRowCount<=128 && candidate->measured.Valid() &&
-        candidate->measured.top>=current.pictureTop && candidate->measured.bottom<=current.pictureBottom &&
+        candidate->measured.top>=sourcePictureTop && candidate->measured.bottom<=sourcePictureBottom &&
         (candidate->fromTopBar?
-            std::abs(int64_t(current.pictureTop)-candidate->pictureTop)<=3:
-            std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)<=3);
+            std::abs(int64_t(sourcePictureTop)-candidate->pictureTop)<=3:
+            std::abs(int64_t(sourcePictureBottom)-candidate->pictureBottom)<=3);
     const bool captionEdgeOutward=boundedOutline && (candidate->fromTopBar?
-        current.barEvidence.captionBackedTop && current.pictureTop<candidate->pictureTop:
-        current.barEvidence.captionBackedBottom && current.pictureBottom>candidate->pictureBottom);
+        current.barEvidence.captionBackedTop && sourcePictureTop<candidate->pictureTop:
+        current.barEvidence.captionBackedBottom && sourcePictureBottom>candidate->pictureBottom);
     // Only the cue-side plane bounds this finite cleanup. A changing or
     // revalidated opposite bar must not retire an unchanged current card.
     const bool unchangedCuePlane=boundedOutline && !current.barTrackingAuthority &&
         !current.currentAnchorUsesTrackedEdge && (candidate->fromTopBar?
-            current.pictureTop==candidate->pictureTop &&
+            sourcePictureTop==candidate->pictureTop &&
                 !current.barEvidence.captionBackedTop && !current.barEvidence.topRevalidatedAtReference &&
                 !current.barEvidence.topRevalidatedNearby:
-            current.pictureBottom==candidate->pictureBottom &&
+            sourcePictureBottom==candidate->pictureBottom &&
                 !current.barEvidence.captionBackedBottom && !current.barEvidence.bottomRevalidatedAtReference &&
                 !current.barEvidence.bottomRevalidatedNearby);
-    const bool anchorOutlineBase=boundedOutline &&
+    bool anchorOutlineBase=boundedOutline &&
         (independentPhysical || captionEdgeOutward || unchangedCuePlane);
-    if(!expectedIdentity.acceptedSequence || !preview.available || !current.analyzed || current.discontinuity ||
-        current.analysisRefresh || current.cadenceSkipped || current.glyphLocalTop || current.glyphLocalBottom ||
-        !current.barAuthority || !current.barEvidence.available ||
-        (!independentPhysical && !captionEdgeOutward && !unchangedCuePlane) ||
-        !SameAnalysisFrameIdentity(current.identity,expectedIdentity) ||
-        preview.policyGeneration!=policy || current.policyGeneration!=policy ||
-        preview.continuityGeneration!=continuity || current.continuityGeneration!=continuity)
-        return reject("lip-current-context-unavailable");
+    result.contextRejectMask=(!expectedIdentity.acceptedSequence?1u<<0:0) |
+        (!completeLocal && !preview.available?1u<<1:0) | (!completeLocal && !current.analyzed?1u<<2:0) |
+        (current.discontinuity?1u<<3:0) | (!completeLocal && current.analysisRefresh?1u<<4:0) |
+        (!completeLocal && current.cadenceSkipped?1u<<5:0) | (!completeLocal && (current.glyphLocalTop || current.glyphLocalBottom)?1u<<6:0) |
+        (!completeLocal && !current.barAuthority?1u<<7:0) | (!completeLocal && !current.barEvidence.available?1u<<8:0) |
+        (!SameAnalysisFrameIdentity(current.identity,expectedIdentity)?1u<<9:0) |
+        ((preview.policyGeneration!=policy || current.policyGeneration!=policy)?1u<<10:0) |
+        ((preview.continuityGeneration!=continuity || current.continuityGeneration!=continuity)?1u<<11:0);
+    if(result.contextRejectMask)return reject("lip-current-context-unavailable");
     if(!source.IsValid() || source.width<64 || source.height<48 || source.width>8192 || source.height>4320 ||
         source.generation!=expectedIdentity.transportGeneration || current.width!=source.width || current.height!=source.height ||
-        current.pictureTop<0 || current.pictureBottom>source.height || current.pictureTop>=current.pictureBottom ||
-        current.barEvidence.top!=current.pictureTop || current.barEvidence.bottom!=current.pictureBottom)
+        sourcePictureTop<0 || sourcePictureBottom>source.height || sourcePictureTop>=sourcePictureBottom ||
+        (!completeLocal && (current.barEvidence.top!=sourcePictureTop || current.barEvidence.bottom!=sourcePictureBottom)) ||
+        (completeLocal && (completeCue->physicalBase.rasterWidth!=source.width || completeCue->physicalBase.rasterHeight!=source.height)))
         return reject("lip-source-or-physical-base-mismatch");
     if(!accepted.cue || !accepted.detected || accepted.held || accepted.workLimit || accepted.revised || accepted.observations<1 ||
-        !current.text.detected || current.text.held || current.text.workLimit ||
-        !current.text.nearBarEligibilityMeasured || !current.text.nearBarEligible ||
+        !currentText.detected || currentText.held || currentText.workLimit ||
+        !currentText.nearBarEligibilityMeasured || !currentText.nearBarEligible ||
         !accepted.nearBarEligibilityMeasured || !accepted.nearBarEligible ||
-        !SameFreshSubtitleGlyphs(accepted,current.text,0) ||
-        accepted.lineCount<1 || accepted.lineCount>3 || !current.ink ||
-        !current.ink->rawEvidenceComplete || !current.ink->paletteValid)
+        !SameFreshSubtitleGlyphs(accepted,currentText,0) ||
+        accepted.lineCount<1 || accepted.lineCount>3 || !currentInk ||
+        !currentInk->rawEvidenceComplete || !currentInk->paletteValid)
         return reject("lip-current-owned-cue-unavailable");
-    const auto& ink=*current.ink;
+    const auto& ink=*currentInk;
     if(ink.width<1 || ink.width>960 || ink.height<1 || ink.height>540 || ink.step<1 || ink.step>16 ||
         ink.width!=(source.width+ink.step-1)/ink.step || ink.height!=(source.height+ink.step-1)/ink.step ||
         ink.sourceRows.size()!=size_t(ink.height) || ink.sourceRows.empty() ||
@@ -116,13 +216,13 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const auto spend=[&](){if(result.samples>=maxSamples)return false;++result.samples;return true;};
     const auto inRaster=[&](const SubtitleBoxRect& r){return r.Valid() && r.left>=0 && r.top>=0 &&
         r.right<=source.width && r.bottom<=source.height;};
-    bool allTop=current.pictureTop>0,allBottom=current.pictureBottom<source.height;
+    bool allTop=sourcePictureTop>0,allBottom=sourcePictureBottom<source.height;
     SubtitleBoxRect glyphs{};
     const auto captureLines=SubtitleGlyphCaptureLines(accepted,source.width,source.height);
     for(int i=0;i<accepted.lineCount;++i){
         const auto& row=accepted.lineBounds[i];
         if(!inRaster(row))return reject("lip-invalid-glyph-bounds");
-        allTop &= row.bottom<=current.pictureTop;allBottom &= row.top>=current.pictureBottom;
+        allTop &= row.bottom<=sourcePictureTop;allBottom &= row.top>=sourcePictureBottom;
         glyphs=glyphs.Valid()?SubtitleBoxRect{(std::min)(glyphs.left,row.left),(std::min)(glyphs.top,row.top),
             (std::max)(glyphs.right,row.right),(std::max)(glyphs.bottom,row.bottom)}:row;
         // Pending metadata keeps the acquired mask. Revalidate BOTH positive
@@ -140,7 +240,8 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
                 if(current.pendingRefresh){
                     AnalysisLumaSample value;
                     if(!source.Sample(x*ink.step,ink.sourceRows[y],value))
-                        return reject("lip-pending-native-glyph-unavailable");
+                        return reject(source.readBudget && source.readBudget->exhausted?
+                            "lip-work-budget":"lip-pending-native-glyph-unavailable");
                     const bool isRaw=value.luma>=ink.inkFloor &&
                         std::abs(int(value.chromaU)-ink.inkU)<=80 &&
                         std::abs(int(value.chromaV)-ink.inkV)<=80;
@@ -153,11 +254,33 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     }
     if(allTop==allBottom)return reject("lip-glyphs-not-wholly-in-one-bar");
     result.fromTopBar=allTop;
+    if(completeLocal && completeCue->fromTopBar!=allTop)return reject("lip-complete-cue-side-mismatch");
+    CurrentSubtitleBackingPlaneProof currentPlane;
+    if(completeLocal || (!independentPhysical && !captionEdgeOutward && !unchangedCuePlane)) {
+        // A complete current cue may arrive with a nearby/reference plane,
+        // including on cold start. Verify its own physical side directly;
+        // the opposite edge and the origin of the nomination grant nothing.
+        const bool captionPlane=allTop?current.barEvidence.captionBackedTop:current.barEvidence.captionBackedBottom;
+        if(!completeLocal && (current.barTrackingAuthority || current.currentAnchorUsesTrackedEdge || captionPlane)) {
+            result.contextRejectMask|=1u<<12;
+            result.cuePlaneReason="plane-tracked-or-caption-derived";
+            return reject("lip-current-context-unavailable");
+        }
+        currentPlane=ProveCurrentSubtitleBackingPlane(source,allTop?sourcePictureTop:sourcePictureBottom,
+            allTop,maxSamples-result.samples);
+        result.cuePlaneSamples=currentPlane.samples;result.samples+=currentPlane.samples;
+        result.cuePlaneVerified=currentPlane.valid;result.cuePlaneReason=currentPlane.reason;
+        if(!currentPlane.valid) {
+            result.contextRejectMask|=1u<<13;
+            return reject(std::strcmp(currentPlane.reason,"plane-work-budget")==0?"lip-work-budget":"lip-current-plane-unavailable");
+        }
+        anchorOutlineBase=boundedOutline;
+    }
     if(anchorOutlineBase) {
         result.pictureTop=(std::max)(result.pictureTop,candidate->pictureTop);
         result.pictureBottom=(std::min)(result.pictureBottom,candidate->pictureBottom);
-        result.outlineBaseAnchored=result.pictureTop!=current.pictureTop ||
-            result.pictureBottom!=current.pictureBottom || !independentPhysical;
+        result.outlineBaseAnchored=result.pictureTop!=sourcePictureTop ||
+            result.pictureBottom!=sourcePictureBottom || !independentPhysical;
     }
     if(composition) {
         if(!composition->valid || composition->fromTopBar!=allTop ||
@@ -171,14 +294,15 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         result.pictureBottom=(std::min)(result.pictureBottom,composition->pictureBottom);
         if(result.pictureTop>=result.pictureBottom)
             return reject("lip-composition-context-unavailable");
-        result.compositionEdgeClipped=allTop?result.pictureTop!=current.pictureTop:
-            result.pictureBottom!=current.pictureBottom;
+        result.compositionEdgeClipped=allTop?result.pictureTop!=sourcePictureTop:
+            result.pictureBottom!=sourcePictureBottom;
     }
     const int glyphHeight=SubtitleTypicalLineHeight(accepted);
     const int gap=allTop?result.pictureTop-glyphs.bottom:glyphs.top-result.pictureBottom;
     if(glyphHeight<4 || glyphHeight>source.height/4 || gap<0 || gap>glyphHeight/2)
         return reject("lip-glyphs-too-far-from-edge");
-    const int floor=allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor;
+    const int floor=result.cuePlaneVerified?currentPlane.blackFloor:
+        (allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor);
     if(floor<0 || floor>96)return reject("lip-physical-black-floor-unavailable");
     const int darkLimit=floor+4;
     const int depthLimit=(std::min)(128,glyphHeight);
@@ -191,7 +315,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     bool exhausted=false,failedRead=false;
     const auto sample=[&](int x,int y,AnalysisLumaSample& value){
         if(!spend()){exhausted=true;return false;}
-        if(!source.Sample(x,y,value)){failedRead=true;return false;}
+        if(!source.Sample(x,y,value)) {
+            exhausted=source.readBudget && source.readBudget->exhausted;
+            failedRead=!exhausted;return false;
+        }
         return true;
     };
     // A scene shadow can touch the immediate outside row of a finite card.
@@ -476,7 +603,8 @@ public:
     CurrentSubtitleBackingLipProof Consume(const AnalysisLumaSource& source,
         const SubtitleBoxPreview& preview,const SubtitleBoxResult& text,
         const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity,
-        size_t maxSamples=65536,const SubtitleCutPasteGeometry* composition=nullptr)
+        size_t maxSamples=65536,const SubtitleCutPasteGeometry* composition=nullptr,
+        const SubtitleCueContinuation* completeCue=nullptr)
     {
         auto previous=m_outline.identity;
         previous.acceptedSequence=identity.acceptedSequence;
@@ -488,7 +616,7 @@ public:
             identity.acceptedSequence-m_outline.identity.acceptedSequence<=8 &&
             text.cue==m_text.cue && SameFreshSubtitleGlyphs(m_text,text,0);
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
-            maxSamples,matches?&m_outline:nullptr,composition);
+            maxSamples,matches?&m_outline:nullptr,composition,completeCue);
         if(proof.valid) {m_outline=proof;m_text=text;} else Reset();
         return proof;
     }
