@@ -1099,10 +1099,11 @@ public:
             Assert::IsFalse(proof.valid);Assert::AreEqual("lip-outline-body-changed",proof.reason);
         }
     }
-    TEST_METHOD(CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure) {
+    TEST_METHOD(CurrentOutlineRetiresOnContradictionsButRevalidatesAfterBudgetFailure) {
         for(int failure=0;failure<5;++failure) {
             Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
-            Assert::IsTrue(continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8).valid);
+            const auto initial=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(initial.valid);const auto geometry=Geometry(cue);
             auto preview=cue.preview;preview.current.identity=Identity(3);auto text=cue.accepted;
             if(failure==0)text.detected=false;
             if(failure==1)text.held=true;
@@ -1110,10 +1111,16 @@ public:
             if(failure==3)frame.Fill({215,245,425,288},frame.floor);
             const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8,failure==4?16:65536);
             Assert::IsFalse(proof.valid);
+            Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8).generatedCleanup.Valid());
+            if(failure==4)Assert::IsTrue(std::strcmp(proof.reason,"lip-work-budget")==0);
             frame.Fill({215,280,425,288},300);
             preview=cue.preview;preview.current.identity=Identity(4);
             const auto next=continuity.Consume(frame.Source(),preview,cue.accepted,Identity(4),7,8);
-            Assert::IsTrue(next.valid && !next.revalidatedOutline,L"failure must retire the remembered outline");
+            Assert::IsTrue(next.valid);
+            if(failure==4) {
+                Assert::IsTrue(next.revalidatedOutline && Same(initial.cleanup,next.cleanup));
+                Assert::IsTrue(SameAnalysisFrameIdentity(next.identity,Identity(4)));
+            } else Assert::IsFalse(next.revalidatedOutline,L"a cue or boundary contradiction must retire the remembered outline");
         }
     }
     TEST_METHOD(CurrentOutlineRetiresOnCuePolicyEpochAndSequenceChanges) {
