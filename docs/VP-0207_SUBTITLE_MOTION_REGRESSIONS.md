@@ -53,6 +53,26 @@ display acceptance. Qualify both uninterrupted playback and recovery from drops,
 including Reconstruction, transparent glyphs, source cue changes and no-cue
 frames, before marking the live regression resolved.
 
+## Bounded subtitle reuse during Smooth Motion
+
+When a source packet briefly lacks a prepared subtitle, active Smooth Motion may
+select one earlier, successfully processed presentation packet for at most two
+source intervals. Its cleaned picture, subtitle layer, replacement background,
+geometry and HDR state remain together. The fallback does not apply old cleanup
+to new source pixels and does not run an additional subtitle scan.
+
+This is an intentional visual tradeoff: a brief picture/subtitle repeat or delayed
+cue disappearance is preferable to an isolated subtitle flash. The age limit is
+anchored to the original source sequence and timestamp; inserted output frames
+cannot renew it. A new prepared cue wins immediately. Incompatible processing,
+viewport or geometry, discontinuities, source gaps and renderer resets prevent
+reuse. Smooth Motion Off and automatic passthrough retain their existing behavior.
+
+GPU regressions must cover both missing source frames and many inserted outputs,
+expiry on the third missing source, immediate new-cue selection, cue-end expiry,
+immutable background/layer pairing, reset/context rejection and ordinary mode.
+Live diagnostics must distinguish these intentional presentation repeats from
+fresh subtitle acquisition or current cleanup authority.
 ## Transfer and chroma controls
 
 Exercise opaque HLG preparation separately from transparent subtitle layers.
