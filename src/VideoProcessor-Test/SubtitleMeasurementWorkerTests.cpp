@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitleCurrentCue.h>
+#include <SubtitleCutPaste.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -604,6 +606,194 @@ public:
         for(int line=0;line<3;++line)
             Assert::AreEqual(ready.text.lineBounds[line].top,pending.current.text.lineBounds[line].top);
     }
+    TEST_METHOD(PendingReadBudgetUnknownKeepsPrivateSeedForCurrentNativeRetry) {
+        for(bool shared:{false,true})for(bool inBars:{false,true})for(bool exactRepeat:{false,true}) {
+            auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);
+            SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);ready.current.sharedPicture.required=shared;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,40,250));
+            auto current=Pending(2);current.current.sharedPicture.required=shared;
+            Assert::IsTrue(guard.Resolve(current,source,40,250));
+            const auto glyphReads=guard.DecisionDiagnostics().glyphSamplesChecked;
+            const uint64_t sequence=exactRepeat?2:3;
+            auto unknown=Pending(sequence);unknown.current.sharedPicture.required=shared;
+            AnalysisLumaReadBudget budget{inBars?glyphReads:size_t(1)};
+            auto bounded=source;bounded.readBudget=&budget;
+            Assert::IsFalse(guard.Resolve(unknown,bounded,40,250));
+            Assert::IsTrue(budget.exhausted && budget.used==budget.limit);
+            Assert::AreEqual(inBars?"current-bars-budget-exhausted":"current-pixels-budget-exhausted",guard.DecisionReason());
+            Assert::IsFalse(unknown.available || unknown.current.pendingRefresh || unknown.current.text.detected,
+                L"Incomplete current proof cannot export the retained private seed.");
+            Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked==(inBars?glyphReads:size_t(2)));
+            auto retry=Pending(sequence);retry.current.sharedPicture.required=shared;
+            Assert::IsTrue(guard.Resolve(retry,source,40,250));
+            Assert::IsTrue(retry.available && retry.current.pendingRefresh &&
+                guard.DecisionDiagnostics().glyphSamplesChecked==glyphReads && guard.DecisionDiagnostics().barsAvailable);
+            auto next=Pending(sequence+1);next.current.sharedPicture.required=shared;
+            Assert::IsTrue(guard.Resolve(next,source,40,250));
+        }
+    }
+    TEST_METHOD(PendingReadBudgetUnknownCannotSpendOrRenewOriginalLease) {
+        for(bool inBars:{false,true})for(bool recoverBeforeExpiry:{false,true}) {
+            auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);
+            SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,40,250));
+            auto current=Pending(2);Assert::IsTrue(guard.Resolve(current,source,40,250));
+            const auto glyphReads=guard.DecisionDiagnostics().glyphSamplesChecked;
+            for(uint64_t sequence=2;sequence<=7;++sequence)for(int repeat=0;repeat<5;++repeat) {
+                auto unknown=Pending(sequence);AnalysisLumaReadBudget budget{inBars?glyphReads:size_t(1)};
+                auto bounded=source;bounded.readBudget=&budget;
+                Assert::IsFalse(guard.Resolve(unknown,bounded,40,250));
+                Assert::AreEqual(inBars?"current-bars-budget-exhausted":"current-pixels-budget-exhausted",guard.DecisionReason());
+                Assert::IsFalse(unknown.available || unknown.current.pendingRefresh);
+            }
+            // The last successful current source is still2. All unknown gaps
+            // count from that cursor, and exact repeats contribute zero time.
+            if(recoverBeforeExpiry) {auto last=Pending(7);Assert::IsTrue(guard.Resolve(last,source,40,250));}
+            AnalysisLumaReadBudget expiredBudget{1};auto bounded=source;bounded.readBudget=&expiredBudget;
+            auto expired=Pending(8);Assert::IsFalse(guard.Resolve(expired,bounded,40,250));
+            Assert::AreEqual("pending-budget-expired",guard.DecisionReason());
+            Assert::AreEqual(size_t(0),expiredBudget.used);
+            auto after=Pending(9);Assert::IsFalse(guard.Resolve(after,source,40,250));
+            Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
+        }
+    }
+    TEST_METHOD(PendingReadBudgetUnknownStillRejectsContradictionsAndPartialAcquisition) {
+        for(int fault=0;fault<6;++fault) {
+            auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);
+            SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,40,250));
+            auto unknown=Pending(2);AnalysisLumaReadBudget budget{1};auto bounded=source;bounded.readBudget=&budget;
+            Assert::IsFalse(guard.Resolve(unknown,bounded,40,250));
+            Assert::AreEqual("current-pixels-budget-exhausted",guard.DecisionReason());
+            auto changed=Pending(3);auto changedSource=source;
+            if(fault==0)pixels[50*160+50]=uint16_t(1000<<6);
+            if(fault==1)for(int y=0;y<12;++y)for(int x=0;x<160;++x)pixels[y*160+x]=uint16_t(300<<6);
+            if(fault==2){++changed.policyGeneration;++changed.current.policyGeneration;}
+            if(fault==3)changed.current.discontinuity=true;
+            if(fault==4)changedSource.data=nullptr;
+            if(fault==5) {
+                ++changed.current.sharedPicture.bounds.top;
+                budget={1};changedSource.readBudget=&budget;
+            }
+            Assert::IsFalse(guard.Resolve(changed,changedSource,40,250));
+            Assert::AreEqual(fault==0?"current-pixels-changed":fault==1?"current-bars-changed":
+                fault==5?"shared-picture-changed":"pending-context-changed",guard.DecisionReason());
+            if(fault==5)Assert::AreEqual(size_t(0),budget.used,
+                L"Known shared-context contradiction must reject before bounded native work.");
+            auto next=Pending(4);Assert::IsFalse(guard.Resolve(next,source,40,250));
+            Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
+        }
+        auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);auto ready=Ready(1);
+        SubtitlePendingMeasurementGuard guard;AnalysisLumaReadBudget acquisitionBudget{1};
+        auto bounded=source;bounded.readBudget=&acquisitionBudget;
+        Assert::IsFalse(guard.RememberAccepted(ready,ready.text,bounded,40,250));
+        Assert::AreEqual("seed-sample-unavailable",guard.DecisionReason());
+        auto pending=Pending(2);Assert::IsFalse(guard.Resolve(pending,source,40,250));
+        Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
+    }
+    TEST_METHOD(ExactPendingRepeatsRecheckPixelsWithoutSpendingOrRenewingLease) {
+        auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+        Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+        for(uint64_t sequence=2;sequence<=7;++sequence) {
+            auto current=Pending(sequence);
+            Assert::IsTrue(guard.Resolve(current,Source(pixels),40,250));
+            for(int repeat=0;repeat<12;++repeat) {
+                auto again=Pending(sequence);
+                Assert::IsTrue(guard.Resolve(again,Source(pixels),40,250));
+                Assert::AreEqual("verified-repeated-current-pixels",guard.DecisionReason());
+                Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked>0 &&
+                    guard.DecisionDiagnostics().barsAvailable);
+                Assert::IsTrue(again.current.pendingRefresh &&
+                    SameAnalysisFrameIdentity(current.current.identity,again.current.identity));
+            }
+        }
+        auto expired=Pending(8);
+        Assert::IsFalse(guard.Resolve(expired,Source(pixels),40,250));
+        Assert::AreEqual("pending-budget-expired",guard.DecisionReason());
+        auto prior=Pending(7);Assert::IsFalse(guard.Resolve(prior,Source(pixels),40,250));
+        Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
+    }
+    TEST_METHOD(ExactPendingRepeatsStillRejectChangedPixelsIdentityAndContext) {
+        for(int fault=0;fault<14;++fault) {
+            auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+            auto current=Pending(2);Assert::IsTrue(guard.Resolve(current,Source(pixels),40,250));
+            auto repeat=Pending(2);auto source=Source(pixels);
+            if(fault==0)pixels[50*160+50]=uint16_t(1000<<6);
+            if(fault==1)pixels[160*90+25*160+50]=uint16_t(700<<6);
+            if(fault==2)for(int y=0;y<12;++y)for(int x=0;x<160;++x)pixels[y*160+x]=uint16_t(300<<6);
+            if(fault==3)++repeat.current.identity.captureTimestamp;
+            if(fault==4)++repeat.current.identity.sourceFrameNumber;
+            if(fault==5)++repeat.current.identity.analysisDomainKey;
+            if(fault==6)++repeat.current.identity.viewportGeneration;
+            if(fault==7){++repeat.policyGeneration;++repeat.current.policyGeneration;}
+            if(fault==8){++repeat.continuityGeneration;++repeat.current.continuityGeneration;}
+            if(fault==9)++repeat.current.sharedPicture.bounds.top;
+            if(fault==10)repeat.current.discontinuity=true;
+            if(fault==11)source.data=nullptr;
+            if(fault==12)++repeat.current.nearBarDistance;
+            if(fault==13)repeat.current.scriptHint=SubtitleScriptHint::Arabic;
+            Assert::IsFalse(guard.Resolve(repeat,source,40,250));
+            Assert::IsFalse(repeat.available);
+            auto later=Pending(3);Assert::IsFalse(guard.Resolve(later,Source(pixels),40,250));
+            Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
+        }
+    }
+    TEST_METHOD(RepeatedPendingSourceKeepsAdmittedPacketThroughIncompleteInspector) {
+        constexpr int width=640,height=360,top=64,bottom=296;
+        std::vector<uint16_t> pixels(width*height*2,uint16_t(512<<6));
+        for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+            pixels[y*width+x]=uint16_t((y>=top && y<bottom?300:64)<<6);
+        for(int row=0;row<2;++row)for(int glyph=0;glyph<12;++glyph) {
+            const int left=240+glyph*13,first=bottom+2+row*28;
+            for(int y=first;y<first+14;++y)for(int x=left;x<left+8;++x)
+                pixels[y*width+x]=uint16_t(((x>=left+2 && x<left+6 && y>=first+2 && y<first+12)?64:700)<<6);
+        }
+        auto source=Source(pixels);source.width=width;source.height=height;
+        source.generation=Identity(1).transportGeneration;
+        source.rowBytes=source.chromaRowBytes=width*2;source.format=AnalysisLumaFormat::P210;
+        const ActivePictureBounds base{0,top,width,bottom,width,height};
+        const auto measure=[&](uint64_t sequence){SubtitleBoxDetector detector;
+            return SubtitleBoxLookahead::Measure(detector,source,ExtractActivePictureEvidence(source),
+                Identity(sequence),false,{},11,21);};
+        const std::array<SubtitleBoxObservation,2> observations{measure(1),measure(2)};
+        const auto acquired=SubtitleBoxLookahead::Resolve(observations.data(),2,11,21);
+        auto current=SubtitleBoxLookahead::Resolve(&observations[1],1,11,21);
+        SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+        Assert::IsTrue(ConsumeCurrentSubtitleCue(guard,tracker,acquired,source,base,true,250,40).accepted.detected);
+        const auto initial=ConsumeCurrentSubtitleCue(guard,tracker,current,source,base,true,250,40);
+        Assert::IsTrue(initial.accepted.detected && guard.HasReference());
+        const auto original=compositor.Consume(initial.accepted,current);Assert::IsTrue(original.valid);
+        SubtitlePendingMeasurementGuard pendingGuard;
+        Assert::IsTrue(pendingGuard.RememberAccepted(current,initial.accepted,source,40,250));
+        for(uint64_t sequence=3;sequence<=8;++sequence)for(int repeat=0;repeat<3;++repeat) {
+            auto pending=current;pending.available=false;pending.current.analyzed=false;
+            pending.current.identity=Identity(sequence);
+            Assert::IsTrue(pendingGuard.Resolve(pending,source,40,250));
+            AnalysisLumaReadBudget limited{1};auto bounded=source;bounded.readBudget=&limited;
+            const auto decision=ConsumeCurrentSubtitleCue(guard,tracker,pending,bounded,base,true,250,40,true);
+            Assert::IsFalse(decision.proof.valid);
+            Assert::AreEqual("complete-sample-budget",decision.proof.reason);
+            Assert::IsTrue(decision.accepted.detected && !decision.accepted.held);
+            Assert::AreEqual(initial.accepted.cue,decision.accepted.cue);
+            Assert::IsTrue(SameAnalysisFrameIdentity(Identity(2),guard.LastVerifiedIdentity()) &&
+                SameAnalysisFrameIdentity(Identity(2),tracker.AcceptedTemplateIdentity()),
+                L"The display fallback cannot renew the original complete-source cursor.");
+            const auto geometry=compositor.Consume(decision.accepted,pending);
+            Assert::IsTrue(geometry.valid && geometry.destination.left==original.destination.left &&
+                geometry.destination.top==original.destination.top && geometry.destination.right==original.destination.right &&
+                geometry.destination.bottom==original.destination.bottom);
+            SubtitleBoxPreview reused;
+            Assert::IsFalse(tracker.ReusePreviewForRepeatedSourceFrame(Identity(sequence),width,height,false,11,21,reused),
+                L"Exercise the actual renderer miss that reaches the pending guard on a cadence repeat.");
+        }
+        auto expired=current;expired.available=false;expired.current.analyzed=false;expired.current.identity=Identity(9);
+        Assert::IsFalse(pendingGuard.Resolve(expired,source,40,250));
+        Assert::AreEqual("pending-budget-expired",pendingGuard.DecisionReason());
+        const auto recovered=ConsumeCurrentSubtitleCue(guard,tracker,expired,source,base,true,250,40);
+        Assert::IsTrue(recovered.proof.completeCurrentCue && recovered.accepted.detected);
+        Assert::AreEqual(initial.accepted.cue,recovered.accepted.cue);
+    }
     TEST_METHOD(CompletedThreeLineBacklogScanSeedsNextPendingOnlyWithTrackerCertificate) {
         auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
         const auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
@@ -835,6 +1025,8 @@ public:
             auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
             if(scenario!=0)Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
             auto pending=Pending(scenario==0?3:scenario==1?1:0);
+            // Equal sequence with a different full source identity remains a rejection.
+            if(scenario==1)++pending.current.identity.sourceFrameNumber;
             pending.current.continuityGeneration=pending.continuityGeneration=22;
             const auto token=ready.current.identity;
             Assert::IsFalse(ResolvePendingQueue(guard,pending,Source(pixels),40,250,&token,true,0));

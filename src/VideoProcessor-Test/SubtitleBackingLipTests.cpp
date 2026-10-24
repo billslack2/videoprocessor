@@ -126,6 +126,25 @@ TEST_CLASS(SubtitleBackingLipTests) {
         }
         return frame.Rect(cap);
     }
+    static SubtitleBoxRect WideSingleLineAndLip(Frame& frame,int glyphCount,int glyphHeight) {
+        const auto cap=WideCaptionAndLip(frame,glyphCount,30);
+        frame.Fill({0,frame.pictureBottom,frame.width,frame.height},frame.floor);
+        const int left=(frame.width-((glyphCount-1)*78+48))/2;
+        for(int glyph=0;glyph<glyphCount;++glyph) {
+            const int x=left+glyph*78,y=frame.pictureBottom+2;
+            frame.Fill({x,y,x+48,y+glyphHeight},700);
+            frame.Fill({x+12,y+12,x+36,y+glyphHeight-12},frame.floor);
+        }
+        return cap;
+    }
+    static SubtitleBoxPreview MissingCurrentWorker(const SubtitleBoxPreview& current,uint64_t sequence) {
+        auto missing=current;missing.available=false;missing.text={};auto& raw=missing.current;
+        raw.identity=Identity(sequence);raw.sharedPicture.identity=raw.identity;
+        raw.analyzed=false;raw.barAuthority=false;raw.independentBarAnalysis=false;
+        raw.barTrackingAuthority=false;raw.currentAnchorUsesTrackedEdge=false;
+        raw.barEvidence={};raw.pictureTop=0;raw.pictureBottom=raw.height;raw.text={};raw.ink.reset();
+        return missing;
+    }
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> list) {
         return SubtitleBoxLookahead::Resolve(list.begin(),list.size(),7,8);
     }
@@ -207,6 +226,108 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
 public:
+    TEST_METHOD(PreparedCurrentCuePriorityKeepsWideBackingInsideSharedFrameBudget) {
+        for(const auto shape:{std::pair<int,int>{36,54},{34,66}})for(bool prioritize:{false,true}) {
+            Frame frame(6,Format::P210);const auto expected=WideSingleLineAndLip(frame,shape.first,shape.second);
+            const auto source=frame.Source();const ActivePictureBounds base{0,384,3840,1776,3840,2160};
+            const auto measure=[&](uint64_t seq){SubtitleBoxDetector detector;detector.SetNearBarDistance(200);
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(seq);shared.bounds=base;
+                return SubtitleBoxLookahead::Measure(detector,source,{},Identity(seq),false,{},7,8,shared);};
+            const auto first=measure(1),second=measure(2);Assert::IsTrue(first.text.detected && second.text.detected);
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            SubtitlePendingMeasurementGuard pending;SubtitleBackingLipContinuity backing;
+            auto initial=Resolve({first,second});auto accepted=ConsumeCurrentSubtitleCue(guard,tracker,initial,source,base,true,250,41.708);
+            auto current=Resolve({second});accepted=ConsumeCurrentSubtitleCue(guard,tracker,current,source,base,true,250,41.708);
+            Assert::IsTrue(accepted.accepted.detected && guard.HasReference());
+            Assert::IsTrue(pending.RememberAccepted(current,accepted.accepted,source,41.708,250,&tracker.AcceptedCueSeedCertificate()));
+            const auto geometry=compositor.Consume(accepted.accepted,current);
+            Assert::IsTrue(backing.Consume(source,current,accepted.accepted,Identity(2),7,8,SubtitleBackingLipSampleLimit,&geometry).valid);
+            auto missing=MissingCurrentWorker(current,3);AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};
+            auto bounded=source;bounded.readBudget=&budget;CurrentSubtitleCueDecision decision;
+            if(prioritize) {
+                const auto prepared=PrepareCurrentSubtitleCue(guard,missing,bounded,base,true,250,41.708);
+                Assert::IsTrue(prepared.proof.completeCurrentCue && !prepared.proof.RetainsCandidateFor(Identity(3),7,8));
+                const auto reads=budget.used;
+                decision=ConsumePreparedCurrentSubtitleCue(guard,tracker,missing,bounded,base,true,250,41.708,prepared);
+                Assert::AreEqual(reads,budget.used,L"Consumption must not inspect the same source twice.");
+            } else {
+                const bool verified=pending.Resolve(missing,bounded,41.708,250);
+                decision=ConsumeCurrentSubtitleCue(guard,tracker,missing,bounded,base,true,250,41.708,verified);
+            }
+            Assert::IsTrue(decision.proof.completeCurrentCue && decision.accepted.detected);
+            Assert::IsTrue(Same(decision.proof.verifiedSearch,{0,1268,3840,2160}),L"Keep full configured companion coverage.");
+            const auto output=compositor.Consume(decision.accepted,missing,{},0,nullptr,&decision.proof);
+            const auto cap=backing.Consume(bounded,missing,decision.accepted,Identity(3),7,8,SubtitleBackingLipSampleLimit,&output,&decision.proof);
+            Assert::IsTrue(output.valid);Assert::AreEqual(prioritize,cap.valid);
+            if(prioritize) {
+                Assert::IsTrue(Same(expected,cap.cleanup) && !budget.exhausted && budget.used<500000);
+                Assert::AreEqual(accepted.accepted.cue,decision.accepted.cue);
+            } else {
+                Assert::IsTrue(std::strcmp(cap.reason,"lip-work-budget")==0 && budget.exhausted);
+                Assert::AreEqual(SubtitleCurrentCueFrameSampleLimit,budget.used);
+            }
+        }
+    }
+    TEST_METHOD(PreparedCurrentCueUnknownPreservesGenuinePendingFallbackAndExactRepeats) {
+        Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame,20);auto source=frame.Source();
+        const ActivePictureBounds base{0,64,640,296,640,360};SubtitleCueContinuationGuard guard;
+        Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,source));SubtitlePendingMeasurementGuard pending;
+        Assert::IsTrue(pending.RememberAccepted(cue.preview,cue.accepted,source,41.708,250,&cue.tracker.AcceptedCueSeedCertificate()));
+        for(int repeat=0;repeat<3;++repeat) {
+            auto missing=MissingCurrentWorker(cue.preview,3);AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};source.readBudget=&budget;
+            // Force only the inspector phase to one read inside the normal shared frame budget.
+            // Genuine pending work below spends the same remaining counter; this tests state semantics.
+            const auto prepared=PrepareCurrentSubtitleCue(guard,missing,source,base,true,250,41.708,1);
+            Assert::IsTrue(prepared.proof.RetainsCandidateFor(Identity(3),7,8));
+            Assert::IsTrue(pending.Resolve(missing,source,41.708,250));const auto reads=budget.used;
+            const auto decision=ConsumePreparedCurrentSubtitleCue(guard,cue.tracker,missing,source,base,true,250,41.708,prepared,true);
+            Assert::IsTrue(!decision.proof.valid && decision.accepted.detected);
+            Assert::AreEqual(cue.accepted.cue,decision.accepted.cue);Assert::AreEqual(reads,budget.used);
+            Assert::IsTrue(SameAnalysisFrameIdentity(Identity(2),guard.LastVerifiedIdentity()));
+        }
+        auto missing=MissingCurrentWorker(cue.preview,4);AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};source.readBudget=&budget;
+        const auto prepared=PrepareCurrentSubtitleCue(guard,missing,source,base,true,250,41.708);Assert::IsTrue(prepared.proof.completeCurrentCue);
+        const auto reads=budget.used;const auto decision=ConsumePreparedCurrentSubtitleCue(guard,cue.tracker,missing,source,base,true,250,41.708,prepared);
+        Assert::IsTrue(decision.accepted.detected);Assert::AreEqual(cue.accepted.cue,decision.accepted.cue);Assert::AreEqual(reads,budget.used);
+    }
+    TEST_METHOD(PreparedCurrentCueRejectsChangedSourceOrContextAfterPreparation) {
+        for(int fault=0;fault<10;++fault) {
+            Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame,20);auto source=frame.Source();
+            const ActivePictureBounds base{0,64,640,296,640,360};SubtitleCueContinuationGuard guard;
+            Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,source));auto missing=MissingCurrentWorker(cue.preview,3);
+            const auto prepared=PrepareCurrentSubtitleCue(guard,missing,source,base,true,250,41.708);Assert::IsTrue(prepared.proof.completeCurrentCue);
+            if(fault==1)missing.current.identity=Identity(4);
+            if(fault==2)missing.policyGeneration=missing.current.policyGeneration=9;
+            if(fault==3)missing.continuityGeneration=missing.current.continuityGeneration=9;
+            if(fault==4)missing.current.width+=4;
+            auto changedBase=base;
+            if(fault==6)changedBase.top+=4;
+            if(fault==7)source.format=AnalysisLumaFormat::P010;
+            if(fault==8)source.dataBytes=0;
+            if(fault==9)source.generation+=1;
+            const auto decision=ConsumePreparedCurrentSubtitleCue(guard,cue.tracker,missing,source,changedBase,fault!=5,250,41.708,prepared);
+            Assert::AreEqual(fault==0,decision.proof.valid);Assert::AreEqual(fault==0,decision.accepted.detected);
+            if(fault)Assert::IsFalse(decision.proof.candidateRetained);
+        }
+    }
+    TEST_METHOD(PreparedCurrentCueCompanionContradictionCannotUsePendingFallback) {
+        Frame frame(6,Format::P210);WideSingleLineAndLip(frame,34,54);auto cue=Acquire(frame,200);auto source=frame.Source();
+        const ActivePictureBounds base{0,384,3840,1776,3840,2160};SubtitleCueContinuationGuard guard;
+        Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,source));SubtitlePendingMeasurementGuard pending;
+        Assert::IsTrue(pending.RememberAccepted(cue.preview,cue.accepted,source,41.708,250,&cue.tracker.AcceptedCueSeedCertificate()));
+        const int left=(3840-(33*78+48))/2;
+        frame.Fill({left-96,1618,left+33*78+48+96,1776},64);
+        for(int n=0;n<34;++n){const int x=left+n*78;frame.Fill({x,1630,x+48,1714},700);frame.Fill({x+12,1642,x+36,1702},64);}
+        // The narrower pending check alone still recognizes the old bar text.
+        auto pendingControl=MissingCurrentWorker(cue.preview,3);
+        Assert::IsTrue(pending.Resolve(pendingControl,source,41.708,250));
+        auto missing=MissingCurrentWorker(cue.preview,3);AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};source.readBudget=&budget;
+        const auto prepared=PrepareCurrentSubtitleCue(guard,missing,source,base,true,250,41.708);
+        Assert::IsTrue(!prepared.proof.valid && !guard.HasReference() && std::strcmp(prepared.proof.reason,"complete-cue-changed")==0);
+        Assert::IsFalse(prepared.proof.RetainsCandidateFor(Identity(3),7,8),L"Hard contradiction must skip pending fallback.");
+        const auto reads=budget.used;const auto decision=ConsumePreparedCurrentSubtitleCue(guard,cue.tracker,missing,source,base,true,250,41.708,prepared);
+        Assert::IsFalse(decision.accepted.detected);Assert::AreEqual(reads,budget.used);
+    }
     TEST_METHOD(WideCurrentBackingUsesBoundedPhaseAllowanceAndSharedFrameLimit) {
         Assert::AreEqual(size_t(131072),SubtitleBackingLipSampleLimit);
         Assert::AreEqual(size_t(524288),SubtitleCurrentCueFrameSampleLimit);

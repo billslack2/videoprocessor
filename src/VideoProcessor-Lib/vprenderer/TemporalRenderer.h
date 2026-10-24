@@ -253,7 +253,10 @@ public:
             (composition?"; subtitles synchronized":"");
         previousPts=pts;lastSequence=sequence;
     }
-    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={}) {
+    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        // A successful duplicate keeps its first immutable GPU packet. The
+        // host must bind presentation metadata only when this receipt is true.
+        if(capturedNew)*capturedNew=false;
         gpu=device;if(!Active())return true;
         auto fail=[&](const char* reason) {
             if(composition)Clear(); // Never mix around a partially captured packet.
@@ -329,10 +332,12 @@ public:
         } else pl_tex_destroy(device,&stored->subtitle);
         history.push_back(std::move(stored));
         while(history.size()>8)history.pop_front();
+        if(capturedNew)*capturedNew=true;
         return true;
     }
     bool CaptureComposition(pl_gpu device,const pl_frame& cleanRgbFullRaster,
-        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={}) {
+        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!composition||NativeCompositionRequired())return false;
         if(nativeMode){Clear();nativeMode=false;}
         const bool normalized=cleanRgbFullRaster.num_planes==1 &&
@@ -365,13 +370,14 @@ public:
                 Clear();status="Motion: subtitle picture format changed";return false;
             }
         }
-        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds);
+        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds,capturedNew);
     }
     // The callback owns its shader inputs and may use scratch textures only for
     // the duration of a call. Capture immediately copies raw planes; prepared
     // field pictures and layers are copied when the output field is rendered.
     bool CaptureNativeComposition(pl_gpu device,const pl_frame& raw,
-        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false) {
+        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false,bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!NativeCompositionRequired()||!prepare)return false;
         if(!history.empty()&&history.back()->pts==currentPts) {
             if(history.back()->sequence==sequence)return true;
@@ -409,11 +415,13 @@ public:
             }
             if(!compatible){Clear();status="Motion: native subtitle picture format changed";return false;}
         }
-        if(!Capture(device,raw,sequence))return false;
+        bool added=false;
+        if(!Capture(device,raw,sequence,nullptr,{},&added))return false;
         auto& packet=*history.back();
         packet.nativePrepare=std::move(prepare);packet.hasSubtitle=hasSubtitle;
         if(raw.repr.dovi){packet.dovi=*raw.repr.dovi;packet.frame.repr.dovi=&packet.dovi;}
         else packet.frame.repr.dovi=nullptr;
+        if(capturedNew)*capturedNew=added;
         return true;
     }
     bool PrepareNativeField(size_t index,int fieldIndex) {

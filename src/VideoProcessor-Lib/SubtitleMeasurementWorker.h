@@ -590,10 +590,14 @@ public:
         const auto& a=m_last;const auto& b=key.identity;
         frameMs=std::isfinite(frameMs)&&frameMs>0?frameMs:1000.0/60;
         if(m_samples.empty())return Reject("no-accepted-seed");
-        // Presentation may skip captured frames under load. Current native
-        // pixels still prove the fixed accepted cue, but spend the full source
-        // time gap and never permit repeats, backwards frames or epoch changes.
-        if(b.acceptedSequence<=a.acceptedSequence)return Reject("non-forward-source");
+        // Presentation may skip or repeat captured frames. An exact repeat
+        // still proves CURRENT native glyphs/bars below, but spends no source
+        // time and cannot renew the original lease. Equal sequence alone is
+        // insufficient: every immutable source-identity field must agree.
+        const bool repeatedSource=SameAnalysisFrameIdentity(a,b);
+        if(b.acceptedSequence<a.acceptedSequence ||
+            (b.acceptedSequence==a.acceptedSequence && !repeatedSource))
+            return Reject("non-forward-source");
         const double elapsedMs=frameMs*double(b.acceptedSequence-a.acceptedSequence);
         if(m_elapsed+elapsedMs>(std::max)(0,(std::min)(1000,holdMs)))return Reject("pending-budget-expired");
         uint32_t context=0;
@@ -629,11 +633,26 @@ public:
                 (a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
                  b.sourceFrameNumber-a.sourceFrameNumber==sourceGap));
         if(context && !backlogReassociation)return Reject("pending-context-changed");
+        // Known metadata contradictions retire the seed before bounded native
+        // work; exhaustion must not turn them into an unknown observation.
+        if(key.sharedPicture.required) {
+            m_diagnostics.sharedPictureMatches=key.sharedPicture.Matches(old.sharedPicture);
+            m_diagnostics.sharedPictureCurrent=
+                key.sharedPicture.AvailableFor(key.identity,source.width,source.height);
+            if(!m_diagnostics.sharedPictureMatches || !m_diagnostics.sharedPictureCurrent)
+                return Reject("shared-picture-changed");
+        }
         for(const auto& sample:m_samples) {
             AnalysisLumaSample now;
             ++m_diagnostics.glyphSamplesChecked;
-            if(!source.Sample(sample.x,sample.y,now) ||
-                std::abs(int(now.luma)-sample.value.luma)>8 ||
+            if(!source.Sample(sample.x,sample.y,now)) {
+                if(source.readBudget && source.readBudget->exhausted)
+                    return Incomplete("current-pixels-budget-exhausted");
+                m_diagnostics.glyphMismatchX=sample.x;
+                m_diagnostics.glyphMismatchY=sample.y;
+                return Reject("current-pixels-changed");
+            }
+            if(std::abs(int(now.luma)-sample.value.luma)>8 ||
                 std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
                 std::abs(int(now.chromaV)-sample.value.chromaV)>8) {
                 m_diagnostics.glyphMismatchX=sample.x;
@@ -645,19 +664,19 @@ public:
         m_diagnostics.expectedTop=old.pictureTop;
         m_diagnostics.expectedBottom=old.pictureBottom;
         if(key.sharedPicture.required) {
-            m_diagnostics.sharedPictureMatches=key.sharedPicture.Matches(old.sharedPicture);
-            m_diagnostics.sharedPictureCurrent=
-                key.sharedPicture.AvailableFor(key.identity,source.width,source.height);
-            if(!m_diagnostics.sharedPictureMatches || !m_diagnostics.sharedPictureCurrent)
-                return Reject("shared-picture-changed");
             // Matching retained Classic geometry does not prove that its bar
             // planes still exist on this frame. Pending reuse needs the same
             // current-pixel proof as a complete shared measurement, and the
             // effective analysis planes must equal the accepted cue's planes.
             // Pending render-thread reuse cannot admit nearby/reference proof;
             // leave the extra search to the asynchronous full measurement.
-            bars=ResolveCurrentSubtitleAnalysisBars(source,ExtractSubtitleBarEvidence(source),
+            bars=ExtractSubtitleBarEvidence(source);
+            if(source.readBudget && source.readBudget->exhausted)
+                return Incomplete("current-bars-budget-exhausted");
+            bars=ResolveCurrentSubtitleAnalysisBars(source,bars,
                 key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom,nullptr,nullptr,false);
+            if(source.readBudget && source.readBudget->exhausted)
+                return Incomplete("current-bars-budget-exhausted");
             m_diagnostics.barsAvailable=bars.available;
             m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
             m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
@@ -673,6 +692,8 @@ public:
                 return Reject("current-bars-changed");
         } else {
             bars=ExtractSubtitleBarEvidence(source);
+            if(source.readBudget && source.readBudget->exhausted)
+                return Incomplete("current-bars-budget-exhausted");
             m_diagnostics.barsAvailable=bars.available;
             m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
             m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
@@ -700,10 +721,17 @@ public:
         preview.futureAvailable=false;preview.following={};preview.followingCount=0;preview.matchingFrames=1;
         preview.currentLinesConfirmed=false;preview.newScanMs=0;preview.newScanFrames=0;
         m_diagnostics.backlogReassociated=backlogReassociation;
-        m_reason=backlogReassociation ? "backlog-verified-current-pixels" : "verified-current-pixels";
+        m_reason=backlogReassociation ? "backlog-verified-current-pixels" :
+            repeatedSource ? "verified-repeated-current-pixels" : "verified-current-pixels";
         return true;
     }
 private:
+    bool Incomplete(const char* reason) {
+        // No current packet is authorized. Keep only the private accepted seed
+        // and its original time cursor; the next attempt must reprove pixels,
+        // context and bars, counting the full gap from the last success.
+        m_reason=reason;return false;
+    }
     bool Reject(const char* reason) {
         const auto diagnostics=m_diagnostics;
         const auto certified=m_certifiedSeed;const auto policy=m_certifiedPolicy,continuity=m_certifiedContinuity;

@@ -13800,10 +13800,36 @@ struct LibplaceboVideoRenderer::Impl
                     break;
                 }
 
+            // A missing cue-side measurement must not skip checking an already
+            // accepted subtitle. Keep this proof separate from the raw worker
+            // observation and from every active-picture admission path.
+            const bool continuationBaseAvailable=subtitleCutPasteTest && configuredScreenActive &&
+                nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                  latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
+            // A retained cue's complete current inspection outranks optional
+            // pending recovery. Failed pending probes must not consume the
+            // budget needed to prove and clean an otherwise valid current cap.
+            const bool prioritizeCurrentInspection=continuationBaseAvailable &&
+                !currentSubtitlePreview.available &&
+                subtitleCueContinuation.CanInspectCurrentObservation(currentSubtitlePreview.current);
+            PreparedCurrentSubtitleCue preparedCurrentCue;
+            if(prioritizeCurrentInspection)
+                preparedCurrentCue=PrepareCurrentSubtitleCue(subtitleCueContinuation,
+                    currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs);
+            const bool allowPendingRecovery=!prioritizeCurrentInspection ||
+                preparedCurrentCue.proof.RetainsCandidateFor(currentSubtitlePreview.current.identity,
+                    currentSubtitlePreview.policyGeneration,currentSubtitlePreview.continuityGeneration);
             ++subtitlePerf.frames;
             bool& pendingCurrentPixelsVerified=currentSubtitlePendingPixelsVerified;
             pendingCurrentPixelsVerified=false;
-            if(!currentSubtitlePreview.available) {
+            // A COMPLETE proof needs no pending work. A hard contradiction
+            // cannot be promoted back into the old cue by narrower fallback.
+            if(!currentSubtitlePreview.available && allowPendingRecovery) {
                 ++subtitlePerf.pending;
                 pendingCurrentPixelsVerified=subtitlePendingGuard.Resolve(currentSubtitlePreview,
                     subtitleProofSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
@@ -13830,22 +13856,19 @@ struct LibplaceboVideoRenderer::Impl
                         pendingDetail.measuredTop,pendingDetail.measuredBottom);
                 }
             }
-            // A missing cue-side measurement must not skip checking an already
-            // accepted subtitle. Keep this proof separate from the raw worker
-            // observation and from every active-picture admission path.
-            const bool continuationBaseAvailable=subtitleCutPasteTest && configuredScreenActive &&
-                nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
-                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
-                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
-                !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
-                  latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
-                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
-            const auto cueDecision=ConsumeCurrentSubtitleCue(subtitleCueContinuation,
-                subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
-                continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
-                pendingCurrentPixelsVerified,
-                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                subtitleBacklogRetirementOnly);
+            const auto cueDecision=prioritizeCurrentInspection ?
+                ConsumePreparedCurrentSubtitleCue(subtitleCueContinuation,
+                    subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    preparedCurrentCue,pendingCurrentPixelsVerified,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                    subtitleBacklogRetirementOnly) :
+                ConsumeCurrentSubtitleCue(subtitleCueContinuation,
+                    subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                    pendingCurrentPixelsVerified,
+                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                    subtitleBacklogRetirementOnly);
             const auto& mismatch=subtitleCueContinuation.LastPixelMismatch();
             if(mismatch.valid && subtitlePixelMismatchLogCount<64 &&
                 SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitleIdentity) &&
@@ -14356,6 +14379,7 @@ struct LibplaceboVideoRenderer::Impl
         }
         else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
 
+        bool capturedSubtitlePacketNew=false;
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
             if(temporalSubtitleComposition) {
@@ -14446,9 +14470,9 @@ struct LibplaceboVideoRenderer::Impl
                         return true;
                     };
                     if(!temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                        subtitleSourcePreparation.nativePrepare,hasCue))return failSubtitleMotion(temporalRenderer.status.c_str());
+                        subtitleSourcePreparation.nativePrepare,hasCue,&capturedSubtitlePacketNew))return failSubtitleMotion(temporalRenderer.status.c_str());
                 } else if(!temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
-                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds))
+                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds,&capturedSubtitlePacketNew))
                     return failSubtitleMotion(temporalRenderer.status.c_str());
             }
             subtitleSourcePreparation.valid=true;
@@ -14474,21 +14498,23 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.barStripClearance=currentSubtitleBarStripClearance;
             subtitleSourcePreparation.scanReason=currentSubtitleScanReason;
             subtitleSourcePreparation.padding=safeSubtitlePadding;
-            if(temporalSubtitleComposition)
-                subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
-                    subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         }
         // Recovery can clear history during a repeated output. Recapture this
         // already prepared packet without consuming cue state again.
         if(reuseSubtitlePreparation && temporalSubtitleComposition && !temporalRenderer.HasCurrentFrame(sourceSequence)) {
             const bool captured=nativeSubtitleComposition?
                 temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded):
+                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
                 temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,
-                    subtitleSourcePreparation.layerBounds);
+                    subtitleSourcePreparation.layerBounds,&capturedSubtitlePacketNew);
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
+        // Match metadata to the immutable GPU packet, not a later preparation
+        // result for the same source. A real recovery capture replaces both.
+        if(capturedSubtitlePacketNew)
+            subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
+                subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         // Capture metadata even while buffering; the selected output may be an
         // older packet by the time a source pass is finally rendered.
         temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
