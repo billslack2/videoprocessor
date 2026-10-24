@@ -1,0 +1,4 @@
+real native AR=376:1784 physical=383:1776 accepted=1 independent=1 seed=1 reason=seeded
+current native gap proof=1 reason=current-cue-pixels-opposite-edge samples=39562 output=1 cue=1/1
+real native AR=386:1776 physical=383:1776 accepted=1 independent=1 seed=1 reason=seeded
+current native gap proof=1 reason=current-cue-pixels-opposite-edge samples=39562 output=1 cue=1/1

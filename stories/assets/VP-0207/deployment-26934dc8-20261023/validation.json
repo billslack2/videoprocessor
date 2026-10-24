@@ -1,0 +1,26 @@
+{
+  "commit": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "base": "e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a",
+  "releaseRebuild": "passed",
+  "selectedNativeGpuTests": {
+    "passed": 1085,
+    "total": 1085,
+    "minutes": 3.2912
+  },
+  "targetedTests": 3,
+  "qtChecksPassed": 4,
+  "capturedBackingReplay": "1492,1746-2348,1776",
+  "standaloneNativeRecovery": "Prior paused 4K capture: independent physical 383..1776 with AR 376..1784 and 386..1776; current same-cue simulated opposite-edge loss proof passes, samples=39562. Not the new offending playback frame.",
+  "livePlayback": "PENDING. Startup logs show subtitle move disabled; user instructed to select Clear / Yellow.",
+  "diagnosticCapture": {
+    "path": "E:\\codex\\diagnostics\\vp0207-subtitle-flicker-20261023-2018\\independent-visible-cue-gap.bin",
+    "processOnly": true,
+    "mode": "visible_cue_gap",
+    "expected": "Current positive cue wholly in preserved bar and opposite bar unavailable; picture-caption navigation case excluded"
+  },
+  "configurationEdits": [],
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-subtitle-independent-26934dc8-20261023-210001",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/197",
+  "mergeAuthorized": false
+}

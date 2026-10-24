@@ -1,0 +1,16 @@
+2026-10-23 21:00:02 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/26934dc8b2fed266f19e898a05e0a1bafe61b66f branch=codex/subtitle-packet-flicker-20261023 dirty=0 build=v1.4.02-beta-26934dc
+2026-10-23 21:00:02 | unified profile runtime initialized state=C:\Videoprocessor\vp\VideoProcessor.state viewport=scope aspect=47:20 generation=1
+2026-10-23 21:00:02 | Optional VP Renderer plugin loaded: API=29 path=C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll
+2026-10-23 21:00:02 | VP Renderer plugin probe: path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 21:00:02 | Optional VP Renderer plugin loaded: API=29 path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+2026-10-23 21:00:02 | Renderer order: render.2 = VP Renderer (Beta)
+2026-10-23 21:00:10 | unified profile runtime initialized state=C:\Videoprocessor\vp\VideoProcessor.state viewport=scope aspect=47:20 generation=1
+2026-10-23 21:00:10 | Configuration runtime settings published: renderer=VP Renderer (Beta) renderer_source=0 saved_renderer=VP Renderer (Beta) session_renderer=(none) accepted_renderer=(none) alpha_selected=1 conversion=1 directshow_conversion=1 vp_conversion=0 active_conversion=0 frame_offset=1 metadata=1 directshow=1 presentation_retained=1 video_only=0 fullscreen=1
+2026-10-23 21:00:10 | Renderer handoff audit: phase=successor-selected generation=1 renderer=VP Renderer (Beta) backend=vp-renderer target=000000000C511234 target_revision=1 fullscreen_host=000000000C511234 fullscreen_intent=1 previous_renderer=
+2026-10-23 21:00:10 | Renderer transition: process=46980 generation=1 event=black-suppressed reason=renderer-start renderer=VP Renderer (Beta) target=000000000C511234
+2026-10-23 21:00:10 | DISPLAY_STATE transition renderer=VP Renderer (Beta) generation=1 directshow_overrides nominal_range=0 transfer=0 matrix=0 primaries=0; video_conversion=0
+2026-10-23 21:00:10 | DISPLAY_STATE pid=46980 tid=38648 seq=1 tick=1221331640 phase=host-before-create begin renderer=VP Renderer (Beta) instance=0000005519FE86F8 hwnd=000000000C511234 read_only=1 wire_state=unverified
+2026-10-23 21:00:10 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/26934dc8b2fed266f19e898a05e0a1bafe61b66f branch=codex/subtitle-packet-flicker-20261023 dirty=0 build=v1.4.02-beta-26934dc
+2026-10-23 21:00:10 | DISPLAY_STATE pid=46980 tid=38648 seq=2 tick=1221331640 phase=host-ready begin renderer=VP Renderer (Beta) instance=0000005519FE86F8 hwnd=000000000C511234 read_only=1 wire_state=unverified
+2026-10-23 21:00:11 | libplacebo GPU shader cache enabled: memory limit=256 MiB object limit=64 MiB path=C:\Videoprocessor\vp\vprenderer-beta\VideoProcessorShaderCache.bin
+2026-10-23 21:00:11 | SUBTITLE MODE: box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=20 source_pixels text_reduction_percent=30 rounded_corners=1 background_edge=extend

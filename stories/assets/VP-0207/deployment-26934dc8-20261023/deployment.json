@@ -1,0 +1,57 @@
+{
+  "commit": "26934dc8b2fed266f19e898a05e0a1bafe61b66f",
+  "configuration": "Release",
+  "architecture": "x64",
+  "uiTestsPassed": [
+    "Off zoom hold round trip",
+    "subtitle profile tab round trip",
+    "clean Apply notifies without saving",
+    "clean remote Apply uses unchanged RPC candidate"
+  ],
+  "nativeValidation": {
+    "total": "1085",
+    "trx": "TestResults\\subtitle-independent-final.trx",
+    "passed": "1085",
+    "commit": "26934dc8b2fed266f19e898a05e0a1bafe61b66f"
+  },
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-subtitle-independent-26934dc8-20261023-210001",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "C767F64D6909A5CB7B9C00916CA27F820F3FAD26FE523F32B074D7E80BDF45E8",
+      "previousSha256": "CA74B5ED1BAF17702A15DD9E49D1C524651FA1EEC4CEC4E89EBBFC5C5D866736"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "0CF26029C526A7143BD05993571FFA193FF0C68558CCAC47474F8C0BDECC31DF",
+      "previousSha256": "9D9562FC69A643ED32049E8909A3CAC81CE6D14E20753A209EDD0542A32BCF81"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\subtitle-packet-flicker-20261023\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "7C3495E99CD03AC6C85AB41DCDD195616F59AF03A5BD78A75DEEDE744E1835D2",
+      "previousSha256": "C0A123F3A6045BF7CF2462624FE899E06A85C50907FFABD61CAB723B45CBB0CE"
+    }
+  ],
+  "configurationEditorPreserved": "existing Config binaries and open session unchanged; runtime-only correction",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+    "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+    "C:\\Videoprocessor\\vp\\VideoProcessor.cfg": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7"
+  },
+  "verifiedAt": "2026-10-23T21:00:01.9506605-04:00",
+  "diagnosticCapture": {
+    "path": "E:\\codex\\diagnostics\\vp0207-subtitle-flicker-20261023-2018\\independent-visible-cue-gap.bin",
+    "navigationCaptionInPictureExcluded": true,
+    "processOnly": true,
+    "mode": "visible_cue_gap",
+    "frameLimit": 1
+  }
+}
