@@ -29,7 +29,7 @@ namespace ToneMappingTuning
             {"knee_adaptation", "Knee adaptation", 0, 1, .4, "", "How strongly the knee follows scene-average brightness. Also used by ST2094-40."},
             {"knee_minimum", "Knee minimum", .000001, .499999, .1, "PQ fraction", "Lower knee bound; greater than 0 and less than 0.5. Also used by ST2094-40."},
             {"knee_maximum", "Knee maximum", .500001, .999999, .8, "PQ fraction", "Upper knee bound; greater than 0.5 and less than 1. Also used by ST2094-40."},
-            {"knee_default", "Fallback knee", 0, 1, .4, "PQ fraction", "Used only without scene-average metadata. Must lie between the knee bounds. Also used by ST2094-40."},
+            {"knee_default", "Fallback knee", 0, 1, .4, "PQ fraction", "The knee when there is no scene average. With a scene average, the knee adapts around this value. Must lie strictly between the knee bounds. Also used by ST2094-40."},
             {"slope_tuning", "Slope tuning", 0, 10, 1.5, "", "Shapes the slope as source and display peaks differ."},
             {"slope_offset", "Slope offset", 0, 1, .2, "", "Offset used to shape the spline slope."},
             {"spline_contrast", "Spline contrast", 0, 1.5, .5, "", "Higher preserves midtones at the cost of shadow/highlight detail."},

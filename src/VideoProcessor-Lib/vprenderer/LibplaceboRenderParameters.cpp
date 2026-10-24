@@ -188,15 +188,16 @@ namespace LibplaceboRenderParameters
 		projection.renderParams.lut = nullptr;
 		projection.renderParams.lut_type = PL_LUT_UNKNOWN;
 
-		if (projection.renderParams.color_map_params)
-			projection.colorMapParams = *projection.renderParams.color_map_params;
-		else
+		// Quality is a Scaling setting: it chooses the scalers, sigmoid,
+		// debanding and dithering only. Tone mapping ignores it; its Auto
+		// values are libplacebo's high-quality colour map and peak detection
+		// (contrast recovery 0.30, percentile 99.995) whatever Quality says.
 		{
-			const pl_color_map_params* defaults =
+			const pl_color_map_params* toneDefaults =
 				ReadLibplaceboData<pl_color_map_params>(
-					"pl_color_map_default_params", error);
-			if (!defaults) return false;
-			projection.colorMapParams = *defaults;
+					"pl_color_map_high_quality_params", error);
+			if (!toneDefaults) return false;
+			projection.colorMapParams = *toneDefaults;
 		}
 
 		if (settings.toneMapping != "auto")
@@ -285,20 +286,9 @@ namespace LibplaceboRenderParameters
 				projection.renderParams.peak_detect_params = nullptr;
 				return true;
 			}
-			if (settings.peakDetection == PeakDetection::Auto)
-			{
-				if (projection.renderParams.peak_detect_params)
-				{
-					projection.peakDetectParams =
-						*projection.renderParams.peak_detect_params;
-					projection.renderParams.peak_detect_params =
-						&projection.peakDetectParams;
-				}
-				return true;
-			}
-
+			// Auto is High quality, not the Quality preset's choice (see above).
 			const char* exportName = settings.peakDetection ==
-				PeakDetection::HighQuality ?
+				PeakDetection::HighQuality || settings.peakDetection == PeakDetection::Auto ?
 				"pl_peak_detect_high_quality_params" :
 				"pl_peak_detect_default_params";
 			const pl_peak_detect_params* parameters =
