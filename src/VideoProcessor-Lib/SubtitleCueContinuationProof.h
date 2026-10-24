@@ -4,7 +4,7 @@
 
 // Current-pixel continuation only. This is not a detector or AR measurement.
 struct SubtitleCueContinuation {
-    bool valid=false;
+    bool valid=false,oppositeBarUnavailable=false;
     ActivePictureFrameIdentity identity, templateIdentity, previousIdentity;
     uint64_t policyGeneration=0, continuityGeneration=0;
     ActivePictureBounds physicalBase;
