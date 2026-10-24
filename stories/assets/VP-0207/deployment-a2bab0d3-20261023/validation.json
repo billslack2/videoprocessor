@@ -1,0 +1,20 @@
+{
+  "commit": "a2bab0d3e779769f3e8f240e5f6bb7ccc9220e1a",
+  "releaseRebuild": "passed",
+  "selectedNativeGpuTests": {
+    "passed": 1084,
+    "total": 1084
+  },
+  "newRegressions": 2,
+  "qtChecksPassed": 4,
+  "livePlayback": "FAILED: user reports identical issue",
+  "currentGate": "Independent physical picture 384..1776 extends two native rows outside stable AR viewport 386..1776; contained-only reference seed is still rejected.",
+  "nativeCapture": {
+    "path": "E:\\codex\\diagnostics\\vp0207-subtitle-flicker-20261023-2018\\a2-playback-proof-failure.bin",
+    "sha256": "1ffcc0fa27f57b613b4fcb4c0c31618cbd6898dc707158fd17d274743a1b0b5a",
+    "bytes": 33177600,
+    "meaning": "NAVIGATION CASE ONLY: original caption already in picture, so no relocation is expected; not evidence of clean-playback failure."
+  },
+  "configurationEdits": [],
+  "nextWork": "Separate independently proved source picture from AR seed equality; target native capture at a positive bar cue whose opposite edge disappears."
+}

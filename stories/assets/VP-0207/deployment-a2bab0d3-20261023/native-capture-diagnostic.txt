@@ -1,0 +1,8 @@
+capture_mode=proof_failure
+identity transport=1 sequence=501 source_frame=505 capture_timestamp=1220606136090 format=16737396327766010546 domain=3440028774926749422 viewport=2 renderer=1
+policy=2 continuity=4 near_bar=20 optimization=0 script=1
+shared_sequence=497 shared_bounds=0,376,3840,1784
+prior valid=1 sequence=500 edges=384,1776
+result analyzed=1 bar_authority=1 independent=0 picture=384,2160 text_detected=0 text_work_limit=0 text_reason=no-bright-ink components=0 near_bar_gap=-1 top_search_complete=1 bottom_search_complete=0
+probe attempted=1 detected=1 work_limit=0 reason=detected anchor=1180,1844,1240,1908
+bars reason=current-independent-subtitle-bars available=1 edges=384,2160 support=128,106 boundary_support=105,0 black_fraction=1,0 max_intrusion=0,0 reference_support=0,0 reference_fraction=0,0 reference_intrusion=0,0 reference_exact=0,0 reference_nearby=0,0 nearby_delta=0,0 nearby_probes=4 samples=80378
