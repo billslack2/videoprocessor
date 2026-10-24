@@ -37,6 +37,8 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaOutputPresentationTelemetry.h>
+#include <vprenderer/OutputPresentationPublication.h>
 #include <vprenderer/AlphaD3D11FrameGpuTimer.h>
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
@@ -4381,6 +4383,11 @@ struct LibplaceboVideoRenderer::Impl
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
+    AlphaOutputPresentationTelemetry outputPresentationTelemetry;
+    OutputPresentationPublication outputPresentationPublication;
+    uint64_t outputPresentationWitnessTick = 0;
+    uintptr_t outputPresentationSwapchain = 0;
+    uint64_t nextOutputPresentationLogTick = 0;
 	uint64_t lastFramePacingGeneration = 0;
 	int64_t lastFramePacingSubmitQpc = 0;
 	int64_t lastFramePacingCallbackQpc = 0;
@@ -5431,6 +5438,15 @@ struct LibplaceboVideoRenderer::Impl
 				"caller_release_pending");
 	}
 
+    void ResetOutputPresentationContinuity()
+    {
+        // A recovery must not erase the display incident that preceded it.
+        outputPresentationTelemetry.ResetContinuity();
+        outputPresentationWitnessTick = 0;
+        outputPresentationSwapchain = 0;
+        outputPresentationPublication.Publish(outputPresentationTelemetry.Snapshot(), 0);
+    }
+
 	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
 	{
         // Drop all source/cue/HDR history without recompiling the same GPU
@@ -5438,6 +5454,7 @@ struct LibplaceboVideoRenderer::Impl
         temporalRenderer.ResetHistoryAfterSourceGap();
         cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
+        ResetOutputPresentationContinuity();
 		renderLoadMeter.DiscardPendingSamples();
 		coreRenderLoadMeter.DiscardPendingSamples();
 		originalPrRenderLoadMeter.DiscardPendingSamples();
@@ -5462,6 +5479,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		RendererRenderLoad load = renderLoadMeter.Snapshot();
         load.processing=processingPerformance.Snapshot(GetTickCount64());
+        load.outputPresentation=outputPresentationPublication.Snapshot(GetTickCount64());
 		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
 			gpuFrameTimer.Snapshot();
 		load.supported = timing.supported;
@@ -7351,6 +7369,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ReleaseVpOwnedSwapchain()
 	{
+        ResetOutputPresentationContinuity();
 		if (!vpOwnedSwapchain) return;
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: releasing generation=%llu applied_record=%s verified=%d present_owner=VP",
@@ -13172,6 +13191,9 @@ struct LibplaceboVideoRenderer::Impl
 				correctionDecision, frameGeneration);
 			if (correctionDecision.action == AlphaCadenceAction::Drop)
 			{
+                // No present is submitted for this deliberate correction.
+                // Its extended source interval is not a display glitch.
+                ResetOutputPresentationContinuity();
 				return true;
 			}
 		}
@@ -19798,6 +19820,44 @@ releaseDriftBaseRetention =
 						: AlphaPresentationTimingStatus::FrameStatisticsFailed;
 				}
 			}
+            // Independent observation only: submission IDs are not display
+            // receipts. Do not feed this meter back into pacing, AR or subtitles.
+            const uintptr_t observedSwapchain = reinterpret_cast<uintptr_t>(nativeSwapchain.p);
+            if (outputPresentationSwapchain != observedSwapchain) {
+                ResetOutputPresentationContinuity();
+                outputPresentationSwapchain = observedSwapchain;
+            }
+            AlphaOutputSubmission outputSubmission;
+            outputSubmission.generation = frameGeneration;
+            outputSubmission.presentationEpoch = viewportRequestSerial;
+            outputSubmission.presentId = record.presentId;
+            outputSubmission.expectedDisplayHz = sample.expectedDisplayHz;
+            const double intendedOutputHz = OsdTimingPolicy::RenderBudgetRate(
+                captureRateHz, nominalSourceRateHz, temporalRenderer.ScheduledOutputRateHz());
+            // An intentional cadence correction has no immutable expected slot
+            // in this observer. Exclude the interval rather than invent a fault.
+            const bool cadenceAction = (!temporalRenderer.Active() && cadenceRepeat) ||
+                correctionDecision.action != AlphaCadenceAction::None;
+            outputSubmission.intendedMaximumRefreshes = cadenceAction ? 0 :
+                (temporalRenderer.Mixing() ? 1 :
+                    AlphaOutputPresentationTelemetry::IntendedMaximumRefreshes(
+                        sample.expectedDisplayHz, intendedOutputHz));
+            outputPresentationTelemetry.RecordSubmission(outputSubmission);
+            if (outputPresentationTelemetry.Observe(sample))
+                outputPresentationWitnessTick = GetTickCount64();
+            const auto outputObservation = outputPresentationTelemetry.Snapshot();
+            outputPresentationPublication.Publish(outputObservation, outputPresentationWitnessTick);
+            const uint64_t outputObservationNow = GetTickCount64();
+            if (outputObservationNow >= nextOutputPresentationLogTick) {
+                nextOutputPresentationLogTick = outputObservationNow + 2000;
+                DebugLog::Log("VP display observations: availability=%d timing=%d hr=0x%08lX observed_long_holds=%llu excess_refreshes=%llu verified_intervals=%llu observation_gaps=%llu present_id=%u observed_id=%u intended_max_refreshes=%u display_hz=%.5f scheduled_hz=%.5f coverage=partial display_drop_repeat_counts=unavailable",
+                    static_cast<int>(outputObservation.availability), static_cast<int>(outputObservation.timingStatus),
+                    static_cast<unsigned long>(outputObservation.frameStatisticsResult),
+                    outputObservation.observedLongHolds, outputObservation.excessRefreshes,
+                    outputObservation.verifiedIntervals, outputObservation.observationGaps,
+                    record.presentId, sample.presentCount, outputSubmission.intendedMaximumRefreshes,
+                    sample.expectedDisplayHz, intendedOutputHz);
+            }
 			record.frameStatsAvailable = sample.available;
 			record.frameStatsDisjoint = sample.disjoint;
 			record.frameStatsResult = sample.frameStatisticsResult;
@@ -20354,6 +20414,7 @@ releaseDriftBaseRetention =
 
 	void ResizeLocked(HWND videoHwnd)
 	{
+        ResetOutputPresentationContinuity();
 		if (!swapchain)
 			return;
 
@@ -22420,7 +22481,7 @@ bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 	// the `settling` row that exists to explain exactly that gap. The caller
 	// reads `settling` and `gpuValid` to decide what to print; whether a
 	// sample happens to be in the window is not the caller's question.
-	return load.supported;
+	return load.supported || load.outputPresentation.supported;
 }
 
 

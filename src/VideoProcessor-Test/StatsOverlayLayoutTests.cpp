@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <HdrOsdFormatting.h>
 #include <numeric>
+#include <type_traits>
+
+static_assert(std::is_standard_layout<RendererOutputPresentationStats>::value &&
+    std::is_trivially_copyable<RendererOutputPresentationStats>::value,
+    "Output presentation telemetry must remain a shared value snapshot.");
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace Tests
@@ -217,6 +222,146 @@ public:
         rows=StatsOverlayWindow::BuildStatsRows(stats);
         Assert::IsTrue(Find(rows,L"Prep CPU/wait:").value==L"no calls in window");
         Assert::IsTrue(Find(rows,L"New CPU/wait:").value.find(L"0.00 / 0.00")!=std::wstring::npos);
+        VerifyNative(stats);
+    }
+    TEST_METHOD(DisplayObservationsDistinguishUnavailableWarmupAndMeasuredZero)
+    {
+        for (const bool alpha : {false, true})
+        {
+            auto stats = Example(alpha);
+            auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::IsTrue(Find(rows,L"Display D/R:").value == L"unavailable (not measured)");
+            Assert::IsTrue(Find(rows,L"Display holds:").value == L"unavailable");
+            auto& output = stats.outputPresentation;
+            output.supported = true;
+            output.state = RendererOutputPresentationState::Warming;
+            rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::IsTrue(Find(rows,L"Display holds:").value == L"unavailable (warming)");
+            output.state = RendererOutputPresentationState::Observing;
+            // A contradictory ready state with no verified interval still must
+            // not print a clean zero. GPU timing need not be available at all.
+            rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::IsTrue(Find(rows,L"Display holds:").value.find(L"0 events") == std::wstring::npos);
+            output.verifiedIntervals = 12;
+            rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::IsFalse(stats.renderLoadKnown);
+            Assert::IsTrue(Find(rows,L"Display holds:").value == L"0 events / 0 excess refreshes (observed)");
+            Assert::IsTrue(Find(rows,L"Display evidence:").value == L"12 intervals / 0 gaps; partial; observing");
+            Assert::IsTrue(Find(rows,L"Display D/R:").value == L"unavailable (not measured)");
+            VerifyNative(stats);
+        }
+    }
+    TEST_METHOD(DisplayObservationFailuresNeverTurnMissingEvidenceIntoCleanZero)
+    {
+        auto stats = Example(true);
+        auto& output = stats.outputPresentation;
+        output.supported = true;
+        for (const auto reason : {RendererOutputPresentationReason::NoSwapchain,
+            RendererOutputPresentationReason::Unsupported,
+            RendererOutputPresentationReason::StatisticsFailed,
+            RendererOutputPresentationReason::Disjoint,
+            RendererOutputPresentationReason::Stale,
+            RendererOutputPresentationReason::ObservationGap})
+        {
+            output.reason = reason;
+            output.state = RendererOutputPresentationState::Limited;
+            const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+            const auto& holds = Find(rows,L"Display holds:").value;
+            Assert::IsTrue(holds.find(L"unavailable (") == 0);
+            Assert::IsTrue(holds.find(L"0 events") == std::wstring::npos);
+            VerifyNative(stats);
+        }
+        output.verifiedIntervals = 25;
+        output.reason = RendererOutputPresentationReason::Unsupported;
+        for (const bool supported : {true,false})
+        {
+            output.supported = supported;
+            const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::IsTrue(Find(rows,L"Display holds:").value == L"unavailable (unsupported)");
+            Assert::IsTrue(Find(rows,L"Display evidence:").value == (supported ? L"unsupported" : L"unavailable"));
+        }
+    }
+    TEST_METHOD(RecordedDisplayHoldsSurviveUnavailableAndResetObservationStates)
+    {
+        auto stats = Example(true);
+        auto& output = stats.outputPresentation;
+        output.observedLongHolds = 3; output.excessRefreshes = 4;
+        output.verifiedIntervals = 20; output.observationGaps = 2;
+        for (const auto state : {RendererOutputPresentationState::Unavailable,
+            RendererOutputPresentationState::Warming,RendererOutputPresentationState::Limited})
+            for (const auto reason : {RendererOutputPresentationReason::None,
+                RendererOutputPresentationReason::NoSwapchain,
+                RendererOutputPresentationReason::Unsupported,
+                RendererOutputPresentationReason::StatisticsFailed,
+                RendererOutputPresentationReason::Disjoint,
+                RendererOutputPresentationReason::Stale,
+                RendererOutputPresentationReason::ObservationGap})
+                for (const bool supported : {false,true})
+                {
+                    output.supported = supported; output.state = state; output.reason = reason;
+                    const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+                    Assert::IsTrue(Find(rows,L"Display holds:").value == L"3 events / 4 excess refreshes (recorded)");
+                    Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"20 intervals / 2 gaps; partial; ") == 0);
+                    Assert::IsTrue(Find(rows,L"Display D/R:").value == L"unavailable (not measured)");
+                }
+        output.supported = false; output.state = RendererOutputPresentationState::Unavailable;
+        output.reason = RendererOutputPresentationReason::Unsupported;
+        VerifyNative(stats);
+        // Resetting only the current observation baseline cannot erase the
+        // session's incidents even before a new interval has been verified.
+        output.verifiedIntervals = 0;
+        const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display holds:").value == L"3 events / 4 excess refreshes (recorded)");
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"unsupported") != std::wstring::npos);
+    }
+    TEST_METHOD(DisplayHoldTotalsKeepPartialCoverageAndLargeNumbersVisible)
+    {
+        auto stats = Example(true);
+        auto& output = stats.outputPresentation;
+        output.supported = true;
+        output.state = RendererOutputPresentationState::Limited;
+        output.reason = RendererOutputPresentationReason::ObservationGap;
+        output.observedLongHolds = UINT64_MAX;
+        output.excessRefreshes = UINT64_MAX;
+        output.verifiedIntervals = UINT64_MAX;
+        output.observationGaps = 7;
+        const auto raw = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(raw,L"Display holds:").value.find(L"18446744073709551615 events") == 0);
+        Assert::IsTrue(Find(raw,L"Display evidence:").value.find(L"7 gaps; partial; observation gap") != std::wstring::npos);
+        Graphics graphics; Assert::IsTrue(graphics.dc && graphics.font);
+        const auto arranged = StatsOverlayLayout::Arrange(graphics.dc,raw);
+        const int available = StatsOverlayLayout::Width - StatsOverlayLayout::Padding - StatsOverlayLayout::ValueX(graphics.dc);
+        for (const wchar_t* label : {L"Display holds:",L"Display evidence:"})
+        {
+            auto at = std::find_if(arranged.begin(),arranged.end(),[&](const auto& row){return row.label==label;});
+            Assert::IsTrue(at != arranged.end());
+            std::wstring restored;
+            for (bool first=true; at!=arranged.end() && (first || at->label.empty()); ++at,first=false)
+            {
+                if (!restored.empty()) restored += L" ";
+                restored += at->value;
+                Assert::AreEqual(at->value.c_str(),StatsOverlayLayout::FitText(graphics.dc,at->value,available).c_str());
+            }
+            Assert::AreEqual(Find(raw,label).value.c_str(),restored.c_str());
+        }
+        VerifyNative(stats);
+    }
+    TEST_METHOD(CaptureQueueLossAndIntentionalCorrectionsAreNotDisplayDropCounts)
+    {
+        auto stats = Example(true);
+        stats.capturedDroppedFrames = 2; stats.queueDroppedFrames = 3;
+        stats.sceneDetectCorrectionDrops = 4; stats.sceneDetectCorrectionRepeats = 5;
+        stats.cadenceIntervalEstimate = L"repeat every 100 s";
+        const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Capture/queue:").value == L"2 / 3 drops");
+        Assert::IsTrue(Find(rows,L"Intentional D/R:").value == L"4 / 5");
+        Assert::IsTrue(Find(rows,L"Cadence drift:").value == L"estimate: repeat every 100 s");
+        Assert::IsTrue(Find(rows,L"Display D/R:").value == L"unavailable (not measured)");
+        for (const auto& row : rows)
+        {
+            Assert::IsFalse(row.label == L"Dropped:" || row.label == L"D/R estimate:" || row.label == L"- Action D/R:");
+            Assert::IsTrue(row.label.size() < size_t(StatsOverlayLayout::LabelColumns));
+        }
         VerifyNative(stats);
     }
     TEST_METHOD(WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers)

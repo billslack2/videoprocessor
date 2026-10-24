@@ -271,6 +271,8 @@
     <ClCompile Include="SceneDetectorTests.cpp" />
     <ClCompile Include="WindowResizeLayoutTests.cpp" />
     <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
+    <ClCompile Include="AlphaOutputPresentationTelemetryTests.cpp" />
+    <ClCompile Include="OutputPresentationPublicationTests.cpp" />
     <ClCompile Include="AlphaRenderLoadMeterTests.cpp" />
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
 	<ClCompile Include="ProcessCpuUsageWindowTests.cpp" />

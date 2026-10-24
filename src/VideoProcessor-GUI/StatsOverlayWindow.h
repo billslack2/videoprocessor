@@ -122,6 +122,7 @@ struct StatsData
 	// cases rather than print a zero that reads as "free".
 	bool renderLoadKnown = false;
     RendererProcessingPerformance processingPerformance;
+    RendererOutputPresentationStats outputPresentation;
 	bool renderLoadGpuValid = false;
 	bool renderLoadSettling = false;
 	size_t renderLoadFrames = 0;

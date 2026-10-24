@@ -16661,7 +16661,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		RendererRenderLoad renderLoad;
 		if (m_videoRenderer->GetRenderLoad(renderLoad))
 		{
-			stats.renderLoadKnown = true;
+            // Display observations remain available independently of GPU timers.
+            stats.outputPresentation = renderLoad.outputPresentation;
+			stats.renderLoadKnown = renderLoad.supported;
             stats.processingPerformance = renderLoad.processing;
 			stats.renderLoadGpuValid = renderLoad.gpuValid;
 			stats.renderLoadSettling = renderLoad.settling;
