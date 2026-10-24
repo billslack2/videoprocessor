@@ -7,6 +7,8 @@
 #include <malloc.h>
 #include <SubtitleCurrentCue.h>
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitleBackingLip.h>
+#include <SubtitleCutPaste.h>
 #include <SubtitleStackProbeIdentity.h>
 #include <array>
 #include <fstream>
@@ -32,6 +34,10 @@ struct State {
     SubtitleBoxPreview acquired,current,raw,working;
     PreparedCurrentSubtitleCue prepared;
     CurrentSubtitleCueDecision decision;
+    SubtitleCutPastePresentation compositor;
+    SubtitleBackingLipContinuity backing;
+    SubtitleCutPasteGeometry geometry,applied;
+    CurrentSubtitleBackingLipProof cap;
     uint64_t cue=0;
     int mode=0;
 };
@@ -52,6 +58,21 @@ void Consume(State& s,const AnalysisLumaSource& source,bool verified) {
 #endif
 }
 __declspec(noinline) void Initialize(State& s) {
+    if(s.mode==4) {
+        s.base={0,384,3840,1776,3840,2160};
+        s.pixels.assign(3840u*2160u*2u,uint16_t(512<<6));
+        for(int y=0;y<2160;++y)for(int x=0;x<3840;++x)s.pixels[y*3840+x]=uint16_t((y>=384 && y<1776?300:64)<<6);
+        const int left=(3840-(25*78+48))/2;
+        for(int y=1746;y<1776;++y) {
+            const int inset=(std::max)(0,12-(y-1746));
+            for(int x=left-96+inset;x<left+25*78+48+96-inset;++x)s.pixels[y*3840+x]=uint16_t(64<<6);
+        }
+        for(int row=0;row<2;++row)for(int glyph=0;glyph<26;++glyph) {
+            const int x0=left+glyph*78,y0=1778+row*108;
+            for(int y=y0;y<y0+66;++y)for(int x=x0;x<x0+48;++x)
+                s.pixels[y*3840+x]=uint16_t(((x>=x0+12 && x<x0+36 && y>=y0+12 && y<y0+54)?64:700)<<6);
+        }
+    } else {
     s.pixels.assign(640u*360u*2u,uint16_t(512<<6));
     for(int y=0;y<360;++y)for(int x=0;x<640;++x)s.pixels[y*640+x]=uint16_t((y>=64 && y<296?300:64)<<6);
     for(int row=0;row<2;++row)for(int glyph=0;glyph<12;++glyph) {
@@ -59,11 +80,13 @@ __declspec(noinline) void Initialize(State& s) {
         for(int y=top;y<top+14;++y)for(int x=left;x<left+8;++x)
             s.pixels[y*640+x]=uint16_t(((x>=left+2 && x<left+6 && y>=top+2 && y<top+12)?64:700)<<6);
     }
+    }
     s.source.data=reinterpret_cast<const uint8_t*>(s.pixels.data());s.source.dataBytes=s.pixels.size()*2;
-    s.source.width=640;s.source.height=360;s.source.rowBytes=s.source.chromaRowBytes=1280;
+    s.source.width=s.mode==4?3840:640;s.source.height=s.mode==4?2160:360;
+    s.source.rowBytes=s.source.chromaRowBytes=s.source.width*2;
     s.source.format=AnalysisLumaFormat::P210;s.source.generation=1;
     for(size_t i=0;i<2;++i) {
-        SubtitleBoxDetector detector;
+        SubtitleBoxDetector detector;if(s.mode==4)detector.SetNearBarDistance(200);
         s.observations[i]=SubtitleBoxLookahead::Measure(detector,s.source,ExtractActivePictureEvidence(s.source),Identity(i+1),false,{},11,21);
     }
     s.acquired=SubtitleBoxLookahead::Resolve(s.observations.data(),2,11,21);
@@ -73,6 +96,14 @@ __declspec(noinline) void Initialize(State& s) {
     s.working=s.current;Prepare(s,s.source,SubtitleCurrentCueInspectionSampleLimit);Consume(s,s.source,false);
     Require(s.decision.accepted.detected && s.guard.HasReference(),"current reference failed");s.cue=s.decision.accepted.cue;
     Require(s.pending.RememberAccepted(s.current,s.decision.accepted,s.source,41.708,250),"pending seed failed");
+    if(s.mode==4) {
+        SubtitleBarEvidence neutral;neutral.bottom=2160;
+        const auto masked=RevalidateSubtitleBarEvidence(s.source,neutral,0,1776,s.current.current.ink.get(),&s.current.current.text.bounds);
+        Require(!masked.bottomRevalidatedAtReference,"large cue must require envelope-only fallback");
+        s.geometry=s.compositor.Consume(s.decision.accepted,s.current);
+        s.cap=s.backing.Consume(s.source,s.current,s.decision.accepted,Identity(2),11,21,SubtitleBackingLipSampleLimit,&s.geometry);
+        Require(s.cap.valid,"large cue initial cap failed");
+    }
     s.raw=s.current;s.raw.available=false;s.raw.current.analyzed=false;s.raw.current.identity=Identity(3);
     if(s.mode==0) {s.guard.Reset();s.pending.Reset();}
     if(s.mode==3)for(int y=298;y<312;++y)for(int x=240;x<248;++x)s.pixels[y*640+x]=uint16_t(64<<6);
@@ -91,11 +122,22 @@ __declspec(noinline) DWORD Execute(State& s) {
         if(!prioritize || s.prepared.proof.RetainsCandidateFor(s.working.current.identity,11,21))
             verified=s.pending.Resolve(s.working,source,41.708,250);
         Consume(s,source,verified);
-        const bool expected=s.mode==1 || s.mode==2;
+        const bool expected=s.mode==1 || s.mode==2 || s.mode==4;
         Require(s.decision.accepted.detected==expected,"unexpected cue admission");
         if(expected)Require(s.decision.accepted.cue==s.cue,"cue identity changed");
         if(s.mode==1)Require(!s.decision.proof.valid && verified,"test must exercise incomplete pending/raw fallback");
         if(s.mode==2)Require(s.decision.proof.completeCurrentCue,"test must exercise COMPLETE current proof");
+        if(s.mode==4) {
+            Require(s.decision.proof.completeCurrentCue,"large cue must complete exact-plane fallback");
+            Require(s.decision.proof.verifiedSearch.top==1268 && s.decision.proof.verifiedSearch.bottom==2160,
+                "large cue must preserve configured companion coverage");
+            s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,&s.decision.proof);
+            s.cap=s.backing.Consume(source,s.working,s.decision.accepted,Identity(3),11,21,SubtitleBackingLipSampleLimit,&s.geometry,&s.decision.proof);
+            const char* reason="not-called";
+            s.applied=ApplyCurrentSubtitleBackingLip(s.geometry,s.cap,Identity(3),11,21,&reason);
+            Require(s.cap.valid && std::strcmp(reason,"lip-current-cleanup-applied")==0,"large cue current cap was not applied");
+            Require(!budget.exhausted && budget.used<SubtitleCurrentCueFrameSampleLimit,"large cue exceeded shared budget");
+        }
         std::cout<<"attempt="<<attempt<<" detected="<<s.decision.accepted.detected<<" proof="<<s.decision.proof.reason
             <<" tracker="<<s.tracker.DecisionReason()<<" reads="<<budget.used<<std::endl;
     }
@@ -116,7 +158,7 @@ int wmain(int argc,wchar_t** argv) {
     struct Redirect {std::streambuf* previous=std::cout.rdbuf();~Redirect(){std::cout.rdbuf(previous);}} redirect;
     if(argc>1) {log.open(argv[1],std::ios::out|std::ios::trunc);if(!log)return 8;std::cout.rdbuf(log.rdbuf());}
     std::cout<<"source="<<VP_SUBTITLE_STACK_SOURCE_COMMIT<<" build="<<__DATE__<<" "<<__TIME__<<std::endl;
-    const int first=argc>2?_wtoi(argv[2]):0,last=argc>2?first:3;
+    const int first=argc>2?_wtoi(argv[2]):0,last=argc>2?first:4;
     try {
         for(int mode=first;mode<=last;++mode) {
             auto state=std::make_unique<State>();state->mode=mode;Initialize(*state);
@@ -131,7 +173,7 @@ int wmain(int argc,wchar_t** argv) {
             DWORD exitCode=10;GetExitCodeThread(thread,&exitCode);CloseHandle(thread);if(exitCode)return int(exitCode);
         }
         if(argc>2)std::cout<<"PASS mode="<<first<<std::endl;
-        else std::cout<<"PASS unavailable-reset incomplete-fallback complete-proof contradiction"<<std::endl;
+        else std::cout<<"PASS unavailable-reset incomplete-fallback complete-proof contradiction envelope-plane-fallback"<<std::endl;
     } catch(const std::exception& error) {std::cout<<"FAIL "<<error.what()<<std::endl;return 11;}
     return 0;
 }

@@ -161,8 +161,26 @@ public:
         SubtitleBarEvidence neutral;neutral.bottom=source.height;
         const auto bars=RevalidateSubtitleBarEvidence(currentSource,neutral,
             m_fromTop?plane:0,m_fromTop?source.height:plane,fresh.get(),&m_reference.text.bounds);
-        if(!(m_fromTop?bars.topRevalidatedAtReference:bars.bottomRevalidatedAtReference))
-            return finish("complete-cue-side-unproved");
+        bool cueSideProved=m_fromTop?bars.topRevalidatedAtReference:bars.bottomRevalidatedAtReference;
+        if(!cueSideProved && !budget.exhausted && budget.used<budget.limit &&
+            (!source.readBudget || !source.readBudget->exhausted)) {
+            // Display padding can cross the plane while every actual glyph
+            // line stays inside its bar. In that case the envelope activates
+            // an unnecessary owned-ink mask and can exhaust its mask limits.
+            // Preserve masked successes; retry only this all-bar case with an
+            // exact native edge, never a nearby glyph-supplied boundary jump.
+            const auto& envelope=m_reference.text.bounds;
+            bool allLinesInCueBar=m_reference.text.lineCount>0 && m_reference.text.lineCount<=3;
+            for(int i=0;i<m_reference.text.lineCount && allLinesInCueBar;++i) {
+                const auto& line=m_reference.text.lineBounds[i];
+                allLinesInCueBar=InRaster(line,source.width,source.height) &&
+                    (m_fromTop?line.bottom<=plane:line.top>=plane);
+            }
+            if(allLinesInCueBar && InRaster(envelope,source.width,source.height) &&
+                envelope.top<plane && envelope.bottom>plane)
+                cueSideProved=ProveCurrentSubtitleCueSidePlane(currentSource,plane,m_fromTop,65536).valid;
+        }
+        if(!cueSideProved)return finish("complete-cue-side-unproved");
         auto local=raw;
         const bool reusable=preview.available && raw.analyzed && !raw.analysisRefresh && !raw.pendingRefresh &&
             !raw.cadenceSkipped && CurrentWorkerAtReprovedCuePlane(raw,m_fromTop,plane) &&

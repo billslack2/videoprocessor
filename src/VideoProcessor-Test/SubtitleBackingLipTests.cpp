@@ -225,7 +225,211 @@ TEST_CLASS(SubtitleBackingLipTests) {
         g=FitSubtitleToVisiblePicture(g,{0,384,3840,1776},15);
         return ApplySubtitleTextReduction(g,reduction,padding,true,floating);
     }
+    // Heap-owned fixture drives the same Prepare -> optional pending -> Consume
+    // -> compositor -> current cap application ordering as the renderer.
+    struct EnvelopeCueState {
+        Frame frame;
+        AnalysisLumaSource source;
+        ActivePictureBounds base{0,384,3840,1776,3840,2160};
+        std::array<SubtitleBoxObservation,2> observed;
+        SubtitleBoxPreview current,working;
+        SubtitleCueContinuationGuard guard;
+        SubtitleBoxPresentation tracker;
+        SubtitlePendingMeasurementGuard pending;
+        SubtitleCutPastePresentation compositor;
+        SubtitleBackingLipContinuity backing;
+        PreparedCurrentSubtitleCue prepared;
+        CurrentSubtitleCueDecision decision;
+        SubtitleCutPasteGeometry geometry,applied;
+        CurrentSubtitleBackingLipProof cap;
+        SubtitleBoxRect expected;
+        const char* applicationReason="not-called";
+        size_t reads=0;bool exhausted=false;
+        uint64_t cue=0;
+        explicit EnvelopeCueState(bool top):frame(6,Format::P210,top){}
+    };
+    static void DrawEnvelopeCue(EnvelopeCueState& s,int glyphs=26,int firstY=1778,int pictureDepth=30) {
+        s.expected=WideCaptionAndLip(s.frame,glyphs,pictureDepth);
+        s.frame.Fill({0,1776,3840,2160},64);
+        const int left=(3840-((glyphs-1)*78+48))/2;
+        for(int row=0;row<2;++row)for(int n=0;n<glyphs;++n) {
+            const int x=left+n*78,y=row?1886:firstY;
+            s.frame.Fill({x,y,x+48,y+66},700);
+            s.frame.Fill({x+12,y+12,x+36,y+54},64);
+        }
+    }
+    static void AcquireEnvelopeCue(EnvelopeCueState& s,int distance) {
+        s.source=s.frame.Source();
+        for(size_t i=0;i<2;++i) {
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(distance);
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(i+1);shared.bounds=s.base;
+            s.observed[i]=SubtitleBoxLookahead::Measure(detector,s.source,{},Identity(i+1),false,{},7,8,shared);
+            Assert::IsTrue(s.observed[i].text.detected);
+        }
+        s.working=SubtitleBoxLookahead::Resolve(s.observed.data(),2,7,8);
+        PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,s.source,s.base,true,250,41.708);
+        ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,s.source,s.base,true,250,41.708,s.prepared);
+        s.current=SubtitleBoxLookahead::Resolve(&s.observed[1],1,7,8);s.working=s.current;
+        PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,s.source,s.base,true,250,41.708);
+        ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,s.source,s.base,true,250,41.708,s.prepared);
+        Assert::IsTrue(s.decision.accepted.detected && s.guard.HasReference());s.cue=s.decision.accepted.cue;
+        Assert::IsTrue(s.pending.RememberAccepted(s.current,s.decision.accepted,s.source,41.708,250,&s.tracker.AcceptedCueSeedCertificate()));
+        s.geometry=s.compositor.Consume(s.decision.accepted,s.current);
+        s.cap=s.backing.Consume(s.source,s.current,s.decision.accepted,Identity(2),7,8,SubtitleBackingLipSampleLimit,&s.geometry);
+    }
+    static void RunEnvelopeCue(EnvelopeCueState& s,uint64_t sequence,
+        size_t inspectionLimit=SubtitleCurrentCueInspectionSampleLimit,
+        size_t frameLimit=SubtitleCurrentCueFrameSampleLimit) {
+        s.working=MissingCurrentWorker(s.current,sequence);
+        // No unrelated shared hint may authorize the local fallback.
+        s.working.current.sharedPicture={};s.working.current.sharedPicture.required=true;
+        AnalysisLumaReadBudget budget{frameLimit};auto source=s.source;source.readBudget=&budget;
+        PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708,inspectionLimit);
+        bool pending=false;
+        if(s.prepared.proof.RetainsCandidateFor(Identity(sequence),7,8))pending=s.pending.Resolve(s.working,source,41.708,250);
+        ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared,pending);
+        s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,&s.decision.proof);
+        s.cap=s.backing.Consume(source,s.working,s.decision.accepted,Identity(sequence),7,8,
+            SubtitleBackingLipSampleLimit,&s.geometry,&s.decision.proof);
+        s.applied=ApplyCurrentSubtitleBackingLip(s.geometry,s.cap,Identity(sequence),7,8,&s.applicationReason);
+        s.reads=budget.used;s.exhausted=budget.exhausted;
+    }
 public:
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackKeepsCurrentTwoLineCueAndAppliedCap) {
+        for(bool top:{false,true})for(int distance:{20,200}) {
+            auto s=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*s);AcquireEnvelopeCue(*s,distance);
+            const int plane=top?384:1776;const auto& text=s->current.current.text;
+            Assert::IsTrue(text.bounds.top<plane && text.bounds.bottom>plane);
+            for(int i=0;i<text.lineCount;++i)Assert::IsTrue(top?text.lineBounds[i].bottom<=plane:text.lineBounds[i].top>=plane);
+            SubtitleBarEvidence neutral;neutral.bottom=2160;
+            const auto masked=RevalidateSubtitleBarEvidence(s->source,neutral,top?plane:0,top?2160:plane,s->current.current.ink.get(),&text.bounds);
+            Assert::IsFalse(top?masked.topRevalidatedAtReference:masked.bottomRevalidatedAtReference);
+            for(uint64_t sequence=3;sequence<=10;++sequence) {
+                RunEnvelopeCue(*s,sequence);
+                Assert::IsTrue(s->decision.proof.completeCurrentCue && s->decision.accepted.detected);
+                Assert::AreEqual(s->cue,s->decision.accepted.cue);
+                const auto expectedSearch=top?SubtitleBoxRect{0,0,3840,distance==20?712:892}:
+                    SubtitleBoxRect{0,distance==20?1448:1268,3840,2160};
+                Assert::IsTrue(Same(s->decision.proof.verifiedSearch,expectedSearch));
+                Assert::IsTrue(s->cap.valid && Same(s->cap.cleanup,s->expected));
+                Assert::IsTrue(std::strcmp(s->applicationReason,"lip-current-cleanup-applied")==0);
+                Assert::IsTrue(Same(s->applied.generatedCleanup,s->expected));
+                AssertGeometryExceptCleanup(s->geometry,s->applied);
+                Assert::IsFalse(s->exhausted);Assert::IsTrue(s->reads<SubtitleCurrentCueFrameSampleLimit);
+            }
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackRejectsChangedCurrentPixelsAndLostPlane) {
+        for(bool top:{false,true})for(int fault=0;fault<5;++fault) {
+            auto s=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*s);AcquireEnvelopeCue(*s,200);
+            const int left=(3840-(25*78+48))/2;
+            if(fault==0)s->frame.Fill({0,1768,3840,1776},64); // no boundary contrast
+            if(fault==1)s->frame.Fill({0,1774,3840,1776},64); // nearby edge is not this exact plane
+            if(fault==2)s->frame.Fill({left,1778,left+48,1844},64);
+            if(fault==3)s->frame.Fill({0,1788,3840,1792},700);
+            if(fault==4){s->frame.Fill({0,1788,3840,1792},700);s->frame.Chroma({0,1788,3840,1792},200,800);}
+            RunEnvelopeCue(*s,3);
+            Assert::IsFalse(s->decision.proof.valid || s->decision.accepted.detected || s->cap.valid);
+            Assert::IsTrue(std::strcmp(s->applicationReason,"lip-application-unavailable")==0);
+            Assert::IsFalse(s->applied.generatedCleanup.Valid());
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackRejectsThinBarGlyphsMasqueradingAsBoundary) {
+        // The upper mirror fits the existing acquisition limit. Its one/two-row
+        // native stroke fools the broad nine-row max-jump sampler after the
+        // actual picture boundary disappears; exact-row fallback must reject.
+        for(int stroke:{1,2})for(int distance:{20,200}) {
+            auto s=std::make_unique<EnvelopeCueState>(true);
+            s->expected=WideCaptionAndLip(s->frame,26,30);s->frame.Fill({0,1776,3840,2160},64);
+            const int left=(3840-(25*78+48))/2;
+            for(int row=0;row<2;++row)for(int n=0;n<26;++n) {
+                const int x=left+n*78,y=1776+row*108;
+                s->frame.Fill({x,y,x+48,y+66},700);s->frame.Fill({x+12,y+stroke,x+36,y+54},64);
+            }
+            AcquireEnvelopeCue(*s,distance);
+            for(int i=0;i<s->current.current.text.lineCount;++i)Assert::IsTrue(s->current.current.text.lineBounds[i].bottom<=384);
+            s->frame.Fill({0,1752,3840,1776},64);
+            SubtitleBarEvidence neutral;neutral.bottom=2160;
+            const auto masked=RevalidateSubtitleBarEvidence(s->source,neutral,384,2160,
+                s->current.current.ink.get(),&s->current.current.text.bounds);
+            const auto unmasked=RevalidateSubtitleBarEvidence(s->source,neutral,384,2160);
+            Assert::IsFalse(masked.topRevalidatedAtReference);
+            Assert::IsTrue(unmasked.topRevalidatedAtReference,L"Control must distinguish the unsafe direct-unmask shortcut.");
+            Assert::IsFalse(ProveCurrentSubtitleCueSidePlane(s->source,384,true,65536).valid);
+            RunEnvelopeCue(*s,3);
+            Assert::IsFalse(s->decision.proof.valid || s->decision.accepted.detected || s->cap.valid);
+            Assert::IsFalse(s->applied.generatedCleanup.Valid());
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackKeepsGlyphAndBackingAuthoritiesSeparate) {
+        for(bool top:{false,true}) {
+            auto s=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*s);AcquireEnvelopeCue(*s,200);
+            const int left=(3840-(25*78+48))/2;
+            s->frame.Fill({left+200,1750,left+500,1760},300); // a current hole in the finite cap
+            RunEnvelopeCue(*s,3);
+            Assert::IsTrue(s->decision.proof.completeCurrentCue && s->decision.accepted.detected);
+            Assert::AreEqual(s->cue,s->decision.accepted.cue);
+            Assert::IsFalse(s->cap.valid || s->applied.generatedCleanup.Valid());
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackCannotUsePictureSideTouchingGlyphsAsPlane) {
+        for(bool top:{false,true}) {
+            auto s=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*s,18,1710,96);AcquireEnvelopeCue(*s,200);
+            const int plane=top?384:1776;bool allBar=true;
+            for(int i=0;i<s->current.current.text.lineCount;++i) {
+                const auto& line=s->current.current.text.lineBounds[i];
+                Assert::IsFalse(line.top<plane && line.bottom>plane);
+                allBar&=top?line.bottom<=plane:line.top>=plane;
+            }
+            Assert::IsFalse(allBar);
+            s->frame.Fill({0,1746,3840,1776},64);
+            const int left=(3840-(17*78+48))/2;
+            for(int n=0;n<18;++n){const int x=left+n*78;s->frame.Fill({x,1710,x+48,1776},700);s->frame.Fill({x+12,1722,x+36,1764},64);}
+            // A glyph can provide an exact row jump; mixed placement must veto
+            // the fallback even if the standalone geometric sampler accepts it.
+            Assert::IsTrue(ProveCurrentSubtitleCueSidePlane(s->source,plane,top,65536).valid);
+            RunEnvelopeCue(*s,3);
+            Assert::IsFalse(s->decision.proof.valid || s->decision.accepted.detected || s->cap.valid);
+            Assert::IsFalse(s->applied.generatedCleanup.Valid());
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackPreservesMaskedCrossingAndCompanionRejection) {
+        for(bool top:{false,true}) {
+            auto crossing=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*crossing,18,1758);AcquireEnvelopeCue(*crossing,20);
+            RunEnvelopeCue(*crossing,3);
+            Assert::IsTrue(crossing->decision.proof.completeCurrentCue && crossing->decision.accepted.detected);
+            const int plane=top?384:1776;bool straddles=false;
+            for(int i=0;i<crossing->current.current.text.lineCount;++i){const auto& line=crossing->current.current.text.lineBounds[i];straddles|=line.top<plane && line.bottom>plane;}
+            Assert::IsTrue(straddles);
+            auto changed=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*changed);AcquireEnvelopeCue(*changed,20);
+            // This nearer companion is inside both the configured scan AND
+            // the original anchor's bounded association distance.
+            const int left=(3840-(25*78+48))/2;
+            changed->frame.Fill({left-96,1618,left+25*78+48+96,1776},64);
+            for(int n=0;n<26;++n){const int x=left+n*78;changed->frame.Fill({x,1630,x+48,1696},700);changed->frame.Fill({x+12,1642,x+36,1684},64);}
+            RunEnvelopeCue(*changed,3);
+            Assert::IsFalse(changed->decision.proof.valid || changed->decision.accepted.detected || changed->cap.valid);
+            Assert::IsFalse(changed->applied.generatedCleanup.Valid());
+        }
+    }
+    TEST_METHOD(EnvelopeOnlyPlaneFallbackBudgetUnknownCannotRenewOrApplyAndRecovers) {
+        for(bool top:{false,true})for(bool global:{false,true}) {
+            auto s=std::make_unique<EnvelopeCueState>(top);DrawEnvelopeCue(*s);AcquireEnvelopeCue(*s,200);
+            for(uint64_t sequence=3;sequence<=10;++sequence) {
+                RunEnvelopeCue(*s,sequence,global?SubtitleCurrentCueInspectionSampleLimit:80000,
+                    global?80000:SubtitleCurrentCueFrameSampleLimit);
+                Assert::IsTrue(std::strcmp(s->decision.proof.reason,"complete-sample-budget")==0);
+                Assert::IsFalse(s->decision.proof.valid || s->decision.accepted.detected || s->cap.valid);
+                Assert::IsTrue(s->decision.proof.candidateRetained && s->guard.HasReference());
+                Assert::IsTrue(SameAnalysisFrameIdentity(Identity(2),s->guard.LastVerifiedIdentity()));
+                Assert::IsFalse(s->applied.generatedCleanup.Valid());Assert::AreEqual(global,s->exhausted);
+            }
+            RunEnvelopeCue(*s,11);
+            Assert::IsTrue(s->decision.proof.completeCurrentCue && s->decision.accepted.detected);
+            Assert::AreEqual(s->cue,s->decision.accepted.cue);
+            Assert::IsTrue(std::strcmp(s->applicationReason,"lip-current-cleanup-applied")==0);
+        }
+    }
     TEST_METHOD(PreparedCurrentCuePriorityKeepsWideBackingInsideSharedFrameBudget) {
         for(const auto shape:{std::pair<int,int>{36,54},{34,66}})for(bool prioritize:{false,true}) {
             Frame frame(6,Format::P210);const auto expected=WideSingleLineAndLip(frame,shape.first,shape.second);

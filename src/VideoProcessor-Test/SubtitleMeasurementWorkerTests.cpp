@@ -173,7 +173,7 @@ public:
         const auto detail=L"Native1MiB stack regression failed; preserved log: "+std::wstring(logPath);
         Assert::IsTrue(wait==WAIT_OBJECT_0,detail.c_str());
         Assert::IsTrue(exitCode==0,detail.c_str());
-        Assert::IsTrue(contents.str().find("PASS unavailable-reset incomplete-fallback complete-proof contradiction")!=std::string::npos,
+        Assert::IsTrue(contents.str().find("PASS unavailable-reset incomplete-fallback complete-proof contradiction envelope-plane-fallback")!=std::string::npos,
             L"Child exited without completing all production stack paths.");
         DeleteFileW(logPath);
 #else
