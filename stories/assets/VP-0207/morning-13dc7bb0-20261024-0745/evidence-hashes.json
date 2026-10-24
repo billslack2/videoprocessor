@@ -1,0 +1,63 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedReceipts": [
+    {
+      "file": "beta.json",
+      "sha256": "1305E6A9833FBAB953FFA0E7627374F156DE21B65372E7B62ACB3103C40600D7",
+      "bytes": 171
+    },
+    {
+      "file": "morning-event-review.txt",
+      "sha256": "3E2CDA55FFE1AAABE01140B4C337165E530474B044E7DD27CB691B0F056916F8",
+      "bytes": 6004
+    },
+    {
+      "file": "morning-results.txt",
+      "sha256": "3CFA1BCBB4B8227551CCC6EE85D4735BE5D266A838B927F326EADEA232495A50",
+      "bytes": 1834
+    },
+    {
+      "file": "observation-summary.json",
+      "sha256": "078EF2FE1ABCEA6C3C2F1C6390119D04A466F85C27977DBB389DC3DE7BA3FA3E",
+      "bytes": 8851
+    },
+    {
+      "file": "pr-status.json",
+      "sha256": "65F5D475ED97DA3B8A31219A5D23D759D5B812A707A84CC479E20EBF5D595654",
+      "bytes": 248
+    },
+    {
+      "file": "provenance.json",
+      "sha256": "F59B04100184679769283CCE3B0D2F15C1D9EEBCB61CC73F66F698F9AED88CD5",
+      "bytes": 1975
+    },
+    {
+      "file": "runtime-health.json",
+      "sha256": "56F10A3970AD320460EA393C39FE6E98E9399E46AF7BFCFC7D36FEF4860929D4",
+      "bytes": 1153
+    },
+    {
+      "file": "summary.txt",
+      "sha256": "6A8DC956D2B40023F1692ED3987B297A177758934ACF22BBC3A1A980A3D9E077",
+      "bytes": 3365
+    }
+  ],
+  "localEvidence": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\runtime-observation.log",
+      "sha256": "B2BA3FCA94519FD530B32F71D8BDB426ACD4400EB8C9B9EDFE2C27C8CBA0E35C",
+      "bytes": 145787485
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\observation.json",
+      "sha256": "577899585EF9FBBD0F76B44CF27AADC05837027F349A9CC120FF60453BEACE87",
+      "bytes": 194308
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\observed-VideoProcessor.state",
+      "sha256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "bytes": 212
+    }
+  ],
+  "scope": "New morning evidence is unresolved; no visual acceptance or production changes."
+}

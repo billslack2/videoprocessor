@@ -1,0 +1,13 @@
+VideoProcessor overnight results — October 24
+
+Test build 13dc7bb0 is installed, with matching x64 Release host and both renderers. It passed 1,964 selected native/GPU tests. Your configuration file is unchanged.
+
+The team reproduced and fixed redundant sampling exhausting the inspector on identical stationary Ben-Hur frames, lost private subtitle state after incomplete work, repeated-frame proof handling, reused GPU packet metadata mismatch, and finite backing/edge cases. An intermediate candidate exposed a stack overflow; it was rolled back and repaired before the current build. These findings do not establish that every reported flash had the same cause.
+
+Quiet overnight observation: 03:19:20–07:42:59, 7,902 successful sampled backing checks, with no logged subtitle-loss or geometry events. The current process stayed alive through 07:46:30, over four hours. This was stationary matched-refresh observation, not visual acceptance.
+
+A remaining problem appeared in the morning logs: during display-transition/backlog recovery at 07:43:20, pending proof expired and subtitle output was logged as lost, then reacquired with a 166.8 ms nominal gap. A similar loss occurred at 07:43:12–13. These are unresolved logged gaps; no captured pixels establish their visual duration or whether they are the earlier Ben-Hur failure. We have not declared the flicker fixed.
+
+Later profile/renderer changes are recorded separately. The last saved subtitle profile is Classic. The team did not change settings or restart playback during this morning review.
+
+PR #197 remains draft and unmerged. Moving Ben-Hur replay, physical refresh mismatch and HDR output still need visual acceptance. The new recovery gaps need a focused reproduction before any further safe code change. Full evidence is preserved under VP-0207.

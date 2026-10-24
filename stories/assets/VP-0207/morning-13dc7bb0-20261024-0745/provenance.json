@@ -1,0 +1,51 @@
+{
+  "inputs": [
+    {
+      "sha256": "b2ba3fca94519fd530b32f71d8bdb426acd4400eb8c9b9edfe2c27c8cba0e35c",
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\runtime-observation.log"
+    },
+    {
+      "sha256": "577899585ef9fbbd0f76b44cf27aadc05837027f349a9cc120ff60453beace87",
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\observation.json"
+    },
+    {
+      "sha256": "56f10a3970ad320460ea393c39fe6e98e9399e46af7bfcfc7d36fef4860929d4",
+      "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\runtime-health.json"
+    },
+    {
+      "sha256": "4467472b8ff7925138f5f0cac0fd147e777ea36bb9160e54a455a848294b6875",
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h"
+    },
+    {
+      "sha256": "61b7e9c4439f35e4eea4bd319ebba89cf02ea931310a73dbf3f3271b238170fa",
+      "path": "E:\\codex\\videoprocessor\\subtitle-current-cap-fix-20261023\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp"
+    }
+  ],
+  "source_config_runtime_changed": false,
+  "log_line_references": [
+    "386170",
+    "386223",
+    "387140-387193",
+    "387636-387819",
+    "387889",
+    "388131-389735",
+    "389762",
+    "392117",
+    "392595-394283",
+    "397684-398135"
+  ],
+  "source_line_references": {
+    "SubtitleBoxLookahead": "3053-3114",
+    "LibplaceboVideoRenderer": "13725-13743,13905-13958,14083-14126,14250-14275,19060-19092"
+  },
+  "schema": 1,
+  "source_clean": true,
+  "report": {
+    "sha256": "3e2cda55ffe1aaabe01140b4c337165e530474b044e7dd27cb691b0f056916f8",
+    "path": "E:\\codex\\diagnostics\\vp0207-morning-20261024-0745\\morning-event-review.txt"
+  },
+  "tests_run": false,
+  "source_commit": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "created_at": "2026-10-24T07:50:49.0636435-04:00",
+  "kind": "Read-only preserved-log triage; no visual qualification or executed regression"
+}

@@ -1,0 +1,29 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "pid": 76388,
+  "start": "2026-10-24T03:18:50.9033622-04:00",
+  "observedAt": "2026-10-24T07:46:30.9657088-04:00",
+  "aliveSeconds": 16060.0623466,
+  "responding": true,
+  "crashOrHangEvents": 0,
+  "events": null,
+  "modules": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "285402F8942212BC4670405BB644330BD147F90BB976090D84F43E96A40C92E9"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2A5B3F064606E0DA3F0B47CC8529D1759DB4F83C306ABA28F1CB5D6320C53101"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "C7681961BA272A90F310992F95251AAAD3A4631A5984AF2CC696D81FABCBB345"
+    }
+  ],
+  "configurationUnchanged": true,
+  "stateUnchanged": false,
+  "configHash": "9DE827D9AA6EEA05D305FF64B3265F160275F32FEF6CFE16038A6F9C54FBE3E7",
+  "stateHash": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+  "logHash": "B2BA3FCA94519FD530B32F71D8BDB426ACD4400EB8C9B9EDFE2C27C8CBA0E35C"
+}
