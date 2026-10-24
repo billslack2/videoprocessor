@@ -7,10 +7,31 @@
 constexpr size_t SubtitleCurrentCueInspectionSampleLimit=393216;
 constexpr size_t SubtitleCurrentCueFrameSampleLimit=524288;
 
+// Diagnostic only: exact native samples for the first rejected unowned point.
+// Never grants continuation or changes the existing contradiction decision.
+struct SubtitleCuePixelMismatch {
+    bool valid=false;
+    int x=0,y=0;
+    AnalysisLumaSample prior,current;
+    bool priorInk=false,currentInk=false,priorBlack=false,currentBlack=false;
+    int inkFloor=0,inkU=0,inkV=0,blackLimit=0;
+    bool inLine=false,inSourcePanel=false,inCueBar=false,inPicture=false;
+    ActivePictureFrameIdentity templateIdentity,currentIdentity;
+};
+
 // Current-pixel continuation only. This is not a detector or AR measurement.
 struct SubtitleCueContinuation {
     bool valid=false,oppositeBarUnavailable=false;
     bool completeCurrentCue=false,fromTopBar=false;
+    // An incomplete current inspection may retain private acquisition state.
+    // This is never permission to display or erase pixels on this source.
+    bool candidateRetained=false;
+    bool RetainsCandidateFor(const ActivePictureFrameIdentity& current,
+        uint64_t policy,uint64_t continuity) const {
+        return candidateRetained && !valid && !completeCurrentCue &&
+            SameAnalysisFrameIdentity(identity,current) &&
+            policyGeneration==policy && continuityGeneration==continuity;
+    }
     ActivePictureFrameIdentity identity, templateIdentity, previousIdentity;
     uint64_t policyGeneration=0, continuityGeneration=0;
     ActivePictureBounds physicalBase;

@@ -946,6 +946,130 @@ public:
         }
         Assert::IsTrue(found>20);Assert::IsTrue(reused>0);
     }
+    static void AssertSameCurrentGridEvidence(const SubtitleBoxResult& a,const SubtitleBoxResult& b,
+        const std::shared_ptr<const SubtitleInkSnapshot>& ai,
+        const std::shared_ptr<const SubtitleInkSnapshot>& bi) {
+        auto rect=[](const SubtitleBoxRect& x,const SubtitleBoxRect& y) {
+            Assert::IsTrue(x.left==y.left && x.top==y.top && x.right==y.right && x.bottom==y.bottom);
+        };
+        Assert::AreEqual(a.detected,b.detected);Assert::AreEqual(a.held,b.held);
+        Assert::AreEqual(a.workLimit,b.workLimit);Assert::AreEqual(a.lineCount,b.lineCount);
+        Assert::AreEqual(a.cue,b.cue);Assert::AreEqual(a.observations,b.observations);
+        Assert::AreEqual(a.revised,b.revised);Assert::AreEqual(a.capturePanelMeasured,b.capturePanelMeasured);
+        Assert::AreEqual(a.topSearchComplete,b.topSearchComplete);Assert::AreEqual(a.bottomSearchComplete,b.bottomSearchComplete);
+        Assert::AreEqual(a.configuredSearchComplete,b.configuredSearchComplete);
+        Assert::AreEqual(a.searchStep,b.searchStep);Assert::AreEqual(a.topSearchEnd,b.topSearchEnd);
+        Assert::AreEqual(a.bottomSearchStart,b.bottomSearchStart);
+        Assert::AreEqual(std::string(a.diagnosticReason),std::string(b.diagnosticReason));
+        Assert::AreEqual(a.diagnosticComponentCount,b.diagnosticComponentCount);
+        Assert::AreEqual(a.nearBarEligibilityMeasured,b.nearBarEligibilityMeasured);
+        Assert::AreEqual(a.nearBarEligible,b.nearBarEligible);
+        rect(a.bounds,b.bounds);rect(a.sourcePanel,b.sourcePanel);rect(a.provenSourcePanel,b.provenSourcePanel);
+        rect(a.capturePanel,b.capturePanel);rect(a.anchor,b.anchor);
+        Assert::IsTrue(a.signature==b.signature && a.anchorSignature==b.anchorSignature && a.lineSignatures==b.lineSignatures);
+        for(int line=0;line<3;++line) {
+            rect(a.lineBounds[line],b.lineBounds[line]);rect(a.linePanels[line],b.linePanels[line]);
+            rect(a.lineCapturePanels[line],b.lineCapturePanels[line]);
+            Assert::IsTrue(a.panelTopEdges[line].y==b.panelTopEdges[line].y &&
+                a.panelTopEdges[line].left==b.panelTopEdges[line].left &&
+                a.panelTopEdges[line].right==b.panelTopEdges[line].right &&
+                a.panelTopEdges[line].supportBasisPoints==b.panelTopEdges[line].supportBasisPoints);
+        }
+        Assert::AreEqual(bool(ai),bool(bi));
+        if(ai) {
+            Assert::IsTrue(ai->width==bi->width && ai->height==bi->height && ai->step==bi->step &&
+                ai->rawEvidenceComplete==bi->rawEvidenceComplete && ai->paletteValid==bi->paletteValid &&
+                ai->inkFloor==bi->inkFloor && ai->inkU==bi->inkU && ai->inkV==bi->inkV && ai->blackLimit==bi->blackLimit);
+            Assert::IsTrue(ai->sourceRows==bi->sourceRows && ai->rawInk==bi->rawInk &&
+                ai->ownedInk==bi->ownedInk && ai->blackBacking==bi->blackBacking);
+        }
+    }
+    TEST_METHOD(CurrentGridCacheMatchesNativeFormatsAndRemappedEdgeRows) {
+        unsigned detected=0;
+        for(int format=0;format<4;++format)for(bool upper:{false,true})for(int phase=0;phase<4;++phase) {
+            auto small=Frame();PanelToBar(small,180,298,465);Text(small,195,305,18);
+            if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(small[y*W+x],small[(H-1-y)*W+x]);
+            const bool p210=format==1 || format==2;
+            auto native=ScaledFixture(small,6,p210);auto source=ScaledSource(native,6,p210);
+            const int top=270+phase,bottom=1890+phase;
+            // The nominal grid row and mandatory native edge row deliberately
+            // differ. Reusing mutable scratch or sy/step alone is incorrect.
+            for(int y:{((top-1)/4)*4,((bottom+3)/4)*4})for(int x=0;x<96;++x)
+                native[size_t(y)*source.width+x]=uint16_t(700<<6);
+            if(format==2)source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+            std::vector<uint8_t> rgb;
+            if(format==3) {
+                rgb.resize(size_t(source.width)*source.height*4);
+                for(int y=0;y<source.height;++y)for(int x=0;x<source.width;++x) {
+                    const size_t i=(size_t(y)*source.width+x)*4;
+                    rgb[i]=rgb[i+1]=rgb[i+2]=uint8_t(native[size_t(y)*source.width+x]>>8);rgb[i+3]=255;
+                }
+                source.data=rgb.data();source.dataBytes=rgb.size();source.rowBytes=source.width*4;
+                source.format=AnalysisLumaFormat::NativeRgb;source.encoding=VideoFrameEncoding::BGRA_8BIT;
+            }
+            SubtitleBoxDetector direct,cached;direct.SetNearBarDistance(20);cached.SetNearBarDistance(20);
+            direct.SetOptimizationMode(phase%3);cached.SetOptimizationMode(phase%3);
+            const auto a=direct.Analyze(source,top,bottom,1,1,true);
+            AnalysisLumaReadBudget budget{2000000};auto bounded=source;bounded.readBudget=&budget;
+            const auto b=cached.Analyze(bounded,top,bottom,1,1,true);
+            Assert::IsFalse(budget.exhausted);detected+=a.detected;
+            AssertSameCurrentGridEvidence(a,b,direct.InkSnapshot(),cached.InkSnapshot());
+        }
+        Assert::IsTrue(detected>0,L"Parity includes detected glyphs, not only rejected frames.");
+    }
+    TEST_METHOD(CurrentGridCacheDoesNotClaimUnscannedSideOrExpandedPanelRows) {
+        for(bool upper:{false,true})for(bool panel:{false,true}) {
+            auto small=Frame();
+            if(panel) {PanelToBar(small,180,245,465);Text(small,195,250,18);Text(small,195,310,18);}
+            else {Text(small,195,320,18);Text(small,195,8,18);}
+            if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(small[y*W+x],small[(H-1-y)*W+x]);
+            auto native=ScaledFixture(small,6,true);auto source=ScaledSource(native,6,true);
+            const int top=upper?270:0,bottom=upper?source.height:1890;
+            SubtitleBoxDetector direct,cached;
+            const auto a=direct.Analyze(source,top,bottom,1,1,true);
+            AnalysisLumaReadBudget budget{2000000};auto bounded=source;bounded.readBudget=&budget;
+            const auto b=cached.Analyze(bounded,top,bottom,1,1,true);
+            Assert::IsFalse(budget.exhausted);
+            AssertSameCurrentGridEvidence(a,b,direct.InkSnapshot(),cached.InkSnapshot());
+            Assert::AreEqual(upper,b.topSearchComplete);Assert::AreEqual(!upper,b.bottomSearchComplete);
+        }
+    }
+    TEST_METHOD(CurrentGridCacheDoesNotSurviveSourceOrAnalysisChanges) {
+        SubtitleBoxDetector direct,cached;
+        direct.SetNearBarDistance(20);cached.SetNearBarDistance(20);
+        for(int frame=0;frame<6;++frame) {
+            auto small=Frame();
+            if(frame%3==0) {PanelToBar(small,180,298,465);Text(small,195,305,18);}
+            if(frame%3==1) {PanelToBar(small,230,291,460);Text(small,240,298,12);}
+            auto native=ScaledFixture(small,6,false);auto source=ScaledSource(native,6,false);
+            source.generation=frame<3?1:2;
+            AnalysisLumaReadBudget budget{2000000};auto bounded=source;bounded.readBudget=&budget;
+            const bool configured=frame%2==0;
+            const auto a=direct.Analyze(source,270,1890,frame+1,frame<4?1:2,configured);
+            const auto b=cached.Analyze(bounded,270,1890,frame+1,frame<4?1:2,configured);
+            Assert::IsFalse(budget.exhausted);
+            AssertSameCurrentGridEvidence(a,b,direct.InkSnapshot(),cached.InkSnapshot());
+            const size_t used=budget.used;
+            const auto repeat=cached.Analyze(bounded,270,1890,frame+1,frame<4?1:2,configured);
+            Assert::AreEqual(used,budget.used,L"A repeated source does not respend its completed scan.");
+            AssertSameCurrentGridEvidence(b,repeat,cached.InkSnapshot(),cached.InkSnapshot());
+        }
+    }
+    TEST_METHOD(CurrentGridCacheCannotCompleteAfterNativeReadBudgetExhaustion) {
+        auto small=Frame();PanelToBar(small,180,298,465);Text(small,195,305,18);
+        auto native=ScaledFixture(small,6,true);auto source=ScaledSource(native,6,true);
+        // Enough for all original rows, but not fresh off-grid/native checks.
+        const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
+        const int rows=(source.height+step-1)/step,depth=(std::max)(24,rows/7);
+        const int bottom=(source.height<1890)?rows:(1890+step-1)/step;
+        AnalysisLumaReadBudget budget{size_t((source.width+step-1)/step)*(rows-bottom+depth)};
+        source.readBudget=&budget;SubtitleBoxDetector detector;
+        const auto result=detector.Analyze(source,0,1890,1,1,true);
+        Assert::IsTrue(budget.exhausted && budget.used==budget.limit);
+        Assert::IsTrue(result.workLimit && !result.detected && !result.configuredSearchComplete);
+    }
     TEST_METHOD(LegacyOptimizationIgnoredAndParserAcceptsOnlyNamedModes) {
         for(const char* value:{"baseline","buffers","shared_samples","fast","3","true"}) {
             char directory[MAX_PATH]{},path[MAX_PATH]{};GetTempPathA(MAX_PATH,directory);GetTempFileNameA(directory,"vpo",0,path);

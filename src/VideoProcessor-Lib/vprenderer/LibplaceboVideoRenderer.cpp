@@ -4467,6 +4467,8 @@ struct LibplaceboVideoRenderer::Impl
     SubtitleCueContinuationGuard subtitleCueContinuation;
     std::string subtitleContinuationLogReason;
     uint64_t subtitleContinuationLogTick=0;
+    unsigned subtitlePixelMismatchLogCount=0;
+    ActivePictureFrameIdentity subtitlePixelMismatchLogIdentity;
     bool subtitleContinuationStateLogged=false;
     bool subtitleContinuationStateLastBase=false,subtitleContinuationStateLastReference=false;
     std::string subtitleContinuationStateLastSeedReason;
@@ -13844,6 +13846,23 @@ struct LibplaceboVideoRenderer::Impl
                 pendingCurrentPixelsVerified,
                 subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                 subtitleBacklogRetirementOnly);
+            const auto& mismatch=subtitleCueContinuation.LastPixelMismatch();
+            if(mismatch.valid && subtitlePixelMismatchLogCount<64 &&
+                SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitleIdentity) &&
+                !SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitlePixelMismatchLogIdentity)) {
+                ++subtitlePixelMismatchLogCount;subtitlePixelMismatchLogIdentity=mismatch.currentIdentity;
+                const auto& before=mismatch.templateIdentity;const auto& now=mismatch.currentIdentity;
+                DebugLog::Log("SUBTITLE PIXEL CONTRADICTION: event=%u xy=%d,%d baseline_yuv=%u,%u,%u current_yuv=%u,%u,%u ink=%d/%d black=%d/%d palette=%d,%d,%d black_limit=%d region_line=%d panel=%d bar=%d picture=%d template=%llu/%llu/%llu/%llu current=%llu/%llu/%llu/%llu format=%llu domain=%llu viewport=%llu renderer=%llu",
+                    subtitlePixelMismatchLogCount,mismatch.x,mismatch.y,
+                    unsigned(mismatch.prior.luma),unsigned(mismatch.prior.chromaU),unsigned(mismatch.prior.chromaV),
+                    unsigned(mismatch.current.luma),unsigned(mismatch.current.chromaU),unsigned(mismatch.current.chromaV),
+                    mismatch.priorInk?1:0,mismatch.currentInk?1:0,mismatch.priorBlack?1:0,mismatch.currentBlack?1:0,
+                    mismatch.inkFloor,mismatch.inkU,mismatch.inkV,mismatch.blackLimit,
+                    mismatch.inLine?1:0,mismatch.inSourcePanel?1:0,mismatch.inCueBar?1:0,mismatch.inPicture?1:0,
+                    before.transportGeneration,before.acceptedSequence,before.sourceFrameNumber,before.captureTimestamp,
+                    now.transportGeneration,now.acceptedSequence,now.sourceFrameNumber,now.captureTimestamp,
+                    now.sourceFormatGeneration,now.analysisDomainKey,now.viewportGeneration,now.rendererGeneration);
+            }
             currentCueContinuation=cueDecision.proof;
             subtitleBoxResult=cueDecision.accepted;
             if(currentCueContinuation.templateIdentity.acceptedSequence) {
@@ -13865,7 +13884,10 @@ struct LibplaceboVideoRenderer::Impl
                         currentCueContinuation.searchStep,subtitleReadBudget.used);
                 }
             }
-            const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
+            // Invalid/incomplete tokens retain private placement candidates only.
+            // Every actual composition/cleanup consumer still requires valid proof.
+            const auto* cueContinuation=(currentCueContinuation.valid || currentCueContinuation.candidateRetained)?
+                &currentCueContinuation:nullptr;
             subtitlePreview=&currentSubtitlePreview;
 
             // State-only telemetry: no extra source scan or continuation attempt.

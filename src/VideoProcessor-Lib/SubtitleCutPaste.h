@@ -179,6 +179,11 @@ public:
         SubtitleBoxPadding requested,SubtitlePaddingPolicy scalePolicy={},
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
+        if(cueContinuation && !text.detected &&
+            cueContinuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_requested==requested && m_scalePolicy==scalePolicy)
+            return m_safe; // private margins survive; there is no displayed cue
         const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
             preview.policyGeneration,preview.continuityGeneration,text);
         if((!preview.available && !completeSource) || (!text.detected && !text.held) || !text.bounds.Valid()) {
@@ -564,6 +569,11 @@ public:
         SubtitleBoxPadding padding,int offset,bool floatBackground=false,
         const SubtitleCueContinuation* continuation=nullptr)
     {
+        if(continuation && !text.detected && !g.valid &&
+            continuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_padding==padding && m_offset==offset && m_float==floatBackground)
+            return {}; // retain only the private placement candidate
         const bool complete=continuation && continuation->MatchesSource(preview.current.identity,
             preview.policyGeneration,preview.continuityGeneration,text);
         if(!g.valid || !text.detected || (!preview.available && !complete) || preview.current.discontinuity) {
@@ -673,6 +683,13 @@ public:
         const SubtitleBoxRect* displayBounds=nullptr,
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
+        if(cueContinuation && !text.detected &&
+            cueContinuation->RetainsCandidateFor(preview.current.identity,preview.policyGeneration,preview.continuityGeneration) &&
+            m_geometry.valid && m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_gap==gap && m_relativeDisplay==(displayBounds!=nullptr)) {
+            m_backingReason="incomplete-current-inspection";
+            return {}; // never return cached erasure on an unverified source
+        }
         const bool completeSource=cueContinuation && cueContinuation->MatchesSource(preview.current.identity,
             preview.policyGeneration,preview.continuityGeneration,text);
         if (!text.detected || !text.bounds.Valid() || (!completeSource && (!preview.available ||

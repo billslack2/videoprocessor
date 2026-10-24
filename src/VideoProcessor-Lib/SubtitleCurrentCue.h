@@ -22,6 +22,19 @@ inline CurrentSubtitleCueDecision ConsumeCurrentSubtitleCue(
         preview.current.pendingRefresh || !preview.current.analyzed) {
         out.proof=guard.Prepare(preview,source,base,holdMs,frameMs);
     }
+    if(out.proof.RetainsCandidateFor(preview.current.identity,preview.policyGeneration,
+        preview.continuityGeneration)) {
+        if(presentation.RetainCandidateForIncompleteInspection(preview,out.proof.previousIdentity)) {
+            out.accepted=presentation.CurrentRawFallbackForIncompleteInspection(
+                preview,holdMs,frameMs,pendingPixelsVerified);
+            // Any displayed fallback is authorized solely by ordinary current
+            // raw admission. The invalid token retains caches only on blanks.
+            if(out.accepted.detected)out.proof.candidateRetained=false;
+            return out;
+        }
+        // A retained inspector cannot rebind itself to a different selection.
+        out.proof.candidateRetained=false;guard.Reset();
+    }
     // COMPLETE proof has already compared fresh current glyphs. A second
     // refresh would spend the same frame's budget without adding authority.
     if(!out.proof.valid)presentation.RefreshReferencePixels(preview,source);

@@ -1,21 +1,25 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCueContinuationProof.h>
+#include <SubtitleCueSidePlane.h>
 
 // Current complete source proof is independent of unrelated AR hints. Only
 // incomplete missing-edge evidence uses a non-renewing lease. Raw worker/AR
 // observations are never rewritten.
 class SubtitleCueContinuationGuard {
 public:
-    void Reset() { m_valid=false; m_reference={}; m_baseline.reset();m_acquiredInk.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
+    void Reset() { m_valid=false;m_incompleteCurrent=false; m_reference={}; m_baseline.reset();m_baselineNativeSamples.clear();m_currentNativeSamples.clear();m_acquiredInk.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
     bool HasReference() const { return m_valid; }
     bool NeedsCurrentPixelRevalidation(const SubtitleBoxPreview& preview) const {
-        return m_valid && (!preview.current.text.detected ||
+        return m_valid && (m_incompleteCurrent || !preview.current.text.detected ||
             !SubtitleBoxLookahead::SameContext(m_reference,preview.current) ||
+            !CurrentCueSide(preview.current,m_fromTop,m_fromTop?m_reference.pictureTop:m_reference.pictureBottom) ||
             !preview.current.sharedPicture.Matches(m_reference.sharedPicture));
     }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
+    // Retained through Reset; consumers must match currentIdentity before logging.
+    const SubtitleCuePixelMismatch& LastPixelMismatch() const { return m_lastPixelMismatch; }
     bool Remember(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const ActivePictureBounds& base,const AnalysisLumaSource& source) {
         const auto& c=preview.current;
@@ -30,10 +34,22 @@ public:
         if(!ValidSource(c,source))return reject("source-mismatch");
         if(!ValidBase(base,c.width,c.height))return reject("invalid-native-base");
         bool fromTop=false;
-        if(!CueSide(c.text,c.pictureTop,c.pictureBottom,fromTop) ||
-            !CurrentCueSide(c,fromTop,fromTop?c.pictureTop:c.pictureBottom))
+        if(!CueSide(c.text,c.pictureTop,c.pictureBottom,fromTop))
             return reject("cue-side-placement-unavailable");
-        if(!(fromTop?c.text.topSearchComplete:c.text.bottomSearchComplete))
+        const int plane=fromTop?c.pictureTop:c.pictureBottom;
+        const bool currentSide=CurrentCueSide(c,fromTop,plane);
+        // A nearby/reference coordinate may nominate an INTERNAL candidate,
+        // only after the exact current native plane is independently proved.
+        // It does not replace raw evidence or grant complete continuation.
+        const bool nominatedSide=c.barAuthority && c.barEvidence.available &&
+            !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge && plane>0 && plane<c.height &&
+            (fromTop?c.barEvidence.top==plane && !c.barEvidence.captionBackedTop &&
+                (c.barEvidence.topRevalidatedNearby || c.barEvidence.topRevalidatedAtReference):
+                c.barEvidence.bottom==plane && !c.barEvidence.captionBackedBottom &&
+                (c.barEvidence.bottomRevalidatedNearby || c.barEvidence.bottomRevalidatedAtReference));
+        if(!currentSide && !nominatedSide)return reject("cue-side-placement-unavailable");
+        if(!(fromTop?c.text.topSearchComplete:c.text.bottomSearchComplete) ||
+            (!currentSide && !CompleteOwnBarCoverage(c,fromTop,plane)))
             return reject("cue-side-search-incomplete");
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
@@ -45,6 +61,10 @@ public:
         }
         auto acceptedObservation=c;acceptedObservation.text=accepted;
         if(!SubtitleBoxLookahead::SameCue(c,acceptedObservation))return reject("accepted-cue-mismatch");
+        if(!currentSide) {
+            const auto ownPlane=ProveCurrentSubtitleCueSidePlane(source,plane,fromTop,65536);
+            if(!ownPlane.valid)return reject(ownPlane.reason);
+        }
         SubtitleBoxRect roi{};
         auto merge=[&](const SubtitleBoxRect& b) {
             if(!roi.Valid())roi=b;
@@ -62,17 +82,27 @@ public:
             merge(accepted.sourcePanel);
         }
         unsigned samples=0;const char* reason="not-eligible";
-        auto sampled=Sample(*c.ink,roi,source,65536,samples,reason);
+        std::vector<AnalysisLumaSample> nativeSamples;
+        auto sampled=Sample(*c.ink,roi,source,65536,samples,reason,&nativeSamples);
         if(!sampled)return reject(reason);
         // Acquisition grouping supplies ownership; pixels are freshly sampled.
         const size_t words=sampled->rawInk.size();
         if(c.ink->ownedInk.size()!=words)return reject("owned-grid-mismatch");
         for(size_t i=0;i<words;++i)sampled->ownedInk[i]=c.ink->ownedInk[i]&sampled->rawInk[i];
+        if(!currentSide) {
+            auto nativeCandidate=acceptedObservation;nativeCandidate.ink=sampled;
+            if(!SubtitleBoxLookahead::ConfidentSameInk(acceptedObservation,nativeCandidate))
+                return reject("candidate-current-glyphs-unproved");
+        }
+        m_baselineNativeSamples=std::move(nativeSamples);
         m_reference=acceptedObservation;m_reference.ink=sampled;
         m_baseline=sampled;m_acquiredInk=c.ink;m_fromTop=fromTop;m_base=base;m_roi=roi;m_last=c.identity;m_elapsed=0;m_missingStarted=false;m_valid=true;m_cached={};
         m_format=source.format;m_encoding=source.encoding;m_range=source.range;m_colorspace=source.colorspace;
         m_sourceGeneration=source.generation;
-        m_lastSeedReason="seeded";
+        // A nominated cold candidate has not earned any continuation lease.
+        // Its first continuation must complete the configured current scan.
+        m_incompleteCurrent=!currentSide;
+        m_lastSeedReason=currentSide?"seeded":"seeded-current-cue-side-plane";
         return true;
     }
     // Admission predicate only; current pixels still have to pass InspectCurrent.
@@ -113,10 +143,12 @@ public:
         const size_t startReads=0;
         const auto finish=[&](const char* reason) {
             out.samples=static_cast<unsigned>(currentSource.readBudget->used-startReads);
-            out.reason=currentSource.readBudget->exhausted?"complete-sample-budget":reason;return out;
+            out.reason=currentSource.readBudget->exhausted?"complete-sample-budget":reason;
+            out.candidateRetained=!out.valid && m_valid;
+            m_incompleteCurrent=out.candidateRetained;return out;
         };
         unsigned verifiedSamples=0;const char* reason="not-eligible";
-        auto fresh=Verify(raw,currentSource,maxSamples,verifiedSamples,reason);
+        auto fresh=Verify(raw,currentSource,maxSamples,verifiedSamples,reason,true);
         if(!fresh) {
             // Native contradiction ends ownership. Exhausted/incomplete work
             // retains only an unrendered candidate, never a cleanup lease.
@@ -177,7 +209,7 @@ public:
         out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
         auto fail=[&](const char* why) {out.reason=why;m_valid=false;m_cached=out;return out;};
         if(!m_valid)return out;
-        if(c.text.detected || !preview.available ||
+        if(m_incompleteCurrent || c.text.detected || !preview.available ||
             !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
             !c.sharedPicture.Matches(m_reference.sharedPicture))
             return InspectCurrent(preview,source,maxSamples);
@@ -279,6 +311,19 @@ private:
                 c.pictureBottom==plane && c.barEvidence.bottom==plane && !c.barEvidence.captionBackedBottom &&
                 !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby);
     }
+    // Candidate acquisition requires actual bar coverage, including all
+    // currently owned glyphs. A narrow worker pass can meet this while its
+    // configured picture/companion extension remains unread. That extension
+    // MUST pass CompleteCoverage in InspectCurrent before any output proof.
+    static bool CompleteOwnBarCoverage(const SubtitleBoxObservation& c,bool top,int plane) {
+        if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete || c.text.workLimit ||
+            !(top?c.text.topSearchComplete:c.text.bottomSearchComplete))return false;
+        const int step=SubtitleBoxDetector::SamplingStep(c.width,c.height);
+        if(c.text.searchStep!=step || c.ink->step!=step ||
+            c.ink->width!=(c.width+step-1)/step || c.ink->height!=(c.height+step-1)/step ||
+            c.ink->sourceRows.size()!=size_t(c.ink->height))return false;
+        return top?c.text.topSearchEnd>=plane:c.text.bottomSearchStart<=plane;
+    }
     static bool CompleteCoverage(const SubtitleBoxObservation& c,bool top) {
         if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete || !c.text.configuredSearchComplete ||
             !(top?c.text.topSearchComplete:c.text.bottomSearchComplete) || c.text.workLimit)return false;
@@ -310,9 +355,16 @@ private:
         return true;
     }
     std::shared_ptr<SubtitleInkSnapshot> Verify(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
-        size_t maxSamples,unsigned& samples,const char*& reason) const {
-        auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason);
+        size_t maxSamples,unsigned& samples,const char*& reason,bool completePictureInspection=false) const {
+        m_lastPixelMismatch={};
+        auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason,&m_currentNativeSamples);
         if(!fresh)return {};
+        size_t sampleIndex=0;
+        const int searchStep=SubtitleBoxDetector::SamplingStep(c.width,c.height);
+        const int searchRows=(c.height+searchStep-1)/searchStep;
+        const int searchDepth=(std::max)(24,searchRows/7)+(c.nearBarDistance+searchStep-1)/searchStep;
+        const int searchEdge=m_fromTop?(std::min)(c.height,((m_reference.pictureTop+searchStep-1)/searchStep+searchDepth)*searchStep):
+            (std::max)(0,((std::min)(searchRows-1,(m_reference.pictureBottom+searchStep-1)/searchStep)-searchDepth)*searchStep);
         for(int y=0;y<fresh->height;++y) {
             const int sy=fresh->sourceRows[size_t(y)];if(sy<m_roi.top || sy>=m_roi.bottom)continue;
             for(int x=(m_roi.left+fresh->step-1)/fresh->step;x<fresh->width && x*fresh->step<m_roi.right;++x) {
@@ -321,8 +373,38 @@ private:
                     const auto& b=m_reference.text.lineBounds[i];
                     line|=sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
                 }
-                if(!line && fresh->Get(x,y) && !m_baseline->Get(x,y)){reason="new-ink-outside-cue";return {};}
                 const auto& panel=m_reference.text.sourcePanel;
+                if(!line && fresh->Get(x,y) && !m_baseline->Get(x,y)) {
+                    const auto contains=[&](const SubtitleBoxRect& b) {
+                        return b.Valid() && sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
+                    };
+                    bool protectedSource=contains(panel) || contains(m_reference.text.bounds) ||
+                        contains(m_reference.text.capturePanel) || m_baseline->Get(x,y,true);
+                    for(int i=0;i<m_reference.text.lineCount;++i)
+                        protectedSource|=contains(m_reference.text.lineCapturePanels[i]);
+                    // Only a FULL configured inspection may judge an unrelated
+                    // picture point. It is outside every acquired extraction/
+                    // cleanup envelope and inside that inspection's own-side
+                    // scan. Bar ink, glyphs, backing and partial proofs stay strict.
+                    const bool deferPicture=completePictureInspection && !protectedSource &&
+                        sy>=m_reference.pictureTop && sy<m_reference.pictureBottom &&
+                        (m_fromTop?sy<searchEdge:sy>=searchEdge);
+                    if(deferPicture) {++sampleIndex;continue;}
+                    if(sampleIndex<m_baselineNativeSamples.size() && sampleIndex<m_currentNativeSamples.size()) {
+                        auto& d=m_lastPixelMismatch;d.valid=true;d.x=sx;d.y=sy;
+                        d.prior=m_baselineNativeSamples[sampleIndex];d.current=m_currentNativeSamples[sampleIndex];
+                        d.priorInk=m_baseline->Get(x,y);d.currentInk=fresh->Get(x,y);
+                        d.priorBlack=m_baseline->Black(x,y);d.currentBlack=fresh->Black(x,y);
+                        d.inkFloor=m_baseline->inkFloor;d.inkU=m_baseline->inkU;
+                        d.inkV=m_baseline->inkV;d.blackLimit=m_baseline->blackLimit;
+                        d.inLine=line;d.inSourcePanel=panel.Valid() && sx>=panel.left && sx<panel.right && sy>=panel.top && sy<panel.bottom;
+                        d.inCueBar=m_fromTop?sy<m_reference.pictureTop:sy>=m_reference.pictureBottom;
+                        d.inPicture=sy>=m_reference.pictureTop && sy<m_reference.pictureBottom;
+                        d.templateIdentity=m_reference.identity;d.currentIdentity=c.identity;
+                    }
+                    reason="new-ink-outside-cue";return {};
+                }
+                ++sampleIndex;
                 if(panel.Valid() && sx>=panel.left && sx<panel.right && sy>=panel.top && sy<panel.bottom &&
                     m_baseline->Black(x,y) && !fresh->Black(x,y)){reason="backing-changed";return {};}
             }
@@ -353,7 +435,9 @@ private:
             a.scriptHint==b.scriptHint && a.optimizationMode==b.optimizationMode && a.nearBarDistance==b.nearBarDistance;
     }
     static std::shared_ptr<SubtitleInkSnapshot> Sample(const SubtitleInkSnapshot& p,const SubtitleBoxRect& roi,
-        const AnalysisLumaSource& source,size_t budget,unsigned& samples,const char*& reason) {
+        const AnalysisLumaSource& source,size_t budget,unsigned& samples,const char*& reason,
+        std::vector<AnalysisLumaSample>* nativeValues=nullptr) {
+        if(nativeValues)nativeValues->clear();
         if(p.step<=0 || p.width<=0 || p.height<=0 || p.width>960 || p.height>540 || p.width!=(source.width+p.step-1)/p.step ||
             p.height!=(source.height+p.step-1)/p.step || p.sourceRows.size()!=size_t(p.height) ||
             !p.paletteValid || p.inkFloor<0 || p.inkFloor>1023 || p.blackLimit<0 || p.blackLimit>1023 ||
@@ -370,6 +454,7 @@ private:
             for(int x=(roi.left+p.step-1)/p.step;x<p.width && x*p.step<roi.right;++x) {
                 if(samples>=budget){reason="sample-budget";return {};}
                 AnalysisLumaSample s;if(!source.Sample(x*p.step,sy,s)){reason="sample-failed";return {};}
+                if(nativeValues)nativeValues->push_back(s);
                 ++samples;const size_t i=size_t(y)*p.width+x;const uint64_t bit=uint64_t(1)<<(i%64);
                 if(s.luma>=p.inkFloor && std::abs(int(s.chromaU)-p.inkU)<=80 && std::abs(int(s.chromaV)-p.inkV)<=80)f->rawInk[i/64]|=bit;
                 if(s.luma<=p.blackLimit)f->blackBacking[i/64]|=bit;
@@ -378,9 +463,12 @@ private:
         // Coverage is deliberately bounded to sampledBounds, never whole raster.
         f->rawEvidenceComplete=false;return f;
     }
-    bool m_valid=false,m_missingStarted=false;const char* m_lastSeedReason="not-attempted";
+    bool m_valid=false,m_missingStarted=false,m_incompleteCurrent=false;const char* m_lastSeedReason="not-attempted";
     SubtitleBoxObservation m_reference;ActivePictureBounds m_base;
     std::shared_ptr<SubtitleInkSnapshot> m_baseline;
+    std::vector<AnalysisLumaSample> m_baselineNativeSamples;
+    mutable std::vector<AnalysisLumaSample> m_currentNativeSamples;
+    mutable SubtitleCuePixelMismatch m_lastPixelMismatch;
     std::shared_ptr<const SubtitleInkSnapshot> m_acquiredInk;bool m_fromTop=false;SubtitleBoxRect m_roi;
     ActivePictureFrameIdentity m_last;double m_elapsed=0;SubtitleCueContinuation m_cached;
     AnalysisLumaFormat m_format=AnalysisLumaFormat::P010;VideoFrameEncoding m_encoding=VideoFrameEncoding::UNKNOWN;

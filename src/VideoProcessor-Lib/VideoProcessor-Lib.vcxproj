@@ -260,6 +260,7 @@
     <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
     <ClInclude Include="SubtitleBoxLookahead.h" />
     <ClInclude Include="SubtitleCueContinuation.h" />
+    <ClInclude Include="SubtitleCueSidePlane.h" />
     <ClInclude Include="SubtitleCurrentCue.h" />
     <ClInclude Include="SubtitleCueContinuationProof.h" />
     <ClInclude Include="SubtitleCutPaste.h" />

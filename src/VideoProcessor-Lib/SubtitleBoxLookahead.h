@@ -2058,6 +2058,55 @@ public:
         preview.newScanFrames = 0;
         return true;
     }
+    // Preserve selection through UNKNOWN current work without exposing the old
+    // result, advancing its source cursor, or renewing any ownership certificate.
+    bool RetainCandidateForIncompleteInspection(const SubtitleBoxPreview& preview,
+        const ActivePictureFrameIdentity& lastVerified) {
+        const auto& current=preview.current;
+        const auto& previous=m_previous.current;
+        if(!m_hasPrevious || !m_result.detected || m_result.confirmationPending || m_handoffActive ||
+            current.discontinuity ||
+            !SameAnalysisFrameIdentity(previous.identity,lastVerified) ||
+            current.identity.acceptedSequence<previous.identity.acceptedSequence ||
+            current.identity.transportGeneration!=previous.identity.transportGeneration ||
+            current.identity.sourceFormatGeneration!=previous.identity.sourceFormatGeneration ||
+            current.identity.analysisDomainKey!=previous.identity.analysisDomainKey ||
+            current.identity.viewportGeneration!=previous.identity.viewportGeneration ||
+            current.identity.rendererGeneration!=previous.identity.rendererGeneration ||
+            current.width!=previous.width || current.height!=previous.height ||
+            current.scriptHint!=previous.scriptHint || current.optimizationMode!=previous.optimizationMode ||
+            current.nearBarDistance!=previous.nearBarDistance ||
+            preview.policyGeneration!=m_previous.policyGeneration ||
+            preview.continuityGeneration!=m_previous.continuityGeneration)return false;
+        m_acceptedCueSeedCertificate={};m_refreshedReference={};
+        m_referenceSamples=0;m_referenceRefresh="incomplete-current-inspection";
+        m_decisionReason="incomplete-current-inspection";
+        return true;
+    }
+    // A complete-inspector budget miss must not suppress an independently
+    // admissible CURRENT raw result. Trial admission cannot advance the saved
+    // source cursor, renew a lease/certificate, or change the selected cue.
+    SubtitleBoxResult CurrentRawFallbackForIncompleteInspection(const SubtitleBoxPreview& preview,
+        int holdMilliseconds,double sourceFrameMilliseconds,bool pendingPixelsVerified) {
+        const auto& current=preview.current;
+        if(!m_hasPrevious || !m_result.detected || !preview.available || !current.analyzed ||
+            current.discontinuity || current.analysisRefresh ||
+            (current.pendingRefresh && !pendingPixelsVerified) ||
+            !current.barAuthority || !current.barEvidence.available || current.barTrackingAuthority ||
+            current.currentAnchorUsesTrackedEdge || !current.text.detected || current.text.held ||
+            current.text.confirmationPending || current.text.workLimit ||
+            !current.ink || !current.ink->paletteValid || !current.ink->rawEvidenceComplete)return {};
+        auto trial=*this;
+        const auto result=trial.Consume(preview,holdMilliseconds,sourceFrameMilliseconds,
+            nullptr,false,pendingPixelsVerified,nullptr);
+        if(!result.detected || result.held || result.confirmationPending || result.workLimit)return {};
+        // This local object is only the shared exact-geometry comparator; it is
+        // never emitted as a current-source or cleanup certificate.
+        SubtitleCueContinuation selected;selected.valid=true;selected.accepted=m_result;
+        if(!selected.MatchesCue(result))return {};
+        m_decisionReason="current-raw-fallback-incomplete-inspection";
+        return result;
+    }
     SubtitleBoxResult Consume(const SubtitleBoxPreview& preview, int holdMilliseconds = 250,
         double sourceFrameMilliseconds = 1000.0/60.0,
         const ActivePictureFrameIdentity* backlogTemplateIdentity = nullptr,
