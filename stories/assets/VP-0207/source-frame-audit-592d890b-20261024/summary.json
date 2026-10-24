@@ -472,5 +472,28 @@
     "Selected native, OSD, HDR and startup classes plus both required renderer GPU suites; not every solution test.",
     "Controlled native and GPU cadence tests are not physical mismatched-refresh visual acceptance.",
     "Late true-cadence recovery defect is reproduced, but ordinary active Smooth Motion does not normally enqueue cadence repeats; this is not established as the steady-playback cause."
-  ]
+  ],
+  "separateStartupFailure": {
+    "pid": 5796,
+    "mainPid": 53756,
+    "mainContinued": true,
+    "finding": "Uncaught Failed to write EDID exception in DeckLink discovery startup; source unchanged from beta",
+    "causeOfEdidFailure": "unproven",
+    "report": "E:\\codex\\diagnostics\\vp0207-source-frame-audit-20261024\\separate-startup-triage\\review.txt",
+    "provenanceSHA256": "55fe3546834e467b141b69574b72f288310ccf726fc1333619135a8326d92437",
+    "startupSourceUnchanged": [
+      {
+        "path": "src/VideoProcessor-Lib/blackmagic_decklink/BlackMagicDeckLinkCaptureDevice.cpp",
+        "headBlob": "11bac44419ac80ace02944dd3cdd36c00e5f3216",
+        "betaBlob": "11bac44419ac80ace02944dd3cdd36c00e5f3216",
+        "identical": true
+      },
+      {
+        "path": "src/VideoProcessor-Lib/blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp",
+        "headBlob": "4c348425e70595045f6783e5c2dc27079dfffd21",
+        "betaBlob": "4c348425e70595045f6783e5c2dc27079dfffd21",
+        "identical": true
+      }
+    ]
+  }
 }

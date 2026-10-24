@@ -1,0 +1,9 @@
+Separate launch failure during test observation
+
+PID 5796 started at 19:18:52 and exited about 397 ms later. Main test player PID 53756 remained responsive with its original 19:17:19 start time.
+
+The preserved dump and matching 592d890b executable/PDB resolve an uncaught std::runtime_error("Failed to write EDID") in BlackMagicDeckLinkCaptureDevice.cpp:79, called by DeckLinkDeviceArrived. The discovery callback has no exception boundary. Both relevant source blobs are identical to beta b1415da4. This is a startup capture-device failure, outside the subtitle render path; it is not stack exhaustion.
+
+The failed HRESULT, launch initiator and reason for the EDID write failure remain unknown. Competing instances are a possibility, not a proven cause. No launch reproduction or production fix was attempted, and no runtime settings were changed for this triage.
+
+Full dump, hashes, WER events and offline symbol evidence remain outside Git at E:\codex\diagnostics\vp0207-source-frame-audit-20261024\separate-startup-triage.

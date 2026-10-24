@@ -32,7 +32,7 @@ Complete-library outputs: 0; preparation reuses: 0; bounded fallback outputs: 0.
 Backlog events: 2; dropped by backlog: 7; suspected-flash log lines: 0.
 Mean CPU/driver render wall time: 5.237 ms/output; maximum: 72.864 ms.
 
-Separate launch failure: Windows recorded two events for another process, PID 5796, started 19:18:52 and exited within 0.4 s (ucrtbase fatal app exit). Main deployed PID 53756 remained responsive. That startup incident is preserved and remains separate from playback acceptance; no claim of universally crash-free runtime.
+Separate launch failure: PID 5796 exited during DeckLink startup after an uncaught "Failed to write EDID" exception. Matching dump/PDB evidence places it in startup code unchanged from beta, outside the subtitle renderer. Main PID 53756 remained responsive. The EDID failure cause is unproven; see separate-startup-triage/review.txt. No claim of universally crash-free runtime.
 
 Limits
 Controlled tests establish specific source and pixel contracts, not visual playback success. The late true-cadence retry defect is reproduced, but normal active Smooth Motion does not normally enqueue that host retry; it is not established as the cause of steady-playback flashing. Sampled telemetry cannot show whether every subtitle was visibly stable. Keep PR #197 draft/unmerged pending actual playback acceptance. Earlier failed builds remain failed; the preserved b81 rollback is not labeled a known-good Smooth Motion build.
