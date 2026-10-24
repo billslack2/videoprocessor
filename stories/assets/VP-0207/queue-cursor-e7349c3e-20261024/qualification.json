@@ -1,0 +1,54 @@
+{
+  "source": "e7349c3e466de7e9ed93f7209352ebedc616cec0",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "sourceClean": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "targets": [
+    "VideoProcessor-GUI",
+    "VideoProcessor-VPRenderer",
+    "VideoProcessor-VPRendererBeta",
+    "VideoProcessor-Test"
+  ],
+  "selectedTests": {
+    "total": "1978",
+    "executed": "1978",
+    "passed": "1978",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "nativeFixtureCount": 4,
+  "fixtureInputsUnchanged": true,
+  "newNativeTest": "OptionalNativeQueueCursorSurvivesCompleteMissingWorkerAndTwoRetirements",
+  "normalStackProbesPassed": 6,
+  "stackReserveBytes": 1048576,
+  "stackCommitBytes": 4096,
+  "independentNativeAdversarialCasesPassed": 15,
+  "deployment": {
+    "matchingHostAndBothRenderersLoaded": true,
+    "currentConfigurationPreserved": true,
+    "initialHealthPassed": true,
+    "liveReplayAcceptance": "pending"
+  },
+  "pullRequest": {
+    "number": 197,
+    "state": "OPEN DRAFT"
+  },
+  "limits": [
+    "Selected targets and regression classes, not a whole-solution/all-test claim.",
+    "New native fixture is the paused visible cue; the historical failing pixels were not captured.",
+    "Controlled native/GPU tests and startup health are not moving mismatched-refresh/HDR visual acceptance.",
+    "Large cue capacity, slot order, future queue boundaries and cold black scenery remain separate limits."
+  ]
+}
