@@ -315,8 +315,8 @@ public:
     }
 
     TEST_METHOD(CoarseArViewportCanSeedOppositeBarRecoveryWithoutChangingNativePlanes) {
-        for(bool p210:{false,true}) {
-            ContinuationFixture f(p210);f.base.top=44;f.base.bottom=316;
+        for(bool p210:{false,true})for(int viewportTop:{44,46,60}) {
+            ContinuationFixture f(p210);f.base.top=viewportTop;f.base.bottom=360-viewportTop;
             auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
             c.independentBarAnalysis=c.barEvidence.available=true;
             c.barEvidence.top=c.pictureTop;c.barEvidence.bottom=c.pictureBottom;
@@ -337,7 +337,7 @@ public:
             lost.currentLinesConfirmed=false;lost.matchingFrames=1;
             const auto proof=guard.Prepare(lost,f.Native(),f.base,250,41.708);
             Assert::IsTrue(proof.valid && proof.oppositeBarUnavailable);
-            Assert::AreEqual(44,proof.physicalBase.top);Assert::AreEqual(316,proof.physicalBase.bottom);
+            Assert::AreEqual(viewportTop,proof.physicalBase.top);Assert::AreEqual(360-viewportTop,proof.physicalBase.bottom);
             Assert::AreEqual(46,proof.pictureTop);Assert::AreEqual(315,proof.pictureBottom);
             const auto result=tracker.Consume(lost,250,41.708,nullptr,false,false,&proof);
             Assert::IsTrue(result.detected && !result.held);Assert::AreEqual(accepted.cue,result.cue);
@@ -346,10 +346,10 @@ public:
             Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,continued.source));
             Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,continued.destination));
             Assert::AreEqual(geometry.pictureTop,continued.pictureTop);
-            Assert::AreEqual(0,lost.current.pictureTop);Assert::AreEqual(44,lost.current.sharedPicture.bounds.top);
+            Assert::AreEqual(0,lost.current.pictureTop);Assert::AreEqual(viewportTop,lost.current.sharedPicture.bounds.top);
         }
     }
-    TEST_METHOD(CoarseArSeedRequiresIndependentContainedAndBoundedNativePlanes) {
+    TEST_METHOD(CoarseArSeedRequiresIndependentAndRasterBoundedNativePlanes) {
         for(int fault=0;fault<8;++fault) {
             ContinuationFixture f;f.base.top=44;f.base.bottom=316;
             auto& c=f.acquired.current;c.sharedPicture.bounds=f.base;
@@ -359,8 +359,8 @@ public:
             if(fault==1)c.barEvidence.topRevalidatedAtReference=true;
             if(fault==2)c.currentAnchorUsesTrackedEdge=true;
             if(fault==3)c.pictureTop=0;
-            if(fault==4){f.base.top=42;c.sharedPicture.bounds=f.base;}
-            if(fault==5){f.base.top=46;c.sharedPicture.bounds=f.base;}
+            if(fault==4){f.base.top=-1;c.sharedPicture.bounds=f.base;}
+            if(fault==5){f.base.bottom=361;c.sharedPicture.bounds=f.base;}
             if(fault==6){f.base.rasterHeight=361;c.sharedPicture.bounds=f.base;}
             if(fault==7)c.sharedPicture.bounds.bottom=317;
             SubtitleCueContinuationGuard guard;

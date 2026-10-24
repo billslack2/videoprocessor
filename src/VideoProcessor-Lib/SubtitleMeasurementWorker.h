@@ -34,6 +34,29 @@ inline bool IsSubtitleProofFailureCaptureCandidate(const AnalysisLumaSource& sou
         (shared.bottom<source.height && result.pictureBottom==source.height);
 }
 
+// Positive current cue with only its opposite measurement missing. This
+// diagnostic selector avoids collecting the navigation-controls failure first.
+inline bool IsSubtitleVisibleCueGapCaptureCandidate(const AnalysisLumaSource& source,
+    const SubtitleBoxObservation& key,const SubtitleBoxObservation& result)
+{
+    if(!source.IsValid() || source.dataBytes>64u*1024u*1024u ||
+        !key.sharedPicture.required || !key.sharedPicture.AvailableFor(key.identity,source.width,source.height) ||
+        !SameAnalysisFrameIdentity(key.identity,result.identity) || !result.sharedPicture.Matches(key.sharedPicture) ||
+        !result.analyzed || result.discontinuity || result.pendingRefresh || result.analysisRefresh ||
+        !result.barAuthority || !result.text.detected || result.text.held || result.text.workLimit ||
+        result.text.lineCount<1 || result.text.lineCount>3 || !result.ink || !result.ink->rawEvidenceComplete)
+        return false;
+    const auto& shared=key.sharedPicture.bounds;
+    bool top=result.pictureTop>0,bottom=result.pictureBottom<source.height;
+    for(int i=0;i<result.text.lineCount;++i) {
+        const auto& line=result.text.lineBounds[i];
+        if(!line.Valid())return false;
+        top &= line.bottom<=result.pictureTop;bottom &= line.top>=result.pictureBottom;
+    }
+    return (shared.top>0 && result.pictureTop==0 && bottom && !top) ||
+        (shared.bottom<source.height && result.pictureBottom==source.height && top && !bottom);
+}
+
 inline bool ShouldCaptureSubtitleDiagnosticFrame(bool pathConfigured,bool sourceValid,
     bool proofFailureMode,bool allowDarkStartupCapture,uint64_t acceptedSequence,
     bool globalNearBlack,bool proofFailureCandidate)
@@ -93,10 +116,16 @@ public:
             const bool enabled=value && std::string(value)=="1";
             std::free(value);return enabled;
         }();
+        static const bool captureOnVisibleCueGap=[] {
+            char* value=nullptr;size_t size=0;
+            _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_ON_VISIBLE_CUE_GAP");
+            const bool enabled=value && std::string(value)=="1";
+            std::free(value);return enabled;
+        }();
         static const bool captureOnProofFailure=[] {
             char* value=nullptr;size_t size=0;
             _dupenv_s(&value,&size,"VP_SUBTITLE_CAPTURE_ON_PROOF_FAILURE");
-            const bool enabled=value && std::string(value)=="1";
+            const bool enabled=captureOnVisibleCueGap || (value && std::string(value)=="1");
             std::free(value);return enabled;
         }();
         // Dark-scene diagnostics must not be vetoed by the classification being
@@ -107,7 +136,8 @@ public:
             ShouldCaptureSubtitleDiagnosticFrame(true,true,captureOnProofFailure,captureDark,
                 key.identity.acceptedSequence,
                 captureOnProofFailure ? false : EvaluateActivePictureGlobalNearBlack(source).nearBlack,
-                captureOnProofFailure && IsSubtitleProofFailureCaptureCandidate(source,key,result)) &&
+                captureOnProofFailure && (captureOnVisibleCueGap?IsSubtitleVisibleCueGapCaptureCandidate(source,key,result):
+                    IsSubtitleProofFailureCaptureCandidate(source,key,result))) &&
             (!captureOnProofFailure || !SubtitleDiagnosticCaptureClaimed().exchange(true))) {
             m_capturedDiagnostic=true;
             std::ofstream pixels(capturePath,std::ios::binary);
@@ -123,7 +153,7 @@ public:
                 const auto& prior=result.incomingBarTrackingReference;
                 const auto& bars=result.barEvidence;
                 std::ofstream diagnostic(std::string(capturePath)+".diagnostic.txt");
-                diagnostic<<"capture_mode=proof_failure\n"
+                diagnostic<<"capture_mode="<<(captureOnVisibleCueGap?"visible_cue_gap":"proof_failure")<<'\n'
                     <<"identity transport="<<id.transportGeneration
                     <<" sequence="<<id.acceptedSequence
                     <<" source_frame="<<id.sourceFrameNumber

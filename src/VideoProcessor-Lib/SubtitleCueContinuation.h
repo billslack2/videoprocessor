@@ -30,11 +30,10 @@ public:
             return reject("shared-hint-unavailable");
         if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
         if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom) {
-            // AR uses a coarse stable viewport; subtitle analysis measures its
-            // own native planes. A small independently measured inset can seed
-            // current-pixel verification without changing either authority.
-            const int tolerance=(std::max)(2,c.height/180);
-            const bool physicalInset=c.independentBarAnalysis && c.barAuthority &&
+            // Source glyph proof and AR presentation use separate planes.
+            // Current independent physical bars can seed the glyph reference;
+            // the stable AR base remains separately bound by shared identity.
+            const bool independentPhysical=c.independentBarAnalysis && c.barAuthority &&
                 c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
                 !c.barEvidence.captionBackedTop && !c.barEvidence.captionBackedBottom &&
                 !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby &&
@@ -42,9 +41,9 @@ public:
                 c.pictureTop==c.barEvidence.top && c.pictureBottom==c.barEvidence.bottom &&
                 c.pictureTop>0 && c.pictureBottom<c.height && c.pictureTop<c.pictureBottom &&
                 base.rasterWidth==c.width && base.rasterHeight==c.height &&
-                base.top>0 && base.bottom<c.height && base.top<=c.pictureTop && base.bottom>=c.pictureBottom &&
-                c.pictureTop-base.top<=tolerance && base.bottom-c.pictureBottom<=tolerance;
-            if(!physicalInset)return reject("native-base-physical-edge-mismatch");
+                base.left>=0 && base.right<=c.width && base.left<base.right &&
+                base.top>=0 && base.bottom<=c.height && base.top<base.bottom;
+            if(!independentPhysical)return reject("native-base-physical-edge-mismatch");
         }
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
