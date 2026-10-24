@@ -1,9 +1,9 @@
 # VP-0207: Overlay fit stability and subtitle backing boundaries
 
 ## Status
-Done
+In Progress
 
-User authorized merging after the Clear / Yellow test deployment. PR #196 is merged into v1.4.02-beta as e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a. Its complete source tree exactly matches tested and deployed feature 1ce9f934. Clean x64 Release validation passed 1078 selected native/GPU tests and four settings checks. The earlier Off fitting changes were already merged through PR #195.
+Reopened after the user reports the backing issue remains and subtitles now flicker off/on in a recording. Investigating from freshly fetched current beta e3dcad1a in E:\codex\videoprocessor\subtitle-packet-flicker-20261023. The deployed runtime is clean source 1ce9f934, whose tree equals merged PR #196. Previous merge acceptance is superseded by this new failure report.
 
 Previous acceptance: user accepted the improved live result and authorized merging on 2026-10-23. PR #195 merged into v1.4.02-beta as 73acf650739401cdfdfccf2e111290b3265299e2. The merged tree exactly matches tested feature 6608b736.
 
@@ -169,3 +169,9 @@ GitHub latest beta/default was freshly queried and fetched: v1.4.02-beta at f4f5
 - Merge commit e3dcad1a52c4f1d4bdf29d41ce47d72d6d4cab7a; verified parents are f4f5e138e0c8057fe950a4f5601b3e0ca19fe17b and 1ce9f934da111e46562cfe20f486bce9f4f7e6dd. The complete merged tree 25b7ac0884fbc3651ced332ce4102c25bb40229f exactly equals the tested feature tree. Existing selected native/GPU and four Qt test evidence therefore cover the merged code.
 - The running test deployment remains the verified feature build 1ce9f934da111e46562cfe20f486bce9f4f7e6dd; no rebuild, runtime replacement or configuration edits were performed for this merge. Prior deployment receipt and backup remain in stories/assets/VP-0207/deployment-1ce9f934-20261023.
 - VP-0207 is Done. Merge evidence: stories/assets/VP-0207/merge-196-20261023/merge.json. Earlier Review notes are historical validation state.
+
+## Recorded recurrence and subtitle output gaps - 2026-10-23
+
+- User supplied C:\Users\bslac\Videos\2026-10-23 20-17-01.mp4 (2560x1440, 60 fps, 124.017 seconds); the reported issue is in the opening section, with extra recording afterward. Video pixels remain outside Git. Local log snapshots and extracted diagnostic frames: E:\codex\diagnostics\vp0207-subtitle-flicker-20261023-2018.
+- Runtime logs show exact subtitle output loss/regain gaps of 41.7 to 125.1 ms, including source 4176/4177 at 20:17:24. Current detector remains positive but the opposite top-bar measurement drops from 384 to 0; current same-cue comparison rejects context, then reacquires the unchanged lower cue. Other losses involve current-pixel/component checks and require separate review.
+- Backing cleanup also still rejects current context/flanks on some frames. Do not treat prior 1078 selected tests or merge-tree identity as proof of this recorded playback passing. Current source work starts at freshly discovered beta/default v1.4.02-beta, e3dcad1a, in a new clean E: worktree; existing worktrees preserved. No configuration edits or new deployment yet.
