@@ -11,7 +11,7 @@ public:
     void Reset() { m_valid=false;m_incompleteCurrent=false; m_reference={}; m_baseline.reset();m_baselineNativeSamples.clear();m_currentNativeSamples.clear();m_acquiredInk.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
     bool HasReference() const { return m_valid; }
     bool NeedsCurrentPixelRevalidation(const SubtitleBoxPreview& preview) const {
-        return m_valid && (m_incompleteCurrent || !preview.current.text.detected ||
+        return m_valid && (PrivateReference() || m_incompleteCurrent || !preview.current.text.detected ||
             !SubtitleBoxLookahead::SameContext(m_reference,preview.current) ||
             !CurrentCueSide(preview.current,m_fromTop,m_fromTop?m_reference.pictureTop:m_reference.pictureBottom) ||
             !preview.current.sharedPicture.Matches(m_reference.sharedPicture));
@@ -38,6 +38,7 @@ public:
             return reject("cue-side-placement-unavailable");
         const int plane=fromTop?c.pictureTop:c.pictureBottom;
         const bool currentSide=CurrentCueSide(c,fromTop,plane);
+        const bool privateSide=fromTop?c.privateCuePlaneTop:c.privateCuePlaneBottom;
         // A nearby/reference coordinate may nominate an INTERNAL candidate,
         // only after the exact current native plane is independently proved.
         // It does not replace raw evidence or grant complete continuation.
@@ -61,8 +62,10 @@ public:
         }
         auto acceptedObservation=c;acceptedObservation.text=accepted;
         if(!SubtitleBoxLookahead::SameCue(c,acceptedObservation))return reject("accepted-cue-mismatch");
-        if(!currentSide) {
-            const auto ownPlane=ProveCurrentSubtitleCueSidePlane(source,plane,fromTop,65536);
+        if(!currentSide || privateSide) {
+            const auto ownPlane=privateSide?
+                ProveCurrentSubtitleCaptionPlane(source,c.text,c.ink.get(),plane,fromTop,65536):
+                ProveCurrentSubtitleCueSidePlane(source,plane,fromTop,65536);
             if(!ownPlane.valid)return reject(ownPlane.reason);
         }
         SubtitleBoxRect roi{};
@@ -83,7 +86,9 @@ public:
         }
         unsigned samples=0;const char* reason="not-eligible";
         std::vector<AnalysisLumaSample> nativeSamples;
-        auto sampled=Sample(*c.ink,roi,source,65536,samples,reason,&nativeSamples);
+        const size_t referenceLimit=privateSide && currentSide && CompleteCoverage(c,fromTop)?
+            SubtitlePrivateCueReferenceSampleLimit:size_t(65536);
+        auto sampled=Sample(*c.ink,roi,source,referenceLimit,samples,reason,&nativeSamples);
         if(!sampled)return reject(reason);
         // Acquisition grouping supplies ownership; pixels are freshly sampled.
         const size_t words=sampled->rawInk.size();
@@ -101,7 +106,7 @@ public:
         m_sourceGeneration=source.generation;
         // A nominated cold candidate has not earned any continuation lease.
         // Its first continuation must complete the configured current scan.
-        m_incompleteCurrent=!currentSide;
+        m_incompleteCurrent=!currentSide || privateSide;
         m_lastSeedReason=currentSide?"seeded":"seeded-current-cue-side-plane";
         return true;
     }
@@ -209,6 +214,13 @@ public:
                 envelope.top<plane && envelope.bottom>plane)
                 cueSideProved=ProveCurrentSubtitleCueSidePlane(currentSource,plane,m_fromTop,65536).valid;
         }
+        const bool privateSide=m_fromTop?m_reference.privateCuePlaneTop:m_reference.privateCuePlaneBottom;
+        if(privateSide && !budget.exhausted) {
+            // The acquired footprint only nominates this early plane. The
+            // complete current detector footprint is independently checked below.
+            cueSideProved=ProveCurrentSubtitleCaptionPlane(currentSource,m_reference.text,
+                m_acquiredInk.get(),plane,m_fromTop,65536).valid;
+        }
         if(!cueSideProved)return finish("complete-cue-side-unproved");
         auto local=raw;
         const bool reusable=preview.available && raw.analyzed && !raw.analysisRefresh && !raw.pendingRefresh &&
@@ -229,6 +241,11 @@ public:
         if(!local.text.detected || local.text.held || local.text.confirmationPending ||
             !SameSlots(local.text,m_reference.text) || !NoNewBarInk(local)) {
             Reset();return finish("complete-cue-changed");
+        }
+        if(privateSide) {
+            const auto currentPlane=ProveCurrentSubtitleCaptionPlane(currentSource,local.text,
+                local.ink.get(),plane,m_fromTop,65536);
+            if(!currentPlane.valid)return finish(currentPlane.reason);
         }
         // The full current detector must agree with the acquired strokes too;
         // unchanged rectangles alone cannot certify replacement text.
@@ -256,7 +273,7 @@ public:
         out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
         auto fail=[&](const char* why) {out.reason=why;m_valid=false;m_cached=out;return out;};
         if(!m_valid)return out;
-        if(m_incompleteCurrent || c.text.detected || !preview.available ||
+        if(PrivateReference() || m_incompleteCurrent || c.text.detected || !preview.available ||
             !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
             !c.sharedPicture.Matches(m_reference.sharedPicture))
             return InspectCurrent(preview,source,maxSamples);
@@ -316,7 +333,7 @@ public:
         const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=65536) {
         const auto& c=preview.current;
         if(accepted.confirmationPending){Reset();return false;}
-        if(!m_valid)return false;
+        if(!m_valid || PrivateReference())return false; // Private planes require a COMPLETE current inspection.
         SubtitleCueContinuation ownership;ownership.valid=true;ownership.accepted=m_reference.text;
         if(!ownership.MatchesCue(accepted)) {Reset();return false;}
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.text.workLimit ||
@@ -337,6 +354,7 @@ public:
         m_last=c.identity;m_cached={};return true;
     }
 private:
+    bool PrivateReference() const { return m_reference.privateCuePlaneTop || m_reference.privateCuePlaneBottom; }
     static bool ValidBase(const ActivePictureBounds& b,int w,int h) {
         return b.rasterWidth==w && b.rasterHeight==h && b.left>=0 && b.right<=w && b.left<b.right &&
             b.top>=0 && b.bottom<=h && b.top<b.bottom;
@@ -352,6 +370,13 @@ private:
         return true;
     }
     static bool CurrentCueSide(const SubtitleBoxObservation& c,bool top,int plane) {
+        if((top?c.privateCuePlaneTop:c.privateCuePlaneBottom) &&
+            !(top?c.privateCuePlaneBottom:c.privateCuePlaneTop) && c.analyzed &&
+            !c.analysisRefresh && !c.pendingRefresh && !c.discontinuity &&
+            c.barAuthority && c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
+            !c.glyphLocalTop && !c.glyphLocalBottom && !c.independentBarAnalysis &&
+            plane>0 && plane<c.height && (top?c.pictureTop==plane:c.pictureBottom==plane) &&
+            CompleteCoverage(c,top))return true;
         return c.barAuthority && c.barEvidence.available && !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge &&
             plane>0 && plane<c.height && (top?c.pictureTop==plane && c.barEvidence.top==plane &&
                 !c.barEvidence.captionBackedTop && !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby:
@@ -377,6 +402,7 @@ private:
     // Tracking, caption-derived placement and incomplete coverage still cannot
     // substitute for the independent full current inspector.
     static bool CurrentWorkerAtReprovedCuePlane(const SubtitleBoxObservation& c,bool top,int plane) {
+        if((top?c.privateCuePlaneTop:c.privateCuePlaneBottom) && CurrentCueSide(c,top,plane))return true;
         return c.barAuthority && c.barEvidence.available && !c.glyphLocalTop && !c.glyphLocalBottom &&
             !c.barTrackingAuthority && !c.currentAnchorUsesTrackedEdge && plane>0 && plane<c.height &&
             (top?c.pictureTop==plane && c.barEvidence.top==plane && !c.barEvidence.captionBackedTop:

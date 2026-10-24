@@ -4555,6 +4555,7 @@ struct LibplaceboVideoRenderer::Impl
         ActivePictureAuthorityOrigin nativeScopeAnchorCandidateOrigin=
             ActivePictureAuthorityOrigin::NATIVE;
         bool fullRasterAuthority=false;
+        AlphaSourceCrop::RetainedSubmittedEnvelope retainedEnvelope;
         ActivePictureBounds nearBlackEnvelopeBase{};
         ActivePictureBounds nearBlackEnvelopeBounds{};
         AlphaSourceCrop::NearBlackPresentationMode nearBlackEnvelopeMode=
@@ -14369,6 +14370,11 @@ struct LibplaceboVideoRenderer::Impl
                     probe.glyphLocalVerifiedBounds.top,probe.glyphLocalVerifiedBounds.right,
                     probe.glyphLocalVerifiedBounds.bottom,bars.top,bars.bottom,
                     probe.pictureTop,probe.pictureBottom);
+                if(std::strcmp(probe.privateCuePlaneReason,"not-attempted")!=0)
+                    DebugLog::Log("SUBTITLE PRIVATE PLANE: frame=%llu top=%d bottom=%d reason=%s samples=%zu physical=%d-%d placement=%d-%d candidate=%d/%d",
+                        sourceSequence,probe.privateCuePlaneTop?1:0,probe.privateCuePlaneBottom?1:0,
+                        probe.privateCuePlaneReason,probe.privateCuePlaneSamples,bars.top,bars.bottom,
+                        probe.pictureTop,probe.pictureBottom,bars.topCuePlaneCandidate,bars.bottomCuePlaneCandidate);
                 if(subtitleCompositionSucceeded) {
                     const auto& geometry=relocatedSubtitle;
                     const auto& card=geometry.pictureCapture;
@@ -14947,6 +14953,7 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationPoseEligible=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
         bool temporalPolicySubmittedScopeContinuityRetention=false;
+        AlphaSourceCrop::RetainedSubmittedEnvelope temporalPolicyRetainedEnvelope;
         bool temporalPolicyStartupPoseQualified=false;
         int temporalPolicyOwnerUpdate=0;
         AlphaSourceCrop::VerticalBarPresentationState temporalPolicyOwnerCandidate{};
@@ -15013,6 +15020,7 @@ struct LibplaceboVideoRenderer::Impl
              &temporalPolicyRequestedTranslation, &temporalPolicyDriftDurationMs,
              &temporalPolicyRoutedTranslation, &temporalPolicyTranslationRequested,
              &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicySubmittedScopeContinuityRetention,
+             &temporalPolicyRetainedEnvelope,
              &temporalPolicyOwnerUpdate, &temporalPolicyOwnerCandidate,
              &temporalPolicyOwnerBase, &temporalPolicyColdMaskedCandidate,
              &temporalPolicyNearBlackEnvelopeCandidate, &temporalPolicyNearBlackEnvelopeFailOpen,
@@ -16836,6 +16844,7 @@ releaseDriftBaseRetention =
             }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
+            temporalPolicyRetainedEnvelope=uncertainPicture.retainedEnvelope;
             if (uncertainPicture.retained)
             {
                 // Restore only the already submitted native reference. This is
@@ -18174,6 +18183,7 @@ releaseDriftBaseRetention =
             frameGeneration,sourceSequence,viewportRequestSerial,temporalOutputContract};
         TemporalPresentationSnapshot selectedPresentationForCommit{};
         bool selectedPresentationValid=false;
+        bool selectedRetainedEnvelopeExpanded=false;
         auto applyPresentationSnapshot=[&](const TemporalPresentationSnapshot& snapshot) {
             renderImage=subtitleComposedImage;
             renderImage.crop=snapshot.sourceCrop;
@@ -18326,6 +18336,23 @@ releaseDriftBaseRetention =
                     sourceSnapshot.nlsHookActive=renderParams.num_hooks==1 &&
                         renderParams.hooks && renderParams.hooks[0]==nlsHook;
                     sourceSnapshot.nlsTargetAspect=temporalRuntimeNlsTargetAspect;
+                    // This repair is only for raw progressive linear copies of an
+                    // uncertain submitted envelope. Prepared caption placement,
+                    // NLS, optional fill and translated pictures keep their own mapping.
+                    const auto& retained=temporalPolicyRetainedEnvelope;
+                    if (retained.available && !subtitleCompositionSucceeded && !nlsRequested &&
+                        state.displayMode && !state.displayMode->IsInterlaced() &&
+                        !sourceSnapshot.translationRequested && !sourceSnapshot.translationPoseEligible &&
+                        !sourceSnapshot.routedTranslation && !sourceSnapshot.coldMaskedCandidate &&
+                        !sourceSnapshot.nearBlackEnvelopeCandidate && !sourceSnapshot.nearBlackEnvelopeFailOpen &&
+                        !sourceSnapshot.cropAdmission.optionalFillApplied &&
+                        !sourceSnapshot.cropAdmission.optionalFillRetained &&
+                        sourceSnapshot.presentation.owner==int(AlphaSourceCrop::DecisionOwner::OUTWARD_FIT) &&
+                        renderImage.crop.x0==retained.sourceBounds.left &&
+                        renderImage.crop.y0==retained.sourceBounds.top &&
+                        renderImage.crop.x1==retained.sourceBounds.right &&
+                        renderImage.crop.y1==retained.sourceBounds.bottom)
+                        sourceSnapshot.retainedEnvelope=retained;
                     newlyEvaluated=true;
                     return true;
                 });
@@ -18397,6 +18424,59 @@ releaseDriftBaseRetention =
                     }
                     DebugLog::Log("Alpha selected native fill retired: generation=%llu source=%llu epoch=%llu reason=successful-presentation-superseded-prepared-fill",
                         selectedFill.sourceGeneration,selectedFill.sourceSequence,selectedFill.viewportEpoch);
+                }
+            }
+            if (selectedPresentationForCommit.retainedEnvelope.available &&
+                !temporalRenderer.SelectedSubtitleSequence()) {
+                auto& selectedEnvelope=selectedPresentationForCommit;
+                AlphaSourceCrop::SubmittedNativeScopeAnchorUpdateInput selection;
+                selection.previous=submittedNativeScopeAnchor;
+                selection.selectedAdmission=selectedEnvelope.cropAdmission;
+                selection.nativeCrop=selectedEnvelope.nativeScopeAnchorCandidate;
+                selection.nativeCropAvailable=selectedEnvelope.nativeScopeAnchorCandidateAvailable;
+                selection.authorityOrigin=selectedEnvelope.nativeScopeAnchorCandidateOrigin;
+                selection.selectedOwner=static_cast<AlphaSourceCrop::DecisionOwner>(selectedEnvelope.presentation.owner);
+                selection.fullRasterAuthority=selectedEnvelope.fullRasterAuthority;
+                selection.sourceGeneration=selectedEnvelope.sourceGeneration;
+                selection.sourceSequence=selectedEnvelope.sourceSequence;
+                selection.presentationEpoch=selectedEnvelope.viewportEpoch;
+                selection.submittedBounds={
+                    static_cast<int>(std::lround(selectedEnvelope.sourceCrop.x0)),
+                    static_cast<int>(std::lround(selectedEnvelope.sourceCrop.y0)),
+                    static_cast<int>(std::lround(selectedEnvelope.sourceCrop.x1)),
+                    static_cast<int>(std::lround(selectedEnvelope.sourceCrop.y1)),
+                    width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+                const auto validated=AlphaSourceCrop::RevalidateRetainedSubmittedEnvelopeSelection(
+                    selectedEnvelope.retainedEnvelope,selection);
+                if (validated.expanded) {
+                    const auto& bounds=validated.sourceBounds;
+                    const pl_rect2df expanded{float(bounds.left),float(bounds.top),
+                        float(bounds.right),float(bounds.bottom)};
+                    const auto fitted=AnamorphicPresentation::FitPicture(
+                        pl_rect2df_aspect(&expanded),anamorphicScale,selectedEnvelope.screen,
+                        ResolveVerticalPictureAlignment(verticalAlignment));
+                    if (fitted.valid) {
+                        selectedEnvelope.sourceCrop=expanded;
+                        selectedEnvelope.targetCrop={float(fitted.picture.left),float(fitted.picture.top),
+                            float(fitted.picture.right),float(fitted.picture.bottom)};
+                        selectedEnvelope.linearFallbackCrop=selectedEnvelope.targetCrop;
+                        selectedEnvelope.presentation.sourceCrop={bounds.left,bounds.top,bounds.right,bounds.bottom};
+                        selectedEnvelope.presentation.familyBase=selectedEnvelope.presentation.sourceCrop;
+                        selectedEnvelope.presentation.visibleSafe=false;
+                        selectedEnvelope.presentation.emptyBandsSafe=false;
+                        selectedEnvelope.presentation.verifiedVisible={};
+                        selectedEnvelope.cropAdmission.outwardPresentationAvailable=true;
+                        selectedEnvelope.cropAdmission.outwardPresentation=bounds;
+                        selectedEnvelope.cropAdmission.presentationSourceSequence=selectedEnvelope.sourceSequence;
+                        selectedRetainedEnvelopeExpanded=true;
+                        DebugLog::Log("Alpha selected retained envelope expanded: generation=%llu source=%llu epoch=%llu original=%d,%d-%d,%d submitted=%d,%d-%d,%d origin=%llu latest=%llu",
+                            selectedEnvelope.sourceGeneration,selectedEnvelope.sourceSequence,selectedEnvelope.viewportEpoch,
+                            selection.submittedBounds.left,selection.submittedBounds.top,
+                            selection.submittedBounds.right,selection.submittedBounds.bottom,
+                            bounds.left,bounds.top,bounds.right,bounds.bottom,
+                            selectedEnvelope.retainedEnvelope.envelopeSubmittedSequence,
+                            submittedNativeScopeAnchor.submittedEnvelopeSourceSequence);
+                    }
                 }
             }
             selectedPresentationValid=true;
@@ -18914,7 +18994,8 @@ releaseDriftBaseRetention =
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
-                return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
+                return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch,
+                    selectedRetainedEnvelopeExpanded ? &selectedPresentationForCommit.presentation : nullptr);
             });
         bool rendered = hookRender.rendered;
         if (hookRender.retried)

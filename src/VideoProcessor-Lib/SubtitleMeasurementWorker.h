@@ -531,6 +531,7 @@ public:
         const bool resolvedCovers=covers(preview.text);
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
             preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
+            preview.current.privateCuePlaneTop || preview.current.privateCuePlaneBottom ||
             !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.confirmationPending || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
@@ -570,6 +571,7 @@ public:
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&
+                !key.privateCuePlaneTop && !key.privateCuePlaneBottom &&
                 key.text.detected && key.barAuthority && !key.text.workLimit) {
                 m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
                 const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);

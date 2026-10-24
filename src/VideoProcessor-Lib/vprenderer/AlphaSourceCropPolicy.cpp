@@ -5932,6 +5932,52 @@ namespace AlphaSourceCrop
 		return result;
 	}
 
+    RetainedSubmittedEnvelopeSelection RevalidateRetainedSubmittedEnvelopeSelection(
+        const RetainedSubmittedEnvelope& retained,
+        const SubmittedNativeScopeAnchorUpdateInput& selection)
+    {
+        RetainedSubmittedEnvelopeSelection result;
+        result.sourceBounds = selection.submittedBounds;
+        const auto& anchor = selection.previous;
+        const auto& admission = selection.selectedAdmission;
+        if (!retained.available || !selection.nativeCropAvailable ||
+            selection.fullRasterAuthority || selection.selectedOwner != DecisionOwner::OUTWARD_FIT ||
+            selection.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            !admission.available || admission.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            admission.optionalFillApplied || admission.optionalFillRetained ||
+            retained.sourceGeneration != selection.sourceGeneration ||
+            retained.sourceSequence != selection.sourceSequence ||
+            retained.presentationEpoch != selection.presentationEpoch ||
+            admission.sourceGeneration != selection.sourceGeneration ||
+            admission.presentationEpoch != selection.presentationEpoch ||
+            !SameTrustedCropContract(retained.nativeCrop, selection.nativeCrop) ||
+            !SameTrustedCropContract(admission.trustedCrop, selection.nativeCrop) ||
+            !SameBounds(retained.sourceBounds, selection.submittedBounds) ||
+            !retained.nativeSubmittedSequence || !retained.envelopeSubmittedSequence ||
+            retained.envelopeSubmittedSequence < retained.nativeSubmittedSequence ||
+            retained.envelopeSubmittedSequence > retained.sourceSequence ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor, selection.sourceGeneration,
+                selection.sourceSequence, selection.presentationEpoch,
+                retained.sourceBounds.rasterWidth, retained.sourceBounds.rasterHeight) ||
+            !SameTrustedCropContract(anchor.crop, retained.nativeCrop) ||
+            anchor.lastSubmittedSourceSequence != retained.nativeSubmittedSequence ||
+            !anchor.submittedEnvelopeAvailable ||
+            anchor.submittedEnvelopeSourceSequence <= retained.envelopeSubmittedSequence ||
+            anchor.submittedEnvelopeSourceSequence > selection.sourceSequence ||
+            anchor.submittedEnvelopeSourceSequence != anchor.lastSubmittedPresentationSourceSequence ||
+            anchor.submittedOptionalFillAvailable ||
+            !ValidBounds(anchor.submittedEnvelope, retained.sourceBounds.rasterWidth,
+                retained.sourceBounds.rasterHeight) ||
+            !ContainedBounds(anchor.submittedEnvelope, retained.sourceBounds) ||
+            SameBounds(anchor.submittedEnvelope, retained.sourceBounds))
+            return result;
+        // Use only a rectangle actually shown, never a union assembled from
+        // different sources. Every selected pixel remains inside the new crop.
+        result.expanded = true;
+        result.sourceBounds = anchor.submittedEnvelope;
+        return result;
+    }
+
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
@@ -6051,6 +6097,19 @@ namespace AlphaSourceCrop
         bounds.aspectRatio = double(bounds.right - bounds.left) /
             std::max(1, bounds.bottom - bounds.top);
         if (result.expanded) bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+        if (result.expanded && !result.currentPixelExtent &&
+            SameBounds(bounds, anchor.submittedEnvelope))
+        {
+            auto& retained = result.retainedEnvelope;
+            retained.available = true;
+            retained.nativeCrop = anchor.crop;
+            retained.sourceBounds = bounds;
+            retained.sourceGeneration = crop.frameSourceGeneration;
+            retained.sourceSequence = crop.frameSourceSequence;
+            retained.presentationEpoch = input.presentationEpoch;
+            retained.nativeSubmittedSequence = anchor.lastSubmittedSourceSequence;
+            retained.envelopeSubmittedSequence = anchor.submittedEnvelopeSourceSequence;
+        }
         result.presentation = {};
         result.presentation.sourceBounds = bounds;
         result.presentation.applyCrop = !SameBounds(bounds, raster);

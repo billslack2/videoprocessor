@@ -708,7 +708,8 @@ public:
         cached.valid=true;++processingStatistics.sourceRenders;result=&cached;return true;
     }
     bool RenderProcessed(pl_renderer renderer,const pl_frame& source,
-        const pl_frame& target,pl_render_params& params,uint64_t epoch) {
+        const pl_frame& target,pl_render_params& params,uint64_t epoch,
+        const PresentationGeometry* selectedOutputGeometry=nullptr) {
         lastHdrStatusAvailable=false;lastHdrStatus={};
         if(composition&&!PreflightCompositionOutput())return false;
         const Stored* selected=nullptr;
@@ -722,7 +723,8 @@ public:
         std::array<std::array<bool,2>,8> used{};
         for(const auto& entry:entries) {
             if(selected&&history[entry.index].get()!=selected&&
-                !CompatiblePresentation(*selected,*history[entry.index],source.crop))continue;
+                !CompatiblePresentationGeometry(selectedOutputGeometry ? *selectedOutputGeometry :
+                    selected->presentation,history[entry.index]->presentation,source.crop))continue;
             Stored::Processed* processed=nullptr;
             if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
             used[entry.index][entry.field]=true;
@@ -808,11 +810,12 @@ public:
         return RenderProcessed(renderer,source,target,params,epoch);
     }
     bool Render(pl_renderer renderer,const pl_frame& source,const pl_frame& target,
-        pl_render_params& params,uint64_t epoch=0) {
+        pl_render_params& params,uint64_t epoch=0,
+        const PresentationGeometry* selectedOutputGeometry=nullptr) {
         lastSubmittedField=PL_FIELD_NONE;
         lastHdrStatusAvailable=false;lastHdrStatus={};
-        if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch);
+        if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch,selectedOutputGeometry);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
-        return RenderProcessed(renderer,source,target,params,epoch);
+        return RenderProcessed(renderer,source,target,params,epoch,selectedOutputGeometry);
     }
 };

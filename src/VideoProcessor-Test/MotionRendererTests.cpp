@@ -1553,3 +1553,53 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
     }
 };
 }
+
+namespace VideoProcessorTest {
+TEST_CLASS(RetainedEnvelopeSelectionGpuTests) { public:
+    TEST_METHOD(RetainedEnvelopeSelectionUsesOutputContractWithoutMutatingCapturedPackets) {
+        for (bool composition : {false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="linear";settings.deinterlace="off";
+            TemporalRenderer::PresentationGeometry original{};
+            original.familyBase={0,8,64,56};original.sourceCrop=original.familyBase;
+            original.verifiedVisible=original.familyBase;original.viewportEpoch=4;
+            original.owner=13;original.valid=true;original.visibleSafe=true;original.cleaned=composition;
+            for(uint64_t sequence=1;sequence<=3;++sequence) {
+                if(composition)g.UploadComposition(sequence==2,0);
+                else g.Upload(sequence==2?255:0);
+                g.temporal.Begin(settings,24,60,false,0,1,sequence,double(sequence-1)/24,false,composition);
+                if(composition)Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,sequence));
+                else Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,sequence));
+                Assert::IsTrue(g.temporal.AnnotatePresentation(sequence,original));
+            }
+            g.temporal.outputPts=1.5/24;
+            Assert::AreEqual(uint64_t(2),g.temporal.SelectedPacketSequence());
+            g.input.crop={0,8,64,56};
+            const auto mixedBefore=g.Draw();
+            auto expanded=original;
+            expanded.familyBase=expanded.sourceCrop={0,0,64,64};
+            g.input.crop={0,0,64,64};
+            const auto drawExpanded=[&](){
+                auto params=pl_render_default_params;
+                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,0,&expanded));
+                return g.Read(32,32);
+            };
+            const auto isolated=drawExpanded();
+            Assert::IsTrue(isolated[0]>220 && mixedBefore[0]<isolated[0]-30,
+                L"The selected output's expanded geometry must reject old-family neighbors, including cleaned packets.");
+            // An output override must not rewrite either retained packet annotation.
+            g.input.crop={0,8,64,56};
+            const auto mixedAgain=g.Draw();
+            Assert::IsTrue(std::abs(mixedAgain[0]-mixedBefore[0])<=2,
+                L"Default selection must still use the immutable captured presentation contract.");
+            g.input.crop={0,0,64,64};
+            Assert::IsTrue(g.temporal.AnnotatePresentation(3,expanded));
+            const auto compatible=drawExpanded();
+            Assert::IsTrue(compatible[0]<isolated[0]-30,
+                L"A neighbor with the actual expanded output contract should still blend.");
+            Assert::AreEqual(uint64_t(2),g.temporal.SelectedPacketSequence());
+        }
+    }
+};
+}

@@ -947,6 +947,96 @@ public:
             Assert::IsFalse(proof.cuePlaneVerified);
         }
     }
+    TEST_METHOD(CaptionPlaneBoundaryExclusionRejectsGlyphSuppliedPictureEdges) {
+        for(bool top:{false,true}) {
+            auto frame=std::make_unique<Frame>(6,Format::P210,top);
+            const int glyphs=26,left=(3840-((glyphs-1)*78+48))/2;
+            frame->Fill({0,1776,3840,2160},64);
+            frame->Fill({left-96,1680,left+(glyphs-1)*78+48+96,1776},64);
+            const auto draw=[&](){for(int row=0;row<2;++row)for(int n=0;n<glyphs;++n) {
+                const int x=left+n*78,y=row?1886:1710;
+                frame->Fill({x,y,x+48,y+66},700);
+                frame->Fill({x+12,y+12,x+36,y+54},64);
+            }};
+            draw();auto measured=std::make_unique<SubtitleBoxObservation>(frame->Measure(1,200));
+            Assert::IsTrue(measured->text.detected && measured->text.lineCount==2);
+            const int plane=top?384:1776;bool allBar=true;
+            SubtitleCuePlaneBoundaryExclusion exclusion{frame->width,0};
+            const auto include=[&](const SubtitleBoxRect& r){if(r.Valid()) {
+                exclusion.left=(std::min)(exclusion.left,r.left);
+                exclusion.right=(std::max)(exclusion.right,r.right);
+            }};
+            include(measured->text.sourcePanel);include(measured->text.capturePanel);
+            for(int line=0;line<measured->text.lineCount;++line) {
+                const auto& bounds=measured->text.lineBounds[line];
+                Assert::IsFalse(bounds.top<plane && bounds.bottom>plane);
+                allBar&=top?bounds.bottom<=plane:bounds.top>=plane;
+                include(bounds);include(measured->text.linePanels[line]);include(measured->text.lineCapturePanels[line]);
+            }
+            Assert::IsFalse(allBar);
+            const auto source=frame->Source();
+            const auto actual=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&exclusion);
+            Assert::IsTrue(actual.valid && actual.boundarySupport>=8);
+            // Preserve the acquired glyphs while removing the real boundary.
+            // The picture-side glyph ends exactly at the retained coordinate.
+            frame->Fill({0,1746,3840,1776},64);draw();
+            const auto unsafe=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536);
+            const auto independent=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&exclusion);
+            Assert::IsTrue(unsafe.valid && unsafe.boundarySupport>=8);
+            Assert::IsFalse(independent.valid);
+            Assert::AreEqual(0u,independent.boundarySupport);
+            Assert::IsTrue(std::strcmp(independent.reason,"plane-no-distributed-exact-boundary")==0);
+        }
+    }
+    TEST_METHOD(CaptionPlaneBoundaryExclusionPreservesDefaultAndRejectsInvalidDomains) {
+        for(Format format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
+            Frame frame(1,format,top);const auto source=frame.Source();const int plane=top?64:296;
+            const auto original=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536);
+            const auto explicitDefault=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,nullptr);
+            Assert::IsTrue(original.valid);
+            Assert::AreEqual(original.valid,explicitDefault.valid);
+            Assert::AreEqual(original.samples,explicitDefault.samples);
+            Assert::AreEqual(original.boundarySupport,explicitDefault.boundarySupport);
+            Assert::AreEqual(original.boundaryZones,explicitDefault.boundaryZones);
+            Assert::AreEqual(original.maxIntrusion,explicitDefault.maxIntrusion);
+            Assert::AreEqual(original.blackFraction,explicitDefault.blackFraction);
+            Assert::IsTrue(std::strcmp(original.reason,explicitDefault.reason)==0);
+            for(const auto invalid:{SubtitleCuePlaneBoundaryExclusion{0,400},{200,640},{300,300},{400,200},{-1,400},{200,641}}) {
+                const auto proof=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&invalid);
+                Assert::IsFalse(proof.valid);Assert::AreEqual(size_t(0),proof.samples);
+                Assert::IsTrue(std::strcmp(proof.reason,"plane-invalid-boundary-exclusion")==0);
+            }
+        }
+    }
+    TEST_METHOD(CaptionPlaneBoundaryExclusionCannotHideBarContentOrBypassBudgets) {
+        for(bool top:{false,true}) {
+            Frame frame(1,Format::P210,top);frame.Fill({0,296,640,360},64);
+            const auto source=frame.Source();const int plane=top?64:296;
+            const SubtitleCuePlaneBoundaryExclusion exclusion{200,440};
+            const auto full=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&exclusion);
+            Assert::IsTrue(full.valid && full.samples>1024);
+            for(size_t limit:{size_t(1),size_t(1024),full.samples-1}) {
+                const auto partial=ProveCurrentSubtitleCueSidePlane(source,plane,top,limit,&exclusion);
+                Assert::IsFalse(partial.valid);Assert::IsTrue(partial.samples<=limit);
+                Assert::IsTrue(std::strcmp(partial.reason,"plane-work-budget")==0);
+                AnalysisLumaReadBudget shared{limit};auto bounded=source;bounded.readBudget=&shared;
+                Assert::IsFalse(ProveCurrentSubtitleCueSidePlane(bounded,plane,top,65536,&exclusion).valid);
+                Assert::IsTrue(shared.exhausted && shared.used==limit);
+            }
+            const auto exact=ProveCurrentSubtitleCueSidePlane(source,plane,top,full.samples,&exclusion);
+            Assert::IsTrue(exact.valid && exact.samples==full.samples);
+            // Excluding caption columns from boundary voting must not exclude
+            // their bright or colored pixels from the complete bar-body proof.
+            frame.Fill({200,310,440,326},700);
+            const auto bright=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&exclusion);
+            Assert::IsFalse(bright.valid);
+            Assert::IsTrue(std::strcmp(bright.reason,"plane-current-bar-content-conflict")==0);
+            frame.Fill({200,310,440,326},64);frame.Chroma({200,310,440,326},700,512);
+            const auto colored=ProveCurrentSubtitleCueSidePlane(source,plane,top,65536,&exclusion);
+            Assert::IsFalse(colored.valid);
+            Assert::IsTrue(std::strcmp(colored.reason,"plane-current-bar-content-conflict")==0);
+        }
+    }
     TEST_METHOD(CurrentPlaneAndFiniteBodyShareOneExactWorkBudget) {
         Frame frame(6,Format::DecodedDv);const auto lip=frame.Lip(30,true);auto cue=Acquire(frame);
         cue.preview.current.independentBarAnalysis=false;
@@ -1231,6 +1321,220 @@ public:
             Assert::IsFalse(s->decision.accepted.detected || s->guard.HasReference() || s->decision.proof.valid);
             Assert::AreEqual(uint64_t(0),s->decision.proof.recoveredFromContinuity);
         }
+    }
+    TEST_METHOD(FailedPrivateCaptionNominationPreservesKnownSideCaptionAndScannerState) {
+        for(int scale:{1,6})for(bool bounded:{false,true}) {
+            Frame frame(scale,Format::P210);const auto fill=[&](int l,int t,int r,int b,int value) {
+                frame.Fill({l*scale,t*scale,r*scale,b*scale},value);
+            };
+            fill(0,0,640,360,64);fill(0,44,640,100,300);fill(0,100,185,316,300);
+            for(int n=0;n<12;++n) {
+                const int x=240+13*n;fill(x,10,x+8,24,700);fill(x+2,12,x+6,22,64);
+            }
+            for(int row=0;row<2;++row)for(int n=0;n<(row?20:13);++n) {
+                const int x=(row?190:230)+13*n,y=row?318:292;
+                fill(x,y,x+8,y+16,700);fill(x+2,y+2,x+6,y+14,64);
+            }
+            // Unexplained wide lower ink nominates a different current cluster,
+            // which must never be admitted as a private physical plane.
+            fill(190,340,450,350,700);
+            auto source=frame.Source();const auto bars=ExtractSubtitleBarEvidence(source);
+            Assert::AreEqual(44*scale,bars.top);Assert::AreEqual(frame.height,bars.bottom);
+            Assert::AreEqual(350*scale,bars.bottomCuePlaneCandidate);
+            SubtitleBoxDetector baseline;baseline.SetNearBarDistance(20);
+            const auto known=baseline.Analyze(source,bars.top,bars.bottom,1,2);
+            Assert::IsTrue(known.detected);
+            SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);
+            for(int seq=1;seq<=2;++seq) {
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};source.readBudget=bounded?&budget:nullptr;
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(seq);
+                const auto observed=SubtitleBoxLookahead::Measure(scanner,source,{},Identity(seq),false,{},7,8,shared);
+                Assert::IsTrue(observed.text.detected && observed.text.lineCount==known.lineCount);
+                Assert::IsFalse(observed.privateCuePlaneTop || observed.privateCuePlaneBottom);
+                Assert::IsTrue(std::strcmp(observed.privateCuePlaneReason,"not-attempted")!=0);
+                Assert::AreEqual(bars.bottom,observed.pictureBottom);
+                for(int line=0;line<known.lineCount;++line)Assert::IsTrue(Same(known.lineBounds[line],observed.text.lineBounds[line]));
+                Assert::IsTrue(!budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+            }
+        }
+    }
+    TEST_METHOD(WhollyInPictureFiniteCaptionStillReconstructsAtThirtyPercentReduction) {
+        for(bool upper:{false,true}) {
+            auto state=std::make_unique<EnvelopeCueState>(upper);auto& s=*state;
+            s.frame=Frame(1,Format::P210,upper);s.frame.pictureTop=45;s.frame.pictureBottom=315;
+            s.frame.Fill({0,0,640,360},64);s.frame.Fill({0,45,640,315},300);
+            s.frame.Fill({180,270,470,306},64);
+            for(int glyph=0;glyph<21;++glyph) {
+                const int x=190+13*glyph;s.frame.Fill({x,280,x+8,294},700);s.frame.Fill({x+2,282,x+6,292},64);
+            }
+            s.source=s.frame.Source();s.base={0,45,640,315,640,360};
+            for(int i=0;i<2;++i)s.observed[i]=s.frame.Measure(i+1,20);
+            s.working=SubtitleBoxLookahead::Resolve(s.observed.data(),2,7,8);
+            Assert::IsTrue(s.working.text.detected && s.working.text.lineCount==1);
+            Assert::IsTrue(s.working.text.lineBounds[0].top>=45 && s.working.text.lineBounds[0].bottom<=315);
+            PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,s.source,s.base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,s.source,s.base,true,250,41.708,s.prepared);
+            Assert::IsTrue(s.decision.accepted.detected);
+            s.geometry=s.compositor.Consume(s.decision.accepted,s.working);
+            const auto capture=s.geometry.pictureCapture,cleanup=s.geometry.generatedCleanup;
+            s.geometry=ApplySubtitleTextReduction(s.geometry,30,{8,8,8},true,false);
+            Assert::IsTrue(s.geometry.valid && std::abs(s.geometry.glyphScale-0.7f)<0.001f);
+            Assert::IsTrue(capture.Valid() && cleanup.Valid() && Same(capture,s.geometry.pictureCapture) && Same(cleanup,s.geometry.generatedCleanup));
+        }
+    }
+    TEST_METHOD(PrivateCaptionPlaneKeepsCurrentCueAcrossWorkerGapsWithoutArAuthority) {
+        for(bool upper:{false,true})for(int distance:{20,200})for(bool sharedAvailable:{false,true}) {
+            auto state=std::make_unique<EnvelopeCueState>(upper);auto& s=*state;
+            s.frame=Frame(1,Format::P210,upper);s.frame.pictureTop=44;s.frame.pictureBottom=316;
+            s.frame.Fill({0,0,640,360},64);s.frame.Fill({0,44,640,100},300);
+            // Only the left scene supplies a real native lower edge. The old
+            // both-flank/distributed extractor intentionally keeps that side unknown.
+            s.frame.Fill({0,100,185,316},300);
+            for(int row=0;row<2;++row)for(int glyph=0;glyph<(row?20:13);++glyph) {
+                const int x=(row?190:230)+13*glyph,y=row?318:292;
+                s.frame.Fill({x,y,x+8,y+16},700);s.frame.Fill({x+2,y+2,x+6,y+14},64);
+            }
+            s.source=s.frame.Source();s.base={0,upper?0:44,640,upper?316:360,640,360};
+            for(int i=0;i<2;++i) {
+                SubtitleBoxDetector detector;detector.SetNearBarDistance(distance);
+                SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(i+1);
+                if(sharedAvailable)shared.bounds=s.base;
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s.source;source.readBudget=&budget;
+                s.observed[i]=SubtitleBoxLookahead::Measure(detector,source,{},Identity(i+1),false,{},7,8,shared);
+                const auto& o=s.observed[i];
+                Assert::IsTrue(o.text.detected && o.text.configuredSearchComplete && o.ink && o.ink->rawEvidenceComplete);
+                Assert::AreEqual(upper,o.privateCuePlaneTop);Assert::AreEqual(!upper,o.privateCuePlaneBottom);
+                Assert::AreEqual(upper?0:360,upper?o.barEvidence.top:o.barEvidence.bottom);
+                Assert::AreEqual(upper?44:316,upper?o.pictureTop:o.pictureBottom);
+                Assert::IsFalse(o.independentBarAnalysis || o.subtitleArProof.accepted || o.barTrackingAuthority);
+                Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(o).valid);
+                Assert::IsTrue(!budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+            }
+            for(uint64_t seq=1;seq<=6;++seq) {
+                if(seq<=2)s.working=SubtitleBoxLookahead::Resolve(s.observed.data()+seq-1,seq==1?2:1,7,8);
+                else s.working=MissingCurrentWorker(s.current,seq);
+                if(seq==5) {
+                    s.working=s.current;s.working.current.identity=Identity(seq);
+                    s.working.current.text={};s.working.text={};s.working.current.ink.reset();
+                }
+                AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto source=s.source;source.readBudget=&budget;
+                PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,source,s.base,true,250,41.708);
+                ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,source,s.base,true,250,41.708,s.prepared);
+                Assert::IsTrue(s.decision.accepted.detected && s.guard.HasReference());
+                if(seq==1)s.cue=s.decision.accepted.cue;else Assert::AreEqual(s.cue,s.decision.accepted.cue);
+                if(seq>1)Assert::IsTrue(s.decision.proof.completeCurrentCue);
+                s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,s.decision.proof.valid?&s.decision.proof:nullptr);
+                s.geometry=ApplySubtitleTextReduction(s.geometry,30,{},true,false);
+                Assert::IsTrue(s.geometry.valid && std::abs(s.geometry.glyphScale-0.7f)<0.001f);
+                Assert::IsTrue(!budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+                if(seq==2) {
+                    s.current=s.working;
+                    Assert::IsFalse(s.guard.AdvanceVerified(s.current,s.decision.accepted,s.source,s.base,250,41.708));
+                    Assert::IsFalse(s.pending.RememberAccepted(s.current,s.decision.accepted,s.source,41.708,250));
+                    auto wrongEpoch=s.current.current;
+                    Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentMeasurement(wrongEpoch,9));
+                }
+            }
+            auto changed=MissingCurrentWorker(s.current,7);++changed.current.identity.sourceFormatGeneration;
+            PrepareCurrentSubtitleCueInto(s.prepared,s.guard,changed,s.source,s.base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,changed,s.source,s.base,true,250,41.708,s.prepared);
+            Assert::IsFalse(s.decision.accepted.detected || s.guard.HasReference());
+        }
+    }
+    TEST_METHOD(OptionalNativeApprovedCaptionUsesPrivatePlaneWithoutArPromotion) {
+        char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_APPROVED_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()){Logger::WriteMessage("Native approved subtitle replay not requested");return;}
+        std::ifstream data(path,std::ios::binary),metadata(path+".txt");Assert::IsTrue(bool(data) && bool(metadata));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(data)),{});
+        AnalysisLumaSource source;int format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+        metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>color>>top>>bottom>>script>>range;
+        source.data=bytes.data();source.dataBytes=bytes.size();source.generation=2;
+        source.format=static_cast<AnalysisLumaFormat>(format);source.encoding=static_cast<VideoFrameEncoding>(encoding);
+        source.colorspace=static_cast<ColorSpace>(color);source.range=static_cast<AnalysisLumaRange>(range);
+        Assert::IsTrue(source.IsValid());Assert::AreEqual(3840,source.width);Assert::AreEqual(2160,source.height);
+        Assert::AreEqual(263,top);Assert::AreEqual(2160,bottom);
+        // Native pixels contain a second line in the bar, absent from the
+        // user's cropped screenshot. This is a mixed picture/bar regression.
+        for(bool fullRasterBase:{false,true}) {
+        auto state=std::make_unique<EnvelopeCueState>(false);auto& s=*state;s.source=source;
+        s.base={0,fullRasterBase?0:263,3840,2160,3840,2160};
+        for(int i=0;i<2;++i) {
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);detector.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=Identity(i+1);
+            AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto current=source;current.readBudget=&budget;
+            s.observed[i]=SubtitleBoxLookahead::Measure(detector,current,{},Identity(i+1),false,{},7,8,shared);
+            const auto& o=s.observed[i];Assert::IsTrue(o.privateCuePlaneBottom && !o.privateCuePlaneTop);
+            Assert::AreEqual(263,o.barEvidence.top);Assert::AreEqual(2160,o.barEvidence.bottom);Assert::AreEqual(1896,o.pictureBottom);
+            Assert::IsTrue(o.text.detected && o.text.lineCount==2 && o.text.configuredSearchComplete);
+            Assert::IsTrue(o.text.topSearchComplete && o.text.bottomSearchComplete && o.ink && o.ink->rawEvidenceComplete);
+            Assert::IsFalse(o.independentBarAnalysis || o.subtitleArProof.accepted || o.barTrackingAuthority);
+            Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(o).valid);
+            Assert::IsTrue(!budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+            std::ostringstream log;log<<"Native approved current scan reads="<<budget.used<<" private_reads="<<o.privateCuePlaneSamples<<" ms="<<o.analysisMs;
+            Logger::WriteMessage(log.str().c_str());
+        }
+        for(int seq=1;seq<=8;++seq) {
+            if(seq<=2)s.working=SubtitleBoxLookahead::Resolve(s.observed.data()+seq-1,seq==1?2:1,7,8);
+            else s.working=MissingCurrentWorker(s.current,seq);
+            AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};auto current=source;current.readBudget=&budget;
+            const auto started=std::chrono::steady_clock::now();
+            PrepareCurrentSubtitleCueInto(s.prepared,s.guard,s.working,current,s.base,true,250,41.708);
+            ConsumePreparedCurrentSubtitleCueInto(s.decision,s.guard,s.tracker,s.working,current,s.base,true,250,41.708,s.prepared);
+            Assert::IsTrue(s.decision.accepted.detected && !s.decision.accepted.confirmationPending && s.guard.HasReference());
+            if(seq>=2)Assert::IsTrue(s.decision.proof.completeCurrentCue && s.decision.proof.backingVerifiedBounds.Valid());
+            if(seq==1)s.cue=s.decision.accepted.cue;else Assert::AreEqual(s.cue,s.decision.accepted.cue);
+            s.geometry=s.compositor.Consume(s.decision.accepted,s.working,{},0,nullptr,s.decision.proof.valid?&s.decision.proof:nullptr);
+            s.geometry=ApplySubtitleTextReduction(s.geometry,30,{},true,false);
+            Assert::IsTrue(s.geometry.valid && std::abs(s.geometry.glyphScale-0.7f)<0.001f);
+            Assert::IsTrue(s.geometry.generatedCleanup.Valid() && s.geometry.pictureCapture.Valid());
+            Assert::AreEqual(1710,s.geometry.generatedCleanup.top);Assert::AreEqual(1896,s.geometry.generatedCleanup.bottom);
+            Assert::AreEqual(265,s.geometry.destination.bottom-s.geometry.destination.top);
+            Assert::IsTrue(s.geometry.destination.bottom-s.geometry.destination.top<=s.geometry.layoutContent.bottom-s.geometry.layoutContent.top+1);
+            if(seq==1)s.applied=s.geometry;else {
+                Assert::IsTrue(Same(s.applied.destination,s.geometry.destination) && Same(s.applied.generatedCleanup,s.geometry.generatedCleanup));
+                Assert::AreEqual(s.applied.glyphScale,s.geometry.glyphScale);
+            }
+            Assert::IsTrue(Contains(s.geometry.source,s.decision.accepted.lineBounds[0]) && Contains(s.geometry.source,s.decision.accepted.lineBounds[1]));
+            Assert::IsTrue(!budget.exhausted && budget.used<=SubtitleCurrentCueFrameSampleLimit);
+            if(seq==2)s.current=s.working;
+            std::ostringstream log;log<<"Native approved selected seq="<<seq<<" reads="<<budget.used<<" complete="<<s.decision.proof.completeCurrentCue<<" ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();Logger::WriteMessage(log.str().c_str());
+        }
+        for(int fault=0;fault<4;++fault) {
+            auto trial=std::make_unique<SubtitleCueContinuationGuard>(s.guard);
+            auto current=MissingCurrentWorker(s.current,9);auto altered=source;
+            if(fault==0)++current.current.identity.sourceFormatGeneration;
+            if(fault==1)++current.policyGeneration;
+            if(fault==2)++current.continuityGeneration;
+            std::vector<uint8_t> changed;
+            if(fault==3) {
+                changed=bytes;for(int y=1900;y<2000;++y)
+                    std::fill(changed.begin()+size_t(y)*source.rowBytes+1150*2,changed.begin()+size_t(y)*source.rowBytes+2685*2,uint8_t(0));
+                altered.data=changed.data();
+            }
+            const auto rejected=trial->InspectCurrent(current,altered);Assert::IsFalse(rejected.valid);
+        }
+        // Exact shared allowance includes the fresh independent plane and all
+        // 79,650 native reference cells. One fewer read cannot acquire ownership.
+        auto seedPreview=SubtitleBoxLookahead::Resolve(s.observed.data(),2,7,8);
+        auto accepted=s.decision.accepted;
+        for(size_t allowance:{size_t(89239),size_t(89240)}) {
+            auto guard=std::make_unique<SubtitleCueContinuationGuard>();AnalysisLumaReadBudget budget{allowance};
+            auto current=source;current.readBudget=&budget;
+            const bool seeded=guard->Remember(seedPreview,accepted,s.base,current);
+            Assert::AreEqual(allowance==89240,seeded);Assert::AreEqual(allowance,budget.used);
+        }
+        // Adversarial expanded envelope cannot enlarge the finite seed phase.
+        // This is corrupted metadata, not a claim about the captured caption.
+        auto oversized=seedPreview;oversized.current.text.sourcePanel.top=0;
+        auto tooLarge=accepted;tooLarge.sourcePanel.top=0;oversized.text=tooLarge;
+        auto guard=std::make_unique<SubtitleCueContinuationGuard>();AnalysisLumaReadBudget budget{SubtitleCurrentCueFrameSampleLimit};
+        auto current=source;current.readBudget=&budget;
+        Assert::IsFalse(guard->Remember(oversized,tooLarge,s.base,current));
+        Assert::IsTrue(std::strcmp(guard->LastSeedReason(),"sample-budget")==0);
+        Assert::IsTrue(budget.used<=SubtitlePrivateCueReferenceSampleLimit+65536 && !budget.exhausted);
+        }
+        Logger::WriteMessage("Native approved subtitle regression executed through reconstruction.");
     }
     TEST_METHOD(OptionalNativeQueueCursorSurvivesCompleteMissingWorkerAndTwoRetirements) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_QUEUE_CURSOR_REPLAY_PATH");

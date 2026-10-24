@@ -19,14 +19,21 @@ struct CurrentSubtitleCueSidePlaneProof {
     const char* reason="plane-invalid-source";
 };
 
+// Optional current-caption footprint. Excluded columns cannot witness the
+// boundary; floor and complete bar-body checks remain entirely unmasked.
+struct SubtitleCuePlaneBoundaryExclusion { int left=0,right=0; };
+
 inline CurrentSubtitleCueSidePlaneProof ProveCurrentSubtitleCueSidePlane(
-    const AnalysisLumaSource& source,int plane,bool fromTopBar,size_t maxSamples)
+    const AnalysisLumaSource& source,int plane,bool fromTopBar,size_t maxSamples,
+    const SubtitleCuePlaneBoundaryExclusion* exclusion=nullptr)
 {
     CurrentSubtitleCueSidePlaneProof out;out.plane=plane;out.fromTopBar=fromTopBar;
     const auto reject=[&](const char* why){out.reason=why;return out;};
     if(!source.IsValid() || source.width<64 || source.height<48 ||
         source.width>8192 || source.height>4320 || plane<=0 || plane>=source.height)
         return out;
+    if(exclusion && (exclusion->left<=0 || exclusion->left>=exclusion->right ||
+        exclusion->right>=source.width))return reject("plane-invalid-boundary-exclusion");
     const int step=(std::max)(1,source.height/540);
     const int depth=fromTopBar?plane:source.height-plane;
     if(depth<2*step+1 || depth>=source.height/3)return reject("plane-invalid-depth");
@@ -59,6 +66,7 @@ inline CurrentSubtitleCueSidePlaneProof ProveCurrentSubtitleCueSidePlane(
     // The wider nine-row window corroborates sharpness but cannot move the
     // edge to a neighboring row or turn the top of a caption into a plane.
     for(int i=0;i<columns;++i){
+        if(exclusion && xs[i]>=exclusion->left && xs[i]<exclusion->right)continue;
         std::array<int,9> values{};
         for(int k=0;k<9;++k){
             AnalysisLumaSample value;if(!sample(xs[i],row(depth-4+k),value))return failed();

@@ -6,6 +6,10 @@
 // The frame-wide allowance also covers pending validation and the finite cap.
 constexpr size_t SubtitleCurrentCueInspectionSampleLimit=393216;
 constexpr size_t SubtitleCurrentCueFrameSampleLimit=524288;
+// A complete private caption-plane acquisition still samples its entire native
+// reference rectangle. This larger seed-only allowance does not enlarge the
+// inspector/frame limits, or permit partial continuation of that reference.
+constexpr size_t SubtitlePrivateCueReferenceSampleLimit=131072;
 
 // Diagnostic only: exact native samples for the first rejected unowned point.
 // Never grants continuation or changes the existing contradiction decision.

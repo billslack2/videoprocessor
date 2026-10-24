@@ -4,6 +4,7 @@
 #include <ActivePictureDecisionTimeline.h>
 #include <ActivePictureEvidence.h>
 #include <SubtitleBarEvidence.h>
+#include <SubtitleCueSidePlane.h>
 #include <SubtitleLocalGlyphProof.h>
 #include <SubtitleBarStripClearance.h>
 #include <algorithm>
@@ -102,6 +103,11 @@ struct SubtitleBoxObservation
     // Subtitle-only current glyph/backing proof at a missing shared plane.
     // barEvidence retains the physically measured plane on that side.
     bool glyphLocalTop = false, glyphLocalBottom = false;
+    // Exact current subtitle-only plane proof outside the full caption width.
+    // Physical barEvidence and AR authority remain unchanged.
+    bool privateCuePlaneTop=false,privateCuePlaneBottom=false;
+    const char* privateCuePlaneReason="not-attempted";
+    size_t privateCuePlaneSamples=0;
     SubtitleBoxRect glyphLocalVerifiedBounds;
     const char* glyphLocalProofReason = "not-attempted";
     bool trackedBottomHypothesisAttempted = false, trackedBottomHypothesisDetected = false;
@@ -235,6 +241,7 @@ namespace SubtitleBoxLookahead
         SubtitleBarTrackingReference result;
         if (!observation.analyzed || observation.discontinuity ||
             observation.glyphLocalTop || observation.glyphLocalBottom ||
+            observation.privateCuePlaneTop || observation.privateCuePlaneBottom ||
             !HasBarEvidence(observation) || observation.text.confirmationPending) return result;
         result.identity = observation.identity;
         result.width = observation.width; result.height = observation.height;
@@ -247,6 +254,60 @@ namespace SubtitleBoxLookahead
         return result;
     }
 
+    // One failed current run cluster may nominate a subtitle placement edge.
+    // The full configured current scan and an exact boundary outside every
+    // caption column must both succeed. Raw bar/AR evidence is never rewritten.
+    inline bool RecoverCurrentCaptionPlane(SubtitleBoxDetector& scanner,
+        const AnalysisLumaSource& source,SubtitleBoxObservation& result)
+    {
+        if(!source.IsValid() || !result.analyzed || result.discontinuity ||
+            std::strcmp(result.privateCuePlaneReason,"not-attempted")!=0 ||
+            result.analysisRefresh || result.pendingRefresh || result.text.detected || result.text.workLimit ||
+            result.barTrackingAuthority || result.currentAnchorUsesTrackedEdge ||
+            result.glyphLocalTop || result.glyphLocalBottom || !result.barAuthority ||
+            !result.barEvidence.available || result.width!=source.width || result.height!=source.height)
+            return false;
+        const auto& bars=result.barEvidence;
+        const bool missingBottom=bars.top>0 && bars.bottom==source.height &&
+            result.pictureTop==bars.top && result.pictureBottom==source.height;
+        const bool missingTop=bars.bottom<source.height && bars.top==0 &&
+            result.pictureBottom==bars.bottom && result.pictureTop==0;
+        if(missingBottom==missingTop)return false;
+        const int plane=missingBottom?bars.bottomCuePlaneCandidate:bars.topCuePlaneCandidate;
+        if(plane<=0 || plane>=source.height ||
+            (missingBottom?plane<=bars.top:plane>=bars.bottom))return false;
+        const size_t maximum=SubtitleCurrentCueFrameSampleLimit;
+        const size_t remaining=source.readBudget?(source.readBudget->used<source.readBudget->limit?
+            source.readBudget->limit-source.readBudget->used:0):maximum;
+        AnalysisLumaReadBudget budget{(std::min)(maximum,remaining)};
+        auto current=source;current.readBudget=&budget;
+        struct Charge {AnalysisLumaReadBudget* outer;AnalysisLumaReadBudget& local;size_t remaining;
+            ~Charge(){if(outer){outer->used+=local.used;outer->exhausted|=local.exhausted && local.limit==remaining;}}
+        } charge{source.readBudget,budget,remaining};
+        const auto reject=[&](const char* reason){result.privateCuePlaneSamples=budget.used;
+            result.privateCuePlaneReason=budget.exhausted?"private-plane-work-budget":reason;return false;};
+        scanner.Reset();
+        const auto candidate=scanner.Analyze(current,missingTop?plane:bars.top,
+            missingBottom?plane:bars.bottom,result.identity.acceptedSequence,
+            result.identity.viewportGeneration,true);
+        const auto ink=scanner.InkSnapshot();
+        if(budget.exhausted || candidate.workLimit)return reject("private-plane-work-budget");
+        if(!candidate.detected || candidate.held || candidate.confirmationPending ||
+            candidate.lineCount<1 || candidate.lineCount>3 || !candidate.configuredSearchComplete ||
+            !candidate.topSearchComplete || !candidate.bottomSearchComplete || !ink ||
+            !ink->paletteValid || !ink->rawEvidenceComplete ||
+            !candidate.capturePanelMeasured || !candidate.capturePanel.Valid() || !candidate.sourcePanel.Valid())
+            return reject("private-plane-current-caption-incomplete");
+        const auto proof=ProveCurrentSubtitleCaptionPlane(current,candidate,ink.get(),plane,missingTop,65536);
+        if(!proof.valid)return reject(proof.reason);
+        result.privateCuePlaneTop=missingTop;result.privateCuePlaneBottom=missingBottom;
+        result.privateCuePlaneReason="current-caption-independent-plane";
+        result.privateCuePlaneSamples=budget.used;
+        result.pictureTop=missingTop?plane:bars.top;result.pictureBottom=missingBottom?plane:bars.bottom;
+        result.text=candidate;result.ink=ink;
+        result.independentBarAnalysis=false;result.subtitleArProof={};result.subtitleArDarkness={};
+        return true;
+    }
     inline SubtitleBoxObservation Measure(SubtitleBoxDetector& scanner,
         const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
         const ActivePictureFrameIdentity& identity, bool discontinuity,
@@ -292,7 +353,9 @@ namespace SubtitleBoxLookahead
                 result.barAuthority=result.barEvidence.available;
                 result.independentBarAnalysis=result.barAuthority &&
                     result.pictureTop>0 && result.pictureBottom<source.height;
-                if (result.barAuthority) {
+                RecoverCurrentCaptionPlane(scanner,source,result);
+                if (result.barAuthority && !result.privateCuePlaneTop && !result.privateCuePlaneBottom &&
+                    !(source.readBudget && source.readBudget->exhausted)) {
                     scanner.Reset();
                     result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
                         identity.acceptedSequence,identity.viewportGeneration);
@@ -388,14 +451,17 @@ namespace SubtitleBoxLookahead
                     !bars.bottomRevalidatedAtReference && !bars.topRevalidatedNearby &&
                     !bars.bottomRevalidatedNearby && !bars.captionBackedTop &&
                     !bars.captionBackedBottom;
+                RecoverCurrentCaptionPlane(scanner,source,result);
                 if(result.barAuthority && !result.glyphLocalTop &&
-                    !result.glyphLocalBottom) {
+                    !result.glyphLocalBottom && !result.privateCuePlaneTop && !result.privateCuePlaneBottom &&
+                    !(source.readBudget && source.readBudget->exhausted)) {
                     scanner.Reset();
                     result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
                         identity.acceptedSequence,identity.viewportGeneration);
                     result.ink=scanner.InkSnapshot();
                 }
             }
+            RecoverCurrentCaptionPlane(scanner,source,result);
             measureClearance();
             result.analysisMs=std::chrono::duration<double,std::milli>(
                 std::chrono::steady_clock::now()-start).count();
@@ -431,8 +497,8 @@ namespace SubtitleBoxLookahead
         // glyph pixels explain the intrusion. The independent masked check
         // still requires fresh distributed edge evidence and a mostly black
         // unmasked bar. This path never changes native active-picture bounds.
-        bool provisionalMeasurement = false;
-        if (!discontinuity && priorBar.IsImmediatePredecessor(identity,source.width,source.height,
+        bool provisionalMeasurement = RecoverCurrentCaptionPlane(scanner,source,result);
+        if (!provisionalMeasurement && !discontinuity && priorBar.IsImmediatePredecessor(identity,source.width,source.height,
                 policyGeneration,continuityGeneration,scanner.ScriptHint()) && priorBar.pictureBottom<source.height &&
             !result.barEvidence.bottomRevalidatedAtReference &&
             !result.barEvidence.bottomRevalidatedNearby &&
@@ -475,7 +541,8 @@ namespace SubtitleBoxLookahead
         // nonblack samples are explained by this detector's owned glyphs.
         const bool missingBottom=bounds.top>0 && result.pictureBottom==source.height;
         const bool missingTop=bounds.bottom<source.height && result.pictureTop==0;
-        if(!provisionalMeasurement && (missingBottom || missingTop)) {
+        if(!provisionalMeasurement && (missingBottom || missingTop) &&
+            !(source.readBudget && source.readBudget->exhausted)) {
             scanner.Reset();
             const int probeTop=missingTop?source.height/3:result.pictureTop;
             const int probeBottom=missingBottom?source.height*2/3:result.pictureBottom;
@@ -502,7 +569,7 @@ namespace SubtitleBoxLookahead
         }
         if (result.barAuthority || result.barTrackingAuthority)
         {
-            if (!provisionalMeasurement) {
+            if (!provisionalMeasurement && !(source.readBudget && source.readBudget->exhausted)) {
                 scanner.Reset();
                 result.text = scanner.Analyze(source, result.pictureTop, result.pictureBottom,
                     identity.acceptedSequence, identity.viewportGeneration);
@@ -523,10 +590,12 @@ namespace SubtitleBoxLookahead
                     anchorInTrackedBottomBar);
         }
         result.independentBarAnalysis=result.barAuthority && !result.barTrackingAuthority &&
+            !result.privateCuePlaneTop && !result.privateCuePlaneBottom &&
             !result.currentAnchorUsesTrackedEdge && result.pictureTop>0 &&
             result.pictureBottom<source.height && !result.barEvidence.topRevalidatedAtReference &&
             !result.barEvidence.bottomRevalidatedAtReference && !result.barEvidence.captionBackedTop &&
             !result.barEvidence.captionBackedBottom;
+        RecoverCurrentCaptionPlane(scanner,source,result);
         measureClearance();
         result.analysisMs = std::chrono::duration<double,std::milli>(
             std::chrono::steady_clock::now()-start).count();
@@ -576,6 +645,7 @@ namespace SubtitleBoxLookahead
         if(observation.independentBarAnalysis)return false;
         if(!observation.analyzed || observation.analysisRefresh || observation.pendingRefresh ||
             observation.glyphLocalTop || observation.glyphLocalBottom ||
+            observation.privateCuePlaneTop || observation.privateCuePlaneBottom ||
             !observation.sharedPicture.required || !observation.barAuthority ||
             observation.barTrackingAuthority ||
             observation.currentAnchorUsesTrackedEdge ||
