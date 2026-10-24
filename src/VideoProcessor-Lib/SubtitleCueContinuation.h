@@ -100,8 +100,16 @@ public:
         // The opposite bar can lose its measurement while this cue and its
         // own bar remain independently detected. That context change cannot
         // certify new glyphs; recheck the exact acquired native pixels instead.
-        const bool missingOpposite=c.text.detected && !c.text.held &&
-            !c.text.confirmationPending && SameFreshSubtitleGlyphs(m_reference.text,c.text,0) &&
+        const bool sameDetectedSlots=[&]() {
+            if(!c.text.detected || c.text.held || c.text.confirmationPending ||
+                c.text.lineCount<1 || c.text.lineCount>3 ||
+                c.text.lineCount!=m_reference.text.lineCount)return false;
+            for(int i=0;i<c.text.lineCount;++i)
+                if(!SubtitleCueContinuation::SameRect(c.text.lineBounds[i],
+                    m_reference.text.lineBounds[i]))return false;
+            return true;
+        }();
+        const bool missingOpposite=sameDetectedSlots &&
             ((bottomCue && !topCue && m_reference.pictureTop>0 && c.pictureTop==0 &&
                 c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height) ||
              (topCue && !bottomCue && m_reference.pictureBottom<c.height && c.pictureBottom==c.height &&
