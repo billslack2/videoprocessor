@@ -987,11 +987,11 @@ public:
     TEST_METHOD(CurrentGridCacheMatchesNativeFormatsAndRemappedEdgeRows) {
         unsigned detected=0;
         for(int format=0;format<4;++format)for(bool upper:{false,true})for(int phase=0;phase<4;++phase) {
-            auto small=Frame();PanelToBar(small,180,298,465);Text(small,195,305,18);
+            auto fixture=Frame();PanelToBar(fixture,180,298,465);Text(fixture,195,305,18);
             if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
-                std::swap(small[y*W+x],small[(H-1-y)*W+x]);
+                std::swap(fixture[y*W+x],fixture[(H-1-y)*W+x]);
             const bool p210=format==1 || format==2;
-            auto native=ScaledFixture(small,6,p210);auto source=ScaledSource(native,6,p210);
+            auto native=ScaledFixture(fixture,6,p210);auto source=ScaledSource(native,6,p210);
             const int top=270+phase,bottom=1890+phase;
             // The nominal grid row and mandatory native edge row deliberately
             // differ. Reusing mutable scratch or sy/step alone is incorrect.
@@ -1020,12 +1020,12 @@ public:
     }
     TEST_METHOD(CurrentGridCacheDoesNotClaimUnscannedSideOrExpandedPanelRows) {
         for(bool upper:{false,true})for(bool panel:{false,true}) {
-            auto small=Frame();
-            if(panel) {PanelToBar(small,180,245,465);Text(small,195,250,18);Text(small,195,310,18);}
-            else {Text(small,195,320,18);Text(small,195,8,18);}
+            auto fixture=Frame();
+            if(panel) {PanelToBar(fixture,180,245,465);Text(fixture,195,250,18);Text(fixture,195,310,18);}
+            else {Text(fixture,195,320,18);Text(fixture,195,8,18);}
             if(upper)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
-                std::swap(small[y*W+x],small[(H-1-y)*W+x]);
-            auto native=ScaledFixture(small,6,true);auto source=ScaledSource(native,6,true);
+                std::swap(fixture[y*W+x],fixture[(H-1-y)*W+x]);
+            auto native=ScaledFixture(fixture,6,true);auto source=ScaledSource(native,6,true);
             const int top=upper?270:0,bottom=upper?source.height:1890;
             SubtitleBoxDetector direct,cached;
             const auto a=direct.Analyze(source,top,bottom,1,1,true);
@@ -1040,10 +1040,10 @@ public:
         SubtitleBoxDetector direct,cached;
         direct.SetNearBarDistance(20);cached.SetNearBarDistance(20);
         for(int frame=0;frame<6;++frame) {
-            auto small=Frame();
-            if(frame%3==0) {PanelToBar(small,180,298,465);Text(small,195,305,18);}
-            if(frame%3==1) {PanelToBar(small,230,291,460);Text(small,240,298,12);}
-            auto native=ScaledFixture(small,6,false);auto source=ScaledSource(native,6,false);
+            auto fixture=Frame();
+            if(frame%3==0) {PanelToBar(fixture,180,298,465);Text(fixture,195,305,18);}
+            if(frame%3==1) {PanelToBar(fixture,230,291,460);Text(fixture,240,298,12);}
+            auto native=ScaledFixture(fixture,6,false);auto source=ScaledSource(native,6,false);
             source.generation=frame<3?1:2;
             AnalysisLumaReadBudget budget{2000000};auto bounded=source;bounded.readBudget=&budget;
             const bool configured=frame%2==0;
@@ -1058,8 +1058,8 @@ public:
         }
     }
     TEST_METHOD(CurrentGridCacheCannotCompleteAfterNativeReadBudgetExhaustion) {
-        auto small=Frame();PanelToBar(small,180,298,465);Text(small,195,305,18);
-        auto native=ScaledFixture(small,6,true);auto source=ScaledSource(native,6,true);
+        auto fixture=Frame();PanelToBar(fixture,180,298,465);Text(fixture,195,305,18);
+        auto native=ScaledFixture(fixture,6,true);auto source=ScaledSource(native,6,true);
         // Enough for all original rows, but not fresh off-grid/native checks.
         const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
         const int rows=(source.height+step-1)/step,depth=(std::max)(24,rows/7);
