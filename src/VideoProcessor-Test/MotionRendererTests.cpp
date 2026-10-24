@@ -21,6 +21,7 @@
 #include <array>
 #include <fstream>
 #include <cstdint>
+#include <type_traits>
 #include "RendererProfileConfig.h"
 #include <vector>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -1359,7 +1360,8 @@ TEST_CLASS(MotionRendererTests){public:
         whiteFrame.planes[0].texture=g.layer;
         const pl_frame* pointers[]={&blackFrame,&whiteFrame,&blackFrame};
         const uint64_t signatures[]={1,2,3};
-        const float timestamps[]={-.75f,.25f,1.25f};
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        const Timestamp timestamps[]={-.75,.25,1.25};
         pl_frame_mix direct{};direct.num_frames=3;direct.frames=pointers;
         direct.signatures=signatures;direct.timestamps=timestamps;direct.vsync_duration=.5f;
         auto params=pl_render_fast_params;params.frame_mixer=g.temporal.MixerParameters();
