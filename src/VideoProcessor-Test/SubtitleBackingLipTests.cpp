@@ -291,11 +291,14 @@ public:
         Assert::IsTrue(decision.accepted.detected);Assert::AreEqual(cue.accepted.cue,decision.accepted.cue);Assert::AreEqual(reads,budget.used);
     }
     TEST_METHOD(PreparedCurrentCueRejectsChangedSourceOrContextAfterPreparation) {
+        auto preparedStorage=std::make_unique<PreparedCurrentSubtitleCue>();
+        auto decisionStorage=std::make_unique<CurrentSubtitleCueDecision>();
+        auto& prepared=*preparedStorage;auto& decision=*decisionStorage;
         for(int fault=0;fault<10;++fault) {
             Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame,20);auto source=frame.Source();
             const ActivePictureBounds base{0,64,640,296,640,360};SubtitleCueContinuationGuard guard;
             Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,source));auto missing=MissingCurrentWorker(cue.preview,3);
-            const auto prepared=PrepareCurrentSubtitleCue(guard,missing,source,base,true,250,41.708);Assert::IsTrue(prepared.proof.completeCurrentCue);
+            PrepareCurrentSubtitleCueInto(prepared,guard,missing,source,base,true,250,41.708);Assert::IsTrue(prepared.proof.completeCurrentCue);
             if(fault==1)missing.current.identity=Identity(4);
             if(fault==2)missing.policyGeneration=missing.current.policyGeneration=9;
             if(fault==3)missing.continuityGeneration=missing.current.continuityGeneration=9;
@@ -305,7 +308,7 @@ public:
             if(fault==7)source.format=AnalysisLumaFormat::P010;
             if(fault==8)source.dataBytes=0;
             if(fault==9)source.generation+=1;
-            const auto decision=ConsumePreparedCurrentSubtitleCue(guard,cue.tracker,missing,source,changedBase,fault!=5,250,41.708,prepared);
+            ConsumePreparedCurrentSubtitleCueInto(decision,guard,cue.tracker,missing,source,changedBase,fault!=5,250,41.708,prepared);
             Assert::AreEqual(fault==0,decision.proof.valid);Assert::AreEqual(fault==0,decision.accepted.detected);
             if(fault)Assert::IsFalse(decision.proof.candidateRetained);
         }

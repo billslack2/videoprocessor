@@ -279,6 +279,58 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         }
     };
 public:
+    TEST_METHOD(PresentationResetReleasesAllRetainedOwnersAndPreservesDefaultState) {
+        auto presentation=std::make_unique<SubtitleBoxPresentation>();
+        std::weak_ptr<const SubtitleInkSnapshot> currentOwner,rawOwner;
+        std::array<std::weak_ptr<const SubtitleInkSnapshot>,7> followingOwners;
+        {
+            auto fixture=std::make_unique<ContinuationFixture>();
+            auto& acquired=fixture->acquired;
+            currentOwner=acquired.current.ink;
+            for(size_t i=0;i<followingOwners.size();++i) {
+                acquired.following[i]=acquired.current;
+                acquired.following[i].ink=std::make_shared<SubtitleInkSnapshot>(*acquired.current.ink);
+                followingOwners[i]=acquired.following[i].ink;
+            }
+            const auto accepted=presentation->Consume(acquired);
+            Assert::IsTrue(accepted.detected);
+            Assert::IsTrue(presentation->HasAcceptedSourceTemplate());
+            auto raw=std::make_unique<SubtitleBoxPreview>(acquired);
+            raw->current.identity=Identity(2);raw->current.identity.transportGeneration=2;
+            raw->current.sharedPicture.identity=raw->current.identity;
+            raw->current.ink=std::make_shared<SubtitleInkSnapshot>(*acquired.current.ink);
+            rawOwner=raw->current.ink;
+            const auto fallback=presentation->CurrentRawFallbackForIncompleteInspection(*raw,250,40,false);
+            Assert::IsTrue(fallback.detected);
+            Assert::AreEqual(accepted.cue,fallback.cue);
+        }
+        Assert::IsFalse(currentOwner.expired());Assert::IsFalse(rawOwner.expired());
+        for(const auto& owner:followingOwners)Assert::IsFalse(owner.expired());
+        presentation->Reset();
+        Assert::IsTrue(currentOwner.expired());Assert::IsTrue(rawOwner.expired());
+        for(const auto& owner:followingOwners)Assert::IsTrue(owner.expired());
+        Assert::IsFalse(presentation->HasAcceptedSourceTemplate());
+        Assert::AreEqual(uint64_t(0),presentation->AcceptedTemplateIdentity().acceptedSequence);
+        Assert::AreEqual(uint64_t(0),presentation->AcceptedTemplateContinuity());
+        Assert::AreEqual(0.0,presentation->WeakHoldMilliseconds());
+        Assert::AreEqual(unsigned(0),presentation->HandoffSources());
+        Assert::AreEqual(unsigned(0),presentation->ReferenceSampleCount());
+        Assert::AreEqual(std::string("reset"),std::string(presentation->DecisionReason()));
+        Assert::AreEqual(std::string("reset"),std::string(presentation->ReferenceRefreshReason()));
+        Assert::AreEqual(std::string("reset"),std::string(presentation->HandoffReason()));
+        presentation->Reset(); // Repeated reset must preserve the same defaults.
+        auto unavailable=std::make_unique<SubtitleBoxPreview>();
+        const auto absent=presentation->Consume(*unavailable);
+        Assert::IsFalse(absent.detected);
+        Assert::AreEqual(-1,absent.diagnosticNearBarGap);
+        Assert::AreEqual(std::string("not-analyzed"),std::string(absent.diagnosticReason));
+        Assert::AreEqual(std::string("not-required"),std::string(absent.diagnosticGlyphTopology));
+        auto fresh=std::make_unique<ContinuationFixture>();
+        Assert::IsFalse(presentation->AcceptedCueSeedCertificate().Matches(fresh->acquired,fresh->acquired.text));
+        const auto reacquired=presentation->Consume(fresh->acquired);
+        Assert::IsTrue(reacquired.detected);Assert::IsFalse(reacquired.held);
+        Assert::IsTrue(reacquired.cue!=0);
+    }
     TEST_METHOD(PictureGlyphConfirmationFollowsIndependentInputAnalysisCadence) {
         auto first=CompleteBackedCue(1),next=CompleteBackedCue(3);
         first.text.diagnosticPictureGlyphProofRequired=true;

@@ -8,6 +8,8 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <fstream>
+#include <sstream>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests {
@@ -140,6 +142,44 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return guard.Resolve(preview,source,frameMs,holdMs);
     }
 public:
+    TEST_METHOD(ProductionSubtitlePathsRespectNativeOneMiBStackInIsolatedProcess) {
+#if defined(_WIN64) && defined(NDEBUG)
+        static const int moduleAnchor=0;HMODULE module=nullptr;
+        Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&moduleAnchor),&module)!=FALSE);
+        std::vector<wchar_t> modulePath(32768);
+        const auto length=GetModuleFileNameW(module,modulePath.data(),DWORD(modulePath.size()));
+        Assert::IsTrue(length>0 && length<modulePath.size());
+        const std::wstring moduleName(modulePath.data(),length);
+        const auto directory=moduleName.substr(0,moduleName.find_last_of(L"\\/"));
+        const auto probe=directory+L"\\test-tools\\VideoProcessor-SubtitleStackProbe.exe";
+        Assert::IsTrue(GetFileAttributesW(probe.c_str())!=INVALID_FILE_ATTRIBUTES,
+            L"Required native-stack companion is missing; build VideoProcessor-Test Release x64.");
+        Assert::IsTrue(GetFileAttributesW((probe+L".test.json").c_str())!=INVALID_FILE_ATTRIBUTES,
+            L"Required native-stack companion build provenance is missing.");
+        wchar_t temporary[MAX_PATH]{},logPath[MAX_PATH]{};
+        Assert::IsTrue(GetTempPathW(MAX_PATH,temporary)>0);
+        Assert::IsTrue(GetTempFileNameW(temporary,L"vps",0,logPath)!=0);
+        std::wstring command=L"\""+probe+L"\" \""+logPath+L"\"";
+        std::vector<wchar_t> commandLine(command.begin(),command.end());commandLine.push_back(0);
+        STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION process{};
+        Assert::IsTrue(CreateProcessW(probe.c_str(),commandLine.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,
+            nullptr,directory.c_str(),&startup,&process)!=FALSE,L"Cannot launch native-stack companion.");
+        const auto wait=WaitForSingleObject(process.hProcess,30000);
+        if(wait!=WAIT_OBJECT_0) {TerminateProcess(process.hProcess,WAIT_TIMEOUT);WaitForSingleObject(process.hProcess,5000);}
+        DWORD exitCode=0;GetExitCodeProcess(process.hProcess,&exitCode);CloseHandle(process.hThread);CloseHandle(process.hProcess);
+        std::ifstream log(logPath);std::ostringstream contents;contents<<log.rdbuf();log.close();
+        Logger::WriteMessage(contents.str().c_str());
+        const auto detail=L"Native1MiB stack regression failed; preserved log: "+std::wstring(logPath);
+        Assert::IsTrue(wait==WAIT_OBJECT_0,detail.c_str());
+        Assert::IsTrue(exitCode==0,detail.c_str());
+        Assert::IsTrue(contents.str().find("PASS unavailable-reset incomplete-fallback complete-proof contradiction")!=std::string::npos,
+            L"Child exited without completing all production stack paths.");
+        DeleteFileW(logPath);
+#else
+        Logger::WriteMessage("Native-stack regression is qualified by the Release x64 companion build.");
+#endif
+    }
     TEST_METHOD(VisibleCueGapCaptureSelectsCurrentOppositeBarLossAndRejectsNavigation) {
         auto pixels=Pixels();const auto source=Source(pixels);const auto key=Ready(17).current;
         for(bool top:{false,true}) {

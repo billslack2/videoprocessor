@@ -366,4 +366,12 @@
   <ItemGroup>
     <ClCompile Include="PreparedOutwardWindowTests.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="SubtitleNativeStackProbe.cpp" />
+  </ItemGroup>
+  <!-- Isolated1MiB stack regression; output stays outside the runtime package layout. -->
+  <Target Name="BuildSubtitleNativeStackProbe" AfterTargets="Build"
+          Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\tools\build_subtitle_stack_probe.ps1&quot; -RepoRoot &quot;$(ProjectDir)..\..&quot; -OutputDirectory &quot;$(OutDir)test-tools&quot; -IntermediateDirectory &quot;$(IntDir)SubtitleStackProbe&quot; -CompilerPath &quot;$(VCToolsInstallDir)bin\Hostx64\x64\cl.exe&quot; -IncludeDirectories &quot;$(IncludePath)&quot; -LibraryDirectories &quot;$(LibraryPath)&quot; -ToolsetVersion &quot;$(VCToolsVersion)&quot;" />
+  </Target>
 </Project>

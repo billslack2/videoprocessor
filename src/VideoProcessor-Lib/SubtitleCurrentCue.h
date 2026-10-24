@@ -29,20 +29,30 @@ struct PreparedCurrentSubtitleCue {
 
 // Prepare once before optional pending work. A COMPLETE proof supersedes that
 // weaker work; only an exact retained UNKNOWN may request pending fallback.
+inline void PrepareCurrentSubtitleCueInto(
+    PreparedCurrentSubtitleCue& out,
+    SubtitleCueContinuationGuard& guard,const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
+    const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
+    size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
+    out.proof={};out.inputBase=base;out.inputBaseAvailable=baseAvailable;
+    out.inputSource=source;out.inputSource.readBudget=nullptr;out.inputSource.backingOwner.reset();
+    if(!baseAvailable){guard.Reset();return;}
+    if(guard.NeedsCurrentPixelRevalidation(preview) || preview.current.pendingRefresh || !preview.current.analyzed)
+        out.proof=guard.Prepare(preview,source,base,holdMs,frameMs,maxSamples);
+    return;
+}
 inline PreparedCurrentSubtitleCue PrepareCurrentSubtitleCue(
     SubtitleCueContinuationGuard& guard,const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
     const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
     size_t maxSamples=SubtitleCurrentCueInspectionSampleLimit) {
-    PreparedCurrentSubtitleCue out;out.inputBase=base;out.inputBaseAvailable=baseAvailable;
-    out.inputSource=source;out.inputSource.readBudget=nullptr;out.inputSource.backingOwner.reset();
-    if(!baseAvailable){guard.Reset();return out;}
-    if(guard.NeedsCurrentPixelRevalidation(preview) || preview.current.pendingRefresh || !preview.current.analyzed)
-        out.proof=guard.Prepare(preview,source,base,holdMs,frameMs,maxSamples);
+    PreparedCurrentSubtitleCue out;
+    PrepareCurrentSubtitleCueInto(out,guard,preview,source,base,baseAvailable,holdMs,frameMs,maxSamples);
     return out;
 }
 // Consume the same source-bound preparation after optional pending resolution.
 // This function never re-runs the current inspector or charges a second lease.
-inline CurrentSubtitleCueDecision ConsumePreparedCurrentSubtitleCue(
+inline void ConsumePreparedCurrentSubtitleCueInto(
+    CurrentSubtitleCueDecision& out,
     SubtitleCueContinuationGuard& guard,SubtitleBoxPresentation& presentation,
     const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
     const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
@@ -50,7 +60,7 @@ inline CurrentSubtitleCueDecision ConsumePreparedCurrentSubtitleCue(
     const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
     bool backlogRetirementOnly=false)
 {
-    CurrentSubtitleCueDecision out;
+    out.accepted={};
     out.proof=prepared.proof;
     // Pending resolution may replace raw metadata, never this source binding.
     if((out.proof.valid || out.proof.candidateRetained) &&
@@ -73,7 +83,7 @@ inline CurrentSubtitleCueDecision ConsumePreparedCurrentSubtitleCue(
             // Any displayed fallback is authorized solely by ordinary current
             // raw admission. The invalid token retains caches only on blanks.
             if(out.accepted.detected)out.proof.candidateRetained=false;
-            return out;
+            return;
         }
         // A retained inspector cannot rebind itself to a different selection.
         out.proof.candidateRetained=false;guard.Reset();
@@ -90,6 +100,17 @@ inline CurrentSubtitleCueDecision ConsumePreparedCurrentSubtitleCue(
             guard.AdvanceVerified(preview,out.accepted,source,base,holdMs,frameMs);
     }
     else if(!out.accepted.detected)guard.Reset();
+    return;
+}
+inline CurrentSubtitleCueDecision ConsumePreparedCurrentSubtitleCue(
+    SubtitleCueContinuationGuard& guard,SubtitleBoxPresentation& presentation,
+    const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
+    const ActivePictureBounds& base,bool baseAvailable,int holdMs,double frameMs,
+    const PreparedCurrentSubtitleCue& prepared,bool pendingPixelsVerified=false,
+    const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,bool backlogRetirementOnly=false) {
+    CurrentSubtitleCueDecision out;
+    ConsumePreparedCurrentSubtitleCueInto(out,guard,presentation,preview,source,base,baseAvailable,holdMs,frameMs,
+        prepared,pendingPixelsVerified,backlogTemplateIdentity,backlogRetirementOnly);
     return out;
 }
 inline CurrentSubtitleCueDecision ConsumeCurrentSubtitleCue(

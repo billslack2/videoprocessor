@@ -11,6 +11,8 @@
 #include <cstring>
 #include <limits>
 #include <cmath>
+#include <memory>
+#include <type_traits>
 
 // A strongly acquired bar plane may be carried forward only when every new
 // frame freshly revalidates that exact plane from its own pixels. The identity
@@ -1948,17 +1950,17 @@ class SubtitleBoxPresentation
 public:
     void Reset() {
         ResetCurrentRawFallback();
-        m_acceptedCueSeedCertificate = {};
-        m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
-        m_barTrackingReference = {};
-        m_pendingPictureGlyphAcquisition = {};
+        ResetValueFromDefault(m_acceptedCueSeedCertificate);
+        ResetValueFromDefault(m_previous); ResetValueFromDefault(m_reference); ResetValueFromDefault(m_inkReference); ResetValueFromDefault(m_result);
+        ResetValueFromDefault(m_barTrackingReference);
+        ResetValueFromDefault(m_pendingPictureGlyphAcquisition);
         m_hasPendingPictureGlyphAcquisition = false;
         m_expansionEvidence.clear();
         m_hasPrevious = false; m_bridgedFrames = 0;
-        m_diagnosticWeakMs=0;m_decisionReason="reset";m_referenceSamples=0;m_referenceRefresh="reset";m_refreshedReference={};
+        m_diagnosticWeakMs=0;m_decisionReason="reset";m_referenceSamples=0;m_referenceRefresh="reset";ResetValueFromDefault(m_refreshedReference);
         m_weakTemplateMilliseconds = 0; m_weakTemplateExhausted = false;
-        m_handoffResult={};m_handoffSources=0;m_handoffActive=false;
-        m_handoffMilliseconds=0;m_handoffReason="reset";m_handoffProof={};
+        ResetValueFromDefault(m_handoffResult);m_handoffSources=0;m_handoffActive=false;
+        m_handoffMilliseconds=0;m_handoffReason="reset";ResetValueFromDefault(m_handoffProof);
     }
     bool HasAcceptedSourceTemplate() const {
         return m_hasPrevious && !m_handoffActive && m_result.detected && !m_result.confirmationPending && m_inkReference.ink &&
@@ -2103,7 +2105,9 @@ public:
         // This local object is only the shared exact-geometry comparator; it is
         // never emitted as a current-source or cleanup certificate.
         SubtitleCueContinuation selected;selected.valid=true;selected.accepted=m_result;
-        auto trial=*this;
+        // Keep the transactional copy off the renderer thread stack. Admission
+        // still commits only the verified raw cursor below, never trial leases.
+        auto trial=std::make_unique<SubtitleBoxPresentation>(*this);
         if(m_hasRawFallback) {
             const auto& prior=m_rawFallbackPrevious.current;
             if(!SameAnalysisFrameIdentity(m_rawFallbackAnchor,m_previous.current.identity) ||
@@ -2125,10 +2129,10 @@ public:
             // originals. No weak hold, handoff, confirmation or newly enlarged
             // geometry can pass the strong exact-cue gate below, so their trial
             // counters and references must not be committed to either cursor.
-            trial.m_previous=m_rawFallbackPrevious;trial.m_previous.current.text=m_rawFallbackResult;
-            trial.m_result=m_rawFallbackResult;
+            trial->m_previous=m_rawFallbackPrevious;trial->m_previous.current.text=m_rawFallbackResult;
+            trial->m_result=m_rawFallbackResult;
         }
-        const auto result=trial.Consume(preview,holdMilliseconds,sourceFrameMilliseconds,
+        const auto result=trial->Consume(preview,holdMilliseconds,sourceFrameMilliseconds,
             nullptr,false,pendingPixelsVerified,nullptr);
         if(!result.detected || result.held || result.confirmationPending || result.workLimit ||
             !selected.MatchesCue(result))return reject();
@@ -2589,8 +2593,18 @@ public:
         return result;
     }
 private:
+    template<class T> static void ResetValueFromDefault(T& value) {
+        static_assert(std::is_copy_assignable_v<T> && std::is_nothrow_destructible_v<T>,
+            "Reset must assign a live value and safely release its old owners");
+        // Keep the value-initialized defaults in static storage: assigning T{}
+        // materializes a large preview on the renderer's bounded thread stack.
+        // Ordinary assignment releases old shared owners and preserves defaults.
+        static const T defaults{};
+        value=defaults;
+    }
     void ResetCurrentRawFallback() {
-        m_hasRawFallback=false;m_rawFallbackPrevious={};m_rawFallbackResult={};m_rawFallbackAnchor={};
+        m_hasRawFallback=false;ResetValueFromDefault(m_rawFallbackPrevious);
+        ResetValueFromDefault(m_rawFallbackResult);ResetValueFromDefault(m_rawFallbackAnchor);
     }
     // Only the latest strong raw admission is retained; no recursive tracker or
     // copied mutable lease state. Its ink pointers refer to immutable snapshots.

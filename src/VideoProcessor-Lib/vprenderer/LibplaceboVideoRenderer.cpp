@@ -4465,6 +4465,10 @@ struct LibplaceboVideoRenderer::Impl
     ULONGLONG subtitlePerfTick=0;
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleCueContinuationGuard subtitleCueContinuation;
+    // RenderLocked serializes this reusable output storage. Keep bulky cue
+    // values and return temporaries off the normal renderer thread stack.
+    std::unique_ptr<PreparedCurrentSubtitleCue> subtitlePreparedCueScratch;
+    std::unique_ptr<CurrentSubtitleCueDecision> subtitleCueDecisionScratch;
     std::string subtitleContinuationLogReason;
     uint64_t subtitleContinuationLogTick=0;
     unsigned subtitlePixelMismatchLogCount=0;
@@ -13816,9 +13820,12 @@ struct LibplaceboVideoRenderer::Impl
             const bool prioritizeCurrentInspection=continuationBaseAvailable &&
                 !currentSubtitlePreview.available &&
                 subtitleCueContinuation.CanInspectCurrentObservation(currentSubtitlePreview.current);
-            PreparedCurrentSubtitleCue preparedCurrentCue;
+            if(!subtitlePreparedCueScratch)subtitlePreparedCueScratch=std::make_unique<PreparedCurrentSubtitleCue>();
+            if(!subtitleCueDecisionScratch)subtitleCueDecisionScratch=std::make_unique<CurrentSubtitleCueDecision>();
+            auto& preparedCurrentCue=*subtitlePreparedCueScratch;
+            auto& cueDecision=*subtitleCueDecisionScratch;
             if(prioritizeCurrentInspection)
-                preparedCurrentCue=PrepareCurrentSubtitleCue(subtitleCueContinuation,
+                PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
                     currentSubtitlePreview,subtitleProofSource,nlsGeometry,
                     continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs);
             const bool allowPendingRecovery=!prioritizeCurrentInspection ||
@@ -13856,19 +13863,16 @@ struct LibplaceboVideoRenderer::Impl
                         pendingDetail.measuredTop,pendingDetail.measuredBottom);
                 }
             }
-            const auto cueDecision=prioritizeCurrentInspection ?
-                ConsumePreparedCurrentSubtitleCue(subtitleCueContinuation,
-                    subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
-                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
-                    preparedCurrentCue,pendingCurrentPixelsVerified,
-                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                    subtitleBacklogRetirementOnly) :
-                ConsumeCurrentSubtitleCue(subtitleCueContinuation,
-                    subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
-                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
-                    pendingCurrentPixelsVerified,
-                    subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                    subtitleBacklogRetirementOnly);
+            if(!prioritizeCurrentInspection)
+                PrepareCurrentSubtitleCueInto(preparedCurrentCue,subtitleCueContinuation,
+                    currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                    continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs);
+            ConsumePreparedCurrentSubtitleCueInto(cueDecision,subtitleCueContinuation,
+                subtitleBoxPresentation,currentSubtitlePreview,subtitleProofSource,nlsGeometry,
+                continuationBaseAvailable,activeSettings.subtitleHoldMs,subtitleFrameMs,
+                preparedCurrentCue,pendingCurrentPixelsVerified,
+                subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
+                subtitleBacklogRetirementOnly);
             const auto& mismatch=subtitleCueContinuation.LastPixelMismatch();
             if(mismatch.valid && subtitlePixelMismatchLogCount<64 &&
                 SameAnalysisFrameIdentity(mismatch.currentIdentity,subtitleIdentity) &&
@@ -13888,6 +13892,16 @@ struct LibplaceboVideoRenderer::Impl
             }
             currentCueContinuation=cueDecision.proof;
             subtitleBoxResult=cueDecision.accepted;
+            // Borrowed source bindings and output ownership do not survive
+            // this synchronous call; every later use starts with PrepareInto.
+            preparedCurrentCue.inputSource.data=nullptr;preparedCurrentCue.inputSource.dataBytes=0;
+            preparedCurrentCue.inputBaseAvailable=false;
+            preparedCurrentCue.proof.valid=false;preparedCurrentCue.proof.completeCurrentCue=false;
+            preparedCurrentCue.proof.candidateRetained=false;
+            preparedCurrentCue.proof.ink.reset();preparedCurrentCue.proof.currentInk.reset();
+            cueDecision.proof.valid=false;cueDecision.proof.completeCurrentCue=false;
+            cueDecision.proof.candidateRetained=false;
+            cueDecision.proof.ink.reset();cueDecision.proof.currentInk.reset();cueDecision.accepted.detected=false;
             if(currentCueContinuation.templateIdentity.acceptedSequence) {
                 const auto now=GetTickCount64();
                 if(std::strcmp(currentCueContinuation.reason,"not-eligible")!=0 &&
