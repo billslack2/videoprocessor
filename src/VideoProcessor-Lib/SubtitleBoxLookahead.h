@@ -1947,6 +1947,7 @@ class SubtitleBoxPresentation
 {
 public:
     void Reset() {
+        ResetCurrentRawFallback();
         m_acceptedCueSeedCertificate = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_barTrackingReference = {};
@@ -2077,17 +2078,20 @@ public:
             current.scriptHint!=previous.scriptHint || current.optimizationMode!=previous.optimizationMode ||
             current.nearBarDistance!=previous.nearBarDistance ||
             preview.policyGeneration!=m_previous.policyGeneration ||
-            preview.continuityGeneration!=m_previous.continuityGeneration)return false;
+            preview.continuityGeneration!=m_previous.continuityGeneration) {
+            ResetCurrentRawFallback();return false;
+        }
         m_acceptedCueSeedCertificate={};m_refreshedReference={};
         m_referenceSamples=0;m_referenceRefresh="incomplete-current-inspection";
         m_decisionReason="incomplete-current-inspection";
         return true;
     }
     // A complete-inspector budget miss must not suppress an independently
-    // admissible CURRENT raw result. Trial admission cannot advance the saved
-    // source cursor, renew a lease/certificate, or change the selected cue.
+    // admissible CURRENT raw result. Keep its actual admitted predecessor in
+    // a separate display cursor; the complete-proof cursor and leases do not move.
     SubtitleBoxResult CurrentRawFallbackForIncompleteInspection(const SubtitleBoxPreview& preview,
         int holdMilliseconds,double sourceFrameMilliseconds,bool pendingPixelsVerified) {
+        const auto reject=[&]() {ResetCurrentRawFallback();return SubtitleBoxResult{};};
         const auto& current=preview.current;
         if(!m_hasPrevious || !m_result.detected || !preview.available || !current.analyzed ||
             current.discontinuity || current.analysisRefresh ||
@@ -2095,15 +2099,42 @@ public:
             !current.barAuthority || !current.barEvidence.available || current.barTrackingAuthority ||
             current.currentAnchorUsesTrackedEdge || !current.text.detected || current.text.held ||
             current.text.confirmationPending || current.text.workLimit ||
-            !current.ink || !current.ink->paletteValid || !current.ink->rawEvidenceComplete)return {};
-        auto trial=*this;
-        const auto result=trial.Consume(preview,holdMilliseconds,sourceFrameMilliseconds,
-            nullptr,false,pendingPixelsVerified,nullptr);
-        if(!result.detected || result.held || result.confirmationPending || result.workLimit)return {};
+            !current.ink || !current.ink->paletteValid || !current.ink->rawEvidenceComplete)return reject();
         // This local object is only the shared exact-geometry comparator; it is
         // never emitted as a current-source or cleanup certificate.
         SubtitleCueContinuation selected;selected.valid=true;selected.accepted=m_result;
-        if(!selected.MatchesCue(result))return {};
+        auto trial=*this;
+        if(m_hasRawFallback) {
+            const auto& prior=m_rawFallbackPrevious.current;
+            if(!SameAnalysisFrameIdentity(m_rawFallbackAnchor,m_previous.current.identity) ||
+                !selected.MatchesCue(m_rawFallbackResult) ||
+                m_rawFallbackPrevious.policyGeneration!=preview.policyGeneration ||
+                m_rawFallbackPrevious.continuityGeneration!=preview.continuityGeneration ||
+                prior.optimizationMode!=current.optimizationMode ||
+                !SubtitleBoxLookahead::SameContext(prior,current) ||
+                current.identity.acceptedSequence<prior.identity.acceptedSequence)return reject();
+            if(SameAnalysisFrameIdentity(current.identity,prior.identity) &&
+                (current.ink!=prior.ink ||
+                 !SubtitleAcceptedCueSeedCertificate::SameCueResult(current.text,prior.text) ||
+                 current.pictureTop!=prior.pictureTop || current.pictureBottom!=prior.pictureBottom ||
+                 current.pendingRefresh!=prior.pendingRefresh))return reject();
+            // A repeat shortcut is permitted only for the same immutable raw
+            // snapshot. A late worker result cannot borrow that shortcut.
+            // These are the genuine prior admitted raw packet and result, not a
+            // relabeled predecessor. Acquisition/extension references remain the
+            // originals. No weak hold, handoff, confirmation or newly enlarged
+            // geometry can pass the strong exact-cue gate below, so their trial
+            // counters and references must not be committed to either cursor.
+            trial.m_previous=m_rawFallbackPrevious;trial.m_previous.current.text=m_rawFallbackResult;
+            trial.m_result=m_rawFallbackResult;
+        }
+        const auto result=trial.Consume(preview,holdMilliseconds,sourceFrameMilliseconds,
+            nullptr,false,pendingPixelsVerified,nullptr);
+        if(!result.detected || result.held || result.confirmationPending || result.workLimit ||
+            !selected.MatchesCue(result))return reject();
+        m_rawFallbackAnchor=m_previous.current.identity;
+        m_rawFallbackPrevious=preview;
+        m_rawFallbackResult=result;m_hasRawFallback=true;
         m_decisionReason="current-raw-fallback-incomplete-inspection";
         return result;
     }
@@ -2114,6 +2145,7 @@ public:
         bool backlogPendingPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
+        ResetCurrentRawFallback();
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
@@ -2557,6 +2589,15 @@ public:
         return result;
     }
 private:
+    void ResetCurrentRawFallback() {
+        m_hasRawFallback=false;m_rawFallbackPrevious={};m_rawFallbackResult={};m_rawFallbackAnchor={};
+    }
+    // Only the latest strong raw admission is retained; no recursive tracker or
+    // copied mutable lease state. Its ink pointers refer to immutable snapshots.
+    bool m_hasRawFallback=false;
+    SubtitleBoxPreview m_rawFallbackPrevious;
+    SubtitleBoxResult m_rawFallbackResult;
+    ActivePictureFrameIdentity m_rawFallbackAnchor;
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
     SubtitleBoxObservation m_pendingPictureGlyphAcquisition;
     bool m_hasPendingPictureGlyphAcquisition=false;

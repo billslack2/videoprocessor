@@ -325,6 +325,103 @@ public:
                 L"Display-only trial admission cannot advance the saved source cursor or lease.");
         }
     }
+    TEST_METHOD(CurrentRawFallbackCursorSurvivesConsecutiveUnknownAndExactRepeatsWithoutRenewingProof) {
+        Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame);
+        const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+        SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+        const auto selected=guard.LastVerifiedIdentity();const auto weakMs=cue.tracker.WeakHoldMilliseconds();
+        const auto handoffs=cue.tracker.HandoffSources();SubtitleCutPastePresentation compositor;
+        const auto original=compositor.Consume(cue.accepted,cue.preview);Assert::IsTrue(original.valid);
+        const auto rawAt=[&](uint64_t seq) {auto p=Resolve({frame.Measure(seq)});
+            p.current.independentBarAnalysis=false;p.current.barEvidence.bottomRevalidatedNearby=true;return p;};
+        for(uint64_t seq=3;seq<=10;++seq) {
+            const auto raw=rawAt(seq);uint64_t observations=0;
+            for(int repeat=0;repeat<(seq==4?2:1);++repeat) {
+                AnalysisLumaReadBudget budget{1};auto bounded=frame.Source();bounded.readBudget=&budget;
+                const auto next=ConsumeCurrentSubtitleCue(guard,cue.tracker,raw,bounded,base,true,250,41.708);
+                Assert::IsTrue(next.accepted.detected && !next.accepted.held && !next.proof.valid && !next.proof.candidateRetained);
+                Assert::AreEqual(cue.accepted.cue,next.accepted.cue);
+                Assert::IsTrue(SameAnalysisFrameIdentity(selected,guard.LastVerifiedIdentity()));
+                Assert::IsTrue(SameAnalysisFrameIdentity(selected,cue.tracker.AcceptedTemplateIdentity()));
+                Assert::AreEqual(weakMs,cue.tracker.WeakHoldMilliseconds());Assert::AreEqual(handoffs,cue.tracker.HandoffSources());
+                Assert::IsFalse(cue.tracker.AcceptedCueSeedCertificate().Matches(cue.preview,cue.accepted));
+                if(repeat)Assert::IsTrue(observations==next.accepted.observations);
+                observations=next.accepted.observations;
+                const auto geometry=compositor.Consume(next.accepted,raw);Assert::IsTrue(geometry.valid);
+                AssertGeometryExceptCleanup(original,geometry);
+                if(seq==3) {
+                    SubtitleBackingLipContinuity cap;
+                    const auto exhausted=cap.Consume(bounded,raw,next.accepted,Identity(seq),7,8,65536,&geometry);
+                    Assert::IsFalse(exhausted.valid);
+                    Assert::IsTrue(std::strcmp(exhausted.reason,"lip-work-budget")==0);
+                    const auto fresh=cap.Consume(frame.Source(),raw,next.accepted,Identity(seq),7,8,65536,&geometry);
+                    Assert::IsTrue(fresh.valid,L"Raw fallback does not replace fresh finite backing proof.");
+                }
+            }
+        }
+        auto complete=rawAt(11);complete.available=false;complete.current.analyzed=false;complete.current.text={};
+        const auto recovered=ConsumeCurrentSubtitleCue(guard,cue.tracker,complete,frame.Source(),base,true,250,41.708);
+        Assert::IsTrue(recovered.proof.completeCurrentCue && recovered.accepted.detected);
+        Assert::IsTrue(SameAnalysisFrameIdentity(selected,recovered.proof.previousIdentity));
+        Assert::AreEqual(cue.accepted.cue,recovered.accepted.cue);
+        const auto raw=rawAt(12);AnalysisLumaReadBudget budget{1};auto bounded=frame.Source();bounded.readBudget=&budget;
+        const auto resumed=ConsumeCurrentSubtitleCue(guard,cue.tracker,raw,bounded,base,true,250,41.708);
+        Assert::IsTrue(resumed.accepted.detected && !resumed.proof.valid);
+        Assert::IsTrue(SameAnalysisFrameIdentity(Identity(11),guard.LastVerifiedIdentity()),
+            L"A complete source resets the separate display cursor without changing its own proof semantics.");
+    }
+    TEST_METHOD(CurrentRawFallbackCursorCannotBridgeUnknownGapOrChangedRepeat) {
+        for(int mode=0;mode<4;++mode) {
+            Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame);
+            const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+            SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+            const auto selected=guard.LastVerifiedIdentity();auto raw=cue.preview;raw.current.identity=Identity(3);
+            raw.current.independentBarAnalysis=false;raw.current.barEvidence.bottomRevalidatedNearby=true;
+            const auto unknown=[&](const SubtitleBoxPreview& p) {AnalysisLumaReadBudget budget{1};auto bounded=frame.Source();bounded.readBudget=&budget;
+                return ConsumeCurrentSubtitleCue(guard,cue.tracker,p,bounded,base,true,250,41.708);};
+            Assert::IsTrue(unknown(raw).accepted.detected);
+            auto rejected=raw;
+            if(mode==0) {rejected.current.identity=Identity(4);rejected.available=false;rejected.current.analyzed=false;rejected.current.text={};}
+            if(mode==1) {auto changed=std::make_shared<SubtitleInkSnapshot>(*raw.current.ink);changed->rawInk[0]^=1;rejected.current.ink=changed;}
+            if(mode==2) {++rejected.current.text.lineBounds[0].right;}
+            if(mode==3)rejected.current.ink=std::make_shared<SubtitleInkSnapshot>(*raw.current.ink);
+            const auto blank=unknown(rejected);Assert::IsTrue(blank.proof.candidateRetained && !blank.accepted.detected);
+            auto following=raw;following.current.identity=Identity(mode==0?5:4);
+            Assert::IsFalse(unknown(following).accepted.detected,
+                L"Rejected or missing raw evidence clears the display cursor; it cannot invent a predecessor.");
+            following.current.identity=Identity(6);following.available=false;following.current.analyzed=false;following.current.text={};
+            const auto recovered=ConsumeCurrentSubtitleCue(guard,cue.tracker,following,frame.Source(),base,true,250,41.708);
+            Assert::IsTrue(recovered.proof.completeCurrentCue && recovered.accepted.detected);
+            Assert::IsTrue(SameAnalysisFrameIdentity(selected,recovered.proof.previousIdentity));
+        }
+    }
+    TEST_METHOD(CurrentRawFallbackCursorCannotSurviveContextResetOrNewCurrentCue) {
+        for(int fault=0;fault<5;++fault) {
+            Frame frame(1,Format::P210);frame.Lip(4,true);auto cue=Acquire(frame);
+            const ActivePictureBounds base{0,frame.pictureTop,frame.width,frame.pictureBottom,frame.width,frame.height};
+            SubtitleCueContinuationGuard guard;Assert::IsTrue(guard.Remember(cue.preview,cue.accepted,base,frame.Source()));
+            auto raw=cue.preview;raw.current.identity=Identity(3);raw.current.independentBarAnalysis=false;
+            raw.current.barEvidence.bottomRevalidatedNearby=true;
+            const auto unknown=[&](const SubtitleBoxPreview& p) {AnalysisLumaReadBudget budget{1};auto bounded=frame.Source();bounded.readBudget=&budget;
+                return ConsumeCurrentSubtitleCue(guard,cue.tracker,p,bounded,base,true,250,41.708);};
+            Assert::IsTrue(unknown(raw).accepted.detected);auto changed=raw;changed.current.identity=Identity(4);
+            if(fault==0)++changed.current.identity.transportGeneration;
+            if(fault==1)++changed.current.identity.sourceFormatGeneration;
+            if(fault==2){++changed.policyGeneration;++changed.current.policyGeneration;}
+            if(fault==3)changed.current.discontinuity=true;
+            if(fault==4) {
+                // A real changed current glyph snapshot must not borrow the old
+                // raw cursor even though the local inspector lacks work budget.
+                frame.Fill({240,frame.pictureBottom+2,248,frame.pictureBottom+16},frame.floor);
+                changed=Resolve({frame.Measure(4)});changed.current.independentBarAnalysis=false;
+                changed.current.barEvidence.bottomRevalidatedNearby=true;
+            }
+            const auto next=unknown(changed);
+            Assert::IsFalse(next.accepted.detected && next.accepted.cue==cue.accepted.cue);
+            auto missing=changed;missing.current.identity=Identity(5);missing.available=false;missing.current.analyzed=false;missing.current.text={};
+            const auto after=unknown(missing);Assert::IsFalse(after.accepted.detected);
+        }
+    }
     TEST_METHOD(CurrentPlaneReproofRejectsWrongNativeRowSceneBlackAndBarIntrusion) {
         for(bool top:{false,true})for(int fault=0;fault<5;++fault) {
             Frame frame(6,Format::DecodedDv,top);frame.Lip(30);auto cue=Acquire(frame);
