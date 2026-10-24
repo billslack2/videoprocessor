@@ -1,0 +1,13 @@
+VP-0207 stationary runtime follow-up, 2026-10-24 05:44 EDT
+
+No new actionable evidence. Clean matching Release host and both renderers from 13dc7bb0cc3c195035ed0f41fc81e0f749460685 remain loaded in the same responsive PID 76388, started 2026-10-24T03:18:50.9033622-04:00. Runtime health verified at 2026-10-24T05:44:46.9158722-04:00, after 145.9 minutes, with no Windows crash/hang events. Configuration and state hashes are unchanged. Current GitHub default/latest beta was rediscovered and fetched: v1.4.02-beta at b1415da4e2cc12807f390f4b722c459be9a17c08. PR #197 remains OPEN DRAFT and UNMERGED.
+
+New stationary window 2026-10-24 04:39:06 through 2026-10-24 05:44:47: 1,969 valid/applied cap records; no logged subtitle stability transitions, native pixel contradictions, submitted geometry changes or reported renderer failures. Complete settled snapshot 2026-10-24 03:19:20 through 2026-10-24 05:44:47: 4,360 valid/applied records. Snapshot/window counts are independent, not per-output measurements or exact partitions of prior live snapshots.
+
+New-window measured subtitle consumption peak 4.325 ms, asynchronous full scan peak 30.793 ms and GPU frame peak 5.402 ms. Parsed windows report no pending frames, worker drops/failures, GPU overruns, query failures, disjoints or lock drops. Source/display remain matched near 23.976 Hz. These observations do not qualify physical 24-to-60 playback or hard processing deadlines.
+
+The previous team's source audit and external qualification results remain current. They were not repeated without a new failure. The 04:37 telemetry audit explains that normal evaluated cap/visibility transitions emit immediate events, but repeated-output/skipped-branch coverage and final GPU pixel visibility are incomplete. Thus this quiet sampled session does not establish visual success. The 03:40 capacity/CPU/GPU probes and 1,964 selected native/GPU test receipt retain their explicit scope; no new test count is claimed.
+
+No source edit, build, deployment, restart, profile/display change or persistent configuration write. Prior 398034da remains a failed user replay. Moving Ben-Hur, the reported recurring visual flash, physical mismatched refresh and HDR brightness still require actual playback acceptance. Fixed-zoom oscillation and picture movement remain unestablished. No budget relaxation, coverage reduction or stale cleanup authority is justified.
+
+Full raw log stays outside Git at E:\codex\diagnostics\vp0207-monitor-20261024-0544\runtime-observation.log; compact receipts and hashes are recorded in the canonical tracker. Existing unrelated team-design/design.txt modification remains preserved/excluded.

@@ -1,0 +1,40 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedReceipts": [
+    {
+      "file": "beta.json",
+      "sha256": "264499485BAD9A3746F18DA435B37B1CBE77C7F7C38E2E8A84BBE36F5C94E895",
+      "bytes": 171
+    },
+    {
+      "file": "observation.json",
+      "sha256": "BC948C0A19456294AAD52D8C10ACFD73C2B59E06AD88B24B5F85B6A25608B306",
+      "bytes": 5794
+    },
+    {
+      "file": "pr-status.json",
+      "sha256": "65F5D475ED97DA3B8A31219A5D23D759D5B812A707A84CC479E20EBF5D595654",
+      "bytes": 248
+    },
+    {
+      "file": "runtime-health.json",
+      "sha256": "D538FA144AAD5FD53F73868B23A8BDD47D631EA9B1ADEC1C85E77E51E224F9AA",
+      "bytes": 1149
+    },
+    {
+      "file": "summary.txt",
+      "sha256": "50CBDAF7424BE4E6F062D630FA3781F9F0E0647AD8CF2D6D6996BC38C09DA1F4",
+      "bytes": 2674
+    }
+  ],
+  "localFullLog": {
+    "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0544\\runtime-observation.log",
+    "sha256": "31A66544C6C78830055AC6C755791948AB306D5124777F3FEA85EE61B7E42266",
+    "bytes": 77299002
+  },
+  "priorAudits": [
+    "../monitor-13dc7bb0-20261024-0437/telemetry-review-review.txt",
+    "../followup-13dc7bb0-20261024-0340/summary.txt"
+  ],
+  "scope": "No new test/build/deployment or actual playback acceptance."
+}
