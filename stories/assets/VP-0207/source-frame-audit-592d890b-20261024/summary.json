@@ -1,0 +1,476 @@
+{
+  "source": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+  "baseline": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "validation": {
+    "source": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+    "sourceClean": true,
+    "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "configuration": "Release",
+    "architecture": "x64",
+    "build": {
+      "ExitCode": 0,
+      "Finished": "2026-10-24T18:57:53.5017420-04:00",
+      "Commit": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+      "Dirty": false,
+      "Configuration": "Release",
+      "Architecture": "x64",
+      "Targets": [
+        "VideoProcessor-GUI",
+        "VideoProcessor-VPRenderer",
+        "VideoProcessor-VPRendererBeta",
+        "VideoProcessor-Test"
+      ]
+    },
+    "nativePassed": 1903,
+    "standardGpuPassed": 178,
+    "betaGpuPassed": 178,
+    "newTests": [
+      "ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock",
+      "UhdConclusiveCuePacketSurvivesAnalysisOnlyCadenceRetry",
+      "NativeRecoveryNominationRequiresCurrentCompleteEvidence",
+      "UhdLateCurrentCueReplacesNoCuePacketBeforeSealingSourceReuse",
+      "DiscontinuitySourcePreparationIsReusedAcrossInsertedOutputRates",
+      "DiscontinuityReceiptRequiresExactEventAndSuccessfulPreparation",
+      "LateCompleteSourceRevisionPreservesFailuresAndAdvancesOnlyOnce",
+      "FailedLateGpuRevisionCannotReacquireOldSourceMapping",
+      "LateRevisionScopeRetiresEarlyReturnAndExceptionOnlyUntilCommit",
+      "LateCompleteSourceInvalidatesOnlyItsSuccessfulDerivedMappings"
+    ],
+    "runtimeRecords": [
+      {
+        "file": "VideoProcessor-GUI.exe",
+        "sha256": "AD96594CCACBBEF77661DE7E6C934EC514C8BE32F53C50CE53FAF71D7C666B2F",
+        "toolset": "14.29.30133"
+      },
+      {
+        "file": "vprenderer/VideoProcessorVPRenderer.dll",
+        "sha256": "A5ECDEF0FE5EB7EF7ACF4D2DDFB3C632D59695A3912AE6918D58BFBB84897530",
+        "toolset": "14.29.30133"
+      },
+      {
+        "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+        "sha256": "9084CC9B6D4BD380344A68B9E6CDABEC7B9AE6852243464533A928C5F9A13FA0",
+        "toolset": "14.29.30133"
+      },
+      {
+        "file": "VideoProcessor-Test.dll",
+        "sha256": "7014238CB0CF8A9D3F4B95085520746622FBE18061149B2FBAE4CD3D23234689",
+        "toolset": "14.29.30133"
+      }
+    ],
+    "matchedDependencies": [
+      {
+        "file": "vprenderer/libdovi.dll",
+        "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+      },
+      {
+        "file": "vprenderer/libgcc_s_seh-1.dll",
+        "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+      },
+      {
+        "file": "vprenderer/liblcms2-2.dll",
+        "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+      },
+      {
+        "file": "vprenderer/libplacebo-360.dll",
+        "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+      },
+      {
+        "file": "vprenderer/libshaderc_shared.dll",
+        "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+      },
+      {
+        "file": "vprenderer/libspirv-cross-c-shared.dll",
+        "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+      },
+      {
+        "file": "vprenderer/libstdc++-6.dll",
+        "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+      },
+      {
+        "file": "vprenderer/libwinpthread-1.dll",
+        "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+      },
+      {
+        "file": "vprenderer/vulkan-1.dll",
+        "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+      },
+      {
+        "file": "vprenderer-beta/libdovi.dll",
+        "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+      },
+      {
+        "file": "vprenderer-beta/libgcc_s_seh-1.dll",
+        "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+      },
+      {
+        "file": "vprenderer-beta/liblcms2-2.dll",
+        "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+      },
+      {
+        "file": "vprenderer-beta/libplacebo-377.dll",
+        "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+      },
+      {
+        "file": "vprenderer-beta/libshaderc_shared.dll",
+        "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+      },
+      {
+        "file": "vprenderer-beta/libspirv-cross-c-shared.dll",
+        "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+      },
+      {
+        "file": "vprenderer-beta/libstdc++-6.dll",
+        "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+      },
+      {
+        "file": "vprenderer-beta/libwinpthread-1.dll",
+        "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+      },
+      {
+        "file": "vprenderer-beta/vulkan-1.dll",
+        "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+      }
+    ],
+    "nativeFixtures": [
+      {
+        "bytes": 33177600,
+        "path": "E:\\codex\\diagnostics\\vp0207-paused-backing-20261023\\paused-native.bin",
+        "sha256": "9047EF0C5C2B0BFC938F0C530DAF2D7DE22DF660D96D2A96A0B42A25B1C1DAB3"
+      },
+      {
+        "bytes": 33177600,
+        "path": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+        "sha256": "F0587DB80E8924DDC0A312A9DCF37BFD14BBCC66688EA9548573C82647693827"
+      },
+      {
+        "bytes": 33177600,
+        "path": "E:\\codex\\diagnostics\\vp0207-post398034-flash-20261023\\stationary-native-a.bin",
+        "sha256": "8771C3C3693737F39204216895509D4229FF8BCF401C107599DC2DBAC32B6490"
+      },
+      {
+        "bytes": 33177600,
+        "path": "E:\\codex\\diagnostics\\vp0207-replay-flash-77ff-20261024-0959\\paused-native-preserved.bin",
+        "sha256": "C8B4AC4D20E6A83810AB4138FF2828A17A40E75CF8B99780AFA17C0427822158"
+      },
+      {
+        "bytes": 33177600,
+        "path": "E:\\codex\\diagnostics\\vp0207-in-picture-approved-20261024-1047\\paused-native-preserved.bin",
+        "sha256": "FF891FFDF999D50ECB168DCFBE4D4C9EAEB64A842925239D163288670DC1A348"
+      }
+    ],
+    "stackAudit": {
+      "path": "E:\\codex\\diagnostics\\vp0207-source-frame-audit-20261024\\compiled-stack-audit\\audit-receipt.json",
+      "sha256": "19BC7C886936AB1ECB29F42E4BC1B3829D09F1572BB303C453FE7FB153BF62C0",
+      "passed": true
+    },
+    "limitations": [
+      "Selected native, OSD, HDR and startup classes plus both required renderer GPU suites; not every solution test.",
+      "Controlled native and GPU cadence tests are not physical mismatched-refresh visual acceptance.",
+      "Late true-cadence recovery defect is reproduced, but ordinary active Smooth Motion does not normally enqueue cadence repeats; this is not established as the steady-playback cause."
+    ]
+  },
+  "deployment": {
+    "sourceCommit": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+    "betaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+    "configuration": "Release",
+    "architecture": "x64",
+    "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-reconstruction-motion-592d890b-20261024-191716",
+    "configurationEdits": [],
+    "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+    "files": [
+      {
+        "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "AD96594CCACBBEF77661DE7E6C934EC514C8BE32F53C50CE53FAF71D7C666B2F",
+        "source": "E:\\codex\\videoprocessor\\source-frame-analysis-audit-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+        "previousSha256": "F0E647E74488DF9E22D6287798496D921E1A3B011C6664C09AAF46AA220F9C1D"
+      },
+      {
+        "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "A5ECDEF0FE5EB7EF7ACF4D2DDFB3C632D59695A3912AE6918D58BFBB84897530",
+        "source": "E:\\codex\\videoprocessor\\source-frame-analysis-audit-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "previousSha256": "896C94D7759CC9F8D9063546BDD38B21EA9ABB13F7AC28AABF1BA1D8579D82DE"
+      },
+      {
+        "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "9084CC9B6D4BD380344A68B9E6CDABEC7B9AE6852243464533A928C5F9A13FA0",
+        "source": "E:\\codex\\videoprocessor\\source-frame-analysis-audit-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "previousSha256": "AE6BE4ED61222C7FAFAA2E41B75E9109B2CDDB7C4A1A2A685AA4A21CC091381F"
+      }
+    ],
+    "configBefore": [
+      {
+        "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+        "name": "active-output-sweep-hdr-template.cfg"
+      },
+      {
+        "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+        "name": "active-output-sweep-sdr-template.cfg"
+      },
+      {
+        "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+        "name": "NPNnnNPn.cfg"
+      },
+      {
+        "sha256": "928934B02A995D83713FA0363D64692893F8A81B45D3E70A73EE65DA6B146744",
+        "name": "VideoProcessor.cfg"
+      }
+    ],
+    "configAfter": [
+      {
+        "sha256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67",
+        "name": "active-output-sweep-hdr-template.cfg"
+      },
+      {
+        "sha256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326",
+        "name": "active-output-sweep-sdr-template.cfg"
+      },
+      {
+        "sha256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6",
+        "name": "NPNnnNPn.cfg"
+      },
+      {
+        "sha256": "928934B02A995D83713FA0363D64692893F8A81B45D3E70A73EE65DA6B146744",
+        "name": "VideoProcessor.cfg"
+      }
+    ],
+    "stateBeforeShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+    "stateAfterShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+    "stateSelectionEdit": {
+      "afterSHA256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "beforeSHA256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "to": "reconstruction",
+      "from": "classic",
+      "key": "profile.subtitles",
+      "authorization": "User authorized selecting Reconstruction or Clear / Yellow for testing"
+    },
+    "stateNote": "Saved settings preserved; only explicitly requested test subtitle profile may be selected after a separate backup",
+    "startedProcessId": 53756,
+    "verifiedAt": "2026-10-24T19:17:29.1324438-04:00",
+    "status": "deployed-runtime-startup-pending"
+  },
+  "health": {
+    "source": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+    "pid": 53756,
+    "start": "2026-10-24T19:17:19.1041649-04:00",
+    "observedAt": "2026-10-24T19:22:41.1307387-04:00",
+    "aliveSeconds": 322.0265738,
+    "responding": true,
+    "cpuSeconds": 357.25,
+    "logLastWrite": "2026-10-24T19:22:41.0986247-04:00",
+    "crashOrHangEvents": 0,
+    "otherProcessEvents": 2,
+    "otherProcessIds": [
+      5796
+    ],
+    "eventClassification": "runtime-event-classification.json",
+    "modules": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "AD96594CCACBBEF77661DE7E6C934EC514C8BE32F53C50CE53FAF71D7C666B2F"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "A5ECDEF0FE5EB7EF7ACF4D2DDFB3C632D59695A3912AE6918D58BFBB84897530"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "9084CC9B6D4BD380344A68B9E6CDABEC7B9AE6852243464533A928C5F9A13FA0"
+      }
+    ],
+    "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+  },
+  "observation": {
+    "source": "592d890ba45edc5aed955f3b276c1315b6a33df5",
+    "pid": 53756,
+    "observedAt": "2026-10-24T19:22:41.664413-04:00",
+    "settledStart": "2026-10-24 19:17:49",
+    "lastLogTime": "2026-10-24 19:22:41",
+    "rawLog": "E:\\codex\\diagnostics\\vp0207-source-frame-audit-20261024\\runtime-observation-20261024-192241\\vp.log",
+    "rawLogSHA256": "A9241D44734E229A0BDF2DEBDBBF7981D5ED0C0677B228F31840068B2AE3D471",
+    "performanceWindows": 146,
+    "sourceRates": [
+      0.0,
+      59.94096,
+      59.94098,
+      59.94099,
+      59.941,
+      59.94101,
+      59.94102
+    ],
+    "displayTargetRates": [
+      59.94987,
+      59.95013,
+      59.95014,
+      59.95019,
+      59.95022,
+      59.95023,
+      59.95026,
+      59.95027,
+      59.95028,
+      59.95029,
+      59.9503,
+      59.95034,
+      59.95035,
+      59.95038,
+      59.95042,
+      59.95043,
+      59.95044,
+      59.95045,
+      59.95047,
+      59.95048,
+      59.95051,
+      59.95052,
+      59.95053,
+      59.95054,
+      59.95055,
+      59.95056,
+      59.95057,
+      59.95058,
+      59.95059,
+      59.9506,
+      59.95061,
+      59.95062,
+      59.95063,
+      59.95064,
+      59.95065,
+      59.95066,
+      59.95067,
+      59.95068,
+      59.95069,
+      59.9507,
+      59.95071,
+      59.95072,
+      59.951
+    ],
+    "processingPaths": {
+      "source_before_blend": 146
+    },
+    "completeLibraryOutputs": 0,
+    "preparationReuses": 0,
+    "boundedFallbackOutputs": 0,
+    "rendererCreations": 0,
+    "historyFlushes": 0,
+    "submissions": 17505,
+    "activeMeanMs": 9.570457012282201,
+    "prepareMeanPerOutputMs": 4.145100542702084,
+    "renderMeanMs": 5.2371515566980875,
+    "maxActiveMs": 81.862,
+    "maxRenderMs": 72.864,
+    "backlogEvents": 2,
+    "droppedByBacklog": 7,
+    "suspectedFlashLines": 0,
+    "latestTelemetry": {
+      "time": "2026-10-24 19:22:37",
+      "generation": 2,
+      "evidence": 0,
+      "timing": "frame_statistics_unavailable",
+      "frame_stats_hr": "0x887A0004",
+      "retained": 256,
+      "source": 16793,
+      "presented": 0,
+      "debt": 256,
+      "present_id": 0,
+      "refresh": 0,
+      "display_hz": 0.0,
+      "display_target_hz": 59.95071,
+      "cadence_samples": 0,
+      "queue_after": 8,
+      "oldest_ms": 117.06,
+      "render_ms": 3.87,
+      "swap_ms": 0.07,
+      "gpu_frame_timed": 1,
+      "submitted_window_frames": 600,
+      "gpu_frame_frames": 297,
+      "gpu_frame_coverage_pct": 49.5,
+      "gpu_frame_ms": 5.83,
+      "gpu_frame_avg_ms": 5.537,
+      "gpu_frame_peak_ms": 6.015,
+      "gpu_stage_source_ms": 2.503,
+      "gpu_stage_overlay_ms": 0.0,
+      "gpu_stage_core_ms": 3.327,
+      "gpu_stage_count": 2,
+      "gpu_load_valid": 1,
+      "gpu_load_avg_pct": 33.2,
+      "gpu_load_pct": 36.1,
+      "gpu_load_ms": 6.015,
+      "gpu_load_period_ms": 16.683,
+      "gpu_source": 16787,
+      "gpu_submission": 16775,
+      "gpu_lag_frames": 2,
+      "gpu_pending": 3,
+      "gpu_issued": 8391,
+      "gpu_resolved": 8388,
+      "gpu_not_ready": 0,
+      "gpu_disjoint": 0,
+      "gpu_query_failures": 0,
+      "gpu_rejected": 0,
+      "gpu_overruns": 0,
+      "gpu_unmatched": 8,
+      "gpu_invalid": 0,
+      "gpu_warmup": 0,
+      "gpu_lock_drops": 0,
+      "core_timed": 1,
+      "core_submitted_window_frames": 600,
+      "core_frames": 297,
+      "core_coverage_pct": 49.5,
+      "core_ms": 3.327,
+      "core_avg_ms": 3.028,
+      "core_peak_ms": 3.447,
+      "core_load_valid": 1,
+      "core_load_pct": 20.7,
+      "core_load_ms": 3.447,
+      "pr75_timed": 1,
+      "pr75_submitted_window_frames": 600,
+      "pr75_frames": 300,
+      "pr75_coverage_pct": 50.0,
+      "pr75_ms": 3.128,
+      "pr75_avg_ms": 2.815,
+      "pr75_peak_ms": 3.128,
+      "pr75_load_valid": 1,
+      "pr75_load_pct": 18.8,
+      "pr75_load_ms": 3.128,
+      "pr75_passes": 12,
+      "render_avg_ms": 4.09,
+      "render_peak_ms": 4.82,
+      "gpu_session_peak_ms": 21.383,
+      "gpu_session_load_valid": 1,
+      "gpu_session_pct": 128.2,
+      "gpu_session_load_ms": 21.383,
+      "gpu_session_load_period_ms": 16.683,
+      "session_frames": 16676,
+      "session_gpu_frames": 8333,
+      "settling": 0,
+      "window_s": 10.0,
+      "frame_period_src": "render-cadence"
+    },
+    "subtitleMotionSamples": 1168,
+    "activeMixSamples": 0,
+    "composedCueSamples": 0,
+    "modesSeen": [
+      0,
+      3
+    ],
+    "modeLines": [
+      "2026-10-24 19:17:32 | SUBTITLE MODE: box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=20 source_pixels text_reduction_percent=30 rounded_corners=1 background_edge=extend",
+      "2026-10-24 19:17:56 | SUBTITLE MODE: box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=20 source_pixels text_reduction_percent=30 rounded_corners=1 background_edge=extend",
+      "2026-10-24 19:17:58 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend",
+      "2026-10-24 19:17:58 | SUBTITLE MODE: box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend"
+    ],
+    "buildIdentityLines": [
+      "2026-10-24 19:17:19 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/592d890ba45edc5aed955f3b276c1315b6a33df5 branch=codex/source-frame-analysis-audit-20261024 dirty=0 build=git-592d890",
+      "2026-10-24 19:17:26 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/592d890ba45edc5aed955f3b276c1315b6a33df5 branch=codex/source-frame-analysis-audit-20261024 dirty=0 build=git-592d890",
+      "2026-10-24 19:17:56 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/592d890ba45edc5aed955f3b276c1315b6a33df5 branch=codex/source-frame-analysis-audit-20261024 dirty=0 build=git-592d890",
+      "2026-10-24 19:18:52 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/592d890ba45edc5aed955f3b276c1315b6a33df5 branch=codex/source-frame-analysis-audit-20261024 dirty=0 build=git-592d890"
+    ],
+    "scope": "Sampled runtime telemetry after the startup allowance. Does not identify cue visibility per output or prove visual acceptance. Analysis preparation averages use all submissions; new OSD preparation uses actual preparation calls."
+  },
+  "diagnostics": "E:\\codex\\diagnostics\\vp0207-source-frame-audit-20261024",
+  "status": "test-deployed-awaiting-visual-acceptance",
+  "pr": "https://github.com/billslack2/videoprocessor/pull/197",
+  "limits": [
+    "Selected native, OSD, HDR and startup classes plus both required renderer GPU suites; not every solution test.",
+    "Controlled native and GPU cadence tests are not physical mismatched-refresh visual acceptance.",
+    "Late true-cadence recovery defect is reproduced, but ordinary active Smooth Motion does not normally enqueue cadence repeats; this is not established as the steady-playback cause."
+  ]
+}

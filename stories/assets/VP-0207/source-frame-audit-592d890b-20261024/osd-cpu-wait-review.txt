@@ -1,0 +1,15 @@
+OSD CPU/wait interpretation - source 592d890b
+
+User screenshot: source/output 59.941 fps (16.68 ms), new CPU/wait 16.31 average/16.92 maximum over120 outputs / 2 s, no preparation or reuse calls, GPU 5.01 average/5.53 maximum over297/599 asynchronous samples / 10 s, queue 9/16, drops 0/0, CPU 8/9%, GPU output load 30/33%.
+
+Source verification:
+- New CPU/wait includes pre-render active work, render-lock wait, RenderLocked preparation/target acquisition and render submission/driver work. It excludes dequeue waiting and the explicit Present/swap interval. It is wall time, not CPU execution time.
+- GPU timing covers a separate 10 s window and approximately half the submissions. GPU output load is GPU milliseconds/output period, not adapter-wide utilization. CPU aggregate percent cannot exclude one saturated render thread.
+- Prep no calls means no subtitle preparation render calls, not no AR or native analysis. Reuse no calls is expected for matched source/output rates.
+- No recorded capture/queue drops is reassuring; one peak over16.68 ms does not prove a missed display, and queue 9/16 without a trend does not prove overload.
+
+Assessment: real work of 16.31 ms would leave little 60Hz margin, but this metric cannot establish that amount of actual work. The sampled GPU cost is materially lower; driver/queue synchronization or CPU work must be separated under unchanged source/display/settings before claiming headroom or choosing an optimization. Do not compare the later lower wall readings across the renderer generation/profile change as a controlled experiment.
+
+Next diagnostic priorities if recurring: render-thread CPU execution versus blocked wall time; upload, target-acquisition and renderer stages; p95/p99 and over-budget counts; queue/debt trend and actual dropped-present evidence. Optimize a reproduced costly stage or unnecessary synchronization; do not reduce subtitle coverage/cleanup proof. With 24 fps input and 60 Hz output, source work has 41.7 ms cadence but output rendering still needs 16.7 ms cadence.
+
+No further source or settings changes were made for this interpretation. Existing source-output fix is qualified/deployed; actual mismatched-refresh subtitle replay remains pending.

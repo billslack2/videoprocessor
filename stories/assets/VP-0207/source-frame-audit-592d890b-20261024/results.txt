@@ -1,0 +1,42 @@
+VideoProcessor subtitle / Smooth Motion source-output audit
+
+Qualified and deployed source: 592d890ba45edc5aed955f3b276c1315b6a33df5
+Configuration: matching x64 Release host, standard renderer and beta renderer.
+Integration baseline: v1.4.02-beta b1415da4e2cc12807f390f4b722c459be9a17c08.
+
+Meaning of whole-picture fallback
+A brief repeat of an already completed picture, including its subtitle and replacement background. It is not an aspect-ratio/full-raster fallback. It remains bounded to two missing source intervals (about 83 ms at 24 fps); inserted outputs cannot renew it.
+
+Shared processing rule
+AR, bar-content inspection, scene detection and subtitle acquisition use the owned source frame. Extra display outputs reuse prepared pictures and frozen source geometry. Live pose, target checks, OSD and render/HDR publication remain per output. In ordinary progressive Smooth Motion, libplacebo blends complete prepared pictures. Blended pixels do not create a fresh subtitle-absence decision.
+
+Narrow fixes in this audit
+- Exact repeats of a prepared discontinuity source reuse that successful preparation instead of rerunning inspection/resetting temporal state.
+- A late same-source complete cue must update owned GPU pixels and source/mapping metadata together; failed upgrades retire the transaction consistently.
+- AR-only retries preserve an already complete subtitle packet without another reconstruction pass.
+
+Evidence
+- 1903 selected native/AR/OSD/HDR/startup tests passed, with five preserved native movie captures.
+- 178 standard-library and 178 beta-library GPU tests passed.
+- Ten new regression methods include UHD native detection through actual GPU preparation/rendering and adversarial source/epoch/context/failed-proof controls.
+- Independent compiled DLL/PDB review and normal 1 MiB stack pressure checks passed; final helper identity is recorded in compiled-stack-audit.
+- All three loaded runtime hashes match qualification. Process 53756 responsive after 322.0s; crash/hang events: 0.
+- Configuration bytes preserved; backed-up saved subtitle selection changed Classic to Reconstruction for the test startup.
+- Deployment backup: C:\Videoprocessor\vp\deployment-backups\vp0207-reconstruction-motion-592d890b-20261024-191716.
+
+Current sampled runtime observation
+The preserved renderer-ready reset action ran at 19:17:57 and selected Classic at 19:17:58. No persistent configuration change was made. Two backlog events at 19:17:55-56 discarded 7 sources around the renderer restart; this is not a controlled steady-state performance comparison.
+Source rates: [59.94096, 59.94102]; display targets: [59.94987, 59.951].
+Modes sampled: [0, 3]; active mixing samples: 0; composed cue samples: 0.
+Complete-library outputs: 0; preparation reuses: 0; bounded fallback outputs: 0.
+Backlog events: 2; dropped by backlog: 7; suspected-flash log lines: 0.
+Mean CPU/driver render wall time: 5.237 ms/output; maximum: 72.864 ms.
+
+Separate launch failure: Windows recorded two events for another process, PID 5796, started 19:18:52 and exited within 0.4 s (ucrtbase fatal app exit). Main deployed PID 53756 remained responsive. That startup incident is preserved and remains separate from playback acceptance; no claim of universally crash-free runtime.
+
+Limits
+Controlled tests establish specific source and pixel contracts, not visual playback success. The late true-cadence retry defect is reproduced, but normal active Smooth Motion does not normally enqueue that host retry; it is not established as the cause of steady-playback flashing. Sampled telemetry cannot show whether every subtitle was visibly stable. Keep PR #197 draft/unmerged pending actual playback acceptance. Earlier failed builds remain failed; the preserved b81 rollback is not labeled a known-good Smooth Motion build.
+
+PR: https://github.com/billslack2/videoprocessor/pull/197
+Full evidence: E:\codex\diagnostics\vp0207-source-frame-audit-20261024
+Raw logs, native pixels, binaries and PDBs remain outside Git.
