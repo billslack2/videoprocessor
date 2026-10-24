@@ -1,0 +1,56 @@
+{
+  "createdUtc": "2026-10-24T10:45:39.9455623Z",
+  "sourceIdentityFromReceipts": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "evidenceCutoffLocal": "2026-10-24T06:43:53-04:00",
+  "scope": "Read-only synthesis of existing evidence; no new tests, code audits, builds or runtime/configuration actions",
+  "inputs": [
+    {
+      "path": "C:\\Users\\bslac\\vp\\story-tracker\\stories\\in-progress\\VP-0207_overlay-fit-stability-and-subtitle-backing-boundaries.md",
+      "length": 77939,
+      "lastWriteUtc": "2026-10-24T09:45:46.6777734Z",
+      "sha256": "6AAA401A81C69719F28284AE91A65260A40983BF6F8F4365957A97DCDB579127"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-exact-plane-recovery-20261024-0255\\summary.txt",
+      "length": 6460,
+      "lastWriteUtc": "2026-10-24T07:23:20.8823628Z",
+      "sha256": "0A900C3B71E2657B60D055C3F1CC847B16074A43A2A2F63E4F0B91EBF5510A2C"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-followup-20261024-0340\\summary.txt",
+      "length": 4300,
+      "lastWriteUtc": "2026-10-24T07:53:13.6625251Z",
+      "sha256": "5A052CB3EF422C91A8CF4EAE52C372F45A45A44B88859179DA432AA474BEA3F7"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0437\\summary.txt",
+      "length": 3654,
+      "lastWriteUtc": "2026-10-24T08:44:15.8320799Z",
+      "sha256": "CEA86FF32955009833CC3550C508BFDA4543AD28725CD3EA4BB3B2F5170EC7ED"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0544\\summary.txt",
+      "length": 2674,
+      "lastWriteUtc": "2026-10-24T09:45:46.5886705Z",
+      "sha256": "50CBDAF7424BE4E6F062D630FA3781F9F0E0647AD8CF2D6D6996BC38C09DA1F4"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0643\\observation.json",
+      "length": 5793,
+      "lastWriteUtc": "2026-10-24T10:43:55.8882384Z",
+      "sha256": "8C1D42D25BD76F51D915FA9DF0E9100A2E5B7D5C0640A5F323D70EC4145F396C"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0643\\runtime-health.json",
+      "length": 1152,
+      "lastWriteUtc": "2026-10-24T10:43:54.1298518Z",
+      "sha256": "C352C87B4D3A908957E04C3DB2D251D2458C54109A9E50C38CA395A99E495872"
+    }
+  ],
+  "output": {
+    "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0643\\handoff-review\\review.txt",
+    "length": 6911,
+    "lastWriteUtc": "2026-10-24T10:45:39.9445276Z",
+    "sha256": "0EE66D7181B5764F4120DD95852DE1684792ECEC0B2AE46234C46098F8E4EE9F"
+  }
+}

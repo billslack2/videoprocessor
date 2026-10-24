@@ -1,0 +1,50 @@
+{
+  "source": "13dc7bb0cc3c195035ed0f41fc81e0f749460685",
+  "trackedReceipts": [
+    {
+      "file": "beta.json",
+      "sha256": "7D10A03BB85B971FFF7C083A23B768188CA34995A0C5B6D5B096040ED50FFA1F",
+      "bytes": 171
+    },
+    {
+      "file": "handoff-review-provenance.json",
+      "sha256": "6F1CF6439057517D41F287FE5F99E3B31B5402714E1298F8A6813C12F59DA2AC",
+      "bytes": 2515
+    },
+    {
+      "file": "handoff-review-review.txt",
+      "sha256": "0EE66D7181B5764F4120DD95852DE1684792ECEC0B2AE46234C46098F8E4EE9F",
+      "bytes": 6911
+    },
+    {
+      "file": "observation.json",
+      "sha256": "8C1D42D25BD76F51D915FA9DF0E9100A2E5B7D5C0640A5F323D70EC4145F396C",
+      "bytes": 5793
+    },
+    {
+      "file": "pr-status.json",
+      "sha256": "65F5D475ED97DA3B8A31219A5D23D759D5B812A707A84CC479E20EBF5D595654",
+      "bytes": 248
+    },
+    {
+      "file": "runtime-health.json",
+      "sha256": "C352C87B4D3A908957E04C3DB2D251D2458C54109A9E50C38CA395A99E495872",
+      "bytes": 1152
+    },
+    {
+      "file": "summary.txt",
+      "sha256": "D5014EBF3644D5C5E478AD4FC128B9CBA586B369233A63B1B11D632666B2707F",
+      "bytes": 3008
+    }
+  ],
+  "localFullLog": {
+    "path": "E:\\codex\\diagnostics\\vp0207-monitor-20261024-0643\\runtime-observation.log",
+    "sha256": "18567ECB9BB005C570FE9681ED6206D2260E56347CA9366936FFB644008D72CD",
+    "bytes": 109041150
+  },
+  "priorAudits": [
+    "../monitor-13dc7bb0-20261024-0437/telemetry-review-review.txt",
+    "../followup-13dc7bb0-20261024-0340/summary.txt"
+  ],
+  "scope": "No new test/build/deployment or actual playback acceptance."
+}

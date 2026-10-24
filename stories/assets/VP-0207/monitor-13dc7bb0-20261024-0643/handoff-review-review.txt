@@ -1,0 +1,41 @@
+VP-0207 morning handoff — 2026-10-24 06:43 EDT evidence cutoff
+
+Current test build: clean 13dc7bb0cc3c195035ed0f41fc81e0f749460685, matching Release host and both renderers, Clear/Yellow active. PR #197 is OPEN DRAFT and unmerged; beta remains b1415da4. Story remains In Progress. Prior 398034da FAILED user replay. No later visual acceptance is claimed.
+
+Evidence / result / acceptance boundary
+
+1. Incident-linked reproduction
+   The user reported stationary content. On 398034da, logged subtitle gaps of 41.7–208.5 ms occurred without submitted picture-geometry changes. Two captured native frames taken minutes apart are byte-identical; replay deterministically exhausted the 393,216-read inspector while the 524,288 shared limit still had capacity. Exact-grid reuse removes redundant native reads, completing that preserved pending/inspector/cap path within the original limits. The associated audit also reproduced incomplete-state destruction/prior-source binding loss and cold nearby-plane candidate rejection, now corrected with current native proof. This proves workload/state defects; it does not establish that every reported flash was caused by them, by zoom, or by tone mapping.
+
+2. Additional controlled defects and safeguards
+   Separate probes reproduced consecutive raw fallback loss; exact-repeat pending rejection; budget-only private seed loss; a failed pending prepass starving full inspection; contradiction being rescued by an old-cue fallback; and reused GPU packet metadata changing independently of immutable pixels. Repairs retain exact identity, original expiry and current cleanup authority. A 1,722-pixel-wide cap needed 67,383 reads, above its old phase ceiling: the cap limit became 131,072, with the shared/inspector limits unchanged. The latest 26×66 two-line fixture exposed padded-envelope masking of glyphs wholly inside the bar; a narrowly gated exact-plane retry fixes it. Both glyph-edge false-boundary counterexamples are rejected. These are additional reproduced cases, not established causes of the user's recording.
+
+3. Failed candidate and host-stack repair
+   43fb6cba passed 1,955 selected tests but crashed 16 seconds after launch with 0xc00000fd. The preserved dump proves native 1 MiB stack exhaustion in unavailable-preview cleanup. It was rolled back. Heap-owned reusable cue outputs, small reset frames and a heap transactional tracker repair the observed and separately reproduced fallback paths. The current candidate retains that repair. Stack reserves were not raised.
+
+4. Latest integrated and external qualification
+   13dc7bb0: clean matching x64 Release host/both-renderer/test build; 1,964/1,964 selected native/GPU tests passed, with all three preserved native captures enabled. Five isolated normal-1-MiB stack scenarios pass under 783,808 bytes of caller pressure. Full-path cases include actual finite-cap Apply and changed source/companion/context negatives. Later external CPU/GPU probes passed with their stated injected-fault and offscreen SDR limits. This is not a full solution/all-native-suite/installer qualification; no later monitor reran or increased the test count.
+
+5. Current stationary monitoring
+   Same PID 76388 remained responsive for 205.0 minutes at 06:43:53. Loaded hashes and configuration/state are unchanged; zero Windows crash/hang events. The settled 03:19:20–06:43:53 snapshot contains 6,131 valid/applied cap records and no parsed subtitle transitions, pixel contradictions, geometry changes or renderer failures. Source/display remain matched near 23.976 Hz. Counts are sampled state, not output frames: unchanged cap success logs every two seconds; repeat/skipped branches and final GPU pixels are not fully covered. Quiet logs cannot exclude every visual flash.
+
+6. Remaining finite limits
+   Acquisition still samples at most 65,536 native points. An asymmetric measured two-line 30×66/4×66 cue requires 73,116 bounding-region points and cannot seed. Sampling only the per-line union would omit 13,260 protected corner points and weaken partial new-bar-ink detection; no such change was made. Full configured companion coverage remains mandatory, but cue association has existing distance limits. Incomplete cap proof emits no cleanup; private retention does not renew authority. Leases use accepted-source nominal duration, and read ceilings are bounded work rather than hard CPU deadlines. No universal large-cue guarantee.
+
+User-replay acceptance observations still needed
+
+- Revisit the reported Ben-Hur passage in Clear/Yellow, first stationary and then moving through multiple cue changes, initially without navigation controls. Confirm no glyph disappearance/reappearance, residual black cap, transparent rectangle edge, or stale cue/cleanup after genuine subtitle replacement or disappearance.
+- Record picture stability separately: whether only glyphs/backing flash, whether whole-picture brightness changes, or whether picture geometry actually changes. Keep the intended fixed-zoom setting; do not infer zoom from a flash alone.
+- Exercise the actual display-refresh mismatch reported by the user. Record source/display rates and Smooth Motion state; compare off/on under the same scene. Current matched-rate monitoring and simulated/offscreen repeats do not satisfy this check. Observe HDR brightness on the real display as well as glyph/backing output.
+- If a failure recurs, preserve a short recording plus exact wall-clock/movie time and active profile, zoom, refresh, Smooth Motion and HDR state so source/prepare/output evidence can be correlated. Evaluate navigation controls separately, because their source rendering can legitimately place the subtitle within the picture; the earlier Off navigation fit remains accepted.
+
+No speculative configuration, quota, coverage, hold or renderer change is proposed. Keep PR #197 draft until the outstanding actual playback result is known. This handoff only reads existing story/receipts and writes these review artifacts; source, configuration and runtime are untouched.
+
+Primary evidence
+Canonical story: C:\Users\bslac\vp\story-tracker\stories\in-progress\VP-0207_overlay-fit-stability-and-subtitle-backing-boundaries.md (incident/overnight sections258–315; follow-ups318 onward).
+Latest integrated receipt: E:\codex\diagnostics\vp0207-exact-plane-recovery-20261024-0255\summary.txt
+External scope/capacity receipt: E:\codex\diagnostics\vp0207-followup-20261024-0340\summary.txt
+Telemetry coverage: E:\codex\diagnostics\vp0207-monitor-20261024-0437\summary.txt
+Prior monitor: E:\codex\diagnostics\vp0207-monitor-20261024-0544\summary.txt
+Latest existing observation/health: E:\codex\diagnostics\vp0207-monitor-20261024-0643\observation.json and runtime-health.json
+Input/output hashes are recorded in provenance.json. Historical full logs, native pixels, crash dump, binaries and TRX remain in their existing local evidence directories.

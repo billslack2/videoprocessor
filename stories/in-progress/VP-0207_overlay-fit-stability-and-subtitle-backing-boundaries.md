@@ -337,3 +337,11 @@ GitHub latest beta/default was freshly queried and fetched: v1.4.02-beta at f4f5
 - Same responsive **13dc7bb0 / PID 76388** after 145.9 minutes; all three loaded hashes and configuration/state unchanged, no Windows crash/hang events. Refreshed/fetched GitHub beta remains v1.4.02-beta b1415da4. PR #197 stays OPEN DRAFT and unmerged.
 - New window **2026-10-24 04:39:06–2026-10-24 05:44:47** has **1,969 valid/applied cap records**, zero logged stability/pixel/geometry/renderer-failure events. Complete settled snapshot has 4,360 such records. Source/display remain matched near 23.976 Hz. Prior telemetry coverage limitations apply; counts are sampled state, not per-output pixel validation.
 - No new actionable evidence or source/test/build/deployment/settings change. Prior team reviews and **1,964 selected native/GPU tests** remain current; actual moving Ben-Hur, mismatched-refresh and HDR visual acceptance are pending. Receipts: [monitor-13dc7bb0-20261024-0544](../assets/VP-0207/monitor-13dc7bb0-20261024-0544/summary.txt). Full log remains outside Git; unrelated design.txt modification is excluded.
+
+
+## Stationary runtime follow-up — 2026-10-24 06:43
+
+- Same responsive **13dc7bb0 / PID 76388** after 205.0 minutes; all three loaded hashes and configuration/state unchanged, no Windows crash/hang events. Refreshed/fetched GitHub beta remains v1.4.02-beta b1415da4. PR #197 stays OPEN DRAFT and unmerged.
+- New window **2026-10-24 05:44:48–2026-10-24 06:43:53** has **1,771 valid/applied cap records**, zero logged stability/pixel/geometry/renderer-failure events. Complete settled snapshot has 6,131 such records. Source/display remain matched near 23.976 Hz. Prior telemetry coverage limitations apply; counts are sampled state, not per-output pixel validation.
+- A read-only team handoff consolidates evidence, qualifications and required actual replay observations. No new causal finding, test run or production change.
+- No new actionable evidence or source/test/build/deployment/settings change. Prior team reviews and **1,964 selected native/GPU tests** remain current; actual moving Ben-Hur, mismatched-refresh and HDR visual acceptance are pending. Receipts: [monitor-13dc7bb0-20261024-0643](../assets/VP-0207/monitor-13dc7bb0-20261024-0643/summary.txt). Full log remains outside Git; unrelated design.txt modification is excluded.
