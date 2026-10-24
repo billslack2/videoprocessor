@@ -1,0 +1,19 @@
+measure 1 1 planes 384,1776
+seed seeded accepted 1 geometry 1
+pending_seed=1 reason=accepted-seed shared_mode=2
+3 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=11904 pending=shared-picture-changed inspector_reads=358763 total_reads=423872 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=24.5656
+4 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=17.3076
+5 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.8863
+6 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.9238
+7 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.4338
+8 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.5843
+9 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.1597
+10 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.3826
+11 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.3428
+12 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.8452
+13 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.3686
+14 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.2681
+15 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.8922
+16 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.4813
+17 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=13.5449
+18 proof=current-complete-cue cue=1 geometry=1 same_source=1 same_destination=1 pending_reads=0 pending=no-accepted-seed inspector_reads=358763 total_reads=411968 exhausted=0 cap=current-finite-rounded-backing-lip cap_valid=1 ms=14.4016

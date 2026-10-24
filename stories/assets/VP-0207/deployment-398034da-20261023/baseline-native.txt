@@ -1,0 +1,3 @@
+raw detected=1 accepted=1 lines=2 physical=384:1776 independent=1 nearby=0/0
+case=0 proof=1 reason=current-finite-rounded-backing-lip samples=39295 rect=1285,1746-2555,1776
+case=1 proof=0 reason=lip-current-context-unavailable samples=0 rect=0,0-0,0

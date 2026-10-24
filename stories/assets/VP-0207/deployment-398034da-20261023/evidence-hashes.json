@@ -1,0 +1,7 @@
+{
+  "final-release-regressions.trx": "ee613bf51c1ee7e5bad6c7acec06b8d35960f39f5b98c14ec9502de220d058c3",
+  "release-build.log": "54ba72ff3bd47c2e5a567d439e8a9019d85fb747e2f8868342af58debc694720",
+  "test-clean-rebuild.log": "8e032172d29f34e1710ce3645bf2fa376dd5b3820a10f74befa595c44e96a563",
+  "startup-subtitle-evidence.log": "68a26adda9347cc002e61dac6bd66a7628471bf82d98c2c9695abf11acb1b1ac",
+  "validation.json": "908339c2156224b9de8432bb37223924b93fa9f9a90089e585192c9b732dda76"
+}

@@ -1,0 +1,31 @@
+{
+  "counters": {
+    "total": "926",
+    "executed": "926",
+    "passed": "924",
+    "failed": "2",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "failures": [
+    {
+      "testName": "CompleteConfiguredSearchDoesNotReusePositiveNarrowSearchAtSameIdentity",
+      "outcome": "Failed"
+    },
+    {
+      "testName": "CurrentContinuedCueRetainsPreparedOwnershipWithoutPromotingMissingRawEdge",
+      "outcome": "Failed"
+    }
+  ],
+  "resolution": "Two fixtures corrected: strong acquisition now supplies actual own-side bar evidence/search completion; companion fixture uses finite separate backing and a line inside the detector supported gap. Added continuation rejection for that new line. Final 1911 selected tests pass. C++14 constants compatibility corrected; corrupted incremental test linker data rebuilt cleanly; final combined Release build succeeds."
+}

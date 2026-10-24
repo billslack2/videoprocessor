@@ -1,0 +1,62 @@
+{
+  "source": "398034dadd09911d5b7554cab5bf24cfcee7cc10",
+  "fixture": "E:\\codex\\diagnostics\\vp0207-paused-recurrence-20261023-221551\\paused-native-preserved.bin",
+  "fixtureSha256": "f0587db80e8924ddc0a312a9dcf37bfd14bbcc66688ea9548573c82647693827",
+  "frameReadLimit": 524288,
+  "inspectionReadLimit": 393216,
+  "capReadLimit": 65536,
+  "runs": {
+    "native-current-cue-near20.txt": {
+      "frames": 16,
+      "all_complete": true,
+      "all_caps_valid": true,
+      "same_geometry": true,
+      "max_total_reads": 368374,
+      "timing_ms_median": 15.219899999999999,
+      "timing_ms_max": 17.7063,
+      "sha256": "c20fab0e13c77afa64c4084b4a8cbe5d4fd9cd4bb1f5c960a6a3327500911863"
+    },
+    "native-current-cue-near200.txt": {
+      "frames": 16,
+      "all_complete": true,
+      "all_caps_valid": true,
+      "same_geometry": true,
+      "max_total_reads": 411968,
+      "timing_ms_median": 23.266599999999997,
+      "timing_ms_max": 50.3996,
+      "sha256": "31ec09056f1102275466fd5d4e0dcf15b67697c6a6bc4c0c2ba29c6d9f5ae540"
+    },
+    "native-current-cue-pending-shared200.txt": {
+      "frames": 16,
+      "all_complete": true,
+      "all_caps_valid": true,
+      "same_geometry": true,
+      "max_total_reads": 485828,
+      "timing_ms_median": 14.31405,
+      "timing_ms_max": 21.327,
+      "sha256": "fe423a6bfb846cf5f1362a10573cbdadee50f84c90cd3cbc1653466f96f270d6"
+    },
+    "native-current-cue-pending-missing200.txt": {
+      "frames": 16,
+      "all_complete": true,
+      "all_caps_valid": true,
+      "same_geometry": true,
+      "max_total_reads": 423872,
+      "timing_ms_median": 13.86575,
+      "timing_ms_max": 24.5656,
+      "sha256": "cc975025aaa3a81548ad8cbf2814c28c4618f038c738cf8e36807e737a9031e7"
+    }
+  },
+  "limits": [
+    "Single preserved native source with injected metadata, not captured playback sequence.",
+    "Timings collected during other work; no isolated frame deadline or rendering performance claim.",
+    "Maximum measured pending cap uses64022 of65536 reads; larger caps may safely reject cleanup."
+  ],
+  "review": {
+    "cueContinuity": "Complete current cue proof verifies native glyphs, full configured companion search and own bar plane. Same current source can reuse that exact proof; changed context is checked first.",
+    "backing": "Nearby/reference metadata can nominate a plane but cannot authorize cleanup. Current exact-row and finite native body checks remain required.",
+    "presentation": "Complete proof can support only actually prepared current output. Native expansion conflicts, stale source identity and preparation failure remain vetoes; fixed zoom policy unchanged.",
+    "budget": "Pending + inspector + cap production path measured below524288 reads; borrowed budget pointer never retained by snapshots or workers.",
+    "unchanged": "Transparent shader, raw AR/bar authority and active user configuration."
+  }
+}
