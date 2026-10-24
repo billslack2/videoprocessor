@@ -1,0 +1,95 @@
+{
+  "source": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+  "beta": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "configuration": "Release",
+  "architecture": "x64",
+  "sourceClean": true,
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T16:20:21.7548197-04:00",
+    "Commit": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "nativePassed": 1847,
+  "standardGpuPassed": 170,
+  "betaGpuPassed": 170,
+  "totalMethodExecutions": 2187,
+  "newTests": 9,
+  "dualDependencyGpu": {
+    "schemaVersion": 1,
+    "sourceCommit": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+    "sourceDirty": false,
+    "configuration": "Release",
+    "architecture": "x64",
+    "classes": [
+      "MotionRendererTests",
+      "SourceUploadBatchTests",
+      "TemporalCleanPacketGpuTests",
+      "RetainedEnvelopeSelectionGpuTests",
+      "SubtitleCutPasteTests",
+      "SubtitleCutPasteShaderTests",
+      "RendererDependencyTests"
+    ],
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\source-output-normalization-20261024\\x64\\Release\\VideoProcessor-Test.dll",
+        "sha256": "FEA39ECE07DF362E8578D293A9920AEF85AFC47D1D25E98AA32808049F567799",
+        "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+        "passed": 170
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\source-output-normalization-20261024\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "sha256": "8843610B82DEDAE8A7155EEAB5AEA18984401E7AFF9E84E4E702B6687CF81984",
+        "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+        "passed": 170
+      }
+    ],
+    "finished": "2026-10-24T16:37:42.7197392-04:00",
+    "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+  },
+  "runtimeRecords": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "C42A4D69C1912C6E738A52A69720A059E3F1E5D6177E08E92237B4E52B74A147",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "39254BE82C57CCCBFEA72580B2506C07A5CD1571CF746960C3226B615A223CB6",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "FAD8856ED30E9256C64DCE757B61373CFDFB25C0E236AD972A92CE600B21CA6D",
+      "toolset": "14.29.30133"
+    },
+    {
+      "file": "VideoProcessor-Test.dll",
+      "sha256": "FEA39ECE07DF362E8578D293A9920AEF85AFC47D1D25E98AA32808049F567799",
+      "toolset": "14.29.30133"
+    }
+  ],
+  "nativeFixtureCount": 5,
+  "stackQualification": "Both matching DLL/PDB audits, six normal-stack modes and two native-pressure caption cases passed at original 1 MiB reserve.",
+  "limitations": [
+    "Selected runtime/test target build and regression classes, not full solution or entire native test suite.",
+    "Five preserved native 4K frames are replayed with controlled metadata and failure cases; these are not a captured native flicker sequence.",
+    "Live replay acceptance remains pending."
+  ],
+  "localEvidence": "E:\\codex\\diagnostics\\vp0207-source-output-normalization-20261024",
+  "immutableBuildManifest": "E:\\codex\\diagnostics\\vp0207-source-output-normalization-20261024\\qualified-build\\manifest.json"
+}

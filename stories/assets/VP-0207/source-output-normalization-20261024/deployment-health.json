@@ -1,0 +1,143 @@
+{
+  "source": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\vp0207-source-output-25f14e2c-20261024-164053",
+  "configurationEdits": [],
+  "temporaryConfigurationEdit": "Suppressed startup Classic action for 10 seconds; original configuration bytes restored",
+  "stateSelectionEdit": null,
+  "stateBeforeShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+  "stateAfterShutdown": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+  "runtimeHealth": {
+    "source": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+    "pid": 84000,
+    "start": "2026-10-24T16:40:58.1222639-04:00",
+    "observedAt": "2026-10-24T16:44:28.4673382-04:00",
+    "aliveSeconds": 210.3450743,
+    "responding": true,
+    "cpuSeconds": 159.046875,
+    "logLastWrite": "2026-10-24T16:44:28.3329306-04:00",
+    "crashOrHangEvents": 0,
+    "modules": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "C42A4D69C1912C6E738A52A69720A059E3F1E5D6177E08E92237B4E52B74A147"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "39254BE82C57CCCBFEA72580B2506C07A5CD1571CF746960C3226B615A223CB6"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "FAD8856ED30E9256C64DCE757B61373CFDFB25C0E236AD972A92CE600B21CA6D"
+      }
+    ],
+    "limits": "Actual host runtime survival and sampled log checks; no claim of visual acceptance or physical mismatched-refresh playback"
+  },
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\source-output-normalization-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+      "previousSha256": "014B356475DEEB627B99B1043D1507815A7221804B8BBDE67157C32B969E9353",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "C42A4D69C1912C6E738A52A69720A059E3F1E5D6177E08E92237B4E52B74A147"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-output-normalization-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "previousSha256": "02B2BF5B11619CE92CF2655E961C6B6DBF1B4886AE31ACDF91A5E47974272A3B",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "39254BE82C57CCCBFEA72580B2506C07A5CD1571CF746960C3226B615A223CB6"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\source-output-normalization-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "previousSha256": "8F8234ADE83CB7976C0F9B1170A2D9D2DEDA63A29B6171EAAFF5A3D1A16D40EE",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "FAD8856ED30E9256C64DCE757B61373CFDFB25C0E236AD972A92CE600B21CA6D"
+    }
+  ],
+  "observation": {
+    "source": "25f14e2cade729fcd388b8dba3f617696d2649a9",
+    "pid": 84000,
+    "start": "2026-10-24 16:41:28",
+    "end": "2026-10-24 16:44:28",
+    "performanceWindows": 90,
+    "processingWindows": 90,
+    "sourceHz": [
+      59.94113,
+      59.94114
+    ],
+    "displayHz": [
+      59.94064,
+      59.94108
+    ],
+    "deadlineOverruns": 0.0,
+    "sourceDecisions": [
+      119.0,
+      120.0
+    ],
+    "sourceDecisionReuses": [
+      0.0,
+      0.0
+    ],
+    "subtitlePreparationReuses": [
+      0.0,
+      0.0
+    ],
+    "temporalSourceRenders": [
+      0.0,
+      0.0
+    ],
+    "subtitleProfile": "classic",
+    "files": [
+      {
+        "name": "vp.log",
+        "bytes": 2635087,
+        "sha256": "3DAD92F794A971476C109D211DDD0FD5FF78D363B933B9A22E21A1507153F8E0"
+      },
+      {
+        "name": "vp.log.0",
+        "bytes": 51956418,
+        "sha256": "3632D8FB96A34D351AEAD49099D3DF9F2DF9DD7DBB605F324517D8A3C75ECD9B"
+      },
+      {
+        "name": "vp.log.1",
+        "bytes": 33570222,
+        "sha256": "14BA63003B34CFAB5424C5050236D0698AD8B56D0E573A3DEB5AE0C11EF529D2"
+      },
+      {
+        "name": "vp.log.2",
+        "bytes": 94168490,
+        "sha256": "3CE589BCF687CBC225CCA94AD559AA3AF8D739654E45C4FB8F3DADB34C5C8C6F"
+      },
+      {
+        "name": "vp.log.3",
+        "bytes": 6902088,
+        "sha256": "13307431B8E19321C82D609CD1DC74AAAA6E695B251A2ED1E5ED7C04643D8312"
+      },
+      {
+        "name": "vp.log.4",
+        "bytes": 15978643,
+        "sha256": "522B45568103823A51384B83A016F371D381F84E1D1C4D12288CAEAC34411A03"
+      },
+      {
+        "name": "vp.log.5",
+        "bytes": 15139558,
+        "sha256": "FA83B93A944B6C172EC2FE128347E5D14F836EC125BA6388F9911F5C31CB414B"
+      },
+      {
+        "name": "vp.log.6",
+        "bytes": 37418813,
+        "sha256": "C48E759C96E0B294BAD05C5277EDD709804786C3C566FA4E8CA49402F50C2A34"
+      },
+      {
+        "name": "vp.log.7",
+        "bytes": 53570685,
+        "sha256": "B41617424EA0A1927705579C35F1D581CFD872ECAA992EE41E25A3993A18D925"
+      },
+      {
+        "name": "vp.log.8",
+        "bytes": 8259629,
+        "sha256": "CA7A3E6D7F1C70300B67C3F778393345D14AC8E5FB88CEA4977239F745025551"
+      }
+    ],
+    "limits": "Sampled matched-rate Classic startup; no visual or mismatched-refresh acceptance. Live log copies may overlap; identical lines deduplicated."
+  },
+  "limitations": "Runtime survival and module identity only; actual movie/Smooth Motion acceptance remains pending."
+}

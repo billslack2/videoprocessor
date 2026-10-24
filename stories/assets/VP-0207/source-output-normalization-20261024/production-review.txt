@@ -1,0 +1,19 @@
+Final read-only production receipt review: no remaining blocking finding in saved files.
+
+Scope: immutable source/output normalization over the existing b81 packet and current-native subtitle pipeline. No source edits, build, GPU, runtime or deployment actions by reviewer.
+
+Resolved review findings:
+- Begin snapshots exact reuse eligibility and immediately clears receipt before fallible state/GPU preparation; Commit occurs only after successful source preparation/capture.
+- completeForRepeat preserves actual original subtitle conclusion. Inserted reuse of UNKNOWN cannot promote it to conclusive.
+- True cadence reuse of analysis and subtitle stages requires both conclusions. A late exact worker may change picture-boundary evidence as well as subtitle proof, so incomplete stages remain coupled/retryable.
+- Current native AR conclusion is captured before caption/hypothesis promotion, requires native trusted/nonblack evidence, and is vetoed for failed evaluated bar scan or timed presentation dependence.
+- Timed dependence includes live scene hold, live ambiguity hold, and a vertical action owned by an older source. Expired older-source actions force the existing native bar scan using the unchanged IsVerticalBarPresentationActive predicate. This closes the unscheduled-same-source cursor edge without advancing the source ordinal or renewing detection timestamps. Same-source content ownership is intentionally exempt.
+
+Lifetime/context:
+All AnalysisLumaSource descriptor fields plus shared owner object/control-block identity are compared. Both stored synchronous readBudget pointers are nulled. Exact source/domain/timestamp/format and processing/policy/continuity/reset/viewport/scene/output/GPU contexts bind reuse. RetireOutput, decode-gap and presentation-reset clear receipt/upload. SourceBarPreparation owns scalar/bounds values; local authority pointers rebind to its stored bounds. Retained upload owns no GPU objects and rechecks current texture handles/GPU/dimensions/plane count. No retained borrowed budget pointer or new stale cleanup authority found.
+
+Per-output behavior:
+SceneHold and output target/monitor/HDR checks remain live. Source decision reuse does not skip output-clock pose, selected complete-packet fallback, live OSD, GPU timing collection or successful submission commits. Existing temporal source-presentation ledger remains the single late source-decision ledger. Ordinary startup output-contract semantics stay unchanged (zero temporal contract outside temporal rendering); separate receipt output contract binds all-mode output dimensions/settings.
+
+Qualification status:
+Source review only. Focused tests are owned by safety agent; full build/tests/deployment by parent. External matching DLL/PDB/unwind and six-mode/private native1MiB stack audit scripts are staged under ../compiled-stack-audit and have NOT run on current outputs. Normal stack, final hashes and runtime performance remain to be qualified after the exact clean Release build signal.

@@ -1,0 +1,34 @@
+Source/output normalization focused regression qualification
+
+Outcome: nine exact current-header CPU test bodies pass. The instrumented replay of the same nine bodies also passes. The separately preserved old-caller control reproduces both targeted failures. Production test source and its two project entries are frozen; no production source, configuration, runtime or deployment was changed by this reviewer.
+
+Production test additions
+- src/VideoProcessor-Test/SourceOutputNormalizationTests.cpp: nine methods.
+- src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj: compile entry, excluded for Win32 because the fixture uses the renderer's x64 path.
+- Matching filters entry. Parent's external selected native suite includes SourceOutputNormalizationTests.
+
+The fixture calls actual production native Measure/Resolve, current-cue PrepareInto/ConsumeInto, pending guard, tracker, padding, compositor, Fit, reduction, layout anchor, finite backing proof and Apply. Source-stage reuse uses the exact new production receipt. Source AR uses actual native measurement and transition model. Bar scheduling uses the production scheduler and actual content/fit/hold policy. TemporalRenderer::Begin supplies output counts without creating a GPU device.
+
+Current results
+- 24 Hz real sources with 24/48/60/120 Hz output schedules, including three additional queued cadence repeats per source: identical AR decisions, accepted cue state/confirmation counts, complete current proof cursor, lease, source/destination rectangles and current-source finite cleanup identity.
+- Each rate processes exactly 12 real sources: 12 analysis passes, 12 subtitle passes, 61,440 native AR reads and 1,718,024 native subtitle/cleanup reads. Identical repeated-source packets add no such native reads.
+- The actual source bar scheduler scans sources 3,6,9,12 at every rate; repeated outputs do not advance its ordinal or detection tick.
+- New real navigation pixels force native content inspection and expand the actual presentation envelope promptly, even when the ordinary source ordinal is unscheduled.
+- Controlled one-read UNKNOWN on a current source, followed by six inserted reuse draws, remains incomplete. A late exact worker triggers both dependent decision stages and recovers the same source's real cue, geometry and cleanup. Existing native pixel measurement caching avoids rereading the same AR pixels while the analysis decision stage re-evaluates.
+- Both asymmetric stage completions (analysis complete/subtitle incomplete and the inverse) retry both decision stages on a genuine cadence repeat; upload remains reusable. Inserted reuse does not promote either flag.
+- Failed preparation cannot publish a receipt. Beginning either a new source or a same-source retry then failing prevents both old and new packet reuse.
+- Prior-source FIT and translation hold on a clean unscheduled source remain retryable; after the original deadline, the production expiry gate forces a negative native sample and the real hold policy releases. Inserted outputs do not renew the prior tick. Exact-current-source content remains valid under the existing policy; scene/ambiguity holds remain nonconclusive.
+- Twenty-one identity/context/immutable-owner mutations reject reuse, including GPU, domain, policy, continuity, viewport, processing/reset/scene, output contract, source/queued owner, representation, discontinuity and live statistics-analysis participation. A genuinely new blank source is processed and exposes no stale cue/cleanup.
+
+Old-caller control and limits
+The control changes only the external eligibility/scheduler predicates to match the old callers: early AR/bar phase has no completed-source cache; upload/subtitle cache is eligible for inserted temporal outputs but not a genuine queued cadence repeat; the bar ordinal advances per invocation. Native detector, proof, tracker and composition functions remain the actual functions used by the same fixture. This is NOT an old-binary full RenderLocked replay.
+The control fails the source scheduling assertion (36 ordinals versus 12) and the completed queued-repeat assertion (native subtitle read counter grows from 219,122 to 368,500). Both are expected failures; the control executable returns success only if both fail. It does not claim to reproduce a visual flash by itself.
+
+Probe provenance and qualification boundary
+Compiled /O2 /MD x64 with a normal 1 MiB stack, current frozen headers and the parent-verified unchanged baseline static library used by successful b81 qualification. That library was incrementally built at13:09; this is not a fresh b81 compilation. Library SHA-256: 0C4E2B43235391786ABBFF4F181B53F3333DD8606C9359C8E3ED205F062590C7.
+No GPU device, private renderer RenderLocked invocation, asynchronous worker queue, host presentation or live OSD submission is exercised by this CPU harness. Successful capture/failure boundaries are controlled caller inputs. The fixture's one-read UNKNOWN and asymmetric completeness are deliberate adversarial injections, not assertions that those conditions naturally occurred in the user's recording. Existing GPU pose/OSD/coherent presentation tests and the parent's pinned integrated dual-dependency build/suites remain separate acceptance gates.
+
+Initial fixture issues corrected before freeze
+The acquisition fixture originally seeded tracker/guard but omitted actual compositor/padding/anchor/cap initialization, causing late COMPLETE recovery to lack a prior placement. The corrected acquisition seeds the real path and asserts current cleanup. An intermediate assertion mistakenly expected new AR pixel reads on late-worker recovery; the actual decision-stage call increases while the existing same-native measurement cache correctly avoids duplicate reads. Final tests assert both facts explicitly. No production behavior was changed to satisfy those fixture corrections.
+
+Independent read-only review by cue_continuity_design found no blocking issue in all nine tests/project entries. git diff --check passed. See final-exact-results.txt, counts-results.txt and final-old-control-results.txt. Reproduction scripts and source snapshots are stored alongside this report. All diagnostic text written here is UTF-8.

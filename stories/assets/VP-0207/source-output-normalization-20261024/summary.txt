@@ -1,0 +1,16 @@
+Source/output normalization test deployment
+
+Clean source 25f14e2cade729fcd388b8dba3f617696d2649a9; beta b1415da4e2cc12807f390f4b722c459be9a17c08; PR197 OPEN DRAFT, unmerged.
+Rollback preserves all 38 b81 runtime/dependency/settings files, with verified source branch, hashes and dry-run. Current settings are preserved by default during restoration. Path: C:\Videoprocessor\vp\rollback-points\vp0207-b81e1b8b-20261024-155706
+
+One exact owned-source/context receipt now covers upload, early AR/bar decisions and existing subtitle preparation. Inserted outputs reuse a completed attempt without manufacturing proof. Queued repeats skip dependent AR/subtitle work only when both completed. Incomplete work and exact late worker evidence remain retryable; failed attempts invalidate reuse before mutable preparation. The existing late presentation ledger and live output pose/target/OSD/HDR publication remain in place.
+
+Bar inspection advances by eligible source, not output draw. Expiring earlier-source navigation/translation holds force the normal current scan without advancing the ordinal or renewing detection. Scene/ambiguity timers remain retryable. Source/GPU/reset/profile/viewport/statistics context changes reject reuse. Budgets, thresholds, cleanup leases and libplacebo tone-map algorithms are unchanged; bounded complete-packet fallback remains intact.
+
+Nine new real native pipeline regressions pass. Controlled 24/48/60/120 output schedules each use 12 analysis and 12 subtitle passes for 12 sources, with 61,440 AR and 1,718,024 subtitle/cleanup reads. Old caller predicate controls fail schedule and repeat-read checks (36 vs 12 ordinals; 368,500 vs 219,122 reads). These are CPU orchestration controls, not old-host GPU A/B or physical refresh qualification.
+
+Integrated qualification: 1847 native + 170 standard GPU + 170 beta GPU = 2187 method executions pass, including all five preserved native captures. Matching x64 Release host/both renderers/test targets pass. Both DLL/PDB audits and six normal-stack plus two native-pressure cases pass at original 1 MiB reserve/4096 commit. Combined renderer frames grow 1776 bytes; nested proof frames, native read counts and cleanup stay unchanged.
+
+Authorized deployment PID84000: all three loaded hashes match; responsive after 210.3s with no crash/hang events. No persistent configuration or saved-profile edit by deployment. Startup Classic-reset action suppressed for 10 seconds then restored byte-for-byte. Prior runtime/settings/logs backup: C:\Videoprocessor\vp\deployment-backups\vp0207-source-output-25f14e2c-20261024-164053
+
+Actual movie/Smooth Motion/HDR display acceptance remains pending. Keep PR197 draft/unmerged and story In Progress. Raw logs/native pixels, exact qualified binaries/PDBs and detailed receipts stay outside Git at E:\codex\diagnostics\vp0207-source-output-normalization-20261024. Unrelated team-design/design.txt changes remain preserved and excluded.

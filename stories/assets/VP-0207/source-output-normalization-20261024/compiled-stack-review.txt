@@ -1,0 +1,19 @@
+Final compiled-stack and native-pressure review: PASS
+Exact clean source: 25f14e2cade729fcd388b8dba3f617696d2649a9
+Matching four-target x64 Release build receipt checked before every execution. Standard/beta DLLs loaded matching PDBs; preserved b81 qualified baseline DLL/PDB hashes matched its manifest and prior audit. Source remained clean throughout.
+
+Compiled unwind (pushes plus RSP allocation, excluding return address/nested callees):
+- RenderLocked: beta558,072 bytes, stable557,912 (+320 vs preserved b81).
+- RenderLoop:199,176 bytes (+1,456 vs b81).
+- Largest combined renderer frames:757,248 beta /757,088 stable, respectively26,560/26,720 below the783,808-byte external caller-pressure fixture. This is a bounded comparison, not a universal proof for every host call chain.
+- Existing nested proof/tracker frames unchanged: InspectCurrent33,784; PrepareInto12,456; ConsumePreparedInto7,944; tracker Consume83,736; raw fallback7,976; Reset40; native Verify7,000.
+- New receipt helper frames: Reset392; Commit/Matches/SameSource40. No large automatic ownership state was introduced.
+- Temporal RenderProcessed remains2,728 beta/2,696 stable; source processing and selected fallback frames unchanged.
+- Host and renderer images retain1,048,576-byte stack reserve and4,096-byte commit. No stack-reserve increase.
+
+Fresh CPU-only runtime qualification:
+- All six matching production stack probe modes passed at783,808-byte caller pressure: unavailable reset, incomplete raw fallback (three sources), complete current proof, contradiction, padded envelope plane fallback, queue-witness complete recovery.
+- External matching-library private native probe passed both retained-native-scope and full-raster bases at same normal stack/pressure. Same cue1 and bounded cleanup1710..1896 persist through two missing-worker sources. Actual immutable captured fixture and linked current Release library hashes recorded.
+- Native reads unchanged from preserved qualification: worker462,317; seed89,240; complete current worker108,942; each missing-worker proof379,391. Inspector393,216/frame524,288/private seed131,072 limits unchanged. Acquisition and selected proof/compositor run under pressure; fixture loading/initial worker measurement run before pressure as explicitly recorded.
+
+No GPU/display execution, no source/binary edits, no deployment or runtime changes by this audit. Full dual-library rendering tests and physical playback acceptance remain parent's separate qualification. No actionable stack or pointer-lifetime failure found.
