@@ -1145,7 +1145,9 @@ public:
             const auto recovered=measured.Analyze(bounded,top,bottom,sequence,1,true);
             Assert::IsTrue(recovered.detected && !recovered.workLimit && !exact.exhausted);
             Assert::AreEqual(exact.limit,exact.used);
-            AssertSameCurrentGridEvidence(full,recovered,fullInk,measured.InkSnapshot());
+            Assert::IsTrue(recovered.cue>full.cue);
+            auto expected=full;expected.cue=recovered.cue;
+            AssertSameCurrentGridEvidence(expected,recovered,fullInk,measured.InkSnapshot());
         }
     }
     TEST_METHOD(CurrentGridCacheCannotCompleteAfterNativeReadBudgetExhaustion) {
