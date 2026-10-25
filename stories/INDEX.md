@@ -270,7 +270,7 @@ they must not contain requirements that are absent from this file.
 | VP-0208 | Backlog | Reassess lookahead scheduling for smooth presentation |
 | VP-0209 | Review | Observe output drops, repeats and glitches without render waits |
 | VP-0210 | Review | Qualify passive presentation event collection |
-| VP-0211 | Backlog | Configurable presentation depth and display-driven vsync output |
+| VP-0211 | In Progress | Configurable presentation depth and display-driven vsync output |
 
 ## Codex story workflow
 

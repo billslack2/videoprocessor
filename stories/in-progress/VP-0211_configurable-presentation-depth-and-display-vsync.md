@@ -2,14 +2,31 @@
 
 ## Status
 
-Backlog
+In Progress
+
+2026-10-25: User authorized implementation and primary-source comparison with
+mpv/other libplacebo players, using Luna extra-high reviewers. Current GitHub
+default/latest beta was rediscovered and fetched as `v1.4.02-beta` at
+`b1415da4e2cc12807f390f4b722c459be9a17c08`. Source worktree:
+`E:\codex\videoprocessor\vp0211-presentation-20261025`, branch
+`codex/vp0211-presentation-20261025`, started clean at that beta and fast-forwarded
+to the existing #198 candidate `10a4aa9a`. PR #198 remains draft; implementation
+will extend/revise that candidate. No deployment is authorized.
+
+Readiness review: the existing global config schema, Apply policy, Display UI,
+GPU-owned repeat cache and single render/present owner are identified. Source
+PTS must remain authoritative without audio retiming. Three Luna xhigh reviewers
+are researching mpv scheduling, libplacebo D3D11 queue/pacing semantics and draft
+regressions. The first implementation phase qualifies actual queue/blocking
+behavior and then chooses the smallest supported timing change; unverified phase
+or depth assumptions are not accepted as production behavior. Findings, probe
+results and any remaining gate will be recorded before final review.
 
 Created 2026-10-25 at the user's request to track both frames presented in
-advance and presentation on every display refresh. This task records the
-requirements and verified baseline; it does not start production implementation,
-merge PR #198, deploy binaries, or change active configuration. First qualify the
-presenter timing/queue contract described below, then complete the implementation
-readiness review and record the selected current-beta source worktree.
+advance and presentation on every display refresh. The initial story task recorded the
+requirements and verified baseline without runtime changes. Implementation is
+now authorized as recorded above; merging, deployment and active configuration
+changes remain separate from this source implementation.
 
 ## Objective
 
@@ -121,7 +138,7 @@ starting the production implementation; this root remains Backlog meanwhile.
 
 Coordinate with:
 
-- [VP-0208](VP-0208_lookahead-scheduling-and-smooth-presentation.md): optional
+- [VP-0208](../backlog/VP-0208_lookahead-scheduling-and-smooth-presentation.md): optional
   analysis scheduling is a separate scope; it must consume the same stable
   presentation timeline rather than extend deadlines to obtain analysis time.
 - [VP-0209](../review/VP-0209_observe-output-drops-repeats-and-glitches-without-render-waits.md)
