@@ -4,6 +4,10 @@
 #include "../VideoProcessor-ChartCore/ToneCurveChart.h"
 #include "../VideoProcessor-ChartCore/ToneCurveProvider.h"
 #include "ToneProfileFile.h"
+#include "FlowLayout.h"
+#include <QResizeEvent>
+#include <QStylePainter>
+#include <QStyleOptionToolButton>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -24,6 +28,64 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+
+// Keep the complete label for accessibility and tooltips while painting a
+// bounded chip. The remove affordance remains visible even for a long name.
+class ToneCompareChip final : public QToolButton
+{
+public:
+    explicit ToneCompareChip(const QString& label, bool removable = false)
+        : label_(label), removable_(removable)
+    {
+        setText(QStringLiteral("● ") + label + (removable ? QStringLiteral("  ✕") : QString()));
+        setAccessibleName(removable ? QStringLiteral("Stop comparing %1").arg(label) : label);
+        setToolTip(label);
+    }
+    QSize sizeHint() const override
+    {
+        const QSize natural = QToolButton::sizeHint();
+        return QSize(std::min(240, natural.width()), natural.height());
+    }
+    QSize minimumSizeHint() const override { return QSize(std::min(100, sizeHint().width()), sizeHint().height()); }
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QStylePainter painter(this);
+        QStyleOptionToolButton option;
+        initStyleOption(&option);
+        const QString prefix = QStringLiteral("● ");
+        const QString suffix = removable_ ? QStringLiteral("  ✕") : QString();
+        const int decoration = QToolButton::sizeHint().width() - option.fontMetrics.horizontalAdvance(text());
+        const int available = std::max(0, width() - decoration - option.fontMetrics.horizontalAdvance(prefix + suffix));
+        option.text = prefix + option.fontMetrics.elidedText(label_, Qt::ElideRight, available) + suffix;
+        painter.drawComplexControl(QStyle::CC_ToolButton, option);
+    }
+private:
+    QString label_;
+    bool removable_;
+};
+
+// The colour map and its explanations share a row only when both remain useful.
+class ToneChartColumns final : public QWidget
+{
+public:
+    ToneChartColumns()
+    {
+        columns_ = new QBoxLayout(QBoxLayout::TopToBottom, this);
+        columns_->setContentsMargins(0, 0, 0, 0);
+        columns_->setSpacing(12);
+    }
+    void addColumn(QLayout* column) { columns_->addLayout(column, 1); }
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        const bool sideBySide = width() >= (columns_->direction() == QBoxLayout::LeftToRight ? 620 : 668);
+        columns_->setDirection(sideBySide ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
+    }
+private:
+    QBoxLayout* columns_ = nullptr;
+};
 
 // The tone charts column on the Rendering page. Tabs hold the charts (only
 // Brightness for now); the scene buttons under the tab bar, above the charts,
@@ -104,7 +166,7 @@ public:
         // Compare with: libplacebo's default curve, then up to four profiles or
         // exported profile files, the edited profile among them in bold. The
         // chips are the legend.
-        auto* compareRow = new QHBoxLayout;
+        auto* compareRow = new FlowLayout;
         compareRow->setSpacing(6);
         compareRow->addWidget(new QLabel(QStringLiteral("Compare with:")));
         defaultChip_ = chip(QStringLiteral("libplacebo default"), QColor(QStringLiteral("#e8a93b")), true);
@@ -113,9 +175,7 @@ public:
         defaultChip_->setToolTip(QStringLiteral("Show or hide libplacebo's default curve."));
         connect(defaultChip_, &QToolButton::toggled, this, [this] { redraw(); });
         compareRow->addWidget(defaultChip_);
-        chips_ = new QHBoxLayout;
-        chips_->setSpacing(6);
-        compareRow->addLayout(chips_);
+        chips_ = compareRow;
         // A push button, so his theme draws it (a tool button is Windows-styled).
         addCompare_ = new QPushButton(QStringLiteral("+ Add"));
         addCompare_->setObjectName(QStringLiteral("toneCharts.compareAdd"));
@@ -123,7 +183,6 @@ public:
         addCompare_->setMenu(menu);
         connect(menu, &QMenu::aboutToShow, this, [this, menu] { fillCompareMenu(menu); });
         compareRow->addWidget(addCompare_);
-        compareRow->addStretch(1);
         shared_->addLayout(compareRow);
 
         // The scenes: one row for peak detection on, one for off; only the row
@@ -135,7 +194,7 @@ public:
             // selected scene takes his primary button's colours.
             sceneRows_[set]->setStyleSheet(QStringLiteral(
                 "QPushButton:checked { color: #f8fcff; background: #1479c4; border-color: #248dd6; }"));
-            auto* row = new QHBoxLayout(sceneRows_[set]);
+            auto* row = new FlowLayout(sceneRows_[set]);
             row->setContentsMargins(0, 0, 0, 0);
             row->setSpacing(6);
             row->addWidget(new QLabel(QStringLiteral("Scene:")));
@@ -150,7 +209,6 @@ public:
                 sceneButtons_[set].push_back(button);
                 row->addWidget(button);
             }
-            row->addStretch(1);
             shared_->addWidget(sceneRows_[set]);
         }
         sceneNote_ = new QLabel;
@@ -194,10 +252,9 @@ private:
 
     // A switch chip greys out when off; a compare chip removes itself; the
     // edited profile's chip is bold and stays.
-    static QToolButton* chip(const QString& text, const QColor& color, bool toggle = false, bool bold = false)
+    static QToolButton* chip(const QString& text, const QColor& color, bool toggle = false, bool bold = false, bool removable = false)
     {
-        auto* button = new QToolButton;
-        button->setText(QStringLiteral("● ") + text);
+        auto* button = new ToneCompareChip(text, removable);
         button->setCheckable(toggle);
         button->setStyleSheet(QStringLiteral(
             "QToolButton { color: %1; background: #101d2a; border: %2px solid %1; border-radius: 10px; padding: 1px 8px;%3 }")
@@ -284,23 +341,26 @@ private:
 
     void rebuildChips()
     {
-        while (QLayoutItem* item = chips_->takeAt(0))
+        for (auto* button : comparisonChips_)
         {
-            // Later: a chip's own click rebuilds the chips.
-            if (QWidget* widget = item->widget()) { widget->hide(); widget->deleteLater(); }
-            delete item;
+            chips_->removeWidget(button);
+            // A chip's own click can rebuild the controls.
+            button->hide();
+            button->deleteLater();
         }
+        comparisonChips_.clear();
         for (const Compared& compared : compared_)
         {
             if (IsEdited(compared))
             {
                 auto* button = chip(compared.name, compared.color, false, true);
                 button->setObjectName(QStringLiteral("toneCharts.compare%1").arg(compared.id));
-                button->setToolTip(QStringLiteral("Being edited: select another profile to move on."));
-                chips_->addWidget(button);
+                button->setToolTip(QStringLiteral("%1 — being edited. Select another profile to move on.").arg(compared.name));
+                chips_->insertWidget(chips_->count() - 1, button);
+                comparisonChips_.push_back(button);
                 continue;
             }
-            auto* button = chip(compared.name + QStringLiteral("  ✕"), compared.color);
+            auto* button = chip(compared.name, compared.color, false, false, true);
             button->setObjectName(QStringLiteral("toneCharts.compare%1").arg(compared.id));
             button->setToolTip(QStringLiteral("Stop comparing %1.").arg(compared.name));
             const int id = compared.id;
@@ -310,7 +370,8 @@ private:
                 rebuildChips();
                 redraw();
             });
-            chips_->addWidget(button);
+            chips_->insertWidget(chips_->count() - 1, button);
+            comparisonChips_.push_back(button);
         }
     }
 
@@ -368,7 +429,7 @@ private:
         auto* displayRow = new QWidget;
         displayRow->setStyleSheet(QStringLiteral(
             "QPushButton:checked { color: #f8fcff; background: #1479c4; border-color: #248dd6; }"));
-        auto* displays = new QHBoxLayout(displayRow);
+        auto* displays = new FlowLayout(displayRow);
         displays->setContentsMargins(0, 0, 0, 0);
         displays->setSpacing(6);
         displays->addWidget(new QLabel(QStringLiteral("Display:")));
@@ -383,14 +444,13 @@ private:
             displayButtons_.push_back(button);
             displays->addWidget(button);
         }
-        displays->addStretch(1);
         charts->addWidget(displayRow);
 
         // The part of the picture the map shows, placed by the scene: Mid-tones
         // at the curve's knee, Peak at the scene peak (see redrawColour).
         auto* zoneRow = new QWidget;
         zoneRow->setStyleSheet(displayRow->styleSheet());
-        auto* zones = new QHBoxLayout(zoneRow);
+        auto* zones = new FlowLayout(zoneRow);
         zones->setContentsMargins(0, 0, 0, 0);
         zones->setSpacing(6);
         zones->addWidget(new QLabel(QStringLiteral("Show colours in:")));
@@ -406,30 +466,25 @@ private:
         }
         zoneNote_ = new QLabel;
         zoneNote_->setProperty("toneHint", true);
-        zones->addWidget(zoneNote_, 1);
+        zoneNote_->setWordWrap(true);
         charts->addWidget(zoneRow);
+        charts->addWidget(zoneNote_);
 
         // The map and the sweep side by side, each with the full height.
-        auto* pair = new QHBoxLayout;
-        pair->setSpacing(6);
+        auto* pair = new ToneChartColumns;
         auto* mapColumn = new QVBoxLayout;
         mapColumn->setSpacing(4);
         mapColumn->addWidget(heading(QStringLiteral("Where colours land on the display (u′v′)")));
         map_ = new ColourChart(ColourChart::Kind::Map);
         mapColumn->addWidget(map_, 1);
-        pair->addLayout(mapColumn, 1);
-        auto* divider = new QWidget;
-        divider->setObjectName(QStringLiteral("toneChartsDivider"));
-        divider->setAttribute(Qt::WA_StyledBackground, true);
-        divider->setFixedWidth(1);
-        pair->addWidget(divider);
+        pair->addColumn(mapColumn);
+
         auto* sweepColumn = new QVBoxLayout;
         sweepColumn->setSpacing(4);
 
-        auto* sweepHead = new QHBoxLayout;
+        auto* sweepHead = new QVBoxLayout;
         sweepHead->setSpacing(6);
         sweepHead->addWidget(heading(QStringLiteral("Saturation as the colour gets stronger")));
-        sweepHead->addStretch(1);
         auto* patch = new QComboBox;
         patch->setObjectName(QStringLiteral("toneCharts.sweepPatch"));
         for (const auto& entry : ToneCurveProvider::Patches())
@@ -460,8 +515,8 @@ private:
         sweepColumn->addWidget(hueHelp);
         hue_ = new ColourChart(ColourChart::Kind::Hue);
         sweepColumn->addWidget(hue_);
-        pair->addLayout(sweepColumn, 1);
-        charts->addLayout(pair, 1);
+        pair->addColumn(sweepColumn);
+        charts->addWidget(pair, 1);
         auto* note = new QLabel(QStringLiteral(
             "The source is P3-mastered in a BT.2020 container. Every colour in a zone is driven "
             "equally hard: its strongest channel at the zone's nits, so a blue looks dimmer than a "
@@ -501,6 +556,7 @@ private:
         QFont font = label->font();
         font.setBold(true);
         label->setFont(font);
+        label->setWordWrap(true);
         return label;
     }
 
@@ -617,7 +673,8 @@ private:
     QString edited_; // the page's selected profile section
     int lastCompareId_ = 0;
     QToolButton* defaultChip_ = nullptr;
-    QHBoxLayout* chips_ = nullptr;
+    FlowLayout* chips_ = nullptr;
+    std::vector<QToolButton*> comparisonChips_;
     QPushButton* addCompare_ = nullptr;
     QWidget* tabs_ = nullptr; // the tab bar, the shared scene controls and the pages
     QTabBar* tabBar_ = nullptr;

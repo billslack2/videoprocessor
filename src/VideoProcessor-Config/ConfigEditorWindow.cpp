@@ -92,6 +92,7 @@
 #include <QStyle>
 #include <QShowEvent>
 #include <QSplitter>
+#include "AdaptiveWorkspace.h"
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
@@ -419,7 +420,14 @@ protected:
 private:
     void reflow(int availableWidth)
     {
-        const int columns = availableWidth >= kResponsiveContentWidth ? 2 : 1;
+        if (reflowing_) return;
+        reflowing_ = true;
+        struct ReflowGuard { bool& active; ~ReflowGuard() { active = false; } } guard{ reflowing_ };
+        // A vertical scrollbar changes the viewport width. Leave enough space
+        // between transitions that adding it cannot flip the grid back again.
+        // A lone card always uses the full width, including on a wide screen.
+        const int threshold = kResponsiveContentWidth + (columns_ == 1 ? 40 : 0);
+        const int columns = cards_.size() > 1 && availableWidth >= threshold ? 2 : 1;
         if (columns != columns_ || layout_->count() != cards_.size())
         {
             columns_ = columns;
@@ -431,6 +439,7 @@ private:
         }
 
         for (QWidget* card : cards_) card->setMinimumHeight(0);
+        for (int row = 0; row < cards_.size(); ++row) layout_->setRowMinimumHeight(row, 0);
         if (columns_ != 2) return;
 
         layout_->activate();
@@ -451,24 +460,7 @@ private:
     QGridLayout* layout_ = nullptr;
     QList<QWidget*> cards_;
     int columns_ = 0;
-};
-
-class ResponsiveSplitter final : public QSplitter
-{
-public:
-    ResponsiveSplitter() : QSplitter(Qt::Horizontal)
-    {
-        setChildrenCollapsible(false);
-    }
-
-protected:
-    void resizeEvent(QResizeEvent* event) override
-    {
-        const Qt::Orientation wanted =
-            event->size().width() >= kResponsiveContentWidth ? Qt::Horizontal : Qt::Vertical;
-        if (orientation() != wanted) setOrientation(wanted);
-        QSplitter::resizeEvent(event);
-    }
+    bool reflowing_ = false;
 };
 
 QLabel* helpLabel(const QString& text)
@@ -1043,10 +1035,10 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     // QWindows backend can otherwise recreate or restyle the native HWND and
     // silently remove WS_EX_TOPMOST after Config has been revealed.
     setWindowFlag(Qt::WindowStaysOnTopHint, true);
-    // This is the smallest dashboard layout that keeps both card columns,
-    // navigation, and the fixed action footer usable without clipping.
+    // Navigation and profile workspaces compact before the editor is squeezed.
+    // Use logical pixels so the same layout works on scaled Windows displays.
     resize(1040, 700);
-    setMinimumSize(1040, 700);
+    setMinimumSize(760, 540);
     loadConfiguration();
     migrateLldvInputPolicy();
     migrateSharedRefreshRate();
@@ -4084,6 +4076,11 @@ bool ConfigEditorWindow::saveChanges()
 		if (saveButton_) saveButton_->setEnabled(true);
 		if (applyButton_) applyButton_->setEnabled(true);
 		savedSnapshot_ = captureDocumentSnapshot(*document_);
+		if (auto* notice = findChild<QLabel*>(QStringLiteral("rendererNoInheritanceNote")))
+		{
+		    notice->setProperty("migrationAcknowledged", true);
+		    notice->hide();
+		}
 		updateEffectSummary();
 		const QString outcome = applied.status == 0 ?
 			QStringLiteral("Saved on target for next start") :
@@ -4105,6 +4102,11 @@ bool ConfigEditorWindow::saveChanges()
     saveButton_->setEnabled(true);
     if (applyButton_) applyButton_->setEnabled(true);
     savedSnapshot_ = captureDocumentSnapshot(*document_);
+    if (auto* notice = findChild<QLabel*>(QStringLiteral("rendererNoInheritanceNote")))
+    {
+        notice->setProperty("migrationAcknowledged", true);
+        notice->hide();
+    }
     updateEffectSummary();
 
     // The editor is a separate process. Signal the running VP instance only
@@ -4245,11 +4247,6 @@ QWidget* ConfigEditorWindow::createShell()
 	}
     rootLayout->addWidget(header);
 
-    auto* center = new QWidget;
-    auto* centerLayout = new QHBoxLayout(center);
-    centerLayout->setContentsMargins(0, 0, 0, 0);
-    centerLayout->setSpacing(0);
-
     navigation_ = new QWidget;
     navigation_->setObjectName(QStringLiteral("sidebar"));
     navigation_->setMinimumWidth(172);
@@ -4339,8 +4336,9 @@ QWidget* ConfigEditorWindow::createShell()
     sectionTabs->setUsesScrollButtons(true);
     sectionTabs->setElideMode(Qt::ElideNone);
     sectionTabs->setDrawBase(false);
-    sectionTabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    pageHostLayout->addWidget(sectionTabs, 0, Qt::AlignLeft);
+    sectionTabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sectionTabs->setMinimumWidth(0);
+    pageHostLayout->addWidget(sectionTabs);
     pageHostLayout->addWidget(pages_, 1);
 
     const auto showSectionTabs = [sectionTabs](
@@ -4414,8 +4412,43 @@ QWidget* ConfigEditorWindow::createShell()
         });
     connect(pages_, &QStackedWidget::currentChanged, this, updateSectionTabs);
     updateSectionTabs(pages_->currentIndex());
-    centerLayout->addWidget(navigation_);
-    centerLayout->addWidget(pageHost, 1);
+    auto* compactNavigation = new QWidget;
+    auto* compactLayout = new QHBoxLayout(compactNavigation);
+    compactLayout->setContentsMargins(16, 6, 16, 6);
+    auto* compactCaption = new QLabel(QStringLiteral("Settings:"));
+    auto* compactChoice = new QComboBox;
+    compactChoice->setObjectName(QStringLiteral("settingsNavigationCompact"));
+    compactChoice->setAccessibleName(QStringLiteral("Settings page"));
+    compactChoice->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    compactChoice->setMinimumContentsLength(16);
+    compactChoice->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    compactCaption->setBuddy(compactChoice);
+    const std::vector<std::pair<QString, int>> destinations = {
+        { "General", 0 }, { "Display", displayPageIndex }, { "Queue", 1 }, { "DV", 5 },
+        { "Shaders / Setup", 14 }, { "Shaders / Standard", 8 }, { "Shaders / NLS", 9 },
+        { "Actions", 7 }, { "Shortcuts / Setup", 15 }, { "Shortcuts", 6 }, { "Logs", 10 },
+        { "VP Renderer / Rendering / DTM", 2 }, { "VP Renderer / Color / Output", 16 },
+        { "VP Renderer / Scaling / Quality", 17 }, { "VP Renderer / Screen", 4 },
+        { "VP Renderer / Zoom", 18 }, { "VP Renderer / Subtitles", 19 },
+        { "VP Renderer / Motion", 21 }, { "VP Renderer / Input Processing", 11 },
+        { "DirectShow / General", 3 }, { "DirectShow / Input Processing", 12 }, { "Updates", 20 }
+    };
+    for (const auto& entry : destinations) compactChoice->addItem(entry.first, entry.second);
+    compactChoice->setCurrentIndex(compactChoice->findData(pages_->currentIndex()));
+    if (noTarget_)
+        if (auto* model = qobject_cast<QStandardItemModel*>(compactChoice->model()))
+            for (int row = 0; row < model->rowCount(); ++row)
+                model->item(row)->setEnabled(compactChoice->itemData(row).toInt() == 20);
+    connect(compactChoice, qOverload<int>(&QComboBox::activated), this,
+        [this, compactChoice](int row) { selectPage(compactChoice->itemData(row).toInt()); });
+    connect(pages_, &QStackedWidget::currentChanged, compactChoice, [compactChoice](int page) {
+        const QSignalBlocker blocker(compactChoice);
+        compactChoice->setCurrentIndex(compactChoice->findData(page));
+    });
+    compactLayout->addWidget(compactCaption);
+    compactLayout->addWidget(compactChoice, 1);
+    pageHostLayout->insertWidget(0, compactNavigation);
+    auto* center = new AdaptiveNavigationHost(navigation_, pageHost, compactNavigation);
     configurationHost_ = center;
 	if (noTarget_)
 	{
@@ -4445,7 +4478,7 @@ QWidget* ConfigEditorWindow::createShell()
 		targetSearchHelp_ = help;
 		help->setWordWrap(true);
 		help->setAlignment(Qt::AlignCenter);
-		help->setFixedWidth(560);
+		help->setMaximumWidth(560);
 		help->setMinimumHeight(64);
 		help->setStyleSheet(QStringLiteral(
 			"font-size: 14px; color: #a8bad0;"));
@@ -4478,13 +4511,17 @@ QWidget* ConfigEditorWindow::createShell()
     status_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     status_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     status_->setWordWrap(true);
-    footerLayout->addWidget(status_, 1);
+    auto* messages = new QWidget;
+    auto* messageLayout = new QVBoxLayout(messages);
+    messageLayout->setContentsMargins(0, 0, 0, 0);
+    messageLayout->setSpacing(2);
+    messageLayout->addWidget(status_);
+    footerLayout->addWidget(messages, 1);
     effectSummary_ = new QLabel;
     effectSummary_->setObjectName(QStringLiteral("configurationEffectSummary"));
     effectSummary_->setAccessibleName(QStringLiteral("Pending configuration effect"));
     effectSummary_->setWordWrap(true);
-    effectSummary_->setMinimumWidth(180);
-    footerLayout->addWidget(effectSummary_);
+    messageLayout->addWidget(effectSummary_);
     applyButton_ = new QPushButton(QStringLiteral("&Apply"));
     saveButton_ = new QPushButton(QStringLiteral("&OK"));
     auto* cancel = new QPushButton(QStringLiteral("&Cancel"));
@@ -4579,6 +4616,9 @@ QWidget* ConfigEditorWindow::createCard(const QString& title, const QString& des
     if (!description.isEmpty()) layout->addWidget(helpLabel(description));
     layout->addSpacing(4);
     layout->addWidget(content);
+    heading->setWordWrap(true);
+    for (auto* form : content->findChildren<QFormLayout*>())
+        form->setRowWrapPolicy(QFormLayout::WrapLongRows);
     return card;
 }
 
@@ -4603,8 +4643,11 @@ QWidget* ConfigEditorWindow::createPage(const QString& title, const QString& des
     subtitle->setWordWrap(true);
     layout->addWidget(subtitle);
     layout->addSpacing(10);
-    layout->addWidget(body);
-    layout->addStretch();
+    bool workspace = body->property("adaptiveWorkspace").toBool();
+    for (auto* child : body->findChildren<QWidget*>())
+        workspace = workspace || child->property("adaptiveWorkspace").toBool();
+    layout->addWidget(body, workspace ? 1 : 0);
+    if (!workspace) layout->addStretch();
     scroll->setWidget(page);
     return scroll;
 }
@@ -5111,7 +5154,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     std::function<void()> fillRenderingProfiles;
     std::function<void()> restyleRenderingFields = [] {};
 
-    auto* splitter = new ResponsiveSplitter;
+    auto* splitter = new AdaptiveProfileWorkspace;
 
     auto* listContent = new QWidget;
     auto* listLayout = new QVBoxLayout(listContent);
@@ -5165,6 +5208,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     selectedTitle->setObjectName(controlName(sectionPrefix,
         QStringLiteral("selected_profile_status")));
     selectedTitle->setProperty("cardTitle", true);
+    selectedTitle->setWordWrap(true);
     detailLayout->addWidget(selectedTitle);
     if (showsActiveProfile)
         activeProfileLists_.back().selectedTitle = selectedTitle;
@@ -6823,7 +6867,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             for (const RenderingFreezeWrite& write : plan())
                 document_->SetKnown(write.section.toStdString(), write.key.toStdString().c_str(),
                     write.value.toStdString());
-            *filled = {}; // saved now
+            // Keep the notice until persistence actually succeeds.
         };
         fillRenderingProfiles = [this, plan = renderingFreezePlan, filled] {
             if (!document_) return;
@@ -6855,14 +6899,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 const QString name = label.isEmpty() ? ::displayName(write.section, QStringLiteral("vprenderer")) : label;
                 if (!names.contains(name)) names << name;
             }
-            QString text = count == 0 ? noInheritance : noInheritance + QStringLiteral(
-                " On the next Save or Apply, %1 settings in %2 are written with the values they take "
-                "from the default profile now, so they stop following it.").arg(count).arg(names.join(QStringLiteral(", ")));
-            if (filled->first > 0 && dirty_)
-                text += QStringLiteral(" On opening, %1 settings in %2 were filled in: each profile now holds "
-                    "every setting as its own, and the ones at libplacebo's default show as Auto in grey. "
-                    "Save or Apply keeps them.").arg(filled->first).arg(filled->second.join(QStringLiteral(", ")));
-            noInheritanceNote->setText(text);
+            const bool migrated = filled->first > 0 && dirty_ &&
+                !noInheritanceNote->property("migrationAcknowledged").toBool();
+            noInheritanceNote->setVisible(migrated || count > 0);
+            noInheritanceNote->setText(migrated ? QStringLiteral(
+                "Profiles updated: %1 tone settings now keep their existing values independently. Save or Apply to keep this migration.")
+                .arg(filled->first) : QStringLiteral(
+                "%1 inherited tone settings will be preserved when you Save or Apply.").arg(count));
+            noInheritanceNote->setToolTip(noInheritance + QStringLiteral("\nAffected profiles: ") +
+                (migrated ? filled->second : names).join(QStringLiteral(", ")));
         };
         // His grey ("inherited") here marks a value at its unset meaning, Auto
         // and the like; a value taken from another profile is now this one's own.
@@ -8987,49 +9032,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
         detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
+    splitter->addWidget(detailsCard);
     if (toneCharts)
-    {
-        // Rendering only: the settings scroll on their own, so opening a
-        // section never scrolls the page title or the charts beside them.
-        auto* detailsScroll = new QScrollArea;
-        detailsScroll->setObjectName(QStringLiteral("renderingDetailsViewport"));
-        detailsScroll->setWidgetResizable(true);
-        detailsScroll->setMinimumHeight(300);
-        detailsScroll->setWidget(detailsCard);
-        splitter->addWidget(detailsScroll);
-    }
-    else
-        splitter->addWidget(detailsCard);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({ 310, 620 });
-    if (toneCharts)
-    {
-        // Rendering only: the tone charts, as tall as the window allows.
-        auto* chartsCard = createCard(QStringLiteral("Tone charts"),
-            QStringLiteral("What the selected profile's tone settings do, against PQ: the source as mastered."),
-            toneCharts);
-        chartsCard->setMinimumHeight(420);
-        splitter->addWidget(chartsCard);
-        // A wider window widens the charts; the settings keep their width.
-        splitter->setStretchFactor(1, 0);
-        splitter->setStretchFactor(2, 1);
-        splitter->setSizes({ 260, 540, 560 });
-    }
+        splitter->addWidget(createCard(QStringLiteral("Tone charts"),
+            QStringLiteral("Compare this profile with PQ and other profiles."), toneCharts));
     auto* page=createPage(title, description, splitter);
     if (noInheritanceNote)
         if (auto* subtitle = page->findChild<QLabel*>(QStringLiteral("pageDescription")))
             if (auto* header = qobject_cast<QVBoxLayout*>(subtitle->parentWidget()->layout()))
                 header->insertWidget(header->indexOf(subtitle) + 1, noInheritanceNote);
-    // The columns fill the window below the title; the page scrolls only when
-    // the window is shorter than they can shrink.
-    if (toneCharts)
-        if (auto* pageLayout = qobject_cast<QVBoxLayout*>(qobject_cast<QScrollArea*>(page)->widget()->layout()))
-            pageLayout->setStretchFactor(splitter, 1);
-    if(sectionPrefix==QStringLiteral("vprenderer.subtitles")) {
-        splitter->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
-        qobject_cast<QScrollArea*>(page)->widget()->layout()->setSizeConstraint(QLayout::SetMinimumSize);
-    }
     return page;
 }
 
@@ -9257,7 +9268,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     auto state = std::make_shared<ShaderEditorState>();
     const QString root = QStringLiteral("shader.nls");
 
-    auto* splitter = new ResponsiveSplitter;
+    auto* splitter = new AdaptiveProfileWorkspace;
 
     auto* selection = new QWidget;
     auto* selectionLayout = new QVBoxLayout(selection);
@@ -9653,9 +9664,6 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         QStringLiteral("A profile with no shader files is unconfigured (Off). Reorder profiles by dragging or using the buttons; when no shortcut or rule matches, the first profile is selected."), selection));
     splitter->addWidget(createCard(QStringLiteral("Profile details"),
         QStringLiteral("NLS profiles do not inherit shader settings. Clear both shader files to leave the selected profile unconfigured."), details));
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("NLS"),
         QStringLiteral("Configure nonlinear stretch (NLS) profiles. A single NLS profile can be active."), splitter);
 }
@@ -9743,7 +9751,7 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     auto state = std::make_shared<ShaderEditorState>();
     const QString root = QStringLiteral("shader.standard");
 
-    auto* splitter = new ResponsiveSplitter;
+    auto* splitter = new AdaptiveProfileWorkspace;
     auto* selection = new QWidget;
     auto* selectionLayout = new QVBoxLayout(selection);
     selectionLayout->setContentsMargins(0, 0, 0, 0);
@@ -10061,9 +10069,6 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
         QStringLiteral("A profile with no shader files is unconfigured (Off). Reorder profiles by dragging or using the buttons; matching profiles compose in this order, and the first profile is selected when no shortcut or rule matches."), selection));
     splitter->addWidget(createCard(QStringLiteral("Profile details"),
         QStringLiteral("Standard shader profiles do not inherit shader settings. Clear both shader files to leave the selected profile unconfigured."), details));
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("Standard"),
         QStringLiteral("Configure standard shader profiles separately from NLS. Multiple standard shaders profile can be active."), splitter);
 }
@@ -10072,7 +10077,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
 {
     struct State { QString section; bool loading = false; };
     auto state = std::make_shared<State>();
-    auto* splitter = new ResponsiveSplitter;
+    auto* splitter = new AdaptiveProfileWorkspace;
 
     auto* listContent = new QWidget;
     auto* listLayout = new QVBoxLayout(listContent);
@@ -10111,6 +10116,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
     detailLayout->setSpacing(12);
     auto* selectedTitle = new QLabel(QStringLiteral("Add an action to configure it"));
     selectedTitle->setProperty("cardTitle", true);
+    selectedTitle->setWordWrap(true);
     detailLayout->addWidget(selectedTitle);
 
     auto* name = new QLineEdit;
@@ -10467,9 +10473,6 @@ QWidget* ConfigEditorWindow::createActionsPage()
         QStringLiteral("Actions have no default or priority. Disabled actions are retained as drafts."), listContent));
     splitter->addWidget(createCard(QStringLiteral("Action details"),
         QStringLiteral("Choose where and when an action runs, plus the command to start."), detailStack));
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("Actions"),
         QStringLiteral("Run external commands when selected VideoProcessor events occur."), splitter);
 }
