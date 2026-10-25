@@ -1,0 +1,11 @@
+Playback counter reset qualified — 26e33fdc
+
+Ctrl+Shift+R resets playback counters; remappable/disableable as Reset playback counters in Shortcuts. Confirmed current-run physical input lock recovery or complete native format change uses the same reset. Unknown/stale/metadata-only observations, profiles and queue recovery do not clear counters.
+
+Capture/queue and intentional D/R display windows clear without mutating raw counters or recovery policy. Display observer reset is atomic-request/render-thread-acknowledged; delayed old DXGI IDs and stale OSD publications cannot restore cleared incidents. A reset requested before Build is retained. Unavailable output statistics remain unavailable. No playback flush, subtitle/AR/HDR change, or performance-window reset.
+
+Validation: clean x64 Release host, standard renderer, beta renderer, configuration editor/discovery and test targets passed. Plugin API 32; all five deployable artifact manifests/hashes verified. 243/243 native selected tests and 2/2 Qt shortcut tests pass. Actual DLL test proves pre-Build serial 41 and subsequent serial 42 acknowledgement using valid captured-frame ownership and clock. Initial fixture misuse and failed receipt preserved outside Git; no production change was needed to correct it.
+
+Not deployed. Installed 592d890b and PID 53756 remain unchanged and responsive; active configuration was not edited. Physical HDMI/hotkey and subtitle playback acceptance not performed. Full displayed D/R accounting remains unavailable; partial display-hold observations are not complete output glitch counts. PR #197 remains draft/unmerged.
+
+Full receipts: E:\codex\diagnostics\vp-output-stat-reset-20261024

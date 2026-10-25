@@ -1,0 +1,141 @@
+{
+  "sourceCommit": "26e33fdcbe77e2eab0f480dd0476243c8280e18d",
+  "sourceWorktree": "E:\\codex\\videoprocessor\\output-stat-reset-20261024",
+  "branch": "codex/output-stat-reset-20261024",
+  "baseBeta": "v1.4.02-beta",
+  "baseBetaCommit": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "pluginApi": 32,
+  "build": {
+    "ExitCode": 0,
+    "Finished": "2026-10-24T20:12:33.3045002-04:00",
+    "Commit": "26e33fdcbe77e2eab0f480dd0476243c8280e18d",
+    "Dirty": false,
+    "Configuration": "Release",
+    "Architecture": "x64",
+    "Targets": [
+      "VideoProcessor-GUI",
+      "VideoProcessor-VPRenderer",
+      "VideoProcessor-VPRendererBeta",
+      "VideoProcessor-Test"
+    ]
+  },
+  "configBuild": [
+    {
+      "Target": "VideoProcessor-ConfigDiscovery",
+      "ExitCode": 0,
+      "Finished": "2026-10-24T20:12:37.7362338-04:00"
+    },
+    {
+      "Target": "VideoProcessor-Config",
+      "ExitCode": 0,
+      "Finished": "2026-10-24T20:12:39.6035632-04:00"
+    },
+    {
+      "Target": "VideoProcessor-ConfigTests",
+      "ExitCode": 0,
+      "Finished": "2026-10-24T20:12:41.1298813-04:00"
+    }
+  ],
+  "nativeTests": {
+    "total": "243",
+    "executed": "243",
+    "passed": "243",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "qtTests": [
+    {
+      "Name": "reset playback counters shortcut defaults remaps and disables",
+      "ExitCode": 0,
+      "Output": "START reset playback counters shortcut defaults remaps and disables\nPASS reset playback counters shortcut defaults remaps and disables"
+    },
+    {
+      "Name": "shortcut effects are classified live",
+      "ExitCode": 0,
+      "Output": "START shortcut effects are classified live\nPASS shortcut effects are classified live"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\output-stat-reset-20261024\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "C410D683CFE7F2BE7E1C895CAEB73A819A6E47EE0AAAE69FD65397CC27A7242B",
+      "configuration": "Release",
+      "architecture": "x64",
+      "toolsetVersion": "14.29.30133"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\output-stat-reset-20261024\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "83E00C988A4D4C8937D57E170539E21AFCEFB20378527542E46F9CEA013A729F",
+      "configuration": "Release",
+      "architecture": "x64",
+      "toolsetVersion": "14.29.30133"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\output-stat-reset-20261024\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "06542CDDFF0A3C4C61D9E94F085735C6C9C0C4A34C8320F0CEF5E4FDF2FBBF7C",
+      "configuration": "Release",
+      "architecture": "x64",
+      "toolsetVersion": "14.29.30133"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\output-stat-reset-20261024\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "FEAAFB454443D332A260F742135D1BE974E2342C319865372FFF19996B334A6B",
+      "configuration": "Release",
+      "architecture": "x64",
+      "toolsetVersion": "14.44.35207"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\output-stat-reset-20261024\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "84FB43FFEA096738DBF9BF5103F525265F57668902F8C9A824E1A327BD2935A6",
+      "configuration": "Release",
+      "architecture": "x64",
+      "toolsetVersion": "14.29.30133"
+    }
+  ],
+  "deployed": false,
+  "runtime": {
+    "Id": 53756,
+    "StartTime": "2026-10-24T19:17:19.1041649-04:00",
+    "Responding": true
+  },
+  "runtimeComparison": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "AD96594CCACBBEF77661DE7E6C934EC514C8BE32F53C50CE53FAF71D7C666B2F",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "A5ECDEF0FE5EB7EF7ACF4D2DDFB3C632D59695A3912AE6918D58BFBB84897530",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "9084CC9B6D4BD380344A68B9E6CDABEC7B9AE6852243464533A928C5F9A13FA0",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "sha256": "928934B02A995D83713FA0363D64692893F8A81B45D3E70A73EE65DA6B146744",
+      "unchanged": true
+    }
+  ],
+  "review": "safety-review/review.txt",
+  "limitations": [
+    "No physical HDMI hotplug/hotkey playback acceptance in this turn.",
+    "Complete displayed drop/repeat totals remain unmeasured; unavailable statistics never become a measured zero.",
+    "No subtitle/AR/HDR/GPU processing policy changed; no repeat of dual-library cue qualification."
+  ],
+  "initialFixtureFailure": "initial-fixture-failure; test-only missing buffer owner corrected with production MagewellCaptureBuffer and QPC timing clock."
+}
