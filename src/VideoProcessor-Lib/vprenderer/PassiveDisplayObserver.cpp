@@ -1,6 +1,7 @@
 #include <pch.h>
 #include "PassiveDisplayObserver.h"
 #include "PassiveDisplayProtocol.h"
+#include <DebugLog.h>
 #include <evntrace.h>
 #include <atomic>
 #include <cstdio>
@@ -85,6 +86,10 @@ struct PassiveDisplayObserver::State {
     uint64_t eventsLost = 0, buffersLost = 0, overflows = 0;
     uint32_t error = ERROR_NOT_READY;
     bool hello = false, haveHealth = false;
+    uint64_t rawEvents = 0, filteredEvents = 0, noScreenEvents = 0, flaggedEvents = 0;
+    uint64_t nextDiagnosticTick = 0, loggedHolds = 0, loggedReset = 0;
+    uint32_t lastMode = 0, lastDisposition = 0;
+
 
     void Publish(bool running) {
         const auto value = meter.ReadSnapshot();
@@ -106,8 +111,32 @@ struct PassiveDisplayObserver::State {
             now >= lastStatusTick && now-lastStatusTick <= 2000 &&
             lastEventTick && next.eventAgeMilliseconds <= 2000 &&
             value.state == PassiveDisplayStatistics::CoverageState::Observing;
-        std::unique_lock<std::mutex> lock(publicationMutex, std::try_to_lock);
-        if (lock.owns_lock()) { publication = next; publishedWitnessTick = lastEventTick; }
+        {
+            std::unique_lock<std::mutex> lock(publicationMutex, std::try_to_lock);
+            if (lock.owns_lock()) { publication = next; publishedWitnessTick = lastEventTick; }
+        }
+        // Observer-worker/initialization diagnostics, never under the publication lock. Capture
+        // evidence even when the OS supplies events without screen timestamps.
+        const bool diagnosticDue = now >= nextDiagnosticTick;
+        if (diagnosticDue) {
+            nextDiagnosticTick = now + 10000;
+            DebugLog::Log("VP passive display: running=%d fresh=%d error=%u state=%u reset=%llu displayed_age_ms=%llu status_age_ms=%llu raw=%llu filtered=%llu no_screen=%llu flagged=%llu last_mode=%u last_disposition=%u matched=%llu displayed=%llu intervals=%llu gaps=%llu pending=%zu/%zu lost=%llu/%llu overflow=%llu drops=%llu holds=%llu excess=%llu",
+                running ? 1 : 0, next.fresh ? 1 : 0, error, static_cast<unsigned>(value.state), value.appliedResetSerial,
+                next.eventAgeMilliseconds, lastStatusTick ? now-lastStatusTick : UINT64_MAX,
+                rawEvents, filteredEvents, noScreenEvents, flaggedEvents, lastMode, lastDisposition,
+                value.matchedOutcomes, value.matchedDisplayed, value.verifiedIntervals, value.coverageGaps,
+                value.pendingIntents, value.pendingEvents, eventsLost, buffersLost, overflows,
+                value.unexpectedDrops, value.holdIncidents, value.excessRefreshes);
+        }
+        if (loggedReset != value.appliedResetSerial) { loggedReset=value.appliedResetSerial; loggedHolds=0; }
+        if (diagnosticDue && value.holdIncidents != loggedHolds) {
+            const auto& h=value.lastHold;
+            DebugLog::Log("VP passive hold witness: reset=%llu incidents=%llu previous_output=%llu output=%llu previous_screen_qpc=%lld screen_qpc=%lld qpc_hz=%lld pts_delta_s=%.9f display_hz=%.9f expected_max_refreshes=%llu actual_refreshes=%llu present_mode=%u scope=observed-lower-bound",
+                value.appliedResetSerial, value.holdIncidents, h.previousOutput, h.output,
+                h.previousScreenQpc, h.screenQpc, h.frequency, h.ptsDelta, h.displayHz,
+                h.expectedRefreshes, h.actualRefreshes, h.presentMode);
+            loggedHolds=value.holdIncidents;
+        }
     }
 
     bool Line(const char* line) {
@@ -138,9 +167,13 @@ struct PassiveDisplayObserver::State {
         if(!hello || message.kind!=Kind::Event) return false;
         const auto pid=message.processId, tid=message.threadId, mode=message.mode;
         const auto address=message.address;
+        ++rawEvents;
         // Other VP windows/renderer instances are not the video swapchain.
         if (pid!=GetCurrentProcessId() || !address || address!=targetSwapchain.load(std::memory_order_acquire) ||
-            tid!=targetThread.load(std::memory_order_acquire)) return true;
+            tid!=targetThread.load(std::memory_order_acquire)) { ++filteredEvents; return true; }
+        if (!message.screen) ++noScreenEvents;
+        if (message.flags) ++flaggedEvents;
+        lastMode=mode; lastDisposition=message.disposition;
         PassiveDisplayStatistics::DisplayEvent event{};
         event.processId=pid; event.threadId=tid; event.swapchainIdentity=static_cast<uintptr_t>(address);
         event.presentStartQpc=static_cast<int64_t>(message.start); event.screenQpc=static_cast<int64_t>(message.screen);

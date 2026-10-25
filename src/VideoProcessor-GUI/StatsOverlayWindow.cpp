@@ -648,6 +648,17 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     {
         const bool pending = stats.playbackCounterResetSerial > passive.appliedResetSerial;
         const bool incidents = passive.unexpectedDrops || passive.holdIncidents || passive.excessRefreshes;
+        // Collector health, recent displayed evidence and cadence continuity are
+        // separate facts. Preserve incidents without calling every evidence gap
+        // an unavailable collector (or showing an unverified clean zero).
+        const wchar_t* reason = passive.errorCode == ERROR_ACCESS_DENIED ? L"access denied" :
+            passive.errorCode == ERROR_FILE_NOT_FOUND ? L"observer not installed" :
+            passive.errorCode && passive.errorCode != ERROR_NOT_READY ? L"observer unavailable" :
+            !passive.running ? L"unavailable" :
+            passive.errorCode == ERROR_NOT_READY ? L"measuring" :
+            passive.fresh ? L"observing" :
+            passive.eventAgeMilliseconds > 2000 ? L"no recent display timestamps" :
+            passive.verifiedIntervals ? L"cadence evidence gap" : L"measuring";
         if (pending)
         {
             add(L"Display D/R:", L"reset pending");
@@ -659,15 +670,11 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
             add(L"Display D/R:", format(L"%llu / >=%llu (%s)", passive.unexpectedDrops,
                 passive.excessRefreshes, passive.fresh ? L"observed" : L"recorded"));
             add(L"Display glitches:", format(L">=%llu excessive holds", passive.holdIncidents));
-            add(L"Display evidence:", format(L"%llu outcomes / %llu gaps; partial%s", passive.matchedOutcomes,
-                passive.coverageGaps, passive.fresh ? L"" : L"; stale/unavailable"));
+            add(L"Display evidence:", format(L"%llu outcomes / %llu gaps; partial; %s", passive.matchedOutcomes,
+                passive.coverageGaps, passive.fresh ? L"observing" : reason));
         }
         else
         {
-            const wchar_t* reason = passive.errorCode == ERROR_ACCESS_DENIED ? L"access denied" :
-                passive.errorCode == ERROR_FILE_NOT_FOUND ? L"observer not installed" :
-                passive.errorCode && passive.errorCode != ERROR_NOT_READY ? L"observer unavailable" :
-                passive.running ? L"measuring" : L"unavailable";
             add(L"Display D/R:", format(L"unavailable (%s)", reason));
             add(L"Display glitches:", L"unavailable");
             add(L"Display evidence:", format(L"%llu outcomes / %llu gaps; %s", passive.matchedOutcomes,

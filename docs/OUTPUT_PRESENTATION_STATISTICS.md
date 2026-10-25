@@ -114,3 +114,28 @@ Display observations reset asynchronously on the render thread. The OSD shows
 cannot restore cleared incidents. Unsupported or unmeasured output statistics
 remain unavailable, rather than appearing as measured zero. Fresh verified
 intervals are needed before an observed zero can be shown.
+
+## Diagnosing incomplete observations
+
+Collector health and display evidence are separate. A healthy trace can continue
+receiving events without usable display timestamps. The OSD now distinguishes
+`no recent display timestamps`, `cadence evidence gap`, and `observer unavailable`
+instead of combining them as `stale/unavailable`. Previously recorded incidents
+remain visible and are not cleared or converted into a measured zero.
+
+The observer logs `VP passive display` at most once per ten seconds (on its
+worker, or once during initialization failure):
+health/status age, displayed-event age, raw/filtered/missing-timestamp/flagged
+counts, matched outcomes, pending items and losses. These diagnostic event counts
+are lifetime-of-worker values; display counters retain the documented reset
+semantics. No log work is added to the render thread or held under the snapshot
+publication lock.
+
+`VP passive hold witness` records the latest observed excess-hold interval with
+output serials, screen QPC values, output-PTS delta, measured refresh rate,
+expected maximum refresh count and actual refresh count. Reports are coalesced
+at the same ten-second cadence: if several incidents occur, the total advances
+and the record describes the latest one. The witness survives coverage gaps and
+clears on the counter reset. A hold is timing evidence, not proof of a visible
+stutter or of which component caused it. Normal clock drift and absent evidence
+must not be treated as confirmed rendering faults.

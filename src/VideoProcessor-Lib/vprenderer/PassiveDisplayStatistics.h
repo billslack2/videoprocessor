@@ -83,6 +83,15 @@ struct DisplayEvent
 
 // Counters are observed lower bounds. coverageGaps is cumulative since reset;
 // state reports current observation freshness, not complete coverage.
+struct HoldWitness
+{
+    uint64_t previousOutput = 0, output = 0;
+    int64_t previousScreenQpc = 0, screenQpc = 0, frequency = 0;
+    double ptsDelta = 0, displayHz = 0;
+    uint64_t expectedRefreshes = 0, actualRefreshes = 0;
+    uint32_t presentMode = 0;
+};
+
 struct Snapshot
 {
     CoverageState state;
@@ -98,6 +107,7 @@ struct Snapshot
     size_t pendingIntents;
     size_t pendingEvents;
     bool resetPending;
+    HoldWitness lastHold;
 };
 
 // Single-producer/single-consumer queue. A full queue rejects immediately and
@@ -366,6 +376,7 @@ public:
         result.excessRefreshes = excessRefreshes_;
         result.verifiedIntervals = verifiedIntervals_;
         result.coverageGaps = coverageGaps_;
+        result.lastHold = lastHold_;
         result.appliedResetSerial = appliedResetSerial_;
         result.pendingIntents = CountUsedIntents() + (hasDeferredIntent_ ? 1 : 0);
         result.pendingEvents = CountUsedEvents();
@@ -514,6 +525,7 @@ private:
         matchedOutcomes_ = matchedDisplayed_ = 0;
         confirmedDrops_ = unexpectedDrops_ = holdIncidents_ = excessRefreshes_ = 0;
         verifiedIntervals_ = coverageGaps_ = 0;
+        lastHold_ = {};
         ClearPendingForReset(resetCutoffSerialApplied_, resetQpcFloorApplied_);
         if (deferredOverflowOutputSerial_ <= resetCutoffSerialApplied_)
             deferredOverflowOutputSerial_ = 0;
@@ -860,6 +872,10 @@ private:
                         {
                             Increment(holdIncidents_);
                             Increment(excessRefreshes_, excess);
+                            lastHold_ = {priorIntent.outputSerial, intent.outputSerial,
+                                priorEvent.screenQpc, event.screenQpc, intent.qpcFrequency,
+                                ptsDelta, intent.displayHz, expectedRefreshes, actualRefreshes,
+                                event.presentMode};
                         }
                     }
                 }
@@ -931,6 +947,7 @@ private:
     bool limited_ = false;
     bool unavailable_ = false;
     Anchor anchor_{};
+    HoldWitness lastHold_{};
     OutputIntent deferredIntent_{};
     bool hasDeferredIntent_ = false;
     uint64_t deferredOverflowOutputSerial_ = 0;

@@ -410,6 +410,29 @@ public:
         Assert::IsTrue(Find(rows,L"Display D/R:").value==L"reset pending");
         Assert::IsTrue(Find(rows,L"Display glitches:").value==L"reset pending");
     }
+    TEST_METHOD(PassiveDisplayEvidenceDistinguishesHealthyCollectorFromMissingTimestamps)
+    {
+        auto stats=Example(true); auto& p=stats.outputPresentation.passive;
+        p.supported=true; p.running=true; p.verifiedIntervals=100;
+        p.matchedOutcomes=33364; p.coverageGaps=1842;
+        p.holdIncidents=1; p.excessRefreshes=1; p.eventAgeMilliseconds=3000;
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"0 / >=1 (recorded)");
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"no recent display timestamps")!=std::wstring::npos);
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"unavailable")==std::wstring::npos);
+        VerifyNative(stats);
+        p.eventAgeMilliseconds=50;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"cadence evidence gap")!=std::wstring::npos);
+        p.running=false; p.errorCode=ERROR_BROKEN_PIPE;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"observer unavailable")!=std::wstring::npos);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"0 / >=1 (recorded)");
+        p.running=true; p.errorCode=0; p.fresh=true;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"0 / >=1 (observed)");
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"observing")!=std::wstring::npos);
+    }
     TEST_METHOD(PassiveDisplayUnavailableNeverLooksLikeMeasuredCleanZero)
     {
         auto stats=Example(true); auto& p=stats.outputPresentation.passive;

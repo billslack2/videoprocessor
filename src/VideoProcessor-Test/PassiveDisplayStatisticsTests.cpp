@@ -63,6 +63,27 @@ namespace Tests
     TEST_CLASS(PassiveDisplayStatisticsTests)
     {
     public:
+        TEST_METHOD(HoldWitnessRetainsExactEvidenceAcrossGapsAndClearsOnReset)
+        {
+            Meter meter;
+            const auto first=MakeIntent(1,1000,0.0);
+            const auto second=MakeIntent(2,2000,1.0/60.0);
+            Record(meter,first,MakeEvent(first,10000));
+            Record(meter,second,MakeEvent(second,13000));
+            auto snapshot=meter.ReadSnapshot();
+            Assert::AreEqual(uint64_t(1),snapshot.holdIncidents);
+            Assert::AreEqual(uint64_t(1),snapshot.lastHold.previousOutput);
+            Assert::AreEqual(uint64_t(2),snapshot.lastHold.output);
+            Assert::AreEqual(int64_t(10000),snapshot.lastHold.previousScreenQpc);
+            Assert::AreEqual(int64_t(13000),snapshot.lastHold.screenQpc);
+            Assert::AreEqual(uint64_t(1),snapshot.lastHold.expectedRefreshes);
+            Assert::AreEqual(uint64_t(3),snapshot.lastHold.actualRefreshes);
+            meter.ReportGap();
+            Assert::AreEqual(uint64_t(2),meter.ReadSnapshot().lastHold.output);
+            meter.RequestReset(1,second.submitEndQpc); meter.Drain();
+            Assert::AreEqual(uint64_t(0),meter.ReadSnapshot().lastHold.output);
+            Assert::AreEqual(uint64_t(0),meter.ReadSnapshot().holdIncidents);
+        }
         TEST_METHOD(TinyPositivePtsIntervalCannotNormalizeToZeroRefreshAllowance)
         {
             Meter meter;
