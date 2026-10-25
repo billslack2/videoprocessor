@@ -47,7 +47,8 @@ shortcuts.toggle_noui	shortcut-toggle-noui	VP window presentation	no
 shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
-vprenderer.quality	vprenderer-quality	VP Renderer	no
+vprenderer.quality	vprenderer-quality	Rendering (legacy fallback)	no
+vprenderer.scaling.quality	vprenderer-quality	Scaling (legacy fallback)	no
 vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
 vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
 vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
@@ -73,8 +74,10 @@ vprenderer.contrast_recovery	vprenderer-contrast-recovery	VP Renderer	yes
 vprenderer.upscaler	vprenderer-upscaler	Scaling (legacy spelling)	yes
 vprenderer.downscaler	vprenderer-downscaler	Scaling (legacy spelling)	yes
 vprenderer.deband	vprenderer-deband	VP Renderer	yes
-vprenderer.dithering	vprenderer-dithering	VP Renderer	yes
-vprenderer.display_bit_depth	vprenderer-display-bit-depth	VP Renderer	yes
+vprenderer.dithering	vprenderer-dithering	Rendering override	yes
+vprenderer.scaling.dithering	vprenderer-dithering	Scaling	yes
+vprenderer.display_bit_depth	vprenderer-display-bit-depth	Rendering override	yes
+vprenderer.scaling.display_bit_depth	vprenderer-display-bit-depth	Scaling	yes
 vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	VP Renderer	no
 vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	yes
 vprenderer.output_presentation	vprenderer-output-presentation	Color / Output (legacy spelling)	yes
@@ -192,7 +195,8 @@ vprenderer.color.report_bt2020_to_display	vprenderer-report-bt2020	Color / Outpu
 vprenderer.color.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output	no
 vprenderer.scaling.upscaler	vprenderer-upscaler	Scaling	yes
 vprenderer.scaling.downscaler	vprenderer-downscaler	Scaling	yes
-vprenderer.deband_strength	vprenderer-deband-strength	Rendering	yes
+vprenderer.deband_strength	vprenderer-deband-strength	Rendering override	yes
+vprenderer.scaling.deband_strength	vprenderer-deband-strength	Scaling	yes
 vprenderer.scaling.sigmoid	vprenderer-sigmoid	Scaling	yes
 vprenderer.color.sdr_lut_input_gamma	vprenderer-sdr-lut-input-gamma	Color / Output	no
 vprenderer.color.output_transport_gamma	vprenderer-output-transport-gamma	Color / Output	yes

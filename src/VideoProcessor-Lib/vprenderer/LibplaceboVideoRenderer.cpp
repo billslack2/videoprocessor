@@ -926,7 +926,7 @@ namespace
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
 		std::string dithering = "auto";
-		std::string displayBitDepth = "auto";
+		std::string displayBitDepth = "output";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
 		// Limited-range DXGI declarations are output-path policy, independent of
@@ -1939,7 +1939,7 @@ namespace
 		readToggle("sigmoid", settings.sigmoid);
 		readDithering(settings.dithering);
 		readChoice("display_bit_depth", settings.displayBitDepth,
-			{ "auto", "8", "10" });
+			{ "auto", "output", "8", "10" });
 		readChoice("output_presentation", settings.outputPresentation,
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
@@ -2328,8 +2328,8 @@ namespace
 			settings.switchRefreshRate =
 				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 
-		settings.quality = ReadChoice(
-			config, "quality", "high", { "fast", "balanced", "high" });
+		// New defaults are High; retained legacy presets remain fallback inputs.
+		settings.quality = ReadChoice(config, "quality", "high", { "fast", "balanced", "high" });
 		settings.toneMapping = ReadChoice(
 			config, "tone_mapping", "auto",
 			{ "auto", "spline", "bt2390", "st2094-40", "reinhard" });
@@ -2355,7 +2355,7 @@ namespace
         MotionConfig::Read(config,"vprenderer.motion",settings.motion);
 		settings.dithering = ReadDithering(config, "dithering");
 		settings.displayBitDepth = ReadChoice(
-			config, "display_bit_depth", "auto", { "auto", "8", "10" });
+			config, "display_bit_depth", "output", { "auto", "output", "8", "10" });
 		settings.outputPresentation = ReadChoice(
 			config, "output_presentation", "auto",
 			{ "auto", "composed", "direct" });

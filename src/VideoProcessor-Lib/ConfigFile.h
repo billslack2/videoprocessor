@@ -34,6 +34,8 @@ public:
 	const std::string& GetLoadedPath() const { return m_loadedPath; }
     uint64_t GetContentIdentity() const { return m_contentIdentity; }
 	const std::vector<std::string>& GetWarnings() const { return m_warnings; }
+	// Values the Quality migration could not carry; informational, never a syntax error.
+	const std::vector<std::string>& GetMigrationWarnings() const { return m_migrationWarnings; }
 	bool HasSection(const std::string& section) const;
 	bool TryGetString(const std::string& section, const std::string& key, std::string& value) const;
 	bool TryGetBool(const std::string& section, const std::string& key, bool& value) const;
@@ -68,6 +70,7 @@ private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;
 	std::vector<std::string> m_sectionOrder;
 	std::vector<std::string> m_warnings;
+	std::vector<std::string> m_migrationWarnings;
 	std::string m_loadedPath;
 	bool m_loaded = false;
     uint64_t m_contentIdentity = 0;

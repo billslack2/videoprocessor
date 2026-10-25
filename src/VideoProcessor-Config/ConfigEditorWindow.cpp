@@ -10,9 +10,14 @@
 #include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
+#include "QualityProfileMigration.h"
 #include "ProfileListController.h"
 #include "InlineColorPicker.h"
 #include "ToneMappingControl.h"
+#include "ToneChartPanel.h"
+#include "ToneProfileFile.h"
+#include "../VideoProcessor-ChartCore/ToneProfileRequest.h"
+#include "ToneGuiRules.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationLiveApply.h>
@@ -41,6 +46,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFileDialog>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDebug>
@@ -113,6 +119,29 @@
 
 namespace
 {
+// What an unset key in a Rendering profile ([vprenderer] and
+// [vprenderer.<profile>]) means: built-in values only, never another profile's.
+QString RenderingBuiltInDefault(const QString& key)
+{
+    if (key == QStringLiteral("dynamic_target")) return QStringLiteral("true");
+    if (key == QStringLiteral("custom_tone_mapping")) return QStringLiteral("false");
+    if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
+    if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");
+    if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
+    if (key == QStringLiteral("sdr_black_nits")) return QString::number(HdrTargetLuminance::DefaultBlack);
+    if (const char* preset = QualityProfileMigration::PresetValue("high", key.toStdString()))
+        return QString::fromLatin1(preset);
+    if (key == QStringLiteral("report_bt2020_to_display") ||
+        key == QStringLiteral("output_diagnostics") ||
+        key == QStringLiteral("diagnostic_disable_shader_cache") ||
+        key == QStringLiteral("diagnostic_disable_compute") ||
+        key == QStringLiteral("diagnostic_force_8bit_sdr_swapchain") ||
+        key == QStringLiteral("diagnostic_allow_limited_g22") ||
+        key == QStringLiteral("diagnostic_allow_full_g22") ||
+        key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
+    return QStringLiteral("AUTO");
+}
+
 class TargetComboBox final : public QComboBox
 {
 protected:
@@ -1023,6 +1052,9 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateOutputDisplayProfiles();
+    // Resolve legacy preset-dependent Auto before the editor separates fields
+    // from their owning Rendering profile and its Quality value.
+    migrateProcessingToScaling();
     migrateSeparatedRendererProfiles();
     migrateUnifiedColorOutputProfiles();
     migrateCalibrationProfiles();
@@ -1663,6 +1695,7 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateOutputDisplayProfiles();
+	migrateProcessingToScaling();
 	migrateSeparatedRendererProfiles();
 	migrateUnifiedColorOutputProfiles();
 	migrateCalibrationProfiles();
@@ -1815,6 +1848,7 @@ void ConfigEditorWindow::loadConfiguration()
     if (configurationLoaded_ && !document_->existedAtLoad)
     {
         seedCalibratedProfile(QStringLiteral("vprenderer"), QStringLiteral("vprenderer.Default"));
+        seedCalibratedProfile(QStringLiteral("vprenderer.scaling"), QStringLiteral("vprenderer.scaling.Default"));
         seedCalibratedProfile(QStringLiteral("vprenderer.color"), QStringLiteral("vprenderer.color.Default"));
     }
 }
@@ -1871,9 +1905,13 @@ void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QStrin
     { document_->SetKnown(section.toStdString(), key, value); };
     if (root == QStringLiteral("vprenderer"))
     {
-        set("quality", "high"); set("sdr_target_nits", "100");
-        set("sdr_black_nits", "0"); set("display_bit_depth", "10");
-        set("dithering", "auto");
+        set("sdr_target_nits", "100"); set("sdr_black_nits", "0");
+    }
+    else if (root == QStringLiteral("vprenderer.scaling"))
+    {
+        for (const auto& key : QualityProfileMigration::ScalingPresetKeys())
+            set(key.c_str(), QualityProfileMigration::PresetValue("high", key));
+        set("display_bit_depth", "output");
     }
     else if (root == QStringLiteral("vprenderer.color"))
     {
@@ -2104,9 +2142,7 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
             QStringLiteral("output_gamma"),
             QStringLiteral("report_bt2020_to_display"),
             QStringLiteral("sdr_adjust_gamma"),
-            QStringLiteral("sdr_input_transfer") } },
-        { "vprenderer.scaling", { QStringLiteral("upscaler"),
-            QStringLiteral("downscaler"), QStringLiteral("sigmoid") } }
+            QStringLiteral("sdr_input_transfer") } }
     };
 
     bool migrated = false;
@@ -2191,6 +2227,48 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
         dirty_ = true;
         hasPendingMigrations_ = true;
     }
+}
+
+void ConfigEditorWindow::migrateProcessingToScaling()
+{
+    if (!configurationLoaded_ || !document_) return;
+
+    // Quality is retired and debanding, dithering and dither depth are Scaling
+    // settings now. VP's loader applies the same plan in memory, so the editor
+    // shows and saves exactly what VP runs.
+    QualityProfileMigration::Sections sections;
+    std::vector<std::string> order;
+    std::map<std::string, std::string> originalNames;
+    for (const auto& section : document_->SectionNames())
+    {
+        const auto normalized = ConfigFile::NormalizeName(section);
+        order.push_back(normalized);
+        originalNames[normalized] = section;
+        auto& values = sections[normalized];
+        for (const auto& setting : document_->SectionSettings(section))
+            values[ConfigFile::NormalizeName(setting.first)] = setting.second;
+    }
+    const auto plan = QualityProfileMigration::Build(sections, order);
+    if (plan.Empty()) return;
+    // A Scaling copy keeps its Rendering profile's spelling.
+    const std::string scalingPrefix = "vprenderer.scaling.";
+    for (const auto& section : plan.newSections)
+    {
+        std::string destination = section;
+        const auto source = originalNames.find("vprenderer." + section.substr(scalingPrefix.size()));
+        if (source != originalNames.end())
+            destination = scalingPrefix + source->second.substr(std::string("vprenderer.").size());
+        document_->AddSection(destination);
+        originalNames[ConfigFile::NormalizeName(section)] = destination;
+    }
+    for (const auto& item : plan.sets)
+        document_->SetKnown(originalNames.at(std::get<0>(item)), std::get<1>(item).c_str(),
+            std::get<2>(item));
+    for (const auto& item : plan.removals)
+        document_->RemoveKnown(originalNames.at(item.first), item.second.c_str());
+    document_->requiresMigrationBackup = document_->existedAtLoad;
+    dirty_ = true;
+    hasPendingMigrations_ = true;
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -3013,16 +3091,7 @@ void ConfigEditorWindow::refreshCalibrationControls()
 
 void ConfigEditorWindow::refreshRendererAutoStatus()
 {
-    const auto qualityControl = findChild<QComboBox*>(
-        QStringLiteral("config.vprenderer.quality"));
-    const QString quality = effectiveChoiceValue(qualityControl);
-    const auto qualityValue = [&quality](const QString& high,
-        const QString& balanced, const QString& fast)
-    {
-        if (quality == QStringLiteral("fast")) return fast;
-        if (quality == QStringLiteral("balanced")) return balanced;
-        return high;
-    };
+    // Quality is retired: every Auto below is the old High preset.
     const auto isAuto = [](QWidget* control)
     {
         if (const auto* combo = qobject_cast<QComboBox*>(control))
@@ -3069,38 +3138,31 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
             text = QStringLiteral("Perceptual");
         else if (binding.key == QStringLiteral("peak_detection"))
         {
-            text = qualityValue(QStringLiteral("High quality"),
-                QStringLiteral("Standard"), QStringLiteral("Off"));
+            text = QStringLiteral("High quality");
         }
         else if (binding.key == QStringLiteral("contrast_recovery"))
         {
-            text = qualityValue(QStringLiteral("0.30"), QStringLiteral("0.00"),
-                QStringLiteral("0.00"));
+            text = QStringLiteral("0.30");
         }
         else if (binding.key == QStringLiteral("upscaler"))
         {
-            text = qualityValue(QStringLiteral("EWA Lanczos sharp"),
-                QStringLiteral("Lanczos"), QStringLiteral("Built-in sampling"));
+            text = QStringLiteral("EWA Lanczos sharp");
         }
         else if (binding.key == QStringLiteral("downscaler"))
         {
-            text = qualityValue(QStringLiteral("Hermite"),
-                QStringLiteral("Hermite"), QStringLiteral("Built-in sampling"));
+            text = QStringLiteral("Hermite");
         }
         else if (binding.key == QStringLiteral("deband_strength"))
         {
-            text = qualityValue(QStringLiteral("Standard"), QStringLiteral("Off"),
-                QStringLiteral("Off"));
+            text = QStringLiteral("Standard");
         }
         else if (binding.key == QStringLiteral("sigmoid"))
         {
-            text = qualityValue(QStringLiteral("On"), QStringLiteral("On"),
-                QStringLiteral("Off"));
+            text = QStringLiteral("On");
         }
         else if (binding.key == QStringLiteral("dithering"))
         {
-            text = qualityValue(QStringLiteral("Blue noise"),
-                QStringLiteral("Blue noise"), QStringLiteral("Off"));
+            text = QStringLiteral("Blue noise");
         }
         else if (binding.key == QStringLiteral("display_bit_depth"))
             text = QStringLiteral("Output format");
@@ -3130,6 +3192,24 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
         binding.label->setText(QStringLiteral("Auto: %1").arg(text));
         binding.label->setVisible(true);
+    }
+    // Scaling / Quality: grey marks a setting at Auto or not set, in every
+    // profile, as on Rendering / DTM (his grey marks only inherited ones).
+    // This runs after his change handler and after a profile loads.
+    QList<QComboBox*> scalingChoices;
+    for (const RendererAutoStatusBinding& binding : rendererAutoStatusBindings_)
+        if (binding.sectionPrefix == QStringLiteral("vprenderer.scaling"))
+            if (auto* combo = qobject_cast<QComboBox*>(binding.control))
+                scalingChoices << combo;
+    for (QComboBox* combo : scalingChoices)
+    {
+        const QString selected = combo->currentData().toString().trimmed();
+        const bool grey = selected.isEmpty() ||
+            selected.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
+        if (combo->property("inherited").toBool() == grey) continue;
+        combo->setProperty("inherited", grey);
+        combo->style()->unpolish(combo);
+        combo->style()->polish(combo);
     }
 }
 
@@ -3518,6 +3598,14 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
         }, toneError, toneKey)) {
             errors.push_back(QStringLiteral("[%1] %2").arg(section, QString::fromStdString(toneError)));
             fields.push_back(controlName(section, QString::fromStdString(toneKey)));
+        }
+        // GUI-only tone rules: they block Save and Apply here and leave VP's
+        // loader unchanged, so no saved configuration stops loading.
+        else if (ToneGuiRules::Problem toneRule; !ToneGuiRules::Check([&](const char* key) {
+            return inheritedLuminance(QString::fromUtf8(key)).toStdString();
+        }, toneRule)) {
+            errors.push_back(QStringLiteral("[%1] %2").arg(section, QString::fromStdString(toneRule.message)));
+            fields.push_back(controlName(section, QString::fromStdString(toneRule.key)));
         }
         const QString white = value(section, QStringLiteral("sdr_target_nits")).trimmed();
         std::string expected;
@@ -3912,6 +4000,7 @@ void ConfigEditorWindow::applyRendererVisibilityFilter(bool hideLegacyRenderers)
 bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
+    if (freezeRenderingProfiles_) freezeRenderingProfiles_();
 
     const DocumentSnapshot currentSnapshot = captureDocumentSnapshot(*document_);
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
@@ -4291,14 +4380,14 @@ QWidget* ConfigEditorWindow::createShell()
 			page == 16 || page == 17 || page == 18 || page == 19 || page == 21)
         {
             vpNavigation->setChecked(true);
-            showSectionTabs({ { QStringLiteral("Rendering"), 2 },
+            showSectionTabs({ { QStringLiteral("Rendering / DTM"), 2 },
 				{ QStringLiteral("Color / Output"), 16 },
-				{ QStringLiteral("Scaling"), 17 },
+				{ QStringLiteral("Scaling / Quality"), 17 },
 				{ QStringLiteral("Screen"), 4 },
 				{ QStringLiteral("Zoom"), 18 },
                 { QStringLiteral("Subtitles"), 19 },
 				{ QStringLiteral("Motion"), 21 },
-                { QStringLiteral("Processing"), 11 } }, page);
+				{ QStringLiteral("Input Processing"), 11 } }, page);
         }
         else if (page == 3 || page == 12)
         {
@@ -4840,6 +4929,17 @@ QString ConfigEditorWindow::legacySubtitleHdrValue(const QString& key) const
 QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QString& description,
     const QString& sectionPrefix)
 {
+    const auto legacyPresetCompatibility = [this] {
+        if (!document_) return false;
+        for (const auto& section : document_->SectionNames()) {
+            const auto normalized = ConfigFile::NormalizeName(section);
+            if (normalized != "vprenderer" && normalized.rfind("vprenderer.", 0) != 0) continue;
+            const auto preset = QualityProfileMigration::Lower(document_->Get(section.c_str(), "quality"));
+            if ((!preset.empty() && preset != "high") || !document_->Get(section.c_str(), "deband").empty()) return true;
+        }
+        return false;
+    };
+
     // A short-lived Color Config split placed the SDR white/black targets in
     // the wrong group. Restore them to the matching Rendering profile in the
     // pending document. The disk file changes only after the user explicitly
@@ -4999,6 +5099,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     std::function<void()> updateDvModeControls = [] {};
     QWidget* dvModeControls = nullptr;
     QRadioButton* dvLldvMode = nullptr;
+    ToneChartPanel* toneCharts = nullptr;
+    // Rendering / DTM only: what a save must write so that no profile
+    // inherits from the default profile (see the note on that page).
+    struct RenderingFreezeWrite { QString section, key, value; bool frozen = false; };
+    std::function<std::vector<RenderingFreezeWrite>()> renderingFreezePlan;
+    std::function<void()> refreshNoInheritanceNote = [] {};
+    QLabel* noInheritanceNote = nullptr; // placed under the page title
+    // Rendering / DTM only: fill every profile when the page is built, and
+    // grey only the values at their unset meaning.
+    std::function<void()> fillRenderingProfiles;
+    std::function<void()> restyleRenderingFields = [] {};
 
     auto* splitter = new ResponsiveSplitter;
 
@@ -6626,13 +6737,168 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
-		form = addPlainForm();
-		auto* renderingQuality = addChoice(QStringLiteral("Rendering quality"),
-			QStringLiteral("quality"), { QStringLiteral("high"),
-			QStringLiteral("balanced"), QStringLiteral("fast") });
-		connect(renderingQuality, qOverload<int>(&QComboBox::currentIndexChanged), this,
-			[this](int) { refreshRendererAutoStatus(); });
+        // No inheritance on this page (GUI only; VP's loader is unchanged).
+        // VP layers the default profile under the selected one, so when the
+        // page is built every profile, the default included, gets each setting
+        // here explicitly, as an unsaved change: a value it inherited at the
+        // last save is frozen, and the rest take their unset meaning (Auto,
+        // libplacebo's default), never the default profile's. Save and Apply
+        // repeat that for settings cleared since.
+        static const QString noInheritance = QStringLiteral(
+            "Tone settings are saved independently for each profile. "
+            "Processing overrides retain their existing inheritance and selection. "
+            "Legacy preset defaults are preserved until replaced with explicit choices.");
+        noInheritanceNote = helpLabel(noInheritance);
+        noInheritanceNote->setObjectName(QStringLiteral("rendererNoInheritanceNote"));
+        noInheritanceNote->setStyleSheet(QStringLiteral("color: #ff8d86;"));
+        // A setting's unset meaning, spelled out; empty when VP would refuse it.
+        const auto unsetValue = [](const Field& field) -> QString {
+            const QString builtIn = RenderingBuiltInDefault(field.key);
+            std::string expected;
+            if (RendererProfileConfig::ValidateProfileSetting("display", field.key.toStdString(), builtIn.toStdString(), expected))
+                return builtIn;
+            return {};
+        };
+        renderingFreezePlan = [this, fields, unsetValue, legacyPresetCompatibility] {
+            std::vector<RenderingFreezeWrite> writes;
+            if (!document_) return writes;
+            const bool preservePresets = legacyPresetCompatibility();
+            const auto settingOf = [](const DocumentSection& settings, const QString& key) {
+                for (const auto& [name, value] : settings)
+                    if (key.compare(QString::fromLocal8Bit(name.c_str()), Qt::CaseInsensitive) == 0)
+                        return QString::fromLocal8Bit(value.c_str()).trimmed();
+                return QString();
+            };
+            const auto savedSection = [this](const QString& section) -> const DocumentSection* {
+                for (const auto& [name, settings] : savedSnapshot_)
+                    if (section.compare(QString::fromLocal8Bit(name.c_str()), Qt::CaseInsensitive) == 0)
+                        return &settings;
+                return nullptr;
+            };
+            // The default profile at the last save: first in VP's rendering order.
+            const DocumentSection* savedDefault = nullptr;
+            for (const auto& [name, settings] : savedSnapshot_)
+            {
+                const auto order = settings.find(kSnapshotSectionOrderKey);
+                if (order != settings.end() && order->second == "0" &&
+                    ConfigurationApplyPolicy::OrderedProfileGroup(name) == "vprenderer")
+                    savedDefault = &settings;
+            }
+            const auto inheritedValue = [&](const QString& key) {
+                return savedDefault ? settingOf(*savedDefault, key) : QString();
+            };
+            const QStringList profiles = profileSections(QStringLiteral("vprenderer"));
+            for (int index = 0; index < profiles.size(); ++index)
+            {
+                const QString& section = profiles[index];
+                const DocumentSection* saved = savedSection(section);
+                for (const Field& field : *fields)
+                {
+                    if (QualityProfileMigration::ProcessingKey(field.key.toStdString()) ||
+                        (preservePresets && QualityProfileMigration::PresetValue("high", field.key.toStdString())) ||
+                        field.key == QStringLiteral("output_diagnostics") ||
+                        field.key == QStringLiteral("diagnostic_disable_shader_cache") ||
+                        field.widget->property("requiresExplicitValue").toBool() ||
+                        field.widget->property("derivedSetting").toBool() ||
+                        (!value(section, field.key).trimmed().isEmpty() &&
+                         !(value(section, field.key).trimmed().compare("auto", Qt::CaseInsensitive) == 0 &&
+                           QualityProfileMigration::PresetValue("high", field.key.toStdString()))))
+                        continue;
+                    // Inherited at the last save: keep what it runs now.
+                    const QString frozen = saved && saved != savedDefault &&
+                        settingOf(*saved, field.key).isEmpty() ? inheritedValue(field.key) : QString();
+                    const char* preset = QualityProfileMigration::PresetValue("high", field.key.toStdString());
+                    const QString written = frozen.isEmpty() ||
+                        (preset && frozen.compare("auto", Qt::CaseInsensitive) == 0) ? unsetValue(field) : frozen;
+                    if (!written.isEmpty()) writes.push_back({ section, field.key, written, !frozen.isEmpty() });
+                }
+            }
+            return writes;
+        };
+        // The plan reads this page's widgets; skip it once the page is gone.
+        // What the fill on opening wrote: how many settings, in which profiles.
+        auto filled = std::make_shared<std::pair<int, QStringList>>();
+        freezeRenderingProfiles_ = [this, plan = renderingFreezePlan, page = QPointer<QLabel>(noInheritanceNote), filled] {
+            if (!page) return;
+            for (const RenderingFreezeWrite& write : plan())
+                document_->SetKnown(write.section.toStdString(), write.key.toStdString().c_str(),
+                    write.value.toStdString());
+            *filled = {}; // saved now
+        };
+        fillRenderingProfiles = [this, plan = renderingFreezePlan, filled] {
+            if (!document_) return;
+            const std::vector<RenderingFreezeWrite> writes = plan();
+            for (const RenderingFreezeWrite& write : writes)
+            {
+                document_->SetKnown(write.section.toStdString(), write.key.toStdString().c_str(),
+                    write.value.toStdString());
+                ++filled->first;
+                const QString label = value(write.section, QStringLiteral("label"));
+                const QString name = label.isEmpty() ? ::displayName(write.section, QStringLiteral("vprenderer")) : label;
+                if (!filled->second.contains(name)) filled->second << name;
+            }
+            if (writes.empty()) return;
+            // Unsaved migration, with a backup on the eventual explicit Save.
+            document_->requiresMigrationBackup = document_->existedAtLoad;
+            hasPendingMigrations_ = true;
+            dirty_ = true;
+            QTimer::singleShot(0, this, [this] { markDirty(); });
+        };
+        refreshNoInheritanceNote = [this, noInheritanceNote, plan = renderingFreezePlan, filled] {
+            QStringList names;
+            int count = 0;
+            for (const RenderingFreezeWrite& write : plan())
+            {
+                if (!write.frozen) continue;
+                ++count;
+                const QString label = value(write.section, QStringLiteral("label"));
+                const QString name = label.isEmpty() ? ::displayName(write.section, QStringLiteral("vprenderer")) : label;
+                if (!names.contains(name)) names << name;
+            }
+            QString text = count == 0 ? noInheritance : noInheritance + QStringLiteral(
+                " On the next Save or Apply, %1 settings in %2 are written with the values they take "
+                "from the default profile now, so they stop following it.").arg(count).arg(names.join(QStringLiteral(", ")));
+            if (filled->first > 0 && dirty_)
+                text += QStringLiteral(" On opening, %1 settings in %2 were filled in: each profile now holds "
+                    "every setting as its own, and the ones at libplacebo's default show as Auto in grey. "
+                    "Save or Apply keeps them.").arg(filled->first).arg(filled->second.join(QStringLiteral(", ")));
+            noInheritanceNote->setText(text);
+        };
+        // His grey ("inherited") here marks a value at its unset meaning, Auto
+        // and the like; a value taken from another profile is now this one's own.
+        restyleRenderingFields = [this, state, fields, unsetValue] {
+            if (state->section.isEmpty()) return;
+            for (const Field& field : *fields)
+            {
+                if (field.key == QStringLiteral("output_diagnostics") ||
+                    field.key == QStringLiteral("diagnostic_disable_shader_cache") ||
+                    field.widget->property("requiresExplicitValue").toBool())
+                    continue;
+                const QString raw = value(state->section, field.key).trimmed();
+                const QString unset = unsetValue(field);
+                const bool grey = raw.isEmpty() ||
+                    (!unset.isEmpty() && raw.compare(unset, Qt::CaseInsensitive) == 0);
+                if (field.widget->property("inherited").toBool() == grey) continue;
+                field.widget->setProperty("inherited", grey);
+                field.widget->style()->unpolish(field.widget);
+                field.widget->style()->polish(field.widget);
+            }
+        };
 
+        form = addCollapsibleSection(QStringLiteral("processingOverrides"),
+            QStringLiteral("Processing overrides"), QStringLiteral(
+                "Optional settings owned by this Rendering profile. They apply after the selected Scaling settings. "
+                "An empty value keeps the inherited Rendering or Scaling value."), false);
+        addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"),
+            { "AUTO", "ewa_lanczossharp", "ewa_lanczos4sharpest", "ewa_lanczos", "lanczos", "catmull_rom", "bicubic", "gaussian", "oversample", "bilinear", "nearest", "none" });
+        addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"),
+            { "AUTO", "lanczos", "mitchell", "catmull_rom", "bicubic", "gaussian", "hermite", "bilinear", "box", "gpu" });
+        addChoice(QStringLiteral("Sigmoid upscaling"), QStringLiteral("sigmoid"), { "AUTO", "on", "off" });
+        addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { "AUTO", "default", "light", "off" });
+        addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
+            { "AUTO", "blue_noise", "ordered_lut", "ordered_fixed", "white_noise", "error_diffusion_simple", "error_diffusion_false_fs", "error_diffusion_sierra_lite", "error_diffusion_floyd_steinberg", "error_diffusion_atkinson", "error_diffusion_jarvis_judice_ninke", "error_diffusion_stucki", "error_diffusion_burkes", "error_diffusion_sierra2", "error_diffusion_sierra3", "on", "off" });
+        auto* ownedDepth = addChoice(QStringLiteral("Dither target depth"), QStringLiteral("display_bit_depth"), { "output", "8", "10", "AUTO" });
+        ownedDepth->setItemText(ownedDepth->findData("output"), QStringLiteral("Match output format"));
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone Mapping: General"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
@@ -6652,17 +6918,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         sdrBlackLevel->setPlaceholderText(QStringLiteral("0 or a measured black level"));
         sdrBlackLevel->setValidator(new QDoubleValidator(0.0, HdrTargetLuminance::Maximum, -1, sdrBlackLevel));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
-        auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
-        addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
-        auto* gamutMapping = addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
-        addRendererAutoStatus(QStringLiteral("gamut_mapping"), gamutMapping);
-        auto* peakDetection = addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("high_quality"), QStringLiteral("on"), QStringLiteral("off") });
-        peakDetection->setItemText(peakDetection->findData(QStringLiteral("on")),
-            QStringLiteral("Standard"));
-        addRendererAutoStatus(QStringLiteral("peak_detection"), peakDetection);
-        auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 2)"), QStringLiteral("contrast_recovery"));
-        contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 2"));
-        addRendererAutoStatus(QStringLiteral("contrast_recovery"), contrastRecovery);
 
         auto wrapToneControl = [&](const ToneMappingTuning::Spec& spec, QLineEdit* edit) {
             auto row = form->takeRow(edit);
@@ -6675,64 +6930,116 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // General retains its existing Auto status; the new controls show their
         // resolved defaults numerically without creating configuration entries.
         std::array<ToneMappingControl*, ToneMappingTuning::Count> toneControls{};
-        form = addCollapsibleSection(QStringLiteral("toneHighlightBeta"),
-            QStringLiteral("Tone Mapping: Highlight Response (Beta)"),
-            QStringLiteral("Available with VP Renderer. Saved values are retained with other renderers."), false);
-        QWidget* betaFields = form->parentWidget();
-        auto* customToneMapping = addBoolean(QStringLiteral("Gamut overflow correction (Experimental)"), QStringLiteral("custom_tone_mapping"));
-        customToneMapping->setToolTip(QStringLiteral("Off: original tone/gamut mapping. On: smoothly compresses colors near or beyond the target gamut or brightness limits after the selected gamut mapping during HDR tone mapping. May reduce brightness or saturation. Default: Off. Apply to compare."));
-        auto* dynamicTarget = addBoolean(QStringLiteral("Dynamic target nits"), QStringLiteral("dynamic_target"));
-        dynamicTarget->setToolTip(QStringLiteral("Automatically trades some scene brightness for highlight headroom. Target nits remains the physical display peak. Default: On. Requires scene-average metadata; peak detection supplies it when available."));
-        for (int i = ToneMappingTuning::FilmStrength; i < ToneMappingTuning::Count; ++i) {
+        const auto addToneControl = [&](int i) {
             const auto& spec = ToneMappingTuning::Specs()[i];
             toneControls[i] = wrapToneControl(spec, addText(QString::fromUtf8(spec.label), QString::fromUtf8(spec.key)));
-        }
-        auto* restoreBeta = new QPushButton(QStringLiteral("Restore defaults"));
-        restoreBeta->setObjectName(QStringLiteral("config.vprenderer.toneHighlightBeta.restore_defaults"));
-        form->addRow(restoreBeta);
-        connect(restoreBeta, &QPushButton::clicked, betaFields, [toneControls, dynamicTarget, customToneMapping] {
-            customToneMapping->setChecked(false);
-            dynamicTarget->setChecked(true);
-            toneControls[ToneMappingTuning::FilmStrength]->restoreDefault();
-            toneControls[ToneMappingTuning::MasteringClip]->restoreDefault();
-        });
-        const char* ids[] = { "toneSpline", "toneOther", "tonePeak" };
-        const char* headings[] = { "Tone Mapping: Spline Curve", "Tone Mapping: Other Curves", "Tone Mapping: Peak Detection" };
+        };
+        // Settings only the promoted VP Renderer runs, each beside the control it works
+        // with; any other renderer shows them greyed.
+        const QStringList betaRendererKeys{ QStringLiteral("dynamic_target"), QStringLiteral("film_strength"),
+            QStringLiteral("mastering_clip"), QStringLiteral("custom_tone_mapping") };
+        auto* dynamicTarget = addBoolean(QStringLiteral("Dynamic target nits"), QStringLiteral("dynamic_target"));
+        dynamicTarget->setToolTip(QStringLiteral("Automatically trades some scene brightness for highlight headroom. Target nits remains the physical display peak. Default: On. Requires scene-average metadata; peak detection supplies it when available."));
+        auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
+        addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
+        addToneControl(ToneMappingTuning::FilmStrength);
+        addToneControl(ToneMappingTuning::MasteringClip);
+        auto* gamutMapping = addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
+        addRendererAutoStatus(QStringLiteral("gamut_mapping"), gamutMapping);
+        auto* customToneMapping = addBoolean(QStringLiteral("Gamut overflow correction (Experimental)"), QStringLiteral("custom_tone_mapping"));
+        customToneMapping->setToolTip(QStringLiteral("Off: original tone/gamut mapping. On: smoothly compresses colors near or beyond the target gamut or brightness limits after the selected gamut mapping during HDR tone mapping. May reduce brightness or saturation. Default: Off. Apply to compare."));
+        // Each of them carries an amber Beta tag after its label, greyed or not.
+        // A slider's label has a fixed width, so it wraps to make room; a
+        // checkbox's label widens its column and stays on one line.
+        const auto tagBeta = [](QLabel* label, bool wrap) {
+            if (!label) return;
+            label->setWordWrap(wrap);
+            label->setText(label->text().toHtmlEscaped() + QStringLiteral(" <span style=\"color:#e8a93b\">Beta</span>"));
+        };
+        tagBeta(qobject_cast<QLabel*>(form->labelForField(dynamicTarget)), false);
+        tagBeta(qobject_cast<QLabel*>(form->labelForField(customToneMapping)), false);
+        for (int i : { ToneMappingTuning::FilmStrength, ToneMappingTuning::MasteringClip })
+            for (auto* label : toneControls[i]->findChildren<QLabel*>())
+                if (label->buddy() == toneControls[i]->editor()) tagBeta(label, true);
+        QComboBox* peakDetection = nullptr; // heads the Peak Detection section below
+        auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 2)"), QStringLiteral("contrast_recovery"));
+        contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 2"));
+        addRendererAutoStatus(QStringLiteral("contrast_recovery"), contrastRecovery);
+
+        // One section for every curve's settings: the chosen curve's show, the
+        // rest hide with a note.
+        const char* ids[] = { "toneCurves", "tonePeak" };
+        const char* headings[] = { "Tone Mapping: Curves", "Tone Mapping: Peak Detection" };
         const char* descriptions[] = {
-            "Knee controls also apply to ST2094-40. Inactive settings are retained.",
-            "Controls apply only to their named tone-mapping curve.",
+            "Shows the settings the chosen tone-mapping curve uses. Knee controls also apply to ST2094-40.",
             "Controls apply while peak detection is enabled. Defaults follow the selected peak-detection mode." };
-        const int starts[] = { 0, ToneMappingTuning::KneeOffset, ToneMappingTuning::Percentile };
-        const int ends[] = { ToneMappingTuning::KneeOffset, ToneMappingTuning::Percentile, ToneMappingTuning::FilmStrength };
-        for (int section = 0; section < 3; ++section) {
+        const int starts[] = { 0, ToneMappingTuning::Percentile };
+        const int ends[] = { ToneMappingTuning::Percentile, ToneMappingTuning::FilmStrength };
+        constexpr int toneSections = static_cast<int>(std::size(ids));
+        constexpr int peakSection = toneSections - 1;
+        for (int section = 0; section < toneSections; ++section) {
             form = addCollapsibleSection(QString::fromUtf8(ids[section]), QString::fromUtf8(headings[section]),
                 QString::fromUtf8(descriptions[section]), false);
+            // The peak-detection mode sits with the settings it governs.
+            if (section == peakSection) {
+                peakDetection = addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("high_quality"), QStringLiteral("on"), QStringLiteral("off") });
+                peakDetection->setItemText(peakDetection->findData(QStringLiteral("on")),
+                    QStringLiteral("Standard"));
+                addRendererAutoStatus(QStringLiteral("peak_detection"), peakDetection);
+            }
             for (int i = starts[section]; i < ends[section]; ++i) {
                 const auto& spec = ToneMappingTuning::Specs()[i];
                 auto* edit = addText(QString::fromUtf8(spec.label), QString::fromUtf8(spec.key));
                 toneControls[i] = wrapToneControl(spec, edit);
             }
-            auto* restore = new QPushButton(QStringLiteral("Restore defaults"));
+            auto* restore = new QPushButton(QStringLiteral("Restore visible defaults"));
             restore->setObjectName(QStringLiteral("config.vprenderer.%1.restore_defaults").arg(QString::fromUtf8(ids[section])));
-            restore->setToolTip(QStringLiteral("Restore this section's built-in defaults for the selected profile."));
+            restore->setToolTip(QStringLiteral("Restore the built-in defaults of the settings shown in this section for the selected profile."));
             auto* restoreRow = new QHBoxLayout;
             restoreRow->addStretch();
             restoreRow->addWidget(restore);
             form->addRow(restoreRow);
+            // Hidden settings keep their values for when they show again.
             connect(restore, &QPushButton::clicked, this, [toneControls, start=starts[section], end=ends[section]] {
-                for (int i = start; i < end; ++i) toneControls[i]->restoreDefault();
+                for (int i = start; i < end; ++i)
+                    if (!toneControls[i]->isHidden()) toneControls[i]->restoreDefault();
             });
         }
-        updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields] {
+        // Settings the chosen curve or peak detection cannot use are hidden,
+        // with a note inside their section, and the charts sit in a third
+        // column beside them.
+        std::array<QLabel*, toneSections> toneNotes{};
+        for (int section = 0; section < toneSections; ++section) {
+            const QString id = QString::fromUtf8(ids[section]);
+            toneNotes[section] = helpLabel(QString());
+            toneNotes[section]->setObjectName(QStringLiteral("rendererSection.%1.hiddenNote").arg(id));
+            toneNotes[section]->hide();
+            if (auto* content = profileFields->findChild<QWidget*>(QStringLiteral("rendererSection.%1.content").arg(id)))
+                if (auto* contentLayout = qobject_cast<QVBoxLayout*>(content->layout()))
+                    contentLayout->insertWidget(1, toneNotes[section]);
+        }
+        auto* peakNote = helpLabel(QString());
+        peakNote->setObjectName(QStringLiteral("rendererSection.tonePeak.modeNote"));
+        peakNote->hide();
+        if (auto* content = profileFields->findChild<QWidget*>(QStringLiteral("rendererSection.tonePeak.content")))
+            content->layout()->addWidget(peakNote);
+        toneCharts = new ToneChartPanel;
+        updateToneControls = [this, toneControls, toneMapping, peakDetection, state, dynamicTarget, customToneMapping] {
             if (state->loading) return;
             const bool beta = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
                 QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
-            betaFields->setEnabled(beta);
+            dynamicTarget->setEnabled(beta);
+            customToneMapping->setEnabled(beta);
             QString curve = effectiveChoiceValue(toneMapping);
             if (curve.isEmpty() || curve == "auto") curve = "spline";
             QString peak = effectiveChoiceValue(peakDetection);
-            const QString quality = effectiveChoiceValue(renderingQuality);
-            if (peak.isEmpty() || peak == "auto") peak = quality == "fast" ? "off" : quality == "balanced" ? "on" : "high_quality";
+            if (peak.isEmpty() || peak == "auto") {
+                QString preset = value(state->section, QStringLiteral("quality"));
+                const auto profiles = profileSections(QStringLiteral("vprenderer"));
+                if (preset.isEmpty() && !profiles.isEmpty()) preset = value(profiles.front(), QStringLiteral("quality"));
+                preset = preset.toLower();
+                peak = preset == "fast" ? "off" : preset == "balanced" ? "on" : "high_quality";
+            }
             for (int i = 0; i < ToneMappingTuning::Count; ++i) {
                 const bool enabled = i < ToneMappingTuning::SlopeTuning ? (curve == "spline" || curve == "st2094-40") :
                     i < ToneMappingTuning::KneeOffset ? curve == "spline" :
@@ -6764,15 +7071,233 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }, error, key)) toneControls[ToneMappingTuning::Find(key)]->setError(QString::fromStdString(error));
         };
         if (rendererChoice_)
-            connect(rendererChoice_, qOverload<int>(&QComboBox::currentIndexChanged), betaFields,
+            connect(rendererChoice_, qOverload<int>(&QComboBox::currentIndexChanged), dynamicTarget,
                 [updateToneControls] { updateToneControls(); });
         connect(customToneMapping, &QCheckBox::toggled, this, [updateToneControls] { updateToneControls(); });
+        // Around his update: hide what he disabled, show the GUI-only rules on
+        // the controls, and redraw the charts from the profile as VP resolves
+        // it (this profile, then the first profile, then [vprenderer]).
+        // As VP will run a profile once saved (no inheritance on this page):
+        // its own value, else what the next save writes into it, else Auto.
+        auto plannedTone = std::make_shared<std::vector<RenderingFreezeWrite>>();
+        const auto sectionTone = [this, plannedTone](const QString& section, const char* key) {
+            const QString name = QString::fromUtf8(key);
+            const QString own = value(section, name).trimmed();
+            if (!own.isEmpty()) return own;
+            if (name == QStringLiteral("quality")) {
+                const auto profiles = profileSections(QStringLiteral("vprenderer"));
+                if (!profiles.isEmpty()) {
+                    const auto inherited = value(profiles.front(), name);
+                    if (!inherited.isEmpty()) return inherited;
+                }
+                return value(QStringLiteral("vprenderer"), name, QStringLiteral("high"));
+            }
+            for (const RenderingFreezeWrite& write : *plannedTone)
+                if (write.key == name && write.section.compare(section, Qt::CaseInsensitive) == 0)
+                    return write.value;
+            return QString();
+        };
+        const auto inheritedTone = [state, sectionTone](const char* key) { return sectionTone(state->section, key); };
+        auto peakNoteSection = std::make_shared<QString>();
+        // The key being dragged and its on-screen number; empty when none is.
+        auto toneDrag = std::make_shared<std::pair<std::string, QString>>();
+        // A chart request from any source of one profile's values: the edited
+        // profile, another profile, or an exported profile file.
+        const auto requestFrom = [this](const std::function<QString(const char*)>& get) {
+            auto request = ToneProfileRequest::From(get, RenderingBuiltInDefault);
+            for (const auto& section : profileSections(QStringLiteral("vprenderer.scaling"))) {
+                const auto preset = value(section, QStringLiteral("quality")).toLower();
+                if (!preset.isEmpty() && preset != "high") request.defaultsKnown = false;
+            }
+            return request;
+        };
+        const auto toneRequest = [this, inheritedTone, toneDrag, plannedTone, plan = renderingFreezePlan, requestFrom] {
+            *plannedTone = plan ? plan() : std::vector<RenderingFreezeWrite>{};
+            auto request = requestFrom([&](const char* name) {
+                return !toneDrag->first.empty() && toneDrag->first == name ?
+                    toneDrag->second.trimmed() : inheritedTone(name);
+            });
+            request.betaRenderer = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
+                QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
+            return request;
+        };
+        // Compared profiles come from this page: its profiles, or an exported
+        // profile file, through the same request as the edited one.
+        toneCharts->setCompareSources({
+            [this] {
+                std::vector<std::pair<QString, QString>> profiles;
+                for (const QString& section : profileSections(QStringLiteral("vprenderer")))
+                {
+                    const QString label = value(section, QStringLiteral("label"));
+                    profiles.emplace_back(section, label.isEmpty() ? ::displayName(section, QStringLiteral("vprenderer")) : label);
+                }
+                return profiles;
+            },
+            [state] { return state->section; },
+            [sectionTone, plannedTone, plan = renderingFreezePlan, requestFrom](const QString& section) {
+                *plannedTone = plan ? plan() : std::vector<RenderingFreezeWrite>{};
+                return requestFrom([&](const char* name) { return sectionTone(section, name); });
+            },
+            [requestFrom](const std::map<QString, QString>& values) {
+                return requestFrom([&](const char* name) {
+                    const auto found = values.find(QString::fromUtf8(name));
+                    return found == values.end() ? QString() : found->second;
+                });
+            } });
+        updateToneControls = [his = updateToneControls, toneControls, toneNotes, peakNote, peakNoteSection,
+            toneCharts, toneMapping, state, toneRequest, refreshNoInheritanceNote, restyleRenderingFields, betaRendererKeys] {
+            his();
+            if (state->loading) return;
+            refreshNoInheritanceNote();
+            restyleRenderingFields();
+            if (*peakNoteSection != state->section) peakNote->hide();
+            // The curve or peak section a control sits in; -1 for General.
+            const auto sectionOf = [&](int i) {
+                for (int section = 0; section < toneSections; ++section)
+                    if (toneNotes[section]->parentWidget()->isAncestorOf(toneControls[i])) return section;
+                return -1;
+            };
+            // What this profile's own choices rule out is hidden; what the
+            // renderer cannot run stays in view, greyed.
+            std::array<QStringList, toneSections> hidden;
+            for (int i = 0; i < ToneMappingTuning::Count; ++i) {
+                const bool shown = toneControls[i]->isEnabled() ||
+                    betaRendererKeys.contains(QString::fromUtf8(ToneMappingTuning::Specs()[i].key));
+                toneControls[i]->setVisible(shown);
+                if (!shown && sectionOf(i) >= 0) hidden[sectionOf(i)] << QString::fromUtf8(ToneMappingTuning::Specs()[i].label);
+            }
+
+            // His Validate has already put its error on its control; the GUI-only
+            // rules add theirs only when his pass.
+            const auto configured = [&](const char* name) {
+                return toneControls[ToneMappingTuning::Find(name)]->configuredValue().toStdString();
+            };
+            std::string error, key;
+            ToneGuiRules::Problem problem;
+            const bool hisValid = ToneMappingTuning::Validate(configured, error, key);
+            const bool rulesValid = !hisValid || ToneGuiRules::Check(configured, problem);
+            if (!rulesValid)
+                toneControls[ToneMappingTuning::Find(problem.key)]->setError(QString::fromStdString(problem.message));
+            const int failing = !hisValid ? ToneMappingTuning::Find(key) :
+                !rulesValid ? ToneMappingTuning::Find(problem.key) : -1;
+
+            QString curve = effectiveChoiceValue(toneMapping);
+            if (curve.isEmpty() || curve == "auto") curve = "spline";
+            const QString curveName = curve == "bt2390" ? QStringLiteral("BT.2390") :
+                curve == "st2094-40" ? QStringLiteral("ST2094-40") :
+                curve == "reinhard" ? QStringLiteral("Reinhard") : QStringLiteral("Spline");
+            for (int section = 0; section < toneSections; ++section) {
+                QString text;
+                if (!hidden[section].isEmpty())
+                    text = section == peakSection ?
+                        QStringLiteral("Hidden: %1. Peak detection is off. The profile keeps their values.").arg(
+                            hidden[section].join(QStringLiteral(", "))) :
+                        QStringLiteral("Hidden: settings the %1 curve does not use. The profile keeps their values.").arg(curveName);
+                // A hidden setting still blocks Save and Apply when it breaks a rule.
+                if (failing >= 0 && sectionOf(failing) == section && !toneControls[failing]->isEnabled())
+                    text += QStringLiteral(" Hidden setting %1 breaks a rule: show it by %2, or reset it.").arg(
+                        QString::fromUtf8(ToneMappingTuning::Specs()[failing].label),
+                        QString::fromUtf8(ToneGuiRules::ShowHint(failing)));
+                toneNotes[section]->setText(text.trimmed());
+                toneNotes[section]->setVisible(!text.isEmpty());
+            }
+
+            toneCharts->setRequest(toneRequest());
+        };
+        // His slider holds its edit back until release; while one is dragged,
+        // the charts alone follow the number on screen.
+        for (int i = 0; i < ToneMappingTuning::Count; ++i) {
+            auto* slider = toneControls[i]->findChild<QSlider*>(toneControls[i]->editor()->objectName() + ".slider");
+            if (!slider) continue;
+            connect(slider, &QSlider::valueChanged, this, [i, slider, toneControls, toneCharts, toneRequest, toneDrag, state] {
+                if (state->loading || !slider->isSliderDown()) return;
+                *toneDrag = { ToneMappingTuning::Specs()[i].key, toneControls[i]->editor()->text() };
+                toneCharts->setRequest(toneRequest());
+                toneDrag->first.clear();
+            });
+        }
         for (auto* control : toneControls)
             connect(control->editor(), &QLineEdit::textChanged, this, [updateToneControls] { updateToneControls(); });
-        for (auto* combo : { toneMapping, peakDetection, renderingQuality })
+        for (auto* combo : { toneMapping, peakDetection })
             connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [updateToneControls] { updateToneControls(); });
+        // Target white and black move every curve, so they redraw the charts too.
+        for (auto* edit : { sdrTargetWhiteLevel, sdrBlackLevel })
+            connect(edit, &QLineEdit::textChanged, this, [updateToneControls] { updateToneControls(); });
+        // So do Dynamic target and the renderer (the charts draw the Beta only).
+        connect(dynamicTarget, &QCheckBox::toggled, this, [updateToneControls] { updateToneControls(); });
+        // Gamut mapping and Gamut overflow correction move the Colour charts.
+        connect(gamutMapping, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateToneControls] { updateToneControls(); });
+        connect(customToneMapping, &QCheckBox::toggled, this, [updateToneControls] { updateToneControls(); });
+        if (rendererChoice_)
+            connect(rendererChoice_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [updateToneControls] { updateToneControls(); });
+        // Peak-detection mode and percentile are one setting: libplacebo's high
+        // quality differs from standard only by percentile 99.995. Changing the
+        // mode clears the profile's percentile; a percentile that names a mode
+        // selects that mode instead of being stored.
+        auto coupling = std::make_shared<bool>(false);
+        connect(peakDetection, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [toneControls, peakNote, state, coupling](int) {
+            if (state->loading || *coupling) return;
+            peakNote->hide();
+            toneControls[ToneMappingTuning::Percentile]->restoreDefault();
+        });
+        connect(toneControls[ToneMappingTuning::Percentile]->editor(), &QLineEdit::textChanged, this,
+            [toneControls, peakDetection, peakNote, peakNoteSection, state, coupling](const QString& text) {
+            if (state->loading || *coupling) return;
+            bool ok = false;
+            const double percentile = text.trimmed().toDouble(&ok);
+            const char* mode = ok ? ToneGuiRules::ModeForPercentile(percentile) : nullptr;
+            const int index = mode ? peakDetection->findData(QString::fromLatin1(mode)) : -1;
+            if (index < 0) return;
+            *coupling = true;
+            peakDetection->setCurrentIndex(index);
+            toneControls[ToneMappingTuning::Percentile]->restoreDefault();
+            *coupling = false;
+            peakNote->setText(QStringLiteral("Percentile %1 is the same as peak detection %2, so the mode was set to %2.")
+                .arg(text.trimmed(), peakDetection->itemText(index)));
+            *peakNoteSection = state->section;
+            peakNote->show();
+        });
+    }
 
-        form = addCollapsibleSection(QStringLiteral("processing"), QStringLiteral("Processing"),
+	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
+	{
+		form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Scaling"),
+			QString(), false);
+		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
+			QStringLiteral("upscaler"), { QStringLiteral("AUTO"),
+			QStringLiteral("ewa_lanczos4sharpest"),
+			QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"),
+			QStringLiteral("lanczos"), QStringLiteral("catmull_rom"),
+			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
+			QStringLiteral("oversample"), QStringLiteral("bilinear"),
+			QStringLiteral("nearest"), QStringLiteral("none") });
+		upscaler->setItemText(upscaler->findData(QStringLiteral("none")),
+			QStringLiteral("Built-in GPU sampling"));
+		addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
+		auto* downscaler = addChoice(QStringLiteral("Downscaler"),
+			QStringLiteral("downscaler"), { QStringLiteral("AUTO"),
+			QStringLiteral("lanczos"), QStringLiteral("mitchell"),
+			QStringLiteral("catmull_rom"),
+			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
+			QStringLiteral("hermite"), QStringLiteral("bilinear"),
+			QStringLiteral("box"), QStringLiteral("gpu") });
+		downscaler->setItemText(downscaler->findData(QStringLiteral("gpu")),
+			QStringLiteral("Built-in GPU sampling"));
+		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
+		auto* antiRinging = addChoice(QStringLiteral("Sigmoid upscaling"),
+			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
+			QStringLiteral("on"), QStringLiteral("off") });
+		antiRinging->setToolTip(QStringLiteral(
+			"Optional sigmoidization before upscaling. It reduces ringing artifacts; the default is On."));
+		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
+        addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
+        form->addRow(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
+        // Moved from the Rendering page: ordinary Scaling settings, inherited
+        // from the first Scaling profile like the scalers above.
+        form = addCollapsibleSection(QStringLiteral("debandingDithering"), QStringLiteral("Debanding & Dithering"),
             QString(), false);
         auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
         debanding->setItemText(debanding->findData(QStringLiteral("default")), QStringLiteral("Standard"));
@@ -6807,8 +7332,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         dithering->setItemText(15, QStringLiteral("Error diffusion: Sierra 3"));
         dithering->setItemText(16, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
-            "Auto follows the rendering-quality preset: Blue noise for Balanced "
-            "and High, or Off for Fast. Blue noise is libplacebo's default and "
+            "Blue noise is libplacebo's default and "
             "recommended mode. Ordered modes and White noise are alternate "
             "libplacebo methods. Error-diffusion modes require compute shaders "
             "and are substantially more expensive. The display-calibration LUT "
@@ -6816,14 +7340,20 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Dither target depth"),
             QStringLiteral("display_bit_depth"),
-            {  QStringLiteral("10"), QStringLiteral("8") });
+            { QStringLiteral("output"), QStringLiteral("10"), QStringLiteral("8") });
+        displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("output")), QStringLiteral("Match output format"));
         displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("10")), QStringLiteral("10-bit"));
         displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("8")), QStringLiteral("8-bit"));
         displayBitDepth->setToolTip(QStringLiteral(
             "Dithering precision, clamped to the active surface depth. This does not configure GPU/HDMI bit depth or detect panel precision."));
         addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
-
-
+        // Legacy Auto remains accepted in configuration files and is migrated
+        // into an explicit preset choice. New edits choose the actual algorithm.
+        for (auto* choice : { upscaler, downscaler, antiRinging, debanding, dithering })
+        {
+            const int automatic = choice->findData(QStringLiteral("AUTO"), Qt::UserRole, Qt::MatchFixedString);
+            if (automatic >= 0) choice->removeItem(automatic);
+        }
     }
 
     else if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
@@ -6887,39 +7417,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         for(auto* combo:{smoothMotion,deinterlacing,deinterlaceAlgorithm})connect(combo,qOverload<int>(&QComboBox::currentIndexChanged),this,[updateToneControls]{updateToneControls();});
 
     }
-	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
-	{
-		form = addPlainForm();
-		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
-			QStringLiteral("upscaler"), { QStringLiteral("AUTO"),
-			QStringLiteral("ewa_lanczos4sharpest"),
-			QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"),
-			QStringLiteral("lanczos"), QStringLiteral("catmull_rom"),
-			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
-			QStringLiteral("oversample"), QStringLiteral("bilinear"),
-			QStringLiteral("nearest"), QStringLiteral("none") });
-		upscaler->setItemText(upscaler->findData(QStringLiteral("none")),
-			QStringLiteral("Built-in GPU sampling"));
-		addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
-		auto* downscaler = addChoice(QStringLiteral("Downscaler"),
-			QStringLiteral("downscaler"), { QStringLiteral("AUTO"),
-			QStringLiteral("lanczos"), QStringLiteral("mitchell"),
-			QStringLiteral("catmull_rom"),
-			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
-			QStringLiteral("hermite"), QStringLiteral("bilinear"),
-			QStringLiteral("box"), QStringLiteral("gpu") });
-		downscaler->setItemText(downscaler->findData(QStringLiteral("gpu")),
-			QStringLiteral("Built-in GPU sampling"));
-		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
-		auto* antiRinging = addChoice(QStringLiteral("Sigmoid upscaling"),
-			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
-			QStringLiteral("on"), QStringLiteral("off") });
-		antiRinging->setToolTip(QStringLiteral(
-			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
-		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
-        addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
-        detailLayout->addWidget(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
-	}
     else if (sectionPrefix == QStringLiteral("vprenderer.subtitles"))
     {
         auto* type = addChoice(QStringLiteral("Processing style"), QStringLiteral("type"),
@@ -7347,7 +7844,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         updateQueuePolicyPresentation();
     };
 
-    auto loadDetails = [this, state, fields, selectedTitle, name, shortcut, cycleShortcut, rule, ruleField, useRule, remove, up, down, list, sdrGammaEnabled, sdrGammaStatus, desiredSdrGamma, sdrGammaInherit,
+    auto loadDetails = [this, state, fields, legacyPresetCompatibility, selectedTitle, name, shortcut, cycleShortcut, rule, ruleField, useRule, remove, up, down, list, sdrGammaEnabled, sdrGammaStatus, desiredSdrGamma, sdrGammaInherit,
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
@@ -7467,7 +7964,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             outputDisplayAdvancedFields->setVisible(outputDisplayAdvanced->isChecked());
             refreshOutputDisplayPresentation();
         }
-        auto fallback = [this, sectionPrefix, section](const QString& key) -> QString
+        const bool preservePresetDefaults = legacyPresetCompatibility();
+        auto fallback = [this, sectionPrefix, section, preservePresetDefaults](const QString& key) -> QString
         {
             if (sectionPrefix == QStringLiteral("vprenderer.color"))
             {
@@ -7556,28 +8054,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("mastering_min_luminance")) return modern ? QStringLiteral("0.001") : QStringLiteral("0.0001");
                 if (key == QStringLiteral("mastering_max_luminance")) return modern ? QStringLiteral("4000") : QStringLiteral("1000");
             }
-            if (sectionPrefix == QStringLiteral("vprenderer"))
-            {
-                if (key == QStringLiteral("dynamic_target")) return QStringLiteral("true");
-                if (key == QStringLiteral("custom_tone_mapping")) return QStringLiteral("false");
-                if (key == QStringLiteral("quality")) return QStringLiteral("high");
-                if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
-                if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");
-                if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
-                if (key == QStringLiteral("sdr_black_nits")) return QString::number(HdrTargetLuminance::DefaultBlack);
-                if (key == QStringLiteral("contrast_recovery")) return QStringLiteral("Auto");
-				if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
-				if (key == QStringLiteral("report_bt2020_to_display") ||
-                    key == QStringLiteral("output_diagnostics") ||
-                    key == QStringLiteral("diagnostic_disable_shader_cache") ||
-                    key == QStringLiteral("diagnostic_disable_compute") ||
-                    key == QStringLiteral("diagnostic_force_8bit_sdr_swapchain") ||
-                    key == QStringLiteral("diagnostic_allow_limited_g22") ||
-                    key == QStringLiteral("diagnostic_allow_full_g22") ||
-                    key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
-                return QStringLiteral("AUTO");
+            if (sectionPrefix == QStringLiteral("vprenderer")) {
+                if (QualityProfileMigration::ProcessingKey(key.toStdString())) return {};
+                if (preservePresetDefaults && QualityProfileMigration::PresetValue("high", key.toStdString()))
+                    return QStringLiteral("AUTO");
+                return RenderingBuiltInDefault(key);
             }
-            if(sectionPrefix==QStringLiteral("vprenderer.scaling")&&key==QStringLiteral("chroma_upscaler"))return QStringLiteral("bicubic");
+            if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
+            {
+                if (key == QStringLiteral("chroma_upscaler")) return QStringLiteral("bicubic");
+                if (const char* preset = QualityProfileMigration::PresetValue("high", key.toStdString()))
+                    return preservePresetDefaults ? QStringLiteral("AUTO") : QString::fromLatin1(preset);
+            }
             if(sectionPrefix==QStringLiteral("vprenderer.motion")) {
                 if(key=="smooth_motion")return "off";
                 if(key=="frame_mixer")return "oversample";
@@ -7635,15 +8123,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			const bool scalingDownscaler =
 				sectionPrefix == QStringLiteral("vprenderer.scaling") &&
 				field.key == QStringLiteral("downscaler");
-			if (scalingDownscaler && !raw.isEmpty())
+			if (scalingDownscaler && !preservePresetDefaults && !raw.isEmpty())
 			{
 				const QString normalized = raw.trimmed().toLower();
                 if (normalized == QStringLiteral("none") || normalized == QStringLiteral("ewa_lanczos"))
 				{
                     // These retired spellings resolve to the quality preset.
-                    // Keep Auto explicit instead of inheriting a parent's named filter.
-                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), "AUTO");
-                    raw = QStringLiteral("AUTO");
+                    // Keep the default explicit instead of inheriting a parent's named filter.
+                    raw = QString::fromLatin1(QualityProfileMigration::PresetValue("high", "downscaler"));
+                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), raw.toStdString());
 					markDirty();
 				}
 			}
@@ -7787,12 +8275,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 const bool hasUnspecifiedChoice = combo->count() > 0 &&
                     combo->itemData(0).toString().isEmpty();
                 static const QStringList calibratedKeys = { "output_gamma", "output_range", "output_transport_gamma", "sdr_adjust_gamma", "sdr_input_transfer", "display_bit_depth", "hdr_tone_map_target_gamma", "sdr_lut_input_gamma" };
-                const bool retiredRootDefault = defaultProfile && (calibratedKeys.contains(field.key) || calibrationLutSlot);
+                const bool retainedProcessingOverride = sectionPrefix == QStringLiteral("vprenderer") &&
+                    QualityProfileMigration::ProcessingKey(field.key.toStdString());
+                const bool retiredRootDefault = defaultProfile && !retainedProcessingOverride &&
+                    (calibratedKeys.contains(field.key) || calibrationLutSlot);
                 if (hasUnspecifiedChoice)
                     if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
                         model->item(0)->setEnabled(!retiredRootDefault && !(defaultProfile && scalingAutoChoice));
                 const bool hideUnspecifiedChoice = (defaultProfile && calibrationLutSlot) || (retiredRootDefault && (!raw.isEmpty() || field.key == QStringLiteral("sdr_lut_input_gamma"))) || rootRendererExplicitDefault ||
-                    (defaultProfile && (sectionPrefix == QStringLiteral("vprenderer") || scalingAutoChoice) &&
+                    (defaultProfile && ((sectionPrefix == QStringLiteral("vprenderer") && !retainedProcessingOverride) || scalingAutoChoice) &&
                         autoIndex >= 0);
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
                     view->setRowHidden(0, hasUnspecifiedChoice &&
@@ -8131,11 +8622,189 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     };
     listPolicy.markDirty = [this] { markDirty(); };
     listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
+    if (renderingFreezePlan)
+    {
+        // Rendering / DTM: a new profile starts with every setting explicit
+        // (Auto), so it never shows or runs the default profile's values.
+        listPolicy.addProfile = [this, his = listPolicy.addProfile, plan = renderingFreezePlan]() -> QString
+        {
+            const QString section = his();
+            if (!section.isEmpty() && document_)
+                for (const RenderingFreezeWrite& write : plan())
+                    if (write.section.compare(section, Qt::CaseInsensitive) == 0)
+                        document_->SetKnown(write.section.toStdString(), write.key.toStdString().c_str(),
+                            write.value.toStdString());
+            return section;
+        };
+    }
     auto* profileList = new ProfileListController(this, this, list, add,
         remove, up, down, std::move(listPolicy));
     profileList->setCurrentChanged(loadDetails);
     std::function<void(const QString&)> refresh = [profileList](const QString& wanted)
         { profileList->refresh(wanted); };
+    if (renderingFreezePlan)
+    {
+        // Rendering / DTM only: one "+ Add profile" button with a menu to add a
+        // new profile, duplicate, import or export. His Add button stays in the
+        // page, hidden, and "New profile" presses it. What a copy or a file
+        // carries is the profile's own settings plus what the next save writes
+        // into it, so it never depends on the default profile; never its
+        // shortcut keys.
+        auto* profileMenu = new QPushButton(QStringLiteral("+ Add profile"));
+        profileMenu->setObjectName(QStringLiteral("rendererProfileMenu"));
+        auto* menu = new QMenu(profileMenu);
+        profileMenu->setMenu(menu);
+        listLayout->insertWidget(listLayout->indexOf(add) + 1, profileMenu);
+        add->hide();
+        connect(menu->addAction(QStringLiteral("New profile")), &QAction::triggered, add, &QPushButton::click);
+        QAction* duplicateAction = menu->addAction(QStringLiteral("Duplicate selected"));
+        QAction* importAction = menu->addAction(QStringLiteral("Import from file..."));
+        menu->addSeparator();
+        QAction* exportAction = menu->addAction(QStringLiteral("Export selected..."));
+
+        const auto profileName = [this](const QString& section) {
+            const QString label = value(section, QStringLiteral("label"));
+            return label.isEmpty() ? displayName(section, QStringLiteral("vprenderer")) : label;
+        };
+        const auto carried = [](const QString& key) {
+            return key != QStringLiteral("label") && key != QStringLiteral("shortcut") &&
+                key != QStringLiteral("cycle_shortcut");
+        };
+        const auto profileSettings = [this, carried, plan = renderingFreezePlan](const QString& section) {
+            std::vector<std::pair<QString, QString>> settings;
+            for (const auto& setting : document_->SectionSettings(section.toStdString()))
+            {
+                const QString key = QString::fromLocal8Bit(setting.first.c_str()).toLower();
+                if (carried(key)) settings.emplace_back(key, QString::fromLocal8Bit(setting.second.c_str()));
+            }
+            const auto profiles = profileSections(QStringLiteral("vprenderer"));
+            if (!profiles.isEmpty() && section.compare(profiles.front(), Qt::CaseInsensitive) != 0) {
+                for (const auto& setting : document_->SectionSettings(profiles.front().toStdString())) {
+                    const QString key = QString::fromStdString(setting.first).toLower();
+                    if (!QualityProfileMigration::ProcessingKey(setting.first) && key != QStringLiteral("quality")) continue;
+                    if (std::none_of(settings.begin(), settings.end(), [&](const auto& item) { return item.first == key; }))
+                        settings.emplace_back(key, QString::fromStdString(setting.second));
+                }
+            }
+            for (const RenderingFreezeWrite& write : plan())
+                if (write.section.compare(section, Qt::CaseInsensitive) == 0)
+                {
+                    const auto existing = std::find_if(settings.begin(), settings.end(),
+                        [&](const auto& setting) { return setting.first == write.key; });
+                    if (existing != settings.end()) existing->second = write.value;
+                    else settings.emplace_back(write.key, write.value);
+                }
+            return settings;
+        };
+        // His rename rules: names unique, and encoded in 64 characters or fewer.
+        const auto nameInUse = [this, profileName](const QString& name) {
+            const QString section = QStringLiteral("vprenderer.") + profileIdentifier(name);
+            for (const QString& existing : profileSections(QStringLiteral("vprenderer")))
+                if (profileName(existing).compare(name, Qt::CaseInsensitive) == 0 ||
+                    existing.compare(section, Qt::CaseInsensitive) == 0)
+                    return true;
+            return false;
+        };
+        // Adds a profile only if his whole-configuration check passes with it.
+        const auto addProfileFrom = [this, refresh, plan = renderingFreezePlan](const QString& name,
+            const std::vector<std::pair<QString, QString>>& settings)
+        {
+            const QString identifier = profileIdentifier(name);
+            if (identifier.isEmpty() || identifier.size() > 64)
+            {
+                QMessageBox::warning(this, QStringLiteral("Profile name"),
+                    QStringLiteral("Profile names must encode to 64 characters or fewer."));
+                return;
+            }
+            const std::string section = (QStringLiteral("vprenderer.") + identifier).toStdString();
+            ConfigEditorCore::ConfigDocument candidate = *document_;
+            candidate.AddSection(section);
+            for (const auto& setting : settings)
+                candidate.SetKnown(section, setting.first.toStdString().c_str(), setting.second.toStdString());
+            std::wstring error;
+            if (!ConfigEditorCore::ValidateCandidate(candidate, error))
+            {
+                std::wstring currentError;
+                const bool currentValid = ConfigEditorCore::ValidateCandidate(*document_, currentError);
+                QMessageBox::warning(this, QStringLiteral("Profile not added"), currentValid ?
+                    QStringLiteral("The profile was not added: %1").arg(QString::fromStdWString(error)) :
+                    QStringLiteral("Fix the configuration's current errors first: %1").arg(QString::fromStdWString(currentError)));
+                return;
+            }
+            document_->AddSection(section);
+            for (const auto& setting : settings)
+                document_->SetKnown(section, setting.first.toStdString().c_str(), setting.second.toStdString());
+            const QString added = QString::fromStdString(section);
+            for (const RenderingFreezeWrite& write : plan()) // anything the file left out: Auto
+                if (write.section.compare(added, Qt::CaseInsensitive) == 0)
+                    document_->SetKnown(section, write.key.toStdString().c_str(), write.value.toStdString());
+            markDirty();
+            refresh(added);
+        };
+        const auto selectedSection = [list] {
+            QListWidgetItem* item = list->currentItem();
+            return item ? item->data(Qt::UserRole).toString() : QString();
+        };
+
+        connect(duplicateAction, &QAction::triggered, this,
+            [this, selectedSection, profileName, profileSettings, nameInUse, addProfileFrom]
+        {
+            const QString source = selectedSection();
+            if (source.isEmpty() || !document_) return;
+            const QString base = profileName(source) + QStringLiteral(" copy");
+            QString name = base;
+            for (int number = 2; nameInUse(name); ++number) name = base + QStringLiteral(" %1").arg(number);
+            addProfileFrom(name, profileSettings(source));
+        });
+        connect(exportAction, &QAction::triggered, this,
+            [this, selectedSection, profileName, profileSettings]
+        {
+            const QString source = selectedSection();
+            if (source.isEmpty() || !document_) return;
+            const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Export profile"),
+                profileName(source) + QStringLiteral(".vpprofile"),
+                QStringLiteral("VP Rendering / DTM profile (*.vpprofile)"));
+            if (path.isEmpty()) return;
+            const ToneProfileFile::Profile file{
+                QStringLiteral("vprenderer.") + profileIdentifier(profileName(source)), profileSettings(source) };
+            QString error;
+            if (!ToneProfileFile::Write(path, file, error))
+                QMessageBox::warning(this, QStringLiteral("Export profile"), error);
+            else
+                setStatus(QStringLiteral("Exported %1 to %2.").arg(profileName(source), QDir::toNativeSeparators(path)), false);
+        });
+        connect(importAction, &QAction::triggered, this,
+            [this, carried, nameInUse, addProfileFrom]
+        {
+            if (!document_) return;
+            const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Import profile"), QString(),
+                QStringLiteral("VP Rendering / DTM profile (*.vpprofile);;All files (*)"));
+            if (path.isEmpty()) return;
+            ToneProfileFile::Profile file;
+            QString error;
+            if (!ToneProfileFile::Read(path, file, error))
+            {
+                QMessageBox::warning(this, QStringLiteral("Import profile"), error);
+                return;
+            }
+            QString name = displayName(file.section, QStringLiteral("vprenderer"));
+            std::vector<std::pair<QString, QString>> settings;
+            for (const auto& setting : file.settings)
+            {
+                if (setting.first == QStringLiteral("label") && !setting.second.isEmpty()) name = setting.second;
+                if (carried(setting.first)) settings.push_back(setting);
+            }
+            while (nameInUse(name))
+            {
+                bool accepted = false;
+                name = QInputDialog::getText(this, QStringLiteral("Import profile"),
+                    QStringLiteral("A profile named %1 already exists. Name for the imported profile:").arg(name),
+                    QLineEdit::Normal, name + QStringLiteral(" imported"), &accepted).trimmed();
+                if (!accepted || name.isEmpty()) return;
+            }
+            addProfileFrom(name, settings);
+        });
+    }
     connect(shortcut, &QLineEdit::textChanged, this, [this, state](const QString& text)
     {
         if (state->loading || state->section.isEmpty()) return;
@@ -8256,6 +8925,37 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         markDirty();
         refresh(renamed);
     });
+    if (fillRenderingProfiles)
+    {
+        // Rendering / DTM: no "Inherited / not set" in a drop-down. It goes
+        // where the choices already hold Auto, or where VP has no Auto;
+        // where VP takes auto but the choices lack it, it becomes Auto.
+        for (const Field& field : *fields)
+            if (auto* combo = qobject_cast<QComboBox*>(field.widget))
+            {
+                if (QualityProfileMigration::ProcessingKey(field.key.toStdString())) continue;
+                if (combo->count() == 0 || !combo->itemData(0).toString().isEmpty()) continue;
+                std::string expected;
+                if (combo->findData(QStringLiteral("AUTO"), Qt::UserRole, Qt::MatchFixedString) < 0 &&
+                    RendererProfileConfig::ValidateProfileSetting("display", field.key.toStdString(), "AUTO", expected))
+                {
+                    combo->setItemText(0, QStringLiteral("Auto"));
+                    combo->setItemData(0, QStringLiteral("AUTO"));
+                }
+                else
+                    combo->removeItem(0);
+            }
+        // Each edit restyles the grey after his handler has stored it.
+        for (const Field& field : *fields)
+            if (auto* edit = qobject_cast<QLineEdit*>(field.widget))
+                connect(edit, &QLineEdit::textChanged, this, [restyle = restyleRenderingFields] { restyle(); });
+            else if (auto* check = qobject_cast<QCheckBox*>(field.widget))
+                connect(check, &QCheckBox::toggled, this, [restyle = restyleRenderingFields] { restyle(); });
+            else if (auto* combo = qobject_cast<QComboBox*>(field.widget))
+                connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                    [restyle = restyleRenderingFields] { restyle(); });
+        fillRenderingProfiles();
+    }
     refresh({});
     if (showsActiveProfile)
     {
@@ -8287,11 +8987,45 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
         detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
-    splitter->addWidget(detailsCard);
+    if (toneCharts)
+    {
+        // Rendering only: the settings scroll on their own, so opening a
+        // section never scrolls the page title or the charts beside them.
+        auto* detailsScroll = new QScrollArea;
+        detailsScroll->setObjectName(QStringLiteral("renderingDetailsViewport"));
+        detailsScroll->setWidgetResizable(true);
+        detailsScroll->setMinimumHeight(300);
+        detailsScroll->setWidget(detailsCard);
+        splitter->addWidget(detailsScroll);
+    }
+    else
+        splitter->addWidget(detailsCard);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
+    if (toneCharts)
+    {
+        // Rendering only: the tone charts, as tall as the window allows.
+        auto* chartsCard = createCard(QStringLiteral("Tone charts"),
+            QStringLiteral("What the selected profile's tone settings do, against PQ: the source as mastered."),
+            toneCharts);
+        chartsCard->setMinimumHeight(420);
+        splitter->addWidget(chartsCard);
+        // A wider window widens the charts; the settings keep their width.
+        splitter->setStretchFactor(1, 0);
+        splitter->setStretchFactor(2, 1);
+        splitter->setSizes({ 260, 540, 560 });
+    }
     auto* page=createPage(title, description, splitter);
+    if (noInheritanceNote)
+        if (auto* subtitle = page->findChild<QLabel*>(QStringLiteral("pageDescription")))
+            if (auto* header = qobject_cast<QVBoxLayout*>(subtitle->parentWidget()->layout()))
+                header->insertWidget(header->indexOf(subtitle) + 1, noInheritanceNote);
+    // The columns fill the window below the title; the page scrolls only when
+    // the window is shorter than they can shrink.
+    if (toneCharts)
+        if (auto* pageLayout = qobject_cast<QVBoxLayout*>(qobject_cast<QScrollArea*>(page)->widget()->layout()))
+            pageLayout->setStretchFactor(splitter, 1);
     if(sectionPrefix==QStringLiteral("vprenderer.subtitles")) {
         splitter->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
         qobject_cast<QScrollArea*>(page)->widget()->layout()->setSizeConstraint(QLayout::SetMinimumSize);
@@ -8308,13 +9042,13 @@ QWidget* ConfigEditorWindow::createQueuePage()
 
 QWidget* ConfigEditorWindow::createRendererPage()
 {
-    return createProfilePage(QStringLiteral("Rendering"),
-        QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
+    return createProfilePage(QStringLiteral("Rendering / DTM"),
+        QStringLiteral("Configure ordered rendering profiles. The first profile is the default: VP uses it when no rule matches."), QStringLiteral("vprenderer"));
 }
 
 QWidget* ConfigEditorWindow::createScalingPage()
 {
-	return createProfilePage(QStringLiteral("Scaling"),
+	return createProfilePage(QStringLiteral("Scaling / Quality"),
 		QStringLiteral("Configure ordered scaling profiles. The first profile in the list is the default."),
 		QStringLiteral("vprenderer.scaling"));
 }
