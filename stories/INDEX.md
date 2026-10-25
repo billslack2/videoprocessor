@@ -268,7 +268,7 @@ they must not contain requirements that are absent from this file.
 | VP-0206 | Done | Release retained scope for asymmetric full height picture |
 | VP-0207 | In Progress | Overlay fit stability and subtitle backing boundaries |
 | VP-0208 | Backlog | Reassess lookahead scheduling for smooth presentation |
-| VP-0209 | In Progress | Observe output drops, repeats and glitches without render waits |
+| VP-0209 | Review | Observe output drops, repeats and glitches without render waits |
 | VP-0210 | Review | Qualify passive presentation event collection |
 
 ## Codex story workflow

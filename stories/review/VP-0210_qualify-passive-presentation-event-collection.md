@@ -3,7 +3,7 @@
 ## Status
 Review
 
-2026-10-24: Bounded non-production research/build spike authorized as prerequisite for VP-0209. Luna xhigh agents reviewed mpv, MPC Video Renderer, libplacebo, Microsoft DXGI and PresentMon. Current phase is inspecting/compiling a pinned minimal PresentMon collector in E:\codex\diagnostics\vp-display-statistics-20261024\presentmon-spike. No runtime or tracing changes.
+2026-10-24: Feasibility gate passed and the collector was adopted by VP-0209 at source commit 7dc9af666b6ca1e004601fee10a4b6d5c10dfe41. Luna xhigh research reviewed mpv, MPC Video Renderer, libplacebo, Microsoft DXGI and PresentMon. Pinned MIT PresentMon v2.1.0 provides usable partial output evidence on the active composed-copy path. Paired collector-only overhead measurement and real inherited-handle lifecycle tests are complete; integrated candidate playback remains unaccepted. No deployed player/configuration changes.
 
 ## Unknown
 Can a maintainable passive collector obtain process/swapchain-specific displayed/discarded outcomes for VP's active windowed presentation path with acceptably low overhead, no render-thread work/waits, and truthful event-loss reporting? Current GetFrameStatistics returns DXGI_ERROR_UNSUPPORTED. Global DWM timing and successful render/submission are insufficient.
@@ -21,3 +21,10 @@ VP-0209.
 Pinned v2.1.0 de71bba2fb65482f9cf6486284c9eed6aa87698f PresentData builds unmodified with v142; v2.6.0 required a larger unrelated dependency tree. A minimal helper ran under the current token against confirmed VP PID53756 for 20 seconds: display outcomes were observed for native video swapchain 0x18DA0D1A000/mode5, two startup lost-analysis events were identified, ETW loss counters remained zero, helper exited0 and its session was absent afterward. GPU/input/frame-type tracking disabled. CPU0.109s / elapsed21.49s, peak sampled working set9052160 bytes. No active VP/config edits.
 
 Decision: proceed with isolated v2.1.0 collector, pinned MIT provenance, exact event/intent identity, internal-overflow instrumentation and explicit partial/unavailable states. Production source/helper builds but full integration and paired runtime impact checks remain VP-0209 qualification. Spike is in Review, not physical-display acceptance. Detailed receipts in E:\codex\diagnostics\vp-display-statistics-20261024; research-playback.md records pinned mpv/MPC/libplacebo/Microsoft sources and limits. No claim of exact per-refresh physical scanout totals.
+
+## Completed qualification - 2026-10-24
+Four 20-second off/on/on/off windows with the original VP process preserved measured mean helper CPU 0.535% of one core, roughly 9.1 MB working set, zero ETW event/buffer loss and zero internal completed-ring overflow. Both observation windows received 1,198 output events; startup lost-analysis records were identified as unknown, not dropped. Helper exited normally and only its owned trace was retired. VP CPU/GPU observations had no measurable uplift in this short comparison; scene/workload drift prevents a causal performance claim.
+
+VP-0209 additionally tests the production inherited parent/stop-handle path: healthy startup, reset acknowledgement, deliberate termination of only the test's collector, unavailable state, subsequent reset and no leftover child/trace. The finite overhead probe and production lifecycle test cover different mechanisms. The final helper's SHA-256 equals the measured helper; source, host, both renderers and helper identities are recorded in [the qualification receipt](../assets/VP-0209/qualification-20261024.md).
+
+Remaining limits: collector-only matched-refresh playback is not integrated candidate or mismatched-refresh GPU acceptance; repeated/glitch totals are conservative observed excessive-hold lower bounds, not complete physical scanout accounting. Keep in Review for the integration acceptance recorded under VP-0209.
