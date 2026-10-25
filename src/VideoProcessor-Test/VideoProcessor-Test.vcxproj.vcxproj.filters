@@ -192,7 +192,8 @@
     <ClCompile Include="ActivePictureBlackReferenceTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" /><ClCompile Include="DebugLogAsyncTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" />
+    <ClCompile Include="DebugLogAsyncTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="LookaheadPerformanceWindowTests.cpp" />
     <ClCompile Include="PreparedPictureEvidenceTests.cpp" />
     <ClCompile Include="OptionalAnalysisWorkerTests.cpp" />

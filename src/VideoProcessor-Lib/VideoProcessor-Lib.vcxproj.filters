@@ -746,7 +746,9 @@
   </ItemGroup>
   <ItemGroup><ClInclude Include="vprenderer\StatsOsdSettings.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AnalysisEvaluationBudget.h" /><ClInclude Include="DebugLogAsync.h"><Filter>Header Files</Filter></ClInclude><ClInclude Include="vprenderer\Bt2020SignalWorker.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="AnalysisEvaluationBudget.h" />
+    <ClInclude Include="DebugLogAsync.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\Bt2020SignalWorker.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="vprenderer\PreparedPictureEvidence.h" />
     <ClInclude Include="vprenderer\LookaheadPerformanceWindow.h" />
   </ItemGroup>

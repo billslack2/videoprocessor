@@ -272,7 +272,6 @@
     </ClCompile>
     <ClCompile Include="DebugLogRetentionTests.cpp" />
     <ClCompile Include="DebugLogAsyncTests.cpp" />
-    <ClCompile Include="AnalysisEvaluationBudgetTests.cpp" />
     <ClCompile Include="AnalysisDiagnosticTraceTests.cpp" />
     <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
