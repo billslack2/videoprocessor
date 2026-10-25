@@ -4,6 +4,42 @@
 
 Review
 
+[PR #192](https://github.com/billslack2/videoprocessor/pull/192) was incorporated
+into beta through [integration PR #202](https://github.com/billslack2/videoprocessor/pull/202)
+on 2026-10-25 and closed as incorporated. Beta merge:
+`8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. Its tree exactly matches clean tested
+integration `315b237bd15745c8bbf936590ebcbbf87ece8b6a`, based on freshly fetched
+current/default beta `6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc`. The original PR
+head `43b81e9063e0531f7ac2b1f589238d6ad6d37d33` is retained in merge ancestry.
+
+- Full x64 Release solution build passed, including host, Config and both renderer
+  variants. Nine genuine runtime records match their binary hashes (eight output
+  binaries plus the discovery build copy).
+- **1540/1540 selected native regressions passed**, zero failed/skipped, including
+  logger/NVIDIA/fullscreen/cache safety, prepared proof delivery, display refresh,
+  renderer migration, LUT, native crop/retention and GPU subtitle composition.
+- **8/8 focused Windows Config checks passed**. No full Config-suite pass claimed.
+- Preserved #193's prepared proofs/cancellation, #196 subtitle isolation, #198
+  display scheduler and active Smooth Motion bypass, and #199 renderer promotion.
+  Conflicts kept newer prepared-caption and retention/contrast paths. Removed
+  duplicate already-merged test methods and project registrations.
+- OSD layout, render-load window reset policy, displayed drop/repeat counters and
+  API29 are unchanged. New diagnostics are log-only. #197 remains draft/unmerged.
+- Initial build failures were investigated: native Windows PowerShell module-path
+  correction restored Get-FileHash without changing the validator; an identical
+  merged black-reference test and duplicate compile registration were removed.
+  Initial and successful logs are preserved locally.
+- No deployment, restart or active configuration changes. No fresh live jitter
+  A/B or sustained GPU-pressure acceptance. Keep this story in Review for field
+  acceptance rather than interpreting source merge as measured live improvement.
+
+[Current merge and validation evidence](../assets/VP-0204/merged-current-beta-20261025/validation.json),
+[merge receipt](../assets/VP-0204/merged-current-beta-20261025/merge-receipt.json),
+[native report](../assets/VP-0204/merged-current-beta-20261025/pr192-current-beta.trx)
+and [Config results](../assets/VP-0204/merged-current-beta-20261025/config-focused.json).
+Local full logs: `E:\codex\videoprocessor\pr192-current-beta-20261025\artifacts\pr192-current-beta`.
+
+## Historical merge readiness (2026-10-23)
 [PR #192](https://github.com/billslack2/videoprocessor/pull/192) is ready for merge
 review and remains unmerged. Current tested integration head is
 `43b81e9063e0531f7ac2b1f589238d6ad6d37d33` on

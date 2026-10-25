@@ -1,0 +1,73 @@
+{
+  "head": "315b237bd15745c8bbf936590ebcbbf87ece8b6a",
+  "base": "6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc",
+  "originalFeature": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+  "originalCore": [
+    {
+      "blob": "c4ceb46a5f832f84e0a7919b5bad36a284a63c6e",
+      "path": "src/VideoProcessor-Lib/DebugLog.h"
+    },
+    {
+      "blob": "0570bcdf843a2a6b0b2ced99b78774cb61690299",
+      "path": "src/VideoProcessor-Lib/DebugLogAsync.h"
+    },
+    {
+      "blob": "632ad43870f6be02cacc1831f12cd7ea5f4f37ba",
+      "path": "src/VideoProcessor-Lib/FullscreenActivation.h"
+    },
+    {
+      "blob": "4b5ecc03ef83a8586eec94202e8a6d480d3e9e3d",
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalController.h"
+    },
+    {
+      "blob": "e7abb6947904e1a3f6b3ddca4db16dac26d4f5e6",
+      "path": "src/VideoProcessor-Lib/vprenderer/Bt2020SignalWorker.h"
+    },
+    {
+      "blob": "81e9b8e8acd728c4605d282db0a96fc2bd50d5d4",
+      "path": "src/VideoProcessor-Lib/vprenderer/NvidiaBt2020Reporter.h"
+    },
+    {
+      "blob": "c2b9ae90b78cda929289f5af8196a23e00b94f4a",
+      "path": "src/VideoProcessor-Lib/vprenderer/ActivePictureMeasurementCache.h"
+    }
+  ],
+  "preservedBeta": [
+    {
+      "blob": "78855db6469179fe183b81188451562fa812d93a",
+      "path": "src/VideoProcessor-GUI/StatsOverlayWindow.cpp"
+    },
+    {
+      "blob": "b9ed0d0b8b09c9af991b2b19ae784e8763d6c729",
+      "path": "src/VideoProcessor-Lib/vprenderer/AlphaRenderLoadMeter.h"
+    },
+    {
+      "blob": "7bc51c76000998cdad88e539f35b67066421d23f",
+      "path": "src/VideoProcessor-Lib/vprenderer/LibplaceboRendererPluginApi.h"
+    },
+    {
+      "blob": "49e1afe0233923efca75c4a5a30699d3e04e5321",
+      "path": "src/VideoProcessor-Lib/vprenderer/TemporalRenderer.h"
+    },
+    {
+      "blob": "dee45f3e65aeee2cf19e01d11434903d5ed4697c",
+      "path": "src/VideoProcessor-Lib/vprenderer/DisplayVsyncClock.h"
+    },
+    {
+      "blob": "7f656060713c365b5b2dfa970ecd296a98382a22",
+      "path": "src/VideoProcessor-Lib/vprenderer/DisplayFrameCache.h"
+    },
+    {
+      "blob": "3d4adbf1dd620c390329bb4d5a3f7d2af1bd2a1c",
+      "path": "src/VideoProcessor-Lib/PresentationConfig.h"
+    },
+    {
+      "blob": "ab74cee4c6321c798976c7250752bf9b697be2ab",
+      "path": "src/VideoProcessor-Lib/vprenderer/InwardCaptionEvidence.cpp"
+    },
+    {
+      "blob": "fe067ccaedda96cf98d4ff090685adf720f7171b",
+      "path": "src/VideoProcessor-Lib/vprenderer/InwardCaptionEvidence.h"
+    }
+  ]
+}

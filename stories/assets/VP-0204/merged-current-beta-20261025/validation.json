@@ -1,0 +1,47 @@
+{
+  "story": "VP-0204",
+  "originalPR": 192,
+  "sourceCommit": "315b237bd15745c8bbf936590ebcbbf87ece8b6a",
+  "baseCommit": "6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc",
+  "originalPRHead": "43b81e9063e0531f7ac2b1f589238d6ad6d37d33",
+  "configuration": "Release",
+  "architecture": "x64",
+  "solutionBuild": "passed",
+  "native": {
+    "failed": 0,
+    "report": "pr192-current-beta.trx",
+    "passed": 1540,
+    "coverage": "native-coverage.json",
+    "skipped": 0
+  },
+  "config": {
+    "selected": 8,
+    "passed": 8,
+    "failures": []
+  },
+  "binaryHashes": "binary-hashes.json",
+  "sourceAudit": "source-audit.json",
+  "sourceReview": "source-review.json",
+  "initialBuilds": [
+    "Initial Windows PowerShell module search path lacked Get-FileHash; corrected native PSModulePath without changing source validator.",
+    "Duplicate already-merged black-reference test and duplicate compile registration removed; final clean build passed."
+  ],
+  "preservedPRs": [
+    191,
+    193,
+    194,
+    195,
+    196,
+    198,
+    199
+  ],
+  "excludedPRs": [
+    197
+  ],
+  "osdChanges": false,
+  "pluginAPI": 29,
+  "deployment": false,
+  "liveJitterAB": "not performed",
+  "liveGPUStress": "not performed",
+  "localArtifacts": "E:\\codex\\videoprocessor\\pr192-current-beta-20261025\\artifacts\\pr192-current-beta"
+}

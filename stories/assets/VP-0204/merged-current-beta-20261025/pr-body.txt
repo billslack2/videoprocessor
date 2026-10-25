@@ -1,0 +1,11 @@
+Integrates PR #192's render-thread isolation and exact-source measurement reuse onto current beta, preserving the prepared-lookahead work from #193, subtitle preparation isolation from #196, display scheduling and active Smooth Motion bypass from #198, and renderer promotion from #199. Fullscreen activation retains its original five-second deadline and waits for the current validated reveal.
+
+The original PR head is retained in this integration's ancestry. Conflicts retain the newer prepared-proof paths; duplicated tests and project registrations are removed. OSD layout, measurement-window reset policy, displayed drop/repeat counters and plugin API remain unchanged. New diagnostic records are log-only. PR #197 is excluded.
+
+Validation of clean source 315b237bd15745c8bbf936590ebcbbf87ece8b6a against beta 6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc:
+- Full x64 Release solution build passed, including host, Config and both renderer variants. Nine genuine runtime sidecars match their binary hashes (eight output binaries plus the discovery build copy).
+- 1540/1540 selected native regressions passed, zero failures/skips. Includes logger/NVIDIA/fullscreen/cache safety plus prepared proofs, display refresh, renderer migration, LUT and GPU subtitle composition.
+- 8/8 focused Windows Config checks passed: reveal/focus, clean local/remote Apply, Apply/OK/Cancel and Off hold. No full Config-suite pass is claimed.
+- Exact source parity checks preserve beta's OSD, render-load meter, API29, TemporalRenderer, display scheduler/cache and caption-proof helpers. Core logger/NVIDIA/fullscreen/cache helpers match #192.
+
+Initial build failures (PowerShell module path and duplicate merged test) were investigated and corrected; earlier logs remain preserved. Current evidence is recorded with VP-0204. No deployment, playback restart, active configuration change, or new live jitter/GPU-pressure claim.

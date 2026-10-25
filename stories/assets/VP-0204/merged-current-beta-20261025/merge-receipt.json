@@ -1,0 +1,11 @@
+{
+  "integrationPR": 202,
+  "originalPR": 192,
+  "testedHead": "315b237bd15745c8bbf936590ebcbbf87ece8b6a",
+  "base": "6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc",
+  "mergeCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "beta": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "deployment": false,
+  "originalPRState": "closed as incorporated via PR202",
+  "mergedTreeMatchesTestedTree": true
+}

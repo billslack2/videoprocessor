@@ -1,0 +1,162 @@
+[
+  {
+    "methods": 58,
+    "class": "MotionRendererTests"
+  },
+  {
+    "methods": 2,
+    "class": "Tests.ActivePictureAnalyzerTests"
+  },
+  {
+    "methods": 331,
+    "class": "Tests.AlphaSourceCropPolicyTests"
+  },
+  {
+    "methods": 13,
+    "class": "Tests.DisplayVsyncClockTests"
+  },
+  {
+    "methods": 17,
+    "class": "Tests.InwardCaptionEvidenceTests"
+  },
+  {
+    "methods": 55,
+    "class": "Tests.LibplaceboOutputPolicyTests"
+  },
+  {
+    "methods": 31,
+    "class": "Tests.LookaheadOutwardProofTests"
+  },
+  {
+    "methods": 10,
+    "class": "Tests.LookaheadPerformanceWindowTests"
+  },
+  {
+    "methods": 9,
+    "class": "Tests.QueueNativeContinuityTests"
+  },
+  {
+    "methods": 12,
+    "class": "Tests.RendererTransitionModelTests"
+  },
+  {
+    "methods": 25,
+    "class": "Tests.RetainedScopeUnknownPresentationTests"
+  },
+  {
+    "methods": 12,
+    "class": "Tests.SubtitleCutPasteShaderTests"
+  },
+  {
+    "methods": 32,
+    "class": "Tests.SubtitleMeasurementWorkerTests"
+  },
+  {
+    "methods": 19,
+    "class": "UnitTests.Bt2020SignalControllerTests"
+  },
+  {
+    "methods": 15,
+    "class": "VideoProcessorTest.ActivePictureBlackReferenceTests"
+  },
+  {
+    "methods": 44,
+    "class": "VideoProcessorTest.ActivePictureDecisionTimelineTests"
+  },
+  {
+    "methods": 205,
+    "class": "VideoProcessorTest.ActivePictureEvidenceTests"
+  },
+  {
+    "methods": 16,
+    "class": "VideoProcessorTest.ActivePictureMeasurementCacheTests"
+  },
+  {
+    "methods": 62,
+    "class": "VideoProcessorTest.ActivePictureTransitionModelTests"
+  },
+  {
+    "methods": 8,
+    "class": "VideoProcessorTest.AnalysisEvaluationBudgetTests"
+  },
+  {
+    "methods": 46,
+    "class": "VideoProcessorTest.ConfigEditorCoreTests"
+  },
+  {
+    "methods": 165,
+    "class": "VideoProcessorTest.ConfigFileTests"
+  },
+  {
+    "methods": 17,
+    "class": "VideoProcessorTest.DebugLogAsyncTests"
+  },
+  {
+    "methods": 14,
+    "class": "VideoProcessorTest.DebugLogRetentionTests"
+  },
+  {
+    "methods": 23,
+    "class": "VideoProcessorTest.DimSideCompositionGuardTests"
+  },
+  {
+    "methods": 11,
+    "class": "VideoProcessorTest.FullRasterLookaheadTests"
+  },
+  {
+    "methods": 10,
+    "class": "VideoProcessorTest.FullscreenActivationTests"
+  },
+  {
+    "methods": 75,
+    "class": "VideoProcessorTest.LibplaceboLutParserTests"
+  },
+  {
+    "methods": 7,
+    "class": "VideoProcessorTest.LibplaceboPluginProxyTests"
+  },
+  {
+    "methods": 8,
+    "class": "VideoProcessorTest.OptionalAnalysisWorkerTests"
+  },
+  {
+    "methods": 8,
+    "class": "VideoProcessorTest.PreparedOutwardWindowTests"
+  },
+  {
+    "methods": 12,
+    "class": "VideoProcessorTest.PreparedPictureEvidenceTests"
+  },
+  {
+    "methods": 3,
+    "class": "VideoProcessorTest.RememberedEdgePresentationPolicyTests"
+  },
+  {
+    "methods": 72,
+    "class": "VideoProcessorTest.RememberedEdgeProfileTests"
+  },
+  {
+    "methods": 19,
+    "class": "VideoProcessorTest.RememberedEdgeQualificationTests"
+  },
+  {
+    "methods": 3,
+    "class": "VideoProcessorTest.RememberedRuntimeModeTests"
+  },
+  {
+    "methods": 6,
+    "class": "VideoProcessorTest.RendererIdTests"
+  },
+  {
+    "methods": 30,
+    "class": "VideoProcessorTest.SparseBoundaryCropExperimentTests"
+  },
+  {
+    "methods": 19,
+    "class": "VideoProcessorTest.SparseBoundaryTransitionExperimentTests"
+  },
+  {
+    "methods": 16,
+    "class": "VideoProcessorTest.StartupPresentationReadinessTests"
+  }
+]

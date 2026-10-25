@@ -1,0 +1,24 @@
+{
+  "head": "315b237bd15745c8bbf936590ebcbbf87ece8b6a",
+  "reviewer": "Codex primary agent",
+  "scope": "Current-beta merge review, no independent subagent review",
+  "findings": [
+    "Logger storage and writer scratch remain heap/static owned, with Windows aligned sequenced lists and admitted-producer drain fencing.",
+    "NVIDIA backend/controller lifetime and driver calls stay on the worker; mailbox/status locks are released around I/O. Stale requests cannot start obsolete writes.",
+    "Fullscreen uses the existing validated reveal and original five-second deadline. The attempt is consumed before the native call, including denial.",
+    "Measurement imports require exact frame identity, source interpretation and shared owner. Retention still rechecks current excluded bands per crop base.",
+    "Existing prepared-proof cancellation and live-history validation from PR193 are preserved.",
+    "PR198 display queue controls, final-image cache and active-Smooth-Motion scheduler bypass are preserved.",
+    "OSD layout, render-load meter, plugin API29 and TemporalRenderer match beta byte for byte."
+  ],
+  "remainingLimits": [
+    "No new live jitter A/B or sustained GPU-pressure acceptance.",
+    "No new deployment, playback restart or active configuration edits.",
+    "PR197 changes excluded."
+  ],
+  "mergeArtifactsCorrected": [
+    "Kept already-merged black-reference test method once.",
+    "Kept project compile/header registrations unique.",
+    "Preserved newer prepared-caption nomination, cached proof components and display output draw accounting."
+  ]
+}

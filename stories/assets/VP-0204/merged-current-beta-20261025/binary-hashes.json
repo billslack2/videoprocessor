@@ -1,0 +1,56 @@
+[
+  {
+    "toolset": "14.29.30133",
+    "path": "x64\\Release\\VideoProcessor-GUI.exe",
+    "record": "x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+    "sha256": "11E443635E80A7CFFFF66088093BC8D0235F07515ECBF898C2D053B9A8750BE9"
+  },
+  {
+    "toolset": "14.29.30133",
+    "path": "x64\\Release\\VideoProcessor-Test.dll",
+    "record": "x64\\Release\\VideoProcessor-Test.dll.runtime.json",
+    "sha256": "B4BD64686EFE0E9BF43F7FB8BA89681C3EDACE4C939170BE8959EF5531DD3DC9"
+  },
+  {
+    "toolset": "14.44.35207",
+    "path": "x64\\Release\\VideoProcessorConfig.exe",
+    "record": "x64\\Release\\VideoProcessorConfig.exe.runtime.json",
+    "sha256": "1567A72751BCCDD756260A61F58A6704C1F3DEF67E03EABFDF011999695BCD73"
+  },
+  {
+    "toolset": "14.29.30133",
+    "path": "x64\\Release\\VideoProcessorConfigDiscovery.dll",
+    "record": "x64\\Release\\VideoProcessorConfigDiscovery.dll.runtime.json",
+    "sha256": "48ED0E69155F64EC14CB4CCFC187165CDADB97ADA486F3A29D2C14A79CDBC3E5"
+  },
+  {
+    "toolset": "14.44.35207",
+    "path": "x64\\Release\\VideoProcessorConfigTests.exe",
+    "record": "x64\\Release\\VideoProcessorConfigTests.exe.runtime.json",
+    "sha256": "705B385DDEE8AFC65273C3F13E56FCB26C6F2142F5CC9B2374C579D1CB6BEFD9"
+  },
+  {
+    "toolset": "14.44.35207",
+    "path": "x64\\Release\\VideoProcessorOutputProbe.exe",
+    "record": "x64\\Release\\VideoProcessorOutputProbe.exe.runtime.json",
+    "sha256": "08CC4E3FB73F1712A74C63AE5AEEA9BB949C4DBDE43B1A20D63B62DEFC769939"
+  },
+  {
+    "toolset": "14.29.30133",
+    "path": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "record": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+    "sha256": "19E762B23C61BC32D5818A698AAEF1B5BC1F26EBE2D4749498354D7243501EB6"
+  },
+  {
+    "toolset": "14.29.30133",
+    "path": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "record": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+    "sha256": "C94F8408777E707718F51B566545C78D6B9039FB2812DAC06B9AADA36F255E4A"
+  },
+  {
+    "toolset": "14.29.30133",
+    "path": "src\\VideoProcessor-ConfigDiscovery\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+    "record": "src\\VideoProcessor-ConfigDiscovery\\x64\\Release\\VideoProcessorConfigDiscovery.dll.runtime.json",
+    "sha256": "48ED0E69155F64EC14CB4CCFC187165CDADB97ADA486F3A29D2C14A79CDBC3E5"
+  }
+]
