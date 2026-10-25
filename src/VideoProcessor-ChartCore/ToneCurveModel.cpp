@@ -78,9 +78,12 @@ namespace
     bool ColorMap(const ToneCurveProvider::Request& request, bool useTuning,
         pl_color_map_params& map, std::wstring& error)
     {
-        // Quality is a Scaling setting: tone mapping always starts from
-        // libplacebo's high-quality colour map, as Build() does.
-        const pl_color_map_params* defaults = Data<pl_color_map_params>("pl_color_map_high_quality_params", error);
+        const char* presetName = request.quality == "fast" ? "pl_render_fast_params" :
+            request.quality == "balanced" ? "pl_render_default_params" : "pl_render_high_quality_params";
+        const auto* preset = Data<pl_render_params>(presetName, error);
+        if (!preset) return false;
+        const auto* defaults = preset->color_map_params;
+        if (!defaults) defaults = Data<pl_color_map_params>("pl_color_map_default_params", error);
         if (!defaults) return false;
         map = *defaults;
         if (request.toneMapping != "auto")
@@ -321,6 +324,7 @@ namespace
         // curve and constants, peak detection on, High quality. It is drawn on
         // the profile's display (Target nits and black) and the chosen scene.
         ToneCurveProvider::Request fixed = request;
+        fixed.quality = "high";
         fixed.toneMapping = "auto";
         fixed.peakDetection = "auto";
         fixed.toneTuning = {};
@@ -476,6 +480,7 @@ namespace
         ToneCurveProvider::Request used = request;
         if (libplaceboDefault)
         {
+            used.quality = "high";
             used.toneMapping = "auto";
             used.peakDetection = "auto";
             used.toneTuning = {};

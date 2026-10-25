@@ -2191,7 +2191,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(model.persistSelection);
-			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
+			Assert::AreEqual(static_cast<size_t>(5), model.groups.size());
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "Shift+L",
@@ -3857,7 +3857,7 @@ namespace VideoProcessorTest
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			const std::vector<std::string> sections = config.GetSectionNames();
-			Assert::AreEqual(static_cast<size_t>(4), sections.size());
+			Assert::AreEqual(static_cast<size_t>(5), sections.size());
 			Assert::AreEqual("general", sections[0].c_str());
 			Assert::AreEqual("vprenderer.rec709", sections[1].c_str());
 			Assert::AreEqual("vprenderer.bt2020", sections[2].c_str());
@@ -3869,8 +3869,8 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::AreEqual(static_cast<size_t>(1), model.groups.size());
-			const RendererProfileConfig::Group& display = model.groups.front();
+			Assert::AreEqual(static_cast<size_t>(2), model.groups.size());
+			const RendererProfileConfig::Group& display = *std::find_if(model.groups.begin(), model.groups.end(), [](const auto& group) { return group.name == "display"; });
 			Assert::AreEqual("display", display.name.c_str());
 			Assert::AreEqual("rec709", display.defaultSelection.c_str());
 			Assert::AreEqual("rec709", display.profiles[0].c_str());
@@ -3878,7 +3878,8 @@ namespace VideoProcessorTest
 
 			const auto bt2020 = model.profiles.find("display.bt2020");
 			Assert::IsTrue(bt2020 != model.profiles.end());
-			Assert::AreEqual("high", bt2020->second.settings.at("quality").c_str());
+			Assert::IsTrue(bt2020->second.settings.count("quality") == 0);
+            Assert::AreEqual("ewa_lanczossharp", model.profiles.at("scaling.default").settings.at("upscaler").c_str());
 			Assert::AreEqual("bt2020",
 				ConfigFile::NormalizeName(
 					bt2020->second.settings.at("target_primaries")).c_str());
@@ -3890,9 +3891,9 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
 				[](const std::string&, std::string&) { return false; },
 				automatic, error));
-			Assert::AreEqual(static_cast<size_t>(1), automatic.size());
-			Assert::AreEqual("rec709", automatic.front().profiles.front().c_str());
-			Assert::IsTrue(automatic.front().configuredDefault);
+			Assert::AreEqual(static_cast<size_t>(2), automatic.size());
+			Assert::AreEqual("rec709", (*std::find_if(automatic.begin(), automatic.end(), [](const auto& selection) { return selection.group == "display"; })).profiles.front().c_str());
+			Assert::IsTrue((*std::find_if(automatic.begin(), automatic.end(), [](const auto& selection) { return selection.group == "display"; })).configuredDefault);
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F4",
