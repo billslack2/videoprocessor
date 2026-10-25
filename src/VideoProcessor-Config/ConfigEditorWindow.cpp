@@ -2978,8 +2978,19 @@ void ConfigEditorWindow::refreshCalibrationControls()
         if (!control->property("lutOnlyRow").toBool() && !displayRow) continue;
         auto* layout = qobject_cast<QFormLayout*>(control->property("calibrationForm").value<QObject*>());
         const QString key = control->property("lutConfigKey").toString();
-        if (layout) layout->setRowVisible(control, displayRow ? (!lutConfigured || showFallback) :
-            lutConfigured && (key.isEmpty() || key == slot));
+        if (layout) {
+            const bool visible = displayRow ? (!lutConfigured || showFallback) :
+                lutConfigured && (key.isEmpty() || key == slot);
+            QWidget* rowControl = control;
+            int row = -1;
+            QFormLayout::ItemRole role = QFormLayout::FieldRole;
+            while (rowControl && row < 0) {
+                layout->getWidgetPosition(rowControl, &row, &role);
+                if (row < 0) rowControl = rowControl->parentWidget();
+            }
+            if (rowControl) layout->setRowVisible(rowControl, visible);
+            if (rowControl != control) control->setVisible(visible);
+        }
     }
 
     if (enabled)
@@ -5546,8 +5557,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         choiceLayout->addWidget(reset);
         form->addRow(label, choiceRow);
         fields->push_back({ key, combo, Field::Choice });
-        connect(reset, &QPushButton::clicked, this, [this, state, key, combo, reset] {
+        connect(reset, &QPushButton::clicked, this, [this, state, key, combo, reset, sectionPrefix] {
             if (state->loading || state->section.isEmpty() || !document_) return;
+            const auto previousTransport = outputTransportSelections();
             document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
             state->loading = true;
             const QString resolved = combo->property("resetValue").toString();
@@ -5556,8 +5568,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             combo->setProperty("inherited", true);
             state->loading = false;
             reset->setEnabled(false);
+            if (sectionPrefix == QStringLiteral("vprenderer.color") &&
+                (key == QStringLiteral("output_range") || key == QStringLiteral("output_transport_gamma")))
+                synchronizeLimitedTransportFlags(previousTransport, state->section);
             markDirty();
             refreshRendererAutoStatus();
+            refreshCalibrationControls();
         });
         connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this, state, key, combo, sectionPrefix](int index)
@@ -8313,7 +8329,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (lower != QStringLiteral("auto")) return choice;
                 const auto key = field.key.toStdString();
                 if (sectionPrefix == "vprenderer" || sectionPrefix == "vprenderer.scaling") {
-                    QString quality = value(section, QStringLiteral("quality"), QStringLiteral("high"));
+                    QString quality = value(section, QStringLiteral("quality"));
+                    if (quality.isEmpty() && list->count() > 0)
+                        quality = profileValue(list->item(0)->data(Qt::UserRole).toString(), QStringLiteral("quality"));
+                    if (quality.isEmpty()) quality = QStringLiteral("high");
                     if (const char* preset = QualityProfileMigration::PresetValue(quality.toStdString(), key))
                         return QString::fromLatin1(preset);
                     if (field.key == "tone_mapping") return QStringLiteral("spline");

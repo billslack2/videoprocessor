@@ -829,7 +829,7 @@ void testBlackDefaultAndLegacyAutoInheritance()
             require(black->text().compare(expected, Qt::CaseInsensitive) == 0,
                 "Default/inherited black differs from effective value");
             if (blackLine.contains("AUTO"))
-                require(status->text() == "Auto: 0 nits (0.000001 nit internally)",
+                require(status->text() == "Resolved: 0 nits (0.000001 nit internally)",
                     "Legacy Auto black still depends on inherited white");
         }
         auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
@@ -882,12 +882,8 @@ void testAuditedBooleanAliasesAndInheritedAutoStatus()
         const bool expected = alias == "true" || alias == "yes" || alias == "on" || alias == "1";
         for (const char* key : { "output_diagnostics", "report_bt2020_to_display" })
             require(requireControl<QCheckBox>(window,"config.vprenderer.color."+QString::fromLatin1(key))->isChecked() == expected,"Boolean alias differs from runtime");
-        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Off", "Inherited Fast shown as High");
-        require(requireControl<QLabel>(window,"config.vprenderer.color.output_transport_gamma.auto_status")->text() == "Auto: 2.4", "Inherited Limited shown unused");
-        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(0);
-        selectData(requireControl<QComboBox>(window,"config.vprenderer.quality"),"balanced");
-        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(1);
-        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Standard", "Inherited Balanced shown as High");
+        require(requireControl<QComboBox>(window,"config.vprenderer.peak_detection")->currentData() == "off", "Inherited Fast shown as High");
+        require(requireControl<QLabel>(window,"config.vprenderer.color.output_transport_gamma.auto_status")->text() == "Resolved: 2.4", "Inherited Limited shown unused");
         save(window);
         require(readBytes(path).contains("output_diagnostics: " + alias), "Untouched Boolean alias rewritten");
     }
@@ -2209,7 +2205,7 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     const QByteArray beforeLive = readBytes(path);
     const quint64 identity = ConfigurationIdentity::FromText(beforeLive.toStdString());
     const QString color = display->property("profileSection").toString();
-    const QString rendering = requireControl<QComboBox>(window, "config.vprenderer.quality")->property("profileSection").toString();
+    const QString rendering = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")->property("profileSection").toString();
     for (bool attached : { false, true })
         for (bool hdrSource : { false, true })
         {
@@ -4174,9 +4170,9 @@ void testChoiceLabelsAndVpRendererName()
 
     QComboBox* nominalRange = requireControl<QComboBox>(window,
         QStringLiteral("config.directshow.renderer_nominal_range"));
-    require(nominalRange->itemText(0) == QStringLiteral("Auto") &&
+    require(nominalRange->itemText(0) == QStringLiteral("From input") &&
         nominalRange->itemData(0).toString() == QStringLiteral("AUTO"),
-        "DirectShow Auto is not presented with normal title casing");
+        "DirectShow adaptive range is not described as From input");
     require(nominalRange->findText(QStringLiteral("Default")) < 0,
         "DirectShow selector still contains a fabricated Default entry");
 
@@ -4196,14 +4192,12 @@ void testChoiceLabelsAndVpRendererName()
 
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
-    require(peakDetection->findText(QStringLiteral("Auto")) >= 0 &&
+    require(peakDetection->findText(QStringLiteral("Auto")) < 0 &&
         peakDetection->findText(QStringLiteral("AUTO")) < 0 &&
         peakDetection->findText(QStringLiteral("Standard")) >= 0 &&
         peakDetection->findData(QStringLiteral("default")) < 0,
         "Renderer selector exposes duplicate or inconsistently cased automatic choices");
 
-    QComboBox* quality = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.quality"));
     QComboBox* displayPrimaries = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.color.target_primaries"));
 	require(displayPrimaries->count() == 3 &&
@@ -4214,7 +4208,7 @@ void testChoiceLabelsAndVpRendererName()
         "Target gamut still exposes Default as a separate choice");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Follows accepted transport; see live output"),
+			QStringLiteral("Resolved: Follows accepted transport; see live output"),
 		"Output gamma Auto control does not identify its effective policy");
 	auto* calibrationEnabled = requireControl<QCheckBox>(window,
 		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
@@ -4222,7 +4216,7 @@ void testChoiceLabelsAndVpRendererName()
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Follows accepted transport; see live output"),
+			QStringLiteral("Resolved: Follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
     require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
@@ -4230,10 +4224,9 @@ void testChoiceLabelsAndVpRendererName()
     require(requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer")->currentData() == "2.4",
         "Saved SDR automatic reference was not translated to 2.4");
 
-	require(requireControl<QLabel>(window,
-		QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
-			QStringLiteral("Auto: Output format"),
-		"Display bit-depth Auto control does not identify its effective policy");
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.scaling.display_bit_depth"))->currentData() == "output",
+        "Scaling dither depth does not select the actual output-format policy");
     QLineEdit* targetWhiteLevel = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.sdr_target_nits"));
     QLineEdit* targetBlackLevel = requireControl<QLineEdit>(window,
@@ -4243,7 +4236,7 @@ void testChoiceLabelsAndVpRendererName()
     targetWhiteLevel->setText(QStringLiteral("79"));
     targetBlackLevel->setText(QStringLiteral("Auto"));
     QCoreApplication::processEvents();
-    require(targetBlackStatus->text() == QStringLiteral("Auto: 0 nits (0.000001 nit internally)"),
+    require(targetBlackStatus->text() == QStringLiteral("Resolved: 0 nits (0.000001 nit internally)"),
         "Legacy Auto target black does not show the zero default and internal floor");
     QComboBox* upscaler = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.upscaler"));
@@ -4252,26 +4245,13 @@ void testChoiceLabelsAndVpRendererName()
     for (const QString key : { QStringLiteral("upscaler"), QStringLiteral("downscaler"), QStringLiteral("sigmoid") })
     {
         auto* choice = requireControl<QComboBox>(window, "config.vprenderer.scaling." + key);
-        require(qobject_cast<QListView*>(choice->view())->isRowHidden(0) &&
-            !(choice->model()->flags(choice->model()->index(0, 0)) & Qt::ItemIsEnabled),
-            "Default scaling profile still offers a redundant default choice");
-        require(choice->currentData().toString() == "AUTO" && choice->currentText() == "Auto",
-            "Omitted scaling setting does not display Auto");
+        require(choice->findData(QString()) < 0 && choice->findData("AUTO") < 0,
+            "Scaling still offers a duplicate default or Auto choice");
+        require(!choice->currentData().toString().isEmpty(), "Scaling did not select its actual effective algorithm");
     }
-    require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
-        upscalerStatus->font().italic(),
-        "Auto upscaler does not use a concise italic effective-value label");
-    require(requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.dithering.auto_status"))->text() ==
-            QStringLiteral("Auto: Blue noise"),
-        "Auto dithering does not identify its blue-noise policy");
-    selectData(quality, QStringLiteral("balanced"));
-    require(upscalerStatus->text() == QStringLiteral("Auto: Lanczos"),
-        "Auto policy preview did not refresh after rendering quality changed");
     selectData(upscaler, QStringLiteral("lanczos"));
     require(upscalerStatus->isHidden() && upscalerStatus->text().isEmpty(),
-        "An Auto-policy preview remains visible for an explicit filter choice");
-    selectData(upscaler, QStringLiteral("AUTO"));
+        "A policy preview remains visible for an explicit filter choice");
 
     QComboBox* shaderStage = requireControl<QComboBox>(window,
         QStringLiteral("config.shader.nls.stage"));
@@ -6871,14 +6851,14 @@ void testCalibratedUiDefaultsAndDerivedTransport()
         auto combo = [&](const char* name) { return requireControl<QComboBox>(window, QString::fromLatin1(name)); };
         require(combo("config.vprenderer.color.output_gamma")->currentData() == QStringLiteral("2.2"), "Fresh display gamma is not 2.2");
         require(combo("config.vprenderer.color.sdr_input_transfer")->currentData() == QStringLiteral("2.4"), "Fresh input gamma is not 2.4");
-        require(combo("config.vprenderer.display_bit_depth")->currentData() == QStringLiteral("10"), "Fresh dither depth is not 10");
+        require(combo("config.vprenderer.scaling.display_bit_depth")->currentData() == QStringLiteral("output"), "Fresh dither depth does not follow output");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_target_nits"))->text() == QStringLiteral("100"), "Fresh target nits is not 100");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_black_nits"))->text() == QStringLiteral("0"), "Fresh target black is not 0");
         auto* range = combo("config.vprenderer.color.output_range");
         auto* gamma = combo("config.vprenderer.color.output_transport_gamma");
         auto* flag = requireControl<QCheckBox>(window, QStringLiteral("config.vprenderer.color.diagnostic_allow_limited_g22"));
         require(range->currentData() == QStringLiteral("full") && !gamma->isEnabled(), "Full does not disable Limited transport");
-        require(!qobject_cast<QStandardItemModel*>(combo("config.vprenderer.color.output_gamma")->model())->item(0)->isEnabled(), "Fresh root omission can recreate removed Auto");
+        require(combo("config.vprenderer.color.output_gamma")->findData(QString()) < 0, "Fresh root omission can recreate a duplicate default row");
         require(range->findData(QStringLiteral("AUTO")) < 0 && combo("config.vprenderer.color.output_gamma")->findData(QStringLiteral("AUTO")) < 0, "Fresh calibrated selector exposes Auto");
         selectData(range, QStringLiteral("limited"));
         require(gamma->isEnabled() && flag->isChecked() && !flag->isEnabled(), "Limited2.2 flag not derived");
@@ -7940,7 +7920,7 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     QTemporaryDir directory;
     const QString path=copyFixture(directory);
     QFile file(path); require(file.open(QIODevice::Append),"Cannot add Motion fixture");
-    file.write("\n[vprenderer.motion]\nsmooth_motion: off\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\nfield_order: auto\ndeinterlace_cadence: field\ndeinterlace_skip_spatial: false\n");file.close();
+    file.write("\n[vprenderer.scaling.Default]\nchroma_upscaler: bicubic\n[vprenderer.motion]\nsmooth_motion: off\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\nfield_order: auto\ndeinterlace_cadence: field\ndeinterlace_skip_spatial: false\n");file.close();
     ConfigEditorWindow window(path,0,true);window.selectPage(21);window.show();QApplication::processEvents();
     auto* tabs=requireControl<QTabBar>(window,"settingsSectionTabs");
     require(tabs->count()==8&&tabs->tabText(6)=="Motion"&&tabs->currentIndex()==6,"Motion tab is missing or not selected");
@@ -7958,7 +7938,7 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     }
     require(mixer->toolTip().contains("Applies only to smooth motion"),"Mixer relationship is not explained");
 
-    selectData(mode,"always");selectData(mixer,"cubic");
+    selectData(mode,"always");selectData(mixer,"mitchell_clamp");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.field_order"),"bottom");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm"),"yadif");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_cadence"),"frame");
@@ -7969,7 +7949,7 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     selectData(chroma,"lanczos");save(window);
     ConfigEditorWindow reopened(path,0,true);reopened.selectPage(21);
     require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.smooth_motion")->currentData()=="always","Smooth motion did not persist");
-    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.frame_mixer")->currentData()=="cubic","Mixer did not persist");
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.frame_mixer")->currentData()=="mitchell_clamp","Mixer did not persist");
     reopened.selectPage(17);require(requireControl<QComboBox>(reopened,"config.vprenderer.scaling.chroma_upscaler")->currentData()=="lanczos","Chroma did not persist");
     const QString images=qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
     if(!images.isEmpty()){reopened.resize(1040,700);reopened.show();reopened.selectPage(21);QApplication::processEvents();reopened.grab().save(images+"/motion.png");reopened.selectPage(17);QApplication::processEvents();reopened.grab().save(images+"/chroma.png");}
