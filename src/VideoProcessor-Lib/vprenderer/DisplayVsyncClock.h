@@ -56,12 +56,23 @@ public:
         return wallOriginNs + static_cast<int64_t>(std::llround(tick * periodNs));
     }
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
+    double DecisionBandSeconds() const
+    {
+        // Raw capture phase can move by milliseconds, even with precise ticks.
+        // Keep a bounded uncertainty band instead of toggling an entire refresh
+        // because a timestamp moved across a binary boundary. At high refresh
+        // rates the band remains at most one quarter of a display interval.
+        return Active() ? (std::max)(sourceTolerance,(std::min)(0.003,0.25/refreshHz)) : sourceTolerance;
+    }
     bool SourceDue(double pts) const
     {
-        // Timestamp quantization around the boundary must not become a cached
-        // repeat followed by retiring the adjacent source. Keep the original
-        // cadence phase; this is only a microsecond-scale uncertainty window.
-        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + sourceTolerance);
+        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + DecisionBandSeconds());
+    }
+    bool CanRetireBefore(double nextPts) const
+    {
+        // A merely eligible successor is not evidence that its predecessor is
+        // stale. Require it to be unambiguously before the slot's other edge.
+        return Active() && std::isfinite(nextPts) && nextPts < SourcePts() - DecisionBandSeconds();
     }
     void Submitted() { if (Active()) ++tick; }
     double SourceToleranceSeconds() const { return sourceTolerance; }
@@ -160,4 +171,21 @@ private:
     bool valid=false, synthetic=false;
     uint64_t generation=0, sequence=0;
     double rawPts=0, normalized=0;
+};
+
+// A profile transition can compile shaders or block in the driver. Retire its
+// timing estimate after one successful changed output, then anchor fresh on
+// the next source. Failed presents must not consume this recovery request.
+class DisplayCadenceTransition
+{
+public:
+    void OutputChanged() { pending=true; }
+    bool Presented(bool successful,bool timingActive) {
+        if (!successful) return false;
+        const bool restart=pending&&timingActive;
+        pending=false;
+        return restart;
+    }
+private:
+    bool pending=false;
 };

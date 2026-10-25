@@ -74,3 +74,22 @@ advance or a video speed adjustment. The same allowance applies to source
 selection, stale-source retirement and nonmixing temporal output checks.
 Repeat diagnostics include `next_pts_lead_ms`, `pts_tolerance_us` and
 `queued_sources`. These CPU submission records do not prove HDMI scanout.
+
+
+Live profile-change testing showed that precision alone was insufficient: raw
+capture phase moved by up to about 1.14ms, causing an eligible successor to be
+used as evidence for dropping its predecessor. Source selection now uses two
+boundaries around the unchanged slot clock. A source is eligible up to 3ms after
+the nominal slot; its successor may justify retirement only when it is more than
+3ms before that slot. At high refresh rates this band is capped at one quarter
+of the refresh interval. The separate 10-100us timestamp precision value remains
+reported, while `decision_band_ms` reports the actual selection/retirement band.
+This permits at most the bounded band of early selection, preserves the 24-to-60
+3/2 phase, and leaves true long-run source/display drift visible.
+
+After an output profile change, one successful changed output pays shader/driver
+warmup, then VP resets its internal repeat clock and cache eligibility once.
+The following source anchors the replacement cadence. The log reports
+`VP display cadence restart ... hdmi_resync=0`; no display-mode change is requested.
+Failed presentation does not consume the pending restart. Subtitle packet data,
+source PTS, capture Queue/lookahead and NLS pixels remain unchanged.
