@@ -48,6 +48,33 @@ namespace VideoProcessorTest
 	{
 	public:
 
+        TEST_METHOD(DisplayRefreshPresentationRoundTripsAndValidatesWithoutChangingComments)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpv");
+            WriteBytes(path, "[general]\nrenderer: VP Renderer\n# keep display preferences\npresent_every_vsync: false\n"
+                "[vprenderer.primary]\nquality: high\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            document.SetKnown("general", "present_every_vsync", "true");
+            const bool valid = ConfigEditorCore::ValidateCandidate(document, error);
+            Assert::IsTrue(valid, error.c_str());
+            ConfigEditorCore::SaveResult saved;
+            Assert::IsTrue(ConfigEditorCore::SaveSafely(document, saved, error), error.c_str());
+            ConfigEditorCore::ConfigDocument reloaded;
+            Assert::IsTrue(reloaded.Load(path, error), error.c_str());
+            Assert::AreEqual(std::string("true"), reloaded.Get("general", "present_every_vsync"));
+            Assert::IsTrue(ReadBytes(path).find("# keep display preferences") != std::string::npos);
+            reloaded.SetKnown("general", "present_every_vsync", "sometimes");
+            Assert::IsFalse(ConfigEditorCore::ValidateCandidate(reloaded, error));
+            using ConfigurationApplyPolicy::Action;
+            Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+                static_cast<int>(ConfigurationApplyPolicy::ClassifyChange({"general", "present_every_vsync"}, false)));
+            Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+                static_cast<int>(ConfigurationApplyPolicy::ClassifyChange({"general", "present_every_vsync"}, true)));
+            DeleteFileW(path.c_str());
+        }
+
         TEST_METHOD(OutputDisplayProfilesRoundTripAndRejectInvalidAdvancedModes)
         {
             const std::wstring path = MakeTemporaryConfigPath(L"vpd");

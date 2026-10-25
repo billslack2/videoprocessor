@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
@@ -156,6 +157,36 @@ struct GpuFixture {
 };
 }
 TEST_CLASS(MotionRendererTests){public:
+    TEST_METHOD(DisplayRefreshCacheSurvivesSourceAndBackbufferReuseWithExactPixels) {
+        GpuFixture g;
+        g.Upload(90);
+        auto params=pl_render_default_params;
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto expected=g.ReadPixels();
+        DisplayFrameCache cache;
+        Assert::IsTrue(cache.Capture(g.device->gpu,g.target));
+        g.Upload(220);
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        Assert::IsTrue(expected!=g.ReadPixels());
+        for(int repeat=0;repeat<5;++repeat) {
+            Assert::IsTrue(cache.CopyTo(g.target));
+            Assert::IsTrue(expected==g.ReadPixels(),L"Repeated output pixels changed");
+        }
+        Assert::IsFalse(cache.CopyTo(g.clean),L"An incompatible output format must invalidate the repeat");
+        cache.Clear();
+        Assert::IsFalse(cache.CopyTo(g.target));
+    }
+    TEST_METHOD(DisplayRefreshOptionSchedulesDeinterlacingWithoutEnablingBlending) {
+        MotionConfig::Settings settings;
+        TemporalRenderer temporal;
+        temporal.Begin(settings,24.0,120.0,true,1,1,1,0.0,false,false,false,true);
+        Assert::IsTrue(temporal.Active());
+        Assert::IsFalse(temporal.Mixing());
+        Assert::AreEqual(120.0,temporal.ScheduledOutputRateHz(),1e-9);
+        Assert::AreEqual(size_t(5),temporal.outputs.size());
+        temporal.Clear();
+    }
+
     TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
         for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
             unsigned analyses=0;

@@ -10,6 +10,7 @@ general.fullscreen_monitor_session_mode	general-fullscreen-monitor-session-mode	
 general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no
+general.present_every_vsync	general-present-every-vsync	VP Renderer presentation	no
 general.video_conversion	general-video-conversion	VP input processing	no
 vprenderer.input_processing.video_conversion	general-video-conversion	VP Renderer input override	no
 general.container_colorspace	general-container-colorspace	VP input metadata	no

@@ -5461,6 +5461,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         switchRate->setObjectName(QStringLiteral("config.general.switch_refresh_rate"));
         switchRate->setAccessibleName(QStringLiteral("Switch refresh rate"));
         form->addRow(QStringLiteral("Switch refresh rate"), switchRate);
+        auto* everyRefresh = bindCheckField(
+            QStringLiteral("Present on every display refresh"),
+            QStringLiteral("general"), QStringLiteral("present_every_vsync"));
+        everyRefresh->setToolTip(QStringLiteral(
+            "VP Renderer only. Present at the display refresh rate, repeating the processed image "
+            "when no new source frame is due. Does not blend frames or change source speed. "
+            "Disabled by default. Apply restarts VP Renderer."));
+        form->addRow(QStringLiteral("Presentation"), everyRefresh);
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Controls whether VP may change display timing during playback. "
             "Auto matches refresh rate only. Advanced also chooses an allowed "

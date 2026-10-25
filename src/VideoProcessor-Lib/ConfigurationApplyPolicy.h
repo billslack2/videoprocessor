@@ -238,6 +238,9 @@ namespace ConfigurationApplyPolicy
 			NormalizeSection(change.section) == "command_line") &&
 			NormalizeSection(change.key) == "profile_change_display_seconds")
 			return Action::ApplyInterface;
+        if (NormalizeSection(change.section) == "general" &&
+            NormalizeSection(change.key) == "present_every_vsync")
+            return directShowRendererActive ? Action::SaveOnly : Action::RestartRenderer;
 		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
 		if (IsOutputExperimentChange(change)) return Action::RestartCapture;
 		const std::string section = NormalizeSection(change.section);

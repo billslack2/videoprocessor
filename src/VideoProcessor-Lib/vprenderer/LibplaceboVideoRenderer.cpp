@@ -49,6 +49,8 @@
 #include <vprenderer/AnamorphicPresentation.h>
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
+#include <vprenderer/DisplayVsyncClock.h>
+#include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/TemporalRenderer.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/TemporalPresentationLedger.h>
@@ -895,6 +897,7 @@ namespace
 		// current program instead of requesting a new variant.
 		ProfileUpdateMode profileUpdateMode = ProfileUpdateMode::REBUILD;
 		bool switchRefreshRate = true;
+        bool presentEveryVsync = false;
 		RefreshRateSwitchMode refreshRateSwitchMode =
 			RefreshRateSwitchMode::FullscreenOnly;
 		bool outputDisplayAdvanced = false;
@@ -1042,7 +1045,7 @@ namespace
 			<< settings.configurationIdentity << '|' << settings.configurationPath << '|'
             << settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|'
-			<< settings.outputDisplayAdvanced << '|'
+			<< settings.presentEveryVsync << '|' << settings.outputDisplayAdvanced << '|'
 			<< settings.restorePreviousDisplayMode << '|' << settings.outputDisplayMonitor << '|';
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
@@ -2247,6 +2250,7 @@ namespace
 		activeRule.clear();
 		if (!config.IsLoaded()) return settings;
 		config.TryGetBool("general", "scale_osd", settings.scaleOsd);
+        config.TryGetBool("general", "present_every_vsync", settings.presentEveryVsync);
         settings.statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(&config);
         TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         TryGetDisplayBool(config, "subtitle_cut_paste_test", settings.subtitleCutPasteTest);
@@ -4392,6 +4396,14 @@ struct LibplaceboVideoRenderer::Impl
 	pl_d3d11 d3d11 = nullptr;
 	pl_cache cache = nullptr;
 	pl_swapchain swapchain = nullptr;
+    DisplayVsyncClock displayVsyncClock;
+    DisplayFrameCache displayFrameCache;
+    AlphaPresentationRecord displayRepeatRecord;
+    bool displayRepeatValid = false;
+    uint64_t displayRepeatRevision = 0;
+    uint64_t displayRefreshRepeats = 0, displayRefreshDrops = 0;
+    uint64_t nextDisplayRefreshLogTick = 0;
+
 	// When enabled, VP creates and retains this DXGI object. The pl_swapchain
 	// wrapper remains only as a resize/configuration compatibility handle; VP
 	// acquires the backbuffer, supplies it to libplacebo, and calls Present.
@@ -5407,6 +5419,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
 	{
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
 		temporalRenderer.Clear();
         cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
@@ -5499,6 +5513,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (d3d11)
 			{
 				pl_tex_destroy(d3d11->gpu, &subtitleBoxTexture);
+                displayFrameCache.Clear();
                 pl_tex_destroy(d3d11->gpu, &subtitleCompositionTexture);
                 pl_tex_destroy(d3d11->gpu, &subtitleMotionLayerTexture);
                 subtitleSourcePreparation={};
@@ -7320,6 +7335,8 @@ struct LibplaceboVideoRenderer::Impl
 	void ReleaseVpOwnedSwapchain()
 	{
 		if (!vpOwnedSwapchain) return;
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: releasing generation=%llu applied_record=%s verified=%d present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
@@ -8196,6 +8213,8 @@ struct LibplaceboVideoRenderer::Impl
 		const RendererSettings settings = LoadRendererSettings(
 			config, *state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		activeSettings = settings;
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
         selectedSubtitleMode.store(settings.subtitleMode,std::memory_order_release);
         calibrationStatusAvailable = false;
 		PublishSettingsState(settings);
@@ -9142,6 +9161,8 @@ struct LibplaceboVideoRenderer::Impl
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
 		activeSettings = settings;
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
         selectedSubtitleMode.store(settings.subtitleMode,std::memory_order_release);
         calibrationStatusAvailable = false;
 		sdrTargetNits = settings.sdrTargetNits;
@@ -13028,7 +13049,8 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaPresentationSnapshot presentation =
 				presentationTelemetry.Snapshot();
 			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled && analysisSource.IsValid();
+			correctionInput.enabled = sceneDetectionEnabled && analysisSource.IsValid() &&
+                !displayVsyncClock.Active();
 			// Queue replacement and detector/source replacement are independent
 			// reset boundaries. Fold both into the policy epoch so neither can
 			// inherit a pending action or retained phase from the other.
@@ -18902,6 +18924,11 @@ releaseDriftBaseRetention =
         calibrationStatusAvailable = rendered;
         if (rendered) lastRenderedTargetTransfer = ToSdrTransfer(baseTarget.color.transfer);
         calibrationLutAttached = rendered && targetLutApplied;
+        if (rendered)
+            CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
+                viewportRequestSerial, startupFrameRevision);
+        else displayRepeatValid = false;
+        PaceDisplayPresentation();
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -18980,6 +19007,8 @@ releaseDriftBaseRetention =
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
+        if (rendered && submitted) displayVsyncClock.Submitted();
+        else { displayRepeatValid = false; displayVsyncClock.Reset(); }
 		if (!rendered || !submitted)
 		{
 			frameGpuTiming.Reject();
@@ -19360,66 +19389,8 @@ releaseDriftBaseRetention =
 			record.cadenceRepeat = cadenceRepeat;
 			record.releaseReason = AlphaSourceReleaseReason::Submitted;
 
-			AlphaDxgiPresentationSample sample;
-			sample.generation = frameGeneration;
-			sample.qpcFrequency = qpcFrequency.QuadPart;
-			sample.expectedDisplayHz =
-				renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
-			CComPtr<IDXGISwapChain> nativeSwapchain;
-			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
-			if (nativeSwapchain)
-			{
-				UINT lastPresentCount = 0;
-				if (SUCCEEDED(nativeSwapchain->GetLastPresentCount(
-					&lastPresentCount)))
-				{
-					record.presentId = lastPresentCount;
-				}
-
-				DXGI_FRAME_STATISTICS statistics{};
-				const HRESULT statisticsResult =
-					nativeSwapchain->GetFrameStatistics(&statistics);
-				if (statisticsResult == DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
-				{
-					sample.timingStatus =
-						AlphaPresentationTimingStatus::Disjoint;
-					sample.frameStatisticsResult =
-						static_cast<int32_t>(statisticsResult);
-					sample.disjoint = true;
-				}
-				else if (SUCCEEDED(statisticsResult))
-				{
-					sample.timingStatus =
-						AlphaPresentationTimingStatus::Available;
-					sample.available = true;
-					sample.presentCount = statistics.PresentCount;
-					sample.presentRefreshCount =
-						statistics.PresentRefreshCount;
-					sample.syncRefreshCount = statistics.SyncRefreshCount;
-					sample.syncQpc = statistics.SyncQPCTime.QuadPart;
-				}
-				else
-				{
-					sample.frameStatisticsResult =
-						static_cast<int32_t>(statisticsResult);
-					sample.timingStatus =
-						statisticsResult == DXGI_ERROR_UNSUPPORTED ||
-						actualOutput.presentationModel ==
-							LibplaceboOutput::PresentationModel::BITBLT
-						? AlphaPresentationTimingStatus::FrameStatisticsUnavailable
-						: AlphaPresentationTimingStatus::FrameStatisticsFailed;
-				}
-			}
-			record.frameStatsAvailable = sample.available;
-			record.frameStatsDisjoint = sample.disjoint;
-			record.frameStatsResult = sample.frameStatisticsResult;
-			record.observedPresentCount = sample.presentCount;
-			record.observedPresentRefreshCount =
-				sample.presentRefreshCount;
-			record.observedSyncRefreshCount = sample.syncRefreshCount;
-			record.observedSyncQpc = sample.syncQpc;
-			presentationTelemetry.RecordSubmission(record);
-			presentationTelemetry.Observe(sample);
+            const AlphaDxgiPresentationSample sample = ObservePresent(record);
+            if (displayRepeatValid) displayRepeatRecord = record;
 			const AlphaPresentationSnapshot presentationSnapshot =
 				presentationTelemetry.Snapshot();
             const uint64_t correlationNow=GetTickCount64();
@@ -19947,8 +19918,192 @@ releaseDriftBaseRetention =
 		return rendered && submitted;
 	}
 
+    AlphaDxgiPresentationSample ObservePresent(AlphaPresentationRecord& record)
+    {
+        AlphaDxgiPresentationSample sample;
+        sample.generation = record.generation;
+        LARGE_INTEGER frequency{};
+        QueryPerformanceFrequency(&frequency);
+        sample.qpcFrequency = frequency.QuadPart;
+        sample.expectedDisplayHz =
+            renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
+        CComPtr<IDXGISwapChain> nativeSwapchain;
+        nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        if (nativeSwapchain)
+        {
+            UINT lastPresentCount = 0;
+            if (SUCCEEDED(nativeSwapchain->GetLastPresentCount(
+                &lastPresentCount)))
+            {
+                record.presentId = lastPresentCount;
+            }
+
+            DXGI_FRAME_STATISTICS statistics{};
+            const HRESULT statisticsResult =
+                nativeSwapchain->GetFrameStatistics(&statistics);
+            if (statisticsResult == DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
+            {
+                sample.timingStatus =
+                AlphaPresentationTimingStatus::Disjoint;
+                sample.frameStatisticsResult =
+                static_cast<int32_t>(statisticsResult);
+                sample.disjoint = true;
+            }
+            else if (SUCCEEDED(statisticsResult))
+            {
+                sample.timingStatus =
+                AlphaPresentationTimingStatus::Available;
+                sample.available = true;
+                sample.presentCount = statistics.PresentCount;
+                sample.presentRefreshCount =
+                statistics.PresentRefreshCount;
+                sample.syncRefreshCount = statistics.SyncRefreshCount;
+                sample.syncQpc = statistics.SyncQPCTime.QuadPart;
+            }
+            else
+            {
+                sample.frameStatisticsResult =
+                static_cast<int32_t>(statisticsResult);
+                sample.timingStatus =
+                statisticsResult == DXGI_ERROR_UNSUPPORTED ||
+                actualOutput.presentationModel ==
+                    LibplaceboOutput::PresentationModel::BITBLT
+                ? AlphaPresentationTimingStatus::FrameStatisticsUnavailable
+                : AlphaPresentationTimingStatus::FrameStatisticsFailed;
+            }
+        }
+        record.frameStatsAvailable = sample.available;
+        record.frameStatsDisjoint = sample.disjoint;
+        record.frameStatsResult = sample.frameStatisticsResult;
+        record.observedPresentCount = sample.presentCount;
+        record.observedPresentRefreshCount =
+            sample.presentRefreshCount;
+        record.observedSyncRefreshCount = sample.syncRefreshCount;
+        record.observedSyncQpc = sample.syncQpc;
+        presentationTelemetry.RecordSubmission(record);
+        presentationTelemetry.Observe(sample);
+        return sample;
+    }
+
+    void PaceDisplayPresentation()
+    {
+        if (!displayVsyncClock.Active()) return;
+        displayVsyncClock.SkipMissed(SteadyClockNowNs());
+        const auto deadline = SteadyClock::time_point(
+            std::chrono::duration_cast<SteadyClock::duration>(
+                std::chrono::nanoseconds(displayVsyncClock.DeadlineNs())));
+        std::this_thread::sleep_until(deadline);
+    }
+
+    void CacheDisplayFrame(pl_tex output, uint64_t generation,
+        uint64_t viewport, uint64_t revision)
+    {
+        displayRepeatValid = false;
+        if (!activeSettings.presentEveryVsync || temporalRenderer.Active() ||
+            !displayVsyncClock.Active()) return;
+        if (!output || !output->params.blit_src)
+        {
+            displayVsyncClock.Reset();
+            DebugLog::Log("VP display refresh: output cannot be cached; using source-paced presentation");
+            return;
+        }
+        if (!displayFrameCache.Capture(d3d11->gpu, output))
+        {
+            displayVsyncClock.Reset();
+            DebugLog::Log("VP display refresh: cached output allocation failed; using source-paced presentation");
+            return;
+        }
+        displayRepeatRecord = {};
+        displayRepeatRecord.generation = generation;
+        displayRepeatRecord.presentationEpoch = viewport;
+        displayRepeatRevision = revision;
+        displayRepeatValid = true;
+    }
+
+    // Copy final display-referred pixels, including overlays and dithering.
+    // No source buffer, detector, subtitle lease, or temporal history is consumed.
+    bool PresentDisplayRepeat()
+    {
+        if (!displayRepeatValid) return false;
+        pl_swapchain_frame acquired{};
+        pl_tex wrapped = nullptr;
+        CComPtr<ID3D11Texture2D> backbuffer;
+        if (vpOwnedSwapchain)
+        {
+            if (FAILED(vpOwnedSwapchain->GetBuffer(0, IID_PPV_ARGS(&backbuffer))))
+                return false;
+            pl_d3d11_wrap_params params{};
+            params.tex = backbuffer;
+            acquired.fbo = wrapped = pl_d3d11_wrap(d3d11->gpu, &params);
+            if (!wrapped) return false;
+        }
+        else if (!pl_swapchain_start_frame(swapchain, &acquired)) return false;
+        const bool compatible = displayFrameCache.CopyTo(acquired.fbo);
+        if (!compatible && !vpOwnedSwapchain)
+        {
+            // Every libplacebo-acquired target must be consumed, even after an
+            // implicit resize. Never copy pixels from an obsolete output contract.
+            pl_frame target{};
+            pl_frame_from_swapchain(&target, &acquired);
+            const float black[] = {0.0f, 0.0f, 0.0f};
+            pl_frame_clear(d3d11->gpu, &target, black);
+        }
+        const int64_t started = PerformanceCounterNow();
+        bool submitted = false;
+        if (vpOwnedSwapchain)
+        {
+            pl_gpu_flush(d3d11->gpu);
+            pl_tex_destroy(d3d11->gpu, &wrapped);
+            backbuffer.Release();
+            submitted = compatible && vpOwnedSwapchain->Present(1, 0) == S_OK;
+        }
+        else
+        {
+            submitted = pl_swapchain_submit_frame(swapchain);
+            if (submitted) pl_swapchain_swap_buffers(swapchain);
+        }
+        if (!compatible || !submitted)
+        {
+            displayRepeatValid = false;
+            displayVsyncClock.Reset();
+            return false;
+        }
+        AlphaPresentationRecord record = displayRepeatRecord;
+        record.presentId = record.presentedRefresh = 0;
+        record.presented = false;
+        record.presentedQpc = 0;
+        record.submitQpc = started;
+        record.outputPts = displayVsyncClock.SourcePts();
+        record.cadenceRepeat = true;
+        record.renderMs = record.conversionCpuMs = record.sourceUploadCpuMs = 0.0;
+        record.preRender = {};
+        LARGE_INTEGER frequency{};
+        QueryPerformanceFrequency(&frequency);
+        record.swapBlockMs = frequency.QuadPart > 0 ?
+            (PerformanceCounterNow() - started) * 1000.0 / frequency.QuadPart : 0.0;
+        ObservePresent(record);
+        ++successfulPresentCount;
+        ++renderLoadSubmissionSerial;
+        ++displayRefreshRepeats;
+        displayVsyncClock.Submitted();
+        lastFramePacingSubmitQpc = started;
+        // A repeat carries no fresh source/queue timing observation.
+        lastFramePacingStatsAvailable = false;
+        const uint64_t now = GetTickCount64();
+        if (now >= nextDisplayRefreshLogTick)
+        {
+            nextDisplayRefreshLogTick = now + 2000;
+            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu source_analysis=unchanged",
+                renderLoadDisplayRefreshHz.load(), displayRefreshRepeats,
+                displayRefreshDrops, record.generation, record.sourceSequence);
+        }
+        return true;
+    }
+
 	void ResizeLocked(HWND videoHwnd)
 	{
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
 		if (!swapchain)
 			return;
 
@@ -23854,6 +24009,100 @@ void LibplaceboVideoRenderer::RenderLoop()
 	double preRenderActiveMaxMs = 0.0;
 	for (;;)
 	{
+        bool refreshRepeated = false;
+        {
+            std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+            auto& output = *m_impl;
+            auto pendingOutput = [&]() {
+                bool pendingShader = false;
+                {
+                    std::lock_guard<std::mutex> shaderGuard(m_pendingShaderMutex);
+                    pendingShader = !m_pendingShaderSelector.empty();
+                }
+                return pendingShader || output.pendingProfileIntent.HasPending() ||
+                    output.displayLutApplyRequested.load() != output.displayLutApplyConsumed ||
+                    output.resizePending.load(std::memory_order_acquire) ||
+                    output.outputRenegotiationPending.load(std::memory_order_acquire) ||
+                    output.displayRepeatRevision !=
+                        output.startupReadinessRevision.load(std::memory_order_acquire);
+            };
+            if (output.activeSettings.presentEveryVsync && output.displayRepeatValid &&
+                !output.temporalRenderer.Active())
+            {
+                std::unique_lock<std::mutex> queueGuard(m_queueMutex);
+                auto currentOutput = [&]() {
+                    return !m_stopRequested && !m_startupPrefillPending &&
+                        m_queueGeneration == output.displayRepeatRecord.generation &&
+                        output.displayVsyncClock.Matches(m_queueGeneration,
+                            output.renderLoadDisplayRefreshHz.load()) &&
+                        !pendingOutput() && IsWindowVisible(m_videoHwnd) &&
+                        !IsIconic(m_videoHwnd) &&
+                        (m_frameQueue.empty() || !m_frameQueue.front().frame.IsSourceDiscontinuity());
+                };
+                auto pts = [&](const QueuedFrame& queued) {
+                    const auto frequency = m_timingClock ? m_timingClock->TimingClockTicksPerSecond() : 0;
+                    const double rate = m_measuredFrameRate.load();
+                    return frequency > 0 ? static_cast<double>(queued.frame.GetTimingTimestamp()) / frequency :
+                        rate > 0.0 ? queued.sourceSequence / rate :
+                        std::numeric_limits<double>::quiet_NaN();
+                };
+                if (!m_frameQueue.empty() &&
+                    std::isfinite(pts(m_frameQueue.front())) &&
+                    std::abs(pts(m_frameQueue.front()) - output.displayVsyncClock.SourcePts()) > 0.5)
+                {
+                    // Timestamp jumps without an explicit discontinuity flag
+                    // must not hold an old image until a distant future PTS.
+                    output.displayRepeatValid = false;
+                    output.displayVsyncClock.Reset();
+                }
+                if (output.displayRepeatValid && currentOutput())
+                {
+                    output.displayVsyncClock.SkipMissed(SteadyClockNowNs());
+                    // Select the newest due source without consuming configured
+                    // lookahead. Faster input and clock drift cannot grow latency.
+                    while (m_frameQueue.size() > (std::max)(size_t(1), PrefillTargetLocked()) &&
+                        m_frameQueue.size() >= 2 && CanDequeueLocked() &&
+                        !m_frameQueue[0].cadenceRepeat && !m_frameQueue[1].cadenceRepeat &&
+                        !m_frameQueue[1].frame.IsSourceDiscontinuity() &&
+                        output.displayVsyncClock.SourceDue(pts(m_frameQueue[1])))
+                    {
+                        m_activePictureTimeline.MarkDiscarded(
+                            m_frameQueue.front().activePictureIdentity,
+                            m_frameQueue.front().frame.GetCounter(), ActivePictureDiscardReason::BacklogRecovery);
+                        m_frameQueue.front().frame.SourceBufferRelease();
+                        m_frameQueue.pop_front();
+                        m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+                        ++output.displayRefreshDrops;
+                    }
+                    auto sourceDue = [&]() {
+                        return CanDequeueLocked() &&
+                            (m_frameQueue.front().cadenceRepeat ||
+                             output.displayVsyncClock.SourceDue(pts(m_frameQueue.front())));
+                    };
+                    if (!sourceDue())
+                    {
+                        queueGuard.unlock();
+                        output.PaceDisplayPresentation();
+                        queueGuard.lock();
+                        // Reset/stop and a newly ready source can arrive during
+                        // pacing. Recheck before acquiring any backbuffer.
+                        const bool repeat = currentOutput() && !sourceDue();
+                        queueGuard.unlock();
+                        if (repeat) refreshRepeated = output.PresentDisplayRepeat();
+                    }
+                }
+                else
+                {
+                    output.displayRepeatValid = false;
+                    output.displayVsyncClock.Reset();
+                }
+            }
+        }
+        if (refreshRepeated)
+        {
+            m_queueChanged.notify_all();
+            continue;
+        }
 		VideoFrame frame;
 		VideoStateComPtr state;
 		std::shared_ptr<const QueuedFrame::ConvertedPayload> convertedPayload;
@@ -24539,7 +24788,16 @@ void LibplaceboVideoRenderer::RenderLoop()
                     state&&state->displayMode&&state->displayMode->IsInterlaced(),
                     state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
                     temporalCaptureEpoch,sourceSequence,sourcePts,frame.IsSourceDiscontinuity(),
-                    sourceSubtitleComposition,cadenceRepeat);
+                    sourceSubtitleComposition,cadenceRepeat,m_impl->activeSettings.presentEveryVsync);
+                if (m_impl->activeSettings.presentEveryVsync && !m_impl->temporalRenderer.Active())
+                    m_impl->displayVsyncClock.BeginSource(sourcePts, SteadyClockNowNs(),
+                        frameGeneration, m_impl->renderLoadDisplayRefreshHz.load(),
+                        frame.IsSourceDiscontinuity());
+                else
+                {
+                    m_impl->displayVsyncClock.Reset();
+                    m_impl->displayRepeatValid = false;
+                }
                 const auto motionOutputs=m_impl->temporalRenderer.outputs;
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 SourceUploadBatch sourceUploadBatch;

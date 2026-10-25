@@ -1274,6 +1274,15 @@ namespace RendererProfileConfig
 			return false;
 		}
 
+        std::string refreshPresentationText;
+        bool refreshPresentation = false;
+        if (config.TryGetString("general", "present_every_vsync", refreshPresentationText) &&
+            !config.TryGetBool("general", "present_every_vsync", refreshPresentation))
+        {
+            error = "general present_every_vsync must be true or false";
+            return false;
+        }
+
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
         for (const auto& section : config.GetSectionNames())
@@ -1888,6 +1897,15 @@ namespace RendererProfileConfig
 			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
+        std::string refreshPresentationText;
+        bool refreshPresentation = false;
+        if (config.TryGetString("general", "present_every_vsync", refreshPresentationText) &&
+            !config.TryGetBool("general", "present_every_vsync", refreshPresentation))
+        {
+            error = "general present_every_vsync must be true or false";
+            return false;
+        }
+
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
         for (const auto& section : config.GetSectionNames())
@@ -1937,6 +1955,7 @@ namespace RendererProfileConfig
 		std::string value;
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
 			ConfigSchema::Boolean("persist_profile_selection"),
+			ConfigSchema::Boolean("present_every_vsync"),
 			ConfigSchema::Choice("profile_update_mode",
 				{ "rebuild", "live", "never" }),
 			ConfigSchema::Boolean("live_profile_updates"),

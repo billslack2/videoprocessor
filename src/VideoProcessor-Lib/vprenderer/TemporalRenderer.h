@@ -195,7 +195,7 @@ public:
     double DelayMs() const{return Active()?delay*sourceDuration*1000.0:0;}
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
         bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
-        bool sourceSubtitleComposition=false,bool cadenceRepeat=false) {
+        bool sourceSubtitleComposition=false,bool cadenceRepeat=false,bool presentEveryVsync=false) {
         outputs.clear();skipOutput=false;currentPts=pts;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
@@ -238,7 +238,8 @@ public:
         }
         // Without a measured display rate, deinterlacing uses its own nominal
         // field/frame clock. Mixing never guesses the display cadence.
-        const double outputHz=mixing?displayHz:(displayHz>0?(std::min)(nominalHz,displayHz):nominalHz);
+        const double outputHz=(mixing||presentEveryVsync)&&displayHz>0?displayHz:
+            (displayHz>0?(std::min)(nominalHz,displayHz):nominalHz);
         displayDuration=1.0/outputHz;
         const double start=pts-delay*sourceDuration;
         if(!initialized){nextOutput=start;initialized=true;}
