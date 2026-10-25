@@ -4862,6 +4862,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleLeftLastDetectionTick = 0;
 	uint64_t scopeSubtitleRightLastDetectionTick = 0;
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
+    AlphaSourceCrop::OffBarContentFitState offBarContentFitState;
     // Fresh classified bar evidence, independent of retained/extreme FIT state.
     AlphaSourceCrop::VerticalBarContentInput scopeCurrentVerticalContent{};
     AlphaSourceCrop::VerticalBarContentDecision scopeCurrentVerticalDecision{};
@@ -14954,7 +14955,7 @@ struct LibplaceboVideoRenderer::Impl
             ? captionFitWorkerProof.candidate : ActivePictureBounds{};
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
 		auto configureViewport =
-			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
+			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, &pixelMeasurements, width, height, frameGeneration, sourceSequence,
 			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
@@ -16960,19 +16961,79 @@ releaseDriftBaseRetention =
                     cropDecision.sourceBounds.left,cropDecision.sourceBounds.top,cropDecision.sourceBounds.right,cropDecision.sourceBounds.bottom,
                     cropDecision.verticalTranslationPixels);
 
+            // Off's source owner is intentionally independent of generic displayed-
+            // envelope recovery. Keep both active fit and released/native decisions.
+            const auto offType=activeSettings.subtitleProfileSettings.find("type");
+            AlphaSourceCrop::OffBarContentFitInput offInput;
+            offInput.previous=offBarContentFitState;
+            offInput.enabled=activeSettings.subtitleProfileSelected &&
+                offType!=activeSettings.subtitleProfileSettings.end() &&
+                ConfigFile::NormalizeName(offType->second)=="off" &&
+                subtitlePreviewMode==SubtitlePreviewMode::None && automaticSourceCrop &&
+                configuredScreenActive && !fixedCropAspectConfigured;
+            offInput.nativeAvailable=effectiveGeometryAvailable && !useSceneVerificationGeometry &&
+                effectiveGeometrySourceGeneration==frameGeneration &&
+                effectiveClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                !pictureTransitionHandoff.active &&
+                !(fullRasterPresentationAuthorityAvailable && fullRasterPresentationAuthoritySourceGeneration==frameGeneration);
+            offInput.nativeBase=effectiveGeometry;
+            offInput.sourceGeneration=frameGeneration; offInput.sourceSequence=sourceSequence;
+            offInput.sourceTick=episodeInput.currentTick; offInput.viewportEpoch=viewportRequestSerial;
+            offInput.policyGeneration=localBoundaryPolicyGeneration;
+            offInput.continuityGeneration=localBoundaryContinuityGeneration; offInput.holdMs=scopeSubtitleHoldMs;
+            if (offInput.enabled && offInput.nativeAvailable && analysisSource.IsValid())
+            {
+                // Inspect the exact immutable source/native base, including frames
+                // skipped by legacy scheduling. Matching reference scans reuse
+                // the cache; no geometry is copied from displayed output.
+                const auto retention=pixelMeasurements.Retention(effectiveGeometry);
+                const auto dense=pixelMeasurements.SubtitleContent(effectiveGeometry,retention.presentationBlackFloor);
+                auto denseBounds=effectiveGeometry;
+                if (dense.upper) denseBounds.top=dense.upperTop;
+                if (dense.lower) denseBounds.bottom=dense.lowerBottom;
+                offInput.measurement=AlphaSourceCrop::MeasureOffBarContentFit(effectiveGeometry,
+                    retention,denseBounds,dense.upper || dense.lower,std::max(8,height/90));
+            }
+            const auto offFit=AlphaSourceCrop::ResolveOffBarContentFit(offInput);
+            offBarContentFitState=offFit.state;
+            if (offFit.available)
+            {
+                cropDecision=offFit.presentation;
+                admissionDecision.blocked=false;
+                admissionDecision.presentation=cropDecision;
+                admissionDecision.state.available=true;
+                admissionDecision.state.trustedCrop=effectiveGeometry;
+                admissionDecision.state.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                admissionDecision.state.sourceGeneration=frameGeneration;
+                admissionDecision.state.presentationEpoch=viewportRequestSerial;
+                admissionDecision.state.outwardPresentationAvailable=offFit.active;
+                admissionDecision.state.outwardPresentation=cropDecision.sourceBounds;
+                admissionDecision.state.presentationSourceSequence=sourceSequence;
+                cropPresentationAdmission=admissionDecision.state;
+                temporalPolicySubmittedScopeContinuityRetention=false;
+                temporalPolicyStartupPoseQualified=true;
+                // Do not alter native detector/recovery history. Only the final
+                // local presentation inputs below yield to this source owner.
+                cropInput.geometry=effectiveGeometry;
+                cropInput.geometrySourceGeneration=frameGeneration;
+            }
+
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect = AnamorphicPresentation::PhysicalTarget(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect, anamorphicScale);
-            const bool retainedNativePresentation = uncertainPicture.retained && !uncertainPicture.expanded;
+            const bool retainedNativePresentation = offFit.available ? !offFit.active :
+                uncertainPicture.retained && !uncertainPicture.expanded;
 			const bool nlsPresentationFailOpen = nlsRequested &&
-                (uncertainPicture.expanded || (!retainedNativePresentation &&
+                (offFit.active || (!offFit.available && (uncertainPicture.expanded || (!retainedNativePresentation &&
 				(cropInput.presentationFailOpen ||
                  (cropInput.movingPictureTransition &&
                   (!cropDecision.applyCrop || cropDecision.owner != AlphaSourceCrop::DecisionOwner::MOVING_PICTURE_HOLD)) ||
                  nearBlackEpisodeFullRaster ||
-				 cropPresentationRecovery.active || admissionDecision.blocked)));
-            const auto& nlsPictureGeometry = retainedNativePresentation
-                ? uncertainPicture.nativeCrop : effectiveGeometry;
+				 cropPresentationRecovery.active || admissionDecision.blocked)))));
+            const auto& nlsPictureGeometry = offFit.available ? effectiveGeometry :
+                (retainedNativePresentation ? uncertainPicture.nativeCrop : effectiveGeometry);
 			const bool nlsActivePictureAvailable = nlsRequested &&
 				!nlsPresentationFailOpen && (retainedNativePresentation ||
                 (effectiveGeometryAvailable && effectiveGeometrySourceGeneration == frameGeneration));
@@ -17017,6 +17078,7 @@ releaseDriftBaseRetention =
             finalFillInput.configured = configuredFillInput;
             finalFillInput.crop = cropInput;
             finalFillInput.presentation = cropDecision;
+            finalFillInput.offBarContentFit = offFit.active;
             finalFillInput.evidence = recoveryInput;
             finalFillInput.uncertainPicture = uncertainPicture;
             finalFillInput.fixedCropAspectConfigured = fixedCropAspectConfigured;
@@ -17067,6 +17129,14 @@ releaseDriftBaseRetention =
                 verticalFailOpen || outwardExpansionInvalid ||
                 movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
                 pictureTransitionHandoff.active;
+            if (offFit.available)
+            {
+                finalFillInput.uncertainPicture={};
+                finalFillInput.recoveryBoundedPresentation=false;
+                finalFillInput.nearBlackBoundedPresentation=false;
+                finalFillInput.nearBlackRetainedScopeFallback=false;
+                finalFillInput.nearBlackFailOpenProposal=false;
+            }
             AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill =
                 AlphaSourceCrop::EvaluateFinalAspectLimitFill(finalFillInput);
             AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
@@ -17131,7 +17201,7 @@ releaseDriftBaseRetention =
                 scopeSubtitleEvidenceSourceGeneration != frameGeneration;
             const auto captionHoldDecision =
                 AlphaSourceCrop::EvaluateCaptionConfirmationPresentationHold(captionHoldInput);
-            const bool captionPresentationHeld = captionHoldDecision.hold && !unknownCaptionHold.retained;
+            const bool captionPresentationHeld = !offFit.available && captionHoldDecision.hold && !unknownCaptionHold.retained;
             if (captionPresentationHeld)
             {
                 // Substitute only the final source rectangle, after all admission
@@ -17179,7 +17249,8 @@ releaseDriftBaseRetention =
             cropPresentationAdmission.optionalFillApplied = CanRecordSubtitleOptionalAspectFill(
                 cropInput,cropDecision,aspectLimitFill,subtitlePreviewMode,
                 captionPresentationHeld || unknownCaptionHold.retained,fixedCropAspectConfigured,nlsRequested,
-                protectedCaptionFit,recoveryDecision.state.active,episodeInput.trustedCropOrigin);
+                protectedCaptionFit,!offFit.available && recoveryDecision.state.active,
+                offFit.available ? ActivePictureAuthorityOrigin::NATIVE : episodeInput.trustedCropOrigin);
             cropPresentationAdmission.optionalFillRetained =
                 cropPresentationAdmission.optionalFillApplied && aspectLimitFill.retainedSubmittedFill;
             cropPresentationAdmission.optionalFillSourceBounds = cropPresentationAdmission.optionalFillApplied
@@ -17693,7 +17764,7 @@ releaseDriftBaseRetention =
                 temporalPolicyPresentation.verifiedVisible={visible.left,visible.top,
                     visible.right,visible.bottom};
             }
-            if (cropDecision.applyCrop || aspectLimitFill.applied)
+            if (cropDecision.applyCrop || aspectLimitFill.applied || offFit.available)
 			{
 				source.crop.x0 = static_cast<float>(
 					presentationCropBounds.left);
@@ -17725,13 +17796,13 @@ releaseDriftBaseRetention =
 			const NlsSourceGeometry finalSourceGeometry =
 				nlsOwnsPresentationGeometry ? nlsCandidateSourceGeometry :
 				ResolveNlsSourceGeometry(
-					cropDecision.applyCrop || aspectLimitFill.applied,
+					cropDecision.applyCrop || aspectLimitFill.applied || offFit.available,
 					presentationCropBounds.left,
 					presentationCropBounds.top,
 					presentationCropBounds.right,
 					presentationCropBounds.bottom,
 					width, height);
-			if ((nlsOwnsPresentationGeometry || cropDecision.applyCrop ||
+			if ((nlsOwnsPresentationGeometry || cropDecision.applyCrop || offFit.available ||
 				aspectLimitFill.applied) && finalSourceGeometry.valid)
 			{
 				source.crop.x0 = static_cast<float>(finalSourceGeometry.left);
@@ -17948,7 +18019,13 @@ releaseDriftBaseRetention =
 						nlsRule.aspectTolerancePercent,
 						nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
 						nlsRule.maximumStretchRatio);
-				if (nlsPresentationFailOpen)
+				if (offFit.active)
+                {
+                    finalNlsDecision.mode=NlsMappingMode::SAFE_FIT;
+                    finalNlsDecision.stretchRatio=1.0;
+                    finalNlsDecision.reason="Off bar content uses linear fit";
+                }
+                else if (nlsPresentationFailOpen)
 					finalNlsDecision.reason =
 						"presentation fail-open suppresses NLS geometry";
 				else if (!finalBoundsAuthoritative)

@@ -3876,6 +3876,104 @@ namespace AlphaSourceCrop
 		return true;
 	}
 
+    OffBarContentMeasurement MeasureOffBarContentFit(const ActivePictureBounds& native,
+        const ActivePicturePresentationRetentionEvidence& retention,
+        const ActivePictureBounds& dense, bool denseAvailable, int densePadding)
+    {
+        OffBarContentMeasurement result;
+        const int width=native.rasterWidth, height=native.rasterHeight;
+        if (!ValidBounds(native,width,height) || !retention.analysisValid || !retention.presentationValid)
+            return result;
+        auto bounds=native;
+        if (retention.outwardVisibleBoundsAvailable &&
+            ValidBounds(retention.outwardVisibleBounds,width,height) &&
+            ContainedBounds(retention.outwardVisibleBounds,native))
+            bounds=retention.outwardVisibleBounds; // Already has the raw scan's margins.
+        else if (!retention.excludedBandsPixelSafe)
+            bounds={0,0,width,height,width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+        // A complete unsafe scan without bounded extent is positive fail-open
+        // coverage, never a negative observation. Dense evidence cannot narrow it.
+        if (denseAvailable && ValidBounds(dense,width,height) && ContainedBounds(dense,native))
+        {
+            const int padding=std::max(0,densePadding);
+            if (dense.top<native.top) bounds.top=std::min(bounds.top,std::max(0,dense.top-padding));
+            if (dense.bottom>native.bottom) bounds.bottom=std::max(bounds.bottom,std::min(height,dense.bottom+padding));
+        }
+        bounds.left &= ~1; bounds.top &= ~1;
+        bounds.right=std::min(width,(bounds.right+1)&~1);
+        bounds.bottom=std::min(height,(bounds.bottom+1)&~1);
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+        bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        result.available=true; result.bounds=bounds;
+        return result;
+    }
+
+    OffBarContentFitDecision ResolveOffBarContentFit(const OffBarContentFitInput& input)
+    {
+        OffBarContentFitDecision result;
+        const auto& native=input.nativeBase;
+        const int width=native.rasterWidth, height=native.rasterHeight;
+        if (!input.enabled || !input.nativeAvailable || !input.sourceGeneration ||
+            !input.sourceSequence || !input.sourceTick || !ValidBounds(native,width,height) ||
+            !HasAuthorityForCroppedAxes(native,width,height) ||
+            !CropEdgesAreChromaAligned(native,width,height) || native.trustedBarAxes==ActivePictureBounds::BarAxes::NONE)
+            return result;
+        const auto& previous=input.previous;
+        const bool same=previous.available && SameTrustedCropContract(previous.nativeBase,native) &&
+            previous.sourceGeneration==input.sourceGeneration && previous.viewportEpoch==input.viewportEpoch &&
+            previous.policyGeneration==input.policyGeneration && previous.continuityGeneration==input.continuityGeneration &&
+            previous.holdMs==input.holdMs;
+        if (same) result.state=previous;
+        if (same && (input.sourceSequence<previous.lastSourceSequence || input.sourceTick<previous.lastSourceTick))
+            return result; // Leave current state intact; old work cannot author a source decision.
+        const bool duplicate=same && input.sourceSequence==previous.lastSourceSequence;
+        const bool measured=input.measurement.available && ValidBounds(input.measurement.bounds,width,height) &&
+            CropEdgesAreChromaAligned(input.measurement.bounds,width,height) &&
+            ContainedBounds(input.measurement.bounds,native);
+        if (!same && !measured) return result;
+        auto& state=result.state;
+        if (!same) { state.nativeBase=native; state.bounds=native; }
+        if (!duplicate)
+        {
+            // Unknown inspection advances source ordering, not evidence deadlines.
+            // It never renews, releases, or invents an envelope.
+            state.lastSourceSequence=input.sourceSequence; state.lastSourceTick=input.sourceTick;
+            if (measured)
+            {
+                const std::array<int,4> base{{native.left,native.top,native.right,native.bottom}};
+                const auto& current=input.measurement.bounds;
+                const std::array<int,4> fresh{{current.left,current.top,current.right,current.bottom}};
+                const std::array<int,4> prior{{state.bounds.left,state.bounds.top,state.bounds.right,state.bounds.bottom}};
+                auto selected=fresh;
+                for (size_t edge=0;edge<4;++edge)
+                {
+                    const bool outward=edge<2 ? fresh[edge]<base[edge] : fresh[edge]>base[edge];
+                    const bool reaches=edge<2 ? fresh[edge]<=prior[edge] : fresh[edge]>=prior[edge];
+                    const uint64_t tick=state.extentTicks[edge];
+                    if (outward && reaches) state.extentTicks[edge]=input.sourceTick;
+                    else if (same && input.holdMs && tick && input.sourceTick>=tick &&
+                        input.sourceTick-tick<input.holdMs)
+                        selected[edge]=prior[edge];
+                    else state.extentTicks[edge]=outward ? input.sourceTick : 0;
+                }
+                state.bounds={selected[0],selected[1],selected[2],selected[3],width,height,0.0,
+                    ActivePictureBounds::BarAxes::NONE};
+                state.bounds.aspectRatio=double(selected[2]-selected[0])/std::max(1,selected[3]-selected[1]);
+            }
+        }
+        state.available=true; state.nativeBase=native; state.sourceGeneration=input.sourceGeneration;
+        state.viewportEpoch=input.viewportEpoch; state.policyGeneration=input.policyGeneration;
+        state.continuityGeneration=input.continuityGeneration; state.holdMs=input.holdMs;
+        result.available=true; result.active=!SameBounds(state.bounds,native);
+        auto& presentation=result.presentation;
+        presentation.sourceBounds=state.bounds;
+        presentation.applyCrop=state.bounds.left!=0 || state.bounds.top!=0 || state.bounds.right!=width || state.bounds.bottom!=height;
+        presentation.outwardExpanded=result.active;
+        presentation.owner=result.active ? DecisionOwner::OUTWARD_FIT : DecisionOwner::TRUSTED_CROP;
+        presentation.reason=result.active ? "Off source content fit" : "Off source content released";
+        return result;
+    }
+
     ConfirmedFitOwnershipEvidence QualifyConfirmedFitOwnership(
         const ConfirmedFitOwnershipInput& input)
     {
@@ -6209,6 +6307,11 @@ namespace AlphaSourceCrop
             fixed.fixedAspect = input.fixedCropAspect;
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
+        }
+        if (input.offBarContentFit)
+        {
+            result.reason = "Off bar content preserves the complete fitted envelope";
+            return result;
         }
         const auto& submittedFillAnchor = input.evidence.submittedScopeAnchor;
         if (input.currentConfirmedPresentationConflict && input.presentation.applyCrop &&

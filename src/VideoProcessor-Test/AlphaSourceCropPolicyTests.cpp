@@ -16705,4 +16705,231 @@ public:
         }
     };
 
+    TEST_CLASS(OffBarContentFitTests)
+    {
+        static ActivePictureBounds Base()
+        {
+            return {0,272,3840,1888,3840,2160,3840.0/1616,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        }
+        static ActivePictureBounds Extent(int bottom)
+        {
+            auto b=Base();b.bottom=bottom;b.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;return b;
+        }
+        static OffBarContentFitInput Frame(uint64_t sequence=42,uint64_t tick=1000,uint64_t hold=2000)
+        {
+            OffBarContentFitInput i;i.enabled=i.nativeAvailable=true;i.nativeBase=Base();
+            i.sourceGeneration=2;i.sourceSequence=sequence;i.sourceTick=tick;
+            i.viewportEpoch=5;i.policyGeneration=7;i.continuityGeneration=8;i.holdMs=hold;
+            i.measurement={true,Extent(1974)};return i;
+        }
+        struct Selected { Decision view; CropPresentationAdmissionState admission; uint64_t sequence=0; };
+        static std::vector<int> Replay(bool applyOwner,uint64_t hold=2000)
+        {
+            const auto native=Base();
+            SubmittedNativeScopeAnchor anchor;anchor.available=true;anchor.crop=native;
+            anchor.sourceGeneration=2;anchor.presentationEpoch=5;
+            anchor.lastSubmittedSourceSequence=41;anchor.lastSubmittedPresentationSourceSequence=41;
+            anchor.submittedEnvelopeAvailable=true;anchor.submittedEnvelope=Extent(2068);anchor.submittedEnvelopeSourceSequence=41;
+            CropPresentationAdmissionState admission;admission.available=true;admission.trustedCrop=native;
+            admission.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;admission.sourceGeneration=2;admission.presentationEpoch=5;
+            Selected pending;pending.view.sourceBounds=Extent(1974);pending.view.applyCrop=pending.view.outwardExpanded=true;
+            pending.view.owner=DecisionOwner::OUTWARD_FIT;pending.sequence=42;pending.admission=admission;
+            pending.admission.outwardPresentationAvailable=true;pending.admission.outwardPresentation=pending.view.sourceBounds;
+            pending.admission.presentationSourceSequence=42;
+            OffBarContentFitState owner;PresentationRecoveryState recovery;
+            std::vector<int> outputs;
+            for(uint64_t sequence=43;sequence<151;++sequence)
+            {
+                PresentationRecoveryInput r;r.crop=TrustedScopeCrop();r.crop.geometry=native;
+                r.crop.frameSourceGeneration=r.crop.geometrySourceGeneration=2;
+                r.crop.frameSourceSequence=sequence;r.crop.framePresentationEpoch=r.presentationEpoch=5;
+                r.crop.latestObservationSupportsCrop=false;r.crop.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                r.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                r.crop.outwardPresentationActive=r.crop.outwardExpansionAvailable=true;
+                r.crop.outwardExpansion=Extent(1974);r.crop.outwardExpansionSourceGeneration=2;
+                r.crop.currentVisibleBoundsAvailable=true;r.crop.currentVisibleBase=native;
+                r.crop.currentVisibleBounds=Extent(1950);
+                r.crop.currentVisibleSourceGeneration=2;r.crop.currentVisibleSourceSequence=sequence;
+                r.measurementCurrent=r.retentionEvaluated=r.observationAvailable=true;
+                r.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                r.observation=r.observedTrustedCrop=r.retentionBounds=native;
+                r.retentionSourceGeneration=2;r.retentionSourceSequence=sequence;
+                r.currentTick=1000+(sequence-43)*42;r.nearBlackEvaluated=true;
+                r.previousAdmission=admission;r.previous=recovery;r.submittedScopeAnchor=anchor;
+                r.candidate=Evaluate(r.crop);
+                if(sequence%6==0)
+                {
+                    ConfirmedFitOwnershipInput proof;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
+                    proof.current=proof.confirmed=true;proof.nativeBase=native;proof.approvedBounds=Extent(1974);
+                    proof.evidenceBounds=Extent(1950);proof.lowerContent=true;proof.verticalPadding=24;
+                    proof.sourceGeneration=2;proof.sourceSequence=sequence;proof.presentationEpoch=5;
+                    r.confirmedFitOwnership=QualifyConfirmedFitOwnership(proof);
+                }
+                const auto recovered=EvaluatePresentationRecovery(r);recovery=recovered.state;
+                const auto admitted=AdmitCropPresentation(admission,r.crop,recovered.presentation,5);
+                const auto uncertain=ResolveUncertainPicturePresentation(r,admitted.presentation);
+                auto view=uncertain.presentation;
+                auto off=Frame(sequence,r.currentTick,hold);off.previous=owner;
+                const auto decision=ResolveOffBarContentFit(off);owner=decision.state;
+                if(applyOwner) view=decision.presentation;
+                FinalAspectLimitFillInput fill;fill.crop=r.crop;fill.presentation=view;fill.evidence=r;
+                fill.uncertainPicture=applyOwner ? UncertainPicturePresentationDecision{} : uncertain;
+                fill.offBarContentFit=applyOwner && decision.active;
+                fill.configuredScreenActive=true;fill.configured.screenAspect=2.35;
+                const auto final=EvaluateFinalAspectLimitFill(fill);
+                Selected current;current.view=view;current.sequence=sequence;current.admission=admitted.state;
+                current.admission.available=true;current.admission.trustedCrop=native;
+                current.admission.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                current.admission.sourceGeneration=2;current.admission.presentationEpoch=5;
+                current.admission.outwardPresentationAvailable=true;current.admission.outwardPresentation=view.sourceBounds;
+                current.admission.presentationSourceSequence=sequence;
+                if(final.applied) current.view.sourceBounds=final.sourceBounds;
+                // Exactly the observed pipeline order: prepare n, then commit n-1.
+                SubmittedNativeScopeAnchorUpdateInput commit;commit.previous=anchor;
+                commit.nativeCropAvailable=true;commit.nativeCrop=native;commit.sourceGeneration=2;
+                commit.sourceSequence=pending.sequence;commit.presentationEpoch=5;
+                commit.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                commit.selectedAdmission=pending.admission;commit.selectedOwner=pending.view.owner;
+                commit.submittedBounds=pending.view.sourceBounds;commit.frameSubmitted=true;
+                anchor=CommitSubmittedNativeScopeAnchor(commit);
+                if(sequence>43)outputs.push_back(pending.view.sourceBounds.bottom);
+                pending=current;admission=current.admission;
+            }
+            return outputs;
+        }
+    public:
+        TEST_METHOD(RecoveryReplayDemonstratesCompetingSubmittedEnvelopeTracks)
+        {
+            const auto legacy=Replay(false);bool sawNearer=false,sawLarger=false;
+            for(int bottom:legacy){sawNearer|=bottom==1974;sawLarger|=bottom==2068;}
+            Assert::IsTrue(sawNearer && sawLarger,L"The control must reproduce both competing submitted envelopes.");
+        }
+        TEST_METHOD(OffSourceOwnerStopsDelayedOutputFromAlternatingFinalFit)
+        {
+            for(uint64_t hold:{0ull,2000ull})
+            for(int bottom:Replay(true,hold))
+            {
+                Assert::AreEqual(1974,bottom,L"Skipped dense scans and delayed submit cannot replace the Off source owner.");
+                const auto fitted=FitAspect(3840.0/(bottom-272),{0,0,2560,1089},VerticalPictureAlignment::CENTER);
+                const auto expected=FitAspect(3840.0/1702,{0,0,2560,1089},VerticalPictureAlignment::CENTER);
+                Assert::IsTrue(fitted.valid && std::abs(fitted.picture.left-expected.picture.left)<0.01);
+            }
+        }
+        TEST_METHOD(VisibleContentIsStableWithZeroFractionalAndPositiveHold)
+        {
+            for(uint64_t hold:{0ull,250ull,2000ull,5250ull})
+            {
+                auto i=Frame(42,1000,hold);
+                for(uint64_t sequence=42;sequence<180;++sequence)
+                {
+                    i.sourceSequence=sequence;i.sourceTick=1000+(sequence-42)*42;
+                    const auto d=ResolveOffBarContentFit(i);i.previous=d.state;
+                    Assert::IsTrue(d.available && d.active);Assert::AreEqual(1974,d.presentation.sourceBounds.bottom);
+                }
+            }
+        }
+        TEST_METHOD(PositiveHoldBridgesGapsRearmsOnlyFromSourceAndReleasesOnce)
+        {
+            auto i=Frame();i.previous=ResolveOffBarContentFit(i).state;
+            i.sourceSequence=43;i.sourceTick=2999;i.measurement={true,Base()};
+            auto d=ResolveOffBarContentFit(i);Assert::IsTrue(d.active);i.previous=d.state;
+            i.sourceSequence=44;i.sourceTick=3000;i.measurement={true,Extent(1974)};
+            d=ResolveOffBarContentFit(i);i.previous=d.state;
+            i.sourceSequence=45;i.sourceTick=4999;i.measurement={true,Base()};
+            d=ResolveOffBarContentFit(i);Assert::IsTrue(d.active);i.previous=d.state;
+            i.sourceSequence=46;i.sourceTick=5000;
+            d=ResolveOffBarContentFit(i);Assert::IsTrue(d.available && !d.active);i.previous=d.state;
+            for(uint64_t s=47;s<60;++s){i.sourceSequence=s;i.sourceTick+=42;d=ResolveOffBarContentFit(i);i.previous=d.state;Assert::IsFalse(d.active);}
+        }
+        TEST_METHOD(UnknownAndDuplicateScansCannotReleaseOrRenewEvidence)
+        {
+            auto i=Frame();const auto first=ResolveOffBarContentFit(i);i.previous=first.state;
+            i.sourceTick=6000;const auto duplicate=ResolveOffBarContentFit(i);
+            Assert::AreEqual(uint64_t(1000),duplicate.state.extentTicks[3]);
+            i.sourceSequence=43;i.sourceTick=6001;i.measurement={};
+            auto d=ResolveOffBarContentFit(i);Assert::IsTrue(d.active);Assert::AreEqual(uint64_t(1000),d.state.extentTicks[3]);
+            i.previous=d.state;i.sourceSequence=44;i.sourceTick=6002;i.measurement={true,Base()};
+            d=ResolveOffBarContentFit(i);Assert::IsTrue(d.available && !d.active);
+            i.previous=d.state;i.sourceSequence=45;i.sourceTick=6003;i.measurement={};
+            Assert::IsFalse(ResolveOffBarContentFit(i).active,L"Unknown after release cannot resurrect old displayed content.");
+            i.sourceSequence=42;i.sourceTick=1000;i.measurement={true,Extent(2068)};
+            d=ResolveOffBarContentFit(i);Assert::IsFalse(d.available);Assert::AreEqual(uint64_t(44),d.state.lastSourceSequence);
+        }
+        TEST_METHOD(ZeroHoldReleasesOnNextReliableNegativeAndNotUnknown)
+        {
+            auto i=Frame(42,1000,0);i.previous=ResolveOffBarContentFit(i).state;
+            i.sourceSequence=43;i.sourceTick=1042;i.measurement={};
+            auto d=ResolveOffBarContentFit(i);Assert::IsTrue(d.active);i.previous=d.state;
+            i.sourceSequence=44;i.sourceTick=1084;i.measurement={true,Base()};
+            d=ResolveOffBarContentFit(i);Assert::IsTrue(d.available && !d.active);
+        }
+        TEST_METHOD(EachOuterExtentExpiresIndependentlyAndFartherPixelsWin)
+        {
+            auto i=Frame();i.measurement.bounds.top=180;i.measurement.bounds.bottom=2068;
+            i.previous=ResolveOffBarContentFit(i).state;
+            i.sourceSequence=43;i.sourceTick=1500;i.measurement={true,Extent(1974)};
+            auto d=ResolveOffBarContentFit(i);Assert::AreEqual(180,d.presentation.sourceBounds.top);
+            Assert::AreEqual(2068,d.presentation.sourceBounds.bottom);i.previous=d.state;
+            i.sourceSequence=44;i.sourceTick=3000;
+            d=ResolveOffBarContentFit(i);Assert::AreEqual(272,d.presentation.sourceBounds.top);
+            Assert::AreEqual(1974,d.presentation.sourceBounds.bottom);i.previous=d.state;
+            i.sourceSequence=45;i.sourceTick=3042;i.measurement= {true,Extent(2102)};
+            d=ResolveOffBarContentFit(i);Assert::AreEqual(2102,d.presentation.sourceBounds.bottom);
+        }
+        TEST_METHOD(ContextChangesAndDisabledOtherStylesCannotBorrowOffOwner)
+        {
+            auto i=Frame();i.previous=ResolveOffBarContentFit(i).state;
+            for(int change=0;change<8;++change)
+            {
+                auto x=i;x.sourceSequence=43;x.sourceTick=1042;x.measurement={};
+                if(change==0)x.enabled=false;if(change==1)x.nativeAvailable=false;
+                if(change==2)++x.sourceGeneration;if(change==3)++x.viewportEpoch;
+                if(change==4)++x.policyGeneration;if(change==5)++x.continuityGeneration;
+                if(change==6)++x.holdMs;if(change==7)x.nativeBase.top+=2;
+                Assert::IsFalse(ResolveOffBarContentFit(x).available);
+            }
+        }
+        TEST_METHOD(AnyBarAndFullRasterFitKeepNativeAuthoritySeparate)
+        {
+            for(int edge=0;edge<5;++edge)
+            {
+                auto i=Frame(42,1000,0);i.nativeBase={200,272,3640,1888,3840,2160,0,ActivePictureBounds::BarAxes::BOTH};
+                auto visible=i.nativeBase;visible.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                if(edge==0)visible.left=80;if(edge==1)visible.right=3780;
+                if(edge==2)visible.top=100;if(edge==3)visible.bottom=2080;
+                if(edge==4)visible={0,0,3840,2160,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+                i.measurement={true,visible};const auto d=ResolveOffBarContentFit(i);
+                Assert::IsTrue(d.available && d.active);Assert::AreEqual(200,d.state.nativeBase.left);
+                Assert::AreEqual(edge!=4,d.presentation.applyCrop);
+                Assert::IsFalse(d.presentation.verticallyTranslated);
+            }
+        }
+        TEST_METHOD(RawVisibilityCannotBeNarrowedByDenseSubtitleScan)
+        {
+            ActivePicturePresentationRetentionEvidence r;r.analysisValid=r.presentationValid=true;
+            r.outwardVisibleBoundsAvailable=true;r.outwardVisibleBounds=Extent(2068);
+            auto measured=MeasureOffBarContentFit(Base(),r,Extent(1950),true,24);
+            Assert::IsTrue(measured.available);Assert::AreEqual(2068,measured.bounds.bottom);
+            r.outwardVisibleBounds=Extent(1930);
+            measured=MeasureOffBarContentFit(Base(),r,Extent(1950),true,24);
+            Assert::AreEqual(1974,measured.bounds.bottom);
+            r.outwardVisibleBoundsAvailable=false;
+            measured=MeasureOffBarContentFit(Base(),r,Extent(1950),true,24);
+            Assert::AreEqual(2160,measured.bounds.bottom);Assert::AreEqual(0,measured.bounds.top);
+            r.analysisValid=false;Assert::IsFalse(MeasureOffBarContentFit(Base(),r,Base(),false,24).available);
+        }
+        TEST_METHOD(ActiveOffFitVetoesOptionalFillIncludingFullRaster)
+        {
+            FinalAspectLimitFillInput i;i.crop=TrustedScopeCrop();i.crop.geometry=Base();
+            i.presentation.sourceBounds=Extent(1974);i.presentation.applyCrop=i.presentation.outwardExpanded=true;
+            i.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            i.configuredScreenActive=true;i.configured.cropNarrowerContentToFillScreen=true;
+            i.configured.screenAspect=2.35;i.offBarContentFit=true;
+            auto d=EvaluateFinalAspectLimitFill(i);Assert::IsFalse(d.applied);Assert::AreEqual(1974,d.sourceBounds.bottom);
+            i.presentation.sourceBounds={0,0,3840,2160,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            i.presentation.applyCrop=false;d=EvaluateFinalAspectLimitFill(i);
+            Assert::IsFalse(d.applied);Assert::AreEqual(2160,d.sourceBounds.bottom);
+        }
+    };
+
 }
