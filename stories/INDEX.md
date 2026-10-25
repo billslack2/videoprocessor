@@ -275,7 +275,7 @@ they must not contain requirements that are absent from this file.
 | VP-0213 | Review | Stable Off bar-content fit and release hold |
 | VP-0214 | Backlog | Audit shared subtitle fit ownership and temporal recovery |
 
-| VP-0215 | Backlog | Make configuration choices clear and consolidate scaling |
+| VP-0215 | In Progress | Make configuration choices clear and consolidate scaling |
 
 ## Codex story workflow
 

@@ -2,9 +2,9 @@
 
 ## Status
 
-Backlog
+In Progress
 
-2026-10-25: Research and story only; implementation has not started. The user's
+2026-10-25: User authorized implementation and trial deployment on the local Config changes. The user's
 scope includes configuration choices throughout the editor, not just dithering:
 consistent names, concrete default selections, sensible quality ordering,
 practical recommended defaults, one place to edit scaling, and visible chroma
@@ -16,6 +16,28 @@ semantics, reproduce the supplied Rendering/DTM duplicate-scaling screenshot
 with the deployed editor identity recorded, compare a clean current-beta build,
 and settle the quality/default matrix and Cubic compatibility decision below.
 Then implement and validate the shared UI and ownership corrections.
+
+
+### Readiness and implementation base
+
+2026-10-25: GitHub default/current beta rechecked as v1.4.02-beta, fetched
+8c4537462bbabd6ce07ba3e9ffd9be9bc8745492. The user explicitly selected the local
+Config work as the integration base: clean eab55b4830877a8ebfb943c40a1d5dacbcf795ae
+on codex/pr177-left-docking-20261025, already deployed by the preceding Config
+session. This includes retired-quality migration and intentionally retained
+Rendering processing overrides, superseding parts of the earlier beta research.
+New isolated implementation branch: codex/vp0215-config-choices-20261025;
+worktree: E:\codex\videoprocessor\vp0215-config-choices-20261025.
+
+Readiness: shared QualityProfileMigration runs in editor and parser; profile
+choice loading already knows inherited effective values; renderer projection
+owns final dithering and plane_upscaler; TemporalRenderer owns mixing. Preserve
+left docks, charts and local migration work. Tests will cover concrete choices,
+legacy ownership, inheritance/reset, runtime aliases and mixer resolution, with
+x64 Release build and matched host/stable/beta renderer deployment. Active
+configuration will be backed up and preserved during binary replacement.
+Implementation remains subject to the story's migration and validation checks;
+no unverified quality/cost measurements are claimed.
 
 ## Problem and reported UI evidence
 
