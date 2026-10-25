@@ -6900,7 +6900,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             const auto& spec = ToneMappingTuning::Specs()[i];
             toneControls[i] = wrapToneControl(spec, addText(QString::fromUtf8(spec.label), QString::fromUtf8(spec.key)));
         };
-        // Settings only VP Renderer (Beta) runs, each beside the control it works
+        // Settings only the promoted VP Renderer runs, each beside the control it works
         // with; any other renderer shows them greyed.
         const QStringList betaRendererKeys{ QStringLiteral("dynamic_target"), QStringLiteral("film_strength"),
             QStringLiteral("mastering_clip"), QStringLiteral("custom_tone_mapping") };
@@ -7066,7 +7066,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     toneDrag->second.trimmed() : inheritedTone(name);
             });
             request.betaRenderer = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
-                QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
+                QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
             return request;
         };
         // Compared profiles come from this page: its profiles, or an exported
