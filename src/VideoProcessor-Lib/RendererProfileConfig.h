@@ -639,7 +639,7 @@ namespace RendererProfileConfig
 		}
         if (group == "motion") {
             if(key=="smooth_motion")return IsChoice(value,{"off","auto","always"});
-            if(key=="frame_mixer")return IsChoice(value,{"oversample","hermite","linear","cubic"});
+            if(key=="frame_mixer")return IsChoice(value,{"oversample","hermite","linear","cubic","mitchell_clamp"});
             if(key=="deinterlace")return IsChoice(value,{"auto","off","force"});
             if(key=="deinterlace_algorithm")return IsChoice(value,{"weave","bob","yadif","bwdif"});
             if(key=="field_order")return IsChoice(value,{"auto","top","bottom"});

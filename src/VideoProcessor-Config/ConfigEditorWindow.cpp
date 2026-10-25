@@ -895,7 +895,7 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("CLASSIC"), QStringLiteral("Classic") },
         { QStringLiteral("GENERATED_GRAY"), QStringLiteral("Move / Reconstruction (Beta)") },
         { QStringLiteral("BLACK"), QStringLiteral("Move / Solid Background (Beta)") },
-        { QStringLiteral("AUTO"), QStringLiteral("Auto") },
+        { QStringLiteral("AUTO"), QStringLiteral("From input") },
         { QStringLiteral("NONE"), QStringLiteral("Disabled") },
         { QStringLiteral("V210_TO_P010"), QStringLiteral("V210 to P010") },
         { QStringLiteral("FOLLOW_INPUT"), QStringLiteral("Follow input") },
@@ -942,6 +942,19 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("LANCZOS"), QStringLiteral("Lanczos") },
         { QStringLiteral("BOX"), QStringLiteral("Box") },
         { QStringLiteral("HERMITE"), QStringLiteral("Hermite") },
+        { QStringLiteral("LINEAR"), QStringLiteral("Linear") },
+        { QStringLiteral("CUBIC"), QStringLiteral("Cubic") },
+        { QStringLiteral("MITCHELL_CLAMP"), QStringLiteral("Clamped Mitchell") },
+        { QStringLiteral("BWDIF"), QStringLiteral("BWDIF") },
+        { QStringLiteral("YADIF"), QStringLiteral("YADIF") },
+        { QStringLiteral("BOB"), QStringLiteral("Bob") },
+        { QStringLiteral("WEAVE"), QStringLiteral("Weave") },
+        { QStringLiteral("BLUE_NOISE"), QStringLiteral("Blue noise (recommended)") },
+        { QStringLiteral("ORDERED_FIXED"), QStringLiteral("Ordered (fixed)") },
+        { QStringLiteral("ORDERED_LUT"), QStringLiteral("Ordered (LUT)") },
+        { QStringLiteral("WHITE_NOISE"), QStringLiteral("White noise") },
+        { QStringLiteral("TRUE"), QStringLiteral("True") },
+        { QStringLiteral("FALSE"), QStringLiteral("False") },
         { QStringLiteral("MITCHELL"), QStringLiteral("Mitchell") },
         { QStringLiteral("BICUBIC"), QStringLiteral("Bicubic") },
         { QStringLiteral("BILINEAR"), QStringLiteral("Bilinear") },
@@ -3183,7 +3196,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
             binding.label->setVisible(false);
             continue;
         }
-        binding.label->setText(QStringLiteral("Auto: %1").arg(text));
+        binding.label->setText(QStringLiteral("Resolved: %1").arg(text));
         binding.label->setVisible(true);
     }
     // Scaling / Quality: grey marks a setting at Auto or not set, in every
@@ -3271,7 +3284,9 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     const bool subtitleScriptField = key.compare(QStringLiteral("subtitle_script_hint"), Qt::CaseInsensitive) == 0 &&
         (section.compare(subtitleSectionPrefix, Qt::CaseInsensitive) == 0 ||
             section.startsWith(subtitleSectionPrefix + QStringLiteral("."), Qt::CaseInsensitive));
-    const QString configured = subtitleScriptField &&
+    const bool disabledGeneralConversion = section == QStringLiteral("general") &&
+        key == QStringLiteral("video_conversion") && configuredValue.compare(QStringLiteral("NONE"), Qt::CaseInsensitive) == 0;
+    const QString configured = disabledGeneralConversion ? QString() : subtitleScriptField &&
         configuredValue.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0
         ? QStringLiteral("latin") : configuredValue;
     if (inherited)
@@ -4955,8 +4970,8 @@ QWidget* ConfigEditorWindow::createStartupPage()
     inputForm->setContentsMargins(0, 0, 0, 0);
     inputForm->setVerticalSpacing(8);
     inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("video_conversion"), { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
-        { QStringLiteral("Not set (default: Disabled)"), QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
+        QStringLiteral("video_conversion"), { QString(), QStringLiteral("V210_TO_P010") },
+        { QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
     inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("container_colorspace"),
         { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
@@ -5286,6 +5301,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     profileFieldsLayout->setContentsMargins(0, 8, 0, 0);
     profileFieldsLayout->setSpacing(8);
     QFormLayout* form = nullptr;
+    const auto profileFieldLabel = [&form](QWidget* field) -> QWidget* {
+        while (form && field) {
+            if (auto* label = form->labelForField(field)) return label;
+            field = field->parentWidget();
+        }
+        return nullptr;
+    };
     auto createForm = [] (QWidget* parent)
     {
         auto* created = new QFormLayout(parent);
@@ -5503,13 +5525,40 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* combo = new QComboBox;
         combo->setObjectName(controlName(sectionPrefix, key));
         combo->setAccessibleName(label);
-        combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        combo->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        combo->setMinimumContentsLength(0);
+        combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         if (allowInherited)
             combo->addItem(QStringLiteral("Inherited / not set"), QString());
         for (const QString& choice : choices)
             combo->addItem(friendlyChoiceLabel(choice), choice);
-        form->addRow(label, combo);
+        auto* choiceRow = new QWidget;
+        auto* choiceLayout = new QHBoxLayout(choiceRow);
+        choiceLayout->setContentsMargins(0, 0, 0, 0);
+        choiceLayout->setSpacing(6);
+        choiceLayout->addWidget(combo, 1);
+        auto* reset = new QPushButton(QStringLiteral("Reset"), choiceRow);
+        reset->setAccessibleName(QStringLiteral("Reset override"));
+        reset->setFixedWidth(56);
+        reset->setObjectName(combo->objectName() + QStringLiteral(".reset_override"));
+        reset->setToolTip(QStringLiteral("Remove this setting's override and follow the inherited or built-in value."));
+        reset->setVisible(allowInherited);
+        choiceLayout->addWidget(reset);
+        form->addRow(label, choiceRow);
         fields->push_back({ key, combo, Field::Choice });
+        connect(reset, &QPushButton::clicked, this, [this, state, key, combo, reset] {
+            if (state->loading || state->section.isEmpty() || !document_) return;
+            document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
+            state->loading = true;
+            const QString resolved = combo->property("resetValue").toString();
+            combo->setCurrentIndex(combo->findData(resolved, Qt::UserRole, Qt::MatchFixedString));
+            combo->setProperty("effectiveValue", resolved);
+            combo->setProperty("inherited", true);
+            state->loading = false;
+            reset->setEnabled(false);
+            markDirty();
+            refreshRendererAutoStatus();
+        });
         connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this, state, key, combo, sectionPrefix](int index)
         {
@@ -5540,8 +5589,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer.color") &&
                 (key == QStringLiteral("output_range") || key == QStringLiteral("output_transport_gamma")))
                 synchronizeLimitedTransportFlags(previousTransport, state->section);
+            if (auto* reset = combo->parentWidget()->findChild<QPushButton*>(combo->objectName() + QStringLiteral(".reset_override")))
+                reset->setEnabled(!selected.isEmpty());
             markDirty();
             refreshLimitedTransportControls();
+        });
+        connect(combo, qOverload<int>(&QComboBox::activated), this, [this, state, key, combo, reset](int index) {
+            if (state->loading || state->section.isEmpty() || !document_ || index < 0) return;
+            const QString selected = combo->itemData(index).toString();
+            if (selected.isEmpty()) return;
+            document_->SetKnown(state->section.toStdString(), key.toStdString().c_str(), selected.toStdString());
+            combo->setProperty("inherited", false);
+            reset->setEnabled(true);
+            markDirty();
         });
         if (sectionPrefix == QStringLiteral("vprenderer.color") &&
             (key == QStringLiteral("output_range") || key == QStringLiteral("output_transport_gamma")))
@@ -5702,7 +5762,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* policyLayout = new QHBoxLayout(policyRow);
         policyLayout->setContentsMargins(0, 0, 0, 0);
         policyLayout->setSpacing(24);
-        outputDisplayAuto = new QRadioButton(QStringLiteral("Auto"));
+        outputDisplayAuto = new QRadioButton(QStringLiteral("Match refresh rate"));
         outputDisplayAuto->setObjectName(QStringLiteral("config.output_display.mode_policy.auto"));
         outputDisplayAdvanced = new QRadioButton(QStringLiteral("Advanced"));
         outputDisplayAdvanced->setObjectName(QStringLiteral("config.output_display.mode_policy.advanced"));
@@ -6271,7 +6331,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("target_primaries"),
 			{ QStringLiteral("REC709"), QStringLiteral("P3_D65"),
 				QStringLiteral("BT2020") }, false);
-        form->labelForField(targetGamut)->setObjectName(QStringLiteral("config.vprenderer.color.target_primaries.label"));
+        profileFieldLabel(targetGamut)->setObjectName(QStringLiteral("config.vprenderer.color.target_primaries.label"));
         connect(targetGamut, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int) { refreshCalibrationControls(); });
         auto* outputGamma = addChoice(QStringLiteral("Calibrated display gamma"),
@@ -6284,7 +6344,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "The calibrated physical display response used without a usable calibration LUT. "
             "A usable LUT owns display calibration, so this setting has no effect while it is attached. "
 			"This setting does not change Windows' normal Full RGB / sRGB presentation declaration."));
-        form->labelForField(outputGamma)->setObjectName(QStringLiteral("config.vprenderer.color.output_gamma.label"));
+        profileFieldLabel(outputGamma)->setObjectName(QStringLiteral("config.vprenderer.color.output_gamma.label"));
         addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
         auto* displayGammaRow = outputGamma->parentWidget();
         auto* calibrationStatus = helpLabel(QString());
@@ -6313,13 +6373,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         combinedSdrResponse = sdrResponse;
         sdrResponse->setObjectName(QStringLiteral("config.vprenderer.color.sdr_response"));
         form->addRow(QStringLiteral("Desired SDR gamma"), sdrResponse);
-        form->labelForField(sdrResponse)->setObjectName(QStringLiteral("config.vprenderer.color.sdr_response.label"));
+        profileFieldLabel(sdrResponse)->setObjectName(QStringLiteral("config.vprenderer.color.sdr_response.label"));
         desiredSdrGamma = addChoice(QStringLiteral("Desired SDR gamma"),
             QStringLiteral("sdr_input_transfer"),
             { QStringLiteral("srgb"),
                 QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
                 QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
-        if (auto* label = qobject_cast<QLabel*>(form->labelForField(desiredSdrGamma)))
+        if (auto* label = qobject_cast<QLabel*>(profileFieldLabel(desiredSdrGamma)))
             label->setObjectName(controlName(sectionPrefix, QStringLiteral("sdr_input_transfer.label")));
         auto* sdrReferenceHelp = helpLabel(QString());
         sdrReferenceHelp->setObjectName(controlName(sectionPrefix, QStringLiteral("sdr_input_transfer.help")));
@@ -6602,7 +6662,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Only active for Limited RGB. Selecting 2.2 enables its beta transport flag; "
             "2.4 or Full disables it. Display gamma remains independent."));
 		addRendererAutoStatus(QStringLiteral("output_transport_gamma"), outputTransportGamma);
-        if (auto* label = qobject_cast<QLabel*>(form->labelForField(outputTransportGamma->parentWidget())))
+        if (auto* label = qobject_cast<QLabel*>(profileFieldLabel(outputTransportGamma->parentWidget())))
             label->setContentsMargins(16, 0, 0, 0);
 
         auto* transportGammaNotice = helpLabel(QString());
@@ -6976,16 +7036,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
         form = addCollapsibleSection(QStringLiteral("processingOverrides"),
             QStringLiteral("Processing overrides"), QStringLiteral(
-                "Optional settings owned by this Rendering profile. They apply after the selected Scaling settings. "
-                "An empty value keeps the inherited Rendering or Scaling value."), false);
-        addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"),
-            { "AUTO", "ewa_lanczossharp", "ewa_lanczos4sharpest", "ewa_lanczos", "lanczos", "catmull_rom", "bicubic", "gaussian", "oversample", "bilinear", "nearest", "none" });
-        addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"),
-            { "AUTO", "lanczos", "mitchell", "catmull_rom", "bicubic", "gaussian", "hermite", "bilinear", "box", "gpu" });
-        addChoice(QStringLiteral("Sigmoid upscaling"), QStringLiteral("sigmoid"), { "AUTO", "on", "off" });
+                "Debanding and dithering overrides for this Rendering profile. Image and chroma scaling are configured on Scaling."), false);
         addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { "AUTO", "default", "light", "off" });
         addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
-            { "AUTO", "blue_noise", "ordered_lut", "ordered_fixed", "white_noise", "error_diffusion_simple", "error_diffusion_false_fs", "error_diffusion_sierra_lite", "error_diffusion_floyd_steinberg", "error_diffusion_atkinson", "error_diffusion_jarvis_judice_ninke", "error_diffusion_stucki", "error_diffusion_burkes", "error_diffusion_sierra2", "error_diffusion_sierra3", "on", "off" });
+            { "blue_noise", "ordered_fixed", "white_noise", "off" });
         auto* ownedDepth = addChoice(QStringLiteral("Dither target depth"), QStringLiteral("display_bit_depth"), { "output", "8", "10", "AUTO" });
         ownedDepth->setItemText(ownedDepth->findData("output"), QStringLiteral("Match output format"));
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
@@ -7029,11 +7083,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("mastering_clip"), QStringLiteral("custom_tone_mapping") };
         auto* dynamicTarget = addBoolean(QStringLiteral("Dynamic target nits"), QStringLiteral("dynamic_target"));
         dynamicTarget->setToolTip(QStringLiteral("Automatically trades some scene brightness for highlight headroom. Target nits remains the physical display peak. Default: On. Requires scene-average metadata; peak detection supplies it when available."));
-        auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
+        auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
         addToneControl(ToneMappingTuning::FilmStrength);
         addToneControl(ToneMappingTuning::MasteringClip);
-        auto* gamutMapping = addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
+        auto* gamutMapping = addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
         addRendererAutoStatus(QStringLiteral("gamut_mapping"), gamutMapping);
         auto* customToneMapping = addBoolean(QStringLiteral("Gamut overflow correction (Experimental)"), QStringLiteral("custom_tone_mapping"));
         customToneMapping->setToolTip(QStringLiteral("Off: original tone/gamut mapping. On: smoothly compresses colors near or beyond the target gamut or brightness limits after the selected gamut mapping during HDR tone mapping. May reduce brightness or saturation. Default: Off. Apply to compare."));
@@ -7045,8 +7099,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             label->setWordWrap(wrap);
             label->setText(label->text().toHtmlEscaped() + QStringLiteral(" <span style=\"color:#e8a93b\">Beta</span>"));
         };
-        tagBeta(qobject_cast<QLabel*>(form->labelForField(dynamicTarget)), false);
-        tagBeta(qobject_cast<QLabel*>(form->labelForField(customToneMapping)), false);
+        tagBeta(qobject_cast<QLabel*>(profileFieldLabel(dynamicTarget)), false);
+        tagBeta(qobject_cast<QLabel*>(profileFieldLabel(customToneMapping)), false);
         for (int i : { ToneMappingTuning::FilmStrength, ToneMappingTuning::MasteringClip })
             for (auto* label : toneControls[i]->findChildren<QLabel*>())
                 if (label->buddy() == toneControls[i]->editor()) tagBeta(label, true);
@@ -7353,7 +7407,32 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
 	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
 	{
-		form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Scaling"),
+        auto* legacyScaling = helpLabel(QString());
+        legacyScaling->setObjectName(QStringLiteral("config.scaling.legacy_overrides"));
+        QStringList legacyValues;
+        for (const QString& owner : profileSections(QStringLiteral("vprenderer")))
+            for (const QString& key : { QStringLiteral("upscaler"), QStringLiteral("downscaler"), QStringLiteral("sigmoid"), QStringLiteral("chroma_upscaler") }) {
+                const QString saved = value(owner, key);
+                if (!saved.isEmpty()) legacyValues << QStringLiteral("%1: %2 = %3").arg(::displayName(owner, QStringLiteral("vprenderer")),
+                    key == "upscaler" ? QStringLiteral("Upscaler") : key == "downscaler" ? QStringLiteral("Downscaler") : key == "chroma_upscaler" ? QStringLiteral("Chroma upscaler") : QStringLiteral("Sigmoid"),
+                    saved.compare("auto", Qt::CaseInsensitive) == 0 ? QStringLiteral("Preset fallback") : friendlyChoiceLabel(saved));
+            }
+        legacyScaling->setText(QStringLiteral("Saved Rendering scaling overrides still take precedence: %1. Use Scaling settings to replace them.").arg(legacyValues.join(QStringLiteral("; "))));
+        legacyScaling->setVisible(!legacyValues.isEmpty());
+        profileFieldsLayout->addWidget(legacyScaling);
+        auto* adoptScaling = new QPushButton(QStringLiteral("Use Scaling settings"));
+        adoptScaling->setObjectName(QStringLiteral("config.scaling.adopt_settings"));
+        adoptScaling->setToolTip(QStringLiteral("Remove all saved Rendering image-scaler overrides. Your Scaling profiles then control scaling. Save or Apply commits this edit; Cancel discards it."));
+        adoptScaling->setVisible(!legacyValues.isEmpty());
+        profileFieldsLayout->addWidget(adoptScaling);
+        connect(adoptScaling, &QPushButton::clicked, this, [this, legacyScaling, adoptScaling] {
+            if (!document_) return;
+            for (const QString& owner : profileSections(QStringLiteral("vprenderer")))
+                for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler" })
+                    document_->RemoveKnown(owner.toStdString(), key);
+            legacyScaling->hide(); adoptScaling->hide(); markDirty();
+        });
+        form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Image scaling"),
 			QString(), false);
 		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
 			QStringLiteral("upscaler"), { QStringLiteral("AUTO"),
@@ -7382,7 +7461,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		antiRinging->setToolTip(QStringLiteral(
 			"Optional sigmoidization before upscaling. It reduces ringing artifacts; the default is On."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
-        addChoice(QStringLiteral("Chroma upscaler"),QStringLiteral("chroma_upscaler"),{QStringLiteral("bicubic"),QStringLiteral("bilinear"),QStringLiteral("lanczos"),QStringLiteral("ewa_lanczos"),QStringLiteral("ewa_lanczossharp")});
+        form = addCollapsibleSection(QStringLiteral("chromaScaling"), QStringLiteral("Chroma scaling"),
+            QStringLiteral("Reconstructs color detail in subsampled video."), false);
+        addChoice(QStringLiteral("Chroma upscaler"), QStringLiteral("chroma_upscaler"),
+            { "ewa_lanczossharp", "ewa_lanczos", "lanczos", "bicubic", "bilinear" });
         form->addRow(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
         // Moved from the Rendering page: ordinary Scaling settings, inherited
         // from the first Scaling profile like the scalers above.
@@ -7392,41 +7474,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         debanding->setItemText(debanding->findData(QStringLiteral("default")), QStringLiteral("Standard"));
         addRendererAutoStatus(QStringLiteral("deband_strength"), debanding);
         auto* dithering = addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
-            { QStringLiteral("AUTO"), QStringLiteral("blue_noise"),
-                QStringLiteral("ordered_lut"), QStringLiteral("ordered_fixed"),
-                QStringLiteral("white_noise"), QStringLiteral("error_diffusion_simple"),
-                QStringLiteral("error_diffusion_false_fs"),
-                QStringLiteral("error_diffusion_sierra_lite"),
-                QStringLiteral("error_diffusion_floyd_steinberg"),
-                QStringLiteral("error_diffusion_atkinson"),
-                QStringLiteral("error_diffusion_jarvis_judice_ninke"),
-                QStringLiteral("error_diffusion_stucki"),
-                QStringLiteral("error_diffusion_burkes"),
-                QStringLiteral("error_diffusion_sierra2"),
-                QStringLiteral("error_diffusion_sierra3"), QStringLiteral("off") });
-        dithering->setItemText(1, QStringLiteral("Auto"));
-        dithering->setItemText(2, QStringLiteral("Blue noise"));
-        dithering->setItemText(3, QStringLiteral("Ordered (LUT)"));
-        dithering->setItemText(4, QStringLiteral("Ordered (fixed)"));
-        dithering->setItemText(5, QStringLiteral("White noise"));
-        dithering->setItemText(6, QStringLiteral("Error diffusion: Simple"));
-        dithering->setItemText(7, QStringLiteral("Error diffusion: False Floyd-Steinberg"));
-        dithering->setItemText(8, QStringLiteral("Error diffusion: Sierra Lite"));
-        dithering->setItemText(9, QStringLiteral("Error diffusion: Floyd-Steinberg"));
-        dithering->setItemText(10, QStringLiteral("Error diffusion: Atkinson"));
-        dithering->setItemText(11, QStringLiteral("Error diffusion: Jarvis-Judice-Ninke"));
-        dithering->setItemText(12, QStringLiteral("Error diffusion: Stucki"));
-        dithering->setItemText(13, QStringLiteral("Error diffusion: Burkes"));
-        dithering->setItemText(14, QStringLiteral("Error diffusion: Sierra 2"));
-        dithering->setItemText(15, QStringLiteral("Error diffusion: Sierra 3"));
-        dithering->setItemText(16, QStringLiteral("Off"));
+            { "blue_noise", "ordered_fixed", "white_noise", "off" });
         dithering->setToolTip(QStringLiteral(
-            "Blue noise is libplacebo's default and "
-            "recommended mode. Ordered modes and White noise are alternate "
-            "libplacebo methods. Error-diffusion modes require compute shaders "
-            "and are substantially more expensive. The display-calibration LUT "
-            "runs before this final dithering stage. Off disables dithering."));
-        addRendererAutoStatus(QStringLiteral("dithering"), dithering);
+            "Blue noise is recommended for video. Ordered (fixed) is a fast patterned alternative. "
+            "White noise is inexpensive but more visible. Off disables dithering. "
+            "Calibration LUT processing runs before final dithering."));
         auto* displayBitDepth = addChoice(QStringLiteral("Dither target depth"),
             QStringLiteral("display_bit_depth"),
             { QStringLiteral("output"), QStringLiteral("10"), QStringLiteral("8") });
@@ -7463,7 +7515,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form=addMotionSection(QStringLiteral("smoothMotion"),QStringLiteral("Smooth motion"),
             QStringLiteral("Blends frames to reduce cadence judder; adds buffering."));
         auto* smoothMotion=addChoice(QStringLiteral("Mode"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
-        auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("oversample"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("cubic")});
+        auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("mitchell_clamp"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("oversample")});
         form=addMotionSection(QStringLiteral("deinterlacing"),QStringLiteral("Deinterlacing"),
             QStringLiteral("Converts interlaced video to progressive frames. Auto detects input."));
         auto* deinterlacing=addChoice(QStringLiteral("Mode"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
@@ -7473,15 +7525,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* fieldCadence=addChoice(QStringLiteral("Output cadence"),QStringLiteral("deinterlace_cadence"),{QStringLiteral("field"),QStringLiteral("frame")});
         auto* spatialCheck=addChoice(QStringLiteral("YADIF skip spatial check"),QStringLiteral("deinterlace_skip_spatial"),{QStringLiteral("false"),QStringLiteral("true")});
         smoothMotion->setItemText(smoothMotion->findData("off"),"Off");
-        smoothMotion->setItemText(smoothMotion->findData("auto"),"Auto — only for cadence mismatch");
+        smoothMotion->setItemText(smoothMotion->findData("auto"),"Cadence mismatch only");
         smoothMotion->setItemText(smoothMotion->findData("always"),"Always");
         fieldOrder->setItemText(fieldOrder->findData("auto"),"From input");
         fieldOrder->setItemText(fieldOrder->findData("top"),"Top field first");
         fieldOrder->setItemText(fieldOrder->findData("bottom"),"Bottom field first");
         fieldCadence->setItemText(fieldCadence->findData("field"),"Field rate (preserve motion)");
         fieldCadence->setItemText(fieldCadence->findData("frame"),"Frame rate");
+        deinterlacing->setItemText(deinterlacing->findData("auto"), "Interlaced input only");
+        deinterlacing->setItemText(deinterlacing->findData("force"), "Force");
         for(auto* combo:{deinterlaceAlgorithm}) {
-            for(const auto& label: {QStringLiteral("bwdif"),QStringLiteral("yadif"),QStringLiteral("bob")})
+            for(const auto& label: {QStringLiteral("bwdif"),QStringLiteral("yadif")})
                 combo->setItemText(combo->findData(label),label.toUpper());
         }
         const auto setMotionHelp=[&](QComboBox* combo,const QString& text) {
@@ -7491,7 +7545,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if(auto* label=layout->labelForField(combo))label->setToolTip(text);
         };
         setMotionHelp(smoothMotion,QStringLiteral("Smooth motion blends neighboring frames; it does not generate motion-compensated frames like RIFE.\nOff: normal playback (default).\nAuto: blend only when measured source/display rates are not an integer match.\nAlways: blend even at matching rates. Active mixing adds frame buffering."));
-        setMotionHelp(frameMixer,QStringLiteral("Applies only to smooth motion.\nOversample: default frame blending.\nHermite: smooth transition between neighboring frames.\nLinear: linear blend between neighboring frames.\nCubic: wider temporal filter using more neighboring frames, with more buffering.\nThese are libplacebo frame mixers, not image upscalers."));
+        setMotionHelp(frameMixer,QStringLiteral("Applies only to smooth motion.\nOversample: default frame blending.\nHermite: smooth transition between neighboring frames.\nLinear: linear blend between neighboring frames.\nClamped Mitchell: clamped spline frame mixing.\nThese are libplacebo frame mixers, not image upscalers."));
         setMotionHelp(deinterlacing,QStringLiteral("Applies to interlaced input.\nAuto: deinterlace only when input reports interlacing and a known field order (default).\nOff: leave input unchanged.\nForce: apply the selected algorithm even if input is reported progressive; field order must still be known or explicitly selected."));
         setMotionHelp(deinterlaceAlgorithm,QStringLiteral("Applies only to deinterlacing.\nBWDIF: default temporal deinterlacer.\nYADIF: alternative temporal deinterlacer.\nBob: deinterlace each field without neighboring-frame references.\nWeave: preserve both fields in the original frame.\nBWDIF/YADIF use neighboring frames; missing references fall back to Bob."));
         setMotionHelp(fieldOrder,QStringLiteral("The order in which interlaced fields were captured.\nFrom input: use capture metadata (default). Unknown order bypasses deinterlacing.\nTop/Bottom field first: override missing or incorrect metadata. An incorrect order can cause uneven motion."));
@@ -7619,9 +7673,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		// preserves configurations written by earlier VP-0147 test builds.
 		pictureOnlyHdrAnalysis->hide();
 		motionCompensatedHdrAnalysis->hide();
-		if (QWidget* label = form->labelForField(pictureOnlyHdrAnalysis))
+		if (QWidget* label = profileFieldLabel(pictureOnlyHdrAnalysis))
 			label->hide();
-		if (QWidget* label = form->labelForField(motionCompensatedHdrAnalysis))
+		if (QWidget* label = profileFieldLabel(motionCompensatedHdrAnalysis))
 			label->hide();
 		hdrAnalysisMode = new QComboBox;
 		hdrAnalysisMode->setObjectName(controlName(sectionPrefix,
@@ -8252,6 +8306,28 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
 			if (!requiresExplicitValue && configured.isEmpty())
 				configured = fallback(field.key);
+            const auto concreteChoice = [&](QString choice) {
+                const QString lower = choice.trimmed().toLower();
+                if (field.key == QStringLiteral("dithering") &&
+                    (lower == "auto" || lower == "on" || lower == "true")) return QStringLiteral("blue_noise");
+                if (lower != QStringLiteral("auto")) return choice;
+                const auto key = field.key.toStdString();
+                if (sectionPrefix == "vprenderer" || sectionPrefix == "vprenderer.scaling") {
+                    QString quality = value(section, QStringLiteral("quality"), QStringLiteral("high"));
+                    if (const char* preset = QualityProfileMigration::PresetValue(quality.toStdString(), key))
+                        return QString::fromLatin1(preset);
+                    if (field.key == "tone_mapping") return QStringLiteral("spline");
+                    if (field.key == "gamut_mapping") return QStringLiteral("perceptual");
+                }
+                return choice;
+            };
+            if (field.kind == Field::Choice) configured = concreteChoice(configured);
+            QString resetChoice = defaultProfile ? fallback(field.key) :
+                profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
+            if (resetChoice.isEmpty()) resetChoice = fallback(field.key);
+            field.widget->setProperty("resetValue", concreteChoice(resetChoice));
+            if (auto* reset = profileFields->findChild<QPushButton*>(field.widget->objectName() + QStringLiteral(".reset_override")))
+                reset->setEnabled(!raw.isEmpty());
             // Display the accepted legacy alias as Latin without rewriting the
             // stored profile value; edits persist only after the user changes it.
             if (sectionPrefix == QStringLiteral("vprenderer.subtitles") &&
@@ -8417,8 +8493,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 }
                 if (hasUnspecifiedChoice && scalingAutoChoice && !defaultProfile)
                     combo->setItemText(0, QStringLiteral("Inherit from default profile"));
-                const int effectiveIndex = autoIndex >= 0 ? autoIndex :
-                    combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
+                const int effectiveIndex = combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
                 int index = raw.isEmpty() ?
                     (hideUnspecifiedChoice || !hasUnspecifiedChoice ? effectiveIndex : 0) :
                     (configured.isEmpty() && hasUnspecifiedChoice ? 0 :
@@ -8449,6 +8524,33 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         model->item(index)->setEnabled(false);
                     if (auto* view = qobject_cast<QListView*>(combo->view()))
                         view->setRowHidden(index, true);
+                }
+                if (hasUnspecifiedChoice && !calibrationLutSlot) {
+                    const int concreteIndex = configured.isEmpty() ? -1 :
+                        combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
+                    combo->removeItem(0);
+                    index = concreteIndex > 0 ? concreteIndex - 1 : -1;
+                    if (index < 0 && configured.isEmpty())
+                        combo->setPlaceholderText(sectionPrefix == "vprenderer" &&
+                            QualityProfileMigration::ProcessingKey(field.key.toStdString()) ?
+                            QStringLiteral("Follows selected Scaling profile") : QStringLiteral("Not configured"));
+                }
+                for (int candidate = 0; candidate < combo->count(); ++candidate) {
+                    const QString data = combo->itemData(candidate).toString().toLower();
+                    const bool legacyCubic = field.key == "frame_mixer" && data == "cubic";
+                    const bool retired = legacyCubic || (field.key == "dithering" &&
+                        (data == "ordered_lut" || data.startsWith("error_diffusion_") || data == "on" || data == "auto"));
+                    const bool staticAuto = data == "auto" &&
+                        (sectionPrefix == "vprenderer" || sectionPrefix == "vprenderer.scaling");
+                    if (retired || staticAuto) {
+                        if (auto* model = qobject_cast<QStandardItemModel*>(combo->model())) model->item(candidate)->setEnabled(false);
+                        if (auto* view = qobject_cast<QListView*>(combo->view())) view->setRowHidden(candidate, true);
+                        if (candidate == index) {
+                            combo->setPlaceholderText(legacyCubic ? QStringLiteral("Saved legacy mixer: Cubic (no mixing)") :
+                                QStringLiteral("Saved legacy method: %1").arg(friendlyChoiceLabel(configured)));
+                            index = -1;
+                        }
+                    }
                 }
                 combo->setCurrentIndex(index);
             }

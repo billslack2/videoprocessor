@@ -49,6 +49,25 @@ public:
         Assert::IsTrue(sections.count("vprenderer.scaling.hdr")==0);
         Assert::IsTrue(QualityProfileMigration::Build(sections, order).Empty());
     }
+    TEST_METHOD(RedundantRenderingScalersMoveToVisibleScalingWithoutChangingSelections) {
+        Sections sections{{"vprenderer.a",{{"upscaler","ewa_lanczossharp"},{"when","${source_rate} < 30"}}},
+            {"vprenderer.scaling.default",{{"upscaler","ewa_lanczossharp"}}},
+            {"vprenderer.scaling.inherited",{}}};
+        std::vector<std::string> order{"vprenderer.a","vprenderer.scaling.default","vprenderer.scaling.inherited"};
+        QualityProfileMigration::Apply(sections,order);
+        Assert::IsTrue(sections.at("vprenderer.a").count("upscaler")==0);
+        Value(sections,"vprenderer.a","when","${source_rate} < 30");
+        Assert::IsTrue(QualityProfileMigration::Build(sections,order).Empty());
+    }
+    TEST_METHOD(ConflictingRenderingScalersKeepBehaviorAndReportTheirOwner) {
+        Sections sections{{"vprenderer.a",{{"upscaler","lanczos"}}},
+            {"vprenderer.scaling.default",{{"upscaler","bicubic"}}}};
+        std::vector<std::string> order{"vprenderer.a","vprenderer.scaling.default"};
+        const auto warnings=QualityProfileMigration::Apply(sections,order);
+        Value(sections,"vprenderer.a","upscaler","lanczos");
+        Value(sections,"vprenderer.scaling.default","upscaler","bicubic");
+        Assert::IsTrue(!warnings.empty());
+    }
     TEST_METHOD(LegacyPresetsRetainFallbackPrecedenceAndConcreteUserChoices) {
         for (const char* quality : {"fast", "balanced"}) {
             Sections sections{{"vprenderer", {{"quality",quality},{"contrast_recovery","0.7"},{"upscaler","auto"}}},

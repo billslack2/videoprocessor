@@ -925,7 +925,7 @@ namespace
 		std::string debandStrength = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
-		std::string dithering = "auto";
+		std::string dithering = "blue_noise";
 		std::string displayBitDepth = "output";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
@@ -1727,9 +1727,9 @@ namespace
 	std::string ReadDithering(const ConfigFile& config, const char* key)
 	{
 		std::string rawValue;
-		if (!TryGetDisplayString(config, key, rawValue)) return "auto";
+		if (!TryGetDisplayString(config, key, rawValue)) return "blue_noise";
 		const std::string value = ConfigFile::NormalizeName(rawValue);
-		if (value == "on" || value == "true") return "blue_noise";
+		if (value == "auto" || value == "on" || value == "true") return "blue_noise";
 		if (value == "off" || value == "false") return "off";
 		if (value == "auto" || value == "blue_noise" ||
 			value == "ordered_lut" || value == "ordered_fixed" ||
@@ -1858,7 +1858,7 @@ namespace
 			std::string raw;
 			if (!config.TryGetString(rule.section, "dithering", raw)) return;
 			const std::string value = ConfigFile::NormalizeName(raw);
-			if (value == "on" || value == "true") { target = "blue_noise"; return; }
+			if (value == "auto" || value == "on" || value == "true") { target = "blue_noise"; return; }
 			if (value == "off" || value == "false") { target = "off"; return; }
 			if (value == "auto" || value == "blue_noise" ||
 				value == "ordered_lut" || value == "ordered_fixed" ||
