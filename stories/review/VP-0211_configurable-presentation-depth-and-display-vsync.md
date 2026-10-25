@@ -4,28 +4,32 @@
 
 Review
 
-2026-10-25 subtitle-transition candidate deployed: isolated head6f6c0d2e in
-[draftPR204](https://github.com/billslack2/videoprocessor/pull/204), combined
-head621223092dbea7e088947523a1c9f260c4bdb930 preserves installed tone GUI work.
-User clarification: earlier NLS issue was real and fixed; remaining problem is
-subtitle changes, also at60fps and with NLS off, recovering variably after
-seconds/minutes. Precision-only prior fix is insufficient.
+2026-10-25 subtitle-transition candidate deployed: isolated `6f6c0d2e` in
+[draft PR #204](https://github.com/billslack2/videoprocessor/pull/204), combined
+`621223092dbea7e088947523a1c9f260c4bdb930` preserves the installed tone GUI.
+The user confirms the earlier NLS issue was real and fixed; the remaining
+subtitle-triggered failure occurs at 24/60 fps, persists with NLS off, and may
+recover after seconds or minutes. The precision-only prior fix was insufficient.
 
-Separate+J eligibility / -J retirement boundaries (3ms cappedquarter-refresh)
-prevent boundary-close successors causing predecessor deletion. RawPTS/source
-speed remain intact. One successful changed output pays warmup, then internal
-repeat clock/feedback/cache eligibility restart once, without HDMI resync.
-Both clean x64Release builds passed (11warnings,0errors);20clock/transition and
-425focused exact-combined-source tests passed. Luna xhigh final review found
-no concrete blocker; production transition ordering remains source-reviewed.
+Separate eligibility and retirement boundaries use a 3 ms band capped at one
+quarter-refresh. A successor near the boundary cannot justify dropping its
+predecessor. Raw PTS and playback speed are preserved. After one successful
+changed output pays warmup, internal repeat timing, feedback and cache eligibility
+restart once without HDMI resync. Both clean x64 Release builds passed (11
+warnings, zero errors); 20 clock/transition and 425 exact combined-build checks
+passed. Luna xhigh final review found no blocker; production transition ordering
+is source-reviewed, with the full live test still the acceptance gate.
 
-Matching host/both renderers+receipts hash-verified. Active cfg byte-preserved
-(every-refresh ON,depth3,Motion off), tone GUI/session preserved. Backup:
+Matching host, both renderers and receipts were verified. Active configuration
+was byte-preserved (every-refresh on, depth 3, Motion off), and tone GUI/session
+preserved. Backup:
 `C:\Videoprocessor\vp\backup-before-subtitle-phase-20261025-143944`.
-Restarted responsivePID82768; clean host/renderer62122309 confirmed. Logs show
-internal cadence restart with hdmi_resync=0; initial settled60fps sample has no
-further repeats/renderer drops. Live repeated subtitle-change acceptance remains
-pending; do not closeDone or mergePR204 based on this sample alone.
+Responsive PID 82768 logs matching clean host/renderer `62122309`. Subsequent
+reconstruction, clear/yellow and black changes at 14:40:51–14:40:54 and NLS changes
+through 14:41:04 each produced the intended internal cadence restart. No new
+cached-repeat log or renderer-drop growth was observed in the sampled window.
+Visual smoothness and subtitle placement remain unconfirmed; do not close Done
+or merge #204 on this sample alone.
 [Incident, tests, deployment and rollback](../assets/VP-0211/subtitle-phase-20261025/README.md).
 
 2026-10-25 persistent live regression: user reports settings can recover, but
