@@ -12,6 +12,7 @@
 #include "DirectShowVideoRenderer.h"
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/MadVROsdServices.h>
+#include <microsoft_directshow/MadVRNlsSourceGeometry.h>
 #include <atlbase.h>
 #include <atomic>
 #include <mutex>
@@ -107,8 +108,7 @@ private:
 		MadVRShaderSelection& selection);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
-	bool ResolveNlsSourceRectangle(ActivePictureRectangle& rectangle,
-		bool& usingFullRasterFallback) const;
+	bool ResolveNlsSourceRectangle(ActivePictureRectangle& rectangle);
 	void ApplyNativeStatsOverlayOnGraphThread();
 	void ClearNativeStatsOverlayOnGraphThread();
 
@@ -137,6 +137,7 @@ private:
 	bool m_requestedShaderApplied = false;
 	double m_appliedShaderAspectRatio = 0.0;
 	uint64_t m_appliedActivePictureGeneration = 0;
+	MadVRNlsSourceGeometryState m_madVRNlsGeometry;
 	uint64_t m_rendererGeneration = 0;
 	uint64_t m_viewportGeneration = 0;
 	uint64_t m_appliedViewportGeneration = 0;
