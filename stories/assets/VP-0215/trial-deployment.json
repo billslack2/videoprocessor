@@ -1,0 +1,196 @@
+{
+  "SourceCommit": "a37dab1f7c518de7c585dff3c479e84c70038598",
+  "BetaCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "BackupDirectory": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923",
+  "ConfigurationEdits": [],
+  "ConfigurationUnchanged": true,
+  "ConfigurationBefore": [
+    {
+      "Path": "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg",
+      "SHA256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg",
+      "SHA256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\INSTALL-MANIFEST.json",
+      "SHA256": "D6B4965FF8D31077999F6F36E1F7107A25098D12E04B4AD4F8AE9FAE49416852"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg",
+      "SHA256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\RELEASE-MANIFEST.json",
+      "SHA256": "9E521D5266E658F756692F89ECE4B1E767F4A49AA9948F7F6B2401270517485F"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "SHA256": "D3C617EE5A856961C6B5302EC703099F316B65A6DAB122650BCCC43927595301"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "SHA256": "AB049C758510F4742FAE57B259A9716177E41AD9123EBE712284B73FDD16F694"
+    }
+  ],
+  "Files": [
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "Relative": "VideoProcessor.exe",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\VideoProcessor.exe",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\VideoProcessor.exe",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\VideoProcessor.exe",
+      "Existed": true,
+      "OldHash": "2B4AA1C188EAEDC8278D608404A0A5B8123CA8F00DCBB0C3BFD4A6B6B145B5A6",
+      "NewHash": "42AE50A9BFA6E32E54A94E81B5D269A02203329683C1F474A4A05FA123CAD38A"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "Target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "Relative": "VideoProcessor.exe.runtime.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\VideoProcessor.exe.runtime.json",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\VideoProcessor.exe.runtime.json",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\VideoProcessor.exe.runtime.json",
+      "Existed": true,
+      "OldHash": "1CF601E5025FCA8066189FF8ADF49C0BDE6987910CA3EA5C4DDF69B069F67B3B",
+      "NewHash": "EE7A31269BA6B74746626471C94B1D4406462959B7ED731532D619C1727F9A93"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "Target": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "Relative": "VideoProcessor-GUI.pdb",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\VideoProcessor-GUI.pdb",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\VideoProcessor-GUI.pdb",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\VideoProcessor-GUI.pdb",
+      "Existed": true,
+      "OldHash": "41463866D115B2B736E9A33352CE9530E987F898B0726051C6482533F41F4C1E",
+      "NewHash": "C8DACB64919C722CBF0F209D131C31980462ADB42E72AC5174814A947005B6E6"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessorConfig.exe",
+      "Target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "Relative": "config\\VideoProcessorConfig.exe",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\config\\VideoProcessorConfig.exe",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\config\\VideoProcessorConfig.exe",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\config\\VideoProcessorConfig.exe",
+      "Existed": true,
+      "OldHash": "8FBFC76F744DFC4C720F6B479F773673564558612EECBD1C6767BF35214478D2",
+      "NewHash": "1F85864CA397D3CB9847568DB101D9D1DBBA985DA7B85D2DE929289BF0D90A86"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessorConfig.exe.runtime.json",
+      "Target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe.runtime.json",
+      "Relative": "config\\VideoProcessorConfig.exe.runtime.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\config\\VideoProcessorConfig.exe.runtime.json",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\config\\VideoProcessorConfig.exe.runtime.json",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\config\\VideoProcessorConfig.exe.runtime.json",
+      "Existed": true,
+      "OldHash": "30E2685E746CD1A4E1AA48E59F0310FB6C0E1A71FECD8BA6EC09F8A795219C23",
+      "NewHash": "B4DD42C8366ACB360CAA400D8D601FDFB672196AD01B08CEE6A09A4C880AB494"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessorConfig.pdb",
+      "Target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.pdb",
+      "Relative": "config\\VideoProcessorConfig.pdb",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\config\\VideoProcessorConfig.pdb",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\config\\VideoProcessorConfig.pdb",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\config\\VideoProcessorConfig.pdb",
+      "Existed": true,
+      "OldHash": "2EBD2ADA2096AB3A9836DDE046A95CF56B5508120767F28B6D09535CA7B9DDDB",
+      "NewHash": "0791B36380B8A9AE6B6651500641B1C48321699AC479B01F09D041096A38DA73"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "Target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "Relative": "config\\VideoProcessorConfigDiscovery.dll",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\config\\VideoProcessorConfigDiscovery.dll",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\config\\VideoProcessorConfigDiscovery.dll",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\config\\VideoProcessorConfigDiscovery.dll",
+      "Existed": true,
+      "OldHash": "77ED4862A9F6B5362798C2311584360A2BAF9B79483AA1786F7A33A2B7639CCD",
+      "NewHash": "00967198D1D2690D1C1A987F8306BAC9AC599F0481D62FF9340A90D59B44F180"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Relative": "config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "Existed": true,
+      "OldHash": "6FE7E24652BBBBD4EA3B288BAA0CE2C520791A8B88A9662977E0BDA499AE3BA8",
+      "NewHash": "6B40802DADDAFD74B9B163E5AECEBE09D0FDE4F3332B269D45B2CB62BE72DFC5"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Existed": true,
+      "OldHash": "1BE7153370CA481D1404F497D4057FCF032A704D5E6A78E2205B4EB125D832AF",
+      "NewHash": "84871AB70F043DE5B5D8AA0DA2DEFC5CAA0E275D5E396090C2FD022B4C5C1ECA"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Relative": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "Existed": true,
+      "OldHash": "E70B42CBFBFB6F942D7CCE6240C7934A98FE47A1BC3BA4A82187FAEA1B57A899",
+      "NewHash": "621BBE5270D10E3AFB6ECFC7D1F4BD5472B81901BBF79CDAF6EA6787974C70BB"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Relative": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "Existed": true,
+      "OldHash": "B4650321B38F8526E9CCC2F28B70EE30D9A5C7E1F9BFCEB92F405B46177A8E13",
+      "NewHash": "FEF2B6F5E55C0EF7C0BBB012CD0BCB7496033BF035DC9FBBACD66D91FB6B13DA"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Existed": true,
+      "OldHash": "781E9345744E4B150B98832F2F71C9CEA9AA8E456D264FFE38807921D7A6BB00",
+      "NewHash": "129945897A820CC14368697C62607B6E35E0DBF764BE3AACA3EDC5495EB985FF"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "Existed": true,
+      "OldHash": "D6CDAE21A4C4985C679573F66C2DB8FD50B20906D8531CB649DE401453CE9D94",
+      "NewHash": "D6009985BF46B165F0F9D20D52ED18E22E20694E6B572EB13C46835E04562165"
+    },
+    {
+      "Source": "E:\\codex\\videoprocessor\\vp0215-config-choices-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Stage": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\staged\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Atomic": "C:\\Videoprocessor\\vp\\backup-before-vp0215-a37dab1f7c51-20261025-194923\\atomic\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "Existed": true,
+      "OldHash": "CB09647EA560C3FB001DFB09B8438F56A76055AECE3127D1522834A63775303E",
+      "NewHash": "34D3BE71D60ABA9C2FEF3004343F06A5B711C7A17BE7CAD9AEDEE2AE7F89C046"
+    }
+  ],
+  "DeployedAt": "2026-10-25T19:49:25.1718500-04:00",
+  "PlayerStarted": false,
+  "ConfigurationEditorStarted": false
+}

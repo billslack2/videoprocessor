@@ -2,21 +2,62 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-25: User authorized implementation and trial deployment on the local Config changes. The user's
-scope includes configuration choices throughout the editor, not just dithering:
-consistent names, concrete default selections, sensible quality ordering,
-practical recommended defaults, one place to edit scaling, and visible chroma
-scaling. Remove generic Auto/Use default choices while preserving real adaptive
-policies under descriptive names. Keep the agreed four dithering choices.
+2026-10-25: Implemented on the user-selected local Config docking integration
+and deployed for the requested trial. Feature branch:
+`codex/vp0215-config-choices-20261025`; clean source commit:
+`a37dab1f7c518de7c585dff3c479e84c70038598`. Base remains local Config
+`eab55b4830877a8ebfb943c40a1d5dacbcf795ae`, on discovered current beta
+`8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. No beta merge or public release.
 
-Next action: inventory the editor's choices and their effective default/override
-semantics, reproduce the supplied Rendering/DTM duplicate-scaling screenshot
-with the deployed editor identity recorded, compare a clean current-beta build,
-and settle the quality/default matrix and Cubic compatibility decision below.
-Then implement and validate the shared UI and ownership corrections.
+The trial implements four-choice dithering and legacy Auto/On -> Blue noise,
+concrete profile selections with Reset outside the menu, friendly motion and
+deinterlacing names, Clamped Mitchell, scaler ordering independent of defaults,
+one image-scaler editor on Scaling, and a visible Chroma scaling section.
+Rendering retains debanding/dithering/depth controls. Only provably redundant
+Rendering image scalers are migrated automatically; conflicts remain readable
+and visibly identified, with an explicit Use Scaling settings action. Existing
+Cubic files retain their previous no-mixing behavior and Cubic is no longer a
+selectable mixer: enabling true Cubic failed the opaque-subtitle GPU regression.
+The supplied duplicate controls match the prior local Config integration;
+the current beta research alone did not describe that local integration.
 
+Validation: completed x64 Release solution build; 141 targeted native tests;
+46 Config regression cases; 100%, 150%, 200% layout checks; beta parameter
+regression; clean source identity and Release/x64 runtime receipt hashes for
+host, Config, discovery DLL, stable renderer and beta renderer. Calibration
+visibility and inherited Fast presentation regressions found during testing
+were repaired. The old all-pages tab-size assertion also fails on unchanged
+local base eab55b48; it is recorded separately, not counted as a pass. An
+optional whole-repository native run was interrupted after the required suite
+passed; no whole-suite pass is claimed. Evidence is linked below.
+
+Deployment: `2026-10-25T19:49:25.1718500-04:00` to `C:\Videoprocessor\vp`, with
+matched binaries verified against build hashes. Rollback backup:
+`C:\Videoprocessor\vp\backup-before-vp0215-a37dab1f7c51-20261025-194923`. All 7 captured active configuration/state
+files were backed up and verified byte-for-byte unchanged; configuration edits:
+none. The deployment does not save the editor's in-memory migration. The deployed Config executable also passed a read-only open/screenshot/exit smoke against the active file; all seven settings hashes remained unchanged.
+
+Remaining acceptance: user trial of the menus, inheritance/Reset and canonical
+Scaling page; physical playback/performance and perceived-quality comparisons;
+exhaustive General/input/dynamic-policy presentation review; conflicting legacy
+ownership and remote/profile-selection edge cases; both-runtime end-to-end
+chroma/deinterlacing qualification. Existing Hermite downscale and Bicubic chroma
+fallbacks remain pending measured default review; no cost multiplier or universal
+quality ranking is claimed. This story is Review, not Done. Preserve VP-0032 and
+VP-0033 review states. Proposed decision: collect trial feedback before merging.
+
+Trial evidence:
+
+- [Choice inventory/default matrix](../assets/VP-0215/trial-choice-inventory.md).
+- [Build, tests and runtime hashes](../assets/VP-0215/trial-validation.json).
+- [Deployment and configuration-preservation receipt](../assets/VP-0215/trial-deployment.json).
+- [Installed editor smoke](../assets/VP-0215/trial-deployed-smoke.json) and [active-file Scaling screenshot](../assets/VP-0215/trial-deployed-scaling.png).
+- [Motion choices](../assets/VP-0215/trial-motion.png).
+- [Visible Chroma scaling](../assets/VP-0215/trial-scaling.png).
+- [Pre-existing all-pages assertion](../assets/VP-0215/baseline-every-page.log).
+- [Optional suite disposition](../assets/VP-0215/optional-whole-suite-disposition.json).
 
 ### Readiness and implementation base
 
@@ -328,12 +369,13 @@ Do not change their applicability or introduce motion-compensated interpolation.
 
 ## Boundaries and source touchpoints
 
-This remains one Backlog story covering shared configuration presentation,
+This remains one story covering shared configuration presentation,
 quality/default review and scaling ownership, plus the discovered mixer gap.
 New default recommendations are in scope, backed by the matrix and evidence;
 explicit existing operator choices remain protected. No libplacebo upgrade,
-new dithering algorithm, new capture/deinterlacing policy, RIFE, deployment or
-active-config replacement is authorized. Preserve VP-0032/VP-0033 review states.
+new dithering algorithm, new capture/deinterlacing policy, RIFE, or active-config
+replacement is authorized. The later user request explicitly authorized the trial
+binary deployment described above. Preserve VP-0032/VP-0033 review states.
 
 Primary source at the researched commit:
 

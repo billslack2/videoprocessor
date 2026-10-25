@@ -1,0 +1,8 @@
+{
+  "Run": "Optional whole-repository native suite",
+  "Completed": false,
+  "Disposition": "Interrupted after the required 141-test suite passed on final commit; GPU-heavy subtitle coverage is outside VP-0215",
+  "ObservedPassLines": 2310,
+  "NoWholeSuitePassClaim": true,
+  "Log": "E:\\codex\\diagnostics\\vp0215-config-choices-20261025\\native-final.log"
+}
