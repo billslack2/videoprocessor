@@ -1,7 +1,7 @@
 # VP-0210: Qualify passive presentation event collection
 
 ## Status
-Backlog
+Review
 
 2026-10-24: Bounded non-production research/build spike authorized as prerequisite for VP-0209. Luna xhigh agents reviewed mpv, MPC Video Renderer, libplacebo, Microsoft DXGI and PresentMon. Current phase is inspecting/compiling a pinned minimal PresentMon collector in E:\codex\diagnostics\vp-display-statistics-20261024\presentmon-spike. No runtime or tracing changes.
 
@@ -16,3 +16,8 @@ Proceed with VP-0209 only after the collector builds and its available evidence/
 
 ## Unblocks
 VP-0209.
+
+## Feasibility result - 2026-10-24
+Pinned v2.1.0 de71bba2fb65482f9cf6486284c9eed6aa87698f PresentData builds unmodified with v142; v2.6.0 required a larger unrelated dependency tree. A minimal helper ran under the current token against confirmed VP PID53756 for 20 seconds: display outcomes were observed for native video swapchain 0x18DA0D1A000/mode5, two startup lost-analysis events were identified, ETW loss counters remained zero, helper exited0 and its session was absent afterward. GPU/input/frame-type tracking disabled. CPU0.109s / elapsed21.49s, peak sampled working set9052160 bytes. No active VP/config edits.
+
+Decision: proceed with isolated v2.1.0 collector, pinned MIT provenance, exact event/intent identity, internal-overflow instrumentation and explicit partial/unavailable states. Production source/helper builds but full integration and paired runtime impact checks remain VP-0209 qualification. Spike is in Review, not physical-display acceptance. Detailed receipts in E:\codex\diagnostics\vp-display-statistics-20261024; research-playback.md records pinned mpv/MPC/libplacebo/Microsoft sources and limits. No claim of exact per-refresh physical scanout totals.

@@ -1,7 +1,7 @@
 # VP-0209: Observe output drops, repeats and glitches without render waits
 
 ## Status
-Backlog
+In Progress
 
 2026-10-24: User authorized implementation and Luna xhigh research. Design coordination is active; production integration depends on VP-0210 establishing a usable passive display-event source. Current remote beta v1.4.02-beta at b1415da4; clean source worktree E:\codex\videoprocessor\display-statistics-20261024, branch codex/display-statistics-20261024, fast-forwarded the existing pending PR197 chain through 26e33fdc (reset support). No new production source edits or deployment yet.
 
@@ -26,3 +26,8 @@ VP's capture/queue losses and cadence drift prediction do not measure displayed 
 ## Dependencies
 - VP-0210 passive collector feasibility and overhead spike.
 - VP-0207 current output observations and reset implementation at 26e33fdc.
+
+## Implementation progress - 2026-10-24
+Collector feasibility gate passed: pinned MIT PresentMon v2.1.0 (de71bba2) compiles with v142/C++14 without a service. A bounded 20-second passive probe observed the deployed VP video swapchain in composed-copy mode, with zero reported ETW event/buffer losses and orderly trace cleanup. Pilot helper CPU 0.109 seconds over 21.49 seconds and sampled working set 9.05 MB; no paired baseline, so this does not prove no playback impact.
+
+Implementation now adds an isolated helper, immutable render intent with exact Present-call QPC span, bounded SPSC handoff, worker-side event matching/reset retention and honest partial OSD totals. Production helper instruments its otherwise unreported internal completed-event ring overflow. Source remains in the recorded worktree; build/regressions and independent review underway. Current deployed player/configuration unchanged. Repeat/glitch counters are conservative excess-hold lower bounds because there is no immutable scheduler-owned absolute vblank target; confirmed discarded outcomes are distinct from missing events.
