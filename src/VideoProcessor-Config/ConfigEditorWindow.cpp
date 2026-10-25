@@ -3255,7 +3255,9 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         QString normalized = selected;
         if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
             key.compare(QStringLiteral("renderer"), Qt::CaseInsensitive) == 0 &&
-            normalized.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0)
+            (normalized.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
+             normalized.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+             normalized.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0))
             normalized = QStringLiteral("VP Renderer");
         const std::string sectionText = section.toStdString();
         const std::string keyText = key.toStdString();
@@ -3468,14 +3470,15 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
 
     QString renderer = value(QStringLiteral("general"),
         QStringLiteral("renderer")).trimmed();
-    if (renderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"),
-        Qt::CaseInsensitive) == 0)
+    if (renderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
+        renderer.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+        renderer.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0)
         renderer = QStringLiteral("VP Renderer");
     // Discovery is advisory for validation. A transient or unavailable helper
     // must not make every unrelated profile edit unsavable. When it returns a
     // real list we remain strict; otherwise accept VP's built-in choices.
     const QStringList acceptedRenderers = allRenderers_.isEmpty() ?
-        QStringList{ QStringLiteral("VP Renderer"), QStringLiteral("VP Renderer (Beta)"),
+        QStringList{ QStringLiteral("VP Renderer"), QStringLiteral("VP Renderer (Legacy)"),
             QStringLiteral("DirectShow - madVR") } : allRenderers_;
 	if (!renderer.isEmpty() &&
 		!discoveredContains(acceptedRenderers, renderer))
@@ -4521,9 +4524,11 @@ QWidget* ConfigEditorWindow::createStartupPage()
 {
     // Keep old configurations loadable, but migrate the former public display
     // name in the pending document so the next editor save uses the final name.
+    const QString configuredRenderer = value(QStringLiteral("general"), QStringLiteral("renderer"));
     if (configurationLoaded_ && document_ &&
-        value(QStringLiteral("general"), QStringLiteral("renderer")).compare(
-            QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0)
+        (configuredRenderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
+         configuredRenderer.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+         configuredRenderer.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0))
     {
         document_->SetKnown("general", "renderer", "VP Renderer");
         dirty_ = true;
@@ -6644,7 +6649,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         std::array<ToneMappingControl*, ToneMappingTuning::Count> toneControls{};
         form = addCollapsibleSection(QStringLiteral("toneHighlightBeta"),
             QStringLiteral("Tone Mapping: Highlight Response (Beta)"),
-            QStringLiteral("Available with VP Renderer (Beta). Saved values are retained with other renderers."), false);
+            QStringLiteral("Available with VP Renderer. Saved values are retained with other renderers."), false);
         QWidget* betaFields = form->parentWidget();
         auto* customToneMapping = addBoolean(QStringLiteral("Gamut overflow correction (Experimental)"), QStringLiteral("custom_tone_mapping"));
         customToneMapping->setToolTip(QStringLiteral("Off: original tone/gamut mapping. On: smoothly compresses colors near or beyond the target gamut or brightness limits after the selected gamut mapping during HDR tone mapping. May reduce brightness or saturation. Default: Off. Apply to compare."));
@@ -6693,7 +6698,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         updateToneControls = [this, toneControls, toneMapping, peakDetection, renderingQuality, state, betaFields] {
             if (state->loading) return;
             const bool beta = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
-                QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
+                QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
             betaFields->setEnabled(beta);
             QString curve = effectiveChoiceValue(toneMapping);
             if (curve.isEmpty() || curve == "auto") curve = "spline";
@@ -8313,7 +8318,7 @@ void ConfigEditorWindow::refreshShaderCacheStatus()
 		return;
 	}
     const bool beta = value(QStringLiteral("general"), QStringLiteral("renderer")).compare(
-        QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
+        QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
     const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
         beta ? QStringLiteral("vprenderer-beta") : QStringLiteral("vprenderer")));
     const QFileInfo cache(rendererDirectory.filePath(
@@ -8938,7 +8943,7 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     {
         const QDir configurationDirectory = QFileInfo(configPath_).absoluteDir();
         const bool beta = value(QStringLiteral("general"), QStringLiteral("renderer")).compare(
-            QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0;
+            QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
         const QString rendererDirectory = configurationDirectory.filePath(
             beta ? QStringLiteral("vprenderer-beta") : QStringLiteral("vprenderer"));
         if (!QDir().mkpath(rendererDirectory))

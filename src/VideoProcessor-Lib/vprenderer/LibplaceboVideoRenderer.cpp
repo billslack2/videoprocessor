@@ -1173,9 +1173,9 @@ namespace
 		if (variable == "renderer")
 		{
 #if defined(VP_LIBPLACEBO_BETA)
-            value = "VP Renderer (Beta)";
-#else
             value = "VP Renderer";
+#else
+            value = "VP Renderer (Legacy)";
 #endif
 			return true;
 		}
@@ -20055,9 +20055,9 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 			m_manualDisplayRule.c_str());
 	m_callback.OnRendererDetailString(
 #if defined(VP_LIBPLACEBO_BETA)
-        TEXT("VP Renderer (Beta)"), m_callbackGeneration);
-#else
         TEXT("VP Renderer"), m_callbackGeneration);
+#else
+        TEXT("VP Renderer (Legacy)"), m_callbackGeneration);
 #endif
 }
 
@@ -21575,11 +21575,16 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 		configured ? aspect : 0.0,
 		static_cast<unsigned long long>(requestSerial));
 
+#if defined(VP_LIBPLACEBO_BETA)
+    const auto* rendererName = TEXT("VP Renderer");
+#else
+    const auto* rendererName = TEXT("VP Renderer (Legacy)");
+#endif
 	CString details;
 	if (configured)
-		details.Format(TEXT("VP Renderer - Screen: %.4f:1"), aspect);
+		details.Format(TEXT("%s - Screen: %.4f:1"), rendererName, aspect);
 	else
-		details = TEXT("VP Renderer - Screen: output panel");
+		details.Format(TEXT("%s - Screen: output panel"), rendererName);
 	m_callback.OnRendererDetailString(details, m_callbackGeneration);
 }
 
