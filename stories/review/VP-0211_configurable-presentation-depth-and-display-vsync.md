@@ -4,6 +4,18 @@
 
 Review
 
+2026-10-25 positive live checkpoint through 14:44:33: user reports OSD and
+viewing look good and will continue visual testing. Matching clean host/renderer
+62122309 remains active, every-refresh on, Motion off, source/display ~59.941 Hz.
+The 14:43:38–14:43:44 off/classic/reconstruction/clear-yellow/black/off sequence
+produced one internal cadence restart per applied update, hdmi_resync=0. No
+renewed cached-repeat log after startup, no renderer/capacity/cadence drops, and
+no presentation errors were observed through this checkpoint. Recent GPU frame
+averages were ~4.04–4.38 ms; recent frame-period overruns were zero. Retain Review
+for the user's continuing visual tests, other refresh rates and longer sessions.
+[Positive checkpoint](../assets/VP-0211/subtitle-phase-20261025/positive-checkpoint-144433.json).
+
+
 2026-10-25 subtitle-transition candidate deployed: isolated `6f6c0d2e` in
 [draft PR #204](https://github.com/billslack2/videoprocessor/pull/204), combined
 `621223092dbea7e088947523a1c9f260c4bdb930` preserves the installed tone GUI.

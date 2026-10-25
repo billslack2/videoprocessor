@@ -1,0 +1,29 @@
+{
+  "checkedThrough": "2026-10-25T14:44:33-04:00",
+  "deploymentCommit": "621223092dbea7e088947523a1c9f260c4bdb930",
+  "userFeedback": "Looks good now. OSD looks good. Viewing looks good. Continuing visual testing.",
+  "activeEveryRefresh": true,
+  "activeMixing": false,
+  "sourceAndDisplayHzApprox": 59.941,
+  "latestSubtitleSequence": [
+    "off",
+    "classic",
+    "reconstruction",
+    "clear__yellow",
+    "black",
+    "off"
+  ],
+  "latestTransitionInterval": "14:43:38 through 14:43:44",
+  "cadenceRestarts": "one per applied profile update; hdmi_resync=0",
+  "lastLoggedCachedRepeat": "14:39:54 startup; no subsequent cached-repeat log through checkpoint",
+  "rendererDrops": 0,
+  "capacityDrops": 0,
+  "cadenceDrops": 0,
+  "presentationErrors": 0,
+  "recentGpuFrameAverageRangeMs": [
+    4.044,
+    4.378
+  ],
+  "recentPeriodOverruns": 0,
+  "scope": "current ~59.94Hz session only; longer/other-rate visual testing remains open"
+}
