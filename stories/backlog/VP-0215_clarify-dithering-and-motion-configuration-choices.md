@@ -9,8 +9,11 @@ started. The user clarified that dithering needs one method selector: Off
 disables it and choosing any method enables it. A separate enable switch is
 not wanted. The user's follow-up removes Auto and On from the menu: Blue noise
 is first/default, and existing Auto or On selections resolve to Blue noise.
-Expose the other three ordinary methods alongside Off; keep the ten
-error-diffusion variants under Advanced and retain advanced saved settings.
+The final user clarification omits methods intended mainly for testing or
+still images: remove Ordered (LUT) and all ten error-diffusion variants from
+all selectable UI choices. Keep Blue noise, Ordered (fixed), White noise, and
+Off, with no Advanced methods list. Existing removed-method configs remain
+readable as legacy values; do not silently change them.
 
 Next action: reproduce fresh/legacy profile menus on the then-current beta,
 prove the Cubic mixer mismatch below with a production-path regression, and
@@ -44,8 +47,9 @@ Libplacebo's preferred/default method is blue noise. Ordered LUT is primarily
 useful for testing; fixed ordered dithering is a faster alternative. White
 noise is cheap but can look more objectionable. Error diffusion is a separate,
 costly path that upstream recommends mainly for still images rather than
-moving video. Keep error diffusion out of the everyday video list; the three
-ordinary alternatives remain directly selectable with short explanatory help.
+moving video. Per the user's final scope, omit Ordered LUT and all
+error-diffusion variants from the UI entirely. Keep fixed ordered and White
+noise as the two selectable alternatives to Blue noise, alongside Off.
 See the [dithering API](https://github.com/haasn/libplacebo/blob/master/src/include/libplacebo/shaders/dithering.h)
 and [options reference](https://libplacebo.org/options/#error_diffusionkernel).
 
@@ -109,43 +113,30 @@ than changing behavior based on stale prose. See the
 
 ## Intended UI and compatibility contract
 
-1. Keep a single Dithering selector with the following normal choices in this
+1. Keep a single Dithering selector with exactly the following choices in this
    order. Blue noise is first and is the root default. No Auto or On entries,
    separate enable checkbox, or dithering status implying quality-preset control.
 
-| Stored token | Normal display label |
+| Stored token | Display label |
 | --- | --- |
 | `blue_noise` | Blue noise (recommended) |
 | `ordered_fixed` | Ordered (fixed) |
-| `ordered_lut` | Ordered (LUT) |
 | `white_noise` | White noise |
 | `off` | Off |
 
-2. Provide a collapsed/opt-in **Advanced methods** disclosure for the same
-   selector. It reveals only the ten error-diffusion variants below, without
-   a second active method control or a new renderer setting. Viewing more
-   choices must not dirty or save the config. If an existing config selects an
-   advanced method, show its friendly selected value immediately and make that
-   choice available without requiring discovery of the disclosure first.
-
-| Stored token | Advanced display label |
-| --- | --- |
-| `error_diffusion_simple` | Error diffusion: Simple |
-| `error_diffusion_false_fs` | Error diffusion: False Floyd-Steinberg |
-| `error_diffusion_sierra_lite` | Error diffusion: Sierra Lite |
-| `error_diffusion_floyd_steinberg` | Error diffusion: Floyd-Steinberg |
-| `error_diffusion_atkinson` | Error diffusion: Atkinson |
-| `error_diffusion_jarvis_judice_ninke` | Error diffusion: Jarvis-Judice-Ninke |
-| `error_diffusion_stucki` | Error diffusion: Stucki |
-| `error_diffusion_burkes` | Error diffusion: Burkes |
-| `error_diffusion_sierra2` | Error diffusion: Sierra 2 |
-| `error_diffusion_sierra3` | Error diffusion: Sierra 3 |
-
-3. Brief help explains which methods are recommended for video, the cost and
-   still-image use case for error diffusion, and capability/fallback behavior
-   verified for VP's shipped runtimes. Explain fixed ordered's speed, Ordered
-   LUT's mainly testing-oriented purpose, and White noise's more visible noise.
-   Preserve all explicit accepted methods and recognize legacy aliases. Saved
+2. Omit Ordered (LUT) and all ten error-diffusion variants from every selectable
+   UI list, including any Advanced list. Do not add an advanced disclosure for
+   dithering. Existing `ordered_lut` and `error_diffusion_*` values must still
+   parse and retain their runtime behavior. If a saved or inherited legacy
+   method is active, identify it with a concise, friendly, nonselectable status
+   outside the menu; the menu itself still offers only the four choices above.
+   Opening/cancelling, changing profiles, and saving unrelated settings must
+   neither rewrite the legacy value nor reinsert it into the selectable list.
+   Explicitly choosing one of the four supported UI values replaces it.
+3. Brief help explains Blue noise's recommendation, fixed ordered's speed,
+   White noise's more visible noise, and Off. Keep the user-facing description
+   focused on these video choices. Preserve old explicit values for config
+   compatibility and recognize legacy aliases. Saved
    Auto/On/true, including mixed case, display and resolve as Blue noise in both
    editor and runtime/headless config loading. Normalize them to `blue_noise`
    when saving/applying the affected settings; merely opening or cancelling
@@ -182,15 +173,18 @@ than changing behavior based on stale prose. See the
 
 ## Acceptance criteria
 
-- Fresh/default and named-profile menus satisfy the normal/advanced contract.
-  No Auto/On entry, duplicate effective methods, or raw snake_case method labels
-  appear in dithering menus or inheritance summaries. Verify the five normal
-  choices and their order, with Blue noise first.
+- Fresh/default and named-profile menus offer exactly Blue noise, Ordered
+  (fixed), White noise, and Off, in that order, with no Advanced methods list.
+  No Auto/On, Ordered (LUT), error-diffusion entry, duplicate method, or raw
+  snake_case method label appears in a selectable dithering menu, even after
+  loading old configs or repeatedly changing profiles.
 - Legacy Auto/On/true and mixed-case spellings resolve to Blue noise, including
   old Auto + Fast, through both runtime loading and editor migration. Apply/OK
-  and reopen retain canonical `blue_noise`. Open/Cancel and merely viewing
-  advanced choices do not rewrite files. All 14 explicit methods and Off retain
-  their behavior. An omitted root uses Blue noise; an omitted named value
+  and reopen retain canonical `blue_noise`. Open/Cancel do not rewrite files.
+  All 14 old explicit methods and Off remain readable with unchanged behavior;
+  removed methods receive only a nonselectable legacy status. Saving unrelated
+  settings preserves them; an explicit supported method selection replaces
+  them. An omitted root uses Blue noise; an omitted named value
   follows its parent, including an explicit inherited Off. Repeated profile
   switching must not append retired Auto/On choices or dirty unrelated values.
 - Check both libplacebo variants and all VP quality presets: Blue noise and its
@@ -208,7 +202,8 @@ than changing behavior based on stale prose. See the
   handling, and YADIF-only control enablement retain their existing semantics.
 - Update relevant configuration help/reference and public-value catalogs to
   distinguish current menu choices from legacy accepted spellings. Include
-  readable screenshots of normal/advanced dithering and motion/deinterlacing.
+  readable screenshots of the four-choice dithering menu, saved legacy-method
+  status, and motion/deinterlacing.
 - Run the relevant ConfigEditorWindow, ConfigEditorCore/config-validation,
   LibplaceboRenderParameters, and MotionRenderer regression coverage plus a
   successful x64 Release build. Record any untested interactive/GPU coverage.
