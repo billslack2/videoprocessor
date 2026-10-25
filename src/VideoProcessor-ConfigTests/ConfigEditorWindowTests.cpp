@@ -5,6 +5,7 @@
 
 #include "ConfigEditorWindow.h"
 #include "../VideoProcessor-Config/UpdatePanel.h"
+#include "../VideoProcessor-Config/AdaptiveWorkspace.h"
 #include "ConfigEditorCore.h"
 #include "../VideoProcessor-Config/ProfileListController.h"
 #include "VpTheme.h"
@@ -5403,15 +5404,22 @@ void testResponsiveWorkspacesPreserveEditsAndFit()
     selectData(requireControl<QComboBox>(window, "config.general.renderer"), "VP Renderer");
     auto* toneToggle = requireControl<QToolButton>(window, "rendererSection.toneMapping");
     toneToggle->setChecked(true);
-    window.show();
+    window.resize(1920, 1080);
+    window.show(); window.selectPage(2);
+    for (int n = 0; n < 5; ++n) QApplication::processEvents();
     auto* pages = requireControl<QStackedWidget>(window, "settingsPages");
     auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
     auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.shortcut");
-    auto* combo = requireControl<QComboBox>(window, "config.vprenderer.profiles.compact");
     const int row = profiles->count() > 1 ? 1 : 0;
     profiles->setCurrentRow(row);
     edit->setText(QStringLiteral("Ctrl+Alt+F9"));
     const QString text = edit->text();
+    require(!window.findChild<QComboBox*>("settingsNavigationCompact") &&
+        !window.findChild<QComboBox*>("config.vprenderer.profiles.compact") &&
+        !window.findChild<QTabBar*>("workspaceViewTabs"), "Dropdown/tabbed replacement navigation remains");
+    const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
+    if (!images.isEmpty()) { QDir().mkpath(images); window.grab().save(images + "/docked-1920.png"); }
+    requireControl<QAbstractButton>(window, "workspaceAdvancedToggle")->click();
     auto* compare = requireControl<QPushButton>(window, "toneCharts.compareAdd");
     for (int n = 0; n < 3; ++n)
     {
@@ -5420,59 +5428,43 @@ void testResponsiveWorkspacesPreserveEditsAndFit()
             if (action->isEnabled() && action->text().startsWith("Comparison", Qt::CaseInsensitive))
             { action->trigger(); break; }
     }
-    const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
-    if (!images.isEmpty()) QDir().mkpath(images);
     for (const QSize size : { QSize(1920, 1080), QSize(1440, 900), QSize(1280, 720),
         QSize(1040, 700), QSize(800, 600), QSize(760, 540), QSize(1920, 1080) })
     {
         std::cerr << "RESIZE " << size.width() << "x" << size.height() << std::endl;
-        window.resize(size);
-        window.selectPage(2);
-        for (int n = 0; n < 5; ++n) QApplication::processEvents();
-        require(profiles->currentRow() == row && combo->currentIndex() == row,
-            "Responsive layout changed profile selection");
-        require(edit->text() == text, "Responsive layout discarded an unsaved edit");
+        window.resize(size); window.selectPage(2);
+        for (int n = 0; n < 6; ++n) QApplication::processEvents();
+        require(profiles->currentRow() == row && edit->text() == text,
+            "Docking changed profile selection or discarded an unsaved edit");
         auto* settings = pages->currentWidget()->findChild<QScrollArea*>("workspaceSettingsViewport");
-        require(settings && settings->isVisibleTo(&window) && settings->width() >= 400 && settings->height() >= 150,
-            "Settings pane was squeezed by profiles or charts");
-        require(settings->horizontalScrollBar()->maximum() == 0,
-            "Profile settings require horizontal scrolling");
-        auto* outer = qobject_cast<QScrollArea*>(pages->currentWidget());
-        require(outer && outer->verticalScrollBar()->maximum() == 0,
-            "Rendering workspace requires a second page scrollbar");
-        auto* tabs = pages->currentWidget()->findChild<QTabBar*>("workspaceViewTabs");
-        if (tabs && tabs->isVisibleTo(&window))
+        auto* charts = pages->currentWidget()->findChild<QScrollArea*>("workspaceChartsViewport");
+        require(settings && charts && settings->isVisibleTo(&window) && charts->isVisibleTo(&window),
+            "Advanced settings and charts must remain available together");
+        require(settings->width() >= 320 && charts->width() >= 320,
+            "Docking squeezed settings or charts below a usable width");
+        if (settings->horizontalScrollBar()->maximum() || charts->horizontalScrollBar()->maximum())
         {
-            tabs->setCurrentIndex(1);
-            QApplication::processEvents();
-            auto* charts = pages->currentWidget()->findChild<QScrollArea*>("workspaceChartsViewport");
-            require(charts && charts->isVisibleTo(&window) && charts->width() >= 400,
-                "Compact charts cannot be reached at usable width");
-            require(charts->horizontalScrollBar()->maximum() == 0, "Charts require horizontal scrolling");
-            require(outer->verticalScrollBar()->maximum() == 0 &&
-                charts->mapTo(outer->viewport(), QPoint(0, charts->height())).y() <= outer->viewport()->height(),
-                "Chart pane extends below its visible page viewport");
-            if (qEnvironmentVariableIsSet("VP_REQUIRE_CHART_RUNTIME"))
-                require(compare->isVisibleTo(&window), "Real chart runtime is unavailable in the visual test");
-            if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/charts-%1.png").arg(size.width()));
-            charts->verticalScrollBar()->setValue(charts->verticalScrollBar()->maximum());
-            QApplication::processEvents();
-            require(charts->verticalScrollBar()->value() == charts->verticalScrollBar()->maximum(),
-                "Bottom of the chart pane is unreachable");
-            if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/charts-bottom-%1.png").arg(size.width()));
-            auto* chartTabs = requireControl<QTabBar>(window, "toneChartsTabs");
-            chartTabs->setCurrentIndex(1);
-            for (int n = 0; n < 3; ++n) QApplication::processEvents();
-            require(charts->horizontalScrollBar()->maximum() == 0, "Colour charts overflow horizontally");
-            if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/colour-%1.png").arg(size.width()));
-            chartTabs->setCurrentIndex(0);
-            charts->verticalScrollBar()->setValue(0);
-            tabs->setCurrentIndex(0);
-            for (int n = 0; n < 3; ++n) QApplication::processEvents();
+            if (!images.isEmpty()) window.grab().save(images + "/overflow.png");
+            throw std::runtime_error(QStringLiteral("Horizontal overflow at %1: settings %2/%3, charts %4/%5")
+                .arg(size.width()).arg(settings->width()).arg(settings->horizontalScrollBar()->maximum())
+                .arg(charts->width()).arg(charts->horizontalScrollBar()->maximum()).toStdString());
         }
-        settings->ensureWidgetVisible(toneToggle);
+        require(requireControl<QAbstractButton>(window, "settingsRailExpand")->isVisibleTo(&window),
+            "Collapsed settings rail disappeared");
+        require(requireControl<QAbstractButton>(window, "config.vprenderer.profiles.railExpand")->isVisibleTo(&window),
+            "Collapsed profiles rail disappeared");
+        if (qEnvironmentVariableIsSet("VP_REQUIRE_CHART_RUNTIME"))
+            require(compare->isVisibleTo(&window), "Real chart runtime unavailable");
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/advanced-%1.png").arg(size.width()));
+        charts->verticalScrollBar()->setValue(charts->verticalScrollBar()->maximum());
+        QApplication::processEvents();
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/charts-bottom-%1.png").arg(size.width()));
+        auto* chartTabs = requireControl<QTabBar>(window, "toneChartsTabs");
+        chartTabs->setCurrentIndex(1);
         for (int n = 0; n < 3; ++n) QApplication::processEvents();
-        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/rendering-%1.png").arg(size.width()));
+        require(charts->horizontalScrollBar()->maximum() == 0, "Colour charts overflow horizontally");
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/colour-%1.png").arg(size.width()));
+        chartTabs->setCurrentIndex(0); charts->verticalScrollBar()->setValue(0);
         auto* ok = requireControl<QPushButton>(window, "okConfiguration");
         require(window.rect().contains(QRect(ok->mapTo(&window, QPoint()), ok->size())),
             "Footer actions leave the window");
@@ -5480,55 +5472,132 @@ void testResponsiveWorkspacesPreserveEditsAndFit()
         {
             std::cerr << "PAGE " << page << std::endl;
             window.selectPage(page);
-            for (int n = 0; n < 3; ++n) QApplication::processEvents();
+            for (int n = 0; n < 4; ++n) QApplication::processEvents();
             auto* viewport = qobject_cast<QScrollArea*>(pages->currentWidget());
             if (viewport && viewport->horizontalScrollBar()->maximum() != 0)
                 throw std::runtime_error(QStringLiteral("Page %1 overflows horizontally at %2px (%3px)")
                     .arg(page).arg(size.width()).arg(viewport->horizontalScrollBar()->maximum()).toStdString());
         }
     }
-    window.resize(800, 600);
-    window.selectPage(2);
-    QApplication::processEvents();
-    auto* manage = requireControl<QPushButton>(window, "config.vprenderer.profiles.manage");
+    require(readBytes(path) == originalBytes, "Docking wrote the source configuration");
+}
+
+void testLeftDocksRestoreManualChoicesAndDrawerEditing()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray originalBytes = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    selectData(requireControl<QComboBox>(window, "config.general.renderer"), "VP Renderer");
+    window.resize(1920, 1080); window.show(); window.selectPage(2);
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto* workspace = dynamic_cast<AdaptiveProfileWorkspace*>(
+        requireControl<QWidget>(window, "workspace.config.vprenderer.profiles"));
+    AdaptiveNavigationHost* navigation = nullptr;
+    for (auto* widget : window.findChildren<QWidget*>())
+        if (auto* candidate = dynamic_cast<AdaptiveNavigationHost*>(widget)) navigation = candidate;
+    require(workspace && navigation, "Dock hosts missing");
+    auto* advanced = requireControl<QAbstractButton>(window, "workspaceAdvancedToggle");
+    auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+    require(workspace->isProfilesExpanded() && navigation->isPanelExpanded(), "Normal workspace must start docked");
+    advanced->click(); events();
+    require(workspace->isAdvancedFocus() && !workspace->isProfilesExpanded() && !navigation->isPanelExpanded(),
+        "Advanced toggle did not collapse both left panels");
+    auto* toneSection = requireControl<QToolButton>(window, "rendererSection.toneMapping");
+    auto* toneCurves = requireControl<QToolButton>(window, "rendererSection.toneCurves");
+    auto* settingsScroll = workspace->findChild<QScrollArea*>("workspaceSettingsViewport");
+    require(toneSection->isChecked() && toneCurves->isChecked(), "Advanced controls were not expanded");
+    require(settingsScroll && toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() >= 0 &&
+        toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() < 40,
+        "Advanced focus did not bring tone controls into view");
+    requireControl<QAbstractButton>(window, "settingsRail.settingsNavigation.22")->click(); events();
+    require(requireControl<QStackedWidget>(window, "settingsPages")->currentIndex() == 22,
+        "Settings rail did not activate the original Display page action");
+    window.selectPage(2); events();
+    require(!navigation->isPanelExpanded(), "Page navigation changed the rail state");
+    requireControl<QAbstractButton>(window, "settingsRailExpand")->click();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.railExpand")->click(); events();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.dockToggle")->click(); events();
+    advanced->click(); events();
+    require(navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
+        "Leaving advanced focus overwrote a manual panel choice");
+    advanced->click(); events();
+    requireControl<QAbstractButton>(window, "workspaceRestorePanels")->click(); events();
+    require(workspace->isAdvancedFocus() && navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
+        "Restore panels changed manual profile choice or hid advanced charts");
+    auto* drawer = requireControl<QAbstractButton>(window, "config.vprenderer.profiles.drawerToggle");
+    drawer->click(); events();
+    require(profiles->isVisibleTo(&window), "Profile drawer did not expose original profile management");
+    const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
+    if (!images.isEmpty()) window.grab().save(images + "/profile-drawer.png");
     bool unexpectedModal = false;
     QTimer modalWatch;
     QObject::connect(&modalWatch, &QTimer::timeout, &window, [&unexpectedModal] {
         if (auto* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget()))
-        {
-            unexpectedModal = true;
-            std::cerr << "UNEXPECTED MODAL " << modal->metaObject()->className() << " "
-                << modal->windowTitle().toStdString() << std::endl;
-            for (auto* label : modal->findChildren<QLabel*>()) std::cerr << label->text().toStdString() << std::endl;
-            modal->reject();
-        }
+        { unexpectedModal = true; modal->reject(); }
     });
     modalWatch.start(1000);
-    std::cerr << "MANAGE" << std::endl;
-    manage->click(); QApplication::processEvents();
-    std::cerr << "MANAGE OPEN" << std::endl;
-    require(profiles->isVisibleTo(&window), "Compact profile management is inaccessible");
-    manage->click(); QApplication::processEvents();
-    std::cerr << "MANAGE CLOSED" << std::endl;
     const int oldCount = profiles->count();
-    auto* profileMenu = requireControl<QPushButton>(window, "rendererProfileMenu")->menu();
-    std::cerr << "DUPLICATE" << std::endl;
-    for (auto* action : profileMenu->actions())
+    auto* menu = requireControl<QPushButton>(window, "rendererProfileMenu")->menu();
+    for (auto* action : menu->actions())
         if (action->text() == "Duplicate selected") { action->trigger(); break; }
-    QApplication::processEvents();
-    require(profiles->count() == oldCount + 1 && combo->currentIndex() == profiles->currentRow(),
-        "Compact profile selector lost the newly duplicated selection");
-    require(!unexpectedModal, "Profile management raised an unexpected dialog");
-    require(readBytes(path) == originalBytes, "Reflow or profile UI interaction wrote the source file");
-    if (profiles->count() > 1)
-    {
-        std::cerr << "SELECT" << std::endl;
-        combo->setCurrentIndex(0);
-        QMetaObject::invokeMethod(combo, "activated", Qt::DirectConnection, Q_ARG(int, 0));
-        require(profiles->currentRow() == 0, "Compact selector does not select the real profile");
-    }
+    events();
+    require(!unexpectedModal && profiles->count() == oldCount + 1 && profiles->currentRow() >= 0,
+        "Duplicating from the drawer lost its selection or produced an error");
+    workspace->closeProfileDrawer(); events();
+    drawer->click(); events();
+    profiles->setCurrentRow(0);
+    QMetaObject::invokeMethod(profiles, "itemClicked", Qt::DirectConnection,
+        Q_ARG(QListWidgetItem*, profiles->item(0)));
+    events();
+    require(profiles->currentRow() == 0 && !profiles->isVisibleTo(&window),
+        "Profile selection did not close the temporary drawer");
+    drawer->click(); events();
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(profiles, &escape); events();
+    require(!profiles->isVisibleTo(&window), "Escape did not close the profile drawer");
+    drawer->click(); events();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.drawerPin")->click(); events();
+    require(workspace->isProfilesExpanded(), "Pin did not dock the profile panel");
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.dockToggle")->click(); events();
+    drawer->click(); events();
+    QMouseEvent outside(QEvent::MouseButtonPress, QPointF(2, 2), QPointF(window.mapToGlobal(QPoint(2, 2))),
+        Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &outside); events();
+    require(!profiles->isVisibleTo(&window), "Outside click did not close the profile drawer");
+    window.resize(760, 540); events();
+    drawer->click(); events();
+    auto* frame = workspace->findChild<QFrame*>("profileDrawer");
+    auto* viewport = workspace->findChild<QScrollArea*>("profileDrawerViewport");
+    require(frame && viewport && frame->isVisibleTo(&window), "Small-window drawer missing");
+    require(window.rect().contains(QRect(frame->mapTo(&window, QPoint()), frame->size())),
+        "Small-window drawer extends outside the window");
+    require(viewport->horizontalScrollBar()->maximum() == 0, "Small-window drawer overflows horizontally");
+    for (auto* parent = workspace->parentWidget(); parent; parent = parent->parentWidget())
+        if (auto* outer = qobject_cast<QScrollArea*>(parent))
+            require(QRect(outer->viewport()->mapToGlobal(QPoint()), outer->viewport()->size()).contains(
+                QRect(frame->mapToGlobal(QPoint()), frame->size())),
+                "Profile drawer extends beyond the visible page viewport");
+    if (!images.isEmpty()) window.grab().save(images + "/profile-drawer-760.png");
+    viewport->verticalScrollBar()->setValue(viewport->verticalScrollBar()->maximum()); events();
+    require(workspace->property("profileDrawerOpen").toBool(), "Internal drawer scrolling dismissed it");
+    for (auto* parent = workspace->parentWidget(); parent; parent = parent->parentWidget())
+        if (auto* outer = qobject_cast<QScrollArea*>(parent))
+        {
+            auto* bar = outer->verticalScrollBar();
+            if (bar->maximum() == 0) continue;
+            bar->setValue(bar->value() == 0 ? bar->maximum() : 0); events();
+            require(!workspace->property("profileDrawerOpen").toBool(), "Outer scrolling left a detached drawer open");
+            drawer->click(); events();
+            require(QRect(outer->viewport()->mapToGlobal(QPoint()), outer->viewport()->size()).contains(
+                QRect(frame->mapToGlobal(QPoint()), frame->size())),
+                "Reopened drawer ignores the scrolled page viewport");
+            break;
+        }
+    workspace->closeProfileDrawer(); events();
+    require(readBytes(path) == originalBytes, "Docking or drawer management wrote the configuration");
 }
-
 void testMigrationNoticeOnlyForPendingMigration()
 {
     QTemporaryDir directory;
@@ -8048,6 +8117,7 @@ int main(int argc, char** argv)
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
     failures += run("responsive workspaces preserve edits and fit", testResponsiveWorkspacesPreserveEditsAndFit);
+    failures += run("left docks restore manual choices and drawer editing", testLeftDocksRestoreManualChoicesAndDrawerEditing);
     failures += run("migration notice only for pending migration", testMigrationNoticeOnlyForPendingMigration);
     failures += run("Rendering menu duplicate export import preserves ownership",testRenderingMenuDuplicateExportImportPreservesLegacyOwner);
     failures += run("Rendering processing ownership save reopen and rename",testRenderingProcessingOwnershipSaveReopenAndRename);
