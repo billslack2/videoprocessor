@@ -1,0 +1,10 @@
+2026-10-25 09:09:10 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/3520e71396a3c20112e4b18c67258052af34e0e0 branch=codex/vp0211-presentation-20261025 dirty=0 build=git-3520e71
+2026-10-25 09:09:18 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/3520e71396a3c20112e4b18c67258052af34e0e0 branch=codex/vp0211-presentation-20261025 dirty=0 build=git-3520e71
+2026-10-25 09:09:19 | VP display cadence owner: requested_every_vsync=0 effective_every_vsync=0 smooth_motion_mixing=0 owner=source
+2026-10-25 09:09:19 | VP motion: Motion: source cadence unavailable delay_ms=0.000 source_hz=0.000000 display_hz=59.951000
+2026-10-25 09:09:22 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/3520e71396a3c20112e4b18c67258052af34e0e0 branch=codex/vp0211-presentation-20261025 dirty=0 build=git-3520e71
+2026-10-25 09:09:22 | VP display cadence owner: requested_every_vsync=0 effective_every_vsync=0 smooth_motion_mixing=0 owner=source
+2026-10-25 09:09:22 | VP motion: Motion: source cadence unavailable delay_ms=0.000 source_hz=0.000000 display_hz=59.951000
+2026-10-25 09:09:27 | VP display cadence owner: requested_every_vsync=0 effective_every_vsync=0 smooth_motion_mixing=1 owner=smooth-motion
+2026-10-25 09:09:27 | VP motion: Smooth motion: oversample; progressive; buffer 1 frame(s) delay_ms=41.708 source_hz=23.976455 display_hz=59.951000
+2026-10-25 09:10:01 | VP motion: Smooth motion: oversample; progressive; buffer 1 frame(s); subtitles synchronized delay_ms=41.708 source_hz=23.976469 display_hz=59.950684
