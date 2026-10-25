@@ -32,7 +32,7 @@ rectangles while bar content remains visible, across hold expiry/reappearance,
 and during real picture AR/profile transitions. Check timing telemetry because
 Off now inspects every eligible source; differing black references can prevent
 reuse of a previous scheduled dense scan. Deterministic policy tests are not
-live performance acceptance. No deployment or active configuration change.
+live performance acceptance. The Off-only review build was not deployed; combined deployment readiness is recorded below. Active configuration is unchanged.
 
 Original incident: matching host/renderer commit
 `3520e71396a3c20112e4b18c67258052af34e0e0`, Off selected at 10:42:33 and Classic
@@ -40,6 +40,48 @@ at 10:50:35 America/New_York. At 10:50:21 the measured fit stays at bottom 1974
 while final/submitted crops alternate 1974/2068 every 31/47 ms. The introducing
 regression commit has not been identified. [Incident excerpt](../assets/VP-0213/investigation-20261025/incident.log).
 
+## Combined PR #177 / #203 deployment readiness
+
+2026-10-25: The user explicitly requested deployment of #203 together with
+both the deployed migration-safe #177 work and its latest responsive Config
+follow-up. The exact combined source is clean and pushed at
+`6b02334a83100645e8331d89f63a47797111e79f`, branch
+`codex/pr177-pr203-deploy-20261025`, in
+`E:\codex\videoprocessor\pr177-pr203-deploy-20261025`. It starts at freshly
+verified beta/default `v1.4.02-beta` tip
+`8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`, includes #203's `697c1bcd`, the
+migration-safe #177 integration `588f9a9e` (the same tree as deployed
+`dedc85d9`), and final responsive follow-up
+`83ff62acc4557dde176687db68609e24ebf7149d`. These feature integrations do not
+merge either PR into beta.
+
+The final full x64 Release solution build passed. All 684 selected related
+native tests and all 24 focused Config cases passed. The latter cover all 22
+PR #177 focused cases plus Off hold/subtitle-profile round trips. Responsive
+widths 760-1920 were checked with the actual shipped chart runtime at 100%,
+150%, and 200% scale. Host and renderer generated identities are clean at the
+combined commit; all seven host/renderer/Config/test binary hashes match their
+normal Release records. The source branch is recoverable on origin.
+
+[Combined validation](../assets/VP-0213/combined-6b02334a-20261025/final-validation.json),
+[Config results](../assets/VP-0213/combined-6b02334a-20261025/config-results.json),
+and [native results](../assets/VP-0213/combined-6b02334a-20261025/off-related-tests.log)
+retain the exact evidence. The first offscreen layout run omitted
+`QT_QPA_FONTDIR=C:\Windows\Fonts` and failed a width assertion. Its evidence is
+preserved separately. Matching the validated Windows font setup made the
+same unchanged built executable pass; no product assertion was weakened and
+no product change was required.
+
+Deployment preflight passes for 14 binaries/records/symbol files and preserves
+all seven detected root/Config configuration or state files. Runtime DLL
+private dependencies already match this build. A guarded backup, staged hash
+verification, host/both-renderer pair replacement and rollback procedure is
+prepared. **Deployment is awaiting the user saving and closing the installed
+Config editor (observed PID 55420).** It was not force-closed. Nothing has been
+replaced or started, and no configuration has been changed. This is a pending
+user action, not a test failure or a request for renewed deployment approval.
+Live capture/performance acceptance of the Off fix remains pending, so this
+story stays Review.
 ## User requirement
 
 When subtitle Processing style is Off, visible content in any black bar

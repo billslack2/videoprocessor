@@ -1,0 +1,113 @@
+{
+    "SourceCommit":  "6b02334a83100645e8331d89f63a47797111e79f",
+    "SourceBranch":  "codex/pr177-pr203-deploy-20261025",
+    "SourceClean":  true,
+    "BetaBranch":  "v1.4.02-beta",
+    "BetaCommit":  "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+    "PR177Original":  "2a0f4763ca60de87cef7d1d8f5e4c9e29060580c",
+    "PR177MigrationIntegration":  "588f9a9e91a4bd83e1685e2e7a5cebc92b0147f8",
+    "PR177ResponsiveFollowUp":  "83ff62acc4557dde176687db68609e24ebf7149d",
+    "PR203OffCommit":  "697c1bcd779891cadde993528c03a71f473e0653",
+    "BuildExitCode":  0,
+    "Configuration":  "Release",
+    "Architecture":  "x64",
+    "BuildLog":  "release-build.log",
+    "NativePassed":  684,
+    "NativeFailed":  0,
+    "ConfigPassed":  24,
+    "ConfigFailed":  0,
+    "RealChartRuntimeRequired":  true,
+    "ResponsiveScales":  [
+                             "1",
+                             "1.5",
+                             "2"
+                         ],
+    "WindowsFonts":  "C:\\Windows\\Fonts",
+    "QtVersion":  "6.8.3",
+    "Binaries":  [
+                     {
+                         "Path":  "VideoProcessor-GUI.exe",
+                         "SHA256":  "4A08AA5097A54835626DC24DFBEDD05ED1015559F86DA2762F90FBD5F2405C3D",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.29.30133",
+                                         "sha256":  "4A08AA5097A54835626DC24DFBEDD05ED1015559F86DA2762F90FBD5F2405C3D"
+                                     }
+                     },
+                     {
+                         "Path":  "VideoProcessorConfig.exe",
+                         "SHA256":  "B6A8B7B25F63325DE2CCFA4BEB5BF9B908391559E35212BBC721F8872CB2B526",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.44.35207",
+                                         "sha256":  "B6A8B7B25F63325DE2CCFA4BEB5BF9B908391559E35212BBC721F8872CB2B526"
+                                     }
+                     },
+                     {
+                         "Path":  "VideoProcessorConfigDiscovery.dll",
+                         "SHA256":  "E486E102FD110EBE5DEDD345214E1C36CF922B05E971CD7937C83EBD77DD9E36",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.29.30133",
+                                         "sha256":  "E486E102FD110EBE5DEDD345214E1C36CF922B05E971CD7937C83EBD77DD9E36"
+                                     }
+                     },
+                     {
+                         "Path":  "vprenderer\\VideoProcessorVPRenderer.dll",
+                         "SHA256":  "36CCCC099DB785B7D204EEC6E91F1493B37404B540773D85A2D01D37B882080C",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.29.30133",
+                                         "sha256":  "36CCCC099DB785B7D204EEC6E91F1493B37404B540773D85A2D01D37B882080C"
+                                     }
+                     },
+                     {
+                         "Path":  "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                         "SHA256":  "3F18842201EFA210FF6741389D8FF87ED39A986FC11E58868C269688951E51E3",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.29.30133",
+                                         "sha256":  "3F18842201EFA210FF6741389D8FF87ED39A986FC11E58868C269688951E51E3"
+                                     }
+                     },
+                     {
+                         "Path":  "VideoProcessor-Test.dll",
+                         "SHA256":  "C3FDC75444C9DD6B34B2DDBFA5E3ABF47D8AA73208F10B441252899617C01E34",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.29.30133",
+                                         "sha256":  "C3FDC75444C9DD6B34B2DDBFA5E3ABF47D8AA73208F10B441252899617C01E34"
+                                     }
+                     },
+                     {
+                         "Path":  "VideoProcessorConfigTests.exe",
+                         "SHA256":  "88971DCCD90EB2FE93BD30934CAA75CE661197FDD469919DA1143B3D8A6A385E",
+                         "Receipt":  {
+                                         "schemaVersion":  1,
+                                         "configuration":  "Release",
+                                         "architecture":  "x64",
+                                         "toolsetVersion":  "14.44.35207",
+                                         "sha256":  "88971DCCD90EB2FE93BD30934CAA75CE661197FDD469919DA1143B3D8A6A385E"
+                                     }
+                     }
+                 ],
+    "ValidatedAt":  "2026-10-25T13:10:50.0788655-04:00",
+    "InitialHarnessFailure":  "Preserved in initial-real-chart-layout-failure. The offscreen harness omitted QT_QPA_FONTDIR. With Windows fonts, the exact same clean built executable passed at all three scales. No source change or rebuild was made to bypass the failure.",
+    "DeploymentStatus":  "Ready; awaiting the user closing the installed Config editor",
+    "ConfigurationEdits":  [
+
+                           ],
+    "LiveCaptureAcceptance":  "Pending; automated tests do not establish GPU/capture stability or performance"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "Scale": "1.5",
+    "Exit": 0,
+    "Passed": true,
+    "Log": "E:\\codex\\diagnostics\\pr177-pr203-deploy-20261025\\layout-scale-1.5.log"
+  },
+  {
+    "Scale": "2",
+    "Exit": 0,
+    "Passed": true,
+    "Log": "E:\\codex\\diagnostics\\pr177-pr203-deploy-20261025\\layout-scale-2.log"
+  }
+]

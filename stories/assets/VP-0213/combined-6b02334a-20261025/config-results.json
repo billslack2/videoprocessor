@@ -1,0 +1,146 @@
+[
+    {
+        "Test":  "DPI keyboard and accessibility behavior",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS DPI keyboard and accessibility behavior\r\nSTART DPI keyboard and accessibility behavior"
+    },
+    {
+        "Test":  "new action starts unconfigured",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS new action starts unconfigured\r\nSTART new action starts unconfigured"
+    },
+    {
+        "Test":  "empty actions show an empty state",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS empty actions show an empty state\r\nSTART empty actions show an empty state"
+    },
+    {
+        "Test":  "active profile opens selected after late status and preserves edits",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS active profile opens selected after late status and preserves edits\r\nSTART active profile opens selected after late status and preserves edits"
+    },
+    {
+        "Test":  "shared profile list controller contract",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS shared profile list controller contract\r\nSTART shared profile list controller contract"
+    },
+    {
+        "Test":  "custom shader parameters expand into page scroll",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS custom shader parameters expand into page scroll\r\nSTART custom shader parameters expand into page scroll"
+    },
+    {
+        "Test":  "responsive workspaces preserve edits and fit",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS responsive workspaces preserve edits and fit\r\nSTART responsive workspaces preserve edits and fit\r\nRESIZE 1920x1080\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 1440x900\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 1280x720\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 1040x700\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 800x600\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 760x540\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 1920x1080\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nMANAGE\r\nMANAGE OPEN\r\nMANAGE CLOSED\r\nDUPLICATE\r\nSELECT"
+    },
+    {
+        "Test":  "migration notice only for pending migration",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS migration notice only for pending migration\r\nSTART migration notice only for pending migration"
+    },
+    {
+        "Test":  "no-target startup is quiet",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS no-target startup is quiet\r\nSTART no-target startup is quiet"
+    },
+    {
+        "Test":  "Rendering menu duplicate export import preserves ownership",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Rendering menu duplicate export import preserves ownership\r\nSTART Rendering menu duplicate export import preserves ownership"
+    },
+    {
+        "Test":  "Rendering processing ownership save reopen and rename",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Rendering processing ownership save reopen and rename\r\nSTART Rendering processing ownership save reopen and rename"
+    },
+    {
+        "Test":  "Rendering profile file ownership round trip",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Rendering profile file ownership round trip\r\nSTART Rendering profile file ownership round trip"
+    },
+    {
+        "Test":  "explicit preset defaults and output matching",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS explicit preset defaults and output matching\r\nSTART explicit preset defaults and output matching"
+    },
+    {
+        "Test":  "explicit Auto migration preserves profile choices",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS explicit Auto migration preserves profile choices\r\nSTART explicit Auto migration preserves profile choices"
+    },
+    {
+        "Test":  "preset resolution precedes editor section migration",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS preset resolution precedes editor section migration\r\nSTART preset resolution precedes editor section migration"
+    },
+    {
+        "Test":  "renderer promotion migration and cache selection",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS renderer promotion migration and cache selection\r\nSTART renderer promotion migration and cache selection"
+    },
+    {
+        "Test":  "display refresh presentation defaults and round trip",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS display refresh presentation defaults and round trip\r\nSTART display refresh presentation defaults and round trip"
+    },
+    {
+        "Test":  "Apply OK Cancel contract",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Apply OK Cancel contract\r\nSTART Apply OK Cancel contract"
+    },
+    {
+        "Test":  "profile lifecycle through widgets",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS profile lifecycle through widgets\r\nSTART profile lifecycle through widgets"
+    },
+    {
+        "Test":  "Tone mapping controls round trip",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Tone mapping controls round trip\r\nSTART Tone mapping controls round trip"
+    },
+    {
+        "Test":  "Beta tone mapping controls",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Beta tone mapping controls\r\nSTART Beta tone mapping controls"
+    },
+    {
+        "Test":  "ordinary edits avoid disk validation",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS ordinary edits avoid disk validation\r\nSTART ordinary edits avoid disk validation"
+    },
+    {
+        "Test":  "Off zoom hold round trip",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS Off zoom hold round trip\r\nSTART Off zoom hold round trip"
+    },
+    {
+        "Test":  "subtitle profile tab round trip",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS subtitle profile tab round trip\r\nSTART subtitle profile tab round trip"
+    }
+]

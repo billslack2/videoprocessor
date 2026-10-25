@@ -1,0 +1,44 @@
+[
+    {
+        "Test":  "DPI keyboard and accessibility behavior",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS DPI keyboard and accessibility behavior\r\nSTART DPI keyboard and accessibility behavior"
+    },
+    {
+        "Test":  "new action starts unconfigured",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS new action starts unconfigured\r\nSTART new action starts unconfigured"
+    },
+    {
+        "Test":  "empty actions show an empty state",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS empty actions show an empty state\r\nSTART empty actions show an empty state"
+    },
+    {
+        "Test":  "active profile opens selected after late status and preserves edits",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS active profile opens selected after late status and preserves edits\r\nSTART active profile opens selected after late status and preserves edits"
+    },
+    {
+        "Test":  "shared profile list controller contract",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS shared profile list controller contract\r\nSTART shared profile list controller contract"
+    },
+    {
+        "Test":  "custom shader parameters expand into page scroll",
+        "Exit":  0,
+        "Passed":  true,
+        "Result":  "PASS custom shader parameters expand into page scroll\r\nSTART custom shader parameters expand into page scroll"
+    },
+    {
+        "Test":  "responsive workspaces preserve edits and fit",
+        "Exit":  1,
+        "Passed":  false,
+        "Result":  "START responsive workspaces preserve edits and fit\r\nRESIZE 1920x1080\r\nPAGE 0\r\nPAGE 1\r\nPAGE 2\r\nPAGE 3\r\nPAGE 4\r\nPAGE 5\r\nPAGE 6\r\nPAGE 7\r\nPAGE 8\r\nPAGE 9\r\nPAGE 10\r\nPAGE 11\r\nPAGE 12\r\nPAGE 13\r\nPAGE 14\r\nPAGE 15\r\nPAGE 16\r\nPAGE 17\r\nPAGE 18\r\nPAGE 19\r\nPAGE 20\r\nPAGE 21\r\nPAGE 22\r\nRESIZE 1440x900\r\nFAIL responsive workspaces preserve edits and fit: Profile settings require horizontal scrolling"
+    }
+]
