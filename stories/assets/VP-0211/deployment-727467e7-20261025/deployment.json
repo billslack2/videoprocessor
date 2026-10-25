@@ -1,0 +1,51 @@
+{
+  "sourceRoot": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025",
+  "sourceCommit": "727467e7230dae48315698087caead19518ca837",
+  "architecture": "x64",
+  "startedAt": "2026-10-25T08:46:50.0944009-04:00",
+  "configEdits": {
+    "general.presentation_queue_depth": "2",
+    "general.present_every_vsync": "true"
+  },
+  "startedPid": 27716,
+  "files": [
+    {
+      "sha256": "D6C66D5FEFBD0662066484F06B63ED70A83A1BE9860FC08D53E41A013D4DE850",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\VideoProcessor.exe",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\VideoProcessor-GUI.exe"
+    },
+    {
+      "sha256": "051E9244C3F2F5A3A9592705EEF47ADB287DBA6FD8FF226A440F36D5468D1D5F",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "75627656A59913D65B3DA752556978D6F49B563816EE8EF146CCCFBCB0B5D17F",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "sha256": "ED65E25609BF83F562D6651E7180D3BBE101685F0A64ABA9218C62431E100A0C",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\config\\VideoProcessorConfig.exe",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\VideoProcessorConfig.exe"
+    },
+    {
+      "sha256": "3F5B1AF2290BCCF6B328FDE95D3AFC58DC570C94C7F9205D2BA120462AB1DB0E",
+      "destination": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\config\\VideoProcessorConfigDiscovery.dll",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\VideoProcessorConfigDiscovery.dll"
+    },
+    {
+      "sha256": "431A7869DB339B327C2082607562E75ADAF0032CFB1EFCD1EA5C3E32315F3667",
+      "destination": "C:\\Videoprocessor\\vp\\CONFIGURATION.html",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649\\CONFIGURATION.html",
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\CONFIGURATION.html"
+    }
+  ],
+  "backupRoot": "C:\\Videoprocessor\\vp\\backup-before-vp0211-20261025-084649",
+  "configuration": "Release"
+}

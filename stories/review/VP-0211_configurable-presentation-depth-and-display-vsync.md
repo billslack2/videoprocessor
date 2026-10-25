@@ -4,6 +4,20 @@
 
 Review
 
+2026-10-25 test deployment: user authorized deployment/startup after the source
+review. The matching x64 Release host, primary/Beta renderers, Config editor and
+discovery binary from `727467e7` were backed up/replaced and hash-verified at
+`C:\Videoprocessor\vp`; configuration help and binary receipts were updated.
+Backup: `C:\Videoprocessor\vp\backup-before-vp0211-20261025-084649`.
+Only [general] `present_every_vsync: true` and `presentation_queue_depth: 2`
+were added; removing them reproduces the original config byte-for-byte. Queue,
+lookahead and Motion remain unchanged. Started PID 27716 at 08:46:50 EDT; it is
+responsive and the fresh log confirms clean host 727467e and plugin loads.
+Capture started but no input frames/renderer initialization were observed, so
+live output acceptance is still pending. [Deployment evidence and rollback](../assets/VP-0211/deployment-727467e7-20261025/README.md).
+Earlier no-deployment statements below describe the preceding source-review
+checkpoint; this deployment is now authorized and recorded, with no merge.
+
 2026-10-25: Implemented and pushed to [draft PR #198](https://github.com/billslack2/videoprocessor/pull/198),
 head `727467e7230dae48315698087caead19518ca837`. The PR retains its original
 remote branch `codex/display-vsync-20261024`; the clean implementation worktree
