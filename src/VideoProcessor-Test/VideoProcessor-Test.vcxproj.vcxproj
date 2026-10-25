@@ -271,6 +271,9 @@
     <ClCompile Include="SceneDetectorTests.cpp" />
     <ClCompile Include="WindowResizeLayoutTests.cpp" />
     <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
+    <ClCompile Include="PassiveDisplayStatisticsTests.cpp" />
+    <ClCompile Include="PassiveDisplayObserverTests.cpp" />
+    <ClCompile Include="PassiveDisplayProtocolTests.cpp" />
     <ClCompile Include="AlphaOutputPresentationTelemetryTests.cpp" />
     <ClCompile Include="OutputPresentationPublicationTests.cpp" />
     <ClCompile Include="AlphaRenderLoadMeterTests.cpp" />

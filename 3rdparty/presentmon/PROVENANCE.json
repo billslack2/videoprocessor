@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/GameTechDev/PresentMon",
+  "tag": "v2.1.0",
+  "commit": "de71bba2fb65482f9cf6486284c9eed6aa87698f",
+  "license": "MIT",
+  "licenseSha256": "B1043EE2EFACBD24A1AD830128A61F40DC3D27E2B9B24D7D3631950B88F2D66E",
+  "files": [
+    {
+      "path": "v2.1.0/PresentData/Debug.cpp",
+      "upstreamSha256": "E81FBEC3D7BD0C42CC3E1CEAA328A6882228DC3D6E63C34D5B7D3FE5BCCB0BF9",
+      "copiedSha256": "E81FBEC3D7BD0C42CC3E1CEAA328A6882228DC3D6E63C34D5B7D3FE5BCCB0BF9",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/Debug.hpp",
+      "upstreamSha256": "0A1BB9F6DEE9D27824806E2F9C6EB5C83798A483399DFF2F2F480C50AE585627",
+      "copiedSha256": "0A1BB9F6DEE9D27824806E2F9C6EB5C83798A483399DFF2F2F480C50AE585627",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/GpuTrace.cpp",
+      "upstreamSha256": "2BCFE27619F436A45A9D5D4C7437C5E4E371614BF1A4F1983FD2F81E40E3D0AA",
+      "copiedSha256": "2BCFE27619F436A45A9D5D4C7437C5E4E371614BF1A4F1983FD2F81E40E3D0AA",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/GpuTrace.hpp",
+      "upstreamSha256": "C8A313B7DA012DBC1A22D1B8CB6639030A8109B4943123DE49AC8A64B641BBE1",
+      "copiedSha256": "C8A313B7DA012DBC1A22D1B8CB6639030A8109B4943123DE49AC8A64B641BBE1",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/PresentMonTraceConsumer.cpp",
+      "upstreamSha256": "6BD43BC09B8CD143E9CB8136787EFE1278093C7AA045585712788E9835193B0E",
+      "copiedSha256": "E1A0CD0B4D37BC032C43582E33BB1717E2CF6B02F7AEF03447F499D1712BFA66",
+      "localModification": true
+    },
+    {
+      "path": "v2.1.0/PresentData/PresentMonTraceConsumer.hpp",
+      "upstreamSha256": "F9FE69ED0511C79CF388EB2C18917B3D216534B24CCDEE6ACDEB75560375C07C",
+      "copiedSha256": "878A5F939D560DEA26C50B38E2E601FA1A0324E478E19F9FB97D821EDB79A221",
+      "localModification": true
+    },
+    {
+      "path": "v2.1.0/PresentData/PresentMonTraceSession.cpp",
+      "upstreamSha256": "5257D74BA1337A87B80E549E0DA229D9EA6B85CA2B34426A997FC908D2EE1650",
+      "copiedSha256": "216B549E7AF8500E1E043B5C85C480D713794356547693CD90489A12EAE6F43F",
+      "localModification": true
+    },
+    {
+      "path": "v2.1.0/PresentData/PresentMonTraceSession.hpp",
+      "upstreamSha256": "D99140841BD327E4D9472B6110507481A750B69F32DD787536171470CA25126C",
+      "copiedSha256": "154C49C803F0BAC55FE06A53235BBEED2EAC3D5D9809A0BB17D233A89C20FD80",
+      "localModification": true
+    },
+    {
+      "path": "v2.1.0/PresentData/TraceConsumer.cpp",
+      "upstreamSha256": "D9FA0E65022FC460EFB6E80EC09079C5CDC6609320BE464D0402F8E62B6E6BEE",
+      "copiedSha256": "D9FA0E65022FC460EFB6E80EC09079C5CDC6609320BE464D0402F8E62B6E6BEE",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/TraceConsumer.hpp",
+      "upstreamSha256": "E49A85D44DAA42C6EAEBCC56AE683A518F77FA171B3CEC47FF7BBE016363FA0B",
+      "copiedSha256": "E49A85D44DAA42C6EAEBCC56AE683A518F77FA171B3CEC47FF7BBE016363FA0B",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Intel_PresentMon.h",
+      "upstreamSha256": "2169FB34EA9B08C3800CABFC877BAFADB1DF854763F523CF70784CD6F9D885AC",
+      "copiedSha256": "2169FB34EA9B08C3800CABFC877BAFADB1DF854763F523CF70784CD6F9D885AC",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_D3D9.h",
+      "upstreamSha256": "89866726780E442FB447C7393849DE2BE7769A6835F08E52162AD34EE7C357EB",
+      "copiedSha256": "89866726780E442FB447C7393849DE2BE7769A6835F08E52162AD34EE7C357EB",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_Dwm_Core_Win7.h",
+      "upstreamSha256": "FC66B20305F903E8F33FB9A94DC03E2C45F8DDDC21BAE39BCD6FCD936B3102B8",
+      "copiedSha256": "FC66B20305F903E8F33FB9A94DC03E2C45F8DDDC21BAE39BCD6FCD936B3102B8",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_Dwm_Core.h",
+      "upstreamSha256": "FD21D0ABA528D0935007BA165347B9A40D1D1E7003DB30AFBBD7800C34DD4D04",
+      "copiedSha256": "FD21D0ABA528D0935007BA165347B9A40D1D1E7003DB30AFBBD7800C34DD4D04",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_DXGI.h",
+      "upstreamSha256": "4491CE3939FFFB404539D596161347328ED4566C3697FEFD951E860AE3301575",
+      "copiedSha256": "4491CE3939FFFB404539D596161347328ED4566C3697FEFD951E860AE3301575",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_DxgKrnl_Win7.h",
+      "upstreamSha256": "574F927A4CF93730C75B326AEBFF62A35BFF2CBE8F07A85C93AF2A649768840D",
+      "copiedSha256": "574F927A4CF93730C75B326AEBFF62A35BFF2CBE8F07A85C93AF2A649768840D",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_DxgKrnl.h",
+      "upstreamSha256": "4514F3E2EF091172299E89B30AD8960089E07FAE82A6A1C87620F5A309E52E52",
+      "copiedSha256": "4514F3E2EF091172299E89B30AD8960089E07FAE82A6A1C87620F5A309E52E52",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_EventMetadata.h",
+      "upstreamSha256": "3ED8B9E50947C6A0D40EF4B60F72AED7542DECBD94B86FEE98F662B693A946D2",
+      "copiedSha256": "3ED8B9E50947C6A0D40EF4B60F72AED7542DECBD94B86FEE98F662B693A946D2",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_Kernel_Process.h",
+      "upstreamSha256": "4BDD3E52C825A1977B6A1E2EF9EFE8E532B754154F2E4AED21A061016F0A3ED2",
+      "copiedSha256": "4BDD3E52C825A1977B6A1E2EF9EFE8E532B754154F2E4AED21A061016F0A3ED2",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/Microsoft_Windows_Win32k.h",
+      "upstreamSha256": "895337A075C3F227D9E0146A8D1F0C4A6ACCCB7268B4928E4802D77AEF490B53",
+      "copiedSha256": "895337A075C3F227D9E0146A8D1F0C4A6ACCCB7268B4928E4802D77AEF490B53",
+      "localModification": false
+    },
+    {
+      "path": "v2.1.0/PresentData/ETW/NT_Process.h",
+      "upstreamSha256": "4E3F00D754860A85812E30C47F996788303E11DAA16079966EF65EE2364CADAE",
+      "copiedSha256": "4E3F00D754860A85812E30C47F996788303E11DAA16079966EF65EE2364CADAE",
+      "localModification": false
+    }
+  ],
+  "localChanges": [
+    "PresentMonTraceConsumer.hpp/.cpp: add atomic completed-present ring overflow counter; increment once for each completed record dropped or evicted at ring capacity.",
+    "PresentMonTraceSession.hpp/.cpp: preserve final ControlTraceW QUERY and STOP status; retain loss counters only after a successful query."
+  ]
+}

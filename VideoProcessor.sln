@@ -32,6 +32,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-VPRendererBe
         {C72197B6-AFB1-4BF2-ABEA-6B63DE71389E} = {C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}
     EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-DisplayObserver", "src\VideoProcessor-DisplayObserver\VideoProcessor-DisplayObserver.vcxproj", "{C333B3F2-D66F-4C97-9E80-78AA5CF68451}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -48,6 +50,10 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C333B3F2-D66F-4C97-9E80-78AA5CF68451}.Debug|x64.ActiveCfg = Debug|x64
+		{C333B3F2-D66F-4C97-9E80-78AA5CF68451}.Debug|x64.Build.0 = Debug|x64
+		{C333B3F2-D66F-4C97-9E80-78AA5CF68451}.Release|x64.ActiveCfg = Release|x64
+		{C333B3F2-D66F-4C97-9E80-78AA5CF68451}.Release|x64.Build.0 = Release|x64
 		{50140967-B11E-456F-8569-DAB06D2022D7}.Debug|x64.ActiveCfg = Debug|x64
 		{50140967-B11E-456F-8569-DAB06D2022D7}.Debug|x64.Build.0 = Debug|x64
 		{50140967-B11E-456F-8569-DAB06D2022D7}.Debug|x86.ActiveCfg = Debug|Win32

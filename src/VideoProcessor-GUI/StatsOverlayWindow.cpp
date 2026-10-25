@@ -643,6 +643,39 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     }
     add(L"VFrames:", format(L"%llu", stats.rendererCapturedFrames));
     add(L"Capture/queue:", format(L"%llu / %llu drops", stats.capturedDroppedFrames, stats.queueDroppedFrames));
+    const auto& passive = stats.outputPresentation.passive;
+    if (passive.supported)
+    {
+        const bool pending = stats.playbackCounterResetSerial > passive.appliedResetSerial;
+        const bool incidents = passive.unexpectedDrops || passive.holdIncidents || passive.excessRefreshes;
+        if (pending)
+        {
+            add(L"Display D/R:", L"reset pending");
+            add(L"Display glitches:", L"reset pending");
+            add(L"Display evidence:", L"reset pending");
+        }
+        else if (passive.fresh || incidents)
+        {
+            add(L"Display D/R:", format(L"%llu / >=%llu (%s)", passive.unexpectedDrops,
+                passive.excessRefreshes, passive.fresh ? L"observed" : L"recorded"));
+            add(L"Display glitches:", format(L">=%llu excessive holds", passive.holdIncidents));
+            add(L"Display evidence:", format(L"%llu outcomes / %llu gaps; partial%s", passive.matchedOutcomes,
+                passive.coverageGaps, passive.fresh ? L"" : L"; stale/unavailable"));
+        }
+        else
+        {
+            const wchar_t* reason = passive.errorCode == ERROR_ACCESS_DENIED ? L"access denied" :
+                passive.errorCode == ERROR_FILE_NOT_FOUND ? L"observer not installed" :
+                passive.errorCode && passive.errorCode != ERROR_NOT_READY ? L"observer unavailable" :
+                passive.running ? L"measuring" : L"unavailable";
+            add(L"Display D/R:", format(L"unavailable (%s)", reason));
+            add(L"Display glitches:", L"unavailable");
+            add(L"Display evidence:", format(L"%llu outcomes / %llu gaps; %s", passive.matchedOutcomes,
+                passive.coverageGaps, reason));
+        }
+    }
+    else
+    {
     add(L"Display D/R:", L"unavailable (not measured)");
     const auto& output = stats.outputPresentation;
     const wchar_t* outputReason = L"unavailable";
@@ -692,6 +725,7 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
             output.reason == RendererOutputPresentationReason::None
             ? CString(L"unavailable") : format(L"unavailable (%s)", outputReason));
         add(L"Display evidence:", output.supported ? CString(outputReason) : CString(L"unavailable"));
+    }
     }
     add(L"Cadence drift:", format(L"estimate: %s", present(stats.cadenceIntervalEstimate, L"unavailable").GetString()));
     add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));

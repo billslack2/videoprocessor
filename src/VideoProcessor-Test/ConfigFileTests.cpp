@@ -3541,9 +3541,9 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics)
 		{
-			// API 32 adds the diagnostic reset request and applied-serial snapshot.
+			// API 33 adds passive display-event counters to the diagnostic snapshot.
 			// Host and renderer must reject older payload and vtable layouts.
-			Assert::AreEqual(static_cast<uint32_t>(32),
+			Assert::AreEqual(static_cast<uint32_t>(33),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

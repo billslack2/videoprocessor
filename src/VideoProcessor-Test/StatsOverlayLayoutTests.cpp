@@ -392,6 +392,38 @@ public:
         }
         VerifyNative(stats);
     }
+    TEST_METHOD(PassiveDisplayOutcomesAreObservedAndRepeatCountsRemainLowerBounds)
+    {
+        auto stats=Example(true); auto& p=stats.outputPresentation.passive;
+        p.supported=true; p.running=true; p.fresh=true; p.matchedOutcomes=120;
+        p.confirmedDrops=3; p.unexpectedDrops=2; p.holdIncidents=1; p.excessRefreshes=3; p.coverageGaps=1;
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"2 / >=3 (observed)");
+        Assert::IsTrue(Find(rows,L"Display glitches:").value==L">=1 excessive holds");
+        Assert::IsTrue(Find(rows,L"Display evidence:").value.find(L"partial")!=std::wstring::npos);
+        VerifyNative(stats);
+        p.running=false; p.fresh=false;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"2 / >=3 (recorded)");
+        stats.playbackCounterResetSerial=5; p.appliedResetSerial=4;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"reset pending");
+        Assert::IsTrue(Find(rows,L"Display glitches:").value==L"reset pending");
+    }
+    TEST_METHOD(PassiveDisplayUnavailableNeverLooksLikeMeasuredCleanZero)
+    {
+        auto stats=Example(true); auto& p=stats.outputPresentation.passive;
+        p.supported=true; p.errorCode=ERROR_ACCESS_DENIED;
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"unavailable (access denied)");
+        p.errorCode=0; p.running=true;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"unavailable (measuring)");
+        p.fresh=true; p.verifiedIntervals=1;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display D/R:").value==L"0 / >=0 (observed)");
+        VerifyNative(stats);
+    }
     TEST_METHOD(WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers)
     {
         auto stats = Example(true); stats.renderLoadKnown = true;

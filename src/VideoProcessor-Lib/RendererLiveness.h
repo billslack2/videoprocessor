@@ -133,8 +133,24 @@ enum class RendererOutputPresentationReason : uint32_t
     ObservationGap
 };
 
+// Passive per-present observations from an isolated ETW collector. These are
+// observed totals/lower bounds, never a claim of complete physical scanout.
+struct RendererPassiveDisplayStats
+{
+    bool supported = false;
+    bool running = false;
+    bool fresh = false;
+    uint32_t errorCode = 0;
+    uint64_t matchedOutcomes = 0, matchedDisplayed = 0;
+    uint64_t confirmedDrops = 0, unexpectedDrops = 0, holdIncidents = 0, excessRefreshes = 0;
+    uint64_t verifiedIntervals = 0, coverageGaps = 0;
+    uint64_t appliedResetSerial = 0, eventAgeMilliseconds = 0;
+    uint64_t eventsLost = 0, buffersLost = 0, collectorOverflows = 0;
+};
+
 struct RendererOutputPresentationStats
 {
+    RendererPassiveDisplayStats passive;
     bool supported = false;
     RendererOutputPresentationState state = RendererOutputPresentationState::Unavailable;
     RendererOutputPresentationReason reason = RendererOutputPresentationReason::None;

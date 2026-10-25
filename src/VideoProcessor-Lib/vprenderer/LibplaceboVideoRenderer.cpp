@@ -39,6 +39,7 @@
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaOutputPresentationTelemetry.h>
 #include <vprenderer/OutputPresentationPublication.h>
+#include <vprenderer/PassiveDisplayObserver.h>
 #include <vprenderer/AlphaD3D11FrameGpuTimer.h>
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
@@ -4383,6 +4384,8 @@ struct LibplaceboVideoRenderer::Impl
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
+    PassiveDisplayObserver passiveDisplayObserver;
+    uint64_t passiveOutputSerial = 0, passiveSwapchainLifetime = 1;
     AlphaOutputPresentationTelemetry outputPresentationTelemetry;
     OutputPresentationPublication outputPresentationPublication;
     const OutputPresentationResetRequest* outputPresentationResetRequest = nullptr;
@@ -5445,6 +5448,7 @@ struct LibplaceboVideoRenderer::Impl
         // A recovery must not erase the incident or a manual reset's old-ID
         // cutoff. Only an actual swapchain lifetime change restarts DXGI IDs.
         if (swapchainReplaced) {
+            ++passiveSwapchainLifetime;
             outputPresentationTelemetry.ResetSwapchain();
             outputPresentationSwapchain = 0;
         } else {
@@ -5460,6 +5464,7 @@ struct LibplaceboVideoRenderer::Impl
         if (!outputPresentationResetRequest) return;
         const auto serial = outputPresentationResetRequest->PendingAfter(outputPresentationAppliedResetSerial);
         if (!serial) return;
+        passiveDisplayObserver.Reset(serial, PerformanceCounterNow());
         outputPresentationTelemetry.ResetSession();
         outputPresentationWitnessTick = 0;
         nextOutputPresentationLogTick = 0;
@@ -5501,6 +5506,7 @@ struct LibplaceboVideoRenderer::Impl
 		RendererRenderLoad load = renderLoadMeter.Snapshot();
         load.processing=processingPerformance.Snapshot(GetTickCount64());
         load.outputPresentation=outputPresentationPublication.Snapshot(GetTickCount64());
+        load.outputPresentation.passive=passiveDisplayObserver.Snapshot(GetTickCount64());
 		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
 			gpuFrameTimer.Snapshot();
 		load.supported = timing.supported;
@@ -12354,6 +12360,8 @@ struct LibplaceboVideoRenderer::Impl
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
         ConsumePlaybackCounterReset();
+        // Freeze cadence intent before rendering, without inventing a vblank deadline.
+        const double passivePlannedPts = temporalRenderer.Active() ? temporalRenderer.outputPts : temporalRenderer.currentPts;
         const auto renderWorkStarted=SteadyClock::now();
         if(!cadenceRepeat && !repeatedTemporalOutput)sourcePreparationReceipt.Reset();
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
@@ -19336,6 +19344,29 @@ releaseDriftBaseRetention =
         calibrationStatusAvailable = rendered;
         if (rendered) lastRenderedTargetTransfer = ToSdrTransfer(baseTarget.color.transfer);
         calibrationLutAttached = rendered && targetLutApplied;
+        CComPtr<IDXGISwapChain> nativeSwapchain;
+        nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        const uintptr_t observedSwapchain = reinterpret_cast<uintptr_t>(nativeSwapchain.p);
+        if (observedSwapchain && outputPresentationSwapchain != observedSwapchain) {
+            ResetOutputPresentationContinuity(true);
+            outputPresentationSwapchain = observedSwapchain;
+        }
+        PassiveDisplayStatistics::OutputIntent passiveIntent{};
+        passiveIntent.processId=GetCurrentProcessId(); passiveIntent.threadId=GetCurrentThreadId();
+        passiveIntent.swapchainIdentity=observedSwapchain;
+        passiveIntent.swapchainLifetime=passiveSwapchainLifetime;
+        passiveIntent.rendererEpoch=reinterpret_cast<uintptr_t>(this);
+        passiveIntent.sourceEpoch=frameGeneration; passiveIntent.viewportEpoch=viewportRequestSerial;
+        passiveIntent.resetEpoch=outputPresentationAppliedResetSerial;
+        passiveIntent.outputSerial=++passiveOutputSerial;
+        passiveIntent.plannedOutputPts=passivePlannedPts;
+        passiveIntent.scheduledOutputHz=OsdTimingPolicy::RenderBudgetRate(captureRateHz,nominalSourceRateHz,
+            temporalRenderer.ScheduledOutputRateHz());
+        passiveIntent.displayHz=renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
+        passiveIntent.renderFailed=!rendered;
+        passiveIntent.intentionalCorrection=(!temporalRenderer.Active() && cadenceRepeat) ||
+            correctionDecision.action!=AlphaCadenceAction::None;
+        bool passiveAttempted=false;
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -19361,6 +19392,8 @@ releaseDriftBaseRetention =
 			vpOwnedBackbuffer.Release();
 			if (rendered)
 			{
+				passiveAttempted=true;
+                passiveIntent.submitStartQpc=PerformanceCounterNow();
 				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
 				submitted = SUCCEEDED(presentResult);
 				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
@@ -19401,12 +19434,20 @@ releaseDriftBaseRetention =
                     sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
             }
 			submitted = pl_swapchain_submit_frame(swapchain);
-			if (submitted)
+			if (submitted) {
+                passiveAttempted=true;
+                passiveIntent.submitStartQpc=PerformanceCounterNow();
 				pl_swapchain_swap_buffers(swapchain);
+            }
 		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
 		QueryPerformanceFrequency(&qpcFrequency);
+        if(passiveAttempted) {
+            passiveIntent.submitEndQpc=swapEndQpc;
+            passiveIntent.qpcFrequency=qpcFrequency.QuadPart;
+            passiveDisplayObserver.Submit(passiveIntent);
+        }
 		const double swapBlockMs =
 			qpcFrequency.QuadPart > 0 && swapStartQpc > 0 &&
 			swapEndQpc > swapStartQpc
@@ -19799,8 +19840,6 @@ releaseDriftBaseRetention =
 			sample.qpcFrequency = qpcFrequency.QuadPart;
 			sample.expectedDisplayHz =
 				renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
-			CComPtr<IDXGISwapChain> nativeSwapchain;
-			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
 			if (nativeSwapchain)
 			{
 				UINT lastPresentCount = 0;
@@ -19846,13 +19885,6 @@ releaseDriftBaseRetention =
 			}
             // Independent observation only: submission IDs are not display
             // receipts. Do not feed this meter back into pacing, AR or subtitles.
-            const uintptr_t observedSwapchain = reinterpret_cast<uintptr_t>(nativeSwapchain.p);
-            // Failure to unwrap is unavailable evidence, not proof of a new
-            // swapchain. Keep the reset cutoff until an actual replacement.
-            if (observedSwapchain && outputPresentationSwapchain != observedSwapchain) {
-                ResetOutputPresentationContinuity(true);
-                outputPresentationSwapchain = observedSwapchain;
-            }
             AlphaOutputSubmission outputSubmission;
             outputSubmission.generation = frameGeneration;
             outputSubmission.presentationEpoch = viewportRequestSerial;
@@ -21005,6 +21037,7 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl());
+    m_impl->passiveDisplayObserver.Start();
     m_impl->outputPresentationResetRequest = &m_outputPresentationResetRequest;
     m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(

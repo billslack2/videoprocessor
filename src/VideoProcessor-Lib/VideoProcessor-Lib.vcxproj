@@ -250,6 +250,9 @@
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="vprenderer\AlphaOutputPresentationTelemetry.h" />
+    <ClInclude Include="vprenderer\PassiveDisplayStatistics.h" />
+    <ClInclude Include="vprenderer\PassiveDisplayObserver.h" />
+    <ClInclude Include="vprenderer\PassiveDisplayProtocol.h" />
     <ClInclude Include="vprenderer\OutputPresentationPublication.h" />
     <ClInclude Include="vprenderer\\AlphaD3D11FrameGpuTimer.h" />
     <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h" />
@@ -408,6 +411,11 @@
     <ClCompile Include="RendererTransitionModel.cpp" />
 	<ClCompile Include="RendererQueueLaunchContractModel.cpp" />
     <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="vprenderer\PassiveDisplayObserver.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\AlphaOutputPresentationTelemetry.cpp">

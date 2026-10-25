@@ -19,7 +19,9 @@
       "config/VideoProcessorConfig.exe",
       "config/VideoProcessorConfigDiscovery.dll",
       "vprenderer/VideoProcessorVPRenderer.dll",
-      "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+      "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "vprenderer/VideoProcessorDisplayObserver.exe",
+      "vprenderer-beta/VideoProcessorDisplayObserver.exe"
     ]
   },
   "generatedFiles": ["prerequisites/runtime-requirement.json"],
@@ -112,6 +114,10 @@
     { "sourceRoot": "repository", "source": "shaders/NLS.glsl", "destination": "shaders/NLS.glsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "VideoProcessorVPRenderer.dll", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in nonlinear-stretch GLSL shader shared with the optional renderer without a duplicate plugin copy." },
     { "sourceRoot": "repository", "source": "shaders/NLSPlus.glsl", "destination": "shaders/NLSPlus.glsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "VideoProcessorVPRenderer.dll", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in VP Renderer-only balanced nonlinear-stretch GLSL shader." },
 
+    {"sourceRoot": "build", "source": "vprenderer/VideoProcessorDisplayObserver.exe", "destination": "vprenderer/VideoProcessorDisplayObserver.exe", "owner": "VideoProcessor / Intel PresentMon", "sourceVersion": "Current x64 Release commit / PresentMon v2.1.0", "consumer": "VP Renderer", "loadMechanism": "Absolute adjacent executable", "reason": "Isolated passive display-event collector; no render-thread tracing."},
+    {"sourceRoot": "build", "source": "vprenderer/PresentMon-LICENSE.txt", "destination": "vprenderer/PresentMon-LICENSE.txt", "owner": "Intel PresentMon", "sourceVersion": "Current x64 Release commit / PresentMon v2.1.0", "consumer": "VP Renderer", "loadMechanism": "License", "reason": "MIT redistribution notice for pinned PresentMon v2.1.0 de71bba2."},
+    {"sourceRoot": "build", "source": "vprenderer-beta/VideoProcessorDisplayObserver.exe", "destination": "vprenderer-beta/VideoProcessorDisplayObserver.exe", "owner": "VideoProcessor / Intel PresentMon", "sourceVersion": "Current x64 Release commit / PresentMon v2.1.0", "consumer": "VP Renderer", "loadMechanism": "Absolute adjacent executable", "reason": "Isolated passive display-event collector; no render-thread tracing."},
+    {"sourceRoot": "build", "source": "vprenderer-beta/PresentMon-LICENSE.txt", "destination": "vprenderer-beta/PresentMon-LICENSE.txt", "owner": "Intel PresentMon", "sourceVersion": "Current x64 Release commit / PresentMon v2.1.0", "consumer": "VP Renderer", "loadMechanism": "License", "reason": "MIT redistribution notice for pinned PresentMon v2.1.0 de71bba2."},
     { "sourceRoot": "build", "source": "vprenderer/VideoProcessorVPRenderer.dll", "destination": "vprenderer/VideoProcessorVPRenderer.dll", "owner": "VP Renderer", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessor.exe", "loadMechanism": "Absolute path with LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR and LOAD_LIBRARY_SEARCH_SYSTEM32", "reason": "Optional renderer plugin; versioned with the host executable." },
     { "sourceRoot": "libplacebo", "source": "bin/libplacebo-360.dll", "destination": "vprenderer/libplacebo-360.dll", "owner": "libplacebo", "sourceVersion": "7.360.1", "consumer": "VideoProcessorVPRenderer.dll", "loadMechanism": "Normal plugin import resolved only from plugin directory or System32", "reason": "Primary optional-renderer runtime." },
     { "sourceRoot": "libplacebo", "source": "bin/libdovi.dll", "destination": "vprenderer/libdovi.dll", "owner": "libdovi", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import of libplacebo-360.dll." },
