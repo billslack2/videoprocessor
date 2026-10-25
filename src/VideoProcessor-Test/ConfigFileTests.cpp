@@ -3541,9 +3541,9 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics)
 		{
-			// API 29 includes the explicit LUT-apply virtual method. Host and
-			// renderer must reject older vtables rather than call a shifted slot.
-			Assert::AreEqual(static_cast<uint32_t>(29),
+			// API 32 adds the diagnostic reset request and applied-serial snapshot.
+			// Host and renderer must reject older payload and vtable layouts.
+			Assert::AreEqual(static_cast<uint32_t>(32),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

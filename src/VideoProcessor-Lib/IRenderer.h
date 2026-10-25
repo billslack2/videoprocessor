@@ -88,6 +88,8 @@ struct RendererHdrStatus
 	uint64_t sourceSequence = 0;       // selected capture packet, not newest ingress
 	uint64_t sourceGeneration = 0;
 	uint64_t processingEpoch = 0;
+	// Appended so the optional status size check also rejects the older layout.
+	bool detectedFromMix = false; // measured temporal output; authored identity remains the selected source
 	bool Supported() const { return size == sizeof(RendererHdrStatus) && version == 1; }
 };
 
@@ -466,6 +468,10 @@ public:
 		load = {};
 		return false;
 	}
+
+	// Nonblocking diagnostic request. Unsupported renderers leave the default
+	// acknowledgement at zero; playback state and pacing must remain untouched.
+	virtual void RequestPlaybackCounterReset(uint64_t serial) {}
 
 	// Supplies the display rate already validated for the renderer's target
 	// monitor. Renderers with GPU load telemetry use this instead of inferring a

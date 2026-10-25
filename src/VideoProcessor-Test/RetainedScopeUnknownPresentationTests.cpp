@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <deque>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace AlphaSourceCrop;
@@ -163,11 +164,191 @@ namespace Tests
             input.retentionBounds=bounds;input.observation=bounds;
             input.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
         }
+        struct EnvelopePacket
+        {
+            Decision presentation;
+            RetainedSubmittedEnvelope retained;
+            uint64_t sequence=0;
+        };
+        EnvelopePacket FreshEnvelope(uint64_t sequence,const ActivePictureBounds& bounds,
+            DecisionOwner owner=DecisionOwner::OUTWARD_FIT)
+        {
+            EnvelopePacket packet;
+            packet.sequence=sequence;packet.presentation.sourceBounds=bounds;
+            packet.presentation.applyCrop=true;packet.presentation.owner=owner;
+            return packet;
+        }
+        SubmittedNativeScopeAnchorUpdateInput EnvelopeSelection(
+            const SubmittedNativeScopeAnchor& anchor,const EnvelopePacket& packet)
+        {
+            SubmittedNativeScopeAnchorUpdateInput selection;
+            selection.previous=anchor;selection.nativeCropAvailable=true;
+            selection.nativeCrop=IncidentScope();selection.submittedBounds=packet.presentation.sourceBounds;
+            selection.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            selection.selectedOwner=packet.presentation.owner;
+            selection.sourceGeneration=2;selection.sourceSequence=packet.sequence;selection.presentationEpoch=9;
+            selection.selectedAdmission.available=true;selection.selectedAdmission.trustedCrop=IncidentScope();
+            selection.selectedAdmission.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            selection.selectedAdmission.sourceGeneration=2;selection.selectedAdmission.presentationEpoch=9;
+            return selection;
+        }
+        SubmittedNativeScopeAnchor SubmitEnvelope(const SubmittedNativeScopeAnchor& anchor,
+            const EnvelopePacket& packet,bool succeeded=true)
+        {
+            auto selection=EnvelopeSelection(anchor,packet);selection.frameSubmitted=succeeded;
+            return CommitSubmittedNativeScopeAnchor(selection);
+        }
+        SubmittedNativeScopeAnchor EnvelopeAnchor(const ActivePictureBounds& envelope)
+        {
+            const auto native=SubmitEnvelope({},FreshEnvelope(226,IncidentScope(),DecisionOwner::TRUSTED_CROP));
+            return SubmitEnvelope(native,FreshEnvelope(227,envelope,DecisionOwner::TRANSLATION_CONFIRMATION));
+        }
+        EnvelopePacket PrepareEnvelope(const SubmittedNativeScopeAnchor& anchor,uint64_t sequence)
+        {
+            auto input=UnknownIncident(sequence);
+            input.submittedScopeAnchor=anchor;
+            input.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.candidate.owner=DecisionOwner::OUTWARD_FIT;
+            const auto resolved=ResolveUncertainPicturePresentation(input,input.candidate);
+            Assert::IsTrue(resolved.retained && resolved.expanded && resolved.retainedEnvelope.available);
+            EnvelopePacket packet;
+            packet.sequence=sequence;packet.presentation=resolved.presentation;
+            packet.retained=resolved.retainedEnvelope;return packet;
+        }
+        EnvelopePacket SelectEnvelope(const SubmittedNativeScopeAnchor& anchor,EnvelopePacket packet)
+        {
+            const auto selected=RevalidateRetainedSubmittedEnvelopeSelection(
+                packet.retained,EnvelopeSelection(anchor,packet));
+            if(selected.expanded)packet.presentation.sourceBounds=selected.sourceBounds;
+            return packet;
+        }
     }
 
     TEST_CLASS(RetainedScopeUnknownPresentationTests)
     {
     public:
+        TEST_METHOD(DelayedRetainedEnvelopesConvergeWithoutAlternatingOrRenewingNativeAuthority)
+        {
+            const auto larger=VisibleBounds(66,2132),smaller=VisibleBounds(148,2048);
+            for(int lag:{0,1,3})
+            {
+                auto anchor=EnvelopeAnchor(larger);
+                std::deque<EnvelopePacket> queue;
+                for(int i=0;i<lag;++i)
+                    queue.push_back(FreshEnvelope(231-lag+i,smaller,DecisionOwner::FIT_CONFIRMATION));
+                for(uint64_t sequence=231;sequence<251;++sequence)
+                {
+                    queue.push_back(PrepareEnvelope(anchor,sequence));
+                    const auto selected=SelectEnvelope(anchor,queue.front());queue.pop_front();
+                    anchor=SubmitEnvelope(anchor,selected);
+                    Assert::AreEqual(uint64_t(226),anchor.lastSubmittedSourceSequence,
+                        L"Retained presentation cannot renew native picture authority.");
+                    AssertBounds(selected.presentation.sourceBounds,anchor.submittedEnvelope);
+                    if(sequence>=uint64_t(231+2*lag+2))
+                        AssertBounds(larger,anchor.submittedEnvelope);
+                }
+            }
+        }
+
+        TEST_METHOD(DelayedRetainedEnvelopeNeverContractsAndFreshAuthorityDrainsTheQueue)
+        {
+            const auto larger=VisibleBounds(66,2132),smaller=VisibleBounds(148,2048);
+            for(int lag:{0,1,3})for(bool native:{false,true})
+            {
+                auto anchor=EnvelopeAnchor(larger);
+                std::deque<EnvelopePacket> queue;
+                for(int i=0;i<lag;++i)queue.push_back(PrepareEnvelope(anchor,228+i));
+                for(uint64_t sequence=uint64_t(228+lag);sequence<uint64_t(234+2*lag);++sequence)
+                {
+                    const auto bounds=native?IncidentScope():smaller;
+                    auto input=UnknownIncident(sequence);input.submittedScopeAnchor=anchor;
+                    input.candidate=FreshEnvelope(sequence,bounds,
+                        native?DecisionOwner::TRUSTED_CROP:DecisionOwner::OUTWARD_FIT).presentation;
+                    if(native)MakeNativeCurrent(input,IncidentScope());
+                    else input.confirmedFitOwnership=QualifyConfirmedFitOwnership(CaptionOwner(input,bounds,bounds));
+                    const auto resolved=ResolveUncertainPicturePresentation(input,input.candidate);
+                    Assert::IsFalse(resolved.retainedEnvelope.available);
+                    queue.push_back(FreshEnvelope(sequence,resolved.presentation.sourceBounds,resolved.presentation.owner));
+                    const auto selected=SelectEnvelope(anchor,queue.front());queue.pop_front();
+                    anchor=SubmitEnvelope(anchor,selected);
+                    if(sequence>=uint64_t(228+2*lag))
+                    {
+                        if(native)Assert::IsFalse(anchor.submittedEnvelopeAvailable);
+                        else AssertBounds(smaller,anchor.submittedEnvelope);
+                    }
+                }
+            }
+            // A queued UNKNOWN cannot borrow another source's smaller/native
+            // presentation as evidence that its own outer pixels disappeared.
+            auto anchor=EnvelopeAnchor(larger);
+            auto pending=PrepareEnvelope(anchor,231);
+            anchor=SubmitEnvelope(anchor,FreshEnvelope(229,smaller));
+            AssertBounds(larger,SelectEnvelope(anchor,pending).presentation.sourceBounds);
+            anchor=SubmitEnvelope(anchor,FreshEnvelope(230,IncidentScope(),DecisionOwner::TRUSTED_CROP));
+            AssertBounds(larger,SelectEnvelope(anchor,pending).presentation.sourceBounds);
+        }
+
+        TEST_METHOD(RetainedEnvelopeSelectionRequiresExactCopyContextAndContainingActualSubmission)
+        {
+            const auto larger=VisibleBounds(66,2132),smaller=VisibleBounds(148,2048);
+            const auto original=EnvelopeAnchor(smaller);
+            const auto prepared=PrepareEnvelope(original,230);
+            const auto latest=SubmitEnvelope(original,FreshEnvelope(229,larger));
+            for(int fault=0;fault<21;++fault)
+            {
+                auto retained=prepared.retained;auto selection=EnvelopeSelection(latest,prepared);
+                switch(fault)
+                {
+                case 1:retained.available=false;break;
+                case 2:++retained.sourceGeneration;break;
+                case 3:--retained.sourceSequence;break;
+                case 4:++retained.presentationEpoch;break;
+                case 5:retained.nativeCrop.top-=2;break;
+                case 6:selection.submittedBounds.top-=2;break;
+                case 7:selection.previous.submittedEnvelopeSourceSequence=retained.envelopeSubmittedSequence;break;
+                case 8:++selection.previous.sourceGeneration;break;
+                case 9:selection.selectedOwner=DecisionOwner::TRUSTED_CROP;break;
+                case 10:++selection.previous.lastSubmittedSourceSequence;break;
+                case 11:selection.previous.submittedEnvelope=VisibleBounds(160,2000);break;
+                case 12:selection.previous.submittedEnvelope=VisibleBounds(60,2000);break;
+                case 13:selection.selectedAdmission.optionalFillApplied=true;break;
+                case 14:selection.fullRasterAuthority=true;break;
+                case 15:selection.nativeCropAvailable=false;break;
+                case 16:selection.previous.available=false;break;
+                case 17:selection.previous.submittedEnvelopeSourceSequence=231;break;
+                case 18:selection.previous.submittedEnvelope.left=2;break;
+                case 19:++selection.previous.lastSubmittedPresentationSourceSequence;break;
+                case 20:selection.previous.submittedOptionalFillAvailable=true;break;
+                }
+                const auto result=RevalidateRetainedSubmittedEnvelopeSelection(retained,selection);
+                Assert::AreEqual(fault==0,result.expanded);
+                AssertBounds(fault==0?larger:selection.submittedBounds,result.sourceBounds);
+            }
+            const auto selected=SelectEnvelope(latest,prepared);
+            Assert::AreEqual(prepared.sequence,selected.sequence);
+            const auto failed=SubmitEnvelope(latest,selected,false);
+            Assert::AreEqual(latest.submittedEnvelopeSourceSequence,failed.submittedEnvelopeSourceSequence);
+            AssertBounds(latest.submittedEnvelope,failed.submittedEnvelope);
+            const auto submitted=SubmitEnvelope(latest,selected);
+            AssertBounds(larger,submitted.submittedEnvelope);
+            const auto repeated=SelectEnvelope(submitted,prepared);
+            AssertBounds(larger,repeated.presentation.sourceBounds);
+            Assert::AreEqual(uint64_t(226),SubmitEnvelope(submitted,repeated).lastSubmittedSourceSequence);
+        }
+
+        TEST_METHOD(CurrentSamplingExtentDoesNotCreateAStoredEnvelopeCopyReceipt)
+        {
+            auto input=UnknownIncident();
+            input.crop.currentVisibleBoundsAvailable=false;input.excludedBandsPixelSafe=true;
+            input.observation=VisibleBounds(274,1884);
+            const auto sampled=ResolveUncertainPicturePresentation(input,input.candidate);
+            Assert::IsTrue(sampled.retained && sampled.currentPixelExtent && sampled.expanded);
+            Assert::IsFalse(sampled.retainedEnvelope.available);
+            auto owned=UnknownIncident();const auto bounds=VisibleBounds(148,2048);
+            SetFitCandidate(owned,bounds);owned.confirmedFitOwnership=QualifyConfirmedFitOwnership(CaptionOwner(owned,bounds,bounds));
+            Assert::IsFalse(ResolveUncertainPicturePresentation(owned,owned.candidate).retainedEnvelope.available);
+        }
+
         TEST_METHOD(LoggedPartialAndFullExtentsCannotOriginateAnUnknownFallbackEnvelope)
         {
             // 9425 exposed top=0..1992; 9426 and 9455 exposed the whole raster.

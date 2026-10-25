@@ -1034,6 +1034,26 @@ namespace VideoProcessorTest
 			DeleteFileW(path.c_str());
 		}
 
+        TEST_METHOD(ResetPlaybackCounterShortcutRemainsAnOptionalLiveBinding)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            Assert::IsFalse(path.empty());
+            WriteBytes(path,"[shortcuts]\n# Keep reset customization\n"
+                "reset_playback_counters: Ctrl+Shift+R\nfullscreen_toggle: Alt+Enter\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path,error),error.c_str());
+            Assert::IsTrue(document.SetKnown("shortcuts","reset_playback_counters","Ctrl+Alt+F12"));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document,error),error.c_str());
+            Assert::AreEqual(static_cast<int>(ConfigurationApplyPolicy::Action::ReloadShortcuts),
+                static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges({{"shortcuts","reset_playback_counters"}})));
+            Assert::IsTrue(document.SetKnown("shortcuts","reset_playback_counters",""));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document,error),error.c_str());
+            Assert::AreEqual(std::string("[shortcuts]\n# Keep reset customization\n"
+                "reset_playback_counters: \nfullscreen_toggle: Alt+Enter\n"),document.Serialize());
+            DeleteFileW(path.c_str());
+        }
+
 		TEST_METHOD(ConfigEditorCorePreservesExplicitlyDisabledShortcut)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
@@ -1430,6 +1450,7 @@ namespace VideoProcessorTest
 				{ "shortcuts", "fullscreen_toggle", "Ctrl+F" },
 				{ "shortcuts", "fullscreen_exit", "Esc" },
 				{ "shortcuts", "toggle_stats_overlay", "Ctrl+I" },
+				{ "shortcuts", "reset_playback_counters", "Ctrl+Shift+R" },
 				{ "shortcuts", "auto_set", "Ctrl+Shift+A" },
 				{ "shortcuts", "pq_set", "Ctrl+Shift+P" },
 				{ "shortcuts", "renderer_restart", "Shift+R" },

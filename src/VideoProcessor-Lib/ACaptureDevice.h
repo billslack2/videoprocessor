@@ -111,7 +111,10 @@ public:
 
 	// Capture device is signalling that the card state changed. This does not need to impact video.
 	// WARNING: Most likely to be called from some internal capture card thread!
-	virtual void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) = 0;
+	virtual void OnCaptureDeviceCardStateChange(
+		ACaptureDevice* source,
+		CaptureRunToken captureRunToken,
+		CaptureDeviceCardStateComPtr) = 0;
 
 	// Capture device is signalling that the available video state changed
 	// WARNING: Most likely to be called from some internal capture card thread!

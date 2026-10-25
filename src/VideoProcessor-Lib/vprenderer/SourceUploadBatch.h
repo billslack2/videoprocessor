@@ -3,8 +3,9 @@
 #include <libplacebo/renderer.h>
 #include <array>
 
-// Lives on the stack for one source's output loop. Owns no GPU textures or
-// source pixels. Reuse only the uploaded planes; color/DV/crop metadata must
+// Retains only plane identities for one immutable source, including cadence
+// repeats. Owns no GPU textures or source pixels. A source-preparation receipt
+// separately gates reuse. Color/DV/crop metadata must
 // still be constructed for each output and temporal history owns its copies.
 struct SourceUploadBatch {
     bool Restore(bool repeated, const ActivePictureFrameIdentity& current,

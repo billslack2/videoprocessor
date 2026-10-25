@@ -1,6 +1,7 @@
 #pragma once
 #include <AnalysisLumaSource.h>
 #include <SubtitleBoxDetector.h>
+#include <SubtitleCueSidePlane.h>
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -15,6 +16,10 @@ struct SubtitleBarEvidence
     int top = 0, bottom = 0, topDepth = 0, bottomDepth = 0;
     int topFloor = 0, bottomFloor = 0, topSupport = 0, bottomSupport = 0;
     int topBoundarySupport = 0, bottomBoundarySupport = 0;
+    // Failed current run clusters are coordinates only. They grant neither
+    // measured-bar nor AR authority; subtitle recovery must independently
+    // prove current glyph coverage and an edge outside the caption footprint.
+    int topCuePlaneCandidate=0,bottomCuePlaneCandidate=0;
     int topMaxIntrusion = 0, bottomMaxIntrusion = 0;
     double topBlackFraction = 0.0, bottomBlackFraction = 0.0;
     size_t samples = 0;
@@ -36,6 +41,37 @@ struct SubtitleBarEvidence
     const char* reason = "invalid-source";
 };
 
+// Current complete caption ownership excludes its entire width from boundary
+// voting, including black backing and antialiased capture fringes. It does not
+// remove a single sample from the bar-body occupancy proof.
+inline CurrentSubtitleCueSidePlaneProof ProveCurrentSubtitleCaptionPlane(
+    const AnalysisLumaSource& source,const SubtitleBoxResult& text,
+    const SubtitleInkSnapshot* ink,int plane,bool fromTopBar,size_t maxSamples)
+{
+    CurrentSubtitleCueSidePlaneProof rejected;rejected.plane=plane;rejected.fromTopBar=fromTopBar;
+    rejected.reason="private-plane-current-caption-incomplete";
+    if(!text.detected || text.held || text.confirmationPending || text.workLimit ||
+        text.lineCount<1 || text.lineCount>3 || !text.configuredSearchComplete ||
+        !(fromTopBar?text.topSearchComplete:text.bottomSearchComplete) || !ink ||
+        !ink->paletteValid || !ink->rawEvidenceComplete ||
+        !text.capturePanelMeasured || !text.capturePanel.Valid() || !text.sourcePanel.Valid())return rejected;
+    SubtitleCuePlaneBoundaryExclusion exclusion{source.width,0};
+    const auto include=[&](const SubtitleBoxRect& r) {
+        if(!r.Valid() || r.left<0 || r.top<0 || r.right>source.width || r.bottom>source.height)return false;
+        exclusion.left=(std::min)(exclusion.left,r.left);exclusion.right=(std::max)(exclusion.right,r.right);return true;
+    };
+    rejected.reason="private-plane-caption-outside-raster";
+    if(!include(text.sourcePanel) || !include(text.capturePanel))return rejected;
+    bool hasCueBarInk=false;
+    for(int line=0;line<text.lineCount;++line) {
+        if(!include(text.lineBounds[line]))return rejected;
+        hasCueBarInk|=fromTopBar?text.lineBounds[line].top<plane:text.lineBounds[line].bottom>plane;
+        if(text.linePanels[line].Valid() && !include(text.linePanels[line]))return rejected;
+        if(text.lineCapturePanels[line].Valid() && !include(text.lineCapturePanels[line]))return rejected;
+    }
+    if(!hasCueBarInk){rejected.reason="private-plane-no-current-bar-ink";return rejected;}
+    return ProveCurrentSubtitleCueSidePlane(source,plane,fromTopBar,maxSamples,&exclusion);
+}
 inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& source)
 {
     SubtitleBarEvidence result;
@@ -119,6 +155,8 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             }
             if(bestCount<Columns/4)return false;
             depth=ordered[bestBegin+bestCount/2];
+            if(bottom)result.bottomCuePlaneCandidate=source.height-depth;
+            else result.topCuePlaneCandidate=depth;
         }
         support=boundarySupport=maxIntrusion=0;fraction=0.0;
         int leftSupport=0,rightSupport=0;

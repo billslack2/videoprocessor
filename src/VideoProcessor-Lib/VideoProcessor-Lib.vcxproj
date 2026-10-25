@@ -219,6 +219,8 @@
 	<ClInclude Include="OutputReadinessController.h" />
     <ClInclude Include="ProcessCpuUsageMeter.h" />
     <ClInclude Include="ProcessCpuUsageWindow.h" />
+    <ClInclude Include="PlaybackCounterWindow.h" />
+    <ClInclude Include="PhysicalInputResyncLatch.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
@@ -247,6 +249,8 @@
 	<ClInclude Include="RendererGenerationGate.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="vprenderer\AlphaOutputPresentationTelemetry.h" />
+    <ClInclude Include="vprenderer\OutputPresentationPublication.h" />
     <ClInclude Include="vprenderer\\AlphaD3D11FrameGpuTimer.h" />
     <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h" />
     <ClInclude Include="vprenderer\\AlphaConversionTimingWindow.h" />
@@ -260,6 +264,8 @@
     <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
     <ClInclude Include="SubtitleBoxLookahead.h" />
     <ClInclude Include="SubtitleCueContinuation.h" />
+    <ClInclude Include="SubtitleCueSidePlane.h" />
+    <ClInclude Include="SubtitleCurrentCue.h" />
     <ClInclude Include="SubtitleCueContinuationProof.h" />
     <ClInclude Include="SubtitleCutPaste.h" />
     <ClInclude Include="SubtitleBackingLip.h" />
@@ -402,6 +408,9 @@
     <ClCompile Include="RendererTransitionModel.cpp" />
 	<ClCompile Include="RendererQueueLaunchContractModel.cpp" />
     <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="vprenderer\AlphaOutputPresentationTelemetry.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\\AlphaPresentationTelemetry.cpp">

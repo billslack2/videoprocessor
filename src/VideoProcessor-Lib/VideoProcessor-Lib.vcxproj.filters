@@ -752,4 +752,8 @@
   <ItemGroup>
     <ClInclude Include="vprenderer\PreparedOutwardWindow.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="PlaybackCounterWindow.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="PhysicalInputResyncLatch.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
 </Project>

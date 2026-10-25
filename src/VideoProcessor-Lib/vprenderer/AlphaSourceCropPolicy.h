@@ -1470,6 +1470,16 @@ namespace AlphaSourceCrop
         uint64_t submittedOptionalFillSourceSequence = 0;
         double submittedOptionalFillScreenAspect = 0.0;
 	};
+    // A presentation-only copy of an actually submitted envelope. This receipt
+    // cannot authorize new pixels, contraction, cleanup, or renewed native AR.
+    struct RetainedSubmittedEnvelope
+    {
+        bool available = false;
+        ActivePictureBounds nativeCrop;
+        ActivePictureBounds sourceBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t nativeSubmittedSequence = 0, envelopeSubmittedSequence = 0;
+    };
 	struct SubmittedNativeScopeAnchorUpdateInput
 	{
 		SubmittedNativeScopeAnchor previous;
@@ -1485,6 +1495,16 @@ namespace AlphaSourceCrop
 		uint64_t sourceSequence = 0;
 		uint64_t presentationEpoch = 0;
 	};
+    struct RetainedSubmittedEnvelopeSelection
+    {
+        bool expanded = false;
+        ActivePictureBounds sourceBounds;
+    };
+    // Delayed UNKNOWN copies may expand to a newer, containing actual display
+    // envelope. A different source's display cannot prove selected pixels absent.
+    RetainedSubmittedEnvelopeSelection RevalidateRetainedSubmittedEnvelopeSelection(
+        const RetainedSubmittedEnvelope& retained,
+        const SubmittedNativeScopeAnchorUpdateInput& selection);
 	struct SubmittedScopeContinuityEvidence
 	{
 		SubmittedNativeScopeAnchor anchor;
@@ -1998,6 +2018,7 @@ namespace AlphaSourceCrop
         bool retained = false;
         bool expanded = false;
         bool currentPixelExtent = false;
+        RetainedSubmittedEnvelope retainedEnvelope;
         ActivePictureBounds nativeCrop;
         Decision presentation;
     };

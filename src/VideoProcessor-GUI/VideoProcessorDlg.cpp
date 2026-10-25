@@ -216,6 +216,14 @@ std::wstring ConfigurationEditorDirectory(
 	return applicationDirectory + L"config\\";
 }
 
+struct CaptureCardStateNotification
+{
+	ACaptureDeviceComPtr source;
+	CaptureDeviceCardStateComPtr state;
+	CaptureRunToken captureEpoch = 0;
+	uint64_t sequence = 0;
+};
+
 struct CaptureVideoStateNotification
 {
 	ACaptureDeviceComPtr source;
@@ -570,6 +578,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 		ConfigurationLiveApply::ViewToggleDefaultKey,
 		ConfigurationLiveApply::ViewToggleDefaultModifiers },
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
+	{ "reset_playback_counters", ID_COMMAND_RESET_PLAYBACK_COUNTERS, 'R',    FCONTROL | FSHIFT },
 	{ "capture_rendered_output", ID_COMMAND_CAPTURE_RENDERED_OUTPUT, 'S',     FCONTROL | FALT },
 	{ "reapply_rules",         ID_COMMAND_REAPPLY_RULES,            0,         0 },
 	{ "show_profiles",         ID_COMMAND_SHOW_PROFILES,           'I',       FCONTROL | FALT },
@@ -2047,6 +2056,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	ON_COMMAND(ID_COMMAND_RESET_PLAYBACK_COUNTERS, &CVideoProcessorDlg::OnCommandResetPlaybackCounters)
 	ON_COMMAND(ID_COMMAND_CAPTURE_RENDERED_OUTPUT, &CVideoProcessorDlg::OnCommandCaptureRenderedOutput)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
@@ -2131,7 +2141,7 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 {
 	std::make_pair(TEXT("Auto"),                      DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown),
 	std::make_pair(TEXT("PQ"),                        DIRECTSHOW_VIDEOTRANSFUNC_2084),
-	std::make_pair(TEXT("Rec 709 (γ=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
+	std::make_pair(TEXT("Rec 709 (ÃŽÂ³=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
 	std::make_pair(TEXT("Bt.2020 constant"),          DIRECTSHOW_VIDEOTRANSFUNC_2020_const),
 
 	std::make_pair(TEXT("True gamma 1.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_18),
@@ -2140,12 +2150,12 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 	std::make_pair(TEXT("True gamma 2.6"),            DIRECTSHOW_VIDEOTRANSFUNC_26),
 	std::make_pair(TEXT("True gamma 2.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28),
 
-	std::make_pair(TEXT("Linear RGB (γ=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
-	std::make_pair(TEXT("204M (γ=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
+	std::make_pair(TEXT("Linear RGB (ÃŽÂ³=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
+	std::make_pair(TEXT("204M (ÃŽÂ³=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
 	std::make_pair(TEXT("8-bit gamma 2.2"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_8bit_sRGB),
 	std::make_pair(TEXT("Log 100:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_100),
 	std::make_pair(TEXT("Log 316:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_316),
-	std::make_pair(TEXT("Rec 709 (γ=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
+	std::make_pair(TEXT("Rec 709 (ÃŽÂ³=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
 	std::make_pair(TEXT("Bt.2020 non-const"),         DIRECTSHOW_VIDEOTRANSFUNC_2020),
 	std::make_pair(TEXT("Hybrid log"),                DIRECTSHOW_VIDEOTRANSFUNC_HLG)
 };
@@ -5947,9 +5957,20 @@ LRESULT	CVideoProcessorDlg::OnMessageCaptureDeviceStateChange(WPARAM wParam, LPA
 
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam, LPARAM lParam)
 {
-	CaptureDeviceCardStateComPtr cardState;
-	cardState.Attach((CaptureDeviceCardState*)wParam);
-	assert(cardState);
+	std::unique_ptr<CaptureCardStateNotification> notification(
+		reinterpret_cast<CaptureCardStateNotification*>(wParam));
+	if (!notification || !notification->state)
+		return 0;
+	{
+		std::lock_guard<std::mutex> sourceLock(m_captureVideoStateNotificationMutex);
+		if (!m_captureDevice || notification->source.p != m_captureVideoStateSource ||
+			notification->captureEpoch != m_captureVideoStateSourceEpoch)
+			return 0;
+	}
+	const auto& cardState = notification->state;
+	if (m_physicalInputResync.Observe(notification->source.p,
+		notification->captureEpoch, notification->sequence, *cardState))
+		ResetPlaybackCounters("HDMI input re-sync");
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(): Locked=%s, DisplayMode=%s"),
@@ -8032,6 +8053,66 @@ void CVideoProcessorDlg::StartConfigurationEditorInTray()
 		DEBUGLOG("Configuration editor warm start requested");
 }
 
+StatsData CVideoProcessorDlg::PlaybackCounterDisplayStats(const StatsData& raw) const
+{
+	StatsData display = raw;
+	display.capturedDroppedFrames = m_captureDropWindow.Total();
+	display.queueDroppedFrames = m_queueDropWindow.Total();
+	display.sceneDetectCorrectionDrops = m_intentionalDropWindow.Total();
+	display.sceneDetectCorrectionRepeats = m_intentionalRepeatWindow.Total();
+	display.playbackCounterResetSerial = m_playbackCounterResetSerial;
+	return display;
+}
+
+void CVideoProcessorDlg::SamplePlaybackCounters(bool reset)
+{
+	const auto sample = [reset](PlaybackCounterWindow& window,
+		uint64_t raw, uint64_t domain)
+	{
+		if (reset) window.Reset(raw, domain);
+		else window.Observe(raw, domain);
+	};
+	if (m_captureDevice &&
+		m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
+		sample(m_captureDropWindow, m_captureDevice->VideoFrameMissedCount(),
+			m_captureVideoStateNextEpoch);
+	else if (reset)
+		m_captureDropWindow.Reset(0, m_captureVideoStateNextEpoch);
+	if (m_videoRenderer)
+	{
+		sample(m_queueDropWindow, m_videoRenderer->DroppedFrameCount(),
+			m_playbackCounterRendererDomain);
+		sample(m_intentionalDropWindow, m_videoRenderer->SceneAwareCorrectionDropCount(),
+			m_playbackCounterRendererDomain);
+		sample(m_intentionalRepeatWindow, m_videoRenderer->SceneAwareCorrectionRepeatCount(),
+			m_playbackCounterRendererDomain);
+	}
+	else if (reset)
+	{
+		m_queueDropWindow.Reset(0, m_playbackCounterRendererDomain);
+		m_intentionalDropWindow.Reset(0, m_playbackCounterRendererDomain);
+		m_intentionalRepeatWindow.Reset(0, m_playbackCounterRendererDomain);
+	}
+}
+
+void CVideoProcessorDlg::ResetPlaybackCounters(const char* reason)
+{
+	SamplePlaybackCounters(true);
+	++m_playbackCounterResetSerial;
+	if (m_videoRenderer)
+		m_videoRenderer->RequestPlaybackCounterReset(m_playbackCounterResetSerial);
+	DebugLog::Log("Playback counters reset: reason=%s serial=%llu capture_run=%llu renderer_domain=%llu",
+		reason, static_cast<unsigned long long>(m_playbackCounterResetSerial),
+		static_cast<unsigned long long>(m_captureVideoStateNextEpoch),
+		static_cast<unsigned long long>(m_playbackCounterRendererDomain));
+}
+
+void CVideoProcessorDlg::OnCommandResetPlaybackCounters()
+{
+	ResetPlaybackCounters("manual shortcut");
+	UpdateStatsOverlay();
+}
+
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
 	DebugLog::Log(
@@ -8238,16 +8319,26 @@ void CVideoProcessorDlg::OnCaptureDeviceState(CaptureDeviceState state)
 }
 
 
-void CVideoProcessorDlg::OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr cardState)
+void CVideoProcessorDlg::OnCaptureDeviceCardStateChange(
+	ACaptureDevice* source, CaptureRunToken captureRunToken,
+	CaptureDeviceCardStateComPtr cardState)
 {
-	// WARNING: Most likely to be called from some internal capture card thread!
-
-	assert(cardState);
-
-	PostMessage(
-		WM_MESSAGE_CAPTURE_DEVICE_CARD_STATE_CHANGE,
-		(WPARAM)cardState.Detach(),
-		0);
+	// Publish the source/run identity with the card facts. Delayed callbacks
+	// from a retired capture run cannot reset the active session's counters.
+	if (!source || !captureRunToken || !cardState)
+		return;
+	std::lock_guard<std::mutex> sourceLock(m_captureVideoStateNotificationMutex);
+	if (source != m_captureVideoStateSource ||
+		captureRunToken != m_captureVideoStateSourceEpoch)
+		return;
+	auto notification = std::make_unique<CaptureCardStateNotification>();
+	notification->source = source;
+	notification->state = cardState;
+	notification->captureEpoch = captureRunToken;
+	notification->sequence = ++m_captureCardNotificationSequence;
+	if (PostMessage(WM_MESSAGE_CAPTURE_DEVICE_CARD_STATE_CHANGE,
+		reinterpret_cast<WPARAM>(notification.get()), 0))
+		notification.release();
 }
 
 
@@ -9097,6 +9188,7 @@ void CVideoProcessorDlg::CaptureStart()
 		captureRunToken = m_captureVideoStateSourceEpoch;
 	}
 
+	m_physicalInputResync.BeginRun(m_captureDevice.p, captureRunToken);
 	m_captureDevice->StartCapture(captureRunToken);
 
 	// Update GUI
@@ -9106,6 +9198,8 @@ void CVideoProcessorDlg::CaptureStart()
 
 void CVideoProcessorDlg::CaptureStop()
 {
+	m_physicalInputResync.Reset();
+	SamplePlaybackCounters();
 	// Deferred capture state belongs only to the current capture run.
 	KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
 	m_deferredInvalidCaptureVideoState.Release();
@@ -9167,6 +9261,7 @@ void CVideoProcessorDlg::CaptureStop()
 
 void CVideoProcessorDlg::CaptureRemove()
 {
+	m_physicalInputResync.Reset();
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::CaptureRemove(): Begin")));
 
 	assert(m_captureDevice);
@@ -10000,6 +10095,7 @@ void CVideoProcessorDlg::RenderRemove()
 
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
+	SamplePlaybackCounters();
 	m_shaderLoadingWindow.Hide();
 	m_shaderLoadingPopupShownTick = 0;
 	m_freshRendererProfileConstruction = false;
@@ -10146,6 +10242,13 @@ void CVideoProcessorDlg::ResumeRendererIngress()
 
 void CVideoProcessorDlg::BindRendererResetSink()
 {
+	// Called once for each newly constructed renderer, including fallback.
+	if (m_videoRenderer)
+	{
+		++m_playbackCounterRendererDomain;
+		if (m_playbackCounterResetSerial)
+			m_videoRenderer->RequestPlaybackCounterReset(m_playbackCounterResetSerial);
+	}
 	if (!m_videoRenderer || !m_rendererResetCoordinator)
 		return;
 
@@ -15457,7 +15560,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				m_rendererLatencyToDSText.SetWindowText(_T("---"));
 			}
 
-			cstring.Format(_T("%lu"), droppedFrames);
+			cstring.Format(_T("%llu"), m_queueDropWindow.Observe(
+				droppedFrames, m_playbackCounterRendererDomain));
 			m_rendererDroppedFrameCountText.SetWindowText(cstring);
 
 			// INTELLIGENT QUEUE HEALTH MONITORING
@@ -15478,7 +15582,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
 			m_inputVideoFrameCountText.SetWindowText(cstring);
 
-			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
+			cstring.Format(_T("%llu"), m_captureDropWindow.Observe(
+				m_captureDevice->VideoFrameMissedCount(), m_captureVideoStateNextEpoch));
 			m_inputVideoFrameMissedText.SetWindowText(cstring);
 
 			// DeckLink hardware-latency measurement was removed from the capture
@@ -15529,7 +15634,7 @@ void CVideoProcessorDlg::PollAspectRatioOsd()
 
 	m_lastStatsData->aspectRatio = label.ratio.c_str();
 	m_lastStatsData->aspectName = label.name.c_str();
-	m_statsOverlay->UpdateStats(*m_lastStatsData);
+	m_statsOverlay->UpdateStats(PlaybackCounterDisplayStats(*m_lastStatsData));
 	std::vector<uint8_t> pixels;
 	int width = 0;
 	int height = 0;
@@ -15541,6 +15646,8 @@ void CVideoProcessorDlg::PollAspectRatioOsd()
 
 void CVideoProcessorDlg::UpdateStatsOverlay()
 {
+	// Keep diagnostic windows current even when the OSD is hidden.
+	SamplePlaybackCounters();
 	HWND displayWindow = nullptr;
 	if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
 		displayWindow = m_fullScreenVideoWindow->GetHWND();
@@ -16661,7 +16768,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		RendererRenderLoad renderLoad;
 		if (m_videoRenderer->GetRenderLoad(renderLoad))
 		{
-			stats.renderLoadKnown = true;
+            // Display observations remain available independently of GPU timers.
+            stats.outputPresentation = renderLoad.outputPresentation;
+			stats.renderLoadKnown = renderLoad.supported;
+            stats.processingPerformance = renderLoad.processing;
 			stats.renderLoadGpuValid = renderLoad.gpuValid;
 			stats.renderLoadSettling = renderLoad.settling;
 			stats.renderLoadFrames = renderLoad.frames;
@@ -16774,7 +16884,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.videoConversion = m_lastStatsData->videoConversion;
 	}
 	
-	// Conversion performance (NEW - V210→P010 etc.)
+	// Conversion performance (NEW - V210Ã¢â€ â€™P010 etc.)
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
 		double currentUs, avg10s, max10s;
@@ -16835,8 +16945,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			theoreticalCaptureRate);
 	LogDroppedCounterChanges(stats);
 
-	// Update overlay
-	m_statsOverlay->UpdateStats(stats);
+	// Apply the user's statistics window only to the display copy. Recovery
+	// policy, raw diagnostics and m_lastStatsData keep the producer counters.
+	m_statsOverlay->UpdateStats(PlaybackCounterDisplayStats(stats));
 	if (nativeOverlay)
 	{
 		std::vector<uint8_t> pixels;

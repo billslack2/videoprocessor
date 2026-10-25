@@ -12,6 +12,7 @@
 #include <atlstr.h>
 #include <ProfileChangeOverlay.h>
 #include <StatsOverlayLayout.h>
+#include <RendererLiveness.h>
 #include <mutex>
 #include <vector>
 
@@ -120,6 +121,9 @@ struct StatsData
 	// while warm-up frames are being discarded; the OSD must say so in both
 	// cases rather than print a zero that reads as "free".
 	bool renderLoadKnown = false;
+    RendererProcessingPerformance processingPerformance;
+    RendererOutputPresentationStats outputPresentation;
+    uint64_t playbackCounterResetSerial = 0;
 	bool renderLoadGpuValid = false;
 	bool renderLoadSettling = false;
 	size_t renderLoadFrames = 0;

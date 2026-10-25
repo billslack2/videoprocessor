@@ -36,7 +36,9 @@ namespace
                         ++*sampleCount;
                     }
                     AnalysisLumaSample core;
-                    if(source.Sample(sx,sy,core) && core.luma>=threshold &&
+                    const bool sampled=source.Sample(sx,sy,core);
+                    if(!sampled && source.readBudget && source.readBudget->exhausted)return false;
+                    if(sampled && core.luma>=threshold &&
                         std::abs(int(core.chromaU)-inkU)<=32 &&
                         std::abs(int(core.chromaV)-inkV)<=32)return true;
                 }
@@ -60,8 +62,10 @@ namespace
                 // height. Preserve them only when the same horizontal footprint
                 // is corroborated by nearby core ink, rather than by this row.
                 unsigned supported=0;
-                for(int sx=end-run;sx<end;++sx)
+                for(int sx=end-run;sx<end;++sx) {
                     supported+=HasBoundaryGlyphCore(source,sx,sourceY,interior,threshold,inkU,inkV);
+                    if(source.readBudget && source.readBudget->exhausted)return false;
+                }
                 return supported*100>=unsigned(run)*85;
             };
             for(int x=interior.left+1;x<interior.right-1;++x) {
@@ -122,6 +126,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
     m_topSearchComplete=m_bottomSearchComplete=false;
+    m_workLimit=false;
     m_diagnosticReason="no-backed-anchor";m_diagnosticComponentCount=0;
     m_diagnosticNearBarGap=-1;m_diagnosticNearBarGapInferred=false;
     m_diagnosticPictureGlyphProofRequired=false;m_diagnosticCoreGlyphCount=0;
@@ -133,6 +138,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     m_inkSnapshot.reset();
     m_currentAnchorSignature = {};
     m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
+    // A bounded caller cannot use partial results after read exhaustion.
+    // Stop at sampling-stage/row boundaries instead of finishing expensive
+    // grouping and recovery work whose result Analyze must discard anyway.
+    const auto sampleBudgetExhausted=[&]() {
+        if(!source.readBudget || !source.readBudget->exhausted)return false;
+        m_workLimit=true;m_diagnosticReason="sample-budget";return true;
+    };
+    if(sampleBudgetExhausted())return false;
     const int step = SamplingStep(source.width, source.height);
     const int w = (source.width + step - 1) / step;
     const int h = (source.height + step - 1) / step;
@@ -152,11 +165,17 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     int bottomStart = pictureBottom < source.height ? std::max(0,bottom-depth) : h;
     const int normalTopEnd=topEnd,normalBottomStart=bottomStart;
     const size_t area = static_cast<size_t>(w)*h;
+    // Bounded current-source inspection revisits many initial-grid pixels in
+    // later card/glyph checks. Preserve their exact native values separately
+    // from mutable detector scratch. This cache dies with this Detect call;
+    // unbudgeted worker scans keep their established path.
+    const bool cacheInitialGrid=source.readBudget!=nullptr;
+    std::vector<AnalysisLumaSample> initialGrid(cacheInitialGrid?area:0);
     m_luma.resize(area); m_chroma.resize(area); m_mask.assign(area,0);
     const bool share=m_optimizationMode==2;
     if(share){m_rawLuma.resize(area);m_rawChroma.resize(area);}
     m_labels.assign(area,0);
-    m_components.clear(); m_lines.clear(); m_workLimit = false;
+    m_components.clear(); m_lines.clear();
     std::array<uint32_t,1024> barHistogram{};
     uint32_t barSamples=0;
     const bool planar = source.format == AnalysisLumaFormat::P010 ||
@@ -179,6 +198,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
             else if(planar)
             {
+                if(source.readBudget && !source.readBudget->Spend()) {
+                    m_workLimit=true;m_diagnosticReason="sample-budget";return false;
+                }
                 const auto* row=reinterpret_cast<const uint16_t*>(source.data+static_cast<size_t>(sy)*source.rowBytes);
                 luma=row[sx]>>6;
                 const int cy=source.format==AnalysisLumaFormat::P010?sy/2:sy;
@@ -189,9 +211,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             else
             {
                 AnalysisLumaSample sample;
-                if(!source.Sample(sx,sy,sample)) return false;
+                if(!source.Sample(sx,sy,sample)) {sampleBudgetExhausted();return false;}
                 luma=sample.luma;u=sample.chromaU;v=sample.chromaV;
             }
+            if(cacheInitialGrid)initialGrid[static_cast<size_t>(y)*w+x]={luma,u,v};
             m_luma[static_cast<size_t>(y)*w+x]=luma;
             m_chroma[static_cast<size_t>(y)*w+x]=static_cast<uint32_t>(u)|(static_cast<uint32_t>(v)<<16);
             if(share && !m_sampledRows[y]) {
@@ -202,6 +225,28 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
     }
     if(share)for(int y=0;y<h;++y)if(y<topEnd || y>=bottomStart)m_sampledRows[y]=1;
+    size_t initialGridHits=0;
+    auto sampleCurrent=[&](int sx,int sy,AnalysisLumaSample& value) {
+        // Limit successful cached requests as well as actual source reads.
+        // Native refinement's own logical sample/component limits still apply.
+        if(cacheInitialGrid && initialGridHits<area && sx>=0 && sx<source.width &&
+            sy>=0 && sy<source.height && sx%step==0) {
+            const int row=pictureTop>0 && sy==pictureTop-1 ? top-1 :
+                (pictureBottom<source.height && sy==pictureBottom ? bottom : sy/step);
+            const int sampledY=pictureTop>0 && row==top-1 ? pictureTop-1 :
+                (pictureBottom<source.height && row==bottom ? pictureBottom :
+                    (std::min)(source.height-1,row*step));
+            // Later panel searches can grow the bands and overwrite m_luma.
+            // Neither grants cached coverage beyond the ORIGINAL sampled rows.
+            if(row>=0 && row<h && (row<normalTopEnd || row>=normalBottomStart) && sampledY==sy) {
+                value=initialGrid[static_cast<size_t>(row)*w+sx/step];
+                ++initialGridHits;return true;
+            }
+        }
+        const bool sampled=source.Sample(sx,sy,value);
+        if(!sampled)sampleBudgetExhausted();
+        return sampled;
+    };
     // The raw luma/chroma loop above sampled every row in each configured
     // edge band. Publish completion only for sides that physically exist.
     m_topSearchComplete=pictureTop>0;
@@ -395,12 +440,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         auto black=[&](int x,int y) {
             if(x<0 || x>=w || y<top || y>=bottom)return false;
             AnalysisLumaSample p;
-            return source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],p) &&
+            return sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],p) &&
                 p.luma<=componentCardLimit;
         };
-        for(int x=r.left;x<r.right;++x)
+        for(int x=r.left;x<r.right && !m_workLimit;++x)
             if(black(x,r.top-2) || black(x,r.bottom+1))return true;
-        for(int y=r.top;y<r.bottom;++y)
+        for(int y=r.top;y<r.bottom && !m_workLimit;++y)
             if(black(r.left-2,y) || black(r.right+1,y))return true;
         return false;
     };
@@ -463,6 +508,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 m_labels[pixel]=m_components.back().label;
             }
         }
+        if(m_workLimit)return false;
         if(nextComponentLabel>=MaxComponents) { m_workLimit=true;m_diagnosticReason="component-budget";m_diagnosticComponentCount=nextComponentLabel;return false; }
     }
     // Reconnect a detached dot to the stroke immediately above it (for example
@@ -506,6 +552,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         return std::abs(u-inkU)<=32 && std::abs(v-inkV)<=32;
     };
     for(auto& c:m_components) {
+        if(m_workLimit)return false;
         const auto peakColor=m_chroma[c.peakPixel];
         // Near-bar counters include search nominations, not measured bar ink.
         // They must not exempt picture texture from the bright-core proof.
@@ -519,12 +566,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         for(int y=std::max(0,sy-step+1);y<=std::min(source.height-1,sy+step-1) && !c.hasTextCore;++y)
             for(int x=std::max(0,sx-step+1);x<=std::min(source.width-1,sx+step-1);++x) {
                 AnalysisLumaSample value;
-                if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                     coreColor(value.chromaU,value.chromaV)) {
                     c.hasTextCore=true;break;
                 }
             }
     }
+    if(m_workLimit)return false;
     // Picture-only nominations need a bounded bright stroke, not a one-sided
     // brightness edge against the letterbox bar. Both opposing samples must
     // remain inside picture content; physical bar ink retains its own proof.
@@ -564,13 +612,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         auto sample=[&](int side,int x,int y) {
             if(x<0 || x>=w || y<top || y>=bottom) return;
             AnalysisLumaSample pixel;
-            if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
+            if(!sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
             ++samples[side];black[side]+=pixel.luma<=componentCardLimit;
         };
-        for(int x=r.left;x<r.right;++x) {
+        for(int x=r.left;x<r.right && !m_workLimit;++x) {
             sample(0,x,r.top-2);sample(1,x,r.bottom+1);
         }
-        for(int y=(std::max)(top,r.top);y<(std::min)(bottom,r.bottom);++y) {
+        for(int y=(std::max)(top,r.top);y<(std::min)(bottom,r.bottom) && !m_workLimit;++y) {
             sample(2,r.left-2,y);sample(3,r.right+1,y);
         }
         unsigned total=0,dark=0;int supported=0;
@@ -707,6 +755,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             scaleAnchorTop=edge==1;scaleAnchorBottom=edge==2;sparseEdgeCardScale=true;
         }
     }
+    if(m_workLimit)return false;
     int glyphHeight=0;
     if(!barHeights.empty()) {
         const auto index=barHeights.size()*3/4;
@@ -747,7 +796,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             for(int x=0;x<w;++x) {
                 AnalysisLumaSample sample;
                 const int sx=(std::min)(source.width-1,x*step);
-                if(!source.Sample(sx,sy,sample)) {
+                if(!sampleCurrent(sx,sy,sample)) {
+                    if(m_workLimit)return false;
                     panelPixels[x]=0;panelInkPixels[x]=0;panelDarkPixels[x]=0;continue;
                 }
                 const bool dark=sample.luma<=panelDarkLimit;
@@ -838,6 +888,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             if(panelRows<std::max(3,glyphHeight/3)) panelRows=0;
             if(panelRows) topEnd=(std::max)(topEnd,traceMaxRow+1);
         }
+        if(m_workLimit)return false;
         if(!panelRows && traceMaxRow>=traceMinRow)
             for(int y=traceMinRow;y<=traceMaxRow;++y)
                 panelLeft[y]=panelRight[y]=-1;
@@ -851,7 +902,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     if(m_mask[i]) continue;
                     const int sx=(std::min)(source.width-1,x*step);
                     AnalysisLumaSample sample;
-                    if(!source.Sample(sx,sy,sample)) continue;
+                    if(!sampleCurrent(sx,sy,sample)) {if(m_workLimit)return false;continue;}
                     m_luma[i]=sample.luma;
                     if(sy==evidence.sourceRows[y] && sample.luma<=trackingBlackLimit)
                         evidence.blackBacking[size_t(i)/64]|=uint64_t{1}<<(size_t(i)%64);
@@ -996,6 +1047,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
     }
     for(auto component=m_components.begin();component!=m_components.end();) {
+        if(m_workLimit)return false;
         if(locallyBacked(*component)) {++component;continue;}
         for(int y=component->box.top;y<component->box.bottom;++y)
             for(int x=component->box.left;x<component->box.right;++x) {
@@ -1005,6 +1057,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
         component=m_components.erase(component);
     }
+    if(m_workLimit)return false;
     m_diagnosticComponentCount=nextComponentLabel;
     auto substantial=[&](const Line& c) {
         return c.hasTextCore && (!glyphHeight ? (c.ink>=3 && Height(c.box)>=minimumHeight) :
@@ -1145,11 +1198,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 for(int y=startY;y<endY && !nativeDot;++y)
                     for(int x=c.box.left*step;x<std::min(source.width,c.box.right*step);++x) {
                         AnalysisLumaSample value;
-                        if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                        if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                             coreColor(value.chromaU,value.chromaV)) {
                             nativeDot=true;break;
                         }
                     }
+                if(m_workLimit)return false;
                 if(!nativeDot) continue;
             }
             // The wider mark corridor must not let the first row steal a
@@ -1230,7 +1284,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             for(int y:{marks.top-2,marks.bottom+1}) for(int x=marks.left;x<marks.right;++x) {
                 if(x<0 || x>=w || y<0 || y>=h) continue;
                 AnalysisLumaSample pixel;
-                if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel))continue;
+                if(!sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) {if(m_workLimit)return false;continue;}
                 ++tested;dark+=pixel.luma<=componentCardLimit;
             }
             if(!tested || dark*100<tested*85) continue;
@@ -1403,7 +1457,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     auto darkSample=[&](int x,int y) {
         AnalysisLumaSample sample;
         return x>=0 && x<w && y>=0 && y<h &&
-            source.Sample((std::min)(source.width-1,x*step),
+            sampleCurrent((std::min)(source.width-1,x*step),
                 evidence.sourceRows[y],sample) && sample.luma<=cardDarkLimit;
     };
     auto onOpaqueCard=[&](const Line& candidate,size_t index) {
@@ -1517,6 +1571,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // individual crossing component reaches half the row height. Require
     // physical ink owned by this row and retain the complete opaque-card proof.
     for(size_t i=0;i<m_lines.size();++i) {
+        if(m_workLimit)return false;
         const auto& line=m_lines[i];
         if(barStrokeSupport[i] || line.components<3 || !plausible(line,i) ||
             !centered(line) || !onOpaqueCard(line,i))continue;
@@ -1534,6 +1589,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     bool backingRejected=false;
     for(size_t i=0;i<m_lines.size();++i)
     {
+        if(m_workLimit)return false;
         const auto& l=m_lines[i];
         if(!plausible(l,i) || !centered(l)) continue;
         ++centeredCandidates;
@@ -1545,6 +1601,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         if(!trulyInBar && !onOpaqueCard(l,i)) {backingRejected=true;continue;}
         if(inTopBar != inBottomBar && l.ink>score) { anchor=i; score=l.ink; }
     }
+    if(m_workLimit)return false;
     if(anchor==m_lines.size()) {
         m_diagnosticReason=centeredCandidates==0?"no-centered-text-line":
             backingRejected?"backing-card-rejected":"no-bar-stroke-support";
@@ -1563,6 +1620,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int anchorHeight=Height(a.box);
     for(size_t i=0;i<m_lines.size();++i)
     {
+        if(m_workLimit)return false;
         const Line& l=m_lines[i];
         if(i==anchor || !plausible(l,i)) continue;
         if(!onOpaqueCard(l,i)) continue;
@@ -1591,7 +1649,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int edgeDarkLimit=bar+(std::max)(8,(ink-bar)/64);
     auto cardEdgePixel=[&](int x,int y) {
         AnalysisLumaSample sample;
-        return source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],sample) &&
+        return sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],sample) &&
             sample.luma<=edgeDarkLimit;
     };
     auto recordBackingDistance=[&](int unpaddedTop,int unpaddedBottom,bool topInferred,bool bottomInferred) {
@@ -1616,6 +1674,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // the bar. Rounded corners may taper at the first/last scanline, so retain
     // the widest corroborated run. No display padding participates here.
     for(int selected=0;selected<lineCount;++selected) {
+        if(m_workLimit)return false;
         const auto& r=lineBoxes[selected];
         if(r.bottom<=top || r.top>=bottom) continue;
         const int scale=(std::max)(3,Height(r));
@@ -1652,7 +1711,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             unsigned count=0,black=0;
             for(int x=r.left;x<r.right;++x) {
                 AnalysisLumaSample value;
-                if(!source.Sample((std::min)(source.width-1,x*step),y,value))return false;
+                if(!sampleCurrent((std::min)(source.width-1,x*step),y,value))return false;
                 ++count;black+=value.luma<=cardDarkLimit;
             }
             return count>=3 && black*100>=count*85;
@@ -1677,6 +1736,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             const int inset=(std::max)(0,unpaddedBottom-last*step);
             unpaddedTop=(std::max)(unpaddedTop,evidence.sourceRows[first]-inset);
         }
+        if(m_workLimit)return false;
         recordBackingDistance(unpaddedTop,unpaddedBottom,topInferred,bottomInferred);
         if(!(a.box.top*step<pictureTop || a.box.bottom*step>pictureBottom)) {
             if(topInferred)cardTop=first;
@@ -1684,6 +1744,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
         std::vector<int> leftEdges,rightEdges;
         for(int y=cardTop;y<cardBottom;++y) {
+            if(m_workLimit)return false;
             if(!darkRow(y)) continue;
             int l=r.left,rr=r.right;
             const int leftLimit=(std::max)(0,r.left-scale*4);
@@ -1748,10 +1809,11 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 const int firstX=side ? r.right*step : (std::max)(0,r.left*step-reach);
                 const int lastX=side ? (std::min)(source.width,r.right*step+reach) : r.left*step;
                 for(int x=firstX;x<lastX;++x) {
+                    if(m_workLimit)return false;
                     if(x>left*step && x<right*step-1)continue;
                     for(int y=firstY;y<lastY;++y) {
                         AnalysisLumaSample value;
-                        if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                        if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                             coreColor(value.chromaU,value.chromaV))return true;
                     }
                 }
@@ -1796,6 +1858,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         if(measured.Valid()) m_currentSourcePanel=m_currentSourcePanel.Valid()
             ? Union(m_currentSourcePanel,measured):measured;
     }
+    if(sampleBudgetExhausted())return false;
     // Always attempt one bounded full-card proof for the strongest accepted
     // picture row. A local dark-row stop can be caused by rejected bright ink
     // before it reaches the real card edge, even when no search limit was hit.
@@ -1877,7 +1940,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     if(++cardSamples>131072) {completeInk=false;break;}
                     const int sy=evidence.sourceRows[y];
                     AnalysisLumaSample value;
-                    if(!source.Sample(x*step,sy,value)) {completeInk=false;break;}
+                    if(!sampleCurrent(x*step,sy,value)) {completeInk=false;break;}
                     const size_t pixel=size_t(y)*w+x;
                     m_luma[pixel]=value.luma;
                     m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
@@ -1985,7 +2048,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     x<(std::min)(w,(completedCard.right+step-1)/step);++x) {
                     const int sy=evidence.sourceRows[y];
                     if(sy<completedCard.top || sy>=completedCard.bottom)continue;
-                    AnalysisLumaSample value;if(!source.Sample(x*step,sy,value))continue;
+                    AnalysisLumaSample value;if(!sampleCurrent(x*step,sy,value)) {if(m_workLimit)return false;continue;}
                     const size_t pixel=size_t(y)*w+x;
                     m_luma[pixel]=value.luma;
                     m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
@@ -1998,6 +2061,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             }
         }
     }
+    if(sampleBudgetExhausted())return false;
     // Attach nearby raster marks only after a real caption and its opaque
     // backing are established. Reuse existing components; no extra image pass,
     // OCR, frame delay, or unbounded flood fill. Four 15-source-pixel hops max.
@@ -2065,6 +2129,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     std::array<bool,3> recoveredRows{};
     std::array<bool,3> strongRecoveredRows{};
     std::array<SubtitleBoxRect,3> certifiedTerminalCapture{};
+    if(m_workLimit)return false;
     size_t nativeSamples=0;
     constexpr size_t NativeSampleLimit=65536;
     // Finish ordinary recovery for every row first. Strong recovery consumes
@@ -2072,6 +2137,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // attached-component behavior (particularly joined Arabic words).
     for(int recoveryPhase=0;recoveryPhase<2;++recoveryPhase)
     for(int selected=0;selected<lineCount;++selected) {
+        if(m_workLimit)return false;
         const bool strongSearch=recoveryPhase==1;
         const auto& boundedCard=boundedCards[selected];
         if(strongSearch && !boundedCard.Valid())continue;
@@ -2111,19 +2177,22 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             const int index=(y-roi.top)*rw+x-roi.left;
             auto& state=m_nativeCardState[index];
             if(!state) {
-                if(nativeSamples>=NativeSampleLimit)return -1;
+                if(nativeSamples>=NativeSampleLimit || m_workLimit)return -1;
                 ++nativeSamples;
                 auto& value=m_nativeCardSamples[index];
-                const bool sampled=source.Sample(x,y,value);
+                const bool sampled=sampleCurrent(x,y,value);
+                if(m_workLimit)return -1;
                 bool bright=sampled && value.luma>=threshold &&
                     std::abs(int(value.chromaU)-inkU)<=80 && std::abs(int(value.chromaV)-inkV)<=80;
                 const bool boundaryRow=(y>=pictureBottom && y<pictureBottom+CardBoundaryUncertainty) ||
                     (y>=pictureTop-CardBoundaryUncertainty && y<pictureTop);
                 if(!bright && sampled && boundaryRow && y>=interior.top && y<interior.bottom &&
                     value.luma>componentCardLimit && std::abs(int(value.chromaU)-inkU)<=32 &&
-                    std::abs(int(value.chromaV)-inkV)<=32)
+                    std::abs(int(value.chromaV)-inkV)<=32) {
                     bright=HasBoundaryGlyphCore(source,x,y,interior,threshold,inkU,inkV,
                         &nativeSamples,NativeSampleLimit);
+                    if(sampleBudgetExhausted())return -1;
+                }
                 state=bright?2:1;
             }
             return index;
@@ -2134,7 +2203,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             SubtitleBoxRect component{x,y,x+1,y+1};
             bool attached=false,hasCore=false,boundary=false,complete=true;
             m_flood.clear();m_flood.push_back(origin);m_nativeCardState[origin]=3;
-            for(size_t next=0;next<m_flood.size();++next) {
+            for(size_t next=0;next<m_flood.size() && !m_workLimit;++next) {
                 const int index=m_flood[next],cy=roi.top+index/rw,cx=roi.left+index%rw;
                 component=Union(component,{cx,cy,cx+1,cy+1});
                 attached=attached || (cx>=seed.left && cx<seed.right && cy>=seed.top && cy<seed.bottom);
@@ -2149,7 +2218,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     m_nativeCardState[adjacent]=3;m_flood.push_back(adjacent);
                 }
             }
-            if(!complete || boundary || !hasCore)return;
+            if(m_workLimit || !complete || boundary || !hasCore)return;
             // A nearby accepted caption row already owns its own glyphs.
             // Native fringe recovery must not merge two legitimate lines just
             // because their baseline gap is shorter than the search strip.
@@ -2340,13 +2409,19 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             const int bottomRow=(std::min)(roi.bottom,previous.bottom+NativeHop);
             // Terminal punctuation first, before the longer horizontal strips.
             for(int yy=topRow;yy<bottomRow;++yy) {
+                if(m_workLimit)return false;
                 for(int xx=left;xx<(std::min)(right,previous.left);++xx)inspect(xx,yy);
                 for(int xx=(std::max)(left,previous.right);xx<right;++xx)inspect(xx,yy);
             }
-            for(int yy=topRow;yy<(std::min)(bottomRow,previous.top);++yy)
+            for(int yy=topRow;yy<(std::min)(bottomRow,previous.top);++yy) {
+                if(m_workLimit)return false;
                 for(int xx=(std::max)(left,previous.left);xx<(std::min)(right,previous.right);++xx)inspect(xx,yy);
-            for(int yy=(std::max)(topRow,previous.bottom);yy<bottomRow;++yy)
+            }
+            for(int yy=(std::max)(topRow,previous.bottom);yy<bottomRow;++yy) {
+                if(m_workLimit)return false;
                 for(int xx=(std::max)(left,previous.left);xx<(std::min)(right,previous.right);++xx)inspect(xx,yy);
+            }
+            if(m_workLimit)return false;
             const auto& now=nativeCapture[selected];
             if(now.left==previous.left && now.top==previous.top && now.right==previous.right && now.bottom==previous.bottom)break;
         }
@@ -2592,7 +2667,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
 }
 
 SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
-    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration)
+    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration,bool requireConfiguredSearch)
 {
     if(!source.IsValid() || source.width>8192 || source.height>4320 || top<0 ||
         bottom<=top || bottom>source.height || (top==0 && bottom==source.height))
@@ -2604,24 +2679,39 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         Reset(); m_generation=source.generation; m_viewport=viewportGeneration;
         m_width=source.width; m_height=source.height; m_top=top; m_bottom=bottom;
     }
-    if(m_hasSequence && sequence==m_sequence) return m_result;
+    if(m_hasSequence && sequence==m_sequence &&
+        (!requireConfiguredSearch || m_result.configuredSearchComplete)) return m_result;
     m_sequence=sequence; m_hasSequence=true;
     m_sharedSampleCount=0;
     if(m_optimizationMode==2)m_sampledRows.assign((source.height+SamplingStep(source.width,source.height)-1)/SamplingStep(source.width,source.height),0);
     SubtitleBoxRect box; int lines=0; std::array<uint64_t,16> signature{};
     // Preserve the established overlap detector. Only widen nomination when
     // that detector finds no valid cue; near-picture noise cannot displace it.
-    bool detected=Detect(source,top,bottom,box,lines,signature,0);
+    bool configuredSearch=requireConfiguredSearch || m_nearBarDistance==0;
+    bool detected=Detect(source,top,bottom,box,lines,signature,
+        requireConfiguredSearch?m_nearBarDistance:0);
     bool topSearchComplete=!m_workLimit && m_topSearchComplete;
     bool bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
-    if(!detected && m_nearBarDistance>0) {
+    if(!detected && m_nearBarDistance>0 && !requireConfiguredSearch &&
+        !(source.readBudget && source.readBudget->exhausted)) {
+        configuredSearch=true;
         detected=Detect(source,top,bottom,box,lines,signature,m_nearBarDistance);
         // The widened pass is the final configured search result. Do not let
         // a complete narrower attempt mask an incomplete widened scan.
         topSearchComplete=!m_workLimit && m_topSearchComplete;
         bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
     }
+    if(source.readBudget && source.readBudget->exhausted) {
+        m_workLimit=true;detected=false;m_diagnosticReason="sample-budget";
+    }
     auto diagnostics=[&]() {
+        m_result.configuredSearchComplete=configuredSearch && !m_workLimit;
+        const int step=SamplingStep(source.width,source.height);
+        const int rows=(source.height+step-1)/step;
+        const int depth=(std::max)(24,rows/7)+(configuredSearch?m_nearBarDistance+step-1:0)/step;
+        m_result.searchStep=step;
+        m_result.topSearchEnd=topSearchComplete?(std::min)(source.height,((top+step-1)/step+depth)*step):0;
+        m_result.bottomSearchStart=bottomSearchComplete?(std::max)(0,((std::min)(rows-1,(bottom+step-1)/step)-depth)*step):source.height;
         m_result.diagnosticReason=detected?"detected":m_diagnosticReason;
         m_result.diagnosticComponentCount=m_diagnosticComponentCount;
         m_result.diagnosticPictureGlyphProofRequired=m_diagnosticPictureGlyphProofRequired;

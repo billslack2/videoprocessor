@@ -116,6 +116,104 @@ public:
         Assert::AreEqual(271, *mapping.Find({2, 81, 4, 9}));
     }
 
+    TEST_METHOD(LateCompleteSourceRevisionPreservesFailuresAndAdvancesOnlyOnce)
+    {
+        TemporalSourceEvidenceLedger<int,3> source;
+        Assert::IsTrue(source.Ensure({2,70},[](int& p){p=270;return true;}));
+        int revisions=0;
+        Assert::IsTrue(source.CanReviseSucceeded({2,70}));
+        Assert::IsFalse(source.ReviseSucceeded({2,70},[&](int& p){++revisions;p=999;return false;}));
+        Assert::AreEqual(270,*source.Find({2,70}));
+        Assert::IsTrue(source.CanReviseSucceeded({2,70}));
+        Assert::IsTrue(source.ReviseSucceeded({2,70},[&](int& p){++revisions;p=276;return true;}));
+        Assert::AreEqual(276,*source.Find({2,70}));
+        Assert::IsFalse(source.CanReviseSucceeded({2,70}));
+        Assert::IsFalse(source.ReviseSucceeded({2,70},[&](int&){++revisions;return true;}));
+        Assert::AreEqual(2,revisions);
+        Assert::IsFalse(source.Ensure({2,71},[](int&){return false;}));
+        Assert::IsFalse(source.CanReviseSucceeded({2,71}));
+        Assert::IsFalse(source.ReviseSucceeded({2,71},[&](int&){++revisions;return true;}));
+        Assert::IsTrue(source.Failed({2,71}));
+        Assert::IsFalse(source.CanReviseSucceeded({2,72}));
+        Assert::IsTrue(source.Ensure({2,72},[](int& p){p=280;return true;}));
+        Assert::IsTrue(source.Ensure({2,73},[](int& p){p=281;return true;}));
+        Assert::IsFalse(source.CanReviseSucceeded({2,72}),L"An older source cannot advance policy after a newer source");
+        Assert::IsFalse(source.ReviseSucceeded({2,70},[&](int&){++revisions;return true;}));
+        Assert::IsFalse(source.Ensure({2,70},[&](int&){++revisions;return true;}));
+        Assert::AreEqual(2,revisions);
+    }
+
+    TEST_METHOD(FailedLateGpuRevisionCannotReacquireOldSourceMapping)
+    {
+        TemporalSourceEvidenceLedger<int> source;
+        Assert::IsTrue(source.Ensure({2,70},[](int& p){p=270;return true;}));
+        Assert::IsFalse(source.ReviseSucceeded({2,70},[](int&)->bool{throw 1;}));
+        Assert::AreEqual(270,*source.Find({2,70}));
+        // A GPU replacement was already committed before a later host failure.
+        source.TombstoneSucceeded({2,70});
+        Assert::IsTrue(source.Failed({2,70}));
+        Assert::IsNull(source.Find({2,70}));
+        int retries=0;
+        Assert::IsFalse(source.Ensure({2,70},[&](int&){++retries;return true;}));
+        Assert::IsFalse(source.ReviseSucceeded({2,70},[&](int&){++retries;return true;}));
+        Assert::AreEqual(0,retries);
+        Assert::IsTrue(source.Ensure({2,71},[](int& p){p=276;return true;}));
+        Assert::AreEqual(276,*source.Find({2,71}));
+    }
+
+    TEST_METHOD(LateRevisionScopeRetiresEarlyReturnAndExceptionOnlyUntilCommit)
+    {
+        for(int failure=0;failure<3;++failure) {
+            TemporalSourceEvidenceLedger<int> source;
+            TemporalPresentationLedger<int> mapping;
+            Assert::IsTrue(source.Ensure({2,70},[](int& p){p=270;return true;}));
+            Assert::IsTrue(mapping.Ensure({2,70,4,9},[](int& p){p=270;return true;}));
+            bool packet=true,receipt=true;int rollbacks=0;
+            const auto attempt=[&] {
+                auto retire=[&] {
+                    ++rollbacks;packet=receipt=false;source.TombstoneSucceeded({2,70});
+                    mapping.InvalidateSuccessfulSource(2,70);
+                };
+                TemporalRevisionRollback<decltype(retire)> transaction(retire);
+                transaction.Arm();
+                if(failure==0)return;
+                if(failure==1)throw 1;
+                Assert::IsTrue(source.ReviseSucceeded({2,70},[](int& p){p=276;return true;}));
+                mapping.InvalidateSuccessfulSource(2,70);
+                Assert::IsTrue(mapping.Ensure({2,70,4,9},[](int& p){p=276;return true;}));
+                transaction.Commit();
+            };
+            try{attempt();}catch(int){}
+            Assert::AreEqual(failure==2?0:1,rollbacks);
+            Assert::AreEqual(failure==2,packet&&receipt);
+            if(failure==2)Assert::AreEqual(276,*mapping.Find({2,70,4,9}));
+            else {
+                Assert::IsTrue(source.Failed({2,70}));
+                Assert::IsNull(mapping.Find({2,70,4,9}));
+                Assert::IsFalse(source.Ensure({2,70},[](int&){return true;}));
+            }
+        }
+    }
+
+    TEST_METHOD(LateCompleteSourceInvalidatesOnlyItsSuccessfulDerivedMappings)
+    {
+        TemporalPresentationLedger<int> mapping;
+        Assert::IsTrue(mapping.Ensure({2,70,4,9},[](int& p){p=270;return true;}));
+        Assert::IsTrue(mapping.Ensure({2,70,4,10},[](int& p){p=271;return true;}));
+        Assert::IsFalse(mapping.Ensure({2,70,5,10},[](int&){return false;}));
+        Assert::IsTrue(mapping.Ensure({2,71,4,10},[](int& p){p=280;return true;}));
+        mapping.InvalidateSuccessfulSource(2,70);
+        Assert::IsNull(mapping.Find({2,70,4,9}));
+        Assert::IsNull(mapping.Find({2,70,4,10}));
+        Assert::IsTrue(mapping.Failed({2,70,5,10}));
+        Assert::AreEqual(280,*mapping.Find({2,71,4,10}));
+        Assert::IsTrue(mapping.Ensure({2,70,4,9},[](int& p){p=276;return true;},true));
+        Assert::AreEqual(276,*mapping.Find({2,70,4,9}));
+        int calls=0;
+        Assert::IsFalse(mapping.Ensure({2,70,5,10},[&](int&){++calls;return true;},true));
+        Assert::AreEqual(0,calls);
+    }
+
     TEST_METHOD(FailedBuilderIsTombstonedWithoutPartialPayload)
     {
         TemporalPresentationLedger<int> ledger;

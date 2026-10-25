@@ -77,6 +77,24 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <!-- Exercise the same GPU tests against either shipped renderer dependency.
+       Keep beta objects and DLLs separate to prevent mixed-header ABI builds. -->
+  <PropertyGroup>
+    <VPTestLibplacebo Condition="'$(VPTestLibplacebo)'==''">standard</VPTestLibplacebo>
+    <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='standard'">$(ProjectDir)..\..\3rdparty\libplacebo</VPTestLibplaceboDirectory>
+    <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='standard'">libplacebo-360.lib</VPTestLibplaceboLibrary>
+    <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='beta'">$(ProjectDir)..\..\3rdparty\libplacebo-beta</VPTestLibplaceboDirectory>
+    <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='beta'">libplacebo-377.lib</VPTestLibplaceboLibrary>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(VPTestLibplacebo)'=='beta'">
+    <OutDir>$(ProjectDir)..\..\$(Platform)\$(Configuration)\tests-beta\</OutDir>
+    <IntDir>$(ProjectDir)..\..\$(Platform)\$(Configuration)\obj-tests-beta\</IntDir>
+    <TargetName>VideoProcessor-TestBeta</TargetName>
+  </PropertyGroup>
+  <Target Name="ValidateVpTestLibplacebo" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(VPTestLibplacebo)'!='standard' and '$(VPTestLibplacebo)'!='beta'" Text="VPTestLibplacebo must be standard or beta." />
+    <Error Condition="'$(VPTestLibplacebo)'=='beta' and '$(Platform)'!='x64'" Text="Beta GPU tests require x64." />
+  </Target>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -91,6 +109,9 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(VPTestLibplacebo)'=='beta'">
+    <ClCompile><PreprocessorDefinitions>VP_LIBPLACEBO_BETA;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -98,7 +119,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>.;$(MagewellSdkRoot)\Include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\libplacebo\include;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;$(MagewellSdkRoot)\Include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;$(VPTestLibplaceboDirectory)\include;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -109,11 +130,11 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;$(VCInstallDir)UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libplacebo-360.lib;Ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VPTestLibplaceboDirectory)\lib;$(VCInstallDir)UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(VPTestLibplaceboLibrary);Ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /D /Y &quot;$(ProjectDir)..\..\3rdparty\libplacebo\bin\*.dll&quot; &quot;$(OutDir)&quot; &gt;nul</Command>
+      <Command>xcopy /D /Y &quot;$(VPTestLibplaceboDirectory)\bin\*.dll&quot; &quot;$(OutDir)&quot; &gt;nul</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -136,18 +157,18 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>.;$(MagewellSdkRoot)\Include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\libplacebo\include;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;$(MagewellSdkRoot)\Include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;$(VPTestLibplaceboDirectory)\include;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;$(VCInstallDir)UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libplacebo-360.lib;Ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VPTestLibplaceboDirectory)\lib;$(VCInstallDir)UnitTest\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(VPTestLibplaceboLibrary);Ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /D /Y &quot;$(ProjectDir)..\..\3rdparty\libplacebo\bin\*.dll&quot; &quot;$(OutDir)&quot; &gt;nul</Command>
+      <Command>xcopy /D /Y &quot;$(VPTestLibplaceboDirectory)\bin\*.dll&quot; &quot;$(OutDir)&quot; &gt;nul</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -234,6 +255,7 @@
     <ClCompile Include="LibplaceboLutParserTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="RendererDependencyTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="MotionRendererTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="LibplaceboRenderParametersTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
@@ -249,9 +271,13 @@
     <ClCompile Include="SceneDetectorTests.cpp" />
     <ClCompile Include="WindowResizeLayoutTests.cpp" />
     <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
+    <ClCompile Include="AlphaOutputPresentationTelemetryTests.cpp" />
+    <ClCompile Include="OutputPresentationPublicationTests.cpp" />
     <ClCompile Include="AlphaRenderLoadMeterTests.cpp" />
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
 	<ClCompile Include="ProcessCpuUsageWindowTests.cpp" />
+    <ClCompile Include="PlaybackCounterWindowTests.cpp" />
+    <ClCompile Include="PhysicalInputResyncLatchTests.cpp" />
     <ClCompile Include="ConfigFileTests.cpp" />
     <ClCompile Include="ConfigEditorCoreTests.cpp" />
     <ClCompile Include="ConfigurationRpcServerTests.cpp">
@@ -289,6 +315,9 @@
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="ActivePictureBlackReferenceTests.cpp" />
     <ClCompile Include="ActivePictureMeasurementCacheTests.cpp" />
+    <ClCompile Include="ReconstructionMotionTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
+    <ClCompile Include="ProcessingPerformanceWindowTests.cpp" />
+    <ClCompile Include="SourceOutputNormalizationTests.cpp"><ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp" />
     <ClCompile Include="LocalBoundaryRefinementTests.cpp" />
     <ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp" />
@@ -366,4 +395,12 @@
   <ItemGroup>
     <ClCompile Include="PreparedOutwardWindowTests.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="SubtitleNativeStackProbe.cpp" />
+  </ItemGroup>
+  <!-- Isolated1MiB stack regression; output stays outside the runtime package layout. -->
+  <Target Name="BuildSubtitleNativeStackProbe" AfterTargets="Build"
+          Condition="'$(Configuration)|$(Platform)'=='Release|x64' and '$(VPTestLibplacebo)'=='standard'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\tools\build_subtitle_stack_probe.ps1&quot; -RepoRoot &quot;$(ProjectDir)..\..&quot; -OutputDirectory &quot;$(OutDir)test-tools&quot; -IntermediateDirectory &quot;$(IntDir)SubtitleStackProbe&quot; -CompilerPath &quot;$(VCToolsInstallDir)bin\Hostx64\x64\cl.exe&quot; -IncludeDirectories &quot;$(IncludePath)&quot; -LibraryDirectories &quot;$(LibraryPath)&quot; -ToolsetVersion &quot;$(VCToolsVersion)&quot;" />
+  </Target>
 </Project>

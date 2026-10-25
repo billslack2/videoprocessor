@@ -32,6 +32,45 @@ TEST_CLASS(SubtitleOpaqueCardRefinementTests) {
             263,1897,28,550,512,512,result);
     }
 public:
+    TEST_METHOD(NeutralSceneryCannotBecomeGlyphFreeOpaqueBacking) {
+        for(bool unboundedSides:{false,true}) {
+            Frame f;f.Fill({1457,1715,2390,1897},0);
+            f.Text(1489,2354,1737,1785);f.Text(1751,2089,1825,1873);
+            // The prior proof accepted this neutral picture body merely because
+            // its two dark columns supplied over 25% black coverage.
+            f.Fill({1457,1400,2390,1715},80);
+            f.Fill({1457,1400,1690,1715},0);f.Fill({2160,1400,2390,1715},0);
+            if(unboundedSides) {
+                f.Fill({1000,1400,1457,1715},0);f.Fill({2390,1400,2800,1715},0);
+            }
+            SubtitleOpaqueCardRefinement r;
+            Assert::IsFalse(Refine(f,r));
+            Assert::IsFalse(r.interior.Valid() || r.measuredBounds.Valid());
+            Assert::IsFalse(r.workLimit,L"Reject unsupported pixels rather than relying on exhaustion");
+        }
+    }
+    TEST_METHOD(CurrentBodyMustRetainBoundedSideWitnesses) {
+        Frame f;f.Fill({1457,1715,2390,1897},0);
+        f.Text(1489,2354,1737,1785);f.Text(1751,2089,1825,1873);
+        // Nomination whitespace has finite edges, but the connected upper
+        // scene has no nearby side boundary at either claimed card side.
+        f.Fill({1000,1400,2800,1715},0);
+        SubtitleOpaqueCardRefinement r;
+        Assert::IsFalse(Refine(f,r));
+        Assert::IsFalse(r.interior.Valid() || r.measuredBounds.Valid());
+    }
+    TEST_METHOD(BlankCardHeightAndCurrentAntialiasRemainSupported) {
+        for(bool tall:{false,true}) {
+            Frame f;f.Fill({1457,tall?1400:1715,2390,1897},0);
+            f.Text(1489,2354,1737,1785);f.Text(1751,2089,1825,1873);
+            // A low-luma AA fringe immediately next to real core ink is
+            // different from a distant neutral block of picture content.
+            for(int x=1489;x<2354;x+=34)f.Fill({x,1735,(std::min)(2354,x+15),1737},80);
+            SubtitleOpaqueCardRefinement r;Assert::IsTrue(Refine(f,r));
+            Assert::AreEqual(tall?1400:1715,r.interior.top);
+            Assert::AreEqual(1897,r.interior.bottom);Assert::AreEqual(2,r.glyphRowCount);
+        }
+    }
     TEST_METHOD(PartialTailSeedRecoversBothLinesInsideFiniteOpaqueCard) {
         Frame f;f.Fill({1457,1715,2390,1897},0);
         f.Text(1489,2354,1737,1785);f.Text(1751,2089,1825,1873);

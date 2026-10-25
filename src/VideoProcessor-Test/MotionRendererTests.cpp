@@ -16,6 +16,7 @@
 #include <array>
 #include <fstream>
 #include <cstdint>
+#include <type_traits>
 #include "RendererProfileConfig.h"
 #include <vector>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -154,6 +155,80 @@ struct GpuFixture {
         return {pixels[o],pixels[o+1],pixels[o+2]};
     }
 };
+
+// Deliberately distinguish the complete old packet from a new raw picture.
+// Reusing only its caption would leave the new green source-caption patch.
+struct SubtitlePacketHoldFixture {
+    GpuFixture g;
+    MotionConfig::Settings settings;
+    TemporalRenderer::PresentationGeometry geometry{};
+    SubtitlePacketHoldFixture() {
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        geometry.valid=true;geometry.familyBase={0,0,64,64};geometry.sourceCrop={0,0,64,64};
+        geometry.verifiedVisible={0,0,64,64};geometry.viewportEpoch=7;
+        geometry.owner=1;geometry.visibleSafe=true;geometry.cleaned=true;
+    }
+    void Capture(uint64_t sequence,bool cue,bool oldScene,int glyphColor=1,
+        uint64_t generation=1,bool discontinuity=false,double sourceHz=24,
+        bool confirmedNoCue=false,double displayHz=60) {
+        std::vector<float> picture(64*64*4),layer(64*64*4);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            picture[o]=picture[o+1]=picture[o+2]=oldScene?1.0f:0.0f;
+            picture[o+3]=1.0f;
+            if(x>=8&&x<16&&y>=40&&y<48) {
+                picture[o]=picture[o+2]=0.0f;picture[o+1]=oldScene?0.0f:1.0f;
+            }
+            if(cue&&x>=24&&x<40&&y>=24&&y<40) {
+                layer[o+(glyphColor==1?0:2)]=1.0f;layer[o+3]=1.0f;
+            }
+        }
+        g.Upload(0);g.UploadFloatPixels(g.clean,picture);g.UploadFloatPixels(g.layer,layer);
+        g.temporal.Begin(settings,sourceHz,displayHz,false,0,generation,sequence,
+            double(sequence-1)/sourceHz,discontinuity,true);
+        Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,cue?g.layer:nullptr,
+            sequence,{24,24,40,40}));
+        if(g.temporal.Active()) {
+            auto current=geometry;current.cleaned=cue||confirmedNoCue;
+            Assert::IsTrue(g.temporal.AnnotatePresentation(sequence,current));
+        }
+        g.temporal.outputPts=double(sequence-1)/sourceHz;
+    }
+    void Seed() {
+        Capture(1,true,true);
+        Assert::IsFalse(Select(11,7));
+        Render(11);AssertOldPixels();
+        Assert::AreEqual(uint64_t(1),g.temporal.LastSubtitleSequence());
+    }
+    static pl_render_params Parameters() {
+        auto params=pl_render_default_params;params.dither_params=nullptr;
+        params.deband_params=nullptr;params.peak_detect_params=nullptr;return params;
+    }
+    bool Select(uint64_t processingEpoch=11,uint64_t viewportEpoch=7) {
+        const auto params=Parameters();
+        return g.temporal.SelectSubtitleFallback(processingEpoch,viewportEpoch,g.input,g.output,params,
+            g.target->params.w,g.target->params.h);
+    }
+    void Render(uint64_t processingEpoch) {
+        auto params=Parameters();
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,processingEpoch));
+        g.temporal.MarkSubmitted();
+    }
+    void AssertOldPixels() {
+        const auto glyph=g.Read(32,32),picture=g.Read(4,4),cleanup=g.Read(12,44);
+        Assert::IsTrue(glyph[0]>230&&glyph[1]<20&&glyph[2]<20,L"Held packet lost its red glyph");
+        for(int c=0;c<3;++c)Assert::IsTrue(picture[c]>230,L"Caption was pasted onto the new movie picture");
+        for(int c=0;c<3;++c)Assert::IsTrue(cleanup[c]<20,L"Held packet lost its original source cleanup");
+    }
+    void AssertNewPixels(bool cue=false) {
+        const auto glyph=g.Read(32,32),picture=g.Read(4,4),rawCaption=g.Read(12,44);
+        for(int c=0;c<3;++c)Assert::IsTrue(picture[c]<20,L"Expired packet retained the old movie picture");
+        if(cue)Assert::IsTrue(glyph[2]>230&&glyph[0]<20&&glyph[1]<20,L"New blue cue did not replace the held red cue");
+        else for(int c=0;c<3;++c)Assert::IsTrue(glyph[c]<20,L"Expired hold retained an old subtitle");
+        Assert::IsTrue(rawCaption[1]>230&&rawCaption[0]<20&&rawCaption[2]<20,
+            L"Current picture was erased using old cleanup");
+    }
+};
 }
 TEST_CLASS(MotionRendererTests){public:
     TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
@@ -168,6 +243,351 @@ TEST_CLASS(MotionRendererTests){public:
             }
             Assert::AreEqual(hz<=30.0?120u:60u,analyses);
         }
+    }
+
+    TEST_METHOD(SmoothSubtitlePacketHoldKeepsPixelsTogetherAndExpiresWithoutOutputRenewal) {
+        for(bool confirmedNoCue:{false,true}) {
+            SubtitlePacketHoldFixture f;f.Seed();
+            const auto seed=f.g.temporal.ProcessingSnapshot();
+            for(uint64_t sequence=2;sequence<=3;++sequence) {
+                f.Capture(sequence,false,false,1,1,false,24,confirmedNoCue);
+                for(int output=0;output<4;++output) {
+                    f.g.temporal.outputPts=double(sequence-1)/24+output*.005;
+                    Assert::IsTrue(f.Select(11,7));
+                    Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedPacketSequence());
+                    Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedSubtitleSequence());
+                    Assert::AreEqual(0.0,f.g.temporal.SelectedPacketPts());
+                    f.Render(11);f.AssertOldPixels();
+                    RendererHdrStatus hdr;Assert::IsTrue(f.g.temporal.HdrStatusSnapshot(hdr));
+                    Assert::AreEqual(uint64_t(1),hdr.sourceSequence);
+                    Assert::AreEqual(seed.sourceRenders,f.g.temporal.ProcessingSnapshot().sourceRenders,
+                        L"Holding a processed packet must not reprocess current source pixels");
+                }
+            }
+            // Repeated presentations of the second missing source cannot
+            // become a new valid cue or move the original source lease.
+            for(int repeat=0;repeat<12;++repeat) {
+                Assert::IsTrue(f.Select(11,7));f.Render(11);f.AssertOldPixels();
+            }
+            for(uint64_t sequence=4;sequence<=7;++sequence) {
+                f.Capture(sequence,false,false,1,1,false,24,confirmedNoCue);
+                Assert::IsFalse(f.Select(11,7));f.Render(11);f.AssertNewPixels();
+                Assert::AreEqual(uint64_t(0),f.g.temporal.LastSubtitleSequence());
+            }
+        }
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldReplacesWithNewCueImmediately) {
+        SubtitlePacketHoldFixture f;f.Seed();f.Capture(2,false,false);
+        Assert::IsTrue(f.Select(11,7));f.Render(11);f.AssertOldPixels();
+        f.Capture(3,true,false,2);
+        Assert::IsFalse(f.Select(11,7));
+        Assert::AreEqual(uint64_t(3),f.g.temporal.SelectedPacketSequence());
+        f.Render(11);f.AssertNewPixels(true);
+        Assert::AreEqual(uint64_t(3),f.g.temporal.LastSubtitleSequence());
+        f.Capture(4,false,false);
+        Assert::IsTrue(f.Select(11,7));f.Render(11);f.AssertNewPixels(true);
+        Assert::AreEqual(uint64_t(3),f.g.temporal.LastSubtitleSequence());
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldRequiresProcessedCueAndCurrentGeometry) {
+        // A merely captured cue is not a retained processed packet.
+        {SubtitlePacketHoldFixture f;f.Capture(1,true,true);f.Capture(2,false,false);
+            Assert::IsFalse(f.Select(11,7));f.Render(11);f.AssertNewPixels();}
+        for(int fault=0;fault<6;++fault) {
+            SubtitlePacketHoldFixture f;f.Seed();f.Capture(2,false,false);
+            auto changed=f.geometry;changed.cleaned=false;
+            uint64_t processingEpoch=11,viewportEpoch=7;
+            if(fault==0)processingEpoch=12;
+            if(fault==1)viewportEpoch=8;
+            if(fault==2)changed.viewportEpoch=8;
+            if(fault==3)changed.familyBase={0,4,64,60};
+            if(fault==4)changed.sourceCrop={0,4,64,60};
+            if(fault==5)changed.valid=false;
+            Assert::IsTrue(f.g.temporal.AnnotatePresentation(2,changed));
+            Assert::IsFalse(f.Select(processingEpoch,viewportEpoch),
+                (L"Fallback crossed current geometry or policy fault "+std::to_wstring(fault)).c_str());
+            f.Render(processingEpoch);f.AssertNewPixels();
+        }
+        // A trusted-to-engage ownership reason can change without changing
+        // pixels or mapping. The held packet keeps its own truthful metadata.
+        SubtitlePacketHoldFixture ownerOnly;ownerOnly.Seed();ownerOnly.Capture(2,false,false);
+        auto current=ownerOnly.geometry;current.owner=2;current.cleaned=false;
+        Assert::IsTrue(ownerOnly.g.temporal.AnnotatePresentation(2,current));
+        Assert::IsTrue(ownerOnly.Select());ownerOnly.Render(11);ownerOnly.AssertOldPixels();
+        Assert::AreEqual(uint64_t(1),ownerOnly.g.temporal.SelectedPacketSequence());
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldClearsAtSourceAndHistoryBoundaries) {
+        for(int fault=0;fault<8;++fault) {
+            SubtitlePacketHoldFixture f;f.Seed();
+            if(fault==0)f.g.temporal.Clear();
+            if(fault==1)f.g.temporal.ResetHistoryAfterSourceGap();
+            if(fault==2)f.settings.mixer="linear";
+            const auto generation=fault==3?uint64_t(2):uint64_t(1);
+            const auto sequence=fault==5?uint64_t(3):fault==7?uint64_t(1):uint64_t(2);
+            const double sourceHz=fault==6?30.0:24.0;
+            f.Capture(sequence,false,false,1,generation,fault==4,sourceHz);
+            Assert::IsFalse(f.Select(11,7),
+                (L"Fallback survived source/history reset "+std::to_wstring(fault)).c_str());
+            f.Render(11);f.AssertNewPixels();
+        }
+        SubtitlePacketHoldFixture f;f.Seed();f.settings.smoothMotion="off";
+        f.Capture(2,false,false);Assert::IsFalse(f.g.temporal.Active());
+        Assert::IsFalse(f.Select(11,7));f.Render(11);
+        const auto pixel=f.g.Read(32,32);for(int c=0;c<3;++c)Assert::IsTrue(pixel[c]<20);
+        Assert::AreEqual(uint64_t(0),f.g.temporal.LastSubtitleSequence());
+        // Deinterlacing can remain active while Smooth Motion is Off. It must
+        // still present the current empty cue without this new fallback.
+        GpuFixture fields;MotionConfig::Settings fieldSettings;
+        fieldSettings.smoothMotion="off";fieldSettings.deinterlace="force";
+        for(uint64_t sequence=1;sequence<=2;++sequence) {
+            const bool cue=sequence==1;fields.Upload(0,true);
+            fields.temporal.Begin(fieldSettings,24,60,true,1,1,sequence,
+                double(sequence-1)/24,false,true);
+            Assert::IsTrue(fields.temporal.CaptureNativeComposition(fields.device->gpu,
+                fields.input,sequence,[&fields,cue](const pl_frame&,const pl_deinterlace_params&,
+                    pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                    fields.UploadComposition(false,cue?1:0);clean=fields.cleanInput;
+                    layer=cue?fields.layer:nullptr;bounds={24,24,40,40};return true;
+                },cue));
+            auto geometry=f.geometry;geometry.cleaned=cue;
+            Assert::IsTrue(fields.temporal.AnnotatePresentation(sequence,geometry));
+            fields.temporal.outputPts=double(sequence-1)/24;
+            auto params=SubtitlePacketHoldFixture::Parameters();
+            Assert::IsTrue(fields.temporal.Active());Assert::IsFalse(fields.temporal.Mixing());
+            Assert::IsFalse(fields.temporal.SelectSubtitleFallback(11,7,fields.input,
+                fields.output,params,64,64));
+            Assert::IsTrue(fields.temporal.Render(fields.renderer,fields.input,fields.output,params,11));
+            const auto pixel=fields.Read(32,32);
+            Assert::IsTrue(cue?(pixel[0]>230&&pixel[1]<20&&pixel[2]<20):
+                (pixel[0]<20&&pixel[1]<20&&pixel[2]<20));
+            Assert::AreEqual(cue?sequence:uint64_t(0),fields.temporal.LastSubtitleSequence());
+        }
+        // Auto bypasses Smooth Motion when source and display rates match.
+        // The ordinary current picture remains authoritative in that mode.
+        SubtitlePacketHoldFixture matched;matched.Seed();matched.settings.smoothMotion="auto";
+        matched.Capture(2,false,false,1,1,false,24,false,24);
+        Assert::IsFalse(matched.g.temporal.Active());Assert::IsFalse(matched.g.temporal.Mixing());
+        Assert::IsFalse(matched.Select());matched.Render(11);
+        const auto current=matched.g.Read(32,32);
+        for(int c=0;c<3;++c)Assert::IsTrue(current[c]<20);
+        Assert::AreEqual(uint64_t(0),matched.g.temporal.LastSubtitleSequence());
+    }
+
+    TEST_METHOD(SmoothSubtitlePacketHoldUsesFrozenHostContractBeforeTargetAcquisition) {
+        for(int fault=0;fault<4;++fault) {
+            SubtitlePacketHoldFixture f;f.geometry.outputContract=101;f.Seed();
+            f.Capture(2,false,false);
+            auto current=f.geometry;current.cleaned=false;
+            if(fault==1)current.outputContract=102;
+            if(fault==2)current.outputContract=0;
+            Assert::IsTrue(f.g.temporal.AnnotatePresentation(2,current));
+            // The host selects its packet before acquiring the swapchain.
+            // Only the mapped crop/rotation and dimensions exist at this point.
+            pl_frame provisional{};provisional.crop=f.g.output.crop;
+            auto params=SubtitlePacketHoldFixture::Parameters();
+            const uint64_t contract=fault==1||fault==3?102:101;
+            const bool held=f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                provisional,params,64,64,contract);
+            if(fault) {
+                Assert::IsFalse(held,L"Fallback crossed the frozen host output contract");
+                Assert::AreEqual(uint64_t(2),f.g.temporal.SelectedPacketSequence());
+                continue;
+            }
+            Assert::IsTrue(held,L"A pre-acquisition target must use the frozen output contract");
+            for(int draw=0;draw<8;++draw) {
+                f.g.temporal.outputPts=1./24+draw*.001;
+                Assert::IsTrue(f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                    provisional,params,64,64,contract));
+                // Acquire the real target only after selection, as the host does.
+                f.Render(11);f.AssertOldPixels();
+                Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedPacketSequence());
+                Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedSubtitleSequence());
+                RendererHdrStatus hdr;Assert::IsTrue(f.g.temporal.HdrStatusSnapshot(hdr));
+                Assert::AreEqual(uint64_t(1),hdr.sourceSequence);
+            }
+        }
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldRemapsOnlyItsOwnedPacketWhenFinalTargetChanges) {
+        for(bool cropChanged:{false,true}) {
+            SubtitlePacketHoldFixture f;f.geometry.outputContract=101;f.Seed();
+            f.Capture(2,false,false);const auto before=f.g.temporal.ProcessingSnapshot();
+            pl_frame provisional{};provisional.crop=f.g.output.crop;
+            auto params=SubtitlePacketHoldFixture::Parameters();
+            Assert::IsTrue(f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                provisional,params,64,64,101));
+            // Target acquisition/optional output mapping occurs after selection.
+            // Render must remap the retained complete source, never submit black
+            // or combine its subtitle with the current raw movie picture.
+            if(cropChanged)f.g.output.crop={0,8,64,56};
+            else f.g.output.color.transfer=PL_COLOR_TRC_GAMMA22;
+            f.Render(11);
+            Assert::AreEqual(before.sourceRenders+1,f.g.temporal.ProcessingSnapshot().sourceRenders);
+            Assert::IsTrue(std::string(f.g.temporal.SubtitleFallbackReason())=="complete-packet-remapped");
+            auto verifyHeld=[&]() {
+                const auto glyph=f.g.Read(32,32),picture=f.g.Read(4,16);
+                const auto cleanup=f.g.Read(12,cropChanged?41:44);
+                Assert::IsTrue(glyph[0]>230&&glyph[1]<20&&glyph[2]<20);
+                for(int c=0;c<3;++c){Assert::IsTrue(picture[c]>230);Assert::IsTrue(cleanup[c]<20);}
+                Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedPacketSequence());
+                Assert::AreEqual(uint64_t(1),f.g.temporal.SelectedSubtitleSequence());
+                RendererHdrStatus hdr;Assert::IsTrue(f.g.temporal.HdrStatusSnapshot(hdr));
+                Assert::AreEqual(uint64_t(1),hdr.sourceSequence);
+            };
+            verifyHeld();provisional.crop=f.g.output.crop;
+            for(int repeat=0;repeat<6;++repeat) {
+                Assert::IsTrue(f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                    provisional,params,64,64,101));
+                f.Render(11);verifyHeld();
+                Assert::AreEqual(before.sourceRenders+1,f.g.temporal.ProcessingSnapshot().sourceRenders);
+            }
+            f.Capture(3,false,false);
+            Assert::IsTrue(f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                provisional,params,64,64,101));f.Render(11);verifyHeld();
+            f.Capture(4,false,false);
+            Assert::IsFalse(f.g.temporal.SelectSubtitleFallback(11,7,f.g.input,
+                provisional,params,64,64,101));f.Render(11);
+            const auto expired=f.g.Read(32,32),picture=f.g.Read(4,16);
+            for(int c=0;c<3;++c){Assert::IsTrue(expired[c]<20);Assert::IsTrue(picture[c]<20);}
+            Assert::AreEqual(uint64_t(0),f.g.temporal.LastSubtitleSequence());
+            RendererHdrStatus hdr;Assert::IsTrue(f.g.temporal.HdrStatusSnapshot(hdr));
+            Assert::AreEqual(uint64_t(4),hdr.sourceSequence);
+        }
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldRejectsChangedProcessedOutputContract) {
+        for(int fault=0;fault<8;++fault) {
+            SubtitlePacketHoldFixture f;f.Seed();f.Capture(2,false,false);
+            auto source=f.g.input,target=f.g.output;auto params=SubtitlePacketHoldFixture::Parameters();
+            int width=64,height=64;
+            pl_peak_detect_params peak=pl_peak_detect_default_params;
+            if(fault==0)source.crop={0,4,64,60};
+            if(fault==1)source.rotation=PL_ROTATION_90;
+            if(fault==2)target.crop={0,4,64,60};
+            if(fault==3)target.rotation=PL_ROTATION_90;
+            if(fault==4)target.color.transfer=PL_COLOR_TRC_GAMMA22;
+            if(fault==5)target.repr.levels=PL_COLOR_LEVELS_LIMITED;
+            if(fault==6)width=32;
+            if(fault==7){peak.analysis_crop={0,.1f,1,.9f};params.peak_detect_params=&peak;}
+            Assert::IsFalse(f.g.temporal.SelectSubtitleFallback(11,7,source,target,params,width,height),
+                (L"Fallback crossed processed output contract "+std::to_wstring(fault)).c_str());
+            Assert::AreEqual(uint64_t(2),f.g.temporal.SelectedPacketSequence());
+        }
+    }
+    TEST_METHOD(SmoothSubtitlePacketHoldCannotCrossGpuOwners) {
+        SubtitlePacketHoldFixture old;old.Seed();GpuFixture replacement;
+        replacement.Upload(0);replacement.UploadComposition(false,0);
+        old.g.temporal.Begin(old.settings,24,60,false,0,1,2,1./24,false,true);
+        Assert::IsTrue(old.g.temporal.CaptureComposition(replacement.device->gpu,
+            replacement.cleanInput,nullptr,2));
+        auto geometry=old.geometry;geometry.cleaned=false;
+        Assert::IsTrue(old.g.temporal.AnnotatePresentation(2,geometry));
+        old.g.temporal.outputPts=1./24;
+        auto params=SubtitlePacketHoldFixture::Parameters();
+        Assert::IsFalse(old.g.temporal.SelectSubtitleFallback(11,7,replacement.input,replacement.output,params,64,64));
+        Assert::IsTrue(old.g.temporal.Render(replacement.renderer,replacement.input,replacement.output,params,11));
+        const auto pixel=replacement.Read(32,32);for(int c=0;c<3;++c)Assert::IsTrue(pixel[c]<20);
+        Assert::AreEqual(uint64_t(0),old.g.temporal.LastSubtitleSequence());
+        old.g.temporal.Clear(); // Release resources before their GPU owner dies.
+    }
+    TEST_METHOD(SourceGapRetainsProgramsButClearsSubtitlePixelsAndHdrState) {
+        for(bool explicitBacklog:{false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+            g.cleanInput.color=pl_color_space_hdr10;g.cleanInput.color.hdr.max_luma=1000;
+            g.UploadComposition(true,1);
+            g.temporal.Begin(settings,24,60,false,0,1,10,0,false,true);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,10));
+            g.temporal.outputPts=0;
+            auto params=pl_render_default_params;params.deband_params=nullptr;params.dither_params=nullptr;
+            params.peak_detect_params=&pl_peak_detect_high_quality_params;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            g.temporal.MarkSubmitted();pl_gpu_finish(g.device->gpu);
+            const auto processingRenderer=g.temporal.ProcessingRenderer(g.renderer);
+            RendererHdrStatus status;Assert::IsTrue(g.temporal.HdrStatusSnapshot(status));
+            Assert::AreEqual(uint64_t(10),status.sourceSequence);
+            pl_hdr_metadata peak{};
+            Assert::IsTrue(pl_renderer_get_hdr_metadata(processingRenderer,&peak),
+                L"Control must create actual HDR peak state before recovery");
+            const auto before=g.temporal.ProcessingSnapshot();
+            Assert::AreEqual(uint64_t(1),before.sourceRendererCreations);
+            if(explicitBacklog)g.temporal.ResetHistoryAfterSourceGap();
+            g.temporal.Begin(settings,24,60,false,0,1,13,3./24,false,true);
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::AreEqual(uint64_t(0),g.temporal.SelectedPacketSequence());
+            Assert::AreEqual(uint64_t(0),g.temporal.SelectedSubtitleSequence());
+            Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+            Assert::IsFalse(g.temporal.HdrStatusSnapshot(status));
+            Assert::IsFalse(pl_renderer_get_hdr_metadata(processingRenderer,&peak),
+                L"Compiled program reuse must not retain detected peaks");
+            Assert::AreEqual(before.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+            Assert::AreEqual(before.sourceRendererHistoryFlushes+1,g.temporal.ProcessingSnapshot().sourceRendererHistoryFlushes);
+
+            // The new packet is dark and has no glyph layer. No old bright
+            // movie pixels, red caption, or old HDR-source identity may leak.
+            g.UploadComposition(false,0);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,13));
+            g.temporal.outputPts=3./24;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            const auto pixel=g.Read(32,32);
+            Assert::IsTrue(pixel[0]<5 && pixel[1]<5 && pixel[2]<5,GpuFixture::PixelText(pixel).c_str());
+            Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+            Assert::IsTrue(g.temporal.HdrStatusSnapshot(status));Assert::AreEqual(uint64_t(13),status.sourceSequence);
+            Assert::AreEqual(before.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+            Assert::IsTrue(g.temporal.ProcessingRenderer(g.renderer)==processingRenderer);
+            const auto recovered=g.temporal.ProcessingSnapshot();
+            g.temporal.outputPts=3./24+.005;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            Assert::AreEqual(recovered.sourceRenders,g.temporal.ProcessingSnapshot().sourceRenders);
+            Assert::IsTrue(g.temporal.ProcessingSnapshot().sourceReuses>recovered.sourceReuses);
+            g.temporal.Clear();
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            g.temporal.Begin(settings,24,60,false,0,1,14,4./24,false,true);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,14));
+            g.temporal.outputPts=4./24;
+            Assert::IsTrue(g.temporal.Render(g.renderer,g.cleanInput,g.output,params,7));
+            Assert::AreEqual(before.sourceRendererCreations+1,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        }
+    }
+    TEST_METHOD(HardTemporalBoundariesStillReleaseProcessingRenderer) {
+        for(int boundary=0;boundary<5;++boundary) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+            g.Upload(128);g.temporal.Begin(settings,24,60,false,0,1,10,1,false);
+            Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,10));g.temporal.outputPts=1;g.Draw();
+            const auto before=g.temporal.ProcessingSnapshot();
+            auto generation=uint64_t(1),sequence=uint64_t(13);double pts=1+3./24;bool discontinuity=false;
+            if(boundary==0)++generation;
+            if(boundary==1)settings.mixer="linear";
+            if(boundary==2)discontinuity=true;
+            if(boundary==3){sequence=9;pts=.9;}
+            if(boundary==4){sequence=11;pts=2;}
+            g.temporal.Begin(settings,24,60,false,0,generation,sequence,pts,discontinuity);
+            Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::AreEqual(before.sourceRendererHistoryFlushes,g.temporal.ProcessingSnapshot().sourceRendererHistoryFlushes);
+            Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,sequence));g.temporal.outputPts=pts;g.Draw();
+            Assert::AreEqual(before.sourceRendererCreations+1,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        }
+    }
+    TEST_METHOD(SourceGapRendererProgramsCannotCrossGpuOwners) {
+        GpuFixture first,second;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        first.UploadComposition(false,1);
+        first.temporal.Begin(settings,24,60,false,0,1,1,0,false,true);
+        Assert::IsTrue(first.temporal.CaptureComposition(first.device->gpu,first.cleanInput,first.layer,1));
+        first.temporal.outputPts=0;
+        auto params=pl_render_fast_params;
+        Assert::IsTrue(first.temporal.Render(first.renderer,first.cleanInput,first.output,params));
+        const auto before=first.temporal.ProcessingSnapshot();
+        first.temporal.ResetHistoryAfterSourceGap();
+        first.temporal.Begin(settings,24,60,false,0,1,4,3./24,false,true);
+        second.UploadComposition(true,0);
+        Assert::IsTrue(first.temporal.CaptureComposition(second.device->gpu,second.cleanInput,nullptr,4));
+        first.temporal.outputPts=3./24;
+        Assert::IsTrue(first.temporal.Render(second.renderer,second.cleanInput,second.output,params));
+        Assert::AreEqual(before.sourceRendererCreations+1,first.temporal.ProcessingSnapshot().sourceRendererCreations);
+        const auto pixel=second.Read(32,32);
+        Assert::IsTrue(pixel[0]>220 && pixel[1]>220 && pixel[2]>220,GpuFixture::PixelText(pixel).c_str());
+        Assert::AreEqual(uint64_t(0),first.temporal.LastSubtitleSequence());
+        // Release the retained second-device owner before that fixture dies.
+        first.temporal.Clear();
     }
     TEST_METHOD(ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch) {
         GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
@@ -258,6 +678,45 @@ TEST_CLASS(MotionRendererTests){public:
                 Assert::AreEqual(control.outputs[i],g.temporal.outputs[i],1e-10);
             g.temporal.Begin(settings,24,60,fields,1,2,7,6./24,false,false,true);
             Assert::AreEqual(size_t(0),g.temporal.HistoryDepth(),L"A repeat must not cross a source generation.");
+        }
+    }
+    TEST_METHOD(ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+        settings.deinterlace="off";settings.mixer="oversample";
+        TemporalRenderer control;
+        g.temporal.Begin(settings,24,60,false,0,1,1,0,true,true);
+        control.Begin(settings,24,60,false,0,1,1,0,true,true);
+        g.UploadComposition(false,1);
+        Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,1,{24,24,40,40}));
+        g.temporal.outputPts=0;
+        const auto before=g.Draw();g.temporal.MarkSubmitted();
+        const auto stats=g.temporal.ProcessingSnapshot();
+        for(int repeat=0;repeat<8;++repeat) {
+            g.temporal.Begin(settings,24,60,false,0,1,1,0,true,true,true);
+            Assert::AreEqual(size_t(1),g.temporal.HistoryDepth());
+            Assert::AreEqual(size_t(1),g.temporal.outputs.size());
+            Assert::AreEqual(0.0,g.temporal.outputPts,1e-10);
+            Assert::AreEqual(uint64_t(1),g.temporal.SelectedPacketSequence());
+            const auto output=g.Draw();g.temporal.MarkSubmitted();
+            for(int c=0;c<3;++c)Assert::AreEqual(before[c],output[c]);
+        }
+        Assert::AreEqual(stats.sourceRendererCreations,g.temporal.ProcessingSnapshot().sourceRendererCreations);
+        Assert::AreEqual(stats.sourceRenders,g.temporal.ProcessingSnapshot().sourceRenders);
+        g.temporal.Begin(settings,24,60,false,0,1,2,1./24,false,true);
+        control.Begin(settings,24,60,false,0,1,2,1./24,false,true);
+        Assert::AreEqual(control.outputs.size(),g.temporal.outputs.size());
+        for(size_t i=0;i<control.outputs.size();++i)
+            Assert::AreEqual(control.outputs[i],g.temporal.outputs[i],1e-10);
+        for(int fault=0;fault<5;++fault) {
+            GpuFixture reset;
+            const bool originalEvent=fault!=0;
+            reset.temporal.Begin(settings,24,60,false,0,1,1,0,originalEvent,true);
+            reset.UploadComposition(false,1);
+            Assert::IsTrue(reset.temporal.CaptureComposition(reset.device->gpu,reset.cleanInput,reset.layer,1,{24,24,40,40}));
+            reset.temporal.Begin(settings,24,60,false,0,fault==4?2:1,fault==2?2:1,
+                fault==3?1./24:0,fault==1?false:true,true,true);
+            Assert::AreEqual(size_t(0),reset.temporal.HistoryDepth(),
+                L"Changed event, source, PTS or epoch must keep the original reset behavior");
         }
     }
     TEST_METHOD(ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue) {
@@ -786,6 +1245,94 @@ TEST_CLASS(MotionRendererTests){public:
                     GpuFixture::PixelText(pixel)+L" expected "+GpuFixture::PixelText(expected[i])).c_str());
         }
     }
+    TEST_METHOD(CompositionCaptureReceiptKeepsMetadataWithItsGpuPacket) {
+        for(bool native:{false,true})for(bool firstCue:{false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
+            settings.mixer="linear";settings.deinterlace=native?"force":"off";
+            struct Metadata {uint64_t generation=0,sequence=0;bool composed=false;SubtitleCutPasteGeometry geometry;};
+            std::array<Metadata,8> packets{};
+            auto begin=[&](uint64_t sequence,uint64_t generation) {
+                g.temporal.Begin(settings,24,60,native,1,generation,sequence,double(sequence-1)/24,false,true);
+            };
+            auto capture=[&](uint64_t sequence,uint64_t generation,bool cue) {
+                g.Upload(0);g.UploadComposition(false,cue?1:0);
+                bool added=true,ok=false;
+                if(native)ok=g.temporal.CaptureNativeComposition(g.device->gpu,g.input,sequence,
+                    [&g,cue](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                        // A later duplicate can overwrite upload scratch before
+                        // this first packet's deferred callback is evaluated.
+                        g.UploadComposition(false,cue?1:0);clean=g.cleanInput;
+                        layer=cue?g.layer:nullptr;bounds={24,24,40,40};return true;
+                    },cue,&added);
+                else ok=g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,cue?g.layer:nullptr,
+                    sequence,{24,24,40,40},&added);
+                Assert::IsTrue(ok);
+                if(added) {
+                    SubtitleCutPasteGeometry geometry;geometry.valid=cue;geometry.destination={24,24,40,40};
+                    packets[sequence%packets.size()]={generation,sequence,cue,geometry};
+                }
+                return added;
+            };
+            auto verify=[&](uint64_t sequence,uint64_t generation,bool cue) {
+                g.temporal.outputPts=double(sequence-1)/24;
+                const auto pixel=g.Draw();const auto& packet=packets[sequence%packets.size()];
+                Assert::IsTrue(packet.generation==generation&&packet.sequence==sequence&&packet.composed==cue);
+                Assert::AreEqual(cue?sequence:uint64_t(0),g.temporal.LastSubtitleSequence());
+                Assert::IsTrue(cue?(pixel[0]>230&&pixel[1]<20&&pixel[2]<20):
+                    (pixel[0]<20&&pixel[1]<20&&pixel[2]<20),L"Metadata must describe retained GPU pixels.");
+                Assert::IsTrue(SubtitleHdrProtectionPixels(packet.geometry,packet.composed,0,64)==(cue?40.0f:0.0f),
+                    L"HDR subtitle protection must follow the retained packet.");
+            };
+            begin(1,1);Assert::IsTrue(capture(1,1,firstCue));
+            Assert::IsFalse(capture(1,1,!firstCue),L"A duplicate must not authorize replacing metadata.");
+            verify(1,1,firstCue);
+            // The host's recovery path uses later preparation only after the
+            // old GPU history is cleared, and must bind its new metadata too.
+            g.temporal.Clear();begin(1,1);Assert::IsTrue(capture(1,1,!firstCue));verify(1,1,!firstCue);
+            for(uint64_t sequence=2;sequence<=9;++sequence) {
+                begin(sequence,1);Assert::IsTrue(capture(sequence,1,(sequence&1)!=0));
+            }
+            verify(9,1,true);Assert::AreEqual(size_t(8),g.temporal.HistoryDepth());
+            // Reusing a ring slot or source sequence in a new context must not
+            // preserve metadata from the old packet.
+            begin(9,2);Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+            Assert::IsTrue(capture(9,2,false));verify(9,2,false);
+        }
+    }
+    TEST_METHOD(CaptureReceiptDistinguishesBypassRejectionAndDeferredFailure) {
+        GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="off";settings.deinterlace="off";
+        g.Upload(0);g.temporal.Begin(settings,24,60,false,0,1,1,0,false);
+        bool added=true;Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,1,nullptr,{},&added));
+        Assert::IsFalse(added,L"An inactive successful capture adds no packet.");
+        settings.smoothMotion="always";g.temporal.Begin(settings,24,60,false,0,1,1,0,false,true);
+        g.UploadComposition(false,1);auto bad=g.cleanInput;bad.repr.sys=PL_COLOR_SYSTEM_BT_709;
+        added=true;Assert::IsFalse(g.temporal.CaptureComposition(g.device->gpu,bad,g.layer,1,{},&added));
+        Assert::IsFalse(added);Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+        Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,g.layer,1,{},&added));
+        Assert::IsTrue(added);
+        added=true;Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.cleanInput,1,g.layer,{},&added));
+        Assert::IsFalse(added,L"The underlying capture also reports duplicate retention.");
+        g.temporal.Clear();settings.deinterlace="force";
+        g.temporal.Begin(settings,24,60,true,1,2,2,1./24,false,true);
+        auto fail=[](const pl_frame&,const pl_deinterlace_params&,pl_frame&,pl_tex&,pl_rect2d&){return false;};
+        added=true;Assert::IsFalse(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,{},false,&added));
+        Assert::IsFalse(added);
+        bad=g.input;bad.num_planes=0;added=true;
+        Assert::IsFalse(g.temporal.CaptureNativeComposition(g.device->gpu,bad,2,fail,false,&added));Assert::IsFalse(added);
+        // Capturing native pixels succeeds before deferred GPU preparation.
+        // Its receipt never claims successful rendering or presentation.
+        Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,fail,false,&added));
+        Assert::IsTrue(added);g.temporal.outputPts=1./24;
+        Assert::IsFalse(g.temporal.PreflightCompositionOutput());Assert::AreEqual(size_t(0),g.temporal.HistoryDepth());
+        Assert::AreEqual(uint64_t(0),g.temporal.SelectedPacketSequence());
+        Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,2,
+            [&g](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                g.UploadComposition(false,0);clean=g.cleanInput;layer=nullptr;bounds={};return true;
+            },false,&added));
+        Assert::IsTrue(added,L"Recovery recapture must allow replacement metadata.");
+        Assert::IsTrue(g.temporal.PreflightCompositionOutput());const auto pixel=g.Draw();
+        Assert::IsTrue(pixel[0]<20&&pixel[1]<20&&pixel[2]<20);Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
+    }
     TEST_METHOD(NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer){
         GpuFixture g;MotionConfig::Settings settings;settings.cadence="field";
         settings.deinterlace="force";g.Upload(0,true);g.UploadComposition(false,1);
@@ -866,7 +1413,8 @@ TEST_CLASS(MotionRendererTests){public:
         whiteFrame.planes[0].texture=g.layer;
         const pl_frame* pointers[]={&blackFrame,&whiteFrame,&blackFrame};
         const uint64_t signatures[]={1,2,3};
-        const float timestamps[]={-.75f,.25f,1.25f};
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        const Timestamp timestamps[]={-.75,.25,1.25};
         pl_frame_mix direct{};direct.num_frames=3;direct.frames=pointers;
         direct.signatures=signatures;direct.timestamps=timestamps;direct.vsync_duration=.5f;
         auto params=pl_render_fast_params;params.frame_mixer=g.temporal.MixerParameters();
@@ -1036,18 +1584,34 @@ TEST_CLASS(MotionRendererTests){public:
                 L" native="+std::to_wstring(nativeDelta)).c_str());
     }
     TEST_METHOD(NativeP010ChromaFieldsMatchDirectLibplacebo){
+        // A null plane scaler inherits the main scaler. Normalization uses
+        // fast defaults, whereas the independent raw render uses quality
+        // defaults, so compare the same chroma policy on all routes. Keep the
+        // default normalization branch as well as explicit configured scalers.
+        for(const pl_filter_config* filter:{static_cast<const pl_filter_config*>(nullptr),
+            &pl_filter_bilinear,&pl_filter_lanczos})
         for(const char* algorithm:{"bob","yadif","bwdif"})for(int order:{1,2}){
             GpuFixture g;g.CreateP010AlternatingChroma();
+            auto sourceParams=pl_render_default_params;
+            sourceParams.plane_upscaler=filter?filter:&pl_filter_bilinear;
+            sourceParams.plane_downscaler=sourceParams.plane_upscaler;
+            sourceParams.dither_params=nullptr;sourceParams.deband_params=nullptr;
+            sourceParams.peak_detect_params=nullptr;
+            const auto sourceOptions=CaptureSubtitleSourceProcessingOptions(sourceParams);
+            Assert::IsTrue(sourceOptions.planeUpscaler==sourceParams.plane_upscaler,
+                L"Configured chroma upscaler must reach source normalization");
+            Assert::IsTrue(sourceOptions.planeDownscaler==sourceParams.plane_downscaler,
+                L"Configured chroma downscaler must reach source normalization");
             MotionConfig::Settings settings;settings.cadence="field";
             settings.algorithm=algorithm;settings.deinterlace="force";
             for(uint64_t i=0;i<5;++i){
                 g.temporal.Begin(settings,30,60,true,order,1,i+1,double(i)/30,false,true);
                 Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.p010Input,i+1,
-                    [&g](const pl_frame& field,const pl_deinterlace_params& deinterlace,
+                    [&g,sourceOptions,filter](const pl_frame& field,const pl_deinterlace_params& deinterlace,
                         pl_frame& clean,pl_tex& layer,pl_rect2d& bounds){
                         layer=nullptr;bounds={};
                         return RenderSubtitleFullRaster(g.preparation,g.device->gpu,field,nullptr,
-                            &g.clean,clean,true,false,false,&deinterlace);
+                            &g.clean,clean,true,false,false,&deinterlace,filter?&sourceOptions:nullptr);
                     }));
             }
             auto renderDirect=[&](pl_field parity){
@@ -1056,7 +1620,7 @@ TEST_CLASS(MotionRendererTests){public:
                 const auto deinterlace=g.temporal.DeinterlaceParameters();
                 pl_frame normalized{};
                 Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,raw,nullptr,
-                    &g.clean,normalized,true,false,false,&deinterlace),L"Direct P010 normalization failed");
+                    &g.clean,normalized,true,false,false,&deinterlace,filter?&sourceOptions:nullptr),L"Direct P010 normalization failed");
                 auto params=pl_render_default_params;
                 params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
                 Assert::IsTrue(pl_render_image(g.renderer,&normalized,&g.output,&params),L"Direct P010 output failed");
@@ -1066,8 +1630,7 @@ TEST_CLASS(MotionRendererTests){public:
                 pl_frame raw=g.p010Input;raw.first_field=order==1?PL_FIELD_TOP:PL_FIELD_BOTTOM;
                 raw.field=parity;raw.prev=&g.p010Input;raw.next=&g.p010Input;
                 auto deinterlace=g.temporal.DeinterlaceParameters();
-                auto params=pl_render_default_params;
-                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                auto params=sourceParams;
                 params.deinterlace_params=&deinterlace;
                 Assert::IsTrue(pl_render_image(g.renderer,&raw,&g.output,&params),
                     L"Independent raw P010 deinterlace failed");
@@ -1082,7 +1645,9 @@ TEST_CLASS(MotionRendererTests){public:
             const auto nativeFirst=g.Draw();
             g.temporal.outputPts=3.5/30;
             const auto nativeSecond=g.Draw();
-            const std::wstring label=std::wstring(algorithm,algorithm+strlen(algorithm))+
+            const std::wstring label=std::wstring(!filter?L"fast defaults ":
+                filter==&pl_filter_bilinear?L"bilinear ":L"Lanczos ")+
+                std::wstring(algorithm,algorithm+strlen(algorithm))+
                 L" order "+std::to_wstring(order)+L" direct "+GpuFixture::PixelText(directFirst)+
                 L"/"+GpuFixture::PixelText(directSecond)+L" raw "+
                 GpuFixture::PixelText(rawFirst)+L"/"+GpuFixture::PixelText(rawSecond)+
@@ -1462,6 +2027,56 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
         Assert::IsTrue(g.temporal.AnnotatePresentation(3,geometry));
         const auto mixed=g.Draw();
         Assert::IsTrue(mixed[0]<isolated[0]-30,L"Compatible cleaned picture should retain smooth motion.");
+    }
+};
+}
+
+namespace VideoProcessorTest {
+TEST_CLASS(RetainedEnvelopeSelectionGpuTests) { public:
+    TEST_METHOD(RetainedEnvelopeSelectionUsesOutputContractWithoutMutatingCapturedPackets) {
+        for (bool composition : {false,true}) {
+            GpuFixture g;MotionConfig::Settings settings;
+            settings.smoothMotion="always";settings.mixer="linear";settings.deinterlace="off";
+            TemporalRenderer::PresentationGeometry original{};
+            original.familyBase={0,8,64,56};original.sourceCrop=original.familyBase;
+            original.verifiedVisible=original.familyBase;original.viewportEpoch=4;
+            original.owner=13;original.valid=true;original.visibleSafe=true;original.cleaned=composition;
+            for(uint64_t sequence=1;sequence<=3;++sequence) {
+                if(composition)g.UploadComposition(sequence==2,0);
+                else g.Upload(sequence==2?255:0);
+                g.temporal.Begin(settings,24,60,false,0,1,sequence,double(sequence-1)/24,false,composition);
+                if(composition)Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,sequence));
+                else Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,sequence));
+                Assert::IsTrue(g.temporal.AnnotatePresentation(sequence,original));
+            }
+            g.temporal.outputPts=1.5/24;
+            Assert::AreEqual(uint64_t(2),g.temporal.SelectedPacketSequence());
+            g.input.crop={0,8,64,56};
+            const auto mixedBefore=g.Draw();
+            auto expanded=original;
+            expanded.familyBase=expanded.sourceCrop={0,0,64,64};
+            g.input.crop={0,0,64,64};
+            const auto drawExpanded=[&](){
+                auto params=pl_render_default_params;
+                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,0,&expanded));
+                return g.Read(32,32);
+            };
+            const auto isolated=drawExpanded();
+            Assert::IsTrue(isolated[0]>220 && mixedBefore[0]<isolated[0]-30,
+                L"The selected output's expanded geometry must reject old-family neighbors, including cleaned packets.");
+            // An output override must not rewrite either retained packet annotation.
+            g.input.crop={0,8,64,56};
+            const auto mixedAgain=g.Draw();
+            Assert::IsTrue(std::abs(mixedAgain[0]-mixedBefore[0])<=2,
+                L"Default selection must still use the immutable captured presentation contract.");
+            g.input.crop={0,0,64,64};
+            Assert::IsTrue(g.temporal.AnnotatePresentation(3,expanded));
+            const auto compatible=drawExpanded();
+            Assert::IsTrue(compatible[0]<isolated[0]-30,
+                L"A neighbor with the actual expanded output contract should still blend.");
+            Assert::AreEqual(uint64_t(2),g.temporal.SelectedPacketSequence());
+        }
     }
 };
 }

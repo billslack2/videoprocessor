@@ -609,9 +609,23 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     {
         CString gpuTime(L"measuring...");
         if (OsdTimingPolicy::WarmingEnabled && stats.renderLoadSettling) gpuTime = L"settling...";
-        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg %.2f, max %.2f ms (10 s)",
-            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs);
+        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg/max %.2f / %.2f ms; %zu/%zu async (10 s)",
+            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs,
+            stats.renderLoadGpuFrames, stats.renderLoadFrames);
         add(L"GPU frame:", gpuTime);
+        if (stats.isAlphaRenderer)
+        {
+            const auto& timing=stats.processingPerformance;
+            const auto cpuTiming=[&](const RendererRenderLoadStat& cost,uint64_t count) {
+                if(!timing.available)return CString(L"measuring...");
+                if(!count)return CString(L"no calls in window");
+                return format(L"avg/max %.2f / %.2f ms; n=%llu (%.1f s)",cost.average,cost.peak,
+                    static_cast<unsigned long long>(count),timing.windowMilliseconds/1000.0);
+            };
+            add(L"Prep CPU/wait:",cpuTiming(timing.preparationCpu,timing.preparationCalls));
+            add(L"New CPU/wait:",cpuTiming(timing.sourceDrawCpu,timing.sourceDraws));
+            add(L"Reuse CPU/wait:",cpuTiming(timing.reusedDrawCpu,timing.reusedDraws));
+        }
         const CString cpuLoad = stats.cpuUsageKnown ? format(L"%.0f/%.0f%%", stats.cpuUsageAvgPercent,
             stats.cpuUsagePeakPercent) : CString(L"measuring");
         const CString gpuLoad = stats.renderLoadGpuPercentValid ? format(L"%.0f/%.0f%%",
@@ -628,8 +642,58 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         add(L"Output interval:", outputInterval);
     }
     add(L"VFrames:", format(L"%llu", stats.rendererCapturedFrames));
-    add(L"Dropped:", format(L"%llu/%llu", stats.capturedDroppedFrames, stats.queueDroppedFrames));
-    add(L"D/R estimate:", present(stats.cadenceIntervalEstimate, L"Unavailable"));
+    add(L"Capture/queue:", format(L"%llu / %llu drops", stats.capturedDroppedFrames, stats.queueDroppedFrames));
+    add(L"Display D/R:", L"unavailable (not measured)");
+    const auto& output = stats.outputPresentation;
+    const wchar_t* outputReason = L"unavailable";
+    switch (output.reason)
+    {
+    case RendererOutputPresentationReason::NoSwapchain: outputReason = L"no swapchain"; break;
+    case RendererOutputPresentationReason::Unsupported: outputReason = L"unsupported"; break;
+    case RendererOutputPresentationReason::StatisticsFailed: outputReason = L"statistics failed"; break;
+    case RendererOutputPresentationReason::Disjoint: outputReason = L"disjoint; rewarming"; break;
+    case RendererOutputPresentationReason::Stale: outputReason = L"stale observations"; break;
+    case RendererOutputPresentationReason::ObservationGap: outputReason = L"observation gap"; break;
+    default:
+        switch (output.state)
+        {
+        case RendererOutputPresentationState::Warming: outputReason = L"warming"; break;
+        case RendererOutputPresentationState::Observing: outputReason = L"observing"; break;
+        case RendererOutputPresentationState::Limited: outputReason = L"limited observations"; break;
+        default: break;
+        }
+        break;
+    }
+    // A clean zero requires current verified evidence. Previously recorded
+    // incidents remain visible even if observation later becomes unavailable.
+    // Session totals are partial observations, not total display drops/repeats.
+    const bool hasObservations = output.supported && output.verifiedIntervals > 0 &&
+        output.state == RendererOutputPresentationState::Observing &&
+        output.reason == RendererOutputPresentationReason::None;
+    const bool hasRecordedIncidents = output.observedLongHolds > 0 || output.excessRefreshes > 0;
+    if (stats.isAlphaRenderer &&
+        stats.playbackCounterResetSerial > output.appliedResetSerial)
+    {
+        // An asynchronous render-thread reset must hide old published counts.
+        // Fresh observation coverage is still required before showing zero.
+        add(L"Display holds:", L"reset pending");
+        add(L"Display evidence:", L"reset pending");
+    }
+    else if (hasObservations || hasRecordedIncidents)
+    {
+        add(L"Display holds:", format(L"%llu events / %llu excess refreshes (%s)",
+            output.observedLongHolds, output.excessRefreshes, hasObservations ? L"observed" : L"recorded"));
+        add(L"Display evidence:", format(L"%llu intervals / %llu gaps; partial; %s",
+            output.verifiedIntervals, output.observationGaps, outputReason));
+    }
+    else
+    {
+        add(L"Display holds:", output.state == RendererOutputPresentationState::Unavailable &&
+            output.reason == RendererOutputPresentationReason::None
+            ? CString(L"unavailable") : format(L"unavailable (%s)", outputReason));
+        add(L"Display evidence:", output.supported ? CString(outputReason) : CString(L"unavailable"));
+    }
+    add(L"Cadence drift:", format(L"estimate: %s", present(stats.cadenceIntervalEstimate, L"unavailable").GetString()));
     add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));
     CString sceneStatus;
     if (stats.sceneDetectMode.IsEmpty() || stats.sceneDetectMode.CompareNoCase(L"Off") == 0) sceneStatus = L"None";
@@ -637,7 +701,7 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     else if (!stats.sceneTimingReady) sceneStatus = OsdTimingPolicy::WarmingEnabled ? L"Warming" : L"Measuring";
     else sceneStatus = stats.sceneTimingRatesCompatible ? L"Ready" : L"Unavailable";
     add(L"- Status:", sceneStatus);
-    add(L"- Action D/R:", format(L"%llu / %llu", stats.sceneDetectCorrectionDrops, stats.sceneDetectCorrectionRepeats));
+    add(L"Intentional D/R:", format(L"%llu / %llu", stats.sceneDetectCorrectionDrops, stats.sceneDetectCorrectionRepeats));
     add(L"- Detected:", format(L"%llu", stats.sceneDetectDetected));
     return rows;
 }

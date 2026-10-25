@@ -58,6 +58,8 @@
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
 #include <CaptureVideoStatePolicy.h>
+#include <PhysicalInputResyncLatch.h>
+#include <PlaybackCounterWindow.h>
 #include <ConfigEditorCore.h>
 #include "ConfigurationRpcServer.h"
 #include "ModernOperatorView.h"
@@ -288,6 +290,7 @@ public:
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
+	void OnCommandResetPlaybackCounters();
 	void OnCommandCaptureRenderedOutput();
 	void OnCommandCaptureAnalysisDiagnostics(bool includeFrames);
 	void OnCommandConfigEditor();
@@ -298,7 +301,8 @@ public:
 
 	// ICaptureDeviceCallback
 	void OnCaptureDeviceState(CaptureDeviceState state) override;
-	void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr cardState) override;
+	void OnCaptureDeviceCardStateChange(ACaptureDevice* source,
+		CaptureRunToken captureRunToken, CaptureDeviceCardStateComPtr cardState) override;
 	void OnCaptureDeviceVideoStateChange(
 		ACaptureDevice* source,
 		CaptureRunToken captureRunToken,
@@ -835,6 +839,8 @@ protected:
 	ACaptureDevice* m_captureVideoStateSource = nullptr;
 	uint64_t m_captureVideoStateSourceEpoch = 0;
 	uint64_t m_captureVideoStateNextEpoch = 0;
+	uint64_t m_captureCardNotificationSequence = 0;
+	PhysicalInputResyncLatch m_physicalInputResync;
 	VideoStateComPtr m_lastPublishedValidCaptureVideoState;
 	CaptureVideoStateChangeClass m_latestCaptureVideoStateChangeClass =
 		CaptureVideoStateChangeClass::Initial;
@@ -907,6 +913,17 @@ protected:
 	CadenceIntervalEstimate m_cadenceIntervalEstimate;
 	ULONGLONG m_lastCadenceIntervalLogTick = 0;
 	StatsData* m_lastStatsData = nullptr;
+	// UI-owned diagnostic windows; raw counters remain available to recovery
+	// policy/logging. Renderer instances have a distinct monotonic identity.
+	uint64_t m_playbackCounterRendererDomain = 0;
+	uint64_t m_playbackCounterResetSerial = 0;
+	PlaybackCounterWindow m_captureDropWindow;
+	PlaybackCounterWindow m_queueDropWindow;
+	PlaybackCounterWindow m_intentionalDropWindow;
+	PlaybackCounterWindow m_intentionalRepeatWindow;
+	void SamplePlaybackCounters(bool reset = false);
+	void ResetPlaybackCounters(const char* reason);
+	StatsData PlaybackCounterDisplayStats(const StatsData& raw) const;
 	// Renderer telemetry getters are deliberately nonblocking. Retain their
 	// last valid values only within the same renderer/host generation when a
 	// periodic OSD read loses the render-lock race.

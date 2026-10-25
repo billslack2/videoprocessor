@@ -15,6 +15,7 @@
 #include <chrono>
 #include <SubtitlePreviewMode.h>
 #include <climits>
+#include <limits>
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
 #include <RendererConfigView.h>
@@ -64,6 +65,93 @@ TEST_CLASS(SubtitleCutPasteTests) {
         SubtitleBoxResult r;r.detected=true;r.cue=1;r.bounds={200,295,400,330};return r;
     }
 public:
+    TEST_METHOD(CurrentCompleteBackingCannotGrowUnchangedCueIntoScenery) {
+        for(bool top:{false,true})for(bool rounded:{false,true})for(int reduction:{0,30,75}) {
+            auto p=Preview();p.current.width=3840;p.current.height=2160;
+            p.current.pictureTop=276;p.current.pictureBottom=1884;
+            auto text=Text();text.bounds={966,1670,2870,1934};text.lineCount=2;
+            text.lineBounds[0]={970,1677,2858,1776};text.lineBounds[1]={970,1821,2863,1924};
+            text.capturePanelMeasured=true;
+            const auto mirror=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top}:r;};
+            text.bounds=mirror(text.bounds);for(int i=0;i<2;++i)text.lineBounds[i]=mirror(text.lineBounds[i]);
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{60,40,21};
+            const auto compose=[&](SubtitleBoxRect local,SubtitleBoxRect proof) {
+                text.sourcePanel=mirror(local);text.provenSourcePanel=mirror(proof);text.capturePanel=text.sourcePanel;
+                p.current.text=text;++p.current.identity.acceptedSequence;
+                auto g=presentation.Consume(text,p,padding,20);
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,276,3840,1884},20),
+                    reduction,padding,rounded,false);
+                return anchor.Consume(g,text,p,padding,20,false);
+            };
+            const auto first=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(first.valid);
+            const auto larger=compose({792,1166,3530,1884},{792,1166,3530,1884});
+            Assert::IsTrue(larger.valid);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.generatedCleanup,larger.generatedCleanup,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,larger.destination,0));
+            Assert::AreEqual(first.glyphTranslateX,larger.glyphTranslateX);
+            Assert::AreEqual(first.glyphTranslateY,larger.glyphTranslateY);
+            const auto restored=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.generatedCleanup,restored.generatedCleanup,0),
+                L"Current six-pixel local fringe remains intact");
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,restored.destination,0));
+        }
+    }
+    TEST_METHOD(CurrentCompleteCorrectionShrinksDecorationWithoutMovingGlyphs) {
+        for(bool top:{false,true})for(bool rounded:{false,true})for(int reduction:{0,30,75}) {
+            auto p=Preview();p.current.width=3840;p.current.height=2160;
+            p.current.pictureTop=276;p.current.pictureBottom=1884;
+            auto text=Text();text.bounds={966,1670,2870,1934};text.lineCount=2;
+            text.lineBounds[0]={970,1677,2858,1776};text.lineBounds[1]={970,1821,2863,1924};
+            text.capturePanelMeasured=true;
+            const auto mirror=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top}:r;};
+            text.bounds=mirror(text.bounds);for(int i=0;i<2;++i)text.lineBounds[i]=mirror(text.lineBounds[i]);
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{60,40,21};
+            const auto compose=[&](SubtitleBoxRect local,SubtitleBoxRect proof,int freshness=0) {
+                text.sourcePanel=mirror(local);text.provenSourcePanel=mirror(proof);text.capturePanel=text.sourcePanel;
+                p.current.text=text;++p.current.identity.acceptedSequence;
+                p.current.pendingRefresh=freshness==1;p.current.analysisRefresh=freshness==2;
+                p.current.text.held=freshness==3;p.current.text.workLimit=freshness==4;
+                auto g=presentation.Consume(text,p,padding,20);
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,276,3840,1884},20),
+                    reduction,padding,rounded,false);
+                return anchor.Consume(g,text,p,padding,20,false);
+            };
+            const auto oversized=compose({792,1166,3530,1884},{792,1166,3530,1884});
+            Assert::IsTrue(oversized.valid);
+            const auto localOnly=compose({870,1634,2974,1884},{});
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(oversized.destination,localOnly.destination,0),
+                L"An incomplete local estimate cannot shrink accepted decoration");
+            for(int freshness=1;freshness<=4;++freshness) {
+                const auto incomplete=compose({870,1634,2974,1884},{870,1640,2974,1884},freshness);
+                Assert::IsTrue(incomplete.valid && !incomplete.currentBackingCorrection);
+                Assert::IsTrue(SubtitleBoxLookahead::SameLine(oversized.destination,incomplete.destination,0),
+                    L"Pending, refreshed, held or incomplete text cannot mint a current complete correction");
+            }
+            const auto corrected=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsTrue(corrected.valid && corrected.currentBackingCorrection);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.generatedCleanup,mirror({870,1634,2974,1884}),0));
+            Assert::IsTrue(corrected.destination.bottom-corrected.destination.top<oversized.destination.bottom-oversized.destination.top);
+            Assert::IsTrue(corrected.destination.right-corrected.destination.left<oversized.destination.right-oversized.destination.left);
+            Assert::AreEqual(oversized.glyphTranslateX,corrected.glyphTranslateX);
+            Assert::AreEqual(oversized.glyphTranslateY,corrected.glyphTranslateY);
+            const auto repeat=compose({870,1634,2974,1884},{});
+            Assert::IsFalse(repeat.currentBackingCorrection,L"The correction receipt cannot survive into an unproved later call");
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.destination,repeat.destination,0));
+            // Tracker-confirmed new picture-side glyphs may acquire their real
+            // current card; the blank-growth restriction is not a size clamp.
+            text.revised=true;text.lineCount=3;text.lineBounds[2]=mirror({1100,1420,2700,1510});
+            text.bounds=mirror({966,1410,2870,1934});
+            const auto revised=compose({792,1390,3530,1884},{792,1390,3530,1884});
+            Assert::IsTrue(revised.valid);
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(revised.generatedCleanup,mirror({792,1390,3530,1884}),0));
+            p.current.analyzed=false;
+            const auto unanalyzed=compose({870,1634,2974,1884},{870,1640,2974,1884});
+            Assert::IsFalse(unanalyzed.valid || unanalyzed.currentBackingCorrection);
+        }
+    }
     TEST_METHOD(TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames) {
         unsigned count=0;
         for(int i=0;i<7;++i)count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
@@ -1713,8 +1801,11 @@ struct SubtitleShaderGpuFixture {
         }
         uint16_t half=0;std::memcpy(&half,bytes,sizeof(half));
         const int exponent=(half>>10)&31,significand=half&1023;
-        return exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
+        const float magnitude=exponent==31?
+            (significand?std::numeric_limits<float>::quiet_NaN():std::numeric_limits<float>::infinity()):
+            exponent?std::ldexp(1.0f+significand/1024.0f,exponent-15):
             std::ldexp(float(significand),-24);
+        return (half&0x8000)?-magnitude:magnitude;
     }
     std::vector<float> ReadLinear(pl_tex texture) {
         const pl_fmt format=texture->params.format;
@@ -2101,6 +2192,131 @@ struct SubtitleShaderGpuFixture {
             for(int c=0;c<3;++c)Assert::IsTrue(std::abs(Pixel(freshBefore,x,y)[c]-Pixel(freshAfter,x,y)[c])<0.005f,
                 L"A next source with no lip cannot reuse the old source cleanup or erase its current picture.");
     }
+
+    std::vector<float> ReadPreparedRaster(pl_frame composed) {
+        composed.crop={0,0,64,64};composed.rotation=PL_ROTATION_0;
+        pl_frame target{};target.num_planes=1;target.planes[0].texture=allOutput;
+        target.planes[0].components=4;
+        for(int c=0;c<4;++c)target.planes[0].component_mapping[c]=c;
+        target.repr=pl_color_repr_rgb;target.repr.alpha=PL_ALPHA_INDEPENDENT;
+        target.color=input.color;target.color.transfer=PL_COLOR_TRC_LINEAR;
+        target.crop={0,0,64,64};
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        params.background=PL_CLEAR_SKIP;params.background_transparency=1.0f;
+        Assert::IsTrue(pl_render_image(renderer,&composed,&target,&params),L"Prepared raster readback failed");
+        return ReadLinear(allOutput);
+    }
+    void VerifyOpaquePreparationCoverage() {
+        const auto original=input;
+        input.repr.alpha=PL_ALPHA_NONE;
+        input.crop={4,8,60,56};input.rotation=PL_ROTATION_90;
+        auto geometry=Geometry();geometry.valid=false;
+        for(int phase=0;phase<3;++phase) {
+            const auto* selectedHook=phase==2?nullptr:hook;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,input.color.transfer,{},
+                0,phase==1?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All),
+                L"Opaque coverage hook binding failed");
+            std::vector<float> opaque;
+            for(int alpha:{255,0,127}) {
+                std::vector<uint8_t> pixels(64*64*4);
+                for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                    const size_t i=(y*64+x)*4;
+                    pixels[i]=uint8_t(40+x);pixels[i+1]=uint8_t(50+y);
+                    pixels[i+2]=uint8_t(60+(x+y)/2);pixels[i+3]=uint8_t(alpha);
+                }
+                pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+                Assert::IsTrue(pl_tex_upload(device->gpu,&upload),L"Opaque coverage upload failed");
+                if(alpha!=255 || phase!=0) {
+                    const float poison[]={17.0f,-11.0f,31.0f,0.25f};
+                    Assert::IsTrue(allTexture->params.blit_dst,L"Destination poison requires the production temporal-copy surface option");
+                    pl_tex_clear(device->gpu,allTexture,poison);
+                }
+                pl_frame composed{};
+                Assert::IsTrue(RenderSubtitleFullRaster(preparation,device->gpu,input,selectedHook,
+                    &allTexture,composed,false,true),L"Opaque HLG preparation failed");
+                Assert::IsTrue(composed.repr.alpha==PL_ALPHA_NONE && composed.rotation==input.rotation &&
+                    composed.crop.x0==input.crop.x0 && composed.crop.y0==input.crop.y0 &&
+                    composed.crop.x1==input.crop.x1 && composed.crop.y1==input.crop.y1,
+                    L"Full-raster preparation must restore opaque source crop/rotation");
+                Assert::IsTrue(composed.color.transfer==input.color.transfer &&
+                    composed.color.primaries==input.color.primaries &&
+                    composed.color.hdr.min_luma==input.color.hdr.min_luma &&
+                    composed.color.hdr.max_luma==input.color.hdr.max_luma,
+                    L"Preparation must retain source transfer and HDR metadata");
+                const auto output=ReadPreparedRaster(composed);
+                for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                    const auto p=Pixel(output,x,y);
+                    for(float value:p)Assert::IsTrue(std::isfinite(value),L"Preparation produced a non-finite pixel");
+                    Assert::IsTrue(p[0]>0.0001f && p[1]>0.0001f && p[2]>0.0001f &&
+                        std::abs(p[3]-1.0f)<0.001f,L"All native pixels, including outside the selected crop, must be written opaque");
+                }
+                if(alpha==255)opaque=output;
+                else for(size_t i=0;i<output.size();++i)
+                    Assert::IsTrue(std::abs(output[i]-opaque[i])<0.001f,
+                        L"Opaque source metadata must ignore stored alpha and overwrite poisoned destination pixels");
+            }
+        }
+        input=original;
+    }
+    std::vector<float> ReadPreparedEncoded(const pl_frame& composed) {
+        const auto texture=composed.planes[0].texture;
+        Assert::IsTrue(texture && texture->params.blit_src,L"Encoded readback requires the production copy-source surface option");
+        pl_tex_params storage{};storage.w=texture->params.w;storage.h=texture->params.h;
+        storage.format=texture->params.format;storage.blit_dst=true;storage.host_readable=true;
+        auto staging=pl_tex_create(device->gpu,&storage);
+        Assert::IsNotNull(staging,L"Encoded preparation readback allocation failed");
+        pl_tex_blit_params copy{};copy.src=texture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const auto pixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        return pixels;
+    }
+    void VerifyRealSourceAlphaRemainsComposited() {
+        const auto original=input;auto geometry=Geometry();geometry.valid=false;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,input.color.transfer),
+            L"Real-alpha control hook binding failed");
+        for(auto alphaMode:{PL_ALPHA_INDEPENDENT,PL_ALPHA_PREMULTIPLIED}) {
+            input.repr.alpha=alphaMode;
+            std::vector<float> opaque;
+            for(int alpha:{255,127,0}) {
+                const uint8_t color=uint8_t(alphaMode==PL_ALPHA_PREMULTIPLIED?160*alpha/255:160);
+                std::vector<uint8_t> pixels(64*64*4);
+                for(size_t i=0;i<pixels.size();i+=4) {
+                    pixels[i]=pixels[i+1]=pixels[i+2]=color;pixels[i+3]=uint8_t(alpha);
+                }
+                pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+                Assert::IsTrue(pl_tex_upload(device->gpu,&upload),L"Real-alpha control upload failed");
+                pl_frame composed{};
+                Assert::IsTrue(RenderSubtitleFullRaster(preparation,device->gpu,input,hook,&allTexture,composed,true,false),
+                    L"Real source alpha must retain the original opaque-background composition");
+                Assert::IsTrue(composed.repr.alpha==PL_ALPHA_NONE,L"Opaque preparation target metadata changed");
+                // Compare native encoded pixels against a separate no-hook render
+                // with the original opaque-background policy and same metadata.
+                const auto output=ReadPreparedEncoded(composed);
+                pl_frame reference{};reference.num_planes=1;
+                reference.planes[0].texture=allOutput;reference.planes[0].components=4;
+                for(int c=0;c<4;++c)reference.planes[0].component_mapping[c]=c;
+                reference.repr=pl_color_repr_rgb;reference.repr.alpha=PL_ALPHA_NONE;
+                reference.color=input.color;reference.crop={0,0,64,64};
+                auto params=pl_render_fast_params;params.dither_params=nullptr;
+                Assert::IsTrue(pl_render_image(renderer,&input,&reference,&params),
+                    L"Independent original alpha-background reference failed");
+                const auto expected=ReadLinear(allOutput);
+                if(alpha==255)opaque=output;
+                for(size_t i=0;i<output.size();i+=4) {
+                    for(int c=0;c<4;++c)Assert::IsTrue(std::isfinite(output[i+c]));
+                    Assert::IsTrue(std::abs(output[i+3]-1.0f)<0.001f,L"Real-alpha input must still flatten to an opaque target");
+                    for(int c=0;c<3;++c) {
+                        Assert::IsTrue(std::abs(output[i+c]-expected[i+c])<0.001f,
+                            L"Real alpha must match the original background policy, including HLG encoded black");
+                        if(alpha==127)Assert::IsTrue(output[i+c]>0.001f && output[i+c]<opaque[i+c]-0.001f,
+                            L"Partial source alpha cannot be ignored by the opaque-HLG workaround");
+                    }
+                }
+            }
+        }
+        input=original;
+    }
+
     void Run(int backgroundMode,bool overlap=false,bool narrow=false,bool cover=false,int spatialFill=0) {
         auto geometry=Geometry(overlap,narrow);
         if(cover) {
@@ -2113,14 +2329,14 @@ struct SubtitleShaderGpuFixture {
         style.borderWidth=2.0f;style.borderOpacity=0.65f;
         pl_frame all{},clean{},layer{};
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
-            style,spatialFill,SubtitleCompositionPhase::All));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,all));
+            style,spatialFill,SubtitleCompositionPhase::All),L"All-phase hook binding failed");
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&allTexture,all),L"All-phase composition failed");
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
-            style,spatialFill,SubtitleCompositionPhase::CleanupOnly));
-        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+            style,spatialFill,SubtitleCompositionPhase::CleanupOnly),L"Cleanup-phase hook binding failed");
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean),L"Cleanup-phase composition failed");
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,backgroundMode,input.color.transfer,
-            style,spatialFill,SubtitleCompositionPhase::LayerOnly));
-        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+            style,spatialFill,SubtitleCompositionPhase::LayerOnly),L"Layer-phase hook binding failed");
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer),L"Layer-phase composition failed");
         Assert::IsTrue(layer.repr.alpha==PL_ALPHA_INDEPENDENT,L"Layer alpha metadata was lost");
         pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
         stagingParams.format=layerTexture->params.format;
@@ -2280,6 +2496,33 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(HalfFloatReadbackPreservesSignedAndNonFiniteValues) {
+        const auto read=[](uint16_t bits) {
+            return SubtitleShaderGpuFixture::FloatChannel(reinterpret_cast<const uint8_t*>(&bits),16);
+        };
+        Assert::AreEqual(0.0f,read(0x0000));Assert::IsFalse(std::signbit(read(0x0000)));
+        Assert::AreEqual(0.0f,read(0x8000));Assert::IsTrue(std::signbit(read(0x8000)));
+        Assert::AreEqual(std::ldexp(1.0f,-24),read(0x0001));
+        Assert::AreEqual(-std::ldexp(1.0f,-24),read(0x8001));
+        Assert::AreEqual(1.5f,read(0x3e00));Assert::AreEqual(-1.5f,read(0xbe00));
+        Assert::IsTrue(std::isinf(read(0x7c00)) && !std::signbit(read(0x7c00)));
+        Assert::IsTrue(std::isinf(read(0xfc00)) && std::signbit(read(0xfc00)));
+        Assert::IsTrue(std::isnan(read(0x7e00)) && std::isnan(read(0xfe00)));
+    }
+    TEST_METHOD(OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_HLG);
+        gpu.VerifyOpaquePreparationCoverage();
+    }
+    TEST_METHOD(RealSourceAlphaRetainsOpaqueBackgroundComposition) {
+        for(auto transfer:{PL_COLOR_TRC_SRGB,PL_COLOR_TRC_HLG}) {
+            SubtitleShaderGpuFixture gpu(transfer);
+            // A supported low-peak HLG target has finite encoded black even on
+            // API377, so real-alpha behavior can be tested independently of its
+            // separate high-peak black-background encoding defect.
+            if(transfer==PL_COLOR_TRC_HLG)gpu.input.color.hdr.max_luma=203.0f;
+            gpu.VerifyRealSourceAlphaRemainsComposited();
+        }
+    }
     TEST_METHOD(TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination) {
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
         for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2})

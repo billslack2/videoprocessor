@@ -572,6 +572,11 @@ bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) cons
 	return m_renderer->GetRenderLoad(load);
 }
 
+void LibplaceboPluginVideoRenderer::RequestPlaybackCounterReset(uint64_t serial)
+{
+    if (m_renderer) m_renderer->RequestPlaybackCounterReset(serial);
+}
+
 
 bool LibplaceboPluginVideoRenderer::GetHdrStatus(RendererHdrStatus& status) const
 {
