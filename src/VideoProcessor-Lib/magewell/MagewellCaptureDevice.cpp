@@ -785,7 +785,8 @@ uint32_t MagewellCaptureDevice::BytesPerRowFor(
 }
 
 
-void MagewellCaptureDevice::PublishCardState(const SignalDescription& signal)
+void MagewellCaptureDevice::PublishCardState(
+	const SignalDescription& signal, CaptureRunToken captureRunToken)
 {
 	if (!m_callback)
 		return;
@@ -856,7 +857,7 @@ void MagewellCaptureDevice::PublishCardState(const SignalDescription& signal)
 		}
 	}
 
-	m_callback->OnCaptureDeviceCardStateChange(cardState);
+	m_callback->OnCaptureDeviceCardStateChange(this, captureRunToken, cardState);
 }
 
 
@@ -1149,7 +1150,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 			if (!haveCardState || !signal.SameFormatAs(current))
 			{
-				PublishCardState(signal);
+				PublishCardState(signal, captureRunToken);
 				haveCardState = true;
 			}
 

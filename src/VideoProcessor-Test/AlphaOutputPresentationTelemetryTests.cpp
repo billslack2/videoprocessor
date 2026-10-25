@@ -286,6 +286,69 @@ public:
             Assert::IsTrue(telemetry.Snapshot().availability!=AlphaOutputPresentationAvailability::Observing);
         }
     }
+    TEST_METHOD(CounterResetRejectsDelayedReceiptsAndUnchangedOldPresentIds) {
+        AlphaOutputPresentationTelemetry telemetry;
+        SeedLongHold(telemetry);
+        // A submitted but not yet observed old frame must not become the new anchor.
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(3)));
+        telemetry.ResetSession();
+        Counts(telemetry,0,0,0);
+        Assert::AreEqual(uint64_t(0),telemetry.Snapshot().observationGaps);
+        Assert::IsFalse(telemetry.Observe(Sample(2,4)));
+        Assert::IsFalse(telemetry.Observe(Sample(3,100)));
+        // GetLastPresentCount can remain unchanged after an occluded Present.
+        Assert::IsFalse(telemetry.RecordSubmission(Submission(3)));
+        Assert::IsFalse(telemetry.Observe(Sample(3,100)));
+        Counts(telemetry,0,0,0);
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(4)));
+        Assert::IsTrue(telemetry.Observe(Sample(4,200)));
+        Counts(telemetry,0,0,0); // The long pre-reset span is never counted.
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(5)));
+        Assert::IsTrue(telemetry.Observe(Sample(5,201)));
+        Counts(telemetry,0,0,1);
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(6)));
+        Assert::IsTrue(telemetry.Observe(Sample(6,204)));
+        Counts(telemetry,1,2,2); // A genuinely new incident remains observable.
+    }
+    TEST_METHOD(CounterResetCutoffSurvivesTimingAndSourceContextChanges) {
+        AlphaOutputPresentationTelemetry telemetry;
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(50)));
+        // Even excluded cadence intent establishes a known pre-reset ID.
+        Assert::IsFalse(telemetry.RecordSubmission(Submission(51,0)));
+        telemetry.ResetContinuity();
+        telemetry.ResetSession();
+        telemetry.ResetContinuity();
+        Assert::IsFalse(telemetry.RecordSubmission(Submission(51,1,60,2,2)));
+        Assert::IsFalse(telemetry.Observe(Sample(51,100,60,2)));
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(52,1,60,2,2)));
+        Assert::IsTrue(telemetry.Observe(Sample(52,101,60,2)));
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(53,1,60,2,2)));
+        Assert::IsTrue(telemetry.Observe(Sample(53,102,60,2)));
+        Counts(telemetry,0,0,1);
+        telemetry.ResetSession(); // A second reset advances, never loses, the cutoff.
+        Assert::IsFalse(telemetry.RecordSubmission(Submission(53,1,60,2,2)));
+        Assert::IsFalse(telemetry.Observe(Sample(53,102,60,2)));
+        Counts(telemetry,0,0,0);
+    }
+    TEST_METHOD(RealSwapchainReplacementRestartsIdsWithoutRestoringOldCounters) {
+        AlphaOutputPresentationTelemetry telemetry;
+        SeedLongHold(telemetry);
+        telemetry.ResetSession();
+        Assert::IsFalse(telemetry.RecordSubmission(Submission(1)));
+        telemetry.ResetSwapchain();
+        // Same source generation is allowed: it is the actual chain lifetime
+        // notification, not source/viewport churn, that clears the old-ID cutoff.
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(1)));
+        Assert::IsTrue(telemetry.Observe(Sample(1,1)));
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(2)));
+        Assert::IsTrue(telemetry.Observe(Sample(2,4)));
+        Counts(telemetry,1,2,1);
+        telemetry.ResetSwapchain();
+        Counts(telemetry,1,2,1); // Replacement alone does not manually zero totals.
+        Assert::IsTrue(telemetry.RecordSubmission(Submission(1)));
+        Assert::IsTrue(telemetry.Observe(Sample(1,1)));
+        Counts(telemetry,1,2,1);
+    }
     TEST_METHOD(ContinuityResetKeepsSessionIncidentsAndSessionResetClearsThem) {
         AlphaOutputPresentationTelemetry telemetry;
         SeedLongHold(telemetry);

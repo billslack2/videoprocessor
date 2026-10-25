@@ -222,7 +222,7 @@ private:
 	// format and bit depth, plus PCIe link details. This is what fills the
 	// Input and Hardware link panels, and is separate from the captured
 	// format we publish as video state.
-	void PublishCardState(const SignalDescription& signal);
+	void PublishCardState(const SignalDescription& signal, CaptureRunToken captureRunToken);
 
 	bool PublishVideoState(
 		const SignalDescription& signal, VideoFrameEncoding encoding,

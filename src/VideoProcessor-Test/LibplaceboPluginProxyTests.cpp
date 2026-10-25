@@ -14,6 +14,9 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <vector>
+#include <VideoFrame.h>
+#include <magewell/MagewellCaptureDevice.h>
 
 namespace
 {
@@ -26,6 +29,28 @@ namespace
         std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
         if (snapshotTestLog) snapshotTestLog << message << std::endl;
     }
+    class SnapshotTestTimingClock : public ITimingClock
+    {
+    public:
+        SnapshotTestTimingClock()
+        {
+            LARGE_INTEGER frequency{};
+            if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0)
+                throw std::runtime_error("Test QPC frequency unavailable");
+            ticksPerSecond = frequency.QuadPart;
+        }
+        timingclocktime_t TimingClockNow() override
+        {
+            LARGE_INTEGER now{};
+            if (!QueryPerformanceCounter(&now))
+                throw std::runtime_error("Test QPC time unavailable");
+            return now.QuadPart;
+        }
+        timingclocktime_t TimingClockTicksPerSecond() const override { return ticksPerSecond; }
+        const TCHAR* TimingClockDescription() override { return TEXT("Reset fixture QPC clock"); }
+    private:
+        timingclocktime_t ticksPerSecond = 0;
+    };
     struct SnapshotTestCallback : IRendererCallback
     {
         std::atomic<RendererState> state{RENDERSTATE_UNKNOWN};
@@ -172,6 +197,21 @@ namespace VideoProcessorTest
 			snapshotTestLog.open(root + L"\\vp0188-renderer-integration.log", std::ios::trunc);
 			snapshotTestReads = 0;
 			SnapshotTestCallback callback;
+            // Use the real zero-based capture-pool ownership contract: renderer
+            // enqueue AddRefs each frame and its final release returns to zero.
+            // Separate immutable buffers and the clock outlive renderer Cleanup.
+            SnapshotTestTimingClock resetTimingClock;
+            std::vector<std::shared_ptr<MagewellCaptureBuffer>> resetFrameBuffers;
+            for (int index = 0; index < 2; ++index)
+            {
+                auto buffer = std::make_shared<MagewellCaptureBuffer>(320 * 180 * 4);
+                for (size_t pixel = 0; pixel < buffer->Size(); pixel += 4)
+                {
+                    buffer->Data()[pixel] = buffer->Data()[pixel + 1] = buffer->Data()[pixel + 2] = 64;
+                    buffer->Data()[pixel + 3] = 255;
+                }
+                resetFrameBuffers.push_back(std::move(buffer));
+            }
 			struct Cleanup
 			{
 				HMODULE plugin;
@@ -189,9 +229,17 @@ namespace VideoProcessorTest
 			} cleanup{plugin, CreateWindowExW(0, L"STATIC", L"VP-0188 renderer test",
 				WS_POPUP, 0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr), nullptr, destroy};
 			Assert::IsNotNull(cleanup.window);
-			cleanup.renderer = create(&callback, 188, cleanup.window, nullptr, false, 1,
+			cleanup.renderer = create(&callback, 188, cleanup.window, &resetTimingClock, false, 1,
 				VideoConversionOverride::VIDEOCONVERSION_NONE, path.c_str(), SnapshotTestLog);
 			Assert::IsNotNull(cleanup.renderer);
+            // Host BindRendererResetSink sends this before Build allocates Impl.
+            // The real DLL must preserve it without prematurely acknowledging it.
+            cleanup.renderer->RequestPlaybackCounterReset(41);
+            cleanup.renderer->RequestPlaybackCounterReset(0);
+            cleanup.renderer->RequestPlaybackCounterReset(40);
+            RendererRenderLoad beforeBuild;
+            Assert::IsFalse(cleanup.renderer->GetRenderLoad(beforeBuild));
+            Assert::AreEqual(uint64_t(0), beforeBuild.outputPresentation.appliedResetSerial);
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			UnifiedProfileRuntime::Runtime runtime;
@@ -223,6 +271,37 @@ namespace VideoProcessorTest
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 			Assert::IsTrue(callback.state == RENDERSTATE_RENDERING, L"Renderer did not initialize; see vp0188-renderer-integration.log");
+            Assert::AreEqual(state->BytesPerFrame(), resetFrameBuffers.front()->Size());
+            const auto submitAndWaitForReset = [&](uint64_t serial, uint64_t frameCounter)
+            {
+                const auto& buffer = resetFrameBuffers.at(static_cast<size_t>(frameCounter - 1));
+                Assert::IsFalse(buffer->InUse());
+                VideoFrame frame(buffer->Data(), frameCounter,
+                    resetTimingClock.TimingClockNow(), static_cast<IUnknown*>(buffer.get()));
+                cleanup.renderer->OnVideoFrame(frame);
+                const auto resetDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+                RendererRenderLoad observed;
+                do
+                {
+                    if (cleanup.renderer->GetRenderLoad(observed) &&
+                        observed.outputPresentation.appliedResetSerial == serial)
+                        break;
+                    MSG message;
+                    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                    { TranslateMessage(&message); DispatchMessageW(&message); }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                } while (callback.state != RENDERSTATE_FAILED &&
+                    std::chrono::steady_clock::now() < resetDeadline);
+                Assert::AreEqual(serial, observed.outputPresentation.appliedResetSerial,
+                    L"The actual renderer did not acknowledge the retained reset on a source draw");
+                Assert::IsTrue(observed.outputPresentation.supported);
+                Assert::IsTrue(callback.state == RENDERSTATE_RENDERING);
+            };
+            submitAndWaitForReset(41, 1);
+            cleanup.renderer->RequestPlaybackCounterReset(42);
+            cleanup.renderer->RequestPlaybackCounterReset(41); // Delayed request cannot rewind it.
+            submitAndWaitForReset(42, 2);
+            Logger::WriteMessage("Playback reset: real DLL retained serial 41 before Build, acknowledged it on a source draw, then acknowledged 42 without replaying 41.\n");
 			const unsigned reads = snapshotTestReads.load();
 			// Disk now disagrees with the accepted snapshot. Source updates must ignore it.
 			std::ofstream(path) << "[general]\nswitch_refresh_rate: never\n[vprenderer]\nquality: balanced\n";

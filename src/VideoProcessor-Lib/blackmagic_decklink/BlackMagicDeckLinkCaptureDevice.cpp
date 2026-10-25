@@ -242,7 +242,7 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture(
 	// a change.
 	//
 
-	SendCardStateCallback();
+	SendCardStateCallback(captureRunToken);
 
 
 	//
@@ -1127,7 +1127,8 @@ bool BlackMagicDeckLinkCaptureDevice::SendVideoStateCallback(
 }
 
 
-void BlackMagicDeckLinkCaptureDevice::SendCardStateCallback()
+void BlackMagicDeckLinkCaptureDevice::SendCardStateCallback(
+	CaptureRunToken captureRunToken)
 {
 	// WARNING: Called from some internal capture card thread!
 
@@ -1179,7 +1180,7 @@ void BlackMagicDeckLinkCaptureDevice::SendCardStateCallback()
 	//
 	// Send
 	//
-	m_callback->OnCaptureDeviceCardStateChange(cardState);
+	m_callback->OnCaptureDeviceCardStateChange(this, captureRunToken, cardState);
 }
 
 
@@ -1229,7 +1230,8 @@ void BlackMagicDeckLinkCaptureDevice::OnNotifyStatusChanged(BMDDeckLinkStatusID 
 	case bmdDeckLinkStatusDetectedVideoInputFieldDominance:
 	case bmdDeckLinkStatusDetectedVideoInputMode:
 	case bmdDeckLinkStatusDetectedVideoInputFormatFlags:
-		SendCardStateCallback();
+		SendCardStateCallback(
+			m_captureRunToken.load(std::memory_order_acquire));
 		break;
 
 	// Video state changed

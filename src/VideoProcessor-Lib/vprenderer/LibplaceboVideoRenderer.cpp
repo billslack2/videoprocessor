@@ -4385,6 +4385,8 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaPresentationTelemetry presentationTelemetry;
     AlphaOutputPresentationTelemetry outputPresentationTelemetry;
     OutputPresentationPublication outputPresentationPublication;
+    const OutputPresentationResetRequest* outputPresentationResetRequest = nullptr;
+    uint64_t outputPresentationAppliedResetSerial = 0;
     uint64_t outputPresentationWitnessTick = 0;
     uintptr_t outputPresentationSwapchain = 0;
     uint64_t nextOutputPresentationLogTick = 0;
@@ -5438,13 +5440,32 @@ struct LibplaceboVideoRenderer::Impl
 				"caller_release_pending");
 	}
 
-    void ResetOutputPresentationContinuity()
+    void ResetOutputPresentationContinuity(bool swapchainReplaced = false)
     {
-        // A recovery must not erase the display incident that preceded it.
-        outputPresentationTelemetry.ResetContinuity();
+        // A recovery must not erase the incident or a manual reset's old-ID
+        // cutoff. Only an actual swapchain lifetime change restarts DXGI IDs.
+        if (swapchainReplaced) {
+            outputPresentationTelemetry.ResetSwapchain();
+            outputPresentationSwapchain = 0;
+        } else {
+            outputPresentationTelemetry.ResetContinuity();
+        }
         outputPresentationWitnessTick = 0;
-        outputPresentationSwapchain = 0;
-        outputPresentationPublication.Publish(outputPresentationTelemetry.Snapshot(), 0);
+        outputPresentationPublication.Publish(outputPresentationTelemetry.Snapshot(), 0,
+            outputPresentationAppliedResetSerial);
+    }
+
+    void ConsumePlaybackCounterReset()
+    {
+        if (!outputPresentationResetRequest) return;
+        const auto serial = outputPresentationResetRequest->PendingAfter(outputPresentationAppliedResetSerial);
+        if (!serial) return;
+        outputPresentationTelemetry.ResetSession();
+        outputPresentationWitnessTick = 0;
+        nextOutputPresentationLogTick = 0;
+        outputPresentationAppliedResetSerial = serial;
+        outputPresentationPublication.AcknowledgeReset(serial);
+        outputPresentationPublication.Publish(outputPresentationTelemetry.Snapshot(), 0, serial);
     }
 
 	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
@@ -5557,6 +5578,7 @@ struct LibplaceboVideoRenderer::Impl
 				for (pl_tex& texture : textures)
 					pl_tex_destroy(d3d11->gpu, &texture);
 			}
+            ResetOutputPresentationContinuity(true);
 			pl_swapchain_destroy(&swapchain);
 			vpOwnedSwapchain.Release();
 			gpuFrameTimer.ReleaseResources();
@@ -7369,8 +7391,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ReleaseVpOwnedSwapchain()
 	{
-        ResetOutputPresentationContinuity();
 		if (!vpOwnedSwapchain) return;
+        ResetOutputPresentationContinuity(true);
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: releasing generation=%llu applied_record=%s verified=%d present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
@@ -7892,6 +7914,7 @@ struct LibplaceboVideoRenderer::Impl
 		osdTelemetry.InvalidateOutput();
         displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
+        ResetOutputPresentationContinuity(true);
         pl_swapchain_destroy(&swapchain);
 		ReleaseVpOwnedSwapchain();
 		swapchainBlit = blit;
@@ -12330,6 +12353,7 @@ struct LibplaceboVideoRenderer::Impl
         SourceUploadBatch& sourceUploadBatch,
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
+        ConsumePlaybackCounterReset();
         const auto renderWorkStarted=SteadyClock::now();
         if(!cadenceRepeat && !repeatedTemporalOutput)sourcePreparationReceipt.Reset();
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
@@ -19823,8 +19847,10 @@ releaseDriftBaseRetention =
             // Independent observation only: submission IDs are not display
             // receipts. Do not feed this meter back into pacing, AR or subtitles.
             const uintptr_t observedSwapchain = reinterpret_cast<uintptr_t>(nativeSwapchain.p);
-            if (outputPresentationSwapchain != observedSwapchain) {
-                ResetOutputPresentationContinuity();
+            // Failure to unwrap is unavailable evidence, not proof of a new
+            // swapchain. Keep the reset cutoff until an actual replacement.
+            if (observedSwapchain && outputPresentationSwapchain != observedSwapchain) {
+                ResetOutputPresentationContinuity(true);
                 outputPresentationSwapchain = observedSwapchain;
             }
             AlphaOutputSubmission outputSubmission;
@@ -19846,7 +19872,8 @@ releaseDriftBaseRetention =
             if (outputPresentationTelemetry.Observe(sample))
                 outputPresentationWitnessTick = GetTickCount64();
             const auto outputObservation = outputPresentationTelemetry.Snapshot();
-            outputPresentationPublication.Publish(outputObservation, outputPresentationWitnessTick);
+            outputPresentationPublication.Publish(outputObservation, outputPresentationWitnessTick,
+                outputPresentationAppliedResetSerial);
             const uint64_t outputObservationNow = GetTickCount64();
             if (outputObservationNow >= nextOutputPresentationLogTick) {
                 nextOutputPresentationLogTick = outputObservationNow + 2000;
@@ -20978,6 +21005,7 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl());
+    m_impl->outputPresentationResetRequest = &m_outputPresentationResetRequest;
     m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
@@ -22462,6 +22490,12 @@ bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
 	std::lock_guard<std::mutex> guard(m_impl->ingressStatusMutex);
 	details = CString(CStringA(m_impl->ingressStatus.c_str()));
 	return !details.IsEmpty();
+}
+
+void LibplaceboVideoRenderer::RequestPlaybackCounterReset(uint64_t serial)
+{
+    // No renderMutex, driver call, queue mutation or rendering work on the UI.
+    m_outputPresentationResetRequest.Request(serial);
 }
 
 bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const

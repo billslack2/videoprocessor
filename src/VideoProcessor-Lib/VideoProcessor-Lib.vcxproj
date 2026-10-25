@@ -219,6 +219,8 @@
 	<ClInclude Include="OutputReadinessController.h" />
     <ClInclude Include="ProcessCpuUsageMeter.h" />
     <ClInclude Include="ProcessCpuUsageWindow.h" />
+    <ClInclude Include="PlaybackCounterWindow.h" />
+    <ClInclude Include="PhysicalInputResyncLatch.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />

@@ -202,4 +202,8 @@
   <ItemGroup><ClCompile Include="ReconstructionMotionTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
   <ItemGroup><ClCompile Include="ProcessingPerformanceWindowTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
   <ItemGroup><ClCompile Include="SourceOutputNormalizationTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="PlaybackCounterWindowTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="PhysicalInputResyncLatchTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>

@@ -63,13 +63,27 @@ void AlphaOutputPresentationTelemetry::ResetContinuity() {
     m_snapshot.frameStatisticsResult=0;
 }
 
+void AlphaOutputPresentationTelemetry::ResetSwapchain() {
+    ResetContinuity();
+    m_submissionHighWater=m_resetPresentCutoff=0;
+}
+
 void AlphaOutputPresentationTelemetry::ResetSession() {
+    m_resetPresentCutoff=m_submissionHighWater;
     ResetContinuity();
     m_snapshot={};
 }
 
 bool AlphaOutputPresentationTelemetry::RecordSubmission(
     const AlphaOutputSubmission& submission) {
+    // Even excluded cadence intent identifies a submission that existed before
+    // reset. Remember its ID without admitting it as display evidence.
+    m_submissionHighWater=(std::max)(m_submissionHighWater,submission.presentId);
+    if(m_resetPresentCutoff && submission.presentId<=m_resetPresentCutoff) {
+        m_uncertainSubmission=true;
+        BreakObservation(AlphaOutputPresentationAvailability::Limited);
+        return false;
+    }
     if(!submission.generation||!submission.presentId||!submission.intendedMaximumRefreshes||
         !ValidRate(submission.expectedDisplayHz)) {
         m_uncertainSubmission=true;

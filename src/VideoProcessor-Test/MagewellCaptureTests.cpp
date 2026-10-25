@@ -473,7 +473,7 @@ namespace Tests
 				for (auto& frame : frames) frame->SourceBufferRelease();
 			}
 			void OnCaptureDeviceState(CaptureDeviceState) override {}
-			void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) override {}
+			void OnCaptureDeviceCardStateChange(ACaptureDevice*, CaptureRunToken, CaptureDeviceCardStateComPtr) override {}
 			void OnCaptureDeviceVideoStateChange(
 				ACaptureDevice*, CaptureRunToken, VideoStateComPtr state) override
 			{
@@ -513,7 +513,7 @@ namespace Tests
 			std::unique_ptr<VideoFrame> heldFrame;
 			CString error;
 			void OnCaptureDeviceState(CaptureDeviceState) override {}
-			void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) override {}
+			void OnCaptureDeviceCardStateChange(ACaptureDevice*, CaptureRunToken, CaptureDeviceCardStateComPtr) override {}
 			void OnCaptureDeviceVideoStateChange(
 				ACaptureDevice*, CaptureRunToken, VideoStateComPtr next) override
 			{
@@ -544,7 +544,7 @@ namespace Tests
 			{
 				if (state == CAPTUREDEVICESTATE_READY) ++ready;
 			}
-			void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) override {}
+			void OnCaptureDeviceCardStateChange(ACaptureDevice*, CaptureRunToken, CaptureDeviceCardStateComPtr) override {}
 			void OnCaptureDeviceVideoStateChange(
 				ACaptureDevice*, CaptureRunToken, VideoStateComPtr) override {}
 			void OnCaptureDeviceVideoFrame(
@@ -560,7 +560,7 @@ namespace Tests
 				if (state == CAPTUREDEVICESTATE_CAPTURING)
 					throw std::runtime_error("callback failure");
 			}
-			void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) override {}
+			void OnCaptureDeviceCardStateChange(ACaptureDevice*, CaptureRunToken, CaptureDeviceCardStateComPtr) override {}
 			void OnCaptureDeviceVideoStateChange(
 				ACaptureDevice*, CaptureRunToken, VideoStateComPtr) override {}
 			void OnCaptureDeviceVideoFrame(

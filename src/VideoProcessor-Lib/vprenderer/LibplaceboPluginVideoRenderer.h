@@ -87,6 +87,7 @@ public:
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
 	bool GetRenderLoad(RendererRenderLoad& load) const override;
+	void RequestPlaybackCounterReset(uint64_t serial) override;
 	void SetRenderLoadDisplayRefreshRate(double refreshRateHz) override;
 	bool GetOutputModeInfo(CString& details) const override;
 	bool GetOutputContractStatus(

@@ -85,6 +85,7 @@ constexpr ShortcutFieldDefinition kShortcutFields[] = {
     { L"Exit fullscreen", "fullscreen_exit", L"Esc" },
     { L"Toggle fullscreen", "fullscreen_toggle", L"Alt+Enter" },
     { L"Toggle statistics", "toggle_stats_overlay", L"Ctrl+I" },
+    { L"Reset playback counters", "reset_playback_counters", L"Ctrl+Shift+R" },
     { L"Set PQ", "pq_set", L"Ctrl+Shift+P" },
     { L"Restart renderer", "renderer_restart", L"Shift+R" },
     { L"Reset renderer", "renderer_reset", L"R" },

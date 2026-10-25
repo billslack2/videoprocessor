@@ -123,6 +123,7 @@ struct StatsData
 	bool renderLoadKnown = false;
     RendererProcessingPerformance processingPerformance;
     RendererOutputPresentationStats outputPresentation;
+    uint64_t playbackCounterResetSerial = 0;
 	bool renderLoadGpuValid = false;
 	bool renderLoadSettling = false;
 	size_t renderLoadFrames = 0;

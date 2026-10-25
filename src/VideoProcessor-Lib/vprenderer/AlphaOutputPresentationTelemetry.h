@@ -38,9 +38,13 @@ public:
     bool Observe(const AlphaDxgiPresentationSample& sample);
     AlphaOutputPresentationSnapshot Snapshot() const { return m_snapshot; }
 
-    // Timing/swapchain reset: retain renderer-session cumulative counters.
+    // Timing reset: retain counters and any explicit counter-reset boundary.
     void ResetContinuity();
-    // Only a new renderer session clears the cumulative counters.
+    // A real swapchain lifetime change permits its PresentID counter to restart.
+    // Source generations, viewport changes and timing resets are not replacements.
+    void ResetSwapchain();
+    // Explicit counter reset: clear totals/receipts but reject old IDs from the
+    // same swapchain, including a failed Present reporting its unchanged ID.
     void ResetSession();
 
 private:
@@ -58,4 +62,6 @@ private:
     AlphaOutputSubmission m_lastSubmission{},m_anchorSubmission{};
     AlphaDxgiPresentationSample m_lastPoll{},m_anchorSample{};
     AlphaOutputPresentationSnapshot m_snapshot{};
+    // Independent of source generation: DXGI PresentID belongs to the chain.
+    uint32_t m_submissionHighWater=0,m_resetPresentCutoff=0;
 };

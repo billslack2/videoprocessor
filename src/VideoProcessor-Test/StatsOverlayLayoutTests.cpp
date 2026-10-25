@@ -346,6 +346,34 @@ public:
         }
         VerifyNative(stats);
     }
+    TEST_METHOD(PlaybackCounterResetHidesOldReportsUntilRendererAcknowledges)
+    {
+        auto stats = Example(true);
+        stats.playbackCounterResetSerial = 2;
+        auto& output = stats.outputPresentation;
+        output.supported = true;
+        output.appliedResetSerial = 1;
+        output.state = RendererOutputPresentationState::Observing;
+        output.verifiedIntervals = 20;
+        output.observedLongHolds = 8;
+        output.excessRefreshes = 12;
+        auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display holds:").value == L"reset pending");
+        Assert::IsTrue(Find(rows,L"Display evidence:").value == L"reset pending");
+        VerifyNative(stats);
+        output = {};
+        output.appliedResetSerial = 2;
+        output.reason = RendererOutputPresentationReason::Unsupported;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display holds:").value == L"unavailable (unsupported)");
+        Assert::IsTrue(Find(rows,L"Display D/R:").value == L"unavailable (not measured)");
+        output.supported = true;
+        output.state = RendererOutputPresentationState::Observing;
+        output.reason = RendererOutputPresentationReason::None;
+        output.verifiedIntervals = 1;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::IsTrue(Find(rows,L"Display holds:").value == L"0 events / 0 excess refreshes (observed)");
+    }
     TEST_METHOD(CaptureQueueLossAndIntentionalCorrectionsAreNotDisplayDropCounts)
     {
         auto stats = Example(true);

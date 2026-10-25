@@ -671,7 +671,15 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         output.state == RendererOutputPresentationState::Observing &&
         output.reason == RendererOutputPresentationReason::None;
     const bool hasRecordedIncidents = output.observedLongHolds > 0 || output.excessRefreshes > 0;
-    if (hasObservations || hasRecordedIncidents)
+    if (stats.isAlphaRenderer &&
+        stats.playbackCounterResetSerial > output.appliedResetSerial)
+    {
+        // An asynchronous render-thread reset must hide old published counts.
+        // Fresh observation coverage is still required before showing zero.
+        add(L"Display holds:", L"reset pending");
+        add(L"Display evidence:", L"reset pending");
+    }
+    else if (hasObservations || hasRecordedIncidents)
     {
         add(L"Display holds:", format(L"%llu events / %llu excess refreshes (%s)",
             output.observedLongHolds, output.excessRefreshes, hasObservations ? L"observed" : L"recorded"));

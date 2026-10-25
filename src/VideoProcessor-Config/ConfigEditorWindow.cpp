@@ -9827,6 +9827,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
+        { "Reset playback counters", "reset_playback_counters", "Ctrl+Shift+R" },
         { "Screenshot", "capture_rendered_output", "Ctrl+Alt+S" },
         { "Re-apply rules", "reapply_rules", "" },
         { "Show profiles", "show_profiles", "Ctrl+Alt+I" },

@@ -3398,6 +3398,62 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         "Restored normal diagnostics changed ordinary output or calibration settings");
 }
 
+void testResetPlaybackCountersShortcutDefaultsRemapsAndDisables()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray marker("\n# Keep this playback-counter shortcut note.\n");
+    {
+        QFile fixture(path);
+        require(fixture.open(QIODevice::WriteOnly | QIODevice::Append), "Cannot append shortcut preservation note");
+        require(fixture.write(marker) == marker.size(), "Cannot write shortcut preservation note");
+    }
+    {
+        ConfigEditorWindow window(path, 0, true);
+        QLineEdit* shortcut = requireControl<QLineEdit>(window,
+            QStringLiteral("config.shortcuts.reset_playback_counters"));
+        require(shortcut->text() == QStringLiteral("Ctrl+Shift+R"),
+            "Reset playback counters did not default to Ctrl+Shift+R");
+        bool labeled = false;
+        for (QLabel* label : window.findChildren<QLabel*>())
+            labeled |= label->text() == QStringLiteral("Reset playback counters");
+        require(labeled, "Reset playback counters is missing from the normal shortcut editor");
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+        requireControl<QLineEdit>(window,QStringLiteral("config.shortcuts.reset_playback_counters"))
+            ->setText(QStringLiteral("Ctrl+Alt+F12"));
+        require(requireControl<QLabel>(window,QStringLiteral("configurationEffectSummary"))->text() ==
+            QStringLiteral("Apply shortcuts live: Shortcuts"),
+            "Reset counter shortcut requested a renderer or queue restart");
+        save(window);
+    }
+    require(readBytes(path).contains("reset_playback_counters: Ctrl+Alt+F12"),
+        "Reset playback counters remapping was not saved");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        QLineEdit* shortcut = requireControl<QLineEdit>(window,
+            QStringLiteral("config.shortcuts.reset_playback_counters"));
+        require(shortcut->text() == QStringLiteral("Ctrl+Alt+F12"),
+            "Reset playback counters remapping did not survive reload");
+        shortcut->clear();
+        save(window);
+    }
+    {
+        ConfigEditorWindow window(path, 0, true);
+        require(requireControl<QLineEdit>(window,
+            QStringLiteral("config.shortcuts.reset_playback_counters"))->text().isEmpty(),
+            "Explicitly disabled reset shortcut reverted to its compiled default");
+        requireControl<QLineEdit>(window,QStringLiteral("config.shortcuts.fullscreen_toggle"))
+            ->setText(QStringLiteral("Ctrl+Alt+F11"));
+        save(window);
+    }
+    QByteArray saved = readBytes(path); saved.replace("\r\n","\n");
+    require(saved.contains("reset_playback_counters: \n"),
+        "An unrelated shortcut edit lost the explicitly disabled reset binding");
+    require(saved.contains(marker), "Shortcut editing rewrote an unrelated user comment");
+}
+
 void testEmptyShortcutsSurviveNlsBackendEdit()
 {
     QTemporaryDir directory;
@@ -7670,6 +7726,8 @@ int main(int argc, char** argv)
         testInheritedRendererInputSelectorsUseEffectiveLabels);
     failures += run("inherited renderer Input selectors refresh with General",
         testInheritedRendererInputSelectorsRefreshWithGeneral);
+    failures += run("reset playback counters shortcut defaults remaps and disables",
+        testResetPlaybackCountersShortcutDefaultsRemapsAndDisables);
     failures += run("empty shortcuts survive NLS backend edit",
         testEmptyShortcutsSurviveNlsBackendEdit);
     failures += run("SDR gamma adjustment labels and persistence",

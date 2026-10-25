@@ -112,8 +112,8 @@ struct RendererProcessingPerformance
 };
 
 // Partial display observations, never an estimate of total dropped or repeated
-// output frames. Counters persist for the renderer session; observation state
-// can become unavailable after a reset, unsupported API, or discontinuous data.
+// output frames. Counters persist until an explicit playback-counter reset;
+// observation state can become unavailable independently of recorded totals.
 enum class RendererOutputPresentationState : uint32_t
 {
     Unavailable,
@@ -142,6 +142,8 @@ struct RendererOutputPresentationStats
     uint64_t excessRefreshes = 0;
     uint64_t verifiedIntervals = 0;
     uint64_t observationGaps = 0;
+    // Acknowledges a host reset only after the renderer cleared its observer.
+    uint64_t appliedResetSerial = 0;
 };
 
 // How much of each submitted source-frame period the renderer is consuming.

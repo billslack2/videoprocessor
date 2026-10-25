@@ -469,6 +469,10 @@ public:
 		return false;
 	}
 
+	// Nonblocking diagnostic request. Unsupported renderers leave the default
+	// acknowledgement at zero; playback state and pacing must remain untouched.
+	virtual void RequestPlaybackCounterReset(uint64_t serial) {}
+
 	// Supplies the display rate already validated for the renderer's target
 	// monitor. Renderers with GPU load telemetry use this instead of inferring a
 	// budget from swapchain frame-statistics counters, which can come from a

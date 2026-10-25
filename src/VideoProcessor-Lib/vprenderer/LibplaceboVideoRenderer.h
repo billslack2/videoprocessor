@@ -1,6 +1,7 @@
 #pragma once
 #include "PreparedPictureEvidence.h"
 #include "PreparedOutwardWindow.h"
+#include "OutputPresentationPublication.h"
 
 #include <IRenderer.h>
 #include <StartupPresentationReadiness.h>
@@ -132,6 +133,7 @@ public:
 		double& captureToTargetMs) const override;
 	bool GetPresentationTimingStatus(CString& status) const override;
 	bool GetRenderLoad(RendererRenderLoad& load) const override;
+	void RequestPlaybackCounterReset(uint64_t serial) override;
 	// Reached through the plugin's HDR status export, not IRenderer.
 	bool GetHdrStatus(RendererHdrStatus& status) const;
 	void SetRenderLoadDisplayRefreshRate(double refreshRateHz) override;
@@ -287,6 +289,8 @@ private:
 	std::thread m_stopWorker;
 	std::atomic_bool m_stopWorkerStarted{false};
 
+    // Lives before Build and outlives Impl/render-thread teardown.
+    OutputPresentationResetRequest m_outputPresentationResetRequest;
 	std::unique_ptr<Impl> m_impl;
 	std::shared_ptr<const ConfigFile> m_rendererConfiguration;
 	std::shared_ptr<const ConfigFile> m_applicationConfiguration;
