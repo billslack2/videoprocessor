@@ -62,3 +62,15 @@ within the available queue lead; no finite depth covers arbitrary rendering stal
 and timestamp-fallback state. Successful Present and software slot cadence are
 not proof of HDMI scanout or source-to-display latency. See
 [the source comparison and qualification report](VP-0211_PRESENTATION_REVIEW.md).
+
+
+Source eligibility includes a small timestamp precision allowance: the larger
+of one capture-clock tick and 10 microseconds, capped at 100 microseconds.
+The 10-microsecond minimum covers the observed DeckLink hardware PTS grid even
+when its API timebase is 1 MHz. This prevents rounding at a refresh boundary
+from inserting a cached repeat followed by discarding the adjacent source.
+It preserves cadence phase and genuine rate drift; it is not a half-refresh
+advance or a video speed adjustment. The same allowance applies to source
+selection, stale-source retirement and nonmixing temporal output checks.
+Repeat diagnostics include `next_pts_lead_ms`, `pts_tolerance_us` and
+`queued_sources`. These CPU submission records do not prove HDMI scanout.
