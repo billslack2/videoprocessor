@@ -522,7 +522,7 @@ private:
         }
         if (!request_.betaRenderer)
         {
-            showUnavailable(QStringLiteral("The charts show VP Renderer (Beta) only. Select it under Renderer to see them."));
+            showUnavailable(QStringLiteral("The charts show VP Renderer only. Select it under Renderer to see them."));
             return;
         }
         ToneCurveProvider::Request request = request_;
