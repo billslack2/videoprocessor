@@ -4166,6 +4166,10 @@ void testChoiceLabelsAndVpRendererName()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
+    QFile scaling(path);
+    require(scaling.open(QIODevice::Append), "Cannot add named Scaling fixture");
+    scaling.write("\n[vprenderer.scaling.Default]\nupscaler: ewa_lanczossharp\ndownscaler: hermite\nsigmoid: on\ndithering: blue_noise\ndisplay_bit_depth: output\n");
+    scaling.close();
     ConfigEditorWindow window(path, 0, true);
 
     QComboBox* nominalRange = requireControl<QComboBox>(window,
