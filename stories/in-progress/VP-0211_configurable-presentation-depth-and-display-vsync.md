@@ -2,7 +2,21 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-25 persistent live regression: user reports settings can recover, but
+changing subtitles to clear/yellow restarts periodic repeats/drops. Deployed
+2a224308 precision fix is insufficient. New diagnostics capture yellow selection
+at 14:21:06 followed by paired repeat/retirement growth; queue remains five,
+Motion off, source/display near 24 Hz. next_pts_lead_ms is ~0.02-1.14ms, much
+larger than the prior 10us quantization allowance. GPU query examples ~5-6ms
+(~13-14% of period), while CPU RenderLocked includes ~33ms of pacing/backpressure;
+do not classify that CPU wall interval as shader GPU overload. Investigating
+hard-boundary phase chatter with Luna xhigh regression/mpv-source reviewers.
+Preserve raw source speed and subtitle fixes. New clean beta-based worktree
+E:\codex\videoprocessor\display-cadence-stability-20261025 starts at fresh
+8c453746 and fast-forwards to existing fix fc20e916. No new deployment yet.
+
 
 2026-10-25 NLS fix ready for live retest: [draft PR #204](https://github.com/billslack2/videoprocessor/pull/204),
 fix head fc20e916. All 429 selected native/subtitle GPU regressions passed;
