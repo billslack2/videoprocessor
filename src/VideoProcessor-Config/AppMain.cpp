@@ -393,8 +393,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             bool widthOk = false, heightOk = false;
             const int width = dimensions.value(0).toInt(&widthOk);
             const int height = dimensions.value(1).toInt(&heightOk);
-            if (dimensions.size() != 2 || !widthOk || !heightOk || width < 1040 ||
-                height < 700 || width > 4096 || height > 4096) return 2;
+            if (dimensions.size() != 2 || !widthOk || !heightOk || width < 760 ||
+                height < 540 || width > 4096 || height > 4096) return 2;
             screenshotSize = QSize(width, height);
         }
         else if (arguments[index] == QStringLiteral("--updates"))

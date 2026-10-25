@@ -107,7 +107,9 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ToneMappingControl.h" />
+    <ClInclude Include="AdaptiveWorkspace.h" />
     <ClInclude Include="ToneChartPanel.h" />
+    <ClInclude Include="FlowLayout.h" />
     <ClInclude Include="ToneGuiRules.h" />
     <ClInclude Include="ToneProfileFile.h" />
     <ClInclude Include="InlineColorPicker.h" />
