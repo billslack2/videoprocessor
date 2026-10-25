@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-25",
+  "timezone": "America/New_York",
+  "repository": "billslack2/videoprocessor",
+  "commit": "697c1bcd779891cadde993528c03a71f473e0653",
+  "base": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "branch": "codex/subtitles-off-zoom-hold-20261025",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/203",
+  "solutionBuild": "x64 Release succeeded",
+  "tests": [
+    {
+      "suite": "focus",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "start": "2026-10-25T11:46:43.1305850-04:00",
+      "finish": "2026-10-25T11:46:44.8033004-04:00"
+    },
+    {
+      "suite": "related",
+      "total": 479,
+      "passed": 479,
+      "failed": 0,
+      "start": "2026-10-25T11:46:59.1932744-04:00",
+      "finish": "2026-10-25T11:47:01.7946484-04:00"
+    }
+  ],
+  "testCountNote": "479 selected tests includes the 11 new Off tests; focus run repeats those 11",
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "6298FB3ED97A8BD72040B4FF5B10813CE5FD1FAD47AE374DA56FF0C8CBB613CD",
+      "receipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "6298FB3ED97A8BD72040B4FF5B10813CE5FD1FAD47AE374DA56FF0C8CBB613CD"
+      }
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "AEDA628FDBC27F95AA1D94F44D2FD9EE2156CA36BD71056D286043836839B1BE",
+      "receipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "AEDA628FDBC27F95AA1D94F44D2FD9EE2156CA36BD71056D286043836839B1BE"
+      }
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "E93C5C7CC275218E3A483243E40F2286F2ED0928BC3E4BBCBEA1B0335E444124",
+      "receipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "E93C5C7CC275218E3A483243E40F2286F2ED0928BC3E4BBCBEA1B0335E444124"
+      }
+    }
+  ],
+  "generatedIdentities": [
+    {
+      "path": "src/VideoProcessor-GUI/version.h",
+      "content": "#pragma once\n\n#include <atlstr.h>\n\nstatic const TCHAR* VERSION_URL=TEXT(\"https://github.com/billslack2/videoprocessor/commit/697c1bcd779891cadde993528c03a71f473e0653\");\r\nstatic const TCHAR* VERSION_DATE=TEXT(\"2026-10-25 11:44:52 -0400\");\r\nstatic const TCHAR* VERSION_DESCRIBE=TEXT(\"git-697c1bc\");\nstatic const TCHAR* VERSION_BRANCH=TEXT(\"codex/subtitles-off-zoom-hold-20261025\");\nstatic const TCHAR* VERSION_COMMIT_SHORT=TEXT(\"697c1bc\");\nstatic const TCHAR* VERSION_AUTHOR=TEXT(\"billslack2 <bslack@gmail.com>\");\r\nconst bool VERSION_DIRTY=false;\n\n"
+    },
+    {
+      "path": "src/VideoProcessor-VPRenderer/version.h",
+      "content": "#pragma once\n\n#include <atlstr.h>\n\nstatic const TCHAR* VERSION_URL=TEXT(\"https://github.com/billslack2/videoprocessor/commit/697c1bcd779891cadde993528c03a71f473e0653\");\r\nstatic const TCHAR* VERSION_DATE=TEXT(\"2026-10-25 11:44:52 -0400\");\r\nstatic const TCHAR* VERSION_DESCRIBE=TEXT(\"git-697c1bc\");\nstatic const TCHAR* VERSION_BRANCH=TEXT(\"codex/subtitles-off-zoom-hold-20261025\");\nstatic const TCHAR* VERSION_COMMIT_SHORT=TEXT(\"697c1bc\");\nstatic const TCHAR* VERSION_AUTHOR=TEXT(\"billslack2 <bslack@gmail.com>\");\r\nconst bool VERSION_DIRTY=false;\n\n"
+    }
+  ],
+  "livePlayback": "not run; requires final submitted geometry and measurement-cost acceptance",
+  "deployment": "none",
+  "activeConfigurationChanges": "none"
+}

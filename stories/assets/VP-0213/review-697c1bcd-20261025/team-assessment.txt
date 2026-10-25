@@ -1,0 +1,30 @@
+VP-0213 independent assessment and design resolution
+
+One user-requested sub-agent assessed the legitimate responsibilities of both
+source presentation and uncertainty recovery against beta 8c453746. Its key
+finding was that held Off FIT extents fail exact fresh-proof matching, while
+uncertainty recovery can restore the last displayed envelope. Prepare n then
+commit n-1 lets n recover an envelope from n-2, sustaining two size histories.
+
+The parent and reviewer selected a dedicated explicitly-Off source owner with
+active and released decisions, current raw visibility, per-edge release clocks,
+monotonic source watermark, and exact native/generation/viewport/policy context.
+Successful selected output remains a display record and cannot originate or
+renew Off state. Shared Classic/reconstruction proof/recovery was preserved;
+VP-0214 records that separate architectural risk without claiming a reproduced
+shared-mode defect.
+
+Review corrections applied: explicit pixel-cache lambda capture; retire Off
+ownership during moving/native picture handoffs; qualify startup snapshots
+from the validated final Off decision; record optional native fill using scoped
+Off qualification; force linear SAFE_FIT without NLS hooks/crop for active
+Off envelopes including full raster. Native anchor candidate remains the
+native model base and temporal snapshots retain immutable fitted rectangles.
+
+Final sub-agent review found no further blocking correctness issue. It noted
+that scan reuse depends on native base and black reference; Off now inspects
+sources the old dense schedule skipped, so additional work is possible.
+Profile, transition, startup and NLS renderer integration are source-reviewed
+and compile-checked, not a live GPU/capture replay. Live acceptance must inspect
+submitted rectangles and timing telemetry. The deterministic control reproduces
+the competing envelopes and the source-owner replay is stable with hold 0/2000.
