@@ -1,0 +1,75 @@
+{
+  "story": "VP-0212",
+  "date": "2026-10-25",
+  "sourceCommit": "a5769e53a89c4684104feb90cfedd2de06eff55e",
+  "testedBase": "b1415da4e2cc12807f390f4b722c459be9a17c08",
+  "pr": "https://github.com/billslack2/videoprocessor/pull/200",
+  "configuration": "x64 Release",
+  "buildWarnings": 22,
+  "buildErrors": 0,
+  "totalTests": 3247,
+  "passedTests": 3247,
+  "failedTests": 0,
+  "start": "2026-10-25T09:43:40.1607916-04:00",
+  "finish": "2026-10-25T10:03:09.8889771-04:00",
+  "newTests": [
+    {
+      "testName": "MadVRScopeFeedbackPassesThroughMatchingTarget",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000098"
+    },
+    {
+      "testName": "MadVRSourceFeedbackIsIndependentOfNlsOutputDar",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000363"
+    },
+    {
+      "testName": "MadVRFeedbackLossClearsShaderAndOutputContract",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000274"
+    },
+    {
+      "testName": "MadVRFullRasterIsAllowedOnlyAsExplicitSuccessfulFeedback",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000070"
+    },
+    {
+      "testName": "MadVRAsymmetricAndPillarboxFeedbackPreservesSourceCoordinates",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000738"
+    },
+    {
+      "testName": "MadVRFailedAndMalformedFeedbackNeverGuessesGeometry",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000053"
+    },
+    {
+      "testName": "MadVRFeedbackLossWithdrawsGeometryAndReacquiresNewGeneration",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000119"
+    },
+    {
+      "testName": "MadVRFeedbackRejectsGeometryChangingDuringQuery",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000031"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "B44E41847ACF6B2E32C3F4F28D1EF054B60E67F0FEDD04D313113FAEDF46A9F0"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "F5F6AAB005C0119E628D9C810FF6644E36190A817F1925CE0648BD50F84D3A8F"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "C1C6C7AA74C6B8170E52B365A1AC1CF73B732C5C97B3E9C968324B2BA92044D6"
+    }
+  ],
+  "buildLog": "E:\\codex\\videoprocessor\\madvr-nls-source-geometry-20261025\\work-vp0212-build-clean.log",
+  "testResults": "C:\\Users\\bslac\\Documents\\Codex\\2026-10-25\\user-x20\\work\\vp0212-native.trx",
+  "liveMadvrQualified": false,
+  "deployed": false
+}

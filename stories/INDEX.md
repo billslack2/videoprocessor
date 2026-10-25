@@ -271,7 +271,7 @@ they must not contain requirements that are absent from this file.
 | VP-0209 | Review | Observe output drops, repeats and glitches without render waits |
 | VP-0210 | Review | Qualify passive presentation event collection |
 | VP-0211 | Review | Configurable presentation depth and display-driven vsync output |
-| VP-0212 | In Progress | Use madVR crop feedback exclusively for madVR NLS |
+| VP-0212 | Review | Use madVR crop feedback exclusively for madVR NLS |
 
 ## Codex story workflow
 
