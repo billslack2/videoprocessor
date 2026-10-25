@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog
+In Progress
 
 2026-10-25: User requested this story and investigation. Investigation has
 started; production implementation has not. This remains Backlog under the
@@ -27,6 +27,32 @@ and [initial investigation](../assets/VP-0213/investigation-20261025/findings.tx
 Root-cause reproduction and acceptance tests remain pending; no regression-
 introducing commit has been identified.
 
+
+2026-10-25 implementation readiness: User authorized a team assessment and
+immediate implementation when the design is clear. Parent and one independent
+sub-agent agree on an Off-only source-driven fit owner. Fresh dense proof and
+held FIT bounds have different lifetimes; submitted-envelope recovery can
+restore a second extent from source n-2 while source n-1 is selected after
+source n is prepared. Generic current-caption proof remains unchanged.
+
+The new owner will consume current immutable-source excluded-band visibility,
+union dense measured content without narrowing safe extents, retain per-edge
+lifetimes, and explicitly own both active FIT and released native view. Its
+context includes native model base, generation, viewport, policy/continuity,
+source ordering and configured hold. Successful submission cannot re-arm it.
+Unknown scans do not count as disappearance; unsafe unbounded pixels require
+safe full-raster coverage. Accepted native changes/full raster retire old
+ownership. Final optional fill/NLS must not crop active bar content. Temporal
+source snapshots retain immutable selected geometry.
+
+Readiness checks: configuration already has Off type/hold; cached raw retention
+and dense bar scans are available; native model geometry is captured before
+recovery; the final NLS/fill boundary is known; render-thread lifetime and
+source/output ledger order are understood. Planned regressions replay generic
+recovery plus successful delayed output, expiry/reappearance, zero/fractional
+hold, side/multiple bars, full raster, unavailable evidence and context resets.
+Implementation branch/worktree and beta base remain those recorded above.
+Shared-mode risk is isolated as VP-0214. No deployment is authorized here.
 ## User requirement
 
 When subtitle Processing style is Off, visible content in any black bar
