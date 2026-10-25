@@ -2,7 +2,43 @@
 
 ## Status
 
-In Progress
+Review
+
+2026-10-25: Implemented and pushed to [draft PR #198](https://github.com/billslack2/videoprocessor/pull/198),
+head `727467e7230dae48315698087caead19518ca837`. The PR retains its original
+remote branch `codex/display-vsync-20261024`; the clean implementation worktree
+and local branch below preserve the same head. Current-beta base remains
+`b1415da4e2cc12807f390f4b722c459be9a17c08`.
+
+Both independent global Display controls are implemented: depth 1..8 (default 2)
+and every-refresh presentation (default false). Depth is verified by DXGI
+setter/readback before depth-plus-one flip buffers are created. CPU sleep pacing
+is removed; the shared slot estimate uses interval-1 Present backpressure and
+optional guarded DXGI feedback. Normalized fallback handles broken timestamps;
+ordinary and temporal repeats use owned final pixels without expanding nominal
+deinterlace work or enabling blending.
+
+The exact committed head built successfully in x64 Release, including both
+renderer variants. All 373 selected native regressions passed (19.8 s); the
+offscreen Display default/save/reopen test passed. A 720-Present hardware smoke
+probe covered both ownership paths at depths 1/2/8, with all Presents S_OK and
+buffers 2/3/9. API-successful frame-statistics calls returned zero timing fields,
+so guarded feedback correctly stayed inactive. This is not physical display,
+queue occupancy or end-to-end latency proof.
+
+Three Luna xhigh reviewers compared pinned mpv, bundled libplacebo 7.360.1 and
+7.377.0, upstream APIs/plplay and regressions. Concrete findings were corrected;
+final regression review approved the reviewed paths. [Source comparison, fixes,
+probe source/data and validation limits](https://github.com/billslack2/videoprocessor/blob/727467e7230dae48315698087caead19518ca837/docs/VP-0211_PRESENTATION_REVIEW.md).
+
+Remaining gate: qualify live capture, actual cadence/latency, source continuity,
+output/profile/monitor transitions, stalls and shutdown against matched baseline
+with both controls independently off/on. The intended limit is bounded queue
+lead, not arbitrary-stall protection or exact madVR parity. No deployment,
+active configuration changes or merge occurred. Do not close Done on API smoke
+or source review alone. Next action is the recorded live qualification matrix.
+
+### Implementation start and readiness
 
 2026-10-25: User authorized implementation and primary-source comparison with
 mpv/other libplacebo players, using Luna extra-high reviewers. Current GitHub
@@ -165,7 +201,7 @@ Coordinate with:
 - [ ] Stress/transition tests cover a slow future render while output is queued,
       depth changes, source reset, refresh/monitor change, resize/fullscreen,
       profile/LUT change, minimize/resume, device loss and shutdown.
-- [ ] Record a successful x64 Release build and meaningful native/config/GPU tests
+- [x] Record a successful x64 Release build and meaningful native/config/GPU tests
       from the pinned implementation commit before any requested deployment.
 - [ ] Run matched live qualification with both settings off/on independently and
       together, including low-latency mode. Record backend, real refresh, requested
@@ -203,3 +239,19 @@ Status heading; VP-0088/VP-0168 use `In progress`, including VP-0168's index row
 No unrelated tracker repair is included. The dedicated tracker has an existing
 uncommitted VP-0207 asset edit; this story is written in a clean main-based E:
 worktree so that edit is preserved.
+
+## Review qualification boundary
+
+The earlier #198/10a4 baseline row records the initial candidate, not the current
+PR head. The 727467e7 implementation supersedes its periodic timer and forced
+deinterlace cadence. Native tests cover normal/fractional cadence, stale slots,
+feedback validation, frozen/backward/nonfinite timestamps, exact cached GPU
+pixels, configuration/range/public-reference checks and queue/telemetry/reset
+policies. They do not exercise every production transition with a live input.
+Those acceptance checkboxes remain open for the hardware qualification gate.
+
+The selected architecture retains one render/GPU-context owner. DXGI owns the
+bounded queue of submitted output; a second presentation thread or waitable-chain
+model was not needed for exposing the existing device cap. Present returns may
+queue early; conditional buffer count and unknown occupancy are logged honestly.
+Both backends' source contracts and the two-path smoke probe support this choice.
