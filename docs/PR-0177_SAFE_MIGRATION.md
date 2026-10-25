@@ -33,11 +33,23 @@ The charts use the same legacy colour-map preset fallback as the renderer. A Hig
 
 Default Rendering processing controls retain an empty/inherit option. Resetting a fallback knee chooses an interior value when the automatic value lands on a forbidden bound. Section resets are labelled Restore visible defaults and preserve hidden settings.
 
+## Responsive Config workspace
+
+Profile settings keep priority over supporting panels. The same workspace is used by Rendering, other profile families, Standard/NLS shaders and Actions. Wide pages dock the ordered list on the left; smaller pages offer a labeled selector using that same list model and a Manage button for the original editing/reordering controls. Rendering uses two content panes where they fit, and Settings/Tone charts tabs at compact widths. Reflow reuses widgets, preserving unsaved values and selection.
+
+Breakpoints use the available page width in logical pixels: 900 for the two-pane list/editor workspace, 1080 for settings/charts together and 1400 for all three. A 40-pixel hysteresis avoids repeated switching at a boundary. App navigation docks at 1200 logical window pixels and returns from compact at 1240. The minimum window is 760 by 540 logical pixels. Settings and charts scroll separately, while actions stay in the footer. Chart comparison, scene, display and zone controls wrap; long comparison names retain their full accessible names and tooltips. Colour chart columns stack in narrow panes.
+
+The migration notice appears for pending tone-profile migration, summarizes the change in one sentence, and puts affected profile names in its tooltip. A successful Save/Apply hides it; loading the already migrated file does not repeat it. Failed saves retain the notice. Opening the editor still does not write the configuration.
+
 ## Validation
+
+The original defaults/migration integration was validated as follows:
 
 - Relevant native configuration, migration, selection, runtime, documentation and render-parameter suite: 246 passed.
 - Focused Config checks: 13 passed, including real menu duplicate/export/import, save/reopen/rename, clearing overrides, legacy presets, promotion/cache selection, Display controls, Apply/OK/Cancel, profile lifecycle and tone resets.
 - Real shipped libplacebo provider: 216 tone and 648 colour requests, plus five PQ round trips.
 - Full x64 Release solution build and exact binary hash evidence are retained with the test deployment receipt.
+
+The responsive follow-up adds 22 focused Config checks, all passing. The resize/profile-management test visits all 23 pages from 760x540 through 1920x1080 at 100%, 150% and 200% Qt scaling with the real chart provider. It checks retained unsaved edits and selection, long comparison names, reachable chart bottoms, zero outer Rendering-page vertical scrolling, profile duplication and unchanged source configuration bytes. Migration acknowledgement, keyboard/accessibility, no-target startup and expanded shader scrolling also pass after the final height change. Screenshots were inspected at compact and wide sizes. A pre-existing no-target test's mojibake ellipsis expectation was corrected to match the production Unicode string; the initial failing result is retained in local evidence. The native and chart-math baseline above was not rerun for this UI-only follow-up.
 
 These automated checks do not establish physical HDMI playback or visual acceptance. PR #177 remains unmerged; this is a local test integration.
