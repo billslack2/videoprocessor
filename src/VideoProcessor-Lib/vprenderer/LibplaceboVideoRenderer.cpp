@@ -24073,6 +24073,14 @@ void LibplaceboVideoRenderer::RenderLoop()
                 output.temporalRenderer.Mixing()) && output.displayRepeatValid)
             {
                 std::unique_lock<std::mutex> queueGuard(m_queueMutex);
+                auto queuedWillMix = [&](const QueuedFrame& queued) {
+                    const auto& state = queued.state;
+                    return TemporalRenderer::WillMix(output.activeSettings.motion,
+                        m_measuredFrameRate.load(std::memory_order_relaxed),
+                        output.renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
+                        state&&state->displayMode&&state->displayMode->IsInterlaced(),
+                        state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0);
+                };
                 auto currentOutput = [&]() {
                     return !m_stopRequested && !m_startupPrefillPending &&
                         m_queueGeneration == output.displayRepeatRecord.generation &&
@@ -24080,7 +24088,8 @@ void LibplaceboVideoRenderer::RenderLoop()
                             output.renderLoadDisplayRefreshHz.load()) &&
                         !pendingOutput() && IsWindowVisible(m_videoHwnd) &&
                         !IsIconic(m_videoHwnd) &&
-                        (m_frameQueue.empty() || !m_frameQueue.front().frame.IsSourceDiscontinuity());
+                        (m_frameQueue.empty() || (!m_frameQueue.front().frame.IsSourceDiscontinuity() &&
+                            !queuedWillMix(m_frameQueue.front())));
                 };
                 auto pts = [&](const QueuedFrame& queued) {
                     const auto frequency = m_timingClock ? m_timingClock->TimingClockTicksPerSecond() : 0;
@@ -24110,6 +24119,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                         m_frameQueue.size() >= 2 && CanDequeueLocked() &&
                         !m_frameQueue[0].cadenceRepeat && !m_frameQueue[1].cadenceRepeat &&
                         !m_frameQueue[1].frame.IsSourceDiscontinuity() &&
+                        !queuedWillMix(m_frameQueue[1]) &&
                         output.displayVsyncClock.SourceDue(pts(m_frameQueue[1])))
                     {
                         m_activePictureTimeline.MarkDiscarded(
