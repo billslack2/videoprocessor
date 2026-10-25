@@ -39,6 +39,11 @@ std::vector<RendererId> RendererId::OrderForDisplay(
 			externalRendererIds.push_back(rendererId);
 	}
 
+	// The promoted renderer is the first choice when no renderer is configured.
+	std::stable_sort(alphaRendererIds.begin(), alphaRendererIds.end(),
+		[](const RendererId& left, const RendererId& right) {
+			return left.libplaceboBeta && !right.libplaceboBeta;
+		});
 	std::sort(externalRendererIds.begin(), externalRendererIds.end());
 	std::reverse(externalRendererIds.begin(), externalRendererIds.end());
 	alphaRendererIds.insert(
@@ -52,8 +57,9 @@ std::vector<RendererId> RendererId::OrderForDisplay(
 bool RendererId::MatchesConfiguredName(const CString& configuredName) const
 {
 	return name.CompareNoCase(configuredName) == 0 ||
-		(backend == RendererBackend::LIBPLACEBO && !libplaceboBeta &&
-		 (configuredName.CompareNoCase(TEXT("libplacebo")) == 0 ||
+		(backend == RendererBackend::LIBPLACEBO && libplaceboBeta &&
+		 (configuredName.CompareNoCase(TEXT("VP Renderer (Beta)")) == 0 ||
+		  configuredName.CompareNoCase(TEXT("libplacebo")) == 0 ||
 		  configuredName.CompareNoCase(TEXT("VideoProcessor Renderer (Alpha)")) == 0));
 }
 
@@ -61,7 +67,7 @@ bool RendererId::MatchesConfiguredName(const CString& configuredName) const
 RendererId RendererId::Libplacebo(bool beta)
 {
 	RendererId id;
-	id.name = beta ? TEXT("VP Renderer (Beta)") : TEXT("VP Renderer");
+	id.name = beta ? TEXT("VP Renderer") : TEXT("VP Renderer (Legacy)");
 	id.libplaceboBeta = beta;
 	id.backend = RendererBackend::LIBPLACEBO;
 	return id;
