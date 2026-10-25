@@ -168,6 +168,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="FullscreenActivation.h" />
     <ClInclude Include="StartupPresentationReadiness.h" />
     <ClInclude Include="PresentationConfig.h" />
     <ClInclude Include="vprenderer\DisplayVsyncClock.h" />
@@ -199,6 +200,8 @@
     <ClInclude Include="ConfigurationDiscovery.h" />
     <ClInclude Include="ConfigSchema.h" />
     <ClInclude Include="DebugLog.h" />
+    <ClInclude Include="DebugLogAsync.h" />
+    <ClInclude Include="vprenderer\Bt2020SignalWorker.h" />
     <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="DisplayRefreshRatePolicy.h" />

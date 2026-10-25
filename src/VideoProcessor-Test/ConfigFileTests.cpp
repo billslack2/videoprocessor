@@ -3539,7 +3539,7 @@ namespace VideoProcessorTest
 				true, selections, selections, true));
 		}
 
-		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshotsAndDiagnostics)
+		TEST_METHOD(LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload)
 		{
 			// API 29 includes the explicit LUT-apply virtual method. Host and
 			// renderer must reject older vtables rather than call a shifted slot.

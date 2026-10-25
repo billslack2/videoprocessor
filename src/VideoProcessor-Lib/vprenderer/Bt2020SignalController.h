@@ -35,7 +35,11 @@ namespace Bt2020Signal
             if (display != target)
             {
                 auto old = outputs.find(target);
-                if (old != outputs.end()) Start(old->second, Mode::Release, now);
+                if (old != outputs.end())
+                {
+                    if (old->second.dirty) Start(old->second, Mode::Release, now);
+                    else old->second.pending = false; // An abandoned read never owned external state.
+                }
                 target = display;
                 restart = true;
             }
@@ -52,14 +56,18 @@ namespace Bt2020Signal
             if (restart || found->second.mode != mode) Start(found->second, mode, now);
         }
 
-        void Pump(uint64_t now)
+        void Pump(uint64_t now) { Pump(now, [] { return true; }); }
+
+        template<class Current> void Pump(uint64_t now, const Current& current)
         {
             if (retiring) return;
             for (auto& item : outputs)
             {
                 auto& state = item.second;
                 if (!state.pending || now < state.next) continue;
-                Attempt(item.first, state);
+                if (!current()) return;
+                Attempt(item.first, state, current);
+                if (!current()) return; // A superseded attempt must not schedule an old retry.
                 ++state.attempt;
                 // Repeat even after matching readback: the projector can change
                 // mode after acceptance. No catch-up burst if the worker is late.
@@ -73,7 +81,9 @@ namespace Bt2020Signal
             }
         }
 
-        bool Retire()
+        bool Retire() { return Retire([] { return true; }); }
+
+        template<class Current> bool Retire(const Current& current)
         {
             retiring = true; // Cancels every delayed enable before any cleanup.
             bool complete = true;
@@ -82,8 +92,9 @@ namespace Bt2020Signal
                 auto& state = item.second;
                 state.pending = false;
                 if (!state.dirty) continue;
+                if (!current()) return false;
                 state.mode = Mode::Release;
-                if (!Attempt(item.first, state)) complete = false;
+                if (!Attempt(item.first, state, current)) complete = false;
                 else state.dirty = false;
             }
             return complete;
@@ -136,11 +147,13 @@ namespace Bt2020Signal
             state.next = now;
             state.accepted = state.verified = false;
         }
-        bool Attempt(const std::string& display, Output& state)
+        template<class Current> bool Attempt(const std::string& display, Output& state, const Current& current)
         {
             typename Backend::Frame frame{};
             state.accepted = state.verified = false;
-            if (!io.Read(display, frame))
+            const bool readable = io.Read(display, frame);
+            if (!current()) return false; // Do not issue SET after a superseded slow read.
+            if (!readable)
             {
                 io.Report(display, state.mode == Mode::Enable, state.attempt + 1, false, false);
                 return false;
@@ -157,11 +170,13 @@ namespace Bt2020Signal
             // ownership before calling it, including when readback later fails.
             state.dirty = true;
             state.accepted = io.Write(display, frame);
+            if (!current()) return false; // A completed obsolete SET remains dirty for cleanup.
             if (state.accepted)
             {
                 typename Backend::Frame readback{};
                 state.verified = io.Read(display, readback) && io.GetColor(readback) == wanted;
             }
+            if (!current()) return false;
             io.Report(display, state.mode == Mode::Enable, state.attempt + 1,
                 state.accepted, state.verified);
             return state.accepted;
