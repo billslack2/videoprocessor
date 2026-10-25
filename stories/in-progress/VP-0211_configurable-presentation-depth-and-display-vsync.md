@@ -4,6 +4,21 @@
 
 In Progress
 
+2026-10-25 NLS correction is committed separately as `fc20e916` in [draft PR
+#204](https://github.com/billslack2/videoprocessor/pull/204). A strict 0.1us
+SourceDue allowance was below the observed 10us DeckLink PTS grid (518 samples,
+absolute/delta GCD 10us); deterministic matched-rate selection reproduced
+repeat/retirement pairs without shader work. The shared allowance is now the
+larger of 10us and one source tick, capped at 100us. It retains cadence phase
+and real drift; half-refresh early selection was rejected. Periodic repeat logs
+now include next PTS lead, precision allowance and queued-source count.
+Release build passed (10 existing warnings, zero errors), all 16 clock tests
+passed, and Luna xhigh final review found no remaining concrete blocker after
+correcting the temporal diagnostic call. Expanded GPU/subtitle regressions are
+in progress. An isolated combined test branch preserves deployed dedc85d9 tone
+GUI sources plus this fix; no deployment has yet occurred in this correction.
+[Preserved incident and timestamp evidence](../assets/VP-0211/nls-vsync-20261025/investigation.json).
+
 2026-10-25 critical live NLS regression: user confirms stutter only when
 present_every_vsync is on and NLS is enabled. Current screenshot has the option
 off; later saved config has motion off, depth 3, every-refresh off. Active/rotated

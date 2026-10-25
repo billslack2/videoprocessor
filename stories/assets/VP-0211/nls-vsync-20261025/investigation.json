@@ -1,0 +1,15 @@
+{
+  "sourceCommit": "fc20e916d2af777cdddc309568072ad032acb6b5",
+  "baseCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "pr": "https://github.com/billslack2/videoprocessor/pull/204",
+  "selectedPtsSamples": 518,
+  "ptsMicrosecondsAbsoluteGcd": 10,
+  "ptsMicrosecondsDeltaGcd": 10,
+  "oldToleranceMicroseconds": 0.1,
+  "newMinToleranceMicroseconds": 10,
+  "newMaxToleranceMicroseconds": 100,
+  "clockTestsPassed": 16,
+  "expandedGpuRun": "in progress",
+  "liveAcceptance": "pending",
+  "subtitleLiveAcceptance": "not confirmed by user"
+}
