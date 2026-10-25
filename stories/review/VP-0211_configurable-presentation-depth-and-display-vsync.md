@@ -2,18 +2,28 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-25 live regression: user reports slow/stuttering content and dropped
-frames when Smooth Motion actually mixes at a mismatched refresh AND every-refresh
-is enabled; either feature alone appears fine. Reopened for a focused fix:
-active Smooth Motion owns display cadence and suppresses the independent repeat
-clock/cache/retirement path. Auto configured but bypassed must retain repeats;
-deinterlace-only remains eligible. Use a shared current-frame mixing classifier
-before source timestamp normalization, then confirm actual mixing after Begin.
-Luna xhigh regression reviewer requested first-frame/rate-transition and output
-parity coverage. Source remains on clean 727467e7; beta refreshed and unchanged
-at b1415da4. Existing authorized test deployment will be updated after checks.
+2026-10-25 live regression correction: implemented and pushed clean head
+`3520e71396a3c20112e4b18c67258052af34e0e0` to draft PR #198. Actual Smooth
+Motion mixing owns cadence and bypasses the every-refresh repeat clock/cache,
+source normalization and stale retirement. Shared current/queued-frame WillMix
+classification prevents the old cache holding or retiring an upcoming mixed
+frame. Auto bypass and deinterlace-only retain repeats; depth is independent.
+Full clean x64 Release build succeeded (10 existing warnings, zero errors);
+375 focused tests passed, and Luna xhigh final review found no concrete blocker.
+Production queue handoff and simultaneous-on playback remain live-test gates.
+
+The authorized correction was deployed with matching host and both renderers,
+Release receipts and hashes verified. Backup:
+`C:\Videoprocessor\vp\backup-before-vp0211-mixing-20261025-090909`.
+Active config preserved byte-for-byte (current every-refresh=false, depth=3).
+VP restarted as responsive PID 84800; both host/renderer identities match clean
+3520e713. Log confirms Smooth Motion at about 23.976455 -> 59.951 Hz.
+Inherited minimized startup initially reported occlusion; restoring playback
+stopped those messages. Startup drops are not clean cadence proof. Retest both
+options on to confirm the user's reported stutter is resolved; do not mark Done.
+[Correction tests, review limits and deployment/rollback evidence](../assets/VP-0211/mixing-fix-3520e713-20261025/README.md).
 
 2026-10-25 test deployment: user authorized deployment/startup after the source
 review. The matching x64 Release host, primary/Beta renderers, Config editor and

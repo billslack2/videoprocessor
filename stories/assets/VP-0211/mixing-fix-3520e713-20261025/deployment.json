@@ -1,0 +1,36 @@
+{
+  "commit": "3520e71396a3c20112e4b18c67258052af34e0e0",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0211-mixing-20261025-090909",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "CE7B645E4BE3B9336EB03D6A5A9685079C98E6CBA291BF8B58068F932A310139",
+      "previousSha256": "D6C66D5FEFBD0662066484F06B63ED70A83A1BE9860FC08D53E41A013D4DE850"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "53BD54E1ACABD90F386D11B6BBA971DF081479B32D48527992218745593FC2A9",
+      "previousSha256": "051E9244C3F2F5A3A9592705EEF47ADB287DBA6FD8FF226A440F36D5468D1D5F"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "48969B01CBA515C83C6A7E4EAF3E58647018F677F36DA866B1A5B2795F03270F",
+      "previousSha256": "75627656A59913D65B3DA752556978D6F49B563816EE8EF146CCCFBCB0B5D17F"
+    }
+  ],
+  "configurationHash": "5A4365CB741DEE67BF7B85BBCBBCEC43DC13EE0A2F0FBC3656099AB975C01692",
+  "configurationPreserved": true,
+  "configurationEdits": [],
+  "passedTests": 375,
+  "testResults": "E:\\codex\\videoprocessor\\vp0211-presentation-20261025\\TestResults\\vp0211-mixing-final\\bslac_DESKTOP-3G35SCJ_2026-10-25_09_08_36_net40.trx",
+  "pid": 84800,
+  "verifiedAt": "2026-10-25T09:09:10.9591386-04:00"
+}
