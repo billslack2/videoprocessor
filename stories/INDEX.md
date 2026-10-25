@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0214`
-- Next root story number: `VP-0215`
-- Total indexed items: 233
+- Last assigned root story: `VP-0215`
+- Next root story number: `VP-0216`
+- Total indexed items: 234
 
 ## Story locations
 
@@ -274,6 +274,8 @@ they must not contain requirements that are absent from this file.
 | VP-0212 | Review | Use madVR crop feedback exclusively for madVR NLS |
 | VP-0213 | Review | Stable Off bar-content fit and release hold |
 | VP-0214 | Backlog | Audit shared subtitle fit ownership and temporal recovery |
+
+| VP-0215 | Backlog | Clarify dithering and motion configuration choices |
 
 ## Codex story workflow
 
