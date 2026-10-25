@@ -4,8 +4,9 @@
 #include <cmath>
 #include <cstdint>
 
-// Render-thread-only presentation clock. Source PTS selects the image; the
-// display clock selects submission times. No playback-speed or audio adjustment.
+// Render-thread-only next-unsubmitted-slot estimate, not scanout confirmation.
+// Present(1) supplies bounded FIFO backpressure; this class never sleeps.
+// Elapsed time only retires overdue slots after a stall. Source speed is unchanged.
 class DisplayVsyncClock
 {
 public:
@@ -52,12 +53,95 @@ public:
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
     bool SourceDue(double pts) const
     {
-        return !Active() || !std::isfinite(pts) || pts <= SourcePts() + 1e-7;
+        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + 1e-7);
     }
     void Submitted() { if (Active()) ++tick; }
+    bool HasFeedback() const { return feedback; }
+    void InvalidateFeedback() { feedback=false; feedbackSamples=0; lastSyncNs=0; }
+    // mpv's guarded estimate of the last queued flip's display time. DXGI
+    // counts are wrapping UINTs. Feedback disciplines only missed-slot timing;
+    // it never changes the source origin or asserts that a flip was displayed.
+    bool ObserveQueueTail(uint32_t lastPresent, uint32_t displayedPresent,
+        uint32_t displayedRefresh, uint32_t syncRefresh, int64_t syncNs,
+        int64_t nowNs, int64_t submittedNs, unsigned cap)
+    {
+        feedback=false;
+        if (!Active() || !tick || !lastPresent || !displayedPresent ||
+            !displayedRefresh || !syncRefresh || syncNs<=0 || cap<1 || cap>8) return false;
+        const uint32_t queued=lastPresent-displayedPresent;
+        const uint32_t elapsed=syncRefresh-displayedRefresh;
+        if (queued>cap+1 || elapsed>cap+1 || queued<elapsed) return false;
+        const int64_t tail=syncNs+static_cast<int64_t>(std::llround((queued-elapsed)*periodNs));
+        if (tail<submittedNs || tail<nowNs-2*periodNs || tail>nowNs+(cap+2)*periodNs) return false;
+        if (lastSyncNs && syncNs<lastSyncNs) { InvalidateFeedback(); return false; }
+        if (syncNs!=lastSyncNs) {
+            if (lastSyncNs) {
+                const uint32_t refreshes=syncRefresh-lastSyncRefresh;
+                const double measured=refreshes*1e9/static_cast<double>(syncNs-lastSyncNs);
+                if (!refreshes || refreshes>32 ||
+                    std::abs(measured-refreshHz)>(std::max)(0.2,refreshHz*0.02)) {
+                    InvalidateFeedback(); return false;
+                }
+                ++feedbackSamples;
+            }
+            lastSyncNs=syncNs; lastSyncRefresh=syncRefresh;
+        }
+        if (feedbackSamples<2) return false;
+        wallOriginNs=tail-static_cast<int64_t>(std::llround((tick-1)*periodNs));
+        feedback=true;
+        return true;
+    }
 private:
     uint64_t generation = 0, tick = 0;
     int64_t wallOriginNs = 0;
     double sourceOrigin = 0.0, lastSourcePts = 0.0;
     double refreshHz = 0.0, periodNs = 0.0;
+    bool feedback=false;
+    unsigned feedbackSamples=0;
+    int64_t lastSyncNs=0;
+    uint32_t lastSyncRefresh=0;
+};
+
+// Shared by queue peeking and source acceptance. Once a timestamp domain is
+// broken, keep a sequence/rate fallback anchored to the previous accepted PTS
+// until the transport generation changes. Do not compare raw and fallback PTS.
+class DisplaySourceClock
+{
+public:
+    void Reset() { *this = {}; }
+    bool Synthetic() const { return synthetic; }
+    double Preview(double raw, uint64_t seq, double hz, uint64_t epoch) const
+    {
+        if (!valid || epoch != generation)
+            return std::isfinite(raw) ? raw : Fallback(seq, hz);
+        if (seq == sequence) return normalized;
+        const double step = seq > sequence ? Fallback(seq - sequence, hz) : NAN;
+        const double delta = raw - rawPts;
+        const bool plausible = !synthetic && std::isfinite(raw) &&
+            std::isfinite(rawPts) && delta > 0 &&
+            (!std::isfinite(step) || std::abs(delta-step) <= (std::max)(0.5,step*0.5));
+        return plausible ? normalized + delta : normalized + step;
+    }
+    double Accept(double raw, uint64_t seq, double hz, uint64_t epoch, bool reset)
+    {
+        if (reset || epoch != generation) Reset();
+        const double next = Preview(raw, seq, hz, epoch);
+        if (valid && seq != sequence &&
+            (!std::isfinite(raw) || !std::isfinite(rawPts) || raw <= rawPts ||
+             (std::isfinite(next) && std::abs((raw-rawPts)-(next-normalized)) > 1e-7)))
+            synthetic = true;
+        if (!valid) synthetic = !std::isfinite(raw);
+        if (std::isfinite(next)) {
+            valid=true; generation=epoch; sequence=seq; normalized=next; rawPts=raw;
+        }
+        return next;
+    }
+private:
+    static double Fallback(uint64_t seq, double hz)
+    {
+        return std::isfinite(hz) && hz > 0 ? static_cast<double>(seq)/hz : NAN;
+    }
+    bool valid=false, synthetic=false;
+    uint64_t generation=0, sequence=0;
+    double rawPts=0, normalized=0;
 };

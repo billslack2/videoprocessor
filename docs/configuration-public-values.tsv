@@ -355,3 +355,11 @@ output_display.mode_policy	auto
 output_display.mode_policy	advanced
 output_display.restore_previous_mode	true
 output_display.restore_previous_mode	false
+general.presentation_queue_depth	1
+general.presentation_queue_depth	2
+general.presentation_queue_depth	3
+general.presentation_queue_depth	4
+general.presentation_queue_depth	5
+general.presentation_queue_depth	6
+general.presentation_queue_depth	7
+general.presentation_queue_depth	8

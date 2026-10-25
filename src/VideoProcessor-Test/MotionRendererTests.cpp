@@ -176,17 +176,17 @@ TEST_CLASS(MotionRendererTests){public:
         cache.Clear();
         Assert::IsFalse(cache.CopyTo(g.target));
     }
-    TEST_METHOD(DisplayRefreshOptionSchedulesDeinterlacingWithoutEnablingBlending) {
+    TEST_METHOD(DisplayRefreshUsesNominalDeinterlacingWithoutEnablingBlending) {
         MotionConfig::Settings settings;
         TemporalRenderer temporal;
-        temporal.Begin(settings,24.0,120.0,true,1,1,1,0.0,false,false,false,true);
+        temporal.Begin(settings,20.0,360.0,true,1,1,1,0.0,false);
         Assert::IsTrue(temporal.Active());
         Assert::IsFalse(temporal.Mixing());
-        Assert::AreEqual(120.0,temporal.ScheduledOutputRateHz(),1e-9);
-        Assert::AreEqual(size_t(5),temporal.outputs.size());
-        temporal.Clear();
+        Assert::AreEqual(40.0,temporal.ScheduledOutputRateHz(),1e-9);
+        Assert::AreEqual(size_t(2),temporal.outputs.size());
+        // Presentation repeats final pixels between these field outputs rather
+        // than generating 18 expensive temporal outputs and hitting its cap.
     }
-
     TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
         for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
             unsigned analyses=0;

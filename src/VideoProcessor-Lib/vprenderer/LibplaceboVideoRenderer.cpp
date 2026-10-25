@@ -898,6 +898,7 @@ namespace
 		ProfileUpdateMode profileUpdateMode = ProfileUpdateMode::REBUILD;
 		bool switchRefreshRate = true;
         bool presentEveryVsync = false;
+        int presentationQueueDepth = PresentationConfig::DefaultDepth;
 		RefreshRateSwitchMode refreshRateSwitchMode =
 			RefreshRateSwitchMode::FullscreenOnly;
 		bool outputDisplayAdvanced = false;
@@ -1045,7 +1046,7 @@ namespace
 			<< settings.configurationIdentity << '|' << settings.configurationPath << '|'
             << settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
 			<< static_cast<int>(settings.refreshRateSwitchMode) << '|'
-			<< settings.presentEveryVsync << '|' << settings.outputDisplayAdvanced << '|'
+			<< settings.presentEveryVsync << '|' << settings.presentationQueueDepth << '|' << settings.outputDisplayAdvanced << '|'
 			<< settings.restorePreviousDisplayMode << '|' << settings.outputDisplayMonitor << '|';
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
@@ -2251,6 +2252,7 @@ namespace
 		if (!config.IsLoaded()) return settings;
 		config.TryGetBool("general", "scale_osd", settings.scaleOsd);
         config.TryGetBool("general", "present_every_vsync", settings.presentEveryVsync);
+        settings.presentationQueueDepth = PresentationConfig::Depth(config);
         settings.statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(&config);
         TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         TryGetDisplayBool(config, "subtitle_cut_paste_test", settings.subtitleCutPasteTest);
@@ -4397,6 +4399,8 @@ struct LibplaceboVideoRenderer::Impl
 	pl_cache cache = nullptr;
 	pl_swapchain swapchain = nullptr;
     DisplayVsyncClock displayVsyncClock;
+    DisplaySourceClock displaySourceClock;
+    UINT appliedPresentationDepth = PresentationConfig::DefaultDepth;
     DisplayFrameCache displayFrameCache;
     AlphaPresentationRecord displayRepeatRecord;
     bool displayRepeatValid = false;
@@ -7388,7 +7392,7 @@ struct LibplaceboVideoRenderer::Impl
 		// renderable but invalid as a pl_render_image destination.
 		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT |
 			DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_UNORDERED_ACCESS;
-		desc.BufferCount = blit ? 1 : 3;
+		desc.BufferCount = PresentationConfig::BufferCount(appliedPresentationDepth, blit);
 		desc.Scaling = DXGI_SCALING_STRETCH;
 		desc.SwapEffect = blit ? DXGI_SWAP_EFFECT_DISCARD :
 			DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -8234,11 +8238,22 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboExportedData<pl_d3d11_params>("pl_d3d11_default_params");
 		deviceParams.allow_software = false;
 		deviceParams.min_feature_level = D3D_FEATURE_LEVEL_10_0;
-		deviceParams.max_frame_latency = 2;
+		deviceParams.max_frame_latency = settings.presentationQueueDepth;
 		deviceParams.no_compute = settings.diagnosticDisableCompute;
 		d3d11 = pl_d3d11_create(log, &deviceParams);
 		if (!d3d11)
 			throw std::runtime_error("Failed to create libplacebo D3D11 device");
+        // libplacebo's setter does not check HRESULT. Verify the actual device
+        // cap before sizing either swapchain; never advertise a rejected value.
+        CComPtr<IDXGIDevice1> latencyDevice;
+        if (FAILED(d3d11->device->QueryInterface(IID_PPV_ARGS(&latencyDevice))) ||
+            FAILED(latencyDevice->SetMaximumFrameLatency(settings.presentationQueueDepth)) ||
+            FAILED(latencyDevice->GetMaximumFrameLatency(&appliedPresentationDepth)) ||
+            appliedPresentationDepth != static_cast<UINT>(settings.presentationQueueDepth))
+            throw std::runtime_error("D3D11 could not apply the presentation queue depth");
+        DebugLog::Log("VP presentation queue: requested=%d applied_device_limit=%u scope=device occupancy=unknown flip_buffers_if_flip_model=%u pacing=dxgi_sync_interval_1",
+            settings.presentationQueueDepth, appliedPresentationDepth,
+            PresentationConfig::BufferCount(appliedPresentationDepth, false));
 		// The comparison build retains libplacebo's original per-pass timers.
 		// They are dynamically suspended on v2 frames before VP opens its one
 		// render-level disjoint interval, so the two methods never nest.
@@ -18928,7 +18943,7 @@ releaseDriftBaseRetention =
             CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
                 viewportRequestSerial, startupFrameRevision);
         else displayRepeatValid = false;
-        PaceDisplayPresentation();
+        displayVsyncClock.SkipMissed(SteadyClockNowNs());
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -18955,7 +18970,7 @@ releaseDriftBaseRetention =
 			if (rendered)
 			{
 				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
-				submitted = SUCCEEDED(presentResult);
+				submitted = presentResult == S_OK;
 				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
 					vpOwnedSwapchainGeneration)
 				{
@@ -18993,9 +19008,7 @@ releaseDriftBaseRetention =
                 DebugLog::Log("VP anamorphic render failure: schema=1 sequence=%llu generation=%llu recovery=%d present_policy=black_clear consume_acquired_frame=1",
                     sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
             }
-			submitted = pl_swapchain_submit_frame(swapchain);
-			if (submitted)
-				pl_swapchain_swap_buffers(swapchain);
+            submitted = SubmitLibplaceboFrameChecked();
 		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
@@ -19972,6 +19985,20 @@ releaseDriftBaseRetention =
                 : AlphaPresentationTimingStatus::FrameStatisticsFailed;
             }
         }
+        if (displayVsyncClock.Active()) {
+            if (sample.available && sample.qpcFrequency>0 &&
+                actualOutput.presentationModel != LibplaceboOutput::PresentationModel::BITBLT) {
+                const int64_t nowQpc=PerformanceCounterNow(), nowNs=SteadyClockNowNs();
+                auto steadyFromQpc=[&](int64_t qpc) {
+                    return nowNs+static_cast<int64_t>(std::llround(
+                        (qpc-nowQpc)*(1e9/sample.qpcFrequency)));
+                };
+                displayVsyncClock.ObserveQueueTail(static_cast<uint32_t>(record.presentId),
+                    sample.presentCount,sample.presentRefreshCount,sample.syncRefreshCount,
+                    steadyFromQpc(sample.syncQpc),nowNs,steadyFromQpc(record.submitQpc),
+                    appliedPresentationDepth);
+            } else displayVsyncClock.InvalidateFeedback();
+        }
         record.frameStatsAvailable = sample.available;
         record.frameStatsDisjoint = sample.disjoint;
         record.frameStatsResult = sample.frameStatisticsResult;
@@ -19985,22 +20012,33 @@ releaseDriftBaseRetention =
         return sample;
     }
 
-    void PaceDisplayPresentation()
+    bool PresentNativeChecked(IDXGISwapChain* chain)
     {
-        if (!displayVsyncClock.Active()) return;
-        displayVsyncClock.SkipMissed(SteadyClockNowNs());
-        const auto deadline = SteadyClock::time_point(
-            std::chrono::duration_cast<SteadyClock::duration>(
-                std::chrono::nanoseconds(displayVsyncClock.DeadlineNs())));
-        std::this_thread::sleep_until(deadline);
+        const HRESULT result = chain ? chain->Present(1, 0) : E_POINTER;
+        if (result == S_OK) return true;
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
+        DebugLog::Log("VP presentation unavailable: present_hr=0x%08X removed_hr=0x%08X occluded=%d",
+            static_cast<unsigned>(result),
+            static_cast<unsigned>(d3d11->device->GetDeviceRemovedReason()),
+            result == DXGI_STATUS_OCCLUDED ? 1 : 0);
+        return false;
+    }
+    bool SubmitLibplaceboFrameChecked()
+    {
+        // submit consumes start_frame's lock/backbuffer even on failure.
+        if (!pl_swapchain_submit_frame(swapchain)) return false;
+        CComPtr<IDXGISwapChain> native;
+        native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        // Do not also call pl_swapchain_swap_buffers: D3D11 would Present twice.
+        return PresentNativeChecked(native);
     }
 
     void CacheDisplayFrame(pl_tex output, uint64_t generation,
         uint64_t viewport, uint64_t revision)
     {
         displayRepeatValid = false;
-        if (!activeSettings.presentEveryVsync || temporalRenderer.Active() ||
-            !displayVsyncClock.Active()) return;
+        if (!activeSettings.presentEveryVsync || !displayVsyncClock.Active()) return;
         if (!output || !output->params.blit_src)
         {
             displayVsyncClock.Reset();
@@ -20025,19 +20063,22 @@ releaseDriftBaseRetention =
     bool PresentDisplayRepeat()
     {
         if (!displayRepeatValid) return false;
+        auto failed = [&]() {
+            displayRepeatValid = false; displayVsyncClock.Reset(); return false;
+        };
         pl_swapchain_frame acquired{};
         pl_tex wrapped = nullptr;
         CComPtr<ID3D11Texture2D> backbuffer;
         if (vpOwnedSwapchain)
         {
             if (FAILED(vpOwnedSwapchain->GetBuffer(0, IID_PPV_ARGS(&backbuffer))))
-                return false;
+                return failed();
             pl_d3d11_wrap_params params{};
             params.tex = backbuffer;
             acquired.fbo = wrapped = pl_d3d11_wrap(d3d11->gpu, &params);
-            if (!wrapped) return false;
+            if (!wrapped) return failed();
         }
-        else if (!pl_swapchain_start_frame(swapchain, &acquired)) return false;
+        else if (!pl_swapchain_start_frame(swapchain, &acquired)) return failed();
         const bool compatible = displayFrameCache.CopyTo(acquired.fbo);
         if (!compatible && !vpOwnedSwapchain)
         {
@@ -20055,12 +20096,11 @@ releaseDriftBaseRetention =
             pl_gpu_flush(d3d11->gpu);
             pl_tex_destroy(d3d11->gpu, &wrapped);
             backbuffer.Release();
-            submitted = compatible && vpOwnedSwapchain->Present(1, 0) == S_OK;
+            submitted = compatible && PresentNativeChecked(vpOwnedSwapchain);
         }
         else
         {
-            submitted = pl_swapchain_submit_frame(swapchain);
-            if (submitted) pl_swapchain_swap_buffers(swapchain);
+            submitted = SubmitLibplaceboFrameChecked();
         }
         if (!compatible || !submitted)
         {
@@ -20081,11 +20121,11 @@ releaseDriftBaseRetention =
         QueryPerformanceFrequency(&frequency);
         record.swapBlockMs = frequency.QuadPart > 0 ?
             (PerformanceCounterNow() - started) * 1000.0 / frequency.QuadPart : 0.0;
+        displayVsyncClock.Submitted();
         ObservePresent(record);
         ++successfulPresentCount;
         ++renderLoadSubmissionSerial;
         ++displayRefreshRepeats;
-        displayVsyncClock.Submitted();
         lastFramePacingSubmitQpc = started;
         // A repeat carries no fresh source/queue timing observation.
         lastFramePacingStatsAvailable = false;
@@ -20093,9 +20133,10 @@ releaseDriftBaseRetention =
         if (now >= nextDisplayRefreshLogTick)
         {
             nextDisplayRefreshLogTick = now + 2000;
-            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu source_analysis=unchanged",
+            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu feedback=%d pts_fallback=%d source_analysis=unchanged",
                 renderLoadDisplayRefreshHz.load(), displayRefreshRepeats,
-                displayRefreshDrops, record.generation, record.sourceSequence);
+                displayRefreshDrops, record.generation, record.sourceSequence,
+                displayVsyncClock.HasFeedback()?1:0,displaySourceClock.Synthetic()?1:0);
         }
         return true;
     }
@@ -24026,8 +24067,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                     output.displayRepeatRevision !=
                         output.startupReadinessRevision.load(std::memory_order_acquire);
             };
-            if (output.activeSettings.presentEveryVsync && output.displayRepeatValid &&
-                !output.temporalRenderer.Active())
+            if (output.activeSettings.presentEveryVsync && output.displayRepeatValid)
             {
                 std::unique_lock<std::mutex> queueGuard(m_queueMutex);
                 auto currentOutput = [&]() {
@@ -24042,16 +24082,19 @@ void LibplaceboVideoRenderer::RenderLoop()
                 auto pts = [&](const QueuedFrame& queued) {
                     const auto frequency = m_timingClock ? m_timingClock->TimingClockTicksPerSecond() : 0;
                     const double rate = m_measuredFrameRate.load();
-                    return frequency > 0 ? static_cast<double>(queued.frame.GetTimingTimestamp()) / frequency :
-                        rate > 0.0 ? queued.sourceSequence / rate :
-                        std::numeric_limits<double>::quiet_NaN();
+                    const double raw = frequency > 0 ?
+                        static_cast<double>(queued.frame.GetTimingTimestamp()) / frequency : NAN;
+                    const double selected = output.displaySourceClock.Preview(
+                        raw, queued.sourceSequence, rate, m_queueGeneration);
+                    return selected - (output.temporalRenderer.Active() ?
+                        output.temporalRenderer.DelayMs() / 1000.0 : 0.0);
                 };
                 if (!m_frameQueue.empty() &&
-                    std::isfinite(pts(m_frameQueue.front())) &&
-                    std::abs(pts(m_frameQueue.front()) - output.displayVsyncClock.SourcePts()) > 0.5)
+                    (!std::isfinite(pts(m_frameQueue.front())) ||
+                     std::abs(pts(m_frameQueue.front()) - output.displayVsyncClock.SourcePts()) > 0.5))
                 {
-                    // Timestamp jumps without an explicit discontinuity flag
-                    // must not hold an old image until a distant future PTS.
+                    // Unknown timing and unflagged jumps must fall back to the
+                    // source path, not starve capture behind an old cached image.
                     output.displayRepeatValid = false;
                     output.displayVsyncClock.Reset();
                 }
@@ -24082,7 +24125,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                     if (!sourceDue())
                     {
                         queueGuard.unlock();
-                        output.PaceDisplayPresentation();
+                        output.displayVsyncClock.SkipMissed(SteadyClockNowNs());
                         queueGuard.lock();
                         // Reset/stop and a newly ready source can arrive during
                         // pacing. Recheck before acquiring any backbuffer.
@@ -24775,9 +24818,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 			if (!staleGeneration)
 			{
-                const double sourcePts=m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
-                    static_cast<double>(frame.GetTimingTimestamp())/m_timingClock->TimingClockTicksPerSecond():
-                    static_cast<double>(sourceSequence)/captureRateHz;
+                const double rawSourcePts=m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
+                    static_cast<double>(frame.GetTimingTimestamp())/m_timingClock->TimingClockTicksPerSecond():NAN;
+                const double sourcePts=m_impl->activeSettings.presentEveryVsync ?
+                    m_impl->displaySourceClock.Accept(rawSourcePts,sourceSequence,captureRateHz,
+                        frameGeneration,frame.IsSourceDiscontinuity()) :
+                    (std::isfinite(rawSourcePts)?rawSourcePts:static_cast<double>(sourceSequence)/captureRateHz);
                 const auto sourceSubtitleMode=m_impl->CurrentSubtitlePreviewMode();
                 const bool sourceSubtitleComposition=sourceSubtitleMode==SubtitlePreviewMode::BlackBackground ||
                     sourceSubtitleMode==SubtitlePreviewMode::GeneratedGrayBackground;
@@ -24788,9 +24834,11 @@ void LibplaceboVideoRenderer::RenderLoop()
                     state&&state->displayMode&&state->displayMode->IsInterlaced(),
                     state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
                     temporalCaptureEpoch,sourceSequence,sourcePts,frame.IsSourceDiscontinuity(),
-                    sourceSubtitleComposition,cadenceRepeat,m_impl->activeSettings.presentEveryVsync);
-                if (m_impl->activeSettings.presentEveryVsync && !m_impl->temporalRenderer.Active())
-                    m_impl->displayVsyncClock.BeginSource(sourcePts, SteadyClockNowNs(),
+                    sourceSubtitleComposition,cadenceRepeat);
+                if (m_impl->activeSettings.presentEveryVsync)
+                    m_impl->displayVsyncClock.BeginSource(
+                        m_impl->temporalRenderer.Active() && !m_impl->temporalRenderer.outputs.empty() ?
+                            m_impl->temporalRenderer.outputs.front() : sourcePts, SteadyClockNowNs(),
                         frameGeneration, m_impl->renderLoadDisplayRefreshHz.load(),
                         frame.IsSourceDiscontinuity());
                 else
@@ -24802,8 +24850,28 @@ void LibplaceboVideoRenderer::RenderLoop()
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 SourceUploadBatch sourceUploadBatch;
                 ActivePictureMeasurementCache pixelMeasurements(motionDraws > 1);
+                size_t renderedMotionDraws=0;
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
                     if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
+                    if (m_impl->displayVsyncClock.Active() && !motionOutputs.empty()) {
+                        m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
+                        // Retire obsolete temporal output slots after a stall,
+                        // retaining the newest due one instead of catch-up draws.
+                        if (motionDraw+1 < motionOutputs.size() &&
+                            m_impl->displayVsyncClock.SourceDue(motionOutputs[motionDraw+1])) continue;
+                        while (m_impl->displayRepeatValid &&
+                            !m_impl->displayVsyncClock.SourceDue(motionOutputs[motionDraw])) {
+                            {
+                                std::lock_guard<std::mutex> slotGuard(m_queueMutex);
+                                if (m_stopRequested || frameGeneration != m_queueGeneration) {
+                                    staleGeneration=true; break;
+                                }
+                            }
+                            if (!m_impl->PresentDisplayRepeat()) break;
+                            m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
+                        }
+                        if (staleGeneration) break;
+                    }
                 const uint64_t beforeSubmission=m_impl->renderLoadSubmissionSerial;
 				rendered = state && m_impl->RenderLocked(
 					frame,
@@ -24826,7 +24894,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					desiredQueueDepth,
 					oldestQueuedAgeMs,
 					preRenderTimings,
-					cadenceRepeat || motionDraw>0,
+					cadenceRepeat || renderedMotionDraws>0,
 					captureRateHz,
                     m_timingClock && m_timingClock->TimingClockTicksPerSecond()>0 ?
                         static_cast<uint64_t>(m_timingClock->TimingClockTicksPerSecond()):0,
@@ -24840,9 +24908,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_sceneDetectionStatus,
 					correctionDecision,
 					presentationTargetTimingKnown,
-					presentationTargetLeadMs,sourceSubtitleMode,motionDraw>0,
+					presentationTargetLeadMs,sourceSubtitleMode,renderedMotionDraws>0,
                     subtitleBacklogRetirementOnly,backlogTemplateIdentity,
                     sourceUploadBatch, pixelMeasurements);
+                    ++renderedMotionDraws;
                     actuallySubmitted=actuallySubmitted || m_impl->renderLoadSubmissionSerial>beforeSubmission;
                     if(!rendered)break;
                     std::lock_guard<std::mutex> motionQueueGuard(m_queueMutex);

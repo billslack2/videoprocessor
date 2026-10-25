@@ -63,6 +63,82 @@ namespace Tests
             }
             Assert::AreEqual(10000.0 / 60.0, clock.SourcePts(), 1e-9);
         }
+        TEST_METHOD(BrokenSourceTimestampsUseOneAnchoredDomainForPeekAndAccept)
+        {
+            DisplaySourceClock source;
+            Assert::AreEqual(10.0,source.Accept(10.0,100,24,1,false),1e-9);
+            const double peek=source.Preview(10.0,101,24,1);
+            Assert::AreEqual(10.0+1.0/24,peek,1e-9);
+            Assert::AreEqual(peek,source.Accept(10.0,101,24,1,false),1e-9);
+            Assert::IsTrue(source.Synthetic());
+            Assert::AreEqual(10.0+2.0/24,source.Accept(1.0,102,24,1,false),1e-9);
+            Assert::AreEqual(10.0+3.0/24,source.Accept(200.0,103,24,1,false),1e-9);
+            Assert::AreEqual(2.0,source.Accept(2.0,1,24,2,false),1e-9);
+            Assert::IsFalse(source.Synthetic());
+        }
+        TEST_METHOD(MissingTimestampsAndCadenceRepeatsShareTheSameFallback)
+        {
+            DisplaySourceClock source;
+            Assert::AreEqual(4.0,source.Accept(NAN,96,24,1,false),1e-9);
+            Assert::AreEqual(4.0,source.Preview(NAN,96,24,1),1e-9);
+            const double next=source.Preview(NAN,97,24,1);
+            Assert::AreEqual(4.0+1.0/24,next,1e-9);
+            Assert::AreEqual(next,source.Accept(NAN,97,24,1,false),1e-9);
+            Assert::AreEqual(0.0,source.Accept(0.0,0,24,1,true),1e-9);
+        }
+        TEST_METHOD(HealthySourceClockKeepsActualDriftAndRejectsBackwardJitter)
+        {
+            DisplaySourceClock source;
+            source.Accept(1.0,1,60,1,false);
+            Assert::AreEqual(1.0+1.0/59.94,source.Accept(1.0+1.0/59.94,2,60,1,false),1e-9);
+            Assert::IsFalse(source.Synthetic());
+            const double previous=1.0+1.0/59.94;
+            Assert::AreEqual(previous+1.0/60,source.Accept(previous-1e-6,3,60,1,false),1e-9);
+            Assert::IsTrue(source.Synthetic());
+        }
+        TEST_METHOD(HighRefreshRepeatsNominalFieldPicturesWithoutExtraTemporalWork)
+        {
+            DisplayVsyncClock clock;
+            clock.BeginSource(0.0,1000000000,1,360,false);
+            int slots=0;
+            while(!clock.SourceDue(1.0/40)) { ++slots; clock.Submitted(); }
+            Assert::AreEqual(9,slots);
+            Assert::AreEqual(1.0/40,clock.SourcePts(),1e-9);
+        }
+        TEST_METHOD(FractionalFilmRatesKeepCadenceWithoutRetimingToDisplay)
+        {
+            for(double hz:{119.88,120.0}) {
+                DisplayVsyncClock clock;
+                clock.BeginSource(0,1000000000,1,hz,false);
+                int slots=0;
+                for(int source=1;source<=23976;++source)
+                    while(!clock.SourceDue(source/23.976)) { clock.Submitted(); ++slots; }
+                Assert::AreEqual(hz==120.0?120000:119880,slots);
+            }
+        }
+        TEST_METHOD(FeedbackRequiresStableSamplesAndAccountsForQueuedLead)
+        {
+            DisplayVsyncClock clock;
+            clock.BeginSource(0,1000000000,1,100,false);
+            clock.Submitted();
+            Assert::IsFalse(clock.ObserveQueueTail(10,9,90,90,1000000000,1000000000,1000000000,2));
+            clock.Submitted();
+            Assert::IsFalse(clock.ObserveQueueTail(11,10,91,91,1010000000,1010000000,1010000000,2));
+            clock.Submitted();
+            Assert::IsTrue(clock.ObserveQueueTail(12,11,92,92,1020000000,1020000000,1020000000,2));
+            Assert::IsTrue(clock.HasFeedback());
+            Assert::AreEqual(int64_t(1040000000),clock.DeadlineNs());
+            clock.SkipMissed(1030000000);
+            Assert::AreEqual(0.03,clock.SourcePts(),1e-9);
+            Assert::IsFalse(clock.ObserveQueueTail(30,11,92,92,1020000000,1020000000,1020000000,2));
+            clock.InvalidateFeedback(); Assert::IsFalse(clock.HasFeedback());
+        }
+        TEST_METHOD(NonfiniteTimestampCannotDrainAnActiveSlotClock)
+        {
+            DisplayVsyncClock clock;
+            clock.BeginSource(1.0,1000000000,1,60,false);
+            Assert::IsFalse(clock.SourceDue(NAN));
+        }
         TEST_METHOD(UnknownOrInvalidRefreshDisablesTheClock)
         {
             DisplayVsyncClock clock;

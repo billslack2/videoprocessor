@@ -8,6 +8,7 @@
 #include "CalibrationProfileMigration.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
+#include "PresentationConfig.h"
 #include "RendererConfigView.h"
 #include "DisplayRuleExpression.h"
 #include "AspectRatio.h"
@@ -1274,14 +1275,7 @@ namespace RendererProfileConfig
 			return false;
 		}
 
-        std::string refreshPresentationText;
-        bool refreshPresentation = false;
-        if (config.TryGetString("general", "present_every_vsync", refreshPresentationText) &&
-            !config.TryGetBool("general", "present_every_vsync", refreshPresentation))
-        {
-            error = "general present_every_vsync must be true or false";
-            return false;
-        }
+        if (!PresentationConfig::Validate(config, error)) return false;
 
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
@@ -1897,14 +1891,7 @@ namespace RendererProfileConfig
 			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
-        std::string refreshPresentationText;
-        bool refreshPresentation = false;
-        if (config.TryGetString("general", "present_every_vsync", refreshPresentationText) &&
-            !config.TryGetBool("general", "present_every_vsync", refreshPresentation))
-        {
-            error = "general present_every_vsync must be true or false";
-            return false;
-        }
+        if (!PresentationConfig::Validate(config, error)) return false;
 
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
@@ -1956,6 +1943,7 @@ namespace RendererProfileConfig
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
 			ConfigSchema::Boolean("persist_profile_selection"),
 			ConfigSchema::Boolean("present_every_vsync"),
+            ConfigSchema::Integer("presentation_queue_depth", 1, PresentationConfig::MaximumDepth),
 			ConfigSchema::Choice("profile_update_mode",
 				{ "rebuild", "live", "never" }),
 			ConfigSchema::Boolean("live_profile_updates"),
