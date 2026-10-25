@@ -1,0 +1,98 @@
+VP-0213 initial investigation, 2026-10-25 (America/New_York)
+
+Scope and conclusion
+The report is a confirmed final-presentation oscillation in Off, not merely
+measurement jitter. The regression-introducing commit is unknown. A repair
+has not been implemented or validated. This investigation distinguishes the
+confirmed log facts from the source-level hypothesis below.
+
+Pinned source and runtime
+GitHub repository: billslack2/videoprocessor
+Current beta/default queried: v1.4.02-beta
+Fetched beta: 8c4537462bbabd6ce07ba3e9ffd9be9bc8745492
+Source worktree: E:\codex\videoprocessor\subtitles-off-zoom-hold-20261025
+Branch: codex/subtitles-off-zoom-hold-20261025
+Incident host and renderer: 3520e71396a3c20112e4b18c67258052af34e0e0
+The relevant crop-policy files are unchanged between incident and fetched beta.
+
+Confirmed incident facts (see incident.log)
+10:42:33: subtitles=off selected.
+10:50:35: subtitles=classic selected.
+10:50:21, sequences 18851-18856: current fit evidence ends at 1974.
+Final source crop bottom: 1974, 2068, 1974, 2068, 1974, 1974.
+Layout changes report 31/47 ms intervals on adjacent source frames.
+Submitted packets for 18851-18855 also alternate 1974/2068; temporal mixing=1.
+Target left/right margins change from 51.11 to 115.43 pixels, so the picture
+size changes visibly. This is not only a candidate or diagnostic change.
+The native picture reference remains around 0,272-3840,1888.
+The larger recovery result appears despite fit_evidence_rect remaining
+0,272-3840,1974. Some final decisions still cite bounded current fit; others
+cite uncertain-picture/submitted-AR recovery followed by preserved envelope.
+The user separately confirms bar content can remain visible during bouncing.
+No source video pixels were captured, so the excerpt alone cannot identify
+exact subtitle/menu pixels or prove their continuous visual presence.
+
+Hold semantics
+RendererProfileConfig::ResolveOffZoomHoldMs parses Off's independent timer
+with default 2000 ms. Off and Classic have separate settings/behavior.
+Hold is release hysteresis after content disappears, not a substitute for
+stable final fit ownership while content is still visible.
+A settings log printed during live profile switching can describe the prior
+settings; its subtitle_fit value alone does not prove Off enabled Classic.
+That initial interpretation was corrected during the original investigation.
+
+Production source trace (beta 8c453746)
+1. LoadRendererSettings resolves Off type/mode and its independent hold.
+2. SelectVerticalBarContentPresentation and ConfirmVerticalFit allow immediate
+   measured Off fit without Classic's overlay-shape/translation confirmation.
+3. BuildComposedPresentationEnvelope can use measured Off extents independent
+   of coarse native-AR history (already fixed by 6608b736).
+4. UpdateVerticalBarPresentation and presentation-envelope history retain
+   visible extents with source/generation/timer state.
+5. The separate generic fit-hold route requires expansion on BOTH top and
+   bottom. It is not the main one-edge measured Off FIT hold route. Do not
+   infer that adding a test for this helper covers the incident.
+6. Admission and recovery then qualify fit ownership, run
+   EvaluatePresentationRecovery, and eventually call
+   ResolveUncertainPicturePresentation. Unconfirmed vertical FIT can enter
+   that latter path. It can include submittedScopeAnchor.submittedEnvelope
+   and replace the proposed rectangle with the retained larger extent.
+7. EvaluateFinalAspectLimitFill preserves retained/recovery envelopes, which
+   affects final fitted output. Successful submission subsequently commits
+   a submitted-envelope anchor. Temporal source selection means the output
+   committed now may describe an earlier source than the one being analyzed.
+
+Strong working hypothesis (not yet a proven minimal root cause)
+Measured Off fit and retained successful-output envelope can take turns
+controlling final geometry. Timer retention upstream does not prevent a
+later uncertain-picture decision from restoring the prior 2068 envelope,
+then a later confirmed current fit reducing it to 1974. Source/output lag
+may feed that old rectangle back into subsequent decisions. The evidence
+localizes the bug after measurement; it does not yet prove exactly which
+confirmation flag or selected-output state update first becomes inconsistent.
+
+Existing coverage and missing reproduction
+ActivePictureMeasurementCacheTests.cpp:
+ScrubLineAndSeparatedTimeLabelsOwnCompleteBoundedOffFitAndReleaseHold
+uses real synthetic P010 pixels and checks sparse line/label measurement,
+Off immediate fit, bounds composition, isolated confirmed ownership, and
+UpdateVerticalBarPresentation hold at 2999/3001 ms after 1000 ms detection.
+It does not execute final recovery, source/output temporal selection, and
+successful output commit as a multi-frame incident replay. Isolated passing
+hold checks therefore cannot establish absence of the observed feedback.
+
+Next bounded experiment
+Replay stable native picture plus stable current one-edge fit at 1974,
+seed successful submitted envelope 2068, alternate current/uncertain native
+measurements, and exercise the actual production decision order and committed
+selected output. Assert final output never alternates, at hold 0 and 2000.
+Then remove/reintroduce content around exact release boundaries; repeated
+output without new source evidence must not refresh detection lifetime.
+Cover top/bottom/side/multiple bars, real picture AR transitions, full raster,
+source/profile resets, output lag/repetition, and Classic/reconstruction
+regressions. A larger genuinely visible extent must always remain visible.
+
+Validation performed
+Read-only deployed-log and pinned-source trace; compared relevant policy
+files and inspected existing tests. No production source edits, test execution,
+new build, deployment, active-config edit, or live playback intervention.

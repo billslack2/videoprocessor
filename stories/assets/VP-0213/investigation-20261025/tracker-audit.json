@@ -1,0 +1,1080 @@
+{
+  "FileCount": 232,
+  "RowCount": 232,
+  "MaxRoot": 213,
+  "RegistryLast": 213,
+  "RegistryNext": 214,
+  "RegistryTotal": 232,
+  "RegistryMatches": true,
+  "DuplicateFiles": [],
+  "DuplicateRows": [],
+  "MissingRows": [],
+  "MissingFiles": [],
+  "ChildIssues": [],
+  "FolderIndexIssues": [
+    {
+      "Id": "VP-0168",
+      "Expected": "In Progress",
+      "Index": "In progress"
+    }
+  ],
+  "ExactStatusFormattingIssues": [
+    {
+      "Id": "VP-0032",
+      "Expected": "Review",
+      "Status": "Review — implemented and merged into beta and DV2; requested build/configuration checks passed. Awaiting user review of controls."
+    },
+    {
+      "Id": "VP-0033",
+      "Expected": "Review",
+      "Status": "Review (2026-10-21). [PR #179](https://github.com/billslack2/videoprocessor/pull/179) merged into current remote beta `v1.4.02-beta` at `3547f9e996ef15df97a562f64755fa1d1be9ed26`, preserving the tested local display/subtitle/AR changes along with source-rate picture processing, input-cadence analysis, OSD reporting and the letterbox GPU-clear fix. The merged source tree is identical to the installed and tested `30a7f941ee2e4dfe5c5d28718841de7519920b11` build. Standard deployment at `C:\\Videoprocessor\\vp` remains running; no further deployment or restart was needed for this merge. Live 23.976 -> 59.951 Hz oversample with synchronized subtitles had no validation errors or backlog-drop events during the recorded sustained interval; the user reported improved playback and authorized merging. Prior 872 targeted native checks, twelve final dual-runtime GPU regressions, Release build/deployment and remaining isolated Off-mode stall evidence are recorded below. Broader visual/general-release acceptance remains separate."
+    },
+    {
+      "Id": "VP-0140",
+      "Expected": "Review",
+      "Status": "Review (2026-10-16). NLS and subtitle activation fixes are implemented and built in"
+    },
+    {
+      "Id": "VP-0177",
+      "Expected": "Review",
+      "Status": "Review (2026-09-10). Rebased commit `04d3988c` is built, tested, pushed and"
+    },
+    {
+      "Id": "VP-0193",
+      "Expected": "Review",
+      "Status": "Review (2026-09-23). Implementation committed and pushed as"
+    },
+    {
+      "Id": "VP-0194",
+      "Expected": "Review",
+      "Status": "Review (2026-09-30). User confirmed the live OSD feature looks good."
+    },
+    {
+      "Id": "VP-0195",
+      "Expected": "Review",
+      "Status": "Review (2026-10-01). Implemented and pushed as `8d49537e` on"
+    },
+    {
+      "Id": "VP-0201",
+      "Expected": "Review",
+      "Status": "Review (2026-10-23). User-authorized [PR #188](https://github.com/billslack2/videoprocessor/pull/188) merged into `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8` after retesting against current beta `fcc33fc9`. The exact integration head `5d3db5f230b05dab3e0b8e1a7b59218ff81c9a80` passed a full x64 Release solution build, all 1,563 targeted native tests and two Config saved-profile checks; the fetched merge tree is identical. Live startup/subtitle playback acceptance remains unreported. Prior deployment `05e59c91` is recorded below; no deployment or configuration changes were made by this merge request."
+    },
+    {
+      "Id": "VP-0010",
+      "Expected": "Blocked",
+      "Status": "Blocked — the remaining real-source BAR_OCR behavior is not yet understood"
+    },
+    {
+      "Id": "VP-0061",
+      "Expected": "Blocked",
+      "Status": "Blocked."
+    },
+    {
+      "Id": "VP-0070",
+      "Expected": "Blocked",
+      "Status": ""
+    },
+    {
+      "Id": "VP-0070-1",
+      "Expected": "Blocked",
+      "Status": "Blocked (2026-09-25). Keep the feature blocked for live validation, as requested."
+    },
+    {
+      "Id": "VP-0070-2",
+      "Expected": "Blocked",
+      "Status": "Blocked 2026-08-08. Depends on an accepted rebuilt VP-0070-1 detector contract."
+    },
+    {
+      "Id": "VP-0070-3",
+      "Expected": "Blocked",
+      "Status": "Blocked 2026-08-08. Depends on an accepted VP-0070-2 diagnostic contract and"
+    },
+    {
+      "Id": "VP-0070-4",
+      "Expected": "Blocked",
+      "Status": "Blocked 2026-08-08. Depends on an accepted VP-0070-3 treatment path. Resume"
+    },
+    {
+      "Id": "VP-0070-5",
+      "Expected": "Blocked",
+      "Status": "Blocked 2026-08-08. This task supersedes VP-0066-5 and keeps the substantial"
+    },
+    {
+      "Id": "VP-0084",
+      "Expected": "Blocked",
+      "Status": "Blocked. Reason: its hard."
+    },
+    {
+      "Id": "VP-0087",
+      "Expected": "Blocked",
+      "Status": "Blocked (2026-08-04). VP-managed whole-picture subtitle-fit repositioning for"
+    },
+    {
+      "Id": "VP-0001",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0002",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0003",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0004",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0009",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02)."
+    },
+    {
+      "Id": "VP-0011",
+      "Expected": "Done",
+      "Status": "Done 2026-07-27. VP-0011 and VP-0012 merged through"
+    },
+    {
+      "Id": "VP-0012",
+      "Expected": "Done",
+      "Status": "Done 2026-07-27. The spike selected target-frame calibration with"
+    },
+    {
+      "Id": "VP-0013",
+      "Expected": "Done",
+      "Status": "Done. Accepted July 25, 2026 after successful live-HDMI validation on"
+    },
+    {
+      "Id": "VP-0015",
+      "Expected": "Done",
+      "Status": "Done. Accepted on 2026-07-29 after the merged and deployed implementation was"
+    },
+    {
+      "Id": "VP-0018",
+      "Expected": "Done",
+      "Status": "Done. Accepted 2026-07-25 after user validation confirmed the renderer-switch"
+    },
+    {
+      "Id": "VP-0019",
+      "Expected": "Done",
+      "Status": "Done — accepted and deliberately released from `v1.1.014-beta` on"
+    },
+    {
+      "Id": "VP-0020",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02)."
+    },
+    {
+      "Id": "VP-0023",
+      "Expected": "Done",
+      "Status": "Done 2026-08-02. Merged and pushed to `v1.1.015-beta` at `44e3099`"
+    },
+    {
+      "Id": "VP-0024",
+      "Expected": "Done",
+      "Status": "Done. Accepted July 27, 2026. The bounded, generation-safe telemetry"
+    },
+    {
+      "Id": "VP-0025",
+      "Expected": "Done",
+      "Status": "Done. Accepted July 27, 2026. The implementation is merged into"
+    },
+    {
+      "Id": "VP-0026",
+      "Expected": "Done",
+      "Status": "Done. Merged as [PR #7](https://github.com/billslack2/videoprocessor/pull/7)"
+    },
+    {
+      "Id": "VP-0027",
+      "Expected": "Done",
+      "Status": "Done. Accepted July 27, 2026. The fail-closed Alpha-native correction policy"
+    },
+    {
+      "Id": "VP-0028",
+      "Expected": "Done",
+      "Status": "Done as of 2026-07-27. PR #9 merged the rebased implementation into"
+    },
+    {
+      "Id": "VP-0030",
+      "Expected": "Done",
+      "Status": "Done. Implemented by commit `e016e1f` and merged into the default"
+    },
+    {
+      "Id": "VP-0031",
+      "Expected": "Done",
+      "Status": "Done. Implemented by commit `e016e1f` and merged into the default"
+    },
+    {
+      "Id": "VP-0034",
+      "Expected": "Done",
+      "Status": "Done as of 2026-07-28. VP-0035's robust low-latency active-aspect transition"
+    },
+    {
+      "Id": "VP-0035",
+      "Expected": "Done",
+      "Status": "Done as of 2026-07-28 as part of VP-0034. Pull request"
+    },
+    {
+      "Id": "VP-0036",
+      "Expected": "Done",
+      "Status": "Done on 2026-07-27. Merged as VideoProcessor PR #11, commit"
+    },
+    {
+      "Id": "VP-0037",
+      "Expected": "Done",
+      "Status": "Done. The user accepted the deployed Release build on 2026-07-28 after live"
+    },
+    {
+      "Id": "VP-0038",
+      "Expected": "Done",
+      "Status": "Done as of 2026-07-28. Software implementation, automated verification,"
+    },
+    {
+      "Id": "VP-0039",
+      "Expected": "Done",
+      "Status": "Done. Accepted July 28, 2026 against the Alpha renderer. The liveness,"
+    },
+    {
+      "Id": "VP-0040",
+      "Expected": "Done",
+      "Status": "Done as of 2026-07-28. The implementation was developed in the isolated"
+    },
+    {
+      "Id": "VP-0041",
+      "Expected": "Done",
+      "Status": "Done. Final recovery hardening merged into the default integration branch"
+    },
+    {
+      "Id": "VP-0042",
+      "Expected": "Done",
+      "Status": "Done. Merged to `v1.1.014-beta` as commit `0954731`."
+    },
+    {
+      "Id": "VP-0043",
+      "Expected": "Done",
+      "Status": "Done. Merged to `v1.1.014-beta` by"
+    },
+    {
+      "Id": "VP-0044",
+      "Expected": "Done",
+      "Status": "Done. The tested implementation was fast-forwarded into"
+    },
+    {
+      "Id": "VP-0045",
+      "Expected": "Done",
+      "Status": "Done. Implemented and merged on 2026-07-28 from confirmed integration base"
+    },
+    {
+      "Id": "VP-0049",
+      "Expected": "Done",
+      "Status": "Done. Merged into `v1.1.014-beta` through PR #24 as `b7e5645` on"
+    },
+    {
+      "Id": "VP-0050",
+      "Expected": "Done",
+      "Status": "Done. Merged into `v1.1.014-beta` as `b2247df` on 2026-07-28."
+    },
+    {
+      "Id": "VP-0052",
+      "Expected": "Done",
+      "Status": "Done. Merged into `v1.1.014-beta` as `e5b463f` on 2026-07-28."
+    },
+    {
+      "Id": "VP-0054",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0055",
+      "Expected": "Done",
+      "Status": "Done."
+    },
+    {
+      "Id": "VP-0057",
+      "Expected": "Done",
+      "Status": "Done. Accepted on 2026-07-29. The configured Alpha queue limit is enforced in"
+    },
+    {
+      "Id": "VP-0060",
+      "Expected": "Done",
+      "Status": "Done 2026-07-29. User validation found the fast path materially faster while"
+    },
+    {
+      "Id": "VP-0062",
+      "Expected": "Done",
+      "Status": "Done (2026-07-29). This focused NLS detector/usability follow-up to VP-0040"
+    },
+    {
+      "Id": "VP-0064",
+      "Expected": "Done",
+      "Status": "Done. Implemented on 2026-07-29 in commit `9eafcfe` on"
+    },
+    {
+      "Id": "VP-0065",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). Alpha renderer retirement explicitly joins its render"
+    },
+    {
+      "Id": "VP-0066",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). The tested implementation is committed as `f4a443e`"
+    },
+    {
+      "Id": "VP-0066-1",
+      "Expected": "Done",
+      "Status": "Done (2026-07-30). Accepted for extraction. This task establishes the"
+    },
+    {
+      "Id": "VP-0066-2",
+      "Expected": "Done",
+      "Status": "Done (2026-07-30). VP-0066-1's self-identifying baseline is accepted for"
+    },
+    {
+      "Id": "VP-0066-3",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). The transport and processor extraction is included in"
+    },
+    {
+      "Id": "VP-0066-4",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). The DirectShow delivery and lifecycle integration is"
+    },
+    {
+      "Id": "VP-0066-6",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). The final output-readiness, renderer-observation, and"
+    },
+    {
+      "Id": "VP-0066-9",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). Fresh-epoch VP queue convergence is included in stable"
+    },
+    {
+      "Id": "VP-0069",
+      "Expected": "Done",
+      "Status": "Done. Accepted 2026-08-02 as the completed VP-0069 native Alpha ingress and"
+    },
+    {
+      "Id": "VP-0069-1",
+      "Expected": "Done",
+      "Status": "Done. Parent: VP-0069. Accepted 2026-08-02 after visual Alpha validation."
+    },
+    {
+      "Id": "VP-0071",
+      "Expected": "Done",
+      "Status": "Done. Implemented in `billslack2/videoprocessor` integration branch"
+    },
+    {
+      "Id": "VP-0072",
+      "Expected": "Done",
+      "Status": "Done (2026-08-15). Merged to `v1.2.001-beta` as `e5761c5`."
+    },
+    {
+      "Id": "VP-0073",
+      "Expected": "Done",
+      "Status": "Done. Accepted by the user after live Alpha/madVR handoff testing and merged"
+    },
+    {
+      "Id": "VP-0074",
+      "Expected": "Done",
+      "Status": "Done. The implementation was live-validated by the user as working perfectly"
+    },
+    {
+      "Id": "VP-0075",
+      "Expected": "Done",
+      "Status": "Done (2026-08-02). Merged by PR #31 to `v1.1.015-beta` as `8b8d900` after a"
+    },
+    {
+      "Id": "VP-0077",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0078",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0079",
+      "Expected": "Done",
+      "Status": "Done. Started 2026-08-02; implementation merged 2026-08-03 in"
+    },
+    {
+      "Id": "VP-0080",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0082",
+      "Expected": "Done",
+      "Status": "Done. The Alpha implementation was merged into `v1.1.015-beta` through"
+    },
+    {
+      "Id": "VP-0083",
+      "Expected": "Done",
+      "Status": "Done. Integrated into `v1.1.015-beta` on 2026-08-04 as merge commit"
+    },
+    {
+      "Id": "VP-0086",
+      "Expected": "Done",
+      "Status": "Done — 2026-08-05."
+    },
+    {
+      "Id": "VP-0089",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The implementation from"
+    },
+    {
+      "Id": "VP-0091",
+      "Expected": "Done",
+      "Status": "Done (2026-08-05). The DirectShow Filter Mapper discovers several Windows"
+    },
+    {
+      "Id": "VP-0093",
+      "Expected": "Done",
+      "Status": "Done (2026-08-05). The repair is merged and deployed; final projector use"
+    },
+    {
+      "Id": "VP-0094",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0095",
+      "Expected": "Done",
+      "Status": "Done (2026-08-17). The baseline implementation merged on"
+    },
+    {
+      "Id": "VP-0096",
+      "Expected": "Done",
+      "Status": "Done (2026-08-17). Test-first range and routing analysis was completed on"
+    },
+    {
+      "Id": "VP-0097",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0098",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). User-directed closure after confirming that"
+    },
+    {
+      "Id": "VP-0099",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The seven VP-0099 commits were"
+    },
+    {
+      "Id": "VP-0102",
+      "Expected": "Done",
+      "Status": "Done on 2026-08-09. The Modern operator interface was completed in `0d9e32b`,"
+    },
+    {
+      "Id": "VP-0103",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The original vertical-alignment"
+    },
+    {
+      "Id": "VP-0104",
+      "Expected": "Done",
+      "Status": "Done (2026-08-09). The initial Alpha-side repair in `0d2b7db` correctly used"
+    },
+    {
+      "Id": "VP-0105",
+      "Expected": "Done",
+      "Status": "Done (2026-08-09). Implemented on `codex/vp-0105-toggle-noui` as commit"
+    },
+    {
+      "Id": "VP-0106",
+      "Expected": "Done",
+      "Status": "Done (2026-08-09)."
+    },
+    {
+      "Id": "VP-0107",
+      "Expected": "Done",
+      "Status": "Done (2026-08-11). Operator testing approved the release layout, and PR #59"
+    },
+    {
+      "Id": "VP-0110",
+      "Expected": "Done",
+      "Status": "Done on 2026-08-10. The developer accepted the final deployed behavior after"
+    },
+    {
+      "Id": "VP-0112",
+      "Expected": "Done",
+      "Status": "Done (2026-08-10). Implementation started on"
+    },
+    {
+      "Id": "VP-0113",
+      "Expected": "Done",
+      "Status": "Done (2026-08-17). Implementation began after the developer confirmed"
+    },
+    {
+      "Id": "VP-0116",
+      "Expected": "Done",
+      "Status": "Done. Merged into `v1.2.001-beta` as `8e0ea86` on 2026-08-11 after operator"
+    },
+    {
+      "Id": "VP-0117",
+      "Expected": "Done",
+      "Status": "Done. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on"
+    },
+    {
+      "Id": "VP-0118",
+      "Expected": "Done",
+      "Status": "Done. Reproduced on deployed `v1.2.001-beta` commit `b2e1956`"
+    },
+    {
+      "Id": "VP-0119",
+      "Expected": "Done",
+      "Status": "Done (2026-08-11). Implemented in `faaff88` and merged to the default"
+    },
+    {
+      "Id": "VP-0121",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0122",
+      "Expected": "Done",
+      "Status": "Done (2026-08-12). Commits `dcd2588`, `46aa1e5`, and `3956115`"
+    },
+    {
+      "Id": "VP-0123",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The implementation from"
+    },
+    {
+      "Id": "VP-0125",
+      "Expected": "Done",
+      "Status": "Done (2026-08-14). The VP-owned DXGI output experiments and active SDR/HDR"
+    },
+    {
+      "Id": "VP-0127",
+      "Expected": "Done",
+      "Status": "Done (2026-08-13). Merged into `origin/v1.2.001-beta` as merge commit"
+    },
+    {
+      "Id": "VP-0128",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). The user authorized deployment and final check-in."
+    },
+    {
+      "Id": "VP-0129",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The user authorized implementation"
+    },
+    {
+      "Id": "VP-0130",
+      "Expected": "Done",
+      "Status": "Done (2026-08-15). Merged by"
+    },
+    {
+      "Id": "VP-0131",
+      "Expected": "Done",
+      "Status": "Done (2026-08-17). Implemented on branch"
+    },
+    {
+      "Id": "VP-0132",
+      "Expected": "Done",
+      "Status": "Done (2026-08-16). Merged by"
+    },
+    {
+      "Id": "VP-0137",
+      "Expected": "Done",
+      "Status": "Done (2026-08-19). The developer accepted the deployed x64 Release build at"
+    },
+    {
+      "Id": "VP-0139",
+      "Expected": "Done",
+      "Status": "Done (2026-08-21). Operator validation accepted the deployed behavior. Source"
+    },
+    {
+      "Id": "VP-0141",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). Accepted for completion. The implementation on"
+    },
+    {
+      "Id": "VP-0143",
+      "Expected": "Done",
+      "Status": "Done (2026-08-22). The tested implementation is integrated into"
+    },
+    {
+      "Id": "VP-0144",
+      "Expected": "Done",
+      "Status": "Done (2026-08-23). The verified implementation was rebased onto the refreshed"
+    },
+    {
+      "Id": "VP-0145-1",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0146",
+      "Expected": "Done",
+      "Status": "Done (2026-08-24). The developer confirmed the deployed behavior works. The"
+    },
+    {
+      "Id": "VP-0149",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0150",
+      "Expected": "Done",
+      "Status": "Done — accepted and deployed on 2026-08-26; rebased, validated, and merged"
+    },
+    {
+      "Id": "VP-0152",
+      "Expected": "Done",
+      "Status": "Done — accepted, deployed, and merged on 2026-08-27."
+    },
+    {
+      "Id": "VP-0153",
+      "Expected": "Done",
+      "Status": "Done (2026-08-27). Following operator review and approval, the change was"
+    },
+    {
+      "Id": "VP-0154",
+      "Expected": "Done",
+      "Status": "Done (2026-08-31). Implementation was completed on"
+    },
+    {
+      "Id": "VP-0155",
+      "Expected": "Done",
+      "Status": "Done — accepted, deployed for testing, and merged on 2026-08-27."
+    },
+    {
+      "Id": "VP-0156",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0157",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0158",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0159",
+      "Expected": "Done",
+      "Status": "Done (2026-09-06). Implemented in source commit `2fdbe66f` after the required"
+    },
+    {
+      "Id": "VP-0160",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0161",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0162",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0163",
+      "Expected": "Done",
+      "Status": "Done (2026-08-29). The tracker was synchronized with `origin/main`"
+    },
+    {
+      "Id": "VP-0164",
+      "Expected": "Done",
+      "Status": "Done (2026-08-29). The user accepted the completed implementation and requested"
+    },
+    {
+      "Id": "VP-0166",
+      "Expected": "Done",
+      "Status": "Done. Merged into `v1.3.005-beta` through"
+    },
+    {
+      "Id": "VP-0167",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0169",
+      "Expected": "Done",
+      "Status": "Done (2026-09-01). The reported LLDV configuration persistence defect was"
+    },
+    {
+      "Id": "VP-0173",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0174",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0175",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0180",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0181",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0186",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0188",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0189",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0192",
+      "Expected": "Done",
+      "Status": "Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing."
+    },
+    {
+      "Id": "VP-0202",
+      "Expected": "Done",
+      "Status": "Done (2026-10-22). The developer accepted the deployed x64 Release repair"
+    },
+    {
+      "Id": "VP-0021",
+      "Expected": "Backlog",
+      "Status": "Backlog."
+    },
+    {
+      "Id": "VP-0046",
+      "Expected": "Backlog",
+      "Status": "Backlog. Investigation only; no playback-policy implementation is authorized."
+    },
+    {
+      "Id": "VP-0051",
+      "Expected": "Backlog",
+      "Status": "Backlog. No implementation has started."
+    },
+    {
+      "Id": "VP-0053",
+      "Expected": "Backlog",
+      "Status": "Backlog. VP's existing shared LLDV effective-state path is implemented and is"
+    },
+    {
+      "Id": "VP-0063",
+      "Expected": "Backlog",
+      "Status": "Backlog. This is a narrow renderer-handoff policy and diagnostics story."
+    },
+    {
+      "Id": "VP-0067",
+      "Expected": "Backlog",
+      "Status": "Backlog. This is a build-system and language-standard upgrade. It should be"
+    },
+    {
+      "Id": "VP-0068",
+      "Expected": "Backlog",
+      "Status": "Backlog. This story begins as an architecture and feasibility investigation."
+    },
+    {
+      "Id": "VP-0076",
+      "Expected": "Backlog",
+      "Status": "Backlog. Created 2026-08-02 as the independent structural follow-up to"
+    },
+    {
+      "Id": "VP-0081",
+      "Expected": "Backlog",
+      "Status": "Backlog. This is a DirectShow/madVR regression discovered on the deployed"
+    },
+    {
+      "Id": "VP-0092",
+      "Expected": "Backlog",
+      "Status": "Backlog. No implementation branch has been selected."
+    },
+    {
+      "Id": "VP-0108",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-09). This follow-up to VP-0102 aligns the Modern operator"
+    },
+    {
+      "Id": "VP-0109",
+      "Expected": "Backlog",
+      "Status": "Backlog (readiness review refined 2026-08-09). The reported policy defect is"
+    },
+    {
+      "Id": "VP-0109-2",
+      "Expected": "Backlog",
+      "Status": "Backlog (created from the VP-0109 readiness review on 2026-08-09). Blocked by"
+    },
+    {
+      "Id": "VP-0111",
+      "Expected": "Backlog",
+      "Status": "Backlog (requirement revised 2026-08-22). No implementation has started."
+    },
+    {
+      "Id": "VP-0114",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-10). Created from the request to provide Alpha equivalents of madVR's conservative small-resize and small-black-bar zoom behaviors. UX design and a review of existing configuration-control patterns are explicit prerequisites to implementation; no UI, configuration, or rendering behavior has changed."
+    },
+    {
+      "Id": "VP-0115",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-11). Created from the deployed `vp.log` review for 2026-08-10. No runtime behavior has changed."
+    },
+    {
+      "Id": "VP-0120",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-11). Development testing left four live"
+    },
+    {
+      "Id": "VP-0133",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-23). The renderer-output capture and SDR-policy work recorded"
+    },
+    {
+      "Id": "VP-0135",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-18). The current Alpha renderer prepends a loopback"
+    },
+    {
+      "Id": "VP-0142",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-22). Target-model VP Renderer profiles currently persist"
+    },
+    {
+      "Id": "VP-0148",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-25). Incident and source analysis are complete. Three"
+    },
+    {
+      "Id": "VP-0148-2",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-25). Depends on acceptance of VP-0148-1. Architecture and"
+    },
+    {
+      "Id": "VP-0151",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-26). VP Renderer can successfully ask the NVIDIA driver to"
+    },
+    {
+      "Id": "VP-0165",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-08-29). Split from VP-0164 after its exact inward-certificate"
+    },
+    {
+      "Id": "VP-0171",
+      "Expected": "Backlog",
+      "Status": "Backlog (2026-09-06). Proposed after VP-0166 established the safe, post-DTM"
+    },
+    {
+      "Id": "VP-0005",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0024, which expands the proposed"
+    },
+    {
+      "Id": "VP-0006",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0025 and VP-0027. VP-0025 provides"
+    },
+    {
+      "Id": "VP-0007",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0027, which treats drops and repeats"
+    },
+    {
+      "Id": "VP-0008",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0024 and VP-0026. VP-0024 measures"
+    },
+    {
+      "Id": "VP-0014",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do — duplicate / will not do separately."
+    },
+    {
+      "Id": "VP-0016",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0025, which establishes a"
+    },
+    {
+      "Id": "VP-0017",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-07-25 by VP-0024 and VP-0026. Investigation"
+    },
+    {
+      "Id": "VP-0022",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-08-02). VP is intentionally a raw-frame live-capture"
+    },
+    {
+      "Id": "VP-0029",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101, then ultimately"
+    },
+    {
+      "Id": "VP-0047",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101, then ultimately"
+    },
+    {
+      "Id": "VP-0048",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded by VP-0047 on 2026-08-02, by VP-0100/VP-0101 on"
+    },
+    {
+      "Id": "VP-0058",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-08-02). The first local experiment exposed a VP-specific"
+    },
+    {
+      "Id": "VP-0059",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (superseded by VP-0069 on 2026-08-02). The frame-offset and"
+    },
+    {
+      "Id": "VP-0066-5",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-08-02). This ID is retained for lineage but is superseded by"
+    },
+    {
+      "Id": "VP-0066-7",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-08-02). The planned DXGI-centered invalidation authority was"
+    },
+    {
+      "Id": "VP-0066-8",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-08-02). Extending a DXGI-only evidence window is superseded"
+    },
+    {
+      "Id": "VP-0069-2",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Parent: VP-0069. Closed 2026-08-02."
+    },
+    {
+      "Id": "VP-0100",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-08-29 by VP-0166 and retained as historical"
+    },
+    {
+      "Id": "VP-0101",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do. Superseded on 2026-08-29 by VP-0166. This record mixed the useful"
+    },
+    {
+      "Id": "VP-0178",
+      "Expected": "Will Not Do",
+      "Status": "Will Not Do (2026-09-20). Closed by explicit user decision. The implemented CPU-wait improvements are retained and accepted under VP-0181; no further GPU-readback assessment is requested."
+    },
+    {
+      "Id": "VP-0085",
+      "Expected": "In Progress",
+      "Status": "In Progress. Split from VP-0082 on 2026-08-04 when Alpha runtime look-ahead was"
+    },
+    {
+      "Id": "VP-0088",
+      "Expected": "In Progress",
+      "Status": "In progress (2026-08-31). The VP Renderer already collected presenter-tied"
+    },
+    {
+      "Id": "VP-0109-1",
+      "Expected": "In Progress",
+      "Status": "In Progress as of 2026-08-09. The developer explicitly confirmed the current"
+    },
+    {
+      "Id": "VP-0124",
+      "Expected": "In Progress",
+      "Status": "In Progress. The reviewed shadow-only prototype is pushed as"
+    },
+    {
+      "Id": "VP-0126",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-08-13). Readiness review completed against the current"
+    },
+    {
+      "Id": "VP-0134",
+      "Expected": "In Progress",
+      "Status": "In Progress — implementation started from the current remote beta integration"
+    },
+    {
+      "Id": "VP-0136",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-08-20). The initial eight-second same-axis inward dwell fixed"
+    },
+    {
+      "Id": "VP-0138",
+      "Expected": "In Progress",
+      "Status": "In Progress (updated 2026-08-20). A focused implementation is complete in the clean"
+    },
+    {
+      "Id": "VP-0145",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-08-23). The diagnostic implementation is on"
+    },
+    {
+      "Id": "VP-0147",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-08-28). The local proof is being implemented on branch"
+    },
+    {
+      "Id": "VP-0148-1",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-08-25). Implementation is committed and pushed on"
+    },
+    {
+      "Id": "VP-0168",
+      "Expected": "In Progress",
+      "Status": "In progress (2026-09-30). Implementation started from the current"
+    },
+    {
+      "Id": "VP-0170",
+      "Expected": "In Progress",
+      "Status": "In Progress — merged to beta; hardware acceptance remains outstanding."
+    },
+    {
+      "Id": "VP-0172",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-10-21; reviewed software merged with VP-0200;"
+    },
+    {
+      "Id": "VP-0197",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-10-11). Implementation is starting from the current GitHub"
+    },
+    {
+      "Id": "VP-0200",
+      "Expected": "In Progress",
+      "Status": "In Progress (2026-10-21; reviewed software merged into beta;"
+    }
+  ],
+  "SemanticStatusIssues": [
+    {
+      "Id": "VP-0070",
+      "Expected": "Blocked",
+      "Status": ""
+    }
+  ],
+  "NewStory": {
+    "Id": "VP-0213",
+    "Folder": "backlog",
+    "State": "Backlog"
+  }
+}

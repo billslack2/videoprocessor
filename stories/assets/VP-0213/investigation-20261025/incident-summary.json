@@ -1,0 +1,54 @@
+{
+  "Date": "2026-10-25",
+  "Timezone": "America/New_York",
+  "Scope": "10:50:21 Alpha source crop events (change/event-logged, not every source frame)",
+  "Events": 9,
+  "FitRectangles": [
+    {
+      "Name": "0,272-3840,1974",
+      "Count": 9
+    }
+  ],
+  "FinalRectangles": [
+    {
+      "Name": "0,272-3840,1974",
+      "Count": 7
+    },
+    {
+      "Name": "0,272-3840,2068",
+      "Count": 2
+    }
+  ],
+  "FirstSix": [
+    {
+      "Sequence": 18851,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,1974"
+    },
+    {
+      "Sequence": 18852,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,2068"
+    },
+    {
+      "Sequence": 18853,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,1974"
+    },
+    {
+      "Sequence": 18854,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,2068"
+    },
+    {
+      "Sequence": 18855,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,1974"
+    },
+    {
+      "Sequence": 18856,
+      "Fit": "0,272-3840,1974",
+      "Final": "0,272-3840,1974"
+    }
+  ]
+}
