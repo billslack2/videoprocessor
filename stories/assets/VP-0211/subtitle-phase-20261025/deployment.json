@@ -1,0 +1,36 @@
+{
+  "commit": "621223092dbea7e088947523a1c9f260c4bdb930",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-phase-20261025-143944",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\nls-vsync-tone-test-20261025\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "sha256": "D95F372D8E3A25470E6A388017700E73E0BAEB8729493C20DD0B4B1FB0BDA07F",
+      "previousSha256": "741A959E02BACC97278BA1D9F60695372683C860BCD169527C4AF02375986D22"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\nls-vsync-tone-test-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "BED14C2A78581FE3A1EAC3C4FBFD203079ABC80198B067EE77A5E0EB059AF19A",
+      "previousSha256": "48DDA2244443DA13F850101C673B68167F2F699A40B31BB4510D33BF3578476A"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\nls-vsync-tone-test-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "007B34F434DDD5A9BCC59D85833991BDC1FEE5CCCC6607FA219BE174F34B867B",
+      "previousSha256": "4299639E8C00115B76537F27A9CEA9EEA59DA81896CBF2AAB22506E5A992002A"
+    }
+  ],
+  "configurationHash": "AE4E959876EB3C878CBE8BFEBFBFD4E31BBF8E8DC3FFF1BF1BE6585FADEBBB37",
+  "configurationPreserved": true,
+  "configurationEdits": [],
+  "passedTests": 425,
+  "testResults": "E:\\codex\\videoprocessor\\nls-vsync-tone-test-20261025\\TestResults\\subtitle-phase-combined\\bslac_DESKTOP-3G35SCJ_2026-10-25_14_37_35_net40.trx",
+  "pid": 82768,
+  "verifiedAt": "2026-10-25T14:39:45.1150538-04:00"
+}

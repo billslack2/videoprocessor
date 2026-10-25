@@ -1,0 +1,30 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed UnknownOrInvalidRefreshDisablesTheClock [< 1 ms]
+  Passed FeedbackRequiresStableSamplesAndAccountsForQueuedLead [< 1 ms]
+  Passed NonfiniteTimestampCannotDrainAnActiveSlotClock [< 1 ms]
+  Passed HighRefreshRepeatsNominalFieldPicturesWithoutExtraTemporalWork [< 1 ms]
+  Passed FractionalFilmRatesKeepCadenceWithoutRetimingToDisplay [1 ms]
+  Passed MissingTimestampsAndCadenceRepeatsShareTheSameFallback [< 1 ms]
+  Passed HealthySourceClockKeepsActualDriftAndRejectsBackwardJitter [< 1 ms]
+  Passed IndependentSourceClockDriftDoesNotReanchorPlayback [< 1 ms]
+  Passed BrokenSourceTimestampsUseOneAnchoredDomainForPeekAndAccept [< 1 ms]
+  Passed DiscontinuityGenerationAndRateChangesReanchor [< 1 ms]
+  Passed StallRetiresMissedRefreshesWithoutCatchupBurst [< 1 ms]
+  Passed JitteredFilmCadenceKeepsThreeTwoPhaseAndRealDrift [< 1 ms]
+  Passed OutputChangeRecoveryWaitsForOneSuccessfulPresentAndCoalesces [< 1 ms]
+  Passed PhaseJitterCannotCauseMatchedRateRepeatRetirePairs [< 1 ms]
+  Passed EligibilityDoesNotMeanThePredecessorCanBeRetired [< 1 ms]
+  Passed TimestampToleranceDoesNotConsumeAFutureOrHideRealCadenceDrift [< 1 ms]
+  Passed TimestampQuantumIsBoundedAndReplacedAcrossGenerationChanges [< 1 ms]
+  Passed FilmOn60HzUsesThreeTwoCadenceWithoutBlending [< 1 ms]
+  Passed MatchedQuantizedCaptureDoesNotAlternateRepeatsAndRetirement [17 ms]
+  Passed FilmOn120HzRepeatsFourTimesBetweenSources [< 1 ms]
+Results File: E:\codex\videoprocessor\nls-vsync-stutter-20261025\TestResults\subtitle-phase-clock\bslac_DESKTOP-3G35SCJ_2026-10-25_14_37_07_net40.trx
+
+Test Run Successful.
+Total tests: 20
+     Passed: 20
+ Total time: 0.3654 Seconds

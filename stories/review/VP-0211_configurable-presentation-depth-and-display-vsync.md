@@ -2,7 +2,31 @@
 
 ## Status
 
-In Progress
+Review
+
+2026-10-25 subtitle-transition candidate deployed: isolated head6f6c0d2e in
+[draftPR204](https://github.com/billslack2/videoprocessor/pull/204), combined
+head621223092dbea7e088947523a1c9f260c4bdb930 preserves installed tone GUI work.
+User clarification: earlier NLS issue was real and fixed; remaining problem is
+subtitle changes, also at60fps and with NLS off, recovering variably after
+seconds/minutes. Precision-only prior fix is insufficient.
+
+Separate+J eligibility / -J retirement boundaries (3ms cappedquarter-refresh)
+prevent boundary-close successors causing predecessor deletion. RawPTS/source
+speed remain intact. One successful changed output pays warmup, then internal
+repeat clock/feedback/cache eligibility restart once, without HDMI resync.
+Both clean x64Release builds passed (11warnings,0errors);20clock/transition and
+425focused exact-combined-source tests passed. Luna xhigh final review found
+no concrete blocker; production transition ordering remains source-reviewed.
+
+Matching host/both renderers+receipts hash-verified. Active cfg byte-preserved
+(every-refresh ON,depth3,Motion off), tone GUI/session preserved. Backup:
+`C:\Videoprocessor\vp\backup-before-subtitle-phase-20261025-143944`.
+Restarted responsivePID82768; clean host/renderer62122309 confirmed. Logs show
+internal cadence restart with hdmi_resync=0; initial settled60fps sample has no
+further repeats/renderer drops. Live repeated subtitle-change acceptance remains
+pending; do not closeDone or mergePR204 based on this sample alone.
+[Incident, tests, deployment and rollback](../assets/VP-0211/subtitle-phase-20261025/README.md).
 
 2026-10-25 persistent live regression: user reports settings can recover, but
 changing subtitles to clear/yellow restarts periodic repeats/drops. Deployed

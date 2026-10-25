@@ -270,7 +270,7 @@ they must not contain requirements that are absent from this file.
 | VP-0208 | Backlog | Reassess lookahead scheduling for smooth presentation |
 | VP-0209 | Review | Observe output drops, repeats and glitches without render waits |
 | VP-0210 | Review | Qualify passive presentation event collection |
-| VP-0211 | In Progress | Configurable presentation depth and display-driven vsync output |
+| VP-0211 | Review | Configurable presentation depth and display-driven vsync output |
 | VP-0212 | Review | Use madVR crop feedback exclusively for madVR NLS |
 | VP-0213 | Review | Stable Off bar-content fit and release hold |
 | VP-0214 | Backlog | Audit shared subtitle fit ownership and temporal recovery |
