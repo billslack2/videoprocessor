@@ -2,7 +2,19 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-25 critical live NLS regression: user confirms stutter only when
+present_every_vsync is on and NLS is enabled. Current screenshot has the option
+off; later saved config has motion off, depth 3, every-refresh off. Active/rotated
+logs preserved: 13:18:37-13:18:56 cached repeats and source retirements increase
+together at matched ~59.941 Hz despite active CPU/render time below one refresh.
+Investigate cadence/feedback/source selection; do not assume GPU overload or
+claim subtitle acceptance (user has not retested subtitles). New clean source
+worktree E:\codex\videoprocessor\nls-vsync-stutter-20261025 starts at fresh
+beta 8c453746 (includes PR202); running deployed dedc85d96 is a separate PR177
+test build and must not be silently replaced by a baseline that loses it.
+
 
 2026-10-25 merged at the user's explicit request: [PR #198](https://github.com/billslack2/videoprocessor/pull/198)
 into current beta `v1.4.02-beta`, merge commit
