@@ -70,7 +70,7 @@ namespace ToneProfileFile
         }
         QTextStream stream(&file);
         stream << "# VideoProcessor Rendering / DTM profile, exported by the Config GUI.\n"
-               << "# Every setting is explicit: Auto means libplacebo's default.\n"
+               << "# Owned overrides and any legacy preset fallback are preserved.\n"
                << '[' << profile.section << "]\n";
         for (const auto& setting : profile.settings)
             stream << setting.first << ": " << setting.second << '\n';
