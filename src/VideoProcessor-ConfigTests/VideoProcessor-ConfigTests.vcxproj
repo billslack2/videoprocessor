@@ -36,7 +36,7 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;VP_CONFIGFILE_STANDALONE;QT_WIDGETS_LIB;QT_GUI_LIB;QT_CORE_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\VideoProcessor-Config\standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;..\VideoProcessor-Config;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\VideoProcessor-Config\standalone;$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;..\VideoProcessor-Config;..\VideoProcessor-Lib;..\VideoProcessor-ConfigCore;..\..\3rdparty\libplacebo-beta\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -51,6 +51,8 @@ copy /Y "$(QtRoot)\plugins\platforms\qoffscreen.dll" "$(TargetDir)platforms\qoff
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ConfigEditorWindowTests.cpp" />
+    <ClCompile Include="..\VideoProcessor-ChartCore\ToneCurveModel.cpp" />
+    <ClCompile Include="..\VideoProcessor-ChartCore\ToneCurveRuntime.cpp" />
     <ClCompile Include="..\VideoProcessor-Config\ConfigEditorWindow.cpp" />
     <ClCompile Include="..\VideoProcessor-Config\VpTheme.cpp" />
     <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp" />
