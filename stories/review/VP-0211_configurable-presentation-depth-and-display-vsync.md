@@ -4,6 +4,23 @@
 
 Review
 
+2026-10-25 merged at the user's explicit request: [PR #198](https://github.com/billslack2/videoprocessor/pull/198)
+into current beta `v1.4.02-beta`, merge commit
+`6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc`. The pinned merge guard detected
+concurrent beta advancement from b1415da4 to b4d0b5cf (renderer promotion #199)
+and stopped the first attempt. Reviewed the new names/selection/UI changes,
+merged that beta into the feature, and tested exact clean head
+`b3644172abd2bad4f3e743b6a6e59a8345b561a7`: full x64 Release build passed
+(25 existing warnings, zero errors), all 381 selected native tests passed,
+and offscreen renderer-promotion migration/cache-selection and Display
+presentation-default/save/reopen tests both passed. Guarded Prepare/Merge then
+verified exact head/base and GitHub checks; no configured checks were pending.
+
+Story remains Review for the documented hardware/cadence qualification. This
+merge request did not update the running test deployment or configuration;
+the previous 3520e713 deployment evidence remains its source identity.
+[Integrated merge validation](../assets/VP-0211/merge-6ba412bd-20261025/README.md).
+
 2026-10-25 live regression correction: implemented and pushed clean head
 `3520e71396a3c20112e4b18c67258052af34e0e0` to draft PR #198. Actual Smooth
 Motion mixing owns cadence and bypasses the every-refresh repeat clock/cache,
