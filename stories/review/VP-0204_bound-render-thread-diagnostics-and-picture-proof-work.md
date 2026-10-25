@@ -6,7 +6,7 @@ Review
 
 [PR #192](https://github.com/billslack2/videoprocessor/pull/192) was incorporated
 into beta through [integration PR #202](https://github.com/billslack2/videoprocessor/pull/202)
-on 2026-10-25 and closed as incorporated. Beta merge:
+on 2026-10-25. GitHub also marked original PR #192 MERGED after recognizing its incorporated head. Beta merge:
 `8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. Its tree exactly matches clean tested
 integration `315b237bd15745c8bbf936590ebcbbf87ece8b6a`, based on freshly fetched
 current/default beta `6ba412bdb2c05c6a6fb0ec2358bc84320d3521bc`. The original PR
