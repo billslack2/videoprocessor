@@ -520,6 +520,10 @@ private:
             showUnavailable(QStringLiteral("Charts need VP Renderer's files."));
             return;
         }
+        if (!request_.defaultsKnown) {
+            showUnavailable(QStringLiteral("This configuration retains a legacy Scaling preset. Its defaults depend on the active Scaling selection, so a Rendering-only preview is unavailable."));
+            return;
+        }
         if (!request_.betaRenderer)
         {
             showUnavailable(QStringLiteral("The charts show VP Renderer only. Select it under Renderer to see them."));

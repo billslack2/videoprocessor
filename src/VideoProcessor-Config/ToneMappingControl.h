@@ -130,10 +130,13 @@ public:
     QString configuredValue() const { return automatic_ ? QStringLiteral("AUTO") : edit_->text(); }
     double value() const { return edit_->text().toDouble(); }
     QLineEdit* editor() const { return edit_; }
-    void restoreDefault() { edit_->setText(QStringLiteral("AUTO")); }
+    void restoreDefault() {
+        const double reset = resetValue();
+        edit_->setText(reset == default_ ? QStringLiteral("AUTO") : number(reset));
+    }
     void setDefault(double value) {
         default_ = value;
-        reset_->setToolTip(QStringLiteral("Reset %1 to %2 (default)").arg(QString::fromUtf8(spec_.label), number(value)));
+        reset_->setToolTip(QStringLiteral("Reset %1 to %2 (default)").arg(QString::fromUtf8(spec_.label), number(resetValue())));
         reset_->setAccessibleName(reset_->toolTip());
         if (automatic_) displayDefault();
         refresh();
@@ -197,6 +200,12 @@ private:
         if (key == "smoothing_period") return 1.;
         if (key == "percentile") return .001;
         return .01;
+    }
+    double resetValue() const {
+        if (QString::fromUtf8(spec_.key) == QStringLiteral("knee_default") &&
+            !(default_ > minimum_ && default_ < maximum_))
+            return (minimum_ + maximum_) / 2.0;
+        return default_;
     }
     double sliderMinimum() const { return fine_ && fine_->isChecked() ? 99. : sliderLow_; }
     void displayDefault() { const QSignalBlocker blocker(edit_); edit_->setText(number(default_)); }

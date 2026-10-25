@@ -26,6 +26,7 @@ namespace ToneCurveProvider
         bool gamutOverflowCorrection = false;
         // The charts draw VP Renderer (Beta) only; false shows them unavailable.
         bool betaRenderer = false;
+        bool defaultsKnown = true;
         double targetNits = 203.0;
         double blackNits = 0.0;
         // The scene the charts imagine; not VP settings. With peak detection it

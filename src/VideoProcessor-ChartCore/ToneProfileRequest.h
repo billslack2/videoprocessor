@@ -23,9 +23,11 @@ namespace ToneProfileRequest
             const QString chosen = get(name).toLower();
             return (chosen.isEmpty() ? QString::fromLatin1(fallback) : chosen).toStdString();
         };
+        request.quality = choice("quality", "high");
         request.toneMapping = choice("tone_mapping", "auto");
         request.peakDetection = choice("peak_detection", "auto");
-        const std::string peak = request.peakDetection != "auto" ? request.peakDetection : "high_quality";
+        const std::string peak = request.peakDetection != "auto" ? request.peakDetection :
+            request.quality == "fast" ? "off" : request.quality == "balanced" ? "on" : "high_quality";
         request.sceneAverageKnown = peak != "off";
         ToneMappingTuning::Read([&](const char* name, std::string& raw) {
             raw = get(name).toStdString();

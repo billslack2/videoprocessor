@@ -10,14 +10,11 @@
 // Shared by the runtime parser and the comment-preserving Config editor.
 // Normalized section/key names, in original file order. No disk writes here.
 //
-// Quality is retired. Missing preset defaults and explicit Auto choices are
-// materialized using the effective old High, Balanced or Fast preset. Explicit
-// choices are retained; output-dependent dither precision uses "output".
-// Debanding, dithering and dither depth move from Rendering
-// profiles to Scaling. VP applies [vprenderer], then the chosen Scaling profile,
-// then the chosen Rendering profile, so a non-default Rendering profile's values
-// are carried into a Scaling copy with the same selectors. Nothing here ever
-// writes ewa_lanczos4sharpest.
+// High defaults and explicit Auto resets can be written as concrete values.
+// Processing overrides retain their original Rendering owner. Legacy preset
+// fallbacks are preserved when flattening them would change independent Scaling
+// precedence. The editor and runtime share this lossless plan; neither load writes
+// the user file. Nothing here selects ewa_lanczos4sharpest.
 namespace QualityProfileMigration
 {
     using Settings = std::map<std::string, std::string>;
@@ -130,224 +127,99 @@ namespace QualityProfileMigration
         return {};
     }
 
+    inline bool ProcessingKey(const std::string& key)
+    {
+        return key == "upscaler" || key == "downscaler" || key == "sigmoid" ||
+            key == "deband" || key == "deband_strength" || key == "dithering" ||
+            key == "display_bit_depth";
+    }
+
+    // A preset is a fallback below explicit settings from independently selected
+    // groups. Flattening a non-High preset into Rendering overrides would change
+    // their precedence. Keep these legacy inputs readable until the operator
+    // replaces them with explicit choices. Invalid presets must reach validation.
+    inline bool NeedsPresetCompatibility(const Sections& sections)
+    {
+        for (const auto& section : sections)
+        {
+            if (section.first != "vprenderer" && section.first.rfind("vprenderer.", 0) != 0) continue;
+            const std::string preset = Lower(Get(sections, section.first, "quality"));
+            if (!preset.empty() && preset != "high") return true;
+            // The older deband toggle can interact with an independently chosen
+            // strength. Retain its original precedence instead of replacing it.
+            if (!Get(sections, section.first, "deband").empty()) return true;
+        }
+        return false;
+    }
+
     inline Plan Build(const Sections& sections, const std::vector<std::string>& order)
     {
         Plan plan;
-        const std::vector<std::string> display = Variants(order, "vprenderer");
-        const bool displayRoot = sections.count("vprenderer") != 0;
-        std::vector<std::string> scaling = Variants(order, "vprenderer.scaling");
-        const bool scalingRoot = sections.count("vprenderer.scaling") != 0;
-
-        std::vector<std::string> rendering = display;
-        if (displayRoot) rendering.insert(rendering.begin(), "vprenderer");
-        if (scalingRoot) scaling.insert(scaling.begin(), "vprenderer.scaling");
+        // Preserve the complete legacy fallback relationship, including Auto
+        // resets, rather than attempting a lossy conversion across selections.
+        if (NeedsPresetCompatibility(sections)) return plan;
+        auto rendering = Variants(order, "vprenderer");
+        auto scaling = Variants(order, "vprenderer.scaling");
+        if (sections.count("vprenderer")) rendering.insert(rendering.begin(), "vprenderer");
+        if (sections.count("vprenderer.scaling")) scaling.insert(scaling.begin(), "vprenderer.scaling");
         if (rendering.empty() && scaling.empty()) return plan;
-
         Sections work = sections;
-        auto set = [&](const std::string& section, const std::string& key, const std::string& value) {
+        const auto set = [&](const std::string& section, const std::string& key, const std::string& value) {
             if (Get(work, section, key) == value) return;
             work[section][key] = value;
             plan.sets.emplace_back(section, key, value);
         };
-        auto remove = [&](const std::string& section, const std::string& key) {
-            if (!work[section].count(key)) return;
-            work[section].erase(key);
+        const auto remove = [&](const std::string& section, const std::string& key) {
+            if (!work[section].erase(key)) return;
             plan.removals.emplace_back(section, key);
         };
-
-        // The Rendering fallback: the literal root, else the first Rendering profile.
-        const std::string fallback = displayRoot ? "vprenderer" : (display.empty() ? std::string() : display.front());
-        // The Scaling baseline every Scaling profile inherits. Created only when needed.
-        std::string baseline = scaling.empty() ? std::string() : scaling.front();
-        const std::vector<std::string> scalingBefore = scaling;
-        auto ensureBaseline = [&]() {
-            if (!baseline.empty()) return;
-            baseline = "vprenderer.scaling.default";
-            plan.newSections.push_back("vprenderer.scaling.Default");
-            work[baseline];
-        };
-        std::map<std::string, std::set<std::string>> presetFilled;
-        const auto quality = [&](const std::string& section) {
-            std::string result = Lower(Get(sections, section, "quality"));
-            if (result.empty()) result = Lower(Get(sections, fallback, "quality"));
-            return result.empty() ? std::string("high") : result;
-        };
-        // These legacy Rendering overrides still apply after Scaling at runtime.
-        // Resolve explicit Auto before retiring Quality, without inventing new
-        // Rendering overrides for absent scaling fields.
-        for (const auto& section : rendering)
-            for (const char* key : { "upscaler", "downscaler", "sigmoid" })
-                if (ResetsPreset(key, Get(sections, section, key)))
-                    if (const char* value = PresetValue(quality(section), key)) set(section, key, value);
-
-        // 1. The Rendering fallback's values go under every Scaling profile.
-        if (!fallback.empty())
+        if (scaling.empty())
         {
-            for (const auto& key : MovedKeys())
-            {
-                const std::string value = MovedValue(sections, fallback, key, quality(fallback));
-                if (value.empty()) continue;
-                ensureBaseline();
-                if (!IsSet(work, baseline, key)) set(baseline, key, value);
-                for (const auto& section : scaling)
-                    if (IsSet(work, section, key) && Lower(Get(work, section, key)) != Lower(value))
-                        plan.warnings.push_back("[" + section + "] keeps its own " + key +
-                            "; [" + fallback + "] " + key + " '" + value + "' no longer overrides it");
-            }
-            const std::string q = quality(fallback);
-            if (IsPreset(q))
-            {
-                for (const auto& key : ScalingPresetKeys())
-                {
-                    if (IsSet(sections, fallback, key) || !MovedValue(sections, fallback, key, quality(fallback)).empty()) continue;
-                    ensureBaseline();
-                    if (IsSet(work, baseline, key)) continue;
-                    set(baseline, key, PresetValue(q, key));
-                    presetFilled[baseline].insert(key);
-                }
-                for (const auto& key : TonePresetKeys())
-                    if (!IsSet(sections, fallback, key))
-                    {
-                        set(fallback, key, PresetValue(q, key));
-                        presetFilled[fallback].insert(key);
-                    }
-            }
+            scaling.push_back("vprenderer.scaling.default");
+            plan.newSections.push_back("vprenderer.scaling.Default");
         }
-
-        // Materialize the baseline even when Quality was omitted (old High).
-        // Named Scaling profiles retain their ordinary inheritance, while an
-        // explicit Auto there resets the preset instead of inheriting the baseline.
-        ensureBaseline();
-        for (const auto& key : ScalingPresetKeys())
-            if (!IsSet(work, baseline, key))
-                if (const char* value = PresetValue(quality(baseline), key))
-                {
-                    set(baseline, key, value);
-                    presetFilled[baseline].insert(key);
-                }
-        if (!IsSet(work, baseline, "display_bit_depth")) set(baseline, "display_bit_depth", "output");
+        // Ordinary defaults belong to Scaling. Existing Rendering overrides
+        // remain attached to their owner; no copied selectors or second state.
         for (const auto& section : scaling)
         {
-            const bool ownPreset = IsPreset(Lower(Get(sections, section, "quality")));
             for (const auto& key : ScalingPresetKeys())
             {
-                const std::string raw = Lower(Get(sections, section, key));
-                if (!ResetsPreset(key, raw) && !(ownPreset && raw.empty())) continue;
-                if (const char* value = PresetValue(quality(section), key))
-                {
-                    // An explicit Rendering fallback was moved here above and
-                    // has precedence over the old Scaling Auto.
-                    if (section == baseline && (key == "deband_strength" || key == "dithering") &&
-                        !MovedValue(sections, fallback, key, quality(fallback)).empty()) continue;
-                    set(section, key, value);
-                    presetFilled[section].insert(key);
-                }
+                const std::string raw = Get(work, section, key);
+                if (ResetsPreset(key, raw) || (section == scaling.front() && raw.empty()))
+                    set(section, key, PresetValue("high", key));
             }
-            if (Lower(Get(sections, section, "display_bit_depth")) == "auto" &&
-                (section != baseline || MovedValue(sections, fallback, "display_bit_depth", quality(fallback)).empty()))
+            const std::string depth = Lower(Get(work, section, "display_bit_depth"));
+            if (depth == "auto" || (section == scaling.front() && depth.empty()))
                 set(section, "display_bit_depth", "output");
+            remove(section, "quality");
         }
-
-        // 3. Other Rendering profiles: tone values stay, scaling values go to a copy.
-        std::set<std::string> reserved;
-        for (const auto& section : work) reserved.insert(section.first);
-        // A named Base clashes with a literal [vprenderer.scaling] (ProfileSectionIdentity).
-        reserved.insert("vprenderer.scaling.base");
-        std::set<std::string> scalingShortcuts, scalingCycles;
-        for (const auto& section : scalingBefore)
+        for (const auto& section : rendering)
         {
-            if (IsSet(sections, section, "shortcut")) scalingShortcuts.insert(Lower(Get(sections, section, "shortcut")));
-            if (IsSet(sections, section, "cycle_shortcut")) scalingCycles.insert(Lower(Get(sections, section, "cycle_shortcut")));
-        }
-        bool scalingRules = false;
-        for (const auto& section : scalingBefore)
-            scalingRules = scalingRules || (section != baseline && IsSet(sections, section, "when"));
-        // Unset here means unset in the profile and in the fallback it inherits.
-        const auto inherits = [&](const std::string& section, const std::string& key) {
-            return !IsSet(sections, section, key) && (fallback.empty() || !IsSet(sections, fallback, key));
-        };
-        for (const auto& profile : display)
-        {
-            if (profile == fallback) continue;
-            const std::string q = quality(profile);
+            for (const auto& key : ScalingPresetKeys())
+                if (ResetsPreset(key, Get(work, section, key)))
+                    set(section, key, PresetValue("high", key));
+            if (Lower(Get(work, section, "display_bit_depth")) == "auto")
+                set(section, "display_bit_depth", "output");
+            const auto legacy = Lower(Get(work, section, "deband"));
+            if (Get(work, section, "deband_strength").empty() && !legacy.empty())
+            {
+                if (legacy == "on" || legacy == "true" || legacy == "yes" || legacy == "1")
+                    set(section, "deband_strength", "default");
+                else if (legacy == "off" || legacy == "false" || legacy == "no" || legacy == "0")
+                    set(section, "deband_strength", "off");
+                else if (legacy == "auto") set(section, "deband_strength", "default");
+                else continue; // Leave malformed legacy input for validation.
+                remove(section, "deband");
+            }
             for (const auto& key : TonePresetKeys())
             {
-                const std::string own = Lower(Get(sections, profile, key));
-                if (own != "auto" && !inherits(profile, key)) continue;
-                if (IsPreset(q)) set(profile, key, PresetValue(q, key));
+                const auto raw = Lower(Get(work, section, key));
+                // Missing named values inherit their original Rendering baseline.
+                if (raw == "auto" || (section == rendering.front() && raw.empty()))
+                    set(section, key, PresetValue("high", key));
             }
-
-            Settings copy;
-            for (const auto& key : MovedKeys())
-            {
-                const std::string value = MovedValue(sections, profile, key, quality(profile));
-                if (!value.empty()) copy[key] = value;
-            }
-            const auto explicitInBaseline = [&](const std::string& key) {
-                return !baseline.empty() && IsSet(work, baseline, key) && !presetFilled[baseline].count(key);
-            };
-            for (const auto& key : ScalingPresetKeys())
-            {
-                if (copy.count(key) || !inherits(profile, key) || explicitInBaseline(key)) continue;
-                if (IsPreset(q))
-                {
-                    const std::string desired = PresetValue(q, key);
-                    if (Lower(Get(work, baseline, key)) != desired) copy[key] = desired;
-                }
-            }
-            if (!copy.empty())
-            {
-                const std::string name = profile.substr(std::string("vprenderer.").size());
-                std::string when = Get(sections, profile, "when");
-                std::string shortcut = Get(sections, profile, "shortcut");
-                std::string cycle = Get(sections, profile, "cycle_shortcut");
-                if (!shortcut.empty() && scalingShortcuts.count(Lower(shortcut)))
-                {
-                    plan.warnings.push_back("[" + profile + "] shortcut '" + shortcut +
-                        "' is already a Scaling shortcut; its Scaling copy is not given it");
-                    shortcut.clear();
-                }
-                if (!cycle.empty() && scalingCycles.count(Lower(cycle))) cycle.clear();
-                if (when.empty() && shortcut.empty() && cycle.empty())
-                {
-                    plan.warnings.push_back("[" + profile + "] has no rule or free shortcut to select a "
-                        "Scaling copy; its debanding, dithering and Quality fall back to the Scaling defaults");
-                }
-                else
-                {
-                    ensureBaseline();
-                    std::string target = "vprenderer.scaling." + name;
-                    for (int suffix = 2; reserved.count(target); ++suffix)
-                        target = "vprenderer.scaling." + name + "_" + std::to_string(suffix);
-                    reserved.insert(target);
-                    plan.newSections.push_back(target);
-                    work[target];
-                    if (!when.empty()) set(target, "when", when);
-                    if (!shortcut.empty())
-                    {
-                        set(target, "shortcut", shortcut);
-                        scalingShortcuts.insert(Lower(shortcut));
-                    }
-                    if (!cycle.empty())
-                    {
-                        set(target, "cycle_shortcut", cycle);
-                        scalingCycles.insert(Lower(cycle));
-                    }
-                    if (IsSet(sections, profile, "label")) set(target, "label", Get(sections, profile, "label"));
-                    for (const auto& value : copy) set(target, value.first, value.second);
-                    if (scalingRules)
-                        plan.warnings.push_back("[" + target + "] comes after the existing Scaling profiles; "
-                            "when one of their rules also matches, that profile wins");
-                }
-            }
-        }
-
-        // 4. Nothing keeps the retired or moved keys.
-        for (const auto& section : rendering)
-            for (const char* key : { "quality", "deband", "deband_strength", "dithering", "display_bit_depth" })
-                remove(section, key);
-        for (const auto& section : scaling)
             remove(section, "quality");
+        }
         return plan;
     }
 
