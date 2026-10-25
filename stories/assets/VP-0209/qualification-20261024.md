@@ -41,3 +41,6 @@ Root: `E:\codex\diagnostics\vp-display-statistics-20261024`. Raw logs/traces and
 - `PassiveDisplaySubmitBench-final-7dc9af6-results.txt`
 - `ab-passive/20261025T011048Z-3863df7f/summary.json` and phase/protocol/telemetry receipts
 - `research-playback.md` and pinned source provenance in the source repository
+
+## Subsequent authorized deployment
+The previously qualified artifacts were deployed for testing at 21:43 EDT, 2026-10-24, following explicit user authorization. Source remains unmerged. New VP PID56520 and matching renderer identity were verified; observer PID33220 has an active owned ETW session. Deployed file hashes match this receipt and configuration is unchanged. Rollback backup: C:\Videoprocessor\vp\backups\display-statistics-20261024-214333. See deployment-result.json and deployment-runtime-verification.json in the external receipt root. This supersedes the earlier undeployed status; visual playback acceptance remains pending.

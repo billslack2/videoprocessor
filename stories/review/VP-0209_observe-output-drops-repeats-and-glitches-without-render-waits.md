@@ -3,7 +3,7 @@
 ## Status
 Review
 
-2026-10-24: Implementation and qualification complete for review on source commit 7dc9af666b6ca1e004601fee10a4b6d5c10dfe41, pushed to codex/display-statistics-20261024. Matching x64 Release host, both renderers and isolated observer built successfully from the clean commit; 278 focused native tests passed. User's installed player and configuration remain unchanged. Integrated candidate playback, including mismatched-refresh Smooth Motion, remains required before rollout/merge; no visual or physical-scanout acceptance is claimed.
+2026-10-24: Implementation and qualification complete for review on source commit 7dc9af666b6ca1e004601fee10a4b6d5c10dfe41, pushed to codex/display-statistics-20261024. Matching x64 Release host, both renderers and isolated observer built successfully from the clean commit; 278 focused native tests passed. User authorized test deployment after review; deployed at 21:43 EDT and verified as documented below. Configuration is unchanged. Integrated visual playback acceptance, including mismatched-refresh Smooth Motion, remains required before merge; no visual or physical-scanout acceptance is claimed.
 
 ## Problem
 VP's capture/queue losses and cadence drift prediction do not measure displayed drops/repeats/glitches. Existing DXGI polling reports unsupported on the current playback path; missing observations cannot be counted as dropped frames or clean zeroes.
@@ -35,3 +35,12 @@ OSD separates unexpected discarded outputs from conservative excess-hold repeat/
 The final producer benchmark measured 61.7/70.3/74.2 ns per submission at p50/p95/p99 of batch averages; a full queue immediately rejected measurement submissions. A four-window off/on/on/off collector-only comparison measured mean helper CPU 0.535% of one core and about 9.1 MB working set, with zero ETW losses or internal overflow. Existing VP CPU/GPU observations showed no measurable uplift in this short run, but workload changed and this was not the integrated new host or 24-to-60 playback. Details, hashes and limits: [qualification receipt](../assets/VP-0209/qualification-20261024.md).
 
 Source worktree: E:\codex\videoprocessor\display-statistics-20261024. Started from discovered remote beta v1.4.02-beta at b1415da4, then fast-forwarded the existing pending PR197 chain through 26e33fdc for reset support. Candidate remains separate, unmerged and undeployed; PR #197 remains draft and unchanged. Raw logs, traces and build/test receipts are outside Git at E:\codex\diagnostics\vp-display-statistics-20261024.
+
+## Authorized test deployment - 2026-10-24 21:43 EDT
+User asked to deploy the ready candidate. Gracefully stopped the previous player and deployed the exact verified x64 Release host, both renderers, both observer copies, runtime sidecars and MIT license files from 7dc9af666b6ca1e004601fee10a4b6d5c10dfe41. Dependency DLL hashes already matched; no dependency or configuration edits were needed. Deployment does not merge the candidate or PR #197.
+
+Rollback backup: C:\Videoprocessor\vp\backups\display-statistics-20261024-214333 (previous target files, existence/hash manifest, original active configuration and pre-deployment log). Configuration SHA-256 remained 928934B02A995D83713FA0363D64692893F8A81B45D3E70A73EE65DA6B146744 before/after restart.
+
+New VP PID 56520 started at 21:43:34 EDT and was responsive. Runtime log confirms clean host and renderer commit 7dc9af66 and both plugin API33 loads. The beta observer child PID33220 started from the deployed beta folder with the VP parent identity; its owned ETW session was active. Every deployed payload hash matches the tested artifact. Startup identity and tracing are verified; user-visible output and mismatched-refresh Smooth Motion acceptance remain pending.
+
+External receipts: E:\codex\diagnostics\vp-display-statistics-20261024\deployment-result.json, deployment-runtime-verification.json, deployed-observer-session.txt and deployment-startup-tail.txt. Repeat/glitch coverage limitations still apply.
