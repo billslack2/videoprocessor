@@ -8,6 +8,7 @@
 #include "CalibrationProfileMigration.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
+#include "PresentationConfig.h"
 #include "RendererConfigView.h"
 #include "DisplayRuleExpression.h"
 #include "AspectRatio.h"
@@ -1274,6 +1275,8 @@ namespace RendererProfileConfig
 			return false;
 		}
 
+        if (!PresentationConfig::Validate(config, error)) return false;
+
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
         for (const auto& section : config.GetSectionNames())
@@ -1888,6 +1891,8 @@ namespace RendererProfileConfig
 			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
+        if (!PresentationConfig::Validate(config, error)) return false;
+
         // Valid legacy Output profiles have already migrated during Load.
         // Any remaining member is malformed and must not disappear silently.
         for (const auto& section : config.GetSectionNames())
@@ -1937,6 +1942,8 @@ namespace RendererProfileConfig
 		std::string value;
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
 			ConfigSchema::Boolean("persist_profile_selection"),
+			ConfigSchema::Boolean("present_every_vsync"),
+            ConfigSchema::Integer("presentation_queue_depth", 1, PresentationConfig::MaximumDepth),
 			ConfigSchema::Choice("profile_update_mode",
 				{ "rebuild", "live", "never" }),
 			ConfigSchema::Boolean("live_profile_updates"),

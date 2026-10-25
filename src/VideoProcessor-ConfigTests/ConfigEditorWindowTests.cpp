@@ -7006,8 +7006,8 @@ void testNoTargetStartupIsQuiet()
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     auto* title = requireControl<QLabel>(window, "config.targetSearchTitle");
     auto* progress = requireControl<QProgressBar>(window, "configTargetSearchProgress");
-    require(choice->currentText() == QStringLiteral("Searching…") &&
-        title->text() == QStringLiteral("Looking for VideoProcessor…") &&
+    require(choice->currentText() == QStringLiteral("Searchingâ€¦") &&
+        title->text() == QStringLiteral("Looking for VideoProcessorâ€¦") &&
         progress->minimum() == 0 && progress->maximum() == 0 &&
         !progress->isHidden() &&
         !requireControl<QPushButton>(window, "applyConfiguration")->isEnabled() &&
@@ -7024,7 +7024,7 @@ void testNoTargetStartupIsQuiet()
         window.hide();
     }
     window.setDiscoveredTargets({});
-    require(choice->currentText() == QStringLiteral("Searching…"),
+    require(choice->currentText() == QStringLiteral("Searchingâ€¦"),
         "An empty first scan hid the loading state");
     window.finishInitialTargetSearch();
     require(choice->currentText() == QStringLiteral("No target"),
@@ -7135,14 +7135,14 @@ void testRememberedTargetDoesNotFallBackToLocal()
         QStringLiteral("old-computer-no-longer-on-lan"),
         QStringLiteral("STUDY"));
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
-    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+    require(choice->currentText() == QStringLiteral("STUDY (searchingâ€¦)") &&
         choice->itemText(1) == QStringLiteral("This computer"),
         "The remembered remote did not remain selected while searching");
     window.setDiscoveredTargets({
         { QStringLiteral("local-installation"), QStringLiteral("This computer"),
             QStringLiteral("127.0.0.1"), 1, {}, true }
     });
-    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+    require(choice->currentText() == QStringLiteral("STUDY (searchingâ€¦)") &&
         !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
         "The remembered remote silently fell back to the local file");
     window.finishInitialTargetSearch();
@@ -7182,7 +7182,7 @@ void testRemoteOnlyClientHasNoLocalFileTarget()
         {}, 41686, {}, true, false);
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     require(choice->count() == 2 &&
-        choice->itemText(1) == QStringLiteral("Enter address…") &&
+        choice->itemText(1) == QStringLiteral("Enter addressâ€¦") &&
         !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
         "A remote-only Config copy offered a local file target");
     window.setDiscoveredTargets({
@@ -7480,6 +7480,36 @@ void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
                 "Explicit replacement fill did not survive save/reopen");
         }
     }
+}
+
+void testDisplayRefreshPresentationDefaultAndRoundTrip()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot write display refresh fixture");
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "# Preserve this display preference comment\n"
+        "[output_display.Default]\nmonitor: auto\nmode_policy: auto\nrestore_previous_mode: true\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* refresh = requireControl<QCheckBox>(window, "config.general.present_every_vsync");
+    require(!refresh->isChecked(), "Every-refresh presentation must be off for existing configurations");
+    require(refresh->text() == "Present on every display refresh", "Display control has an unexpected label");
+    require(refresh->toolTip().contains("VP Renderer only"), "Display presentation scope is not explained");
+    auto* depth=requireControl<QSpinBox>(window,"config.general.presentation_queue_depth");
+    require(depth->value()==2 && depth->minimum()==1 && depth->maximum()==8,"Presentation depth defaults/bounds changed");
+    depth->setValue(4);
+    require(!refresh->isChecked(),"Depth edit enabled every-refresh presentation");
+    refresh->setChecked(true);
+    save(window);
+    ConfigEditorWindow reopened(path, 0, true);
+    require(requireControl<QCheckBox>(reopened, "config.general.present_every_vsync")->isChecked(),
+        "Every-refresh presentation did not persist");
+    require(requireControl<QSpinBox>(reopened,"config.general.presentation_queue_depth")->value()==4,
+        "Presentation depth did not persist");
+    require(file.open(QIODevice::ReadOnly), "Cannot read display refresh result");
+    require(file.readAll().contains("# Preserve this display preference comment"), "Display edit lost an existing comment");
 }
 
 void testSubtitleBackgroundShapeRoundTripAndVisibility()
@@ -7785,6 +7815,7 @@ int main(int argc, char** argv)
 	failures += run("General input Apply preserves backend overrides",
 		testGeneralInputApplyPreservesBackendOverrides);
     failures += run("DirectShow-only input persists and General can be cleared", testDirectShowOnlyInputPersistsAndGeneralCanBeCleared);
+    failures += run("display refresh presentation defaults and round trip", testDisplayRefreshPresentationDefaultAndRoundTrip);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",

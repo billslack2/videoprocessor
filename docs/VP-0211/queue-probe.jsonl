@@ -1,0 +1,6 @@
+{"owner":"libplacebo","requested":1,"applied":1,"set_hr":0,"get_hr":0,"buffers":2,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.4597,"block_p50_ms":15.8979,"block_max_ms":31.6449}
+{"owner":"libplacebo","requested":2,"applied":2,"set_hr":0,"get_hr":0,"buffers":3,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.0803,"block_p50_ms":15.9369,"block_max_ms":31.7538}
+{"owner":"libplacebo","requested":8,"applied":8,"set_hr":0,"get_hr":0,"buffers":9,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.1204,"block_p50_ms":15.9142,"block_max_ms":31.9636}
+{"owner":"vp","requested":1,"applied":1,"set_hr":0,"get_hr":0,"buffers":2,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.5594,"block_p50_ms":15.9535,"block_max_ms":32.0539}
+{"owner":"vp","requested":2,"applied":2,"set_hr":0,"get_hr":0,"buffers":3,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.2417,"block_p50_ms":15.9505,"block_max_ms":31.1566}
+{"owner":"vp","requested":8,"applied":8,"set_hr":0,"get_hr":0,"buffers":9,"present_errors":0,"present_count":120,"stats_samples":119,"feedback_samples":0,"block_avg_ms":16.0479,"block_p50_ms":15.9292,"block_max_ms":31.9250}

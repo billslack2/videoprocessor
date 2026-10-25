@@ -119,7 +119,10 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("persist_profile_selection"),
 			ConfigSchema::Integer("profile_change_display_seconds", 0, 60),
 			ConfigSchema::Boolean("scale_osd"),
-            ConfigSchema::Number("stats_osd_size_percent", 37.5, 375.0)
+            ConfigSchema::Number("stats_osd_size_percent", 37.5, 375.0),
+            // Append startup fields: backend input rules below reuse fixed indices.
+            ConfigSchema::Boolean("present_every_vsync"),
+            ConfigSchema::Integer("presentation_queue_depth", 1, 8)
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))

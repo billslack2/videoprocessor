@@ -188,6 +188,18 @@ public:
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
+    static bool WillDeinterlace(const MotionConfig::Settings& requested,
+        bool inputInterlaced,int inputOrder) {
+        const bool knownOrder=requested.fieldOrder!="auto"||inputOrder!=0;
+        return requested.deinterlace!="off"&&requested.algorithm!="weave"&&knownOrder&&
+            (inputInterlaced||requested.deinterlace=="force");
+    }
+    static bool WillMix(const MotionConfig::Settings& requested,double sourceHz,
+        double displayHz,bool inputInterlaced,int inputOrder) {
+        const double nominalHz=sourceHz*(WillDeinterlace(requested,inputInterlaced,inputOrder)&&
+            requested.cadence=="field"?2.0:1.0);
+        return MotionConfig::Mix(requested,nominalHz,displayHz);
+    }
     double ScheduledOutputRateHz() const {
         return Active() && initialized && std::isfinite(displayDuration) && displayDuration>0.0
             ? 1.0/displayDuration : 0.0;
@@ -203,10 +215,9 @@ public:
         if(!std::isfinite(displayHz)||displayHz<0)displayHz=0;
         const bool newTopFirst=requested.fieldOrder=="top"||(requested.fieldOrder=="auto"&&inputOrder==1);
         const bool knownOrder=requested.fieldOrder!="auto"||inputOrder!=0;
-        const bool newInterlaced=requested.deinterlace!="off"&&requested.algorithm!="weave"&&knownOrder&&
-            (inputInterlaced||requested.deinterlace=="force");
+        const bool newInterlaced=WillDeinterlace(requested,inputInterlaced,inputOrder);
         const double nominalHz=sourceHz*(newInterlaced&&requested.cadence=="field"?2.0:1.0);
-        const bool newMix=MotionConfig::Mix(requested,nominalHz,displayHz);
+        const bool newMix=WillMix(requested,sourceHz,displayHz,inputInterlaced,inputOrder);
         const bool changed=settings.Fingerprint()!=requested.Fingerprint()||generation!=epoch||
             interlaced!=newInterlaced||mixing!=newMix||composition!=sourceSubtitleComposition||(newInterlaced&&topFirst!=newTopFirst)||
             (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
@@ -238,7 +249,8 @@ public:
         }
         // Without a measured display rate, deinterlacing uses its own nominal
         // field/frame clock. Mixing never guesses the display cadence.
-        const double outputHz=mixing?displayHz:(displayHz>0?(std::min)(nominalHz,displayHz):nominalHz);
+        const double outputHz=mixing?displayHz:
+            (displayHz>0?(std::min)(nominalHz,displayHz):nominalHz);
         displayDuration=1.0/outputHz;
         const double start=pts-delay*sourceDuration;
         if(!initialized){nextOutput=start;initialized=true;}

@@ -102,7 +102,8 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <!-- Embedded /Z7 records in the large schema tests can fail with LNK1103. -->
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -272,6 +273,7 @@
     <ClCompile Include="AnalysisDiagnosticTraceTests.cpp" />
     <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
+    <ClCompile Include="DisplayVsyncClockTests.cpp" />
     <ClCompile Include="DisplayWindowGeometryTests.cpp" />
     <ClCompile Include="DisplayRasterInfoTests.cpp" />
     <ClCompile Include="..\VideoProcessor-GUI\StatsOverlayWindow.cpp" />

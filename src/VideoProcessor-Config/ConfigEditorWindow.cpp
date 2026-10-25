@@ -5466,6 +5466,34 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         switchRate->setObjectName(QStringLiteral("config.general.switch_refresh_rate"));
         switchRate->setAccessibleName(QStringLiteral("Switch refresh rate"));
         form->addRow(QStringLiteral("Switch refresh rate"), switchRate);
+        auto* everyRefresh = bindCheckField(
+            QStringLiteral("Present on every display refresh"),
+            QStringLiteral("general"), QStringLiteral("present_every_vsync"));
+        everyRefresh->setToolTip(QStringLiteral(
+            "VP Renderer only. Present at the display refresh rate, repeating the processed image "
+            "when no new source frame is due. Does not blend frames or change source speed. "
+            "Disabled by default. Apply restarts VP Renderer."));
+        form->addRow(QStringLiteral("Presentation"), everyRefresh);
+        auto* presentationDepth = new QSpinBox;
+        presentationDepth->setObjectName(QStringLiteral("config.general.presentation_queue_depth"));
+        presentationDepth->setAccessibleName(QStringLiteral("Presentation queue depth"));
+        presentationDepth->setRange(1, 8);
+        bool depthOk = false;
+        const int savedDepth = value(QStringLiteral("general"),
+            QStringLiteral("presentation_queue_depth")).toInt(&depthOk);
+        presentationDepth->setValue(depthOk ? savedDepth : 2);
+        presentationDepth->setToolTip(QStringLiteral(
+            "VP Renderer only. Maximum pending presentations, including repeated pictures. "
+            "Higher values can absorb short stalls but add latency. Independent of the capture Queue. "
+            "Default 2. Apply restarts VP Renderer."));
+        connect(presentationDepth, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this, presentationDepth](int depth) {
+                if (!document_) return;
+                document_->SetKnown("general", "presentation_queue_depth", std::to_string(depth));
+                editOrder_[presentationDepth->objectName()] = ++editSerial_;
+                markDirty();
+            });
+        form->addRow(QStringLiteral("Presentation queue depth"), presentationDepth);
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Controls whether VP may change display timing during playback. "
             "Auto matches refresh rate only. Advanced also chooses an allowed "
