@@ -1,0 +1,35 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath [245 ms]
+  Passed BlackPanelCoversLastPictureRowWithSquareLowerCorners [8 s]
+  Passed GeneratedBlurClampsToCleanPictureForTopAndBottomCards [10 s]
+  Passed GeneratedBlurSoftensRealOverlayForBarOnlyCaptions [18 s]
+  Passed GaussianWorkIsLimitedToPaddedSubtitleRegion [< 1 ms]
+  Passed GeneratedBlurSoftensWholeOverlayKeepingGlyphsAndOutsidePictureSharp [36 s]
+  Passed GeneratedGrayPreservesReflectedTextureAndSoftensBrightBacking [10 s]
+  Passed GeneratedGrayRemovesEntireCardRegardlessOfCardBrightness [10 s]
+  Passed TopSubtitleGpuMovesGlyphDownAndRestoresPictureFromBelow [17 s]
+  Passed SubtitleGpuRejectsSeamsBetweenLinesAndAtTrailingCell [18 s]
+  Passed HorizontalCaptureGuardPreservesTerminalGlyphStroke [18 s]
+Recording diagnostic not requested
+  Passed RecordedSubtitlePlaybackDiagnostic [1 ms]
+  Passed QuarterSizeSubtitlePunctuationSurvivesEveryNativePhaseAtBothEdges [8 s]
+  Passed SubtitleFloatingCornersAndBridgeUseTheSameGpuMaskAtBothEdges [17 s]
+  Passed ReducedSubtitleGpuMatchesNativeAreaCoverageWithoutSceneLeakOrCleanupSliver [18 s]
+  Passed AttachedCleanupIncludesReconciledRowsBeforeGaussianBlur [18 s]
+AA boundary top=0 mode=3 pixel=119 expected=119 card=180,298-465,318 line=193,305-426,319 source=295 destination=281 sample=196,302
+AA boundary top=0 mode=5 pixel=119 expected=119 card=180,298-465,318 line=193,305-426,319 source=295 destination=281 sample=196,302
+AA boundary top=1 mode=3 pixel=119 expected=119 card=180,42-465,62 line=193,41-426,55 source=34 destination=48 sample=196,57
+AA boundary top=1 mode=5 pixel=119 expected=119 card=180,42-465,62 line=193,41-426,55 source=34 destination=48 sample=196,57
+  Passed AntialiasedBoundaryRowSurvivesSolidAndReconstructedComposition [18 s]
+  Passed CompositorBoundaryGapCannotEraseInteriorGlyphRows [7 s]
+  Passed PhysicalPictureEdgeDoesNotCopyCardFringeAsBarGlyph [7 s]
+  Passed SubtitleGpuRejectsBrightPictureSliverInsideCleanupFringe [18 s]
+  Passed SubtitleGpuComposesBeforeCropAcrossAspectChangesAndNlsRecovery [2 m 24 s]
+  Passed MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding [10 s]
+  Passed BlackRoundedDestinationCannotRevealOriginalGlyphAtCorner [7 s]
+  Passed KeyedSubtitleCaptureExcludesPictureSceneryOutsideMeasuredCard [18 s]
+  Passed BlackAndGeneratedPanelsExtendSixPixelsWithoutMovingGlyphs [18 s]
+  Passed SolidSubtitleColorAndBorderReachGpuWithoutOpacityOrBlur [8 s]

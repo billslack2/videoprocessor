@@ -2,7 +2,28 @@
 
 ## Status
 
-In Progress
+Review
+
+2026-10-25 NLS fix ready for live retest: [draft PR #204](https://github.com/billslack2/videoprocessor/pull/204),
+fix head fc20e916. All 429 selected native/subtitle GPU regressions passed;
+exact clean fix Release rebuild and 16 clock tests passed. Combined test head
+`2a22430849f27fef9cea3a1cca909d94a522b310` preserves installed dedc85d9 tone GUI
+work plus only this fix. Its clean x64 Release build passed (74 existing
+warnings, zero errors) and all 421 focused compatibility tests passed, including
+bundled NLS GPU hook and NLS failure recovery. Luna xhigh review found no
+remaining blocker. Supplementary duplicate GPU run was stopped after key
+cases passed, with partial output preserved; it is not counted as a suite pass.
+
+Authorized regression test deployment completed: matching host and both renderers,
+Release receipts/hashes verified, backup
+`C:\Videoprocessor\vp\backup-before-nls-vsync-20261025-135117`.
+Config GUI/tone work preserved, active cfg byte-identical (every-refresh off,
+depth 3). Graceful close left inspected player PID 20068 running, so only that
+player was stopped. Restarted responsive PID 54532; fresh host/renderer identities
+both confirm clean 2a224308. Initial locked-copy attempt changed no binaries.
+Live NLS + every-refresh on confirmation and subtitle revalidation remain
+pending; user has not confirmed subtitle acceptance. Do not close Done.
+[Validation, incident, deployment and rollback evidence](../assets/VP-0211/nls-vsync-20261025/README.md).
 
 2026-10-25 NLS correction is committed separately as `fc20e916` in [draft PR
 #204](https://github.com/billslack2/videoprocessor/pull/204). A strict 0.1us

@@ -1,0 +1,6 @@
+2026-10-25 13:51:18 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/2a22430849f27fef9cea3a1cca909d94a522b310 branch=codex/nls-vsync-tone-test-20261025 dirty=0 build=git-2a22430
+2026-10-25 13:51:25 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/2a22430849f27fef9cea3a1cca909d94a522b310 branch=codex/nls-vsync-tone-test-20261025 dirty=0 build=git-2a22430
+2026-10-25 13:51:25 | Alpha shaders: selected "@shader-profiles:nls.profile_1" (off)
+2026-10-25 13:51:25 | VP display cadence owner: requested_every_vsync=0 effective_every_vsync=0 smooth_motion_mixing=0 owner=source
+2026-10-25 13:51:25 | VP motion: Motion: source cadence unavailable delay_ms=0.000 source_hz=0.000000 display_hz=59.951000
+2026-10-25 13:51:30 | VP motion: Motion: Off delay_ms=0.000 source_hz=59.941138 display_hz=59.951000
