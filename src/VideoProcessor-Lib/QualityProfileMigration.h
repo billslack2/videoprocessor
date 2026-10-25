@@ -155,6 +155,29 @@ namespace QualityProfileMigration
     inline Plan Build(const Sections& sections, const std::vector<std::string>& order)
     {
         Plan plan;
+        // VP-0215: a Rendering scaler that equals every independent Scaling
+        // selection has no effect. Remove only provably redundant overrides.
+        // Conflicts retain their owner and are surfaced on the Scaling page;
+        // copying selectors across independent families would change behavior.
+        auto canonicalScaling = Variants(order, "vprenderer.scaling");
+        if (sections.count("vprenderer.scaling")) canonicalScaling.insert(canonicalScaling.begin(), "vprenderer.scaling");
+        auto legacyRendering = Variants(order, "vprenderer");
+        if (sections.count("vprenderer")) legacyRendering.insert(legacyRendering.begin(), "vprenderer");
+        if (!canonicalScaling.empty()) {
+            for (const auto& owner : legacyRendering) for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler" }) {
+                const std::string legacy = Lower(Get(sections, owner, key));
+                if (legacy.empty() || legacy == "auto") continue;
+                const std::string base = Lower(Get(sections, canonicalScaling.front(), key));
+                bool redundant = !base.empty() && base != "auto";
+                for (const auto& selected : canonicalScaling) {
+                    std::string actual = Lower(Get(sections, selected, key));
+                    if (actual.empty()) actual = base;
+                    redundant = redundant && actual == legacy;
+                }
+                if (redundant) plan.removals.emplace_back(owner, key);
+                else plan.warnings.push_back("Legacy Rendering scaler override retained: " + owner + "." + key + "; resolve it on Scaling.");
+            }
+        }
         // Preserve the complete legacy fallback relationship, including Auto
         // resets, rather than attempting a lossy conversion across selections.
         if (NeedsPresetCompatibility(sections)) return plan;

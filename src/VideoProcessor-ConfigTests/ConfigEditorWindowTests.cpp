@@ -7880,6 +7880,61 @@ void testSubtitleHdrLegacyFallbackAndSharedModes()
     require(!requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent")->isEnabled(),"Percentage controls enabled during Smart mode");
 }
 
+void testConcreteVideoChoicesAndCanonicalScaling()
+{
+    QTemporaryDir directory;
+    const QString path=copyFixture(directory);
+    QFile file(path);require(file.open(QIODevice::Append),"Cannot add choice fixture");
+    file.write("\n[vprenderer.scaling.Default]\nupscaler: ewa_lanczossharp\ndownscaler: hermite\nsigmoid: on\ndithering: blue_noise\nchroma_upscaler: bicubic\n[vprenderer.motion.Default]\nsmooth_motion: auto\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\n"
+               "[vprenderer.motion.Child]\nlabel: Child\n");file.close();
+    const auto original=readBytes(path);
+    ConfigEditorWindow window(path,0,true);
+    require(!window.findChild<QComboBox*>("config.vprenderer.upscaler"),"Rendering still has duplicate Upscaler");
+    require(!window.findChild<QComboBox*>("config.vprenderer.downscaler"),"Rendering still has duplicate Downscaler");
+    require(!window.findChild<QComboBox*>("config.vprenderer.sigmoid"),"Rendering still has duplicate Sigmoid");
+    for(const char* key:{"dithering","deband_strength","display_bit_depth"})
+        require(window.findChild<QComboBox*>(QString("config.vprenderer.")+key),"Unrelated Rendering override was removed");
+    window.selectPage(17);window.resize(1200,900);window.show();QApplication::processEvents();
+    auto* chroma=requireControl<QToolButton>(window,"rendererSection.chromaScaling");
+    require(chroma->isVisible(),"Chroma scaling heading is not visible");chroma->setChecked(true);
+    require(requireControl<QComboBox>(window,"config.vprenderer.scaling.chroma_upscaler")->isVisible(),"Chroma algorithm is hidden");
+    auto* dither=requireControl<QComboBox>(window,"config.vprenderer.scaling.dithering");
+    QStringList offered;
+    for(int i=0;i<dither->count();++i) {
+        auto* view=qobject_cast<QListView*>(dither->view());
+        if(view&&!view->isRowHidden(i))offered<<dither->itemData(i).toString();
+    }
+    require(offered==QStringList({"blue_noise","ordered_fixed","white_noise","off"}), (QStringLiteral("Dithering menu: ")+offered.join(",")).toStdString().c_str());
+    auto* scaler=requireControl<QComboBox>(window,"config.vprenderer.scaling.upscaler");
+    require(scaler->findData("ewa_lanczos4sharpest")<scaler->findData("ewa_lanczossharp"),"Quality order was coupled to default selection");
+    window.selectPage(21);QApplication::processEvents();
+    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.motion.profiles");profiles->setCurrentRow(1);
+    auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
+    require(mixer->currentData()=="oversample"&&mixer->currentText()=="Oversample","Inherited default is not the actual mixer selection");
+    require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm")->currentText()=="BWDIF","Inherited algorithm is not correctly named");
+    require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace")->currentText()=="Interlaced input only","Automatic deinterlacing policy was lost");
+    require(mixer->findText("Linear")>=0&&mixer->findText("Cubic")<0&&mixer->findData("mitchell_clamp")>=0,"Mixer labels or Clamped Mitchell are missing");
+    require(readBytes(path)==original,"Viewing concrete defaults wrote the configuration");
+    selectData(mixer,"hermite");
+    auto* reset=requireControl<QPushButton>(window,"config.vprenderer.motion.frame_mixer.reset_override");
+    require(reset->isEnabled(),"Explicit edit cannot be reset");reset->click();
+    require(mixer->currentData()=="oversample","Reset did not restore inherited mixer");
+    profiles->setCurrentRow(0);profiles->setCurrentRow(1);
+    require(mixer->currentData()=="oversample","Revisiting a profile lost its concrete inherited mixer");
+    auto* generalConversion=requireControl<QComboBox>(window,"config.general.video_conversion");
+    require(generalConversion->count()==2&&generalConversion->itemText(0)=="Disabled","Video conversion repeats its default option");
+    const QString legacyPath=directory.filePath("legacy-cubic.cfg");
+    QFile legacyFile(legacyPath);require(legacyFile.open(QIODevice::WriteOnly),"Cannot create legacy mixer fixture");
+    const QByteArray legacyBytes="[vprenderer.motion.Default]\nframe_mixer: cubic\n";
+    legacyFile.write(legacyBytes);legacyFile.close();
+    ConfigEditorWindow legacyWindow(legacyPath,0,true);
+    auto* legacyMixer=requireControl<QComboBox>(legacyWindow,"config.vprenderer.motion.frame_mixer");
+    require(legacyMixer->currentIndex()<0&&legacyMixer->placeholderText().contains("Cubic (no mixing)"),"Legacy Cubic was silently replaced or offered as supported");
+    require(readBytes(legacyPath)==legacyBytes,"Loading legacy Cubic changed the saved config");
+    const QString images=qEnvironmentVariable("VP_CHOICE_SCREENSHOTS");
+    if(!images.isEmpty()){QDir().mkpath(images);window.grab().save(images+"/motion.png");window.selectPage(17);QApplication::processEvents();window.grab().save(images+"/scaling.png");}
+}
+
 void testMotionAndChromaControlsPersistAndExposeNewTab()
 {
     QTemporaryDir directory;
@@ -8012,10 +8067,9 @@ void testRenderingProcessingOwnershipSaveReopenAndRename()
     require(found,"Renaming discarded the processing override");
     auto* renamedProfiles=requireControl<QListWidget>(reopened,"config.vprenderer.profiles");
     renamedProfiles->setCurrentRow(0);QCoreApplication::processEvents();
-    auto* rootDither=requireControl<QComboBox>(reopened,"config.vprenderer.dithering");
-    require(rootDither->itemData(0).toString().isEmpty() &&
-        !qobject_cast<QListView*>(rootDither->view())->isRowHidden(0),"Default profile cannot clear its override back to Scaling");
-    rootDither->setCurrentIndex(0);save(reopened);
+    auto* resetDither=requireControl<QPushButton>(reopened,"config.vprenderer.dithering.reset_override");
+    require(resetDither->isEnabled(),"Default profile cannot reset its override back to Scaling");
+    resetDither->click();save(reopened);
     ConfigFile cleared;require(cleared.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load cleared override");
     require(!cleared.TryGetString("vprenderer.default","dithering",value),"Clearing an override recreated it on Save");
 }
@@ -8116,6 +8170,7 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("concrete video choices and canonical Scaling", testConcreteVideoChoicesAndCanonicalScaling);
     failures += run("responsive workspaces preserve edits and fit", testResponsiveWorkspacesPreserveEditsAndFit);
     failures += run("left docks restore manual choices and drawer editing", testLeftDocksRestoreManualChoicesAndDrawerEditing);
     failures += run("migration notice only for pending migration", testMigrationNoticeOnlyForPendingMigration);

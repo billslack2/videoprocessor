@@ -424,7 +424,7 @@ namespace VideoProcessorTest
                 const bool fast = settings.quality == "fast";
                 Assert::AreEqual(fast ? "off" : settings.quality == "high" ? "high_quality" : "standard",
                     ResolvedPeakDetection(projection.renderParams));
-                Assert::AreEqual(fast ? "off" : "blue_noise", ResolvedDithering(projection.renderParams).c_str());
+                Assert::AreEqual("blue_noise", ResolvedDithering(projection.renderParams).c_str());
                 settings.dithering = "error_diffusion_sierra3";
                 BuildOrFail(settings, false, projection);
                 Assert::IsTrue(ResolvedDithering(projection.renderParams).find("sierra-3") != std::string::npos);

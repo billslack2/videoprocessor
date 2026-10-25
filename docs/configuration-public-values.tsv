@@ -366,6 +366,7 @@ vprenderer.motion.frame_mixer	oversample
 vprenderer.motion.frame_mixer	hermite
 vprenderer.motion.frame_mixer	linear
 vprenderer.motion.frame_mixer	cubic
+vprenderer.motion.frame_mixer	mitchell_clamp
 vprenderer.motion.deinterlace	auto
 vprenderer.motion.deinterlace	off
 vprenderer.motion.deinterlace	force
