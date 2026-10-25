@@ -110,6 +110,13 @@ class DisplaySourceClock
 public:
     void Reset() { *this = {}; }
     bool Synthetic() const { return synthetic; }
+    double Select(bool useRepeatCadence,double raw,uint64_t seq,double hz,
+        uint64_t epoch,bool discontinuity)
+    {
+        if (useRepeatCadence) return Accept(raw,seq,hz,epoch,discontinuity);
+        Reset();
+        return std::isfinite(raw)?raw:static_cast<double>(seq)/hz;
+    }
     double Preview(double raw, uint64_t seq, double hz, uint64_t epoch) const
     {
         if (!valid || epoch != generation)

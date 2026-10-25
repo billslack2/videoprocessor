@@ -43,6 +43,14 @@ pixels; deinterlacing keeps its nominal field/frame processing cadence. One slot
 clock also repeats final temporal pictures between due fields or missing inputs.
 It never enables blending or expands expensive deinterlacing to display Hz.
 
+When Smooth Motion actually engages mixing, it already produces display-rate
+outputs and owns cadence. The every-refresh preference stays saved/checked but
+its separate repeat clock, cache and source-retirement policy are bypassed.
+Selecting Auto alone does not disable repeats: they resume when Auto bypasses
+mixing. Deinterlace-only output also remains eligible. Presentation queue depth
+continues to apply independently in both cases. The log names the active cadence
+owner and requested/effective every-refresh states.
+
 Resets, resize/output changes, pending profile/shader/LUT changes and visibility
 changes retire the cached repeat path. Already submitted frames may drain from
 the bounded driver queue. During a source stall, an output change can stop new

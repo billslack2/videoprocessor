@@ -113,3 +113,16 @@ PowerShell post-build hashing. A build-local PSModulePath containing the Windows
 PowerShell module folders resolved it; no product or global environment setting
 was changed. The first regression pass found a missing documented numeric value;
 the reference was corrected before the complete passing run.
+
+## Live Smooth Motion overlap correction - 2026-10-25
+
+The user observed slow/stuttering content and drops with active Smooth Motion
+mixing and every-refresh enabled together; either alone appeared fine. The
+previous shared-slot approach was not accepted by this live test. Active mixing
+now owns display-rate cadence and bypasses the separate repeat clock, cache,
+source timestamp normalization and source-retirement path. Configured Auto that
+is not mixing and deinterlace-only output retain every-refresh behavior. The
+device presentation-depth cap stays independent. Current-frame WillMix shares
+Begin's field-rate classification, avoiding previous-frame state on transitions.
+Tests cover Auto engagement/bypass, field cadence, source-domain reset and mixed
+output parity with the checkbox-off path. Live playback revalidation is required.

@@ -31,6 +31,12 @@ namespace PresentationConfig
             return DefaultDepth;
         return std::stoi(value);
     }
+    // Active mixing already generates display-rate outputs. Never wrap it in
+    // a second repeat clock; Auto configured but bypassed is still eligible.
+    inline bool UseRepeatCadence(bool requested, bool mixing)
+    {
+        return requested && !mixing;
+    }
     inline unsigned BufferCount(unsigned appliedDepth, bool blit)
     {
         return blit ? 1u : appliedDepth + 1u;

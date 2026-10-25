@@ -4401,6 +4401,7 @@ struct LibplaceboVideoRenderer::Impl
     DisplayVsyncClock displayVsyncClock;
     DisplaySourceClock displaySourceClock;
     UINT appliedPresentationDepth = PresentationConfig::DefaultDepth;
+    int displayCadenceOwner = -1;
     DisplayFrameCache displayFrameCache;
     AlphaPresentationRecord displayRepeatRecord;
     bool displayRepeatValid = false;
@@ -20038,7 +20039,8 @@ releaseDriftBaseRetention =
         uint64_t viewport, uint64_t revision)
     {
         displayRepeatValid = false;
-        if (!activeSettings.presentEveryVsync || !displayVsyncClock.Active()) return;
+        if (!PresentationConfig::UseRepeatCadence(activeSettings.presentEveryVsync,
+            temporalRenderer.Mixing()) || !displayVsyncClock.Active()) return;
         if (!output || !output->params.blit_src)
         {
             displayVsyncClock.Reset();
@@ -24067,7 +24069,8 @@ void LibplaceboVideoRenderer::RenderLoop()
                     output.displayRepeatRevision !=
                         output.startupReadinessRevision.load(std::memory_order_acquire);
             };
-            if (output.activeSettings.presentEveryVsync && output.displayRepeatValid)
+            if (PresentationConfig::UseRepeatCadence(output.activeSettings.presentEveryVsync,
+                output.temporalRenderer.Mixing()) && output.displayRepeatValid)
             {
                 std::unique_lock<std::mutex> queueGuard(m_queueMutex);
                 auto currentOutput = [&]() {
@@ -24820,10 +24823,14 @@ void LibplaceboVideoRenderer::RenderLoop()
 			{
                 const double rawSourcePts=m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
                     static_cast<double>(frame.GetTimingTimestamp())/m_timingClock->TimingClockTicksPerSecond():NAN;
-                const double sourcePts=m_impl->activeSettings.presentEveryVsync ?
-                    m_impl->displaySourceClock.Accept(rawSourcePts,sourceSequence,captureRateHz,
-                        frameGeneration,frame.IsSourceDiscontinuity()) :
-                    (std::isfinite(rawSourcePts)?rawSourcePts:static_cast<double>(sourceSequence)/captureRateHz);
+                const bool currentWillMix=TemporalRenderer::WillMix(m_impl->activeSettings.motion,
+                    captureRateHz,m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
+                    state&&state->displayMode&&state->displayMode->IsInterlaced(),
+                    state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0);
+                const bool useRepeatCadence=PresentationConfig::UseRepeatCadence(
+                    m_impl->activeSettings.presentEveryVsync,currentWillMix);
+                const double sourcePts=m_impl->displaySourceClock.Select(useRepeatCadence,
+                    rawSourcePts,sourceSequence,captureRateHz,frameGeneration,frame.IsSourceDiscontinuity());
                 const auto sourceSubtitleMode=m_impl->CurrentSubtitlePreviewMode();
                 const bool sourceSubtitleComposition=sourceSubtitleMode==SubtitlePreviewMode::BlackBackground ||
                     sourceSubtitleMode==SubtitlePreviewMode::GeneratedGrayBackground;
@@ -24835,7 +24842,16 @@ void LibplaceboVideoRenderer::RenderLoop()
                     state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
                     temporalCaptureEpoch,sourceSequence,sourcePts,frame.IsSourceDiscontinuity(),
                     sourceSubtitleComposition,cadenceRepeat);
-                if (m_impl->activeSettings.presentEveryVsync)
+                const bool effectiveRepeatCadence=PresentationConfig::UseRepeatCadence(
+                    m_impl->activeSettings.presentEveryVsync,m_impl->temporalRenderer.Mixing());
+                const int cadenceOwner=m_impl->temporalRenderer.Mixing()?2:effectiveRepeatCadence?1:0;
+                if (cadenceOwner!=m_impl->displayCadenceOwner) {
+                    m_impl->displayCadenceOwner=cadenceOwner;
+                    DebugLog::Log("VP display cadence owner: requested_every_vsync=%d effective_every_vsync=%d smooth_motion_mixing=%d owner=%s",
+                        m_impl->activeSettings.presentEveryVsync?1:0,effectiveRepeatCadence?1:0,
+                        m_impl->temporalRenderer.Mixing()?1:0,cadenceOwner==2?"smooth-motion":cadenceOwner==1?"display-repeat":"source");
+                }
+                if (effectiveRepeatCadence)
                     m_impl->displayVsyncClock.BeginSource(
                         m_impl->temporalRenderer.Active() && !m_impl->temporalRenderer.outputs.empty() ?
                             m_impl->temporalRenderer.outputs.front() : sourcePts, SteadyClockNowNs(),
@@ -24853,7 +24869,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 size_t renderedMotionDraws=0;
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
                     if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
-                    if (m_impl->displayVsyncClock.Active() && !motionOutputs.empty()) {
+                    if (effectiveRepeatCadence && m_impl->displayVsyncClock.Active() && !motionOutputs.empty()) {
                         m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
                         // Retire obsolete temporal output slots after a stall,
                         // retaining the newest due one instead of catch-up draws.

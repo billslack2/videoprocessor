@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <vprenderer/TemporalRenderer.h>
 #include <vprenderer/DisplayFrameCache.h>
+#include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
@@ -175,6 +176,56 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::IsFalse(cache.CopyTo(g.clean),L"An incompatible output format must invalidate the repeat");
         cache.Clear();
         Assert::IsFalse(cache.CopyTo(g.target));
+    }
+    TEST_METHOD(EveryRefreshDefersToActualMixingIncludingAutoTransitions) {
+        MotionConfig::Settings settings;settings.smoothMotion="auto";
+        TemporalRenderer temporal;
+        const double displays[]={120,60,120,60,0};
+        for(size_t i=0;i<5;++i) {
+            const bool predicted=TemporalRenderer::WillMix(settings,24,displays[i],false,0);
+            temporal.Begin(settings,24,displays[i],false,0,1,i+1,i/24.0,false);
+            Assert::AreEqual(predicted,temporal.Mixing());
+            Assert::AreEqual(!temporal.Mixing(),PresentationConfig::UseRepeatCadence(true,predicted));
+            Assert::IsFalse(PresentationConfig::UseRepeatCadence(false,predicted));
+        }
+        settings.smoothMotion="off";
+        Assert::IsFalse(TemporalRenderer::WillMix(settings,24,60,false,0));
+        settings.smoothMotion="always";
+        Assert::IsTrue(TemporalRenderer::WillMix(settings,24,120,false,0));
+        settings.smoothMotion="auto";
+        // Deinterlacing uses a 50 Hz field clock; 100 Hz needs no mixing.
+        temporal.Begin(settings,25,100,true,1,2,1,0,false);
+        Assert::IsTrue(temporal.Active());Assert::IsFalse(temporal.Mixing());
+        Assert::IsTrue(PresentationConfig::UseRepeatCadence(true,temporal.Mixing()));
+        Assert::AreEqual(temporal.Mixing(),TemporalRenderer::WillMix(settings,25,100,true,1));
+    }
+    TEST_METHOD(EngagedSmoothMotionOutputIsUnchangedByEveryRefreshPreference) {
+        MotionConfig::Settings settings;settings.smoothMotion="auto";
+        TemporalRenderer baseline,candidate;
+        DisplaySourceClock sourceClock;
+        sourceClock.Accept(100,1,24,1,false);
+        sourceClock.Accept(100,2,24,1,false); // old synthetic fallback must retire
+        for(uint64_t sequence=1;sequence<20;++sequence) {
+            const double pts=sequence/24.0;
+            const bool mixing=TemporalRenderer::WillMix(settings,24,60,false,0);
+            Assert::IsFalse(PresentationConfig::UseRepeatCadence(true,mixing));
+            const double selected=sourceClock.Select(
+                PresentationConfig::UseRepeatCadence(true,mixing),pts,sequence,24,1,false);
+            Assert::AreEqual(pts,selected,1e-12);
+            Assert::IsFalse(sourceClock.Synthetic());
+            baseline.Begin(settings,24,60,false,0,1,sequence,pts,false);
+            candidate.Begin(settings,24,60,false,0,1,sequence,selected,false);
+            Assert::IsTrue(candidate.Mixing());
+            Assert::AreEqual(baseline.outputs.size(),candidate.outputs.size());
+            for(size_t i=0;i<baseline.outputs.size();++i)
+                Assert::AreEqual(baseline.outputs[i],candidate.outputs[i],1e-12);
+        }
+        // Auto bypass can resume repeats with a fresh, anchored source domain.
+        const bool bypassed=TemporalRenderer::WillMix(settings,24,120,false,0);
+        Assert::IsFalse(bypassed);
+        Assert::AreEqual(20.0,sourceClock.Select(
+            PresentationConfig::UseRepeatCadence(true,bypassed),20.0,100,24,1,false),1e-12);
+        Assert::IsFalse(sourceClock.Synthetic());
     }
     TEST_METHOD(DisplayRefreshUsesNominalDeinterlacingWithoutEnablingBlending) {
         MotionConfig::Settings settings;
