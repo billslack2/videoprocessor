@@ -2,7 +2,18 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-25 live regression: user reports slow/stuttering content and dropped
+frames when Smooth Motion actually mixes at a mismatched refresh AND every-refresh
+is enabled; either feature alone appears fine. Reopened for a focused fix:
+active Smooth Motion owns display cadence and suppresses the independent repeat
+clock/cache/retirement path. Auto configured but bypassed must retain repeats;
+deinterlace-only remains eligible. Use a shared current-frame mixing classifier
+before source timestamp normalization, then confirm actual mixing after Begin.
+Luna xhigh regression reviewer requested first-frame/rate-transition and output
+parity coverage. Source remains on clean 727467e7; beta refreshed and unchanged
+at b1415da4. Existing authorized test deployment will be updated after checks.
 
 2026-10-25 test deployment: user authorized deployment/startup after the source
 review. The matching x64 Release host, primary/Beta renderers, Config editor and
