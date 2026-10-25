@@ -22,7 +22,7 @@ public:
         return std::isfinite(hz) && hz >= 10.0 && hz <= 360.0;
     }
     void BeginSource(double pts, int64_t nowNs, uint64_t epoch, double hz,
-        bool discontinuity)
+        bool discontinuity, double timestampQuantumSeconds = 0.0)
     {
         if (!std::isfinite(pts) || !ValidRate(hz)) { Reset(); return; }
         if (!Matches(epoch, hz) || discontinuity ||
@@ -35,6 +35,11 @@ public:
             periodNs = 1e9 / hz;
             tick = 0;
         }
+        // API timebase and device precision can differ. The captured DeckLink
+        // PTS in the incident used a 10us grid despite its 1MHz API timebase.
+        // Bound the uncertainty to 100us, far below a refresh interval.
+        sourceTolerance = std::isfinite(timestampQuantumSeconds) ?
+            (std::max)(1e-5, (std::min)(timestampQuantumSeconds, 1e-4)) : 1e-5;
         lastSourcePts = pts;
         SkipMissed(nowNs);
     }
@@ -53,9 +58,13 @@ public:
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
     bool SourceDue(double pts) const
     {
-        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + 1e-7);
+        // Timestamp quantization around the boundary must not become a cached
+        // repeat followed by retiring the adjacent source. Keep the original
+        // cadence phase; this is only a microsecond-scale uncertainty window.
+        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + sourceTolerance);
     }
     void Submitted() { if (Active()) ++tick; }
+    double SourceToleranceSeconds() const { return sourceTolerance; }
     bool HasFeedback() const { return feedback; }
     void InvalidateFeedback() { feedback=false; feedbackSamples=0; lastSyncNs=0; }
     // mpv's guarded estimate of the last queued flip's display time. DXGI
@@ -95,7 +104,7 @@ private:
     uint64_t generation = 0, tick = 0;
     int64_t wallOriginNs = 0;
     double sourceOrigin = 0.0, lastSourcePts = 0.0;
-    double refreshHz = 0.0, periodNs = 0.0;
+    double refreshHz = 0.0, periodNs = 0.0, sourceTolerance = 1e-5;
     bool feedback=false;
     unsigned feedbackSamples=0;
     int64_t lastSyncNs=0;

@@ -126,3 +126,28 @@ device presentation-depth cap stays independent. Current-frame WillMix shares
 Begin's field-rate classification, avoiding previous-frame state on transitions.
 Tests cover Auto engagement/bypass, field cadence, source-domain reset and mixed
 output parity with the checkbox-off path. Live playback revalidation is required.
+
+
+## NLS/every-refresh timestamp-boundary correction - 2026-10-25
+
+The user's live comparison is preserved in VP-0211: at 13:18:37 NLS enabled
+with every-refresh on; through 13:18:56 repeats increased 8 to 130 and retired
+sources 0 to 122. NLS off at 13:18:57 largely stopped the paired increments;
+every-refresh off at 13:20:02 followed by NLS on at 13:20:09 played correctly
+according to the user. Runtime Motion was off; the screenshot was not the
+runtime's Motion setting. Logged active/render CPU durations were below a
+refresh; GPU saturation is not established by these records.
+
+SourceDue previously allowed 0.1 microsecond, smaller than the actual capture
+precision. All 518 selected-PTS samples in the preserved incident lie on a
+10-microsecond grid (absolute and delta GCD after conversion to microseconds),
+although DeckLink exposes a 1 MHz clock. A deterministic matched-rate queue
+simulation with 10us PTS rounding reproduces 369 repeats and 368 retirements in
+1200 display slots without shader work or missed slots. The correction uses a
+10us minimum / one-source-tick allowance capped at 100us. A half-refresh
+selection window was rejected during review because it changes cadence phase
+and allows materially early sources. The original 24-to-60 3/2 phase is retained.
+Tests cover matched quantized source selection, variable sub-refresh work,
+bounded future eligibility, real long-run rate drift and generation changes.
+Existing Smooth Motion, subtitle packet, cache-pixel and reset tests remain
+required. Live NLS and subtitle revalidation remains necessary.

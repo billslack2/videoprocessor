@@ -20077,7 +20077,7 @@ releaseDriftBaseRetention =
 
     // Copy final display-referred pixels, including overlays and dithering.
     // No source buffer, detector, subtitle lease, or temporal history is consumed.
-    bool PresentDisplayRepeat()
+    bool PresentDisplayRepeat(double nextSourcePts, size_t queuedSources)
     {
         if (!displayRepeatValid) return false;
         auto failed = [&]() {
@@ -20150,10 +20150,12 @@ releaseDriftBaseRetention =
         if (now >= nextDisplayRefreshLogTick)
         {
             nextDisplayRefreshLogTick = now + 2000;
-            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu feedback=%d pts_fallback=%d source_analysis=unchanged",
+            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu feedback=%d pts_fallback=%d next_pts_lead_ms=%.6f pts_tolerance_us=%.3f queued_sources=%zu source_analysis=unchanged",
                 renderLoadDisplayRefreshHz.load(), displayRefreshRepeats,
                 displayRefreshDrops, record.generation, record.sourceSequence,
-                displayVsyncClock.HasFeedback()?1:0,displaySourceClock.Synthetic()?1:0);
+                displayVsyncClock.HasFeedback()?1:0,displaySourceClock.Synthetic()?1:0,
+                (nextSourcePts-record.outputPts)*1000.0,
+                displayVsyncClock.SourceToleranceSeconds()*1e6,queuedSources);
         }
         return true;
     }
@@ -24163,8 +24165,10 @@ void LibplaceboVideoRenderer::RenderLoop()
                         // Reset/stop and a newly ready source can arrive during
                         // pacing. Recheck before acquiring any backbuffer.
                         const bool repeat = currentOutput() && !sourceDue();
+                        const double nextSourcePts=m_frameQueue.empty()?NAN:pts(m_frameQueue.front());
+                        const size_t queuedSources=m_frameQueue.size();
                         queueGuard.unlock();
-                        if (repeat) refreshRepeated = output.PresentDisplayRepeat();
+                        if (repeat) refreshRepeated = output.PresentDisplayRepeat(nextSourcePts,queuedSources);
                     }
                 }
                 else
@@ -24888,7 +24892,9 @@ void LibplaceboVideoRenderer::RenderLoop()
                         m_impl->temporalRenderer.Active() && !m_impl->temporalRenderer.outputs.empty() ?
                             m_impl->temporalRenderer.outputs.front() : sourcePts, SteadyClockNowNs(),
                         frameGeneration, m_impl->renderLoadDisplayRefreshHz.load(),
-                        frame.IsSourceDiscontinuity());
+                        frame.IsSourceDiscontinuity(),
+                        m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
+                            1.0/m_timingClock->TimingClockTicksPerSecond():0.0);
                 else
                 {
                     m_impl->displayVsyncClock.Reset();
@@ -24915,7 +24921,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                                     staleGeneration=true; break;
                                 }
                             }
-                            if (!m_impl->PresentDisplayRepeat()) break;
+                            if (!m_impl->PresentDisplayRepeat(motionOutputs[motionDraw],0)) break;
                             m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
                         }
                         if (staleGeneration) break;
