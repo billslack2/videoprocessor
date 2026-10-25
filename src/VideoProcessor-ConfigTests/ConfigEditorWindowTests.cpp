@@ -624,16 +624,75 @@ void testToneMappingControls()
     }
 }
 
+void testRendererPromotionMigrationAndCacheSelection()
+{
+    for (const auto* original : { "VP Renderer (Beta)", "vp renderer (beta)", "VP Renderer",
+        "VP Renderer (Legacy)", "DirectShow - madVR", "" })
+    {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("VideoProcessor.cfg");
+        const QByteArray rendererName(original);
+        const QByteArray initial = "# keep this comment\n[general]\n" +
+            (rendererName.isEmpty() ? QByteArray() : "renderer: " + rendererName + " # renderer comment\n") +
+            "noui: true # keep this setting\n[vprenderer.Default]\nquality: high\n";
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly) && file.write(initial) == initial.size(),
+            "Cannot create renderer migration fixture");
+        file.close();
+        const QString expected = rendererName == "VP Renderer (Legacy)" || rendererName == "DirectShow - madVR" ?
+            QString::fromLatin1(original) : QStringLiteral("VP Renderer");
+        ConfigEditorWindow window(path, 0, true);
+        const QStringList choices{ "VP Renderer", "VP Renderer (Legacy)", "DirectShow - madVR" };
+        window.setRendererDiscoveryForTesting(choices, choices);
+        auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
+        require(renderer->currentData().toString() == expected,
+            "Existing or omitted renderer did not select the expected upgraded renderer");
+        require(renderer->findData("VP Renderer (Beta)") < 0,
+            "Beta name is still offered as a selectable renderer");
+        require(readBytes(path) == initial, "Opening Config rewrote the existing file before save");
+        save(window);
+        const auto saved = readBytes(path);
+        require(saved.contains("renderer: " + expected.toLatin1()), "Renderer choice was not saved canonically");
+        require(saved.contains("# keep this comment") && saved.contains("noui: true # keep this setting"),
+            "Renderer migration changed unrelated configuration content");
+        if (!rendererName.isEmpty())
+            require(saved.contains("# renderer comment"), "Renderer migration removed the inline comment");
+        ConfigEditorWindow reopened(path, 0, true);
+        reopened.setRendererDiscoveryForTesting(choices, choices);
+        require(requireControl<QComboBox>(reopened, "config.general.renderer")->currentData().toString() == expected,
+            "Renderer selection did not survive save and reopen");
+        if (expected == "DirectShow - madVR") continue;
+        const bool promoted = expected == "VP Renderer";
+        require(requireControl<QCheckBox>(reopened, "config.vprenderer.dynamic_target")->isEnabled() == promoted,
+            "Promoted renderer controls followed the wrong renderer");
+        const QDir selectedCache(directory.filePath(promoted ? "vprenderer-beta" : "vprenderer"));
+        const QDir otherCache(directory.filePath(promoted ? "vprenderer" : "vprenderer-beta"));
+        for (const auto& cache : { selectedCache, otherCache })
+        {
+            require(QDir().mkpath(cache.path()), "Cannot create renderer cache fixture directory");
+            QFile cached(cache.filePath("VideoProcessorShaderCache.bin"));
+            require(cached.open(QIODevice::WriteOnly) && cached.write("cached") == 6, "Cannot create cache fixture");
+        }
+        requireControl<QPushButton>(reopened, "config.shader.cache.clear")->click();
+        require(!QFileInfo::exists(selectedCache.filePath("VideoProcessorShaderCache.bin")) &&
+            QFileInfo::exists(selectedCache.filePath("VideoProcessorShaderCache.clear")),
+            "Cache clear did not target the selected renderer");
+        require(QFileInfo::exists(otherCache.filePath("VideoProcessorShaderCache.bin")) &&
+            !QFileInfo::exists(otherCache.filePath("VideoProcessorShaderCache.clear")),
+            "Cache clear touched the other renderer cache");
+    }
+}
+
 void testBetaToneMappingControls()
 {
     QTemporaryDir directory;
     const QString path = directory.filePath("VideoProcessor.cfg");
     QFile file(path);
     require(file.open(QIODevice::WriteOnly), "Cannot create Beta fixture");
-    file.write("[general]\nrenderer: VP Renderer\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
+    file.write("[general]\nrenderer: VP Renderer (Legacy)\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
     file.close();
     ConfigEditorWindow window(path, 0, true);
-    window.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Beta)"}, {"VP Renderer", "VP Renderer (Beta)"});
+    window.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Legacy)"}, {"VP Renderer", "VP Renderer (Legacy)"});
     auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
     auto* dynamic = requireControl<QCheckBox>(window, "config.vprenderer.dynamic_target");
     auto* custom = requireControl<QCheckBox>(window, "config.vprenderer.custom_tone_mapping");
@@ -645,7 +704,7 @@ void testBetaToneMappingControls()
     auto* clip = requireControl<QLineEdit>(window, "config.vprenderer.mastering_clip");
     require(dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta defaults incorrect");
     require(!dynamic->isEnabled() && !film->isEnabled() && !clip->isEnabled(), "Stable must disable Beta controls");
-    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    renderer->setCurrentIndex(renderer->findData("VP Renderer"));
     require(custom->isEnabled() && dynamic->isEnabled() && film->isEnabled() && clip->isEnabled(), "Beta controls did not enable");
     custom->setChecked(true);
     require(gamut->isEnabled(), "Upstream gamut choice must remain available with residual correction");
@@ -653,7 +712,7 @@ void testBetaToneMappingControls()
     dynamic->setChecked(false); film->setText("0.75"); clip->setText("0.5");
     requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
     require(custom->isChecked() && !dynamic->isChecked() && film->text() == "0.75" && gamut->property("effectiveValue").toString() == "relative", "Beta settings and selected gamut did not inherit");
-    renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+    renderer->setCurrentIndex(renderer->findData("VP Renderer (Legacy)"));
     require(!custom->isEnabled() && custom->isChecked() && !film->isEnabled() && film->text() == "0.75", "Stable selection changed saved Beta values");
     require(requireControl<QComboBox>(window, "config.vprenderer.gamut_mapping")->isEnabled(), "Stable shared gamut control must remain available");
     save(window);
@@ -661,13 +720,13 @@ void testBetaToneMappingControls()
     require(saved.contains("gamut_mapping: relative"), "Upstream gamut selection was not saved with correction enabled");
     require(saved.contains("custom_tone_mapping: true") && saved.contains("dynamic_target: false") && saved.contains("film_strength: 0.75") && saved.contains("mastering_clip: 0.5"), "Beta fields were not saved");
     ConfigEditorWindow enabledReload(path, 0, true);
-    enabledReload.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Beta)"}, {"VP Renderer", "VP Renderer (Beta)"});
+    enabledReload.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Legacy)"}, {"VP Renderer", "VP Renderer (Legacy)"});
     requireControl<QListWidget>(enabledReload, "config.vprenderer.profiles")->setCurrentRow(1);
     require(requireControl<QCheckBox>(enabledReload, "config.vprenderer.custom_tone_mapping")->isChecked(), "Existing persisted custom_tone_mapping key must reload correction On");
     requireControl<QComboBox>(enabledReload, "config.general.renderer")->setCurrentIndex(
-        requireControl<QComboBox>(enabledReload, "config.general.renderer")->findData("VP Renderer (Beta)"));
+        requireControl<QComboBox>(enabledReload, "config.general.renderer")->findData("VP Renderer"));
     require(requireControl<QComboBox>(enabledReload, "config.vprenderer.gamut_mapping")->isEnabled(), "Reloaded correction must preserve upstream gamut editing");
-    renderer->setCurrentIndex(renderer->findData("VP Renderer (Beta)"));
+    renderer->setCurrentIndex(renderer->findData("VP Renderer"));
     requireControl<QPushButton>(window, "config.vprenderer.toneHighlightBeta.restore_defaults")->click();
     require(!custom->isChecked() && dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta restore failed");
     require(gamut->isEnabled() && gamut->property("effectiveValue").toString() == "relative", "Correction reset must retain upstream gamut choice");
@@ -684,7 +743,7 @@ void testBetaToneMappingControls()
         requireControl<QToolButton>(window, "rendererSection.toneHighlightBeta")->setChecked(true);
         QCoreApplication::processEvents();
         require(window.grab().save(QDir(captures).filePath("beta-highlight.png")), "Cannot capture Beta controls");
-        renderer->setCurrentIndex(renderer->findData("VP Renderer"));
+        renderer->setCurrentIndex(renderer->findData("VP Renderer (Legacy)"));
         QCoreApplication::processEvents();
         require(window.grab().save(QDir(captures).filePath("stable-highlight.png")), "Cannot capture stable controls");
     }
@@ -1261,7 +1320,7 @@ void testEveryPageRoundTrips()
     require(window.findChild<QPushButton*>(
         QStringLiteral("config.shader.prepare")) == nullptr,
         "Shaders Setup still exposes exhaustive preparation");
-    const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer"));
+    const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer-beta"));
     require(QDir().mkpath(cacheDirectoryPath),
         "Cannot create the shader-cache test directory");
     const QString cachePath = QDir(cacheDirectoryPath).filePath(
@@ -7631,6 +7690,7 @@ int main(int argc, char** argv)
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
+    failures += run("renderer promotion migration and cache selection", testRendererPromotionMigrationAndCacheSelection);
     failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
     failures += run("Off zoom hold round trip", testOffZoomHoldRoundTrip);
