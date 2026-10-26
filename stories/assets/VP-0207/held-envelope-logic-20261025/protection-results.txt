@@ -1,0 +1,8 @@
+PASS: current clearance scheduling excludes no-bright-ink; otherwise identical negative control is eligible.
+seq=101 proof=1 raw_held=1 envelope_active=0 expanded=0 final=278..1882 reason=current prepared subtitle permits trusted native presentation
+PASS: identical geometry bypasses recovery as TRANSLATION_CONFIRMATION, is guarded as OUTWARD_FIT; exact current UI proof passes, stale proof fails, already-displayed envelope remains protected.
+seq=102 proof=0 raw_held=1 envelope_active=1 expanded=1 final=270..1960 reason=trusted crop retained while subtitle translation target confirms
+seq=103 proof=1 raw_held=1 envelope_active=0 expanded=0 final=278..1882 reason=current prepared subtitle permits trusted native presentation
+PASS: incident detector 270..1948 plus retained dense bottom 1916 +44 produces 270..1960.
+PASS: FIT at age 9000ms with 2000ms hold remains active if dense analysis skipped; evaluated-frame and generation-change controls expire.
+PASS: production projection/policy reproduces native-expanded-native without threads; expiry control passes. Synthetic proof and FIT routing, not image/end-to-end reproduction.
