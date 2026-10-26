@@ -958,7 +958,7 @@ namespace
         bool subtitleRoundedCorners = true;
         bool subtitleFloatBackground = false;
         bool subtitleTemporalFill = false;
-        int subtitleSpatialFill = 0; // 0 mirror, 1 stretch, 2 blended surroundings
+        int subtitleSpatialFill = 0; // 0 mirror, 1 stretch, 2 original surround, 3 stable surround
         SubtitlePreviewMode subtitleMode = SubtitlePreviewMode::None;
         std::map<std::string,std::string> subtitleProfileSettings;
         bool subtitleProfileSelected = false;
@@ -2778,7 +2778,7 @@ namespace
                     const auto cleanupFill=ConfigFile::NormalizeName(get("cleanup_fill"));
                     if(!cleanupFill.empty()) {
                         settings.subtitleTemporalFill=cleanupFill=="temporal";
-                        settings.subtitleSpatialFill=cleanupFill=="surround"?2:cleanupFill=="stretch"?1:0;
+                        settings.subtitleSpatialFill=cleanupFill=="stable_surround"?3:cleanupFill=="surround"?2:cleanupFill=="stretch"?1:0;
                     } else RendererProfileConfig::ParseBoolean(get("temporal_fill"),settings.subtitleTemporalFill);
                     settings.subtitleMode=type=="black"?SubtitlePreviewMode::BlackBackground:
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;

@@ -7739,9 +7739,18 @@ void testSubtitleSurroundFillRoundTrip()
     require(restored->currentData().toString()=="surround","Surround fill did not persist");
     require(restored->currentText()=="Blend surrounding picture","User-facing fill label missing");
     require(readBytes(path).contains("# preserve comment"),"Saving fill removed user comment");
-    for(const auto& available:{"mirror","stretch","surround"})
+    selectData(restored,"stable_surround");save(reopened);
+    ConfigEditorWindow stableReopened(path,0,true);
+    auto* stable=requireControl<QComboBox>(stableReopened,"config.vprenderer.subtitles.cleanup_fill");
+    require(stable->currentData().toString()=="stable_surround","Stable fill did not persist independently");
+    require(stable->currentText()=="Stable blend surrounding picture","Stable fill label missing");
+    selectData(stable,"surround");save(stableReopened);
+    ConfigEditorWindow originalReopened(path,0,true);
+    require(requireControl<QComboBox>(originalReopened,"config.vprenderer.subtitles.cleanup_fill")->currentData().toString()=="surround",
+        "Original surround selection must remain available after stable fill");
+    for(const auto& available:{"mirror","stretch","surround","stable_surround"})
         require(restored->findData(QString::fromUtf8(available))>=0,"Supported fill option disappeared");
-    require(restored->count()==3 && restored->findData("temporal")<0,
+    require(restored->count()==4 && restored->findData("temporal")<0,
         "Temporal is still offered as a reconstruction fill");
 }
 
@@ -7776,8 +7785,8 @@ void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
                 && view->isRowHidden(current),"Retired fill can still be selected in the popup");
             require(fill->currentText()=="Saved legacy fill - choose a replacement",
                 "Saved retired fill is not explained");
-            require(fill->count()==4,"Legacy fill placeholders accumulated");
-            for (const auto* value : {"mirror","stretch","surround"}) {
+            require(fill->count()==5,"Legacy fill placeholders accumulated");
+            for (const auto* value : {"mirror","stretch","surround","stable_surround"}) {
                 const int index=fill->findData(value);
                 require(index>=0 && !view->isRowHidden(index) &&
                     (fill->model()->flags(fill->model()->index(index,0)) & Qt::ItemIsEnabled),
@@ -7788,7 +7797,7 @@ void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
         for (int repeat=0;repeat<3;++repeat) {
             list->setCurrentRow(1); checkLegacy();
             list->setCurrentRow(2);
-            require(fill->count()==3 && fill->currentData().toString()=="surround",
+            require(fill->count()==4 && fill->currentData().toString()=="surround",
                 "Legacy placeholder leaked into another profile");
             list->setCurrentRow(0); checkLegacy();
         }
@@ -7800,11 +7809,11 @@ void testSubtitleRetiredTemporalFillPreservesSavedProfiles()
         require(readBytes(path).replace("\r\n","\n").contains(legacy) &&
             readBytes(path).contains("# keep legacy fill until explicitly changed"),
             "An unrelated edit changed the saved legacy fill or comment");
-        for (const auto* replacement : {"mirror","stretch","surround"}) {
+        for (const auto* replacement : {"mirror","stretch","surround","stable_surround"}) {
             selectData(fill,replacement); save(window);
             ConfigEditorWindow reopened(path,0,true);
             auto* restored=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.cleanup_fill");
-            require(restored->count()==3 && restored->currentData().toString()==replacement,
+            require(restored->count()==4 && restored->currentData().toString()==replacement,
                 "Explicit replacement fill did not survive save/reopen");
         }
     }
