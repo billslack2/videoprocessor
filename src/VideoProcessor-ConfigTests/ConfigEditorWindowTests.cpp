@@ -404,16 +404,20 @@ bool hasPendingConfigurationChanges(ConfigEditorWindow& window)
 void save(ConfigEditorWindow& window)
 {
     QPushButton* button = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
+    if (!hasPendingConfigurationChanges(window))
+    {
+        require(!button->isEnabled(), "Clean Apply was enabled");
+        return;
+    }
     require(button->isEnabled(), "Apply button was not enabled after an edit");
-    if (!hasPendingConfigurationChanges(window)) return;
     button->click();
     QCoreApplication::processEvents();
     const QString status = requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text();
     require(status.startsWith(QStringLiteral("Changes saved")) ||
         status.startsWith(QStringLiteral("Configuration created safely")),
         (std::string("Apply did not save: ") + status.toStdString()).c_str());
-    require(button->isEnabled() && !hasPendingConfigurationChanges(window),
-        "Apply did not save and remain available for calibration LUT reload");
+    require(!button->isEnabled() && !hasPendingConfigurationChanges(window),
+        "Apply did not disable after saving all pending settings");
 }
 
 void testSubtitleDiagnosticSurvivesConfigSaveAndReopen()
@@ -4748,7 +4752,7 @@ void testMissingConfigurationCanBeCreatedFromEditor()
     require(warnings.empty(), "Generated configuration warns about its own policy location");
 }
 
-void testCleanApplyNotifiesWithoutSaving()
+void testCleanApplyIsInactiveWithoutSavingOrNotifying()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
@@ -4757,8 +4761,8 @@ void testCleanApplyNotifiesWithoutSaving()
     require(!hasPendingConfigurationChanges(window), "Fixture did not settle before clean Apply");
     require(requireControl<QPushButton>(window,
         "config.vprenderer.color.calibration_lut.open_folder")->toolTip().contains(
-            QStringLiteral("Changes to LUT files take effect when you press Apply. Files are not monitored during playback.")),
-        "The LUT help does not explain explicit Apply-only reloads");
+            QStringLiteral("LUT file changes reload when you apply configuration changes or restart the renderer. Files are not monitored during playback.")),
+        "The LUT help does not explain settings-change or renderer-restart reloads");
     const QByteArray original = readBytes(path);
     const QStringList filesBefore = QDir(directory.path()).entryList(QDir::Files);
     const QString eventName = QStringLiteral("Local\\VideoProcessor.ConfigTests.Apply.%1.%2")
@@ -4771,7 +4775,7 @@ void testCleanApplyNotifiesWithoutSaving()
         eventName.toStdWString().c_str())};
     require(notification.value != nullptr, "Cannot create the isolated Apply notification event");
     window.setApplyNotificationEventForTesting(eventName);
-    // Deny replacement and writes: a clean Apply must still notify successfully.
+    // Deny replacement and writes: clean Apply must neither save nor notify.
     TestHandle protectedConfig{CreateFileW(path.toStdWString().c_str(), GENERIC_READ,
         FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
     require(protectedConfig.value != INVALID_HANDLE_VALUE, "Cannot protect the clean configuration");
@@ -4783,18 +4787,16 @@ void testCleanApplyNotifiesWithoutSaving()
     QApplication::processEvents();
     for (int attempt = 0; attempt < 2; ++attempt)
     {
-        require(apply->isEnabled(), "Clean Apply was unavailable");
+        require(!apply->isEnabled(), "Clean Apply remained enabled");
         apply->click();
         QApplication::processEvents();
-        require(WaitForSingleObject(notification.value, 0) == WAIT_OBJECT_0,
-            "Clean Apply did not notify VideoProcessor");
+        require(WaitForSingleObject(notification.value, 0) == WAIT_TIMEOUT,
+            "Clean Apply notified VideoProcessor");
         require(WaitForSingleObject(notification.value, 0) == WAIT_TIMEOUT,
             "The isolated Apply event did not auto-reset");
         require(window.isVisible() && !hasPendingConfigurationChanges(window),
             "Clean Apply closed the editor or manufactured unsaved changes");
-        require(requireControl<QLabel>(window, "configurationStatus")->text().contains(
-            QStringLiteral("calibration LUT reload requested")),
-            "Clean Apply did not describe the explicit LUT request");
+
     }
     requireControl<QPushButton>(window, "okConfiguration")->click();
     QApplication::processEvents();
@@ -4816,7 +4818,7 @@ void testCleanApplyNotifiesWithoutSaving()
         "Clean Apply, clean OK or Cancel rewrote the configuration or created a backup");
 }
 
-void testCleanRemoteApplyUsesUnchangedRpcCandidate()
+void testRemoteApplyTracksPendingSettings()
 {
     using namespace ConfigurationRpcProtocol;
     QTemporaryDir directory;
@@ -4890,7 +4892,7 @@ void testCleanRemoteApplyUsesUnchangedRpcCandidate()
                 exactCandidate = payload.size() >= 2 &&
                     Read16(payload.data()) == ConfigurationCompatibilityVersion &&
                     ReadString(payload, cursor, original) && ReadString(payload, cursor, candidate) &&
-                    cursor == payload.size() && original == baseline && candidate == baseline;
+                    cursor == payload.size() && original == baseline && candidate != baseline;
                 ++applies;
                 WriteString(response.payload, "Apply profiles live");
                 response.payload.push_back(1);
@@ -4916,13 +4918,21 @@ void testCleanRemoteApplyUsesUnchangedRpcCandidate()
     ConfigEditorWindow remote(path, 0, true, {}, {}, "127.0.0.1", ntohs(address.sin_port));
     require(!hasPendingConfigurationChanges(remote), "Remote baseline was not clean");
     auto* apply = requireControl<QPushButton>(remote, "applyConfiguration");
-    require(apply->isEnabled(), "Clean remote Apply was unavailable");
+    require(!apply->isEnabled(), "Clean remote Apply was enabled");
+    apply->click();
+    require(applies.load() == 0, "Clean remote Apply sent an RPC");
+    auto* fullscreen = requireControl<QCheckBox>(remote, "config.general.fullscreen");
+    fullscreen->setChecked(!fullscreen->isChecked());
+    require(apply->isEnabled() && hasPendingConfigurationChanges(remote),
+        "Remote edit did not enable Apply");
     apply->click();
     require(applies.load() == 1 && exactCandidate.load(),
-        "Clean remote Apply did not send identical baseline and candidate through ApplyConfig");
-    require(apply->isEnabled() && !hasPendingConfigurationChanges(remote) &&
+        "Remote Apply did not send its saved baseline and edited candidate");
+    require(!apply->isEnabled() && !hasPendingConfigurationChanges(remote) &&
         readBytes(path).toStdString() == baseline,
-        "Clean remote Apply changed the local file or dirtied the editor");
+        "Successful remote Apply did not disable, or changed the local file");
+    apply->click();
+    require(applies.load() == 1, "Saved remote Apply sent another RPC");
     remote.show();
     QApplication::processEvents();
     requireControl<QPushButton>(remote, "okConfiguration")->click();
@@ -4930,6 +4940,36 @@ void testCleanRemoteApplyUsesUnchangedRpcCandidate()
     QApplication::processEvents();
     requireControl<QPushButton>(remote, "cancelConfiguration")->click();
     require(applies.load() == 1, "Clean remote OK or Cancel sent an Apply RPC");
+}
+
+void testFailedApplyRetainsPendingSettings()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    save(window);
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    auto* fullscreen = requireControl<QCheckBox>(window, "config.general.fullscreen");
+    fullscreen->setChecked(!fullscreen->isChecked());
+    require(apply->isEnabled(), "Pending edit did not enable Apply");
+    const QByteArray original = readBytes(path);
+    struct TestHandle
+    {
+        HANDLE value;
+        ~TestHandle() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); }
+    } locked{CreateFileW(path.toStdWString().c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+    require(locked.value != INVALID_HANDLE_VALUE, "Cannot protect the save-failure fixture");
+    apply->click();
+    QApplication::processEvents();
+    require(apply->isEnabled() && hasPendingConfigurationChanges(window) && readBytes(path) == original,
+        "Failed Apply cleared pending settings, disabled retry, or changed the file");
+    CloseHandle(locked.value);
+    locked.value = INVALID_HANDLE_VALUE;
+    apply->click();
+    QApplication::processEvents();
+    require(!apply->isEnabled() && !hasPendingConfigurationChanges(window) && readBytes(path) != original,
+        "Successful retry did not commit settings and disable Apply");
 }
 
 void testApplyOkCancelContract()
@@ -4970,7 +5010,7 @@ void testApplyOkCancelContract()
             QStringLiteral("No pending changes"),
             (std::string("Initial migration save did not succeed: ") +
                 requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text().toStdString()).c_str());
-        require(apply->isEnabled(), "Clean Apply was unavailable for calibration LUT reload");
+        require(!apply->isEnabled(), "Clean Apply was available without pending settings");
 
         QCheckBox* fullscreen = requireControl<QCheckBox>(window,
             QStringLiteral("config.general.fullscreen"));
@@ -4985,7 +5025,7 @@ void testApplyOkCancelContract()
         apply->click();
         QCoreApplication::processEvents();
         require(window.isVisible(), "Apply closed the editor");
-        require(apply->isEnabled(), "Apply became unavailable after a successful save");
+        require(!apply->isEnabled(), "Apply remained enabled after a successful save");
         require(effect->text() == QStringLiteral("No pending changes"),
             "The effect summary did not remain visible after Apply");
         require(requireControl<QLabel>(window,
@@ -5150,6 +5190,7 @@ void testInvalidRendererIsRejectedContinuously()
     QLabel* status = requireControl<QLabel>(window,
         QStringLiteral("configurationStatus"));
 
+    const QString savedRenderer = renderer->currentData().toString();
     require(!renderer->isEditable(),
         "Renderer discovery selector still accepts arbitrary typed values");
     renderer->addItem(QStringLiteral("DirectShow - madVR1a"),
@@ -5170,9 +5211,12 @@ void testInvalidRendererIsRejectedContinuously()
 
     selectData(renderer, QStringLiteral("VP Renderer"));
     require(ok->isEnabled() && apply->isEnabled(),
-        "Correcting the renderer did not restore OK and Apply");
+        "Choosing a different valid renderer did not restore OK and Apply");
     require(!status->styleSheet().contains(QStringLiteral("#ff8d86")),
         "Correcting the renderer did not clear the validation error styling");
+    selectData(renderer, savedRenderer);
+    require(ok->isEnabled() && !apply->isEnabled() && !hasPendingConfigurationChanges(window),
+        "Restoring the saved renderer did not disable Apply and clear pending changes");
 }
 
 void testRendererDiscoveryOutageDoesNotBlockProfileEdits()
@@ -5329,8 +5373,8 @@ void testRemainingEffectSummaryPrecedence()
             "A queue-only edit did not report a queue reset");
         queueSize->setValue(originalQueueSize);
         require(effect->text() == QStringLiteral("No pending changes") &&
-            apply->isEnabled(),
-            "Reverting a queue edit did not clear its pending effect");
+            !apply->isEnabled(),
+            "Reverting a queue edit did not disable Apply and clear its pending effect");
 
         QCheckBox* logging = requireControl<QCheckBox>(window,
             QStringLiteral("config.logging.enabled"));
@@ -7820,9 +7864,10 @@ int main(int argc, char** argv)
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",
         testMissingConfigurationCanBeCreatedFromEditor);
+    failures += run("failed Apply retains pending settings", testFailedApplyRetainsPendingSettings);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
-    failures += run("clean Apply notifies without saving", testCleanApplyNotifiesWithoutSaving);
-    failures += run("clean remote Apply uses unchanged RPC candidate", testCleanRemoteApplyUsesUnchangedRpcCandidate);
+    failures += run("clean Apply is inactive without saving or notifying", testCleanApplyIsInactiveWithoutSavingOrNotifying);
+    failures += run("remote Apply tracks pending settings", testRemoteApplyTracksPendingSettings);
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
     failures += run("remote target switch keeps window responsive",
         testRemoteTargetSwitchKeepsWindowResponsive);
