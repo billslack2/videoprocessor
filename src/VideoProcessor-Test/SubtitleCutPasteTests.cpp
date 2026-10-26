@@ -1956,6 +1956,53 @@ struct SubtitleShaderGpuFixture {
                 L"prepared cleanup must preserve unrelated picture");
         }
     }
+    void VerifySurroundMovingTextureDoesNotAmplifySmallFrameChanges() {
+        auto g=Geometry();g.source=g.content=g.generatedCleanup={16,24,48,56};
+        g.glyphLines[0]={};g.pictureCapture={};g.destination={20,8,44,20};
+        g.pictureTop=4;g.pictureBottom=64;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},2,SubtitleCompositionPhase::CleanupOnly));
+        std::vector<uint8_t> previousInput;
+        std::vector<float> previousOutput,firstOutput;
+        float worstGain=0.0f,worstExcess=0.0f;
+        for(int frame=0;frame<9;++frame) {
+            // Slowly translating texture plus one-code-value sensor/compression
+            // noise. Sampling must not turn these tiny changes into large jumps.
+            const float phase=frame==8?0.0f:frame*0.035f;
+            std::vector<uint8_t> pixels(64*64*4,255);
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x)for(int c=0;c<3;++c) {
+                const float a=0.43f*(x+phase)+0.17f*y+c*0.7f;
+                const float b=0.19f*(x+phase)-0.31f*y+c*0.2f;
+                const int noise=frame==0 || frame==8?0:((x*13+y*7+c+frame)%3)-1;
+                const int value=int(100+38*std::sin(a)+27*std::cos(b))+noise;
+                pixels[(y*64+x)*4+c]=uint8_t(value);
+                if(x>=16 && x<48 && y>=24 && y<56)pixels[(y*64+x)*4+c]=255;
+            }
+            pl_tex_transfer_params up{};up.tex=inputTexture;up.ptr=pixels.data();
+            Assert::IsTrue(pl_tex_upload(device->gpu,&up));
+            pl_frame clean{};
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+            auto target=input;target.planes[0].texture=allOutput;
+            auto params=pl_render_fast_params;params.dither_params=nullptr;
+            Assert::IsTrue(pl_render_image(renderer,&clean,&target,&params));
+            const auto output=ReadLinear(allOutput);
+            if(frame==0)firstOutput=output;
+            if(frame>0 && frame<8) {
+                float inputChange=0.0f,outputChange=0.0f;
+                for(size_t i=0;i<pixels.size();++i)
+                    inputChange=(std::max)(inputChange,std::abs(int(pixels[i])-int(previousInput[i]))/255.0f);
+                for(int y=24;y<56;++y)for(int x=16;x<48;++x)for(int c=0;c<3;++c)
+                    outputChange=(std::max)(outputChange,std::abs(Pixel(output,x,y)[c]-Pixel(previousOutput,x,y)[c]));
+                worstGain=(std::max)(worstGain,outputChange/(std::max)(inputChange,0.000001f));
+                worstExcess=(std::max)(worstExcess,outputChange-inputChange);
+            }
+            if(frame==8)for(size_t i=0;i<output.size();++i)
+                Assert::IsTrue(std::abs(output[i]-firstOutput[i])<0.001f,L"Returning to the original scene must not retain reconstruction history");
+            previousInput=std::move(pixels);previousOutput=output;
+        }
+        Logger::WriteMessage((std::string("moving texture worst temporal gain=")+std::to_string(worstGain)+
+            " excess="+std::to_string(worstExcess)).c_str());
+        Assert::IsTrue(worstExcess<0.003f,L"Small moving-frame changes must not be amplified into reconstruction shimmer");
+    }
     void MeasureSurroundCostAt4K() {
         pl_tex_destroy(device->gpu,&inputTexture);
         pl_tex_params storage{};storage.w=3840;storage.h=2160;
@@ -1979,7 +2026,7 @@ struct SubtitleShaderGpuFixture {
             Logger::WriteMessage((std::string("4K warmed full preparation fill=")+std::to_string(fill)+" mean_wall_ms="+std::to_string(ms)).c_str());
         }
     }
-    void VerifyContourAndSeamReconstruction(bool top) {
+    void VerifyStableColorSeamReconstruction(bool top) {
         auto g=Geometry();
         const auto flip=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;};
         g.source=g.content=g.generatedCleanup=flip({8,38,56,56});
@@ -2026,7 +2073,11 @@ struct SubtitleShaderGpuFixture {
             std::to_string(mirrorError/samples)+" surround_mae="+std::to_string(surroundError/samples)+
             " seam_mae="+std::to_string(seamError/seamSamples)).c_str());
         Assert::IsTrue(seamError/seamSamples<0.025,L"Unblurred boundary should continue local color with little visible jump");
-        Assert::IsTrue(surroundError<0.65*mirrorError,L"Contour guided fill should improve sloping structure over reflected fill");
+        // The rejected adaptive contour fit scored better on this still ramp
+        // but amplified moving texture/noise by 16x. Require a clean seam and
+        // improvement over basic reflection here; temporal non-amplification is
+        // the separate acceptance contract for the fixed spatial blend.
+        Assert::IsTrue(surroundError<mirrorError,L"Fixed surround blending should improve the ramp over basic reflection");
         // Clean pixels are never feathered with original subtitle pixels.
         for(int y=g.pictureTop;y<g.pictureBottom;++y)for(int x=0;x<64;++x)
             if(x<g.source.left || x>=g.source.right || y<g.source.top || y>=g.source.bottom)
@@ -2433,13 +2484,17 @@ public:
         Assert::AreEqual(3,snapshot.debandParams.iterations);
         Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
     }
+    TEST_METHOD(SurroundFillDoesNotAmplifyMovingTextureOrNoise) {
+        SubtitleShaderGpuFixture gpu;
+        gpu.VerifySurroundMovingTextureDoesNotAmplifySmallFrameChanges();
+    }
     TEST_METHOD(SurroundFill4KPreparationCost) {
         SubtitleShaderGpuFixture gpu;
         gpu.MeasureSurroundCostAt4K();
     }
-    TEST_METHOD(SurroundFillContinuesColorContoursWithoutBlurAtBothBars) {
+    TEST_METHOD(SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars) {
         SubtitleShaderGpuFixture gpu;
-        gpu.VerifyContourAndSeamReconstruction(false);gpu.VerifyContourAndSeamReconstruction(true);
+        gpu.VerifyStableColorSeamReconstruction(false);gpu.VerifyStableColorSeamReconstruction(true);
     }
     TEST_METHOD(SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors) {
         SubtitleShaderGpuFixture gpu;
