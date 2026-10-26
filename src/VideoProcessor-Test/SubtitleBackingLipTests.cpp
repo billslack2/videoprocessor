@@ -77,6 +77,17 @@ TEST_CLASS(SubtitleBackingLipTests) {
             }
             return Rect(lower);
         }
+        void SingleLineAtGap(int gap) {
+            Assert::IsTrue(gap>=0);
+            Fill({0,0,width,height},floor);
+            Fill({0,pictureTop,width,pictureBottom},300);
+            const int y=pictureBottom+gap;
+            for(int n=0;n<12;++n) {
+                const int x=(240+13*n)*scale;
+                Fill({x,y,x+8*scale,y+14*scale},700);
+                Fill({x+2*scale,y+2*scale,x+6*scale,y+12*scale},floor);
+            }
+        }
         void Chroma(SubtitleBoxRect lower,int u,int v) {
             Assert::IsTrue(format!=Format::Rgb);
             const int vertical=format==Format::P010?2:1;
@@ -101,8 +112,8 @@ TEST_CLASS(SubtitleBackingLipTests) {
             }
             return source;
         }
-        SubtitleBoxObservation Measure(uint64_t sequence) const {
-            const auto source=Source();SubtitleBoxDetector scanner;
+        SubtitleBoxObservation Measure(uint64_t sequence,int nearBarDistance=0) const {
+            const auto source=Source();SubtitleBoxDetector scanner;scanner.SetNearBarDistance(nearBarDistance);
             return SubtitleBoxLookahead::Measure(scanner,source,ExtractActivePictureEvidence(source),
                 Identity(sequence),false,{},7,8);
         }
@@ -115,8 +126,8 @@ TEST_CLASS(SubtitleBackingLipTests) {
         SubtitleBoxResult accepted;
         SubtitleBoxPresentation tracker;
     };
-    static Acquired Acquire(const Frame& frame) {
-        const auto first=frame.Measure(1),second=frame.Measure(2);
+    static Acquired Acquire(const Frame& frame,int nearBarDistance=0) {
+        const auto first=frame.Measure(1,nearBarDistance),second=frame.Measure(2,nearBarDistance);
         std::ostringstream diagnostic;diagnostic<<"scale="<<frame.scale<<" format="<<int(frame.format)
             <<" top="<<frame.top<<" first="<<first.text.diagnosticReason<<" current="<<second.text.diagnosticReason
             <<" physical="<<second.pictureTop<<":"<<second.pictureBottom<<" lines="<<second.text.lineCount;
@@ -141,7 +152,10 @@ TEST_CLASS(SubtitleBackingLipTests) {
     static void LogProof(const CurrentSubtitleBackingLipProof& proof,const Frame& frame,const char* group) {
         std::ostringstream out;out<<group<<" scale="<<frame.scale<<" format="<<int(frame.format)<<" top="<<frame.top
             <<" valid="<<proof.valid<<" reason="<<proof.reason<<" samples="<<proof.samples
-            <<" measured="<<proof.measured.left<<","<<proof.measured.top<<"-"<<proof.measured.right<<","<<proof.measured.bottom;
+            <<" measured="<<proof.measured.left<<","<<proof.measured.top<<"-"<<proof.measured.right<<","<<proof.measured.bottom
+            <<" context_mask="<<proof.contextMismatchMask<<" edge_mask="<<proof.edgeEvidenceMask
+            <<" pixel_inspected="<<proof.pixelInspectionPerformed<<" candidate_retained="<<proof.candidateRetained
+            <<" candidate_age="<<proof.candidateAgeFrames;
         Logger::WriteMessage(out.str().c_str());
     }
     static SubtitleCutPasteGeometry Geometry(const Acquired& cue,SubtitleBoxPadding padding={12,8,6}) {
@@ -214,11 +228,11 @@ public:
                 const auto proof=state.Consume(frame.Source(),current,text,Identity(3),7,8,65536,&geometry);
                 LogProof(proof,frame,"caption-plane-jitter");
                 Assert::IsTrue(proof.valid && proof.revalidatedOutline && proof.outlineBaseAnchored);
-                Assert::IsTrue(Same(first.cleanup,proof.cleanup) && Same(lip,proof.cleanup));
+                Assert::IsTrue(Same(first.cleanup,proof.cleanup) && Contains(lip,proof.cleanup) && Same(proof.cleanup,proof.blackInterior));
                 Assert::IsTrue(proof.samples<=65536 && current.current.ink==ink);
                 Assert::IsFalse(current.current.independentBarAnalysis,L"Cleanup cannot promote raw evidence to native crop authority");
                 const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8);
-                AssertGeometryExceptCleanup(geometry,applied);Assert::IsTrue(Same(applied.generatedCleanup,lip));
+                AssertGeometryExceptCleanup(geometry,applied);Assert::IsTrue(Same(applied.generatedCleanup,proof.cleanup) && Contains(lip,applied.generatedCleanup));
                 // A changed current body pixel revokes the same remembered mask.
                 frame.Pixel(300*6,frame.pictureBottom-10,300);
                 auto next=current;next.current.identity=Identity(4);
@@ -240,7 +254,7 @@ public:
             Assert::IsFalse(fresh.valid,L"First acquisition retains the strict closure requirement");
             const auto retained=state.Consume(frame.Source(),current,text,Identity(3),7,8);
             LogProof(retained,frame,"small-moving-closure-shadow");
-            Assert::IsTrue(retained.valid && retained.revalidatedOutline && Same(retained.cleanup,lip));
+            Assert::IsTrue(retained.valid && retained.revalidatedOutline && Contains(lip,retained.cleanup) && Same(retained.cleanup,retained.blackInterior));
             Assert::IsTrue(retained.samples<=65536 && retained.closureDark*10<=retained.closureSamples);
             // A broad ambiguous shadow still cannot support the current outline.
             frame.Fill({1500,frame.pictureBottom-63,1740,frame.pictureBottom-30},frame.floor);
@@ -272,6 +286,121 @@ public:
                 AssertGeometryExceptCleanup(geometry,ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(seq),7,8));
             }
         }
+    }
+    TEST_METHOD(OutlineCandidateSurvivesOnlyUninspectedContextAndRequiresFreshRevalidation) {
+        Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
+        const auto geometry=Geometry(cue);
+        const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,65536,&geometry);
+        Assert::IsTrue(first.valid && !first.revalidatedOutline);
+        auto unavailable=cue.preview;unavailable.available=false;
+        unavailable.current.identity=Identity(3);
+        const auto missed=continuity.Consume(frame.Source(),unavailable,cue.accepted,Identity(3),7,8,65536,&geometry);
+        Assert::IsFalse(missed.valid);Assert::IsFalse(missed.pixelInspectionPerformed);
+        Assert::IsTrue(missed.candidateRetained && missed.candidateAgeFrames==1);
+        Assert::AreEqual(uint32_t(LipContextPreviewUnavailable),missed.contextMismatchMask);
+        const auto unapplied=ApplyCurrentSubtitleBackingLip(geometry,missed,Identity(3),7,8);
+        Assert::IsFalse(unapplied.generatedCleanup.Valid(),L"Retained coordinates have no cleanup authority.");
+        auto fresh=cue.preview;fresh.current.identity=Identity(4);
+        const auto proof=continuity.Consume(frame.Source(),fresh,cue.accepted,Identity(4),7,8,65536,&geometry);
+        Assert::IsTrue(proof.valid && proof.revalidatedOutline && proof.candidateAgeFrames==2);
+        Assert::IsTrue(Same(first.cleanup,proof.cleanup));
+        auto cut=cue.preview;cut.current.identity=Identity(5);cut.current.discontinuity=true;
+        const auto discarded=continuity.Consume(frame.Source(),cut,cue.accepted,Identity(5),7,8,65536,&geometry);
+        Assert::IsFalse(discarded.valid);Assert::IsFalse(discarded.candidateRetained);
+        auto postCut=cue.preview;postCut.current.identity=Identity(6);
+        const auto reacquired=continuity.Consume(frame.Source(),postCut,cue.accepted,Identity(6),7,8,65536,&geometry);
+        Assert::IsTrue(reacquired.valid && !reacquired.revalidatedOutline,L"Discontinuity discards the outline even when text and coordinates match.");
+    }
+    TEST_METHOD(OnlyOppositeEdgeMayBeUnknownWhenCueSideHasFreshRawBarEvidence) {
+        for(bool top:{false,true}) {
+            Frame frame(1,Format::P010,top);const auto lip=frame.Lip(8,true);auto cue=Acquire(frame);
+            const auto geometry=Geometry(cue);auto preview=cue.preview;
+            preview.current.identity=Identity(3);preview.current.independentBarAnalysis=false;
+            if(top) {
+                preview.current.glyphLocalBottom=true;
+                preview.current.pictureBottom=frame.height;
+                preview.current.barEvidence.bottom=frame.height;
+                preview.current.barEvidence.captionBackedBottom=true;
+            } else {
+                preview.current.glyphLocalTop=true;
+                preview.current.pictureTop=0;
+                preview.current.barEvidence.top=0;
+                preview.current.barEvidence.captionBackedTop=true;
+            }
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),preview,cue.accepted,Identity(3),7,8,65536,nullptr,&geometry);
+            LogProof(proof,frame,"opposite-edge-unknown");
+            Assert::IsTrue(proof.valid && Contains(lip,proof.cleanup));
+            Assert::IsTrue(proof.edgeEvidenceMask&(top?LipEdgeTopCurrent:LipEdgeBottomCurrent));
+            const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8);
+            Assert::IsTrue(Same(applied.generatedCleanup,proof.cleanup));
+        }
+    }
+    TEST_METHOD(UnavailableOrReferenceOnlyCueSideCannotBorrowMatchingCoordinates) {
+        for(bool top:{false,true}) {
+            Frame frame(1,Format::P010,top);frame.Lip(8,true);auto cue=Acquire(frame);
+            auto missing=cue.preview;missing.current.identity=Identity(3);
+            missing.current.barAuthority=false;missing.current.barEvidence.available=false;
+            const auto noAuthority=ProveCurrentSubtitleBackingLip(frame.Source(),missing,cue.accepted,Identity(3),7,8);
+            Assert::IsFalse(noAuthority.valid);
+            Assert::IsFalse(noAuthority.pixelInspectionPerformed);
+            auto reference=cue.preview;reference.current.identity=Identity(3);
+            if(top)reference.current.barEvidence.topRevalidatedAtReference=true;
+            else reference.current.barEvidence.bottomRevalidatedAtReference=true;
+            const auto tracked=ProveCurrentSubtitleBackingLip(frame.Source(),reference,cue.accepted,Identity(3),7,8);
+            Assert::IsFalse(tracked.valid,L"Matching coordinate values do not make reference or tracked edges current.");
+        }
+    }
+    TEST_METHOD(BackingLipOverlapFromOneToSixteenPixelsPreservesRoundedLiveCorners) {
+        for(bool top:{false,true})for(int depth=1;depth<=16;++depth) {
+            Frame frame(2,Format::P010,top);const auto lip=frame.Lip(depth,true);auto cue=Acquire(frame);
+            const auto geometry=Geometry(cue);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,65536,nullptr,&geometry);
+            LogProof(proof,frame,"rounded-lip-depth");
+            if(depth==1) {
+                Assert::IsFalse(proof.valid,L"A single native row is insufficient to establish a finite backing contour.");
+                continue;
+            }
+            Assert::IsTrue(proof.valid && Contains(lip,proof.cleanup));
+            Assert::IsTrue(Same(proof.cleanup,proof.blackInterior));
+            bool preservedRoundedPixel=false;
+            for(int y=lip.top;y<lip.bottom;++y)for(int x=lip.left;x<lip.right;++x) {
+                if(x>=proof.cleanup.left && x<proof.cleanup.right &&
+                    y>=proof.cleanup.top && y<proof.cleanup.bottom)continue;
+                AnalysisLumaSample value;Assert::IsTrue(frame.Source().Sample(x,y,value));
+                preservedRoundedPixel|=value.luma>frame.floor+4;
+            }
+            Assert::IsTrue(preservedRoundedPixel,L"Live rounded corner pixels remain outside cleanup.");
+            const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(2),7,8);
+            Assert::IsTrue(Same(applied.generatedCleanup,proof.blackInterior));
+        }
+    }
+    TEST_METHOD(FiniteBackingCanBeProvedForDistantSingleLineSubtitle) {
+        for(bool top:{false,true}) {
+            Frame frame(1,Format::P010,top);frame.SingleLineAtGap(24);frame.Lip(8,true);
+            auto cue=Acquire(frame,32);
+            Assert::AreEqual(1,cue.accepted.lineCount);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            LogProof(proof,frame,"distant-single-line");
+            Assert::IsTrue(proof.valid && proof.revalidatedOutline==false);
+            Assert::IsTrue(proof.cleanup.Valid());
+        }
+    }
+    TEST_METHOD(CurrentChromaEdgeBleedIsTrimmedAndStableAcrossRevalidation) {
+        Frame frame(2,Format::P210,false);frame.Lip(16,false);
+        frame.Chroma({224*2,frame.pictureBottom-2,224*2+2,frame.pictureBottom-1},700,512);
+        auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
+        const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+        LogProof(first,frame,"chroma-edge-acquisition");
+        Assert::IsTrue(first.valid && first.cleanup.left==first.measured.left+2);
+        auto current=Resolve({frame.Measure(3)});const auto text=cue.tracker.Consume(current);
+        const auto second=continuity.Consume(frame.Source(),current,text,Identity(3),7,8);
+        LogProof(second,frame,"chroma-edge-revalidation");
+        Assert::IsTrue(second.valid && second.revalidatedOutline);
+        Assert::IsTrue(Same(first.cleanup,second.cleanup),L"A proven chroma-bleed edge is trimmed identically on acquisition and revalidation.");
+        frame.Chroma({first.cleanup.left,frame.pictureBottom-2,first.cleanup.left+2,frame.pictureBottom-1},700,512);
+        current=Resolve({frame.Measure(4)});const auto changedText=cue.tracker.Consume(current);
+        const auto changed=continuity.Consume(frame.Source(),current,changedText,Identity(4),7,8);
+        Assert::IsFalse(changed.valid);Assert::AreEqual("lip-outline-body-changed",changed.reason);
     }
     TEST_METHOD(CurrentOutlineAntialiasCollarIsBoundedInsideTheMeasuredMask) {
         for(bool top:{false,true})for(int depth:{1,2,3}) {
@@ -305,6 +434,22 @@ public:
             Assert::IsFalse(proof.valid);Assert::AreEqual("lip-outline-body-changed",proof.reason);
         }
     }
+    TEST_METHOD(CurrentOutlineRejectsBrightPixelAtRememberedBlackInteriorBorder) {
+        for(bool top:{false,true}) {
+            Frame frame(1,Format::P010,top);frame.Lip(8,true);auto cue=Acquire(frame);
+            SubtitleBackingLipContinuity continuity;
+            const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid && first.blackInterior.Valid());
+            const int rasterY=first.blackInterior.top;
+            const int lowerY=top?frame.height-1-rasterY:rasterY;
+            frame.Pixel(first.blackInterior.left,lowerY,500);
+            auto preview=Resolve({frame.Measure(3)});const auto text=cue.tracker.Consume(preview);
+            const auto rejected=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8);
+            Assert::IsFalse(rejected.valid);
+            Assert::AreEqual("lip-outline-body-changed",rejected.reason,
+                L"A newly bright edge pixel inside the retained cleanup is not hidden by the AA collar.");
+        }
+    }
     TEST_METHOD(CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure) {
         for(int failure=0;failure<5;++failure) {
             Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
@@ -312,7 +457,7 @@ public:
             auto preview=cue.preview;preview.current.identity=Identity(3);auto text=cue.accepted;
             if(failure==0)text.detected=false;
             if(failure==1)text.held=true;
-            if(failure==2)preview.current.barTrackingAuthority=true;
+            if(failure==2)preview.current.discontinuity=true;
             if(failure==3)frame.Fill({215,245,425,288},frame.floor);
             const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8,failure==4?16:65536);
             Assert::IsFalse(proof.valid);
@@ -477,8 +622,8 @@ public:
             const auto cue=Acquire(frame);
             const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
             LogProof(proof,frame,"rounded");Assert::IsTrue(proof.valid);
-            Assert::IsTrue(Contains(proof.cleanup,lip),L"A proved rounded original backing must not retain its wider bar-facing corners.");
-            Assert::IsTrue(proof.cleanup.left>=lip.left-6 && proof.cleanup.right<=lip.right+6);
+            Assert::IsTrue(Contains(lip,proof.cleanup) && Same(proof.cleanup,proof.blackInterior),L"Cleanup is limited to the exhaustively black rounded-body intersection.");
+            Assert::IsTrue(proof.cleanup.left>=lip.left && proof.cleanup.right<=lip.right);
         }
     }
     TEST_METHOD(SingleUnsampledNativeHoleAndColoredInteriorCannotBecomeCleanup) {
@@ -551,7 +696,7 @@ public:
         }
     }
     TEST_METHOD(EveryIdentityAndPhysicalMeasurementBindingIsExactCurrent) {
-        Frame frame;frame.Lip(3);const auto good=Acquire(frame);
+        Frame frame;const auto lip=frame.Lip(3);const auto good=Acquire(frame);
         for(int fault=0;fault<30;++fault) {
             auto cue=good;auto expected=Identity(2);auto source=frame.Source();
             if(fault==0)++expected.acceptedSequence;if(fault==1)++expected.sourceFrameNumber;
@@ -572,7 +717,10 @@ public:
             if(fault==29)cue.preview.current.identity.acceptedSequence=expected.acceptedSequence=0;
             const auto proof=ProveCurrentSubtitleBackingLip(source,cue.preview,cue.accepted,expected,7,8);
             std::ostringstream message;message<<"context fault="<<fault<<" reason="<<proof.reason;Logger::WriteMessage(message.str().c_str());
-            Assert::IsFalse(proof.valid);
+            const bool oppositeOnly=fault==11 || fault==14 || fault==16 || fault==18;
+            if(oppositeOnly)Assert::IsTrue(proof.valid && Contains(lip,proof.cleanup),L"A fresh cue-side edge remains sufficient when only opposite/global tracking context is unavailable.");
+            else Assert::IsFalse(proof.valid);
+            if(fault==19)Assert::IsFalse(proof.pixelInspectionPerformed,L"A cue anchor that relies on a tracked edge cannot establish fresh backing cleanup.");
         }
         for(int fault=0;fault<4;++fault) {
             auto cue=good;
@@ -815,8 +963,9 @@ public:
                 auto geometry=base;geometry.pictureTop-=delta;geometry.pictureBottom+=delta;
                 const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,65536,nullptr,&geometry);
                 LogProof(proof,frame,"current-visible-intersection");Assert::IsTrue(proof.valid);
-                auto expected=strip;expected.top=(std::max)(strip.top,geometry.pictureTop);
-                expected.bottom=(std::min)(strip.bottom,geometry.pictureBottom);
+                auto expected=strip;expected.left+=12;expected.right-=12;
+                expected.top=(std::max)(expected.top,geometry.pictureTop);
+                expected.bottom=(std::min)(expected.bottom,geometry.pictureBottom);
                 Assert::IsTrue(Same(expected,proof.cleanup));
                 const auto output=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(2),7,8);
                 Assert::IsTrue(Same(expected,output.generatedCleanup));

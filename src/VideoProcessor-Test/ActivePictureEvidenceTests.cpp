@@ -2320,6 +2320,30 @@ namespace VideoProcessorTest
                 Assert::AreEqual(scenario<=2,CurrentPictureRejectsSubtitleContinuation(picture,base));
             }
         }
+        TEST_METHOD(LocalGlyphContinuityNeverCertifiesPhysicalBarsOrPreparedErasure)
+        {
+            for(bool p210:{false,true})for(bool preparedOnly:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                auto input=f.Input();
+                SubtitleCueContinuation local;
+                local.valid=true;local.localGlyphsOnly=true;
+                local.identity=f.observation.identity;
+                local.policyGeneration=input.policyGeneration;local.continuityGeneration=input.continuityGeneration;
+                local.physicalBase=f.base;local.accepted=f.accepted;local.ink=f.ink;
+                local.pictureTop=f.observation.pictureTop;local.pictureBottom=f.observation.pictureBottom;
+                local.sampledBounds={0,0,3840,2160};
+                input.continuation=&local;
+                const auto proof=preparedOnly?
+                    EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input):
+                    EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(proof.qualified,L"Fresh local glyphs never grant native picture/cleanup authority.");
+                Assert::AreEqual(size_t(0),proof.ownershipSamples);
+                Assert::IsTrue(std::strcmp(proof.reason,"local-glyph-continuation-is-not-picture-proof")==0);
+                Assert::AreEqual(274,f.base.top);Assert::AreEqual(1884,f.base.bottom);
+            }
+        }
+
         TEST_METHOD(CurrentContinuedCueRetainsPreparedOwnershipWithoutPromotingMissingRawEdge)
         {
             for(bool p210:{false,true})for(int invalid=0;invalid<8;++invalid) {

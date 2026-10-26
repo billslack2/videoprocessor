@@ -5,6 +5,8 @@
 // Current-pixel continuation only. This is not a detector or AR measurement.
 struct SubtitleCueContinuation {
     bool valid=false;
+    // Glyph continuity only: never certifies picture edges or cleanup pixels.
+    bool localGlyphsOnly=false;
     ActivePictureFrameIdentity identity, templateIdentity, previousIdentity;
     uint64_t policyGeneration=0, continuityGeneration=0;
     ActivePictureBounds physicalBase;

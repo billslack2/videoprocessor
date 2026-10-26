@@ -696,23 +696,30 @@ namespace SubtitleBoxLookahead
             observation.barTrackingReferenceBottom == currentReference.pictureBottom;
     }
 
+    // Diagnostic bits preserve the existing context contract. They distinguish
+    // an unavailable edge/epoch from a native pixel comparison that disagreed.
+    inline unsigned ContextMismatchMask(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b)
+    {
+        const auto& x=a.identity;const auto& y=b.identity;
+        unsigned mask=0;
+        if(x.transportGeneration!=y.transportGeneration)mask|=1u;
+        if(x.sourceFormatGeneration!=y.sourceFormatGeneration)mask|=2u;
+        if(x.analysisDomainKey!=y.analysisDomainKey)mask|=4u;
+        if(x.viewportGeneration!=y.viewportGeneration)mask|=8u;
+        if(x.rendererGeneration!=y.rendererGeneration)mask|=16u;
+        if(a.width!=b.width || a.height!=b.height)mask|=32u;
+        if(a.nearBarDistance!=b.nearBarDistance)mask|=64u;
+        if(a.scriptHint!=b.scriptHint)mask|=128u;
+        if((a.pictureTop>0)!=(b.pictureTop>0))mask|=256u;
+        if((a.pictureBottom<a.height)!=(b.pictureBottom<b.height))mask|=512u;
+        if(std::abs(a.pictureTop-b.pictureTop)>=(std::max)(1,a.height/180))mask|=1024u;
+        if(std::abs(a.pictureBottom-b.pictureBottom)>=(std::max)(1,a.height/180))mask|=2048u;
+        if(!HasBarEvidence(a) || !HasBarEvidence(b))mask|=4096u;
+        return mask;
+    }
     inline bool SameContext(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
     {
-        const auto& x = a.identity; const auto& y = b.identity;
-        return x.transportGeneration == y.transportGeneration &&
-            x.sourceFormatGeneration == y.sourceFormatGeneration &&
-            x.analysisDomainKey == y.analysisDomainKey &&
-            x.viewportGeneration == y.viewportGeneration && x.rendererGeneration == y.rendererGeneration &&
-            a.width == b.width && a.height == b.height && a.nearBarDistance==b.nearBarDistance &&
-            a.scriptHint==b.scriptHint &&
-            // A measured encoded edge can wobble by about half a percent as
-            // scene pixels change. Current strong or fixed-plane current-pixel
-            // proof is required on both frames; a lost/changed edge breaks it.
-            (a.pictureTop>0)==(b.pictureTop>0) &&
-            (a.pictureBottom<a.height)==(b.pictureBottom<b.height) &&
-            std::abs(a.pictureTop-b.pictureTop)<(std::max)(1,a.height/180) &&
-            std::abs(a.pictureBottom-b.pictureBottom)<(std::max)(1,a.height/180) &&
-            HasBarEvidence(a) && HasBarEvidence(b);
+        return ContextMismatchMask(a,b)==0;
     }
 
     template<size_t N>
@@ -1025,6 +1032,11 @@ namespace SubtitleBoxLookahead
         int line=-1;
         const char* reason="not-compared";
         bool backingConfirmed=false;
+        unsigned contextMismatch=0;
+        // Missing reference/current ink, reference detection/work, current work,
+        // reference line count, grid shape, invalid line bounds respectively.
+        unsigned preconditionFailure=0;
+        bool pixelComparisonPerformed=false;
     };
     inline bool SameInkAtReference(const SubtitleBoxObservation& reference,
         const SubtitleBoxObservation& current,unsigned minimumLineCoveragePercent=95, bool backedTracking=false,
@@ -1032,9 +1044,16 @@ namespace SubtitleBoxLookahead
     {
         if(diagnostic)*diagnostic={};
         auto reject=[&](const char* reason){if(diagnostic)diagnostic->reason=reason;return false;};
-        if (!SameContext(reference,current) || !reference.ink || !current.ink ||
-            !reference.text.detected || reference.text.workLimit || current.text.workLimit ||
-            reference.text.lineCount<1 || reference.text.lineCount>3) return reject("context-or-pixel-proof");
+        const unsigned contextMismatch=ContextMismatchMask(reference,current);
+        unsigned prerequisites=0;
+        if(!reference.ink)prerequisites|=1u;
+        if(!current.ink)prerequisites|=2u;
+        if(!reference.text.detected)prerequisites|=4u;
+        if(reference.text.workLimit)prerequisites|=8u;
+        if(current.text.workLimit)prerequisites|=16u;
+        if(reference.text.lineCount<1 || reference.text.lineCount>3)prerequisites|=32u;
+        if(diagnostic) {diagnostic->contextMismatch=contextMismatch;diagnostic->preconditionFailure=prerequisites;}
+        if(contextMismatch || prerequisites)return reject("context-or-pixel-proof");
         const auto& old=*reference.ink; const auto& now=*current.ink;
         const size_t words=(size_t(old.width)*old.height+63)/64;
         if (old.width<=0 || old.height<=0 || old.width>960 || old.height>540 || old.step<=0 ||
@@ -1042,7 +1061,10 @@ namespace SubtitleBoxLookahead
             old.width!=(reference.width+old.step-1)/old.step ||
             old.height!=(reference.height+old.step-1)/old.step ||
             old.sourceRows.size()!=size_t(old.height) || now.sourceRows.size()!=size_t(now.height) ||
-            old.rawInk.size()!=words || old.ownedInk.size()!=words || now.rawInk.size()!=words) return reject("context-or-pixel-proof");
+            old.rawInk.size()!=words || old.ownedInk.size()!=words || now.rawInk.size()!=words) {
+            if(diagnostic)diagnostic->preconditionFailure|=64u;
+            return reject("context-or-pixel-proof");
+        }
         struct Counts { unsigned owned=0,covered=0,different=0,total=0,added=0; };
         unsigned currentBarInk=0;
         bool tinyFringeUsed=false;
@@ -1051,12 +1073,19 @@ namespace SubtitleBoxLookahead
             if(diagnostic)diagnostic->line=line;
             bool tinyFringeOnLine=false;
             const auto& bounds=reference.text.lineBounds[line];
-            if (!bounds.Valid()) return reject("context-or-pixel-proof");
+            if (!bounds.Valid()) {
+                if(diagnostic)diagnostic->preconditionFailure|=128u;
+                return reject("context-or-pixel-proof");
+            }
             const int left=(std::max)(0,bounds.left/old.step);
             const int right=(std::min)(old.width,(bounds.right+old.step-1)/old.step);
             const int top=(std::max)(0,bounds.top/old.step);
             const int bottom=(std::min)(old.height,(bounds.bottom+old.step-1)/old.step);
-            if (left>=right || top>=bottom) return reject("context-or-pixel-proof");
+            if (left>=right || top>=bottom) {
+                if(diagnostic)diagnostic->preconditionFailure|=128u;
+                return reject("context-or-pixel-proof");
+            }
+            if(diagnostic)diagnostic->pixelComparisonPerformed=true;
             const int roiWidth=right-left,roiHeight=bottom-top;
             std::vector<uint8_t> glyphEnvelope(size_t(roiWidth)*roiHeight,0);
             std::vector<uint8_t> visited(glyphEnvelope.size(),0);
@@ -2068,6 +2097,7 @@ public:
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
+        m_inkDiagnostic={};
         if (!preview.available) {
             // A queue-only gap can retain the template internally. Unknown
             // source pixels never emit a cue or renew the lease.
@@ -2098,7 +2128,10 @@ public:
             // acquisition template, bar tracking, or ordinary weak-ink lease.
             m_result=cueContinuation->accepted;
             m_previous=preview;m_previous.current.text=m_result;
-            m_decisionReason="current-cue-missing-edge";
+            m_decisionReason=cueContinuation->localGlyphsOnly?"current-local-cue-missing-edge":"current-cue-missing-edge";
+            m_inkDiagnostic.contextMismatch=SubtitleBoxLookahead::ContextMismatchMask(m_inkReference,preview.current);
+            m_inkDiagnostic.pixelComparisonPerformed=true;
+            m_inkDiagnostic.reason=cueContinuation->reason;
             m_diagnosticWeakMs=cueContinuation->elapsedMs;
             m_refreshedReference={};
             return m_result;

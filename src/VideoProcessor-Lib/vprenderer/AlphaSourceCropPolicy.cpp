@@ -3964,44 +3964,60 @@ namespace AlphaSourceCrop
             return {};
         return qualified;
     }
+    static bool MatchesConfirmedFitOwnership(const ConfirmedFitOwnershipEvidence& proof,
+        const ActivePictureBounds& native, const ActivePictureBounds& actual,
+        uint64_t generation, uint64_t sequence, uint64_t epoch)
+    {
+        const int width=native.rasterWidth,height=native.rasterHeight;
+        return proof.available && generation && sequence &&
+            (proof.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION ||
+             proof.origin==ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
+             proof.origin==ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) &&
+            proof.sourceGeneration==generation && proof.sourceSequence==sequence &&
+            proof.presentationEpoch==epoch && SameTrustedCropContract(proof.nativeBase,native) &&
+            ValidBounds(native,width,height) && HasAuthorityForCroppedAxes(native,width,height) &&
+            CropEdgesAreChromaAligned(native,width,height) &&
+            ValidBounds(actual,width,height) && CropEdgesAreChromaAligned(actual,width,height) &&
+            ContainedBounds(actual,native) && !SameBounds(actual,native) &&
+            ValidBounds(proof.approvedBounds,width,height) && SameBounds(proof.approvedBounds,actual);
+    }
+
+    static bool HasCurrentConfirmedOutwardCandidate(const PresentationRecoveryInput& input,
+        const Decision& proposed)
+    {
+        const auto& accepted=input.candidate;
+        const auto& crop=input.crop;
+        // Native refinement and presentation expansion are independent. A label
+        // cannot supply (or discard) exact current caption/content ownership.
+        return crop.sharedGeometryAvailable && crop.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            crop.geometrySourceGeneration==crop.frameSourceGeneration &&
+            input.presentationEpoch==crop.framePresentationEpoch &&
+            ValidBounds(crop.geometry,crop.rasterWidth,crop.rasterHeight) &&
+            accepted.applyCrop && proposed.applyCrop && !accepted.verticallyTranslated && !proposed.verticallyTranslated &&
+            accepted.owner!=DecisionOwner::FULL_RASTER && proposed.owner!=DecisionOwner::FULL_RASTER &&
+            SameBounds(accepted.sourceBounds,proposed.sourceBounds) &&
+            MatchesConfirmedFitOwnership(input.confirmedFitOwnership,crop.geometry,proposed.sourceBounds,
+                crop.frameSourceGeneration,crop.frameSourceSequence,input.presentationEpoch);
+    }
+
     static bool HasConfirmedPresentationCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
         // Recovery/inspection resolution is not caption ownership. In
         // particular, a dense FIT label cannot authorize a full-raster flash.
-        const auto& accepted = input.candidate;
-        if (accepted.owner == DecisionOwner::OUTWARD_FIT)
-        {
-            const auto& proof = input.confirmedFitOwnership;
-            return proof.available && input.crop.sharedGeometryAvailable &&
-                input.crop.geometrySourceGeneration == input.crop.frameSourceGeneration &&
-                (proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_CAPTION ||
-                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY ||
-                 proof.origin == ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT) &&
-                proof.sourceGeneration != 0 && proof.sourceSequence != 0 &&
-                proof.sourceGeneration == input.crop.frameSourceGeneration &&
-                proof.sourceSequence == input.crop.frameSourceSequence &&
-                proof.presentationEpoch == input.presentationEpoch &&
-                proof.presentationEpoch == input.crop.framePresentationEpoch &&
-                SameTrustedCropContract(proof.nativeBase,input.crop.geometry) &&
-                accepted.applyCrop && proposed.applyCrop &&
-                proposed.owner == DecisionOwner::OUTWARD_FIT &&
-                !accepted.verticallyTranslated && !proposed.verticallyTranslated &&
-                ValidBounds(proof.approvedBounds,input.crop.rasterWidth,input.crop.rasterHeight) &&
-                CropEdgesAreChromaAligned(proof.approvedBounds,input.crop.rasterWidth,input.crop.rasterHeight) &&
-                SameBounds(proof.approvedBounds,accepted.sourceBounds) &&
-                SameBounds(proof.approvedBounds,proposed.sourceBounds);
-        }
-        // Keep the existing actual confirmed translation contract, including
-        // Classic UI/icons; it does not require glyph-only FIT qualification.
+        const auto& accepted=input.candidate;
+        if (accepted.owner==DecisionOwner::OUTWARD_FIT ||
+            (ContainedBounds(accepted.sourceBounds,input.crop.geometry) &&
+             !SameBounds(accepted.sourceBounds,input.crop.geometry)))
+            return HasCurrentConfirmedOutwardCandidate(input,proposed);
+        // Keep the actual confirmed translation contract, including Classic UI.
         return input.confirmedPresentationResolved && input.measurementCurrent && input.retentionEvaluated &&
             input.crop.frameSourceGeneration != 0 && input.crop.frameSourceSequence != 0 &&
             input.retentionSourceGeneration == input.crop.frameSourceGeneration &&
             input.retentionSourceSequence == input.crop.frameSourceSequence &&
             SameTrustedCropContract(input.retentionBounds, input.crop.geometry) &&
             accepted.applyCrop && proposed.applyCrop &&
-            (accepted.owner == DecisionOwner::OUTWARD_FIT ||
-             accepted.owner == DecisionOwner::VERTICAL_TRANSLATION) &&
+            accepted.owner == DecisionOwner::VERTICAL_TRANSLATION &&
             accepted.owner == proposed.owner &&
             accepted.verticallyTranslated == proposed.verticallyTranslated &&
             accepted.verticalTranslationPixels == proposed.verticalTranslationPixels &&
@@ -4412,6 +4428,9 @@ namespace AlphaSourceCrop
 		PresentationRecoveryDecision result;
 		result.state = input.previous;
 		result.presentation = input.candidate;
+        result.presentation.confirmedFitOwnership={};
+        if(HasCurrentConfirmedOutwardCandidate(input,result.presentation))
+            result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
 		result.required = NearBlackCropRevalidationSamples(input.framesPerSecond);
 		const auto& crop = input.crop;
 		const bool currentContract = crop.sharedGeometryAvailable &&
@@ -4439,6 +4458,7 @@ namespace AlphaSourceCrop
         // caption. Keep every independent full-raster/transition/fail-open veto.
         if (HasCurrentPreparedSubtitlePresentation(crop) &&
             input.presentationEpoch==crop.framePresentationEpoch &&
+            ValidBounds(crop.geometry,crop.rasterWidth,crop.rasterHeight) &&
             !crop.nearBlackEpisodeFullRaster && !crop.movingPictureTransition &&
             !HasCurrentPictureTransitionHandoff(crop) && !crop.presentationFailOpen &&
             input.candidate.applyCrop && input.candidate.owner==DecisionOwner::TRUSTED_CROP &&
@@ -5582,6 +5602,7 @@ namespace AlphaSourceCrop
 			result.state = {};
         // Logical admission survives temporary withdrawal; the last displayed
         // fit does not. Clear it on every attempt, including blocked/no-crop.
+        result.state.confirmedFitOwnership={};
         result.state.outwardPresentationAvailable = false;
         result.state.outwardPresentation = {};
         result.state.presentationSourceSequence = 0;
@@ -5636,8 +5657,12 @@ namespace AlphaSourceCrop
 		result.state.authorityOrigin = input.authorityOrigin;
 		result.state.sourceGeneration = input.frameSourceGeneration;
 		result.state.presentationEpoch = presentationEpoch;
+        if(input.framePresentationEpoch==presentationEpoch &&
+            MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
+                input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+            result.state.confirmedFitOwnership=candidate.confirmedFitOwnership;
         result.state.outwardPresentationAvailable = candidate.outwardExpanded &&
-            candidate.owner == DecisionOwner::OUTWARD_FIT;
+            (candidate.owner == DecisionOwner::OUTWARD_FIT || result.state.confirmedFitOwnership.available);
         if (result.state.outwardPresentationAvailable)
         {
             result.state.outwardPresentation = candidate.sourceBounds;
@@ -5788,18 +5813,24 @@ namespace AlphaSourceCrop
     }
 
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
-		const SubmittedNativeScopeAnchorUpdateInput& input)
+		const SubmittedNativeScopeAnchorUpdateInput& input, const char** outcomeReason)
 	{
 		auto result = input.previous;
+        const auto finish=[&](const char* reason) {
+            if(outcomeReason)*outcomeReason=reason;
+            return result;
+        };
 		if (!input.frameSubmitted)
-			return result;
+			return finish("not-submitted");
         if (result.available && result.sourceGeneration == input.sourceGeneration &&
             result.presentationEpoch == input.presentationEpoch &&
             input.sourceSequence < std::max(std::max(result.lastSubmittedSourceSequence, result.lastSubmittedPresentationSourceSequence),
                 std::max(result.submittedEnvelopeSourceSequence,result.submittedOptionalFillSourceSequence)))
-            return result;
-		if (input.fullRasterAuthority)
-			return {};
+            return finish("nonmonotonic-source");
+		if (input.fullRasterAuthority) {
+            result={};
+            return finish("full-authority-cleared");
+        }
 		const bool previousSameContext = result.available &&
 			result.sourceGeneration == input.sourceGeneration &&
 			result.presentationEpoch == input.presentationEpoch &&
@@ -5813,7 +5844,7 @@ namespace AlphaSourceCrop
 		if (!previousSameContext)
 			result = {};
 		else if (input.sourceSequence < result.lastSubmittedSourceSequence)
-			return result;
+			return finish("nonmonotonic-source");
         const bool selectedOptionalFill = HasSelectedNativeOptionalFill(input);
         const bool priorOptionalFill = HasSubmittedOptionalFill(result,input.sourceGeneration,
             input.sourceSequence,input.presentationEpoch,input.submittedBounds.rasterWidth,
@@ -5835,18 +5866,26 @@ namespace AlphaSourceCrop
             }
             // A retained fill never acquires or renews native AR, even if an
             // invalid caller labels an unsubmitted proposal as retention.
-            return result;
+            return finish(result.submittedOptionalFillAvailable ? "retained-optional-fill-committed" : "retained-optional-fill-rejected");
         }
         if (previousSameContext && selectedOptionalFill &&
             SameTrustedCropContract(input.nativeCrop,result.crop))
             StoreSubmittedOptionalFill(result,input);
+        const auto& selected=input.selectedAdmission;
+        const bool qualifiedEnvelope=selected.available &&
+            selected.sourceGeneration==input.sourceGeneration && selected.presentationEpoch==input.presentationEpoch &&
+            selected.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            input.selectedOwner!=DecisionOwner::FULL_RASTER &&
+            SameTrustedCropContract(selected.trustedCrop,input.nativeCrop) &&
+            MatchesConfirmedFitOwnership(selected.confirmedFitOwnership,input.nativeCrop,input.submittedBounds,
+                input.sourceGeneration,input.sourceSequence,input.presentationEpoch);
         if (previousSameContext && input.nativeCropAvailable &&
             input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
             SameTrustedCropContract(input.nativeCrop, result.crop) &&
             // Pending placement may already have displayed a safe outward
             // envelope. Remember that exact submitted view across analysis gaps,
             // without renewing native AR or accepting a proposed-only envelope.
-            (input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE ||
+            (qualifiedEnvelope || input.selectedOwner == DecisionOwner::OUTWARD_FIT || input.selectedOwner == DecisionOwner::NEAR_BLACK_EPISODE ||
              ((input.selectedOwner == DecisionOwner::TRANSLATION_CONFIRMATION ||
                input.selectedOwner == DecisionOwner::FIT_CONFIRMATION) &&
               input.selectedAdmission.available &&
@@ -5864,7 +5903,7 @@ namespace AlphaSourceCrop
             result.submittedEnvelope = input.submittedBounds;
             result.submittedEnvelopeSourceSequence = input.sourceSequence;
             result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
-            return result;
+            return finish(qualifiedEnvelope ? "qualified-fit-envelope-committed" : "submitted-envelope-committed");
         }
 		if (!input.nativeCropAvailable || !input.sourceGeneration ||
 			!input.sourceSequence || input.selectedOwner == DecisionOwner::FULL_RASTER ||
@@ -5877,7 +5916,7 @@ namespace AlphaSourceCrop
 				input.nativeCrop.rasterWidth, input.nativeCrop.rasterHeight) ||
 			!ValidBounds(input.submittedBounds, input.nativeCrop.rasterWidth,
 				input.nativeCrop.rasterHeight))
-			return result;
+			return finish("native-contract-rejected");
 
         if (previousSameContext && SameTrustedCropContract(input.nativeCrop,result.crop) &&
             HasSelectedSamplingEnvelopeFill(input))
@@ -5889,7 +5928,7 @@ namespace AlphaSourceCrop
             result.submittedEnvelope = input.selectedAdmission.samplingEnvelopeSourceBounds;
             result.submittedEnvelopeSourceSequence = input.sourceSequence;
             result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
-            return result;
+            return finish("sampling-envelope-committed");
         }
         // A selected confirmed translation supersedes the old FIT envelope only
         // after submission. Keep an ordering watermark without renewing native AR.
@@ -5905,7 +5944,7 @@ namespace AlphaSourceCrop
             result.submittedEnvelope = {};
             result.submittedEnvelopeSourceSequence = 0;
             result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
-            return result;
+            return finish("translation-retired-envelope");
         }
         // Similar aspect ratios do not prove that the physical picture was
         // displayed: a shifted crop can have exactly the same aspect. Retain
@@ -5914,11 +5953,11 @@ namespace AlphaSourceCrop
             !HasSelectedHorizontalFillWitness(input.selectedAdmission,
                 input.nativeCrop, input.submittedBounds, input.sourceGeneration,
                 input.sourceSequence, input.presentationEpoch))
-            return result;
+            return finish("actual-geometry-not-qualified");
 		if (result.available && result.sourceGeneration == input.sourceGeneration &&
 			result.presentationEpoch == input.presentationEpoch &&
 			input.sourceSequence < result.lastSubmittedSourceSequence)
-			return result;
+			return finish("nonmonotonic-source");
 		result.available = true;
 		result.crop = input.nativeCrop;
 		result.sourceGeneration = input.sourceGeneration;
@@ -5929,7 +5968,7 @@ namespace AlphaSourceCrop
         result.submittedEnvelope = {};
         result.submittedEnvelopeSourceSequence = 0;
         if (selectedOptionalFill) StoreSubmittedOptionalFill(result,input);
-		return result;
+		return finish("native-anchor-committed");
 	}
 
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
@@ -5952,7 +5991,11 @@ namespace AlphaSourceCrop
             return result;
 
         if (HasConfirmedPresentationCandidate(input, proposed))
+        {
+            if(HasCurrentConfirmedOutwardCandidate(input,proposed))
+                result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
             return result;
+        }
 
         const bool submittedEnvelope = anchor.submittedEnvelopeAvailable &&
             anchor.submittedEnvelopeSourceSequence >= anchor.lastSubmittedSourceSequence &&
@@ -5998,7 +6041,7 @@ namespace AlphaSourceCrop
         // raster edge. It needs the same independent confirmation as full FIT.
         // Native replacements and independently owned side/translation paths
         // retain their existing fast paths.
-        const bool unconfirmedVerticalFit = proposed.owner == DecisionOwner::OUTWARD_FIT &&
+        const bool unconfirmedVerticalFit =
             !proposed.verticallyTranslated &&
             crop.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
             crop.sharedGeometryAvailable && crop.geometrySourceGeneration == crop.frameSourceGeneration &&

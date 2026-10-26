@@ -2,14 +2,18 @@
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCueContinuationProof.h>
 
-// A non-renewing lease for an established cue whose detector search side was
-// omitted after one edge became unavailable. Never modifies worker evidence.
+// Fresh native verification of fixed-source glyphs after a picture edge becomes
+// unavailable. Detector misses have a non-renewing lease; healthy current positives
+// must pass each new source. Worker measurements and picture authority stay unchanged.
 class SubtitleCueContinuationGuard {
 public:
-    void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false; }
+    void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false;m_localGlyphsOnly=false; }
     bool HasReference() const { return m_valid; }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
+    bool NeedsCurrentProof(const SubtitleBoxPreview& preview) const {
+        return m_valid && EdgeLossKind(preview.current)!=0;
+    }
     bool Remember(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const ActivePictureBounds& base,const AnalysisLumaSource& source) {
         const auto& c=preview.current;
@@ -25,8 +29,13 @@ public:
         if(!c.sharedPicture.AvailableFor(c.identity,c.width,c.height))
             return reject("shared-hint-unavailable");
         if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
-        if(base.top!=c.pictureTop || base.bottom!=c.pictureBottom)
+        const bool physicalEdgesAligned=base.top==c.pictureTop && base.bottom==c.pictureBottom;
+        // Different sampler/native edges may nominate fixed bar glyphs only.
+        // This does not reconcile, sample or certify the intervening picture strips.
+        if(!physicalEdgesAligned && !BarOnlyCue(c,accepted,base))
             return reject("native-base-physical-edge-mismatch");
+        if(c.pictureTop<=0 || c.pictureBottom>=c.height)
+            return reject("seed-physical-context-incomplete");
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
             return reject("measurement-epoch-mismatch");
         // Rendering the same strong source frame does not renew a later lease.
@@ -62,9 +71,10 @@ public:
         for(size_t i=0;i<words;++i)sampled->ownedInk[i]=c.ink->ownedInk[i]&sampled->rawInk[i];
         m_reference=acceptedObservation;m_reference.ink=sampled;
         m_baseline=sampled;m_base=base;m_roi=roi;m_last=c.identity;m_elapsed=0;m_missingStarted=false;m_valid=true;m_cached={};
+        m_localGlyphsOnly=!physicalEdgesAligned;
         m_format=source.format;m_encoding=source.encoding;m_range=source.range;m_colorspace=source.colorspace;
         m_sourceGeneration=source.generation;
-        m_lastSeedReason="seeded";
+        m_lastSeedReason=m_localGlyphsOnly?"seeded-local-bar-glyphs":"seeded";
         return true;
     }
     SubtitleCueContinuation Prepare(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
@@ -83,25 +93,38 @@ public:
             source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
             source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration)
             return fail("context-changed");
-        if(c.text.detected)return fail("current-detector-positive");
-        bool topCue=false,bottomCue=false;
-        for(int i=0;i<m_reference.text.lineCount;++i) {
-            topCue|=m_reference.text.lineBounds[i].top<m_reference.pictureTop;
-            bottomCue|=m_reference.text.lineBounds[i].bottom>m_reference.pictureBottom;
+        const int edgeLoss=EdgeLossKind(c);
+        if(!edgeLoss || !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
+        if(edgeLoss==2 && (c.cadenceSkipped || c.text.held || c.text.confirmationPending || c.text.revised ||
+            !c.ink || !c.ink->rawEvidenceComplete || !c.ink->paletteValid))
+            return fail("current-detector-proof-not-fresh");
+        if(c.text.detected) {
+            // The opposite edge can be unavailable while this bar still yields
+            // a positive grouping. Grouping alone cannot retain or replace text.
+            auto comparison=c;comparison.pictureTop=m_reference.pictureTop;
+            comparison.pictureBottom=m_reference.pictureBottom;
+            if(c.text.lineCount!=m_reference.text.lineCount ||
+                !SubtitleBoxLookahead::SameCue(m_reference,comparison))
+                return fail("current-cue-grouping-changed");
         }
-        const bool missingBottom=bottomCue && !topCue && m_reference.pictureBottom<c.height &&
-            c.pictureBottom==c.height && c.pictureTop==m_reference.pictureTop && c.pictureTop>0;
-        const bool missingTop=topCue && !bottomCue && m_reference.pictureTop>0 &&
-            c.pictureTop==0 && c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height;
-        if((!missingBottom && !missingTop) || !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
         if(SameAnalysisFrameIdentity(c.identity,m_last))return m_cached;
         if(c.identity.acceptedSequence!=m_last.acceptedSequence+1)return fail("sequence-gap");
+        if(edgeLoss==2 && ((c.identity.sourceFrameNumber && m_last.sourceFrameNumber &&
+            c.identity.sourceFrameNumber<=m_last.sourceFrameNumber) ||
+            (c.identity.captureTimestamp && m_last.captureTimestamp && c.identity.captureTimestamp<=m_last.captureTimestamp)))
+            return fail("source-not-fresh");
         if(!std::isfinite(frameMs) || frameMs<=0)return fail("invalid-source-duration");
         m_missingStarted=true;m_elapsed+=frameMs;out.elapsedMs=m_elapsed;m_last=c.identity;
-        if(m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
+        // A detector miss spends the absolute non-renewing grace. An exact
+        // healthy positive on the cue side is freshly verified below each frame;
+        // it does not reset that grace or renew the acquisition/physical baseline.
+        if(edgeLoss==1 && m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
         auto fresh=Verify(c,source,maxSamples,out.samples,out.reason);
         if(!fresh)return fail(out.reason);
-        out.valid=true;out.reason="current-cue-pixels";out.physicalBase=m_base;out.sampledBounds=m_roi;out.backingVerifiedBounds=m_reference.text.sourcePanel;
+        out.valid=true;out.localGlyphsOnly=m_localGlyphsOnly || edgeLoss==2;
+        out.reason=edgeLoss==2?"current-cue-opposite-edge-pixels":"current-cue-pixels";
+        out.physicalBase=m_base;out.sampledBounds=m_roi;
+        out.backingVerifiedBounds=out.localGlyphsOnly?SubtitleBoxRect{}:m_reference.text.sourcePanel;
         out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
         out.accepted=m_reference.text;out.accepted.held=true;out.ink=fresh;m_cached=out;return out;
     }
@@ -132,6 +155,37 @@ public:
         m_last=c.identity;m_cached={};return true;
     }
 private:
+    static bool BarOnlyCue(const SubtitleBoxObservation& c,const SubtitleBoxResult& accepted,
+        const ActivePictureBounds& base) {
+        if(c.pictureTop<=0 || c.pictureBottom>=c.height || c.pictureTop>=c.pictureBottom ||
+            base.rasterWidth!=c.width || base.rasterHeight!=c.height || base.left!=0 || base.right!=c.width ||
+            base.top<=0 || base.bottom>=c.height || base.top>=base.bottom ||
+            accepted.sourcePanel.Valid() || accepted.capturePanel.Valid() || accepted.provenSourcePanel.Valid() ||
+            accepted.lineCount<1 || accepted.lineCount>3)return false;
+        bool top=true,bottom=true;
+        for(int i=0;i<accepted.lineCount;++i) {
+            const auto& line=accepted.lineBounds[i];
+            if(!InRaster(line,c.width,c.height) || accepted.lineCapturePanels[i].Valid())return false;
+            top &= line.bottom<=(std::min)(base.top,c.pictureTop);
+            bottom &= line.top>=(std::max)(base.bottom,c.pictureBottom);
+        }
+        return top!=bottom;
+    }
+    int EdgeLossKind(const SubtitleBoxObservation& c) const {
+        bool topCue=false,bottomCue=false;
+        for(int i=0;i<m_reference.text.lineCount;++i) {
+            topCue|=m_reference.text.lineBounds[i].top<m_reference.pictureTop;
+            bottomCue|=m_reference.text.lineBounds[i].bottom>m_reference.pictureBottom;
+        }
+        if(!c.text.detected && ((bottomCue && !topCue && m_reference.pictureBottom<c.height &&
+            c.pictureBottom==c.height && c.pictureTop==m_reference.pictureTop && c.pictureTop>0) ||
+            (topCue && !bottomCue && m_reference.pictureTop>0 && c.pictureTop==0 &&
+             c.pictureBottom==m_reference.pictureBottom && c.pictureBottom<c.height)))return 1;
+        if(c.text.detected && BarOnlyCue(m_reference,m_reference.text,m_base) &&
+            ((bottomCue && !topCue && c.pictureTop==0 && c.pictureBottom==m_reference.pictureBottom) ||
+             (topCue && !bottomCue && c.pictureBottom==c.height && c.pictureTop==m_reference.pictureTop)))return 2;
+        return 0;
+    }
     std::shared_ptr<SubtitleInkSnapshot> Verify(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
         size_t maxSamples,unsigned& samples,const char*& reason) const {
         auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason);
@@ -153,6 +207,10 @@ private:
         // Geometry is local to comparison: raw measurement and AR stay untouched.
         auto comparison=c;comparison.pictureTop=m_reference.pictureTop;comparison.pictureBottom=m_reference.pictureBottom;
         comparison.ink=fresh;
+        if((m_localGlyphsOnly || c.text.detected) &&
+            !SubtitleBoxLookahead::StableBlackBacking(m_reference,comparison)) {
+            reason="bar-backing-changed";return {};
+        }
         if(!SubtitleBoxLookahead::ConfidentSameInk(m_reference,comparison)){reason="glyph-proof-failed";return {};}
         for(size_t i=0;i<fresh->rawInk.size();++i)fresh->ownedInk[i]=m_baseline->ownedInk[i]&fresh->rawInk[i];
         return fresh;
@@ -201,7 +259,7 @@ private:
         // Coverage is deliberately bounded to sampledBounds, never whole raster.
         f->rawEvidenceComplete=false;return f;
     }
-    bool m_valid=false,m_missingStarted=false;const char* m_lastSeedReason="not-attempted";
+    bool m_valid=false,m_missingStarted=false,m_localGlyphsOnly=false;const char* m_lastSeedReason="not-attempted";
     SubtitleBoxObservation m_reference;ActivePictureBounds m_base;
     std::shared_ptr<SubtitleInkSnapshot> m_baseline;SubtitleBoxRect m_roi;
     ActivePictureFrameIdentity m_last;double m_elapsed=0;SubtitleCueContinuation m_cached;

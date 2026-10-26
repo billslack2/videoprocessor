@@ -272,6 +272,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(continuation && !continuation->Matches(input.currentIdentity,input.policyGeneration,
         input.continuityGeneration,accepted,base))
         return reject("continuation-context-mismatch");
+    // Fixed-plane glyph continuity may bridge an unavailable unrelated edge,
+    // but cannot certify physical bars, source erasure or a new crop owner.
+    if(continuation && continuation->localGlyphsOnly)
+        return reject("local-glyph-continuation-is-not-picture-proof");
     if((continuation || preparedErasureOnly) &&
         CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
         return reject("independent-picture-expansion",QualifiedSubtitlePresentationStatus::Conflict);

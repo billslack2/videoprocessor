@@ -1404,6 +1404,19 @@ namespace AlphaSourceCrop
 
 	const char* DecisionOwnerName(DecisionOwner owner);
 
+    enum class ConfirmedFitOwnershipOrigin : uint8_t
+    {
+        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY, CURRENT_BAR_CONTENT
+    };
+    // Presentation ownership travels independently of the native crop owner.
+    // It certifies only the exact current source envelope, never native AR.
+    struct ConfirmedFitOwnershipEvidence
+    {
+        bool available = false;
+        ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
+        ActivePictureBounds nativeBase, approvedBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+    };
 	struct Decision
 	{
 		ActivePictureBounds sourceBounds;
@@ -1415,6 +1428,7 @@ namespace AlphaSourceCrop
 		DecisionOwner owner = DecisionOwner::FULL_RASTER;
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
+        ConfirmedFitOwnershipEvidence confirmedFitOwnership;
 	};
 
 
@@ -1422,6 +1436,8 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+        // Copied with the selected packet; submission validates identity and actual bounds again.
+        ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         // A separate presentation-only certificate for an approved side fill of
         // a small vertical sampling envelope. Never certifies native acquisition.
         bool samplingEnvelopeFillApplied = false;
@@ -1514,7 +1530,7 @@ namespace AlphaSourceCrop
 	bool CanRetainSubmittedScopeContinuity(
 		const SubmittedScopeContinuityEvidence& evidence);
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
-		const SubmittedNativeScopeAnchorUpdateInput& input);
+		const SubmittedNativeScopeAnchorUpdateInput& input, const char** outcomeReason = nullptr);
 
     struct EstablishedSubtitleTranslationInput
     {
@@ -1784,10 +1800,7 @@ namespace AlphaSourceCrop
 		uint32_t samples = 0;
 	};
 
-    enum class ConfirmedFitOwnershipOrigin : uint8_t
-    {
-        NONE, CURRENT_CAPTION, CURRENT_UI_OVERLAY, CURRENT_BAR_CONTENT
-    };
+
     // The approved envelope is built independently from current accepted
     // caption/UI evidence. A dense geometry/FIT completion is not ownership.
     struct ConfirmedFitOwnershipInput
@@ -1800,13 +1813,7 @@ namespace AlphaSourceCrop
         bool upperOverlayLike = false, lowerOverlayLike = false;
         int horizontalPadding = 0, verticalPadding = 0;
     };
-    struct ConfirmedFitOwnershipEvidence
-    {
-        bool available = false;
-        ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
-        ActivePictureBounds nativeBase, approvedBounds;
-        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
-    };
+
     ConfirmedFitOwnershipEvidence QualifyConfirmedFitOwnership(
         const ConfirmedFitOwnershipInput& input);
     // Established caption FIT may retain its existing smaller clearance, but
@@ -1838,7 +1845,7 @@ namespace AlphaSourceCrop
 		// proof can resolve ownership; pending refinement/inspection cannot.
 		bool confirmedPresentationResolved = false;
         // Separate from generic recovery/inspection resolution above. Only an
-        // exact current caption/UI owner may exempt an OUTWARD_FIT candidate.
+        // exact current caption/UI owner may exempt an expanded candidate.
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
 		uint64_t presentationEpoch = 0;
 		uint64_t currentTick = 0;
