@@ -2,41 +2,82 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-25 follow-up implementation is committed and pushed on
-`codex/vp0215-config-choices-20261025` at
-`405cdea1987a720666b3d2a87e2c1c4e0c0ff710`, continuing the requested local Config
-trial `a37dab1f7c518de7c585dff3c479e84c70038598`. Local docking integration base is
-`eab55b4830877a8ebfb943c40a1d5dacbcf795ae`; discovered beta remains
-`v1.4.02-beta` at `8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. No beta merge or
-public release is requested.
+2026-10-25: The requested follow-up is implemented, tested and deployed for user
+trial. Clean source `405cdea1987a720666b3d2a87e2c1c4e0c0ff710` is pushed on
+`codex/vp0215-config-choices-20261025`. It continues the user-selected local
+Config trial `a37dab1f7c518de7c585dff3c479e84c70038598`, on local docking base
+`eab55b4830877a8ebfb943c40a1d5dacbcf795ae` and discovered current beta
+`v1.4.02-beta` at `8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. No beta merge,
+PR, installer publication or public release was performed.
 
-The user explicitly superseded the prior retained-overrides design: remove the
-entire Processing overrides section, load its values into visible Scaling
-profiles as faithfully as possible, combine image and chroma in one Scaling
-section, use Debanding / Dithering and Blue noise labels, rename the tab/page
-Tone Mapping, and use one Advanced tone mapping / Basic tone mapping toggle.
-Returning to Basic restores prior expanded controls, docking, and scroll.
+Completed follow-up:
 
-Shared parser/editor migration preserves prior processing precedence, keeps
-legacy dithering methods readable, carries rules/shortcuts where possible, and
-preserves comments. It changes memory on load; Save/Apply persists it with a
-migration backup. Independent cross-family profile-selection combinations
-still require user review after ownership moves.
+- Tone Mapping replaces Rendering / DTM in the tab and page title. The entire
+  Processing overrides section and its adoption button are removed.
+- One Scaling section contains image and chroma controls on Scaling / Quality.
+  Debanding / Dithering replaces Debanding_Dithering; Blue noise has no suffix.
+- One Advanced tone mapping toggle reads Basic tone mapping while enabled.
+  Returning restores prior expanded controls, docking and scroll; no separate
+  Restore panels button remains.
+- Shared parser/editor migration moves old Rendering processing values to
+  visible Scaling profiles, preserving previous precedence and distinct named
+  values. Relevant rules/shortcuts/labels transfer where absent; comments and
+  legacy removed dithering methods remain readable. Load changes memory only;
+  Save/Apply persists the plan with an original-file migration backup.
+- Named Tone Mapping peak-detection and contrast-recovery defaults are frozen
+  in the same migration. This repairs a second-migration-on-reopen regression
+  found by final Save/Cancel and remote Apply tests. Explicit Auto reset semantics
+  and effective inherited values are covered by the added native regression.
 
-The first clean build passed 140 targeted native tests and 44/46 Config cases
-plus all three DPI cases. Two saved-state cases exposed named peak-detection
-and contrast-recovery defaults left for a second migration. Commit 405cdea1
-freezes their effective inherited values in the same migration and adds a
-regression test. A fresh complete x64 Release rebuild and final validation are
-running. All failed logs are retained separately; no failed build is deployed.
+Validation against this exact clean commit: complete x64 Release solution
+Rebuild; 141 targeted native regressions, 46 Config
+cases, all three 100%/150%/200% DPI runs and the beta parameter program passed.
+All five host/editor/discovery/stable/beta binary runtime receipts and deployed
+hashes were verified. Config includes import/export, comment preservation,
+legacy ownership, Save/Apply/Cancel/reopen, local/remote Apply, docking and the
+single toggle. Earlier failed link/test logs are retained locally, and no
+failed build was deployed. The pre-existing all-pages tab-size assertion is
+recorded under prior trial evidence and is not counted as a pass. No whole-repo
+native suite pass or physical playback/performance qualification is claimed.
 
-Previous trial a37dab1f was deployed at 2026-10-25T19:49:25-04:00 with seven
-configuration/state files unchanged. Its evidence remains under trial-* assets.
-The new follow-up supersedes its Rendering processing controls and separate
-Image scaling / Chroma scaling sections. Active configuration will remain
-unchanged during binary replacement.
+Deployment: `2026-10-25T21:03:42.7020004-04:00` to `C:\Videoprocessor\vp`.
+Rollback backup: `C:\Videoprocessor\vp\backup-before-vp0215-scaling-405cdea1987a-20261025-210341`.
+All 7 captured active configuration/state files were
+backed up and verified byte-for-byte unchanged. Configuration edits: none.
+Installed Scaling and Tone Mapping read-only open/screenshot/exit checks passed,
+with settings hashes unchanged. Config is reopened for the user's trial.
+
+Remaining acceptance: user validation of revised menus, unified Scaling and
+Advanced/Basic behavior; independent cross-family legacy selection combinations;
+physical playback, chroma/deinterlacing end-to-end behavior on both runtimes;
+representative perceived-quality and performance comparisons; exhaustive
+General/input/dynamic-policy presentation review. Migration is best-effort for
+old independent profile-selection cross-products. Existing Hermite downscale
+and Bicubic chroma defaults remain pending measured review. Cubic stays legacy
+only because enabling real Cubic failed the earlier opaque-subtitle regression.
+Proposed decision: collect user feedback before merge. Keep this story, VP-0032
+and VP-0033 in Review.
+
+Follow-up evidence:
+
+- [Updated choice/default/ownership inventory](../assets/VP-0215/followup-choice-inventory.md).
+- [Build, tests and runtime identities](../assets/VP-0215/followup-validation.json).
+- [Deployment and configuration preservation](../assets/VP-0215/followup-deployment.json).
+- [Installed editor smoke](../assets/VP-0215/followup-deployed-smoke.json).
+- [Installed Scaling](../assets/VP-0215/followup-deployed-scaling.png) and
+  [installed Tone Mapping](../assets/VP-0215/followup-deployed-tone-mapping.png).
+- [Unified Scaling layout](../assets/VP-0215/followup-scaling.png),
+  [basic Tone Mapping](../assets/VP-0215/followup-tone-basic.png), and
+  [advanced Tone Mapping](../assets/VP-0215/followup-tone-advanced.png).
+- [Interactive mockup screenshot](../assets/VP-0215/followup-mockup-scaling.png).
+
+Earlier a37dab1f trial evidence remains under `trial-*` assets. Its retained
+Rendering processing controls and separate Image scaling / Chroma scaling
+sections are superseded by this follow-up. Earlier research below records the
+original beta baseline; intended design and acceptance reflect the latest user
+instructions.
 
 ### Readiness and implementation base
 

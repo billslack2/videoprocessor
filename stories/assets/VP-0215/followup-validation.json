@@ -1,0 +1,321 @@
+{
+  "SourceCommit": "405cdea1987a720666b3d2a87e2c1c4e0c0ff710",
+  "LocalConfigBase": "a37dab1f7c518de7c585dff3c479e84c70038598",
+  "BetaCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "BuildExitCode": 0,
+  "BuildLog": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\build-clean-full-rebuild.log",
+  "ConfigPassed": 46,
+  "ConfigFailed": 0,
+  "Scales": [
+    {
+      "Scale": "1",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\scale-final-1.log"
+    },
+    {
+      "Scale": "1.5",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\scale-final-1.5.log"
+    },
+    {
+      "Scale": "2",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\scale-final-2.log"
+    }
+  ],
+  "ConfigResults": [
+    {
+      "Test": "left docks restore manual choices and drawer editing",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-0.log"
+    },
+    {
+      "Test": "responsive workspaces preserve edits and fit",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-1.log"
+    },
+    {
+      "Test": "Rendering menu duplicate export import preserves ownership",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-2.log"
+    },
+    {
+      "Test": "Rendering processing ownership save reopen and rename",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-3.log"
+    },
+    {
+      "Test": "Rendering profile file ownership round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-4.log"
+    },
+    {
+      "Test": "explicit preset defaults and output matching",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-5.log"
+    },
+    {
+      "Test": "explicit Auto migration preserves profile choices",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-6.log"
+    },
+    {
+      "Test": "preset resolution precedes editor section migration",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-7.log"
+    },
+    {
+      "Test": "renderer promotion migration and cache selection",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-8.log"
+    },
+    {
+      "Test": "display refresh presentation defaults and round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-9.log"
+    },
+    {
+      "Test": "Apply OK Cancel contract",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-10.log"
+    },
+    {
+      "Test": "profile lifecycle through widgets",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-11.log"
+    },
+    {
+      "Test": "Tone mapping controls round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-12.log"
+    },
+    {
+      "Test": "Beta tone mapping controls",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-13.log"
+    },
+    {
+      "Test": "ordinary edits avoid disk validation",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-14.log"
+    },
+    {
+      "Test": "new action starts unconfigured",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-15.log"
+    },
+    {
+      "Test": "empty actions show an empty state",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-16.log"
+    },
+    {
+      "Test": "active profile opens selected after late status and preserves edits",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-17.log"
+    },
+    {
+      "Test": "shared profile list controller contract",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-18.log"
+    },
+    {
+      "Test": "migration notice only for pending migration",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-19.log"
+    },
+    {
+      "Test": "DPI keyboard and accessibility behavior",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-20.log"
+    },
+    {
+      "Test": "no-target startup is quiet",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-21.log"
+    },
+    {
+      "Test": "custom shader parameters expand into page scroll",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-22.log"
+    },
+    {
+      "Test": "concrete video choices and canonical Scaling",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-23.log"
+    },
+    {
+      "Test": "Motion and chroma controls persist and expose new tab",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-24.log"
+    },
+    {
+      "Test": "audited Boolean aliases and inherited Auto status",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-25.log"
+    },
+    {
+      "Test": "invalid audited values remain actionable",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-26.log"
+    },
+    {
+      "Test": "calibrated UI defaults and derived transport",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-27.log"
+    },
+    {
+      "Test": "calibrated legacy and inherited output preserved",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-28.log"
+    },
+    {
+      "Test": "unified Color Output migration and transfer round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-29.log"
+    },
+    {
+      "Test": "Limited transport gamma notice and correction",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-30.log"
+    },
+    {
+      "Test": "calibration layout preserves independent slots",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-31.log"
+    },
+    {
+      "Test": "calibration controls follow confirmed runtime LUT",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-32.log"
+    },
+    {
+      "Test": "inherited calibration LUT uses effective control state",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-33.log"
+    },
+    {
+      "Test": "choice labels and VP Renderer name",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-34.log"
+    },
+    {
+      "Test": "inherited renderer Input selectors use effective labels",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-35.log"
+    },
+    {
+      "Test": "inherited renderer Input selectors refresh with General",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-36.log"
+    },
+    {
+      "Test": "DirectShow-only input persists and General can be cleared",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-37.log"
+    },
+    {
+      "Test": "General input Apply preserves backend overrides",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-38.log"
+    },
+    {
+      "Test": "clean remote Apply uses unchanged RPC candidate",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-39.log"
+    },
+    {
+      "Test": "clean Apply notifies without saving",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-40.log"
+    },
+    {
+      "Test": "calibration profile owns LUT and HDR gamma",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-41.log"
+    },
+    {
+      "Test": "subtitle retired temporal fill preserves saved profiles",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-42.log"
+    },
+    {
+      "Test": "black default and legacy Auto inheritance",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-43.log"
+    },
+    {
+      "Test": "independent SDR LUT gamma",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-44.log"
+    },
+    {
+      "Test": "SDR gamma adjustment labels and persistence",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\config-final-45.log"
+    }
+  ],
+  "NativePassed": 141,
+  "NativeFailed": 0,
+  "NativeTrx": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\native-final\\vp0215-native-final.trx",
+  "BetaTestsExitCode": 0,
+  "BetaTestsLog": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\beta-tests.log",
+  "RuntimeRecords": [
+    {
+      "Binary": "VideoProcessor-GUI.exe",
+      "SHA256": "057E0D200159155050886ED69AA1C1636AEB80A822AFC29D5A29AF8F125591DB",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "057E0D200159155050886ED69AA1C1636AEB80A822AFC29D5A29AF8F125591DB"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfig.exe",
+      "SHA256": "4132B8F44F36BB6DEA148DE873464BFD563B654EEE94C42490D225891E77AC4D",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.44.35207",
+        "sha256": "4132B8F44F36BB6DEA148DE873464BFD563B654EEE94C42490D225891E77AC4D"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfigDiscovery.dll",
+      "SHA256": "52C6355B179D353BC7771C4A3700D5AF85818B24A37FB60F17E917070B041271",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "52C6355B179D353BC7771C4A3700D5AF85818B24A37FB60F17E917070B041271"
+      }
+    },
+    {
+      "Binary": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "SHA256": "F178A393A03C91D86C02B19D0FB2376A461FB31CAF41C4E53DB9693C29BE2C89",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "F178A393A03C91D86C02B19D0FB2376A461FB31CAF41C4E53DB9693C29BE2C89"
+      }
+    },
+    {
+      "Binary": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "SHA256": "9F13D84809665424B8457882468518DC87F805F71BA0D64CD2248551F6A6754D",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "9F13D84809665424B8457882468518DC87F805F71BA0D64CD2248551F6A6754D"
+      }
+    }
+  ],
+  "PhysicalPlaybackTested": false
+}

@@ -1,0 +1,22 @@
+{
+  "SourceCommit": "405cdea1987a720666b3d2a87e2c1c4e0c0ff710",
+  "InstalledExecutable": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+  "Runs": [
+    {
+      "Page": "scaling",
+      "ExitCode": 0,
+      "Screenshot": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\deployed-scaling.png",
+      "ScreenshotSHA256": "34BDE89C3B714CA61E4EE425115BBAB8815A7AA10AA54CA17E1B6D91DDE5400E"
+    },
+    {
+      "Page": "tone-mapping",
+      "ExitCode": 0,
+      "Screenshot": "E:\\codex\\diagnostics\\vp0215-scaling-followup-20261025\\final-repaired\\deployed-tone-mapping.png",
+      "ScreenshotSHA256": "DE5783B2EF9AB408010F0267CCD80479D46718606A7251E502604845D4D6CFF0"
+    }
+  ],
+  "ConfigurationFilesChecked": 7,
+  "ConfigurationUnchanged": true,
+  "CheckedAt": "2026-10-25T21:03:57.9248319-04:00",
+  "PhysicalPlaybackTested": false
+}
