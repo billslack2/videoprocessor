@@ -213,7 +213,10 @@ namespace Tests
             DisplayCadenceRecovery recovery = MakeRecovery();
             const int64_t firstNs = 1'000'000'000LL;
             const int64_t periodNs = PeriodNs();
-            const int64_t shortWaitNs = periodNs / 4;
+            // Round the quarter period down directly. Ceil(period) / 4 can
+            // round it above the strict threshold at fractional refresh rates.
+            const int64_t shortWaitNs = static_cast<int64_t>(
+                std::floor(1'000'000'000.0 / 23.976 / 4.0));
             const int64_t longWaitNs = periodNs / 2;
 
             Assert::IsFalse(recovery.RecordWorkahead(firstNs, 0, longWaitNs));
@@ -227,6 +230,22 @@ namespace Tests
             recovery.Observe(false, false, firstNs + periodNs);
             Assert::IsFalse(recovery.Pending());
             Assert::IsFalse(recovery.TakeRequest(firstNs + periodNs));
+        }
+
+        TEST_METHOD(QuarterPeriodWaitBoundaryIsStrictAtFractionalAndIntegerRates)
+        {
+            for (const double hz : { 23.976, 24.0, 59.94, 60.0, 120.0, 125.0 })
+            {
+                DisplayCadenceRecovery recovery;
+                recovery.SetTarget(1, hz);
+                const int64_t thresholdFloorNs = static_cast<int64_t>(
+                    std::floor(1'000'000'000.0 / hz / 4.0));
+                Assert::IsFalse(recovery.RecordWorkahead(
+                    1'000'000'000LL, 1, thresholdFloorNs));
+                Assert::IsTrue(recovery.RecordWorkahead(
+                    1'000'000'000LL, 2, thresholdFloorNs + 1));
+                Assert::IsFalse(recovery.HasFreshWorkahead(1'000'000'000LL));
+            }
         }
 
         TEST_METHOD(ExpiredProofCancelsPendingWithoutChargingAttempt)
