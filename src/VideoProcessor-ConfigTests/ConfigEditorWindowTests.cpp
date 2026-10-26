@@ -60,6 +60,8 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QVBoxLayout>
 #include <QSlider>
 #include <QStandardItemModel>
 #include <QSplitter>
@@ -608,6 +610,89 @@ void testToneSliderWheelScrollsPanelWithoutEditing()
     QApplication::sendEvent(slider, &key);
     require(slider->value() > beforeKey, "Wheel suppression disabled keyboard adjustment");
     require(readBytes(path) == original, "Scrolling or keyboard adjustment wrote the configuration");
+}
+void testWheelGuardsAllConfigValueControlsAndAllowsPopupLists()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show();
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto wheelOver = [&](QWidget* target, int delta) {
+        const QPointF local = target->rect().center();
+        QWheelEvent wheel(local, target->mapToGlobal(local.toPoint()), QPoint(),
+            QPoint(0, delta), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(target, &wheel);
+    };
+    int comboCount = 0, spinCount = 0;
+    for (auto* combo : window.findChildren<QComboBox*>())
+    {
+        if (!combo->isEnabled() || combo->count() < 2) continue;
+        const int before = combo->currentIndex();
+        for (bool focus : { false, true })
+        {
+            if (focus) combo->setFocus(); else combo->clearFocus();
+            wheelOver(combo->isEditable() ? static_cast<QWidget*>(combo->lineEdit()) : combo,
+                before < combo->count() - 1 ? -120 : 120);
+            require(combo->currentIndex() == before,
+                QString("Wheel changed dropdown %1").arg(combo->objectName()).toStdString().c_str());
+        }
+        ++comboCount;
+    }
+    for (auto* spin : window.findChildren<QSpinBox*>())
+    {
+        if (!spin->isEnabled() || spin->minimum() == spin->maximum()) continue;
+        const int before = spin->value();
+        for (bool focus : { false, true })
+        {
+            if (focus) spin->setFocus(); else spin->clearFocus();
+            wheelOver(spin->findChild<QLineEdit*>(), before < spin->maximum() ? 120 : -120);
+            require(spin->value() == before, "Wheel changed a numeric field through its editor");
+        }
+        ++spinCount;
+    }
+    require(comboCount > 0 && spinCount > 0, "No real Config value controls were checked");
+    std::cout << "WHEEL: " << comboCount << " dropdowns and " << spinCount << " numeric controls protected" << std::endl;
+
+    // Controls created after the main window, including floating dialogs, must
+    // follow the same policy without per-widget installation.
+    QDialog dialog(&window);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true); layout->addWidget(scroll);
+    auto* content = new QWidget;
+    auto* form = new QVBoxLayout(content);
+    auto* combo = new QComboBox;
+    for (int n = 0; n < 60; ++n) combo->addItem(QString::number(n));
+    combo->setMaxVisibleItems(8); form->addWidget(combo);
+    auto* spin = new QDoubleSpinBox;
+    spin->setValue(10); form->addWidget(spin); form->addSpacing(900);
+    scroll->setWidget(content);
+    dialog.resize(420, 220); dialog.show(); events();
+    for (QWidget* target : {static_cast<QWidget*>(combo), static_cast<QWidget*>(spin->findChild<QLineEdit*>())})
+    {
+        scroll->ensureWidgetVisible(target); events();
+        auto* bar = scroll->verticalScrollBar(); bar->setValue(0);
+        target->setFocus(); wheelOver(target, -120); events();
+        require(combo->currentIndex() == 0 && spin->value() == 10,
+            "Wheel changed a dynamically created dialog value");
+        require(bar->value() > 0, "Wheel over a dialog value control did not scroll its page");
+    }
+    scroll->ensureWidgetVisible(combo); events();
+    combo->showPopup(); events();
+    auto* popupBar = combo->view()->verticalScrollBar();
+    require(popupBar->maximum() > 0, "Popup fixture has no scroll range");
+    const int beforePopup = popupBar->value();
+    wheelOver(combo->view()->viewport(), -120); events();
+    require(popupBar->value() > beforePopup, "Open dropdown list no longer scrolls");
+    combo->hidePopup();
+    const int beforeKey = combo->currentIndex();
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(combo, &key);
+    require(combo->currentIndex() != beforeKey, "Wheel policy disabled deliberate keyboard selection");
+    require(readBytes(path) == original, "Wheel protection test wrote the source configuration");
 }
 void testToneMappingControls()
 {
@@ -8322,6 +8407,7 @@ int main(int argc, char** argv)
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
     failures += run("Tone slider wheel scrolls panel without editing", testToneSliderWheelScrollsPanelWithoutEditing);
+    failures += run("Wheel guards all Config value controls and allows popup lists", testWheelGuardsAllConfigValueControlsAndAllowsPopupLists);
     failures += run("renderer promotion migration and cache selection", testRendererPromotionMigrationAndCacheSelection);
     failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);

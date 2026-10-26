@@ -7,6 +7,7 @@
 #include <dxgi1_2.h>
 
 #include "ConfigEditorWindow.h"
+#include "ConfigWheelGuard.h"
 #include "SettingsNavigationIcons.h"
 #include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
@@ -1056,6 +1057,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 		QStringLiteral("VideoProcessor Configuration"));
     setAccessibleName(QStringLiteral("VideoProcessor Configuration"));
     setObjectName(QStringLiteral("root"));
+    ConfigWheelGuard::install();
     // This must be a Qt-owned flag, not only a later SetWindowPos call: the
     // QWindows backend can otherwise recreate or restyle the native HWND and
     // silently remove WS_EX_TOPMOST after Config has been revealed.

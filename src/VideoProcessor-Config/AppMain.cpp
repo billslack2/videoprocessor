@@ -6,6 +6,7 @@
 #include <UpdateLauncher.h>
 
 #include "ConfigEditorWindow.h"
+#include "ConfigWheelGuard.h"
 #include "Resource.h"
 #include "VpTheme.h"
 #include <ConfigurationRpcProtocol.h>
@@ -313,6 +314,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     int argc = __argc;
     QApplication app(argc, __argv);
+    ConfigWheelGuard::install();
     if (UpdateLauncher::InstallationPending())
     {
         MessageBoxW(nullptr, L"An update is being installed. Please wait for setup to finish.", L"VideoProcessor updates", MB_OK | MB_ICONINFORMATION);
