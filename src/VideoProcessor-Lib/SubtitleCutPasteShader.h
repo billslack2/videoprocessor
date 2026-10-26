@@ -518,15 +518,15 @@ bool subtitleInGeneratedCleanup(vec2 p) {
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
 }
-// Bounded, current-frame reconstruction. Follow the local color contour into
-// clean picture before comparing two donor depths. Soft scores avoid a hard
-// winner changing between frames; all samples remain outside every glyph/card.
+// Fixed, current-frame reconstruction. Donor positions and normalized weights
+// depend only on geometry, never on image gradients or color comparisons. This
+// keeps small frame changes from moving the sampling pattern and causing shimmer.
 vec3 subtitleSurroundingPicture(vec2 p) {
     vec4 edges=vec4(subtitleSafeDonorLeft()-1.5,subtitleSafeDonorRight()+1.5,
         subtitleSafeDonorEdge(false)-0.5,subtitleSafeDonorEdge(true)+0.5);
     vec2 lo=vec2(0.5,picture_top+0.5),hi=vec2(HOOKED_size.x-0.5,picture_bottom-0.5);
-    float seam=clamp(0.15*min(generated_clean_right-generated_clean_left,
-        generated_clean_bottom-generated_clean_top),2.0,12.0);
+    float seam=clamp(0.20*min(generated_clean_right-generated_clean_left,
+        generated_clean_bottom-generated_clean_top),6.0,20.0);
     vec3 sum=vec3(0.0);float weights=0.0;
     int count=2*int(clamp(cleanup_fill_mode,0.0,2.0));
     for(int side=0;side<count;side++) {
@@ -543,46 +543,24 @@ vec3 subtitleSurroundingPicture(vec2 p) {
         if(available<0.0)continue;
         edge=clamp(edge,lo,hi);d=max(0.0,d);
         vec2 tangent=vec2(-dir.y,dir.x);
-        float normalStep=min(2.0,available);
-        float inward=max(dot(edge-p,dir),0.0);
-        vec3 anchor=vec3(0.0),outer=vec3(0.0),before=vec3(0.0),guide=vec3(0.0);
-        vec3 candidates=vec3(0.0);float candidateWeights=0.0,scale=0.02,slope=0.0;
-        // Keep transfer decoding at one compiled sampling site. A dynamic
-        // six-tap bound prevents shader compilers expanding the PQ/HLG math.
-        int taps=3*int(clamp(cleanup_fill_mode,0.0,2.0));
+        float radius=min(2.0,0.25*d);
+        vec3 boundary=vec3(0.0),filled=vec3(0.0);
+        // One transfer-decoding site, five fixed taps per available edge.
+        // Positive, normalized weights make this a non-amplifying linear
+        // operator in scene light while the accepted geometry is unchanged.
+        int taps=2*int(clamp(cleanup_fill_mode,0.0,2.0))+1;
         for(int tap=0;tap<taps;tap++) {
             vec2 donor=edge;
-            if(tap==1)donor+=dir*normalStep;
-            else if(tap==2)donor-=tangent*2.0;
-            else if(tap==3)donor+=tangent*2.0;
-            else if(tap>=4) {
-                float depth=min(available,(tap==4?0.35:1.0)*d);
-                donor+=dir*depth-tangent*slope*(inward+depth);
-            }
+            if(tap==1)donor-=tangent*radius;
+            else if(tap==2)donor+=tangent*radius;
+            else if(tap>=3)donor+=dir*min(available,(tap==3?0.35:1.0)*d);
             vec3 color=subtitleLinear(HOOKED_tex(clamp(donor,lo,hi)*HOOKED_pt).rgb);
-            if(tap==0)anchor=color;
-            else if(tap==1)outer=color;
-            else if(tap==2)before=color;
-            else if(tap==3) {
-                vec3 normalGradient=(outer-anchor)/max(normalStep,1.0);
-                vec3 tangentGradient=(color-before)*0.25;
-                scale=max(max(anchor.r,anchor.g),max(anchor.b,0.02));
-                slope=clamp(dot(tangentGradient,normalGradient)/
-                    (dot(tangentGradient,tangentGradient)+0.0001*scale*scale),-1.5,1.5);
-                // Bound color extrapolation so a contrast edge cannot produce
-                // a bright halo or negative HDR values at the seam.
-                guide=max(anchor-clamp(normalGradient*min(inward,4.0),
-                    vec3(-0.25*scale),vec3(0.25*scale)),vec3(0.0));
-            } else {
-                vec3 delta=(color-guide)/scale;
-                float score=(tap==4?0.65:0.35)/(1.0+8.0*dot(delta,delta));
-                candidates+=score*color;candidateWeights+=score;
-            }
+            if(tap<3)boundary+=(tap==0?0.5:0.25)*color;
+            else filled+=(tap==3?0.65:0.35)*color;
         }
-        vec3 filled=candidateWeights>0.0?candidates/candidateWeights:anchor;
-        // Blend toward clean boundary color, never toward original subtitle
-        // pixels. Keep the transition inside the authorized removal rectangle.
-        filled=mix(guide,filled,smoothstep(0.0,seam,d));
+        // A slightly wider transition joins the clean boundary to the fixed
+        // interior fill. Never blend the original subtitle/card pixels back in.
+        filled=mix(boundary,filled,smoothstep(0.0,seam,d));
         float w=1.0/((d+0.5)*(d+0.5));
         sum+=w*filled;weights+=w;
     }
