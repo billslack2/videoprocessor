@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 // Render-thread-only next-unsubmitted-slot estimate, not scanout confirmation.
 // Present(1) supplies bounded FIFO backpressure; this class never sleeps.
@@ -10,7 +11,13 @@
 class DisplayVsyncClock
 {
 public:
-    void Reset() { *this = {}; }
+    void Reset()
+    {
+        const uint64_t nextSerial = scheduleSerial + 1;
+        *this = {};
+        scheduleSerial = nextSerial;
+    }
+    uint64_t ScheduleSerial() const { return scheduleSerial; }
     bool Active() const { return periodNs > 0.0; }
     bool Matches(uint64_t epoch, double hz) const
     {
@@ -28,6 +35,7 @@ public:
         if (!Matches(epoch, hz) || discontinuity ||
             pts < lastSourcePts || pts - lastSourcePts > 0.5)
         {
+            ++scheduleSerial;
             sourceOrigin = pts;
             wallOriginNs = nowNs;
             generation = epoch;
@@ -55,6 +63,22 @@ public:
     {
         return wallOriginNs + static_cast<int64_t>(std::llround(tick * periodNs));
     }
+    // Leave bounded room for the configured presentation queue. This is a
+    // work-ahead allowance, not permission to advance the clock indefinitely
+    // when Present returns faster than the selected display cadence.
+    int64_t SubmissionWaitNs(int64_t nowNs, unsigned presentationDepth) const
+    {
+        if (!Active()) return 0;
+        const unsigned depth = (std::max)(1u, (std::min)(presentationDepth, 8u));
+        const long double waitNs = static_cast<long double>(DeadlineNs()) -
+            static_cast<long double>(nowNs) -
+            static_cast<long double>(depth) * static_cast<long double>(periodNs);
+        if (waitNs <= 0.0L) return 0;
+        const long double maxNs = static_cast<long double>(
+            (std::numeric_limits<int64_t>::max)());
+        if (waitNs >= maxNs) return (std::numeric_limits<int64_t>::max)();
+        return static_cast<int64_t>(std::ceil(waitNs));
+    }
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
     double DecisionBandSeconds() const
     {
@@ -77,7 +101,13 @@ public:
     void Submitted() { if (Active()) ++tick; }
     double SourceToleranceSeconds() const { return sourceTolerance; }
     bool HasFeedback() const { return feedback; }
-    void InvalidateFeedback() { feedback=false; feedbackSamples=0; lastSyncNs=0; }
+    void InvalidateFeedback()
+    {
+        feedback = false;
+        feedbackSamples = 0;
+        lastSyncNs = 0;
+        lastSyncRefresh = 0;
+    }
     // mpv's guarded estimate of the last queued flip's display time. DXGI
     // counts are wrapping UINTs. Feedback disciplines only missed-slot timing;
     // it never changes the source origin or asserts that a flip was displayed.
@@ -87,7 +117,14 @@ public:
     {
         feedback=false;
         if (!Active() || !tick || !lastPresent || !displayedPresent ||
-            !displayedRefresh || !syncRefresh || syncNs<=0 || cap<1 || cap>8) return false;
+            !displayedRefresh || !syncRefresh || cap<1 || cap>8) return false;
+        const int64_t maximumSampleAgeNs = std::max<int64_t>(250000000,
+            static_cast<int64_t>(std::ceil(3.0 * periodNs)));
+        if (syncNs <= 0 || syncNs > nowNs ||
+            nowNs - syncNs > maximumSampleAgeNs) {
+            InvalidateFeedback();
+            return false;
+        }
         const uint32_t queued=lastPresent-displayedPresent;
         const uint32_t elapsed=syncRefresh-displayedRefresh;
         if (queued>cap+1 || elapsed>cap+1 || queued<elapsed) return false;
@@ -112,7 +149,7 @@ public:
         return true;
     }
 private:
-    uint64_t generation = 0, tick = 0;
+    uint64_t generation = 0, tick = 0, scheduleSerial = 0;
     int64_t wallOriginNs = 0;
     double sourceOrigin = 0.0, lastSourcePts = 0.0;
     double refreshHz = 0.0, periodNs = 0.0, sourceTolerance = 1e-5;

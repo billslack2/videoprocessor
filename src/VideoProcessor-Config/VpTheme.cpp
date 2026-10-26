@@ -279,6 +279,14 @@ QString VpTheme::StyleSheet()
         }
         QTabBar::tab:disabled { color: #63798c; background: #101923; }
         QTabBar[sectionTabs="true"] { background: #0b121b; }
+        QTabBar QToolButton {
+            color: #dce8f2;
+            background: #142536;
+            border: 1px solid #3a5269;
+            border-radius: 3px;
+        }
+        QTabBar QToolButton:hover { background: #203c53; }
+        QTabBar QToolButton:disabled { color: #63798c; background: #101923; }
         QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QListWidget {
             min-height: 26px;
             color: #e8f1f8;

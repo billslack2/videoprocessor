@@ -255,6 +255,7 @@
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
 	<ClCompile Include="ProcessCpuUsageWindowTests.cpp" />
     <ClCompile Include="ConfigFileTests.cpp" />
+    <ClCompile Include="QualityProfileMigrationTests.cpp" />
     <ClCompile Include="ConfigEditorCoreTests.cpp" />
     <ClCompile Include="ConfigurationRpcServerTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
@@ -276,6 +277,8 @@
     <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
     <ClCompile Include="DisplayVsyncClockTests.cpp" />
+    <ClCompile Include="DisplayCadenceHealthTests.cpp" />
+    <ClCompile Include="DisplayCadenceRecoveryTests.cpp" />
     <ClCompile Include="DisplayWindowGeometryTests.cpp" />
     <ClCompile Include="DisplayRasterInfoTests.cpp" />
     <ClCompile Include="..\VideoProcessor-GUI\StatsOverlayWindow.cpp" />

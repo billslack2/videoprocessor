@@ -281,14 +281,56 @@ public:
             Assert::IsTrue(out.destination.left<=card.left-margin && out.destination.right>=card.right+margin);
             Assert::IsTrue(top?out.destination.bottom>=card.bottom+margin:out.destination.top<=card.top-margin);
             Assert::AreEqual(glyphOnly.glyphTranslateX,out.glyphTranslateX);
-            Assert::AreEqual(glyphOnly.glyphTranslateY,out.glyphTranslateY);
+            const float centerY=out.glyphScale*(ink.top+ink.bottom)+2*out.glyphTranslateY;
+            Assert::IsTrue(std::abs(centerY-out.destination.top-out.destination.bottom)<0.01f,
+                L"text centers in final coverage after reserving the edge strip");
             Assert::IsTrue(SubtitleBoxLookahead::SameLine(base.generatedCleanup,out.generatedCleanup,0));
             Assert::IsTrue(SubtitleBoxLookahead::SameLine(base.pictureCapture,out.pictureCapture,0));
             if(percent==75)Assert::IsTrue(glyphOnly.destination.right-glyphOnly.destination.left<out.destination.right-out.destination.left,
                 L"ambiguous local proof uses glyph padding; measured cards retain full native coverage");
         }
     }
-    TEST_METHOD(FreshCardCoverageCanGrowWithoutMovingAnchoredGlyphs) {
+    TEST_METHOD(FinalBackgroundCentersTextAfterReservingConfiguredEdgePixels) {
+        // The old layout centered before card coverage: this fixture left 36.25
+        // pixels above the glyphs and 18.25 below after reserving a 15px strip.
+        for(bool top:{false,true})for(bool floating:{false,true})for(bool rounded:{false,true})
+        for(int reduction:{0,25,50,75})for(int gap:{0,15,35})for(int lines:{1,2,3}) {
+            auto p=Preview();auto text=Text();
+            text.bounds={200,300-(lines-1)*20,440,335};
+            text.lineCount=lines;
+            for(int i=0;i<lines;++i)text.lineBounds[i]={200,315-i*20,440,335-i*20};
+            text.sourcePanel=text.capturePanel={180,220,460,315};text.capturePanelMeasured=true;
+            if(top) {
+                text.bounds=MirrorSubtitleRect(text.bounds);
+                text.sourcePanel=text.capturePanel=MirrorSubtitleRect(text.sourcePanel);
+                for(int i=0;i<lines;++i)text.lineBounds[i]=MirrorSubtitleRect(text.lineBounds[i]);
+            }
+            p.current.text=text;
+            const SubtitleBoxPadding pad{12,18,10};
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxRect visible{20,47,620,313};
+            const auto native=presentation.Consume(text,p,pad,gap);
+            const auto fitted=FitSubtitleToVisiblePicture(native,visible,gap);
+            auto g=ApplySubtitleTextReduction(fitted,reduction,pad,rounded,floating);
+            g=anchor.Consume(g,text,p,pad,gap,floating);
+            Assert::IsTrue(g.valid && g.extendToBar);
+            Assert::AreEqual(gap,top?g.destination.top-visible.top:visible.bottom-g.destination.bottom);
+            const auto ink=g.layoutContent.Valid()?g.layoutContent:g.content;
+            const float y0=g.glyphScale*ink.top+g.glyphTranslateY;
+            const float y1=g.glyphScale*ink.bottom+g.glyphTranslateY;
+            Assert::IsTrue(std::abs((y0-g.destination.top)-(g.destination.bottom-y1))<0.01f,
+                L"final owned background excluding configured edge pixels has equal vertical free space");
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(fitted.source,g.source,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(fitted.generatedCleanup,g.generatedCleanup,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(fitted.pictureCapture,g.pictureCapture,0));
+            const auto again=CoverMeasuredSubtitleBacking(g);
+            Assert::AreEqual(g.glyphTranslateY,again.glyphTranslateY,L"covering twice cannot accumulate a vertical shift");
+            ++p.current.identity.acceptedSequence;
+            const auto held=anchor.Consume(g,text,p,pad,gap,floating);
+            Assert::AreEqual(g.glyphTranslateY,held.glyphTranslateY);
+        }
+    }
+    TEST_METHOD(FreshCardCoverageRecentersVerticallyAndRetainsHorizontalAnchor) {
         for(bool top:{false,true}) {
             auto p=Preview();auto text=Text();text.lineCount=1;text.lineBounds[0]=text.bounds;
             auto g=ComputeSubtitleCutPaste(text.bounds,640,360,45,315,10,15);
@@ -304,7 +346,8 @@ public:
             fresh.glyphTranslateX+=5;fresh.glyphTranslateY+=3;
             const auto covered=anchor.Consume(fresh,text,p,10,15,false);
             Assert::AreEqual(first.glyphTranslateX,covered.glyphTranslateX);
-            Assert::AreEqual(first.glyphTranslateY,covered.glyphTranslateY);
+            Assert::AreEqual(first.glyphTranslateY+0.5f*(covered.destination.top+covered.destination.bottom-
+                first.destination.top-first.destination.bottom),covered.glyphTranslateY);
             Assert::IsTrue(covered.destination.left<=148 && covered.destination.right>=472);
             Assert::IsTrue(top?covered.destination.bottom>=102:covered.destination.top<=258);
             auto local=fresh;local.cleanupLimit=local.generatedCleanup;
@@ -312,7 +355,7 @@ public:
             const auto held=anchor.Consume(local,text,p,10,15,false);
             Assert::IsTrue(SubtitleBoxLookahead::SameLine(covered.destination,held.destination,0),
                 L"unknown outer boundaries must neither grow nor shrink the established panel");
-            Assert::AreEqual(first.glyphTranslateY,held.glyphTranslateY);
+            Assert::AreEqual(covered.glyphTranslateY,held.glyphTranslateY);
         }
     }
     TEST_METHOD(CoverageMarginProtectsMaximumRadiusAtViewportSides) {

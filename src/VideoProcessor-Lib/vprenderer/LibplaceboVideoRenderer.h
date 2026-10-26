@@ -213,6 +213,7 @@ private:
 	};
 
 	void RenderLoop();
+    bool WaitForDisplaySlot(std::unique_lock<std::mutex>& renderGuard, uint64_t sourceGeneration);
 	void ConversionLoop();
 	bool HasConversionWorkLocked() const;
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();

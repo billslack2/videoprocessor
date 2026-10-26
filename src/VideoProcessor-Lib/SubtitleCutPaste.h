@@ -451,7 +451,7 @@ inline SubtitleCutPasteGeometry FitSubtitleToVisiblePicture(SubtitleCutPasteGeom
     return g;
 }
 
-// Cover the accepted original backing independently of the glyph pivot. A local
+// Cover the accepted original backing, then center vertically in its usable area. A local
 // glyph-only proof has no reliable outer card boundary and keeps the native-glyph
 // padding fallback. This is display coverage only: never enlarge cleanup/capture.
 inline SubtitleCutPasteGeometry CoverMeasuredSubtitleBacking(SubtitleCutPasteGeometry g)
@@ -468,6 +468,7 @@ inline SubtitleCutPasteGeometry CoverMeasuredSubtitleBacking(SubtitleCutPasteGeo
     // even at a viewport side with only the shader's 6px side extension. This
     // leaves the full original corner inside the -0.75px opaque AA threshold.
     const int margin=g.roundedCorners?12:2;
+    const float oldCenterY=(g.destination.top+g.destination.bottom)*0.5f;
     g.destination.left=(std::max)(limits.left,(std::min)(g.destination.left,visible.left-margin));
     g.destination.right=(std::min)(limits.right,(std::max)(g.destination.right,visible.right+margin));
     // The attached bar-facing side is extended by the shader. Preserve its
@@ -476,12 +477,17 @@ inline SubtitleCutPasteGeometry CoverMeasuredSubtitleBacking(SubtitleCutPasteGeo
         g.destination.bottom=(std::min)(limits.bottom,(std::max)(g.destination.bottom,visible.bottom+margin));
     else
         g.destination.top=(std::max)(limits.top,(std::min)(g.destination.top,visible.top-margin));
+    // The bar-facing destination edge excludes the configured pixel strip.
+    // Any newly owned picture-facing background belongs in the vertical pivot;
+    // horizontal backing growth must not shift the text along the line.
+    if(g.centeredGlyphMapping)
+        g.glyphTranslateY+=(g.destination.top+g.destination.bottom)*0.5f-oldCenterY;
     g.extendToBar=true;
     return g;
 }
 
-// The centered cue box owns padding and placement. Extension to the bar is
-// backing only and never participates in the glyph pivot. Capture stays immutable.
+// Center in the final owned background after excluding the reserved pixel strip.
+// Source capture and cleanup remain immutable.
 inline SubtitleCutPasteGeometry ApplySubtitleTextReduction(SubtitleCutPasteGeometry g,
     int reductionPercent,SubtitleBoxPadding padding=SubtitleBoxPadding(0),
     bool roundedCorners=true,bool floatBackground=false)
@@ -497,8 +503,8 @@ inline SubtitleCutPasteGeometry ApplySubtitleTextReduction(SubtitleCutPasteGeome
     int w=int(std::ceil(scale*(ink.right-ink.left)))+2*side;
     int h=int(std::ceil(scale*(ink.bottom-ink.top)))+2*vertical;
     const auto limits=g.placementLimits;
-    // Size and position the glyphs first. Accepted card coverage is applied
-    // separately below, so a wider backing cannot recenter or rescale the text.
+    // Size the cue first, then include accepted backing in its vertical center.
+    // Wider backing cannot change the horizontal pivot or rescale the text.
     if(limits.Valid()) {
         const int availableHeight=g.fromTopBar?limits.bottom-g.destination.top:g.destination.bottom-limits.top;
         // If symmetric requested margins cannot fit, retain the accepted cue
@@ -529,8 +535,8 @@ inline SubtitleCutPasteGeometry ApplySubtitleTextReduction(SubtitleCutPasteGeome
     return CoverMeasuredSubtitleBacking(g);
 }
 
-// Final display anchoring is separate from current-frame capture and cleanup.
-// A growing source card must not recenter an already accepted glyph mapping.
+// Fresh glyph identity is separate from current-frame capture and cleanup.
+// Blank source-card margins do not change the accepted glyph identity.
 inline bool SameFreshSubtitleGlyphs(const SubtitleBoxResult& old,
     const SubtitleBoxResult& current,int tolerance=2)
 {
@@ -600,8 +606,8 @@ public:
                 g.glyphTranslateY=m_geometry.glyphTranslateY;
             }
         }
-        // Retaining the glyph pivot must not retain an undersized background
-        // after new accepted backing proof. Grow coverage without moving ink.
+        // Keep the stable cue envelope, including any newly accepted backing.
+        // Vertical growth recenters once; blank-edge jitter stays frozen upstream.
         g=CoverMeasuredSubtitleBacking(g);
         m_geometry=g;m_reference=preview.current;m_reference.ink.reset();m_reference.text={};
         m_text=text;m_cue=text.cue;m_policy=preview.policyGeneration;m_continuity=preview.continuityGeneration;

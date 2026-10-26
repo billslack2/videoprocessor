@@ -172,6 +172,8 @@
     <ClInclude Include="StartupPresentationReadiness.h" />
     <ClInclude Include="PresentationConfig.h" />
     <ClInclude Include="vprenderer\DisplayVsyncClock.h" />
+    <ClInclude Include="vprenderer\DisplayCadenceHealth.h" />
+    <ClInclude Include="vprenderer\DisplayCadenceRecovery.h" />
     <ClInclude Include="vprenderer\DisplayFrameCache.h" />
     <ClInclude Include="vprenderer\QueueNativeContinuity.h" />
     <ClInclude Include="ToneMappingTuning.h" />

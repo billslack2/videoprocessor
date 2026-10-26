@@ -50,7 +50,7 @@ namespace ConfigEditorCore
 		// solely because the section header has not been written yet.
 		bool SetKnown(const std::string& wantedSection, const char* key,
 			const std::string& value);
-		bool RemoveKnown(const std::string& wantedSection, const char* key);
+		bool RemoveKnown(const std::string& wantedSection, const char* key, bool preserveComment = false);
 		bool AddSection(const std::string& section);
 		bool RemoveSection(const std::string& wantedSection);
 		bool FindSectionHeader(const std::string& wantedSection,

@@ -21,20 +21,23 @@ public:
     {
         setObjectName(edit->objectName() + ".control");
         edit->setProperty("toneMappingControl", QVariant::fromValue<QObject*>(this));
+        // One line per key: label, short slider, number, reset. The range and
+        // help show as tooltips; the error line only when there is an error.
         auto* layout = new QVBoxLayout(this);
-        layout->setContentsMargins(0, 4, 0, 9);
-        layout->setSpacing(4);
+        layout->setContentsMargins(0, 1, 0, 1);
+        layout->setSpacing(2);
+        auto* line = new QHBoxLayout;
         auto* label = new QLabel(QString::fromUtf8(spec.label));
         label->setBuddy(edit);
-        layout->addWidget(label);
-        auto* line = new QHBoxLayout;
+        label->setFixedWidth(160);
+        line->addWidget(label);
         slider_ = new QSlider(Qt::Horizontal);
         slider_->setObjectName(edit->objectName() + ".slider");
         slider_->setAccessibleName(label->text());
         slider_->setRange(0, 1000000);
         slider_->setSingleStep(1000);
         slider_->setPageStep(10000);
-        slider_->setMinimumWidth(120);
+        slider_->setFixedWidth(180);
         edit->setFixedWidth(96);
         edit->setAlignment(Qt::AlignRight);
         edit->setPlaceholderText(QStringLiteral("Inherit"));
@@ -43,18 +46,21 @@ public:
         reset_->setProperty("toneReset", true);
         reset_->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
         reset_->setFixedSize(26, 26);
-        line->addWidget(slider_, 1);
+        line->addWidget(slider_);
         line->addWidget(edit);
         line->addWidget(reset_);
         layout->addLayout(line);
         range_ = new QLabel;
         range_->setObjectName(edit->objectName() + ".range");
         range_->setProperty("toneHint", true);
+        range_->hide();
         layout->addWidget(range_);
         auto* help = new QLabel(QString::fromUtf8(spec.help));
         help->setProperty("toneHint", true);
         help->setWordWrap(true);
+        help->hide();
         layout->addWidget(help);
+        setToolTip(help->text());
         error_ = new QLabel;
         error_->setObjectName(edit->objectName() + ".error");
         error_->setStyleSheet("color: #f0a39e;");
@@ -65,9 +71,20 @@ public:
             fine_ = new QCheckBox("Fine slider range: 99-100%");
             fine_->setObjectName(edit->objectName() + ".fine");
             fine_->setChecked(true);
-            layout->addWidget(fine_);
+            // On its own line above the slider, so this row is no wider than the rest.
+            auto* fineLine = new QHBoxLayout;
+            fineLine->addSpacing(label->minimumWidth() + std::max(0, line->spacing()));
+            fineLine->addWidget(fine_);
+            fineLine->addStretch(1);
+            layout->insertLayout(0, fineLine);
             connect(fine_, &QCheckBox::toggled, this, [this] { refresh(); });
         }
+        // A value this profile does not set (AUTO) shows in his inherited grey.
+        setStyleSheet(QStringLiteral("QLineEdit[toneDefault=\"true\"] { color: #8ba1b4; }"));
+        connect(slider_, &QSlider::valueChanged, this, [this] {
+            if (slider_->isSliderDown()) showDefaultState();
+        });
+        line->addStretch(1);
         connect(reset_, &QToolButton::clicked, this, [this] { restoreDefault(); });
         connect(edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
             automatic_ = text.trimmed().compare("auto", Qt::CaseInsensitive) == 0;
@@ -113,10 +130,13 @@ public:
     QString configuredValue() const { return automatic_ ? QStringLiteral("AUTO") : edit_->text(); }
     double value() const { return edit_->text().toDouble(); }
     QLineEdit* editor() const { return edit_; }
-    void restoreDefault() { edit_->setText(QStringLiteral("AUTO")); }
+    void restoreDefault() {
+        const double reset = resetValue();
+        edit_->setText(reset == default_ ? QStringLiteral("AUTO") : number(reset));
+    }
     void setDefault(double value) {
         default_ = value;
-        reset_->setToolTip(QStringLiteral("Reset %1 to %2 (default)").arg(QString::fromUtf8(spec_.label), number(value)));
+        reset_->setToolTip(QStringLiteral("Reset %1 to %2 (default)").arg(QString::fromUtf8(spec_.label), number(resetValue())));
         reset_->setAccessibleName(reset_->toolTip());
         if (automatic_) displayDefault();
         refresh();
@@ -160,8 +180,15 @@ public:
                 (span > 0 ? std::clamp((value-sliderMinimum())/span, 0., 1.) : 0.) * (1000000 - start)));
         }
         setError(ok || edit_->text().trimmed().isEmpty() ? QString() : QStringLiteral("Enter a number from %1 to %2.").arg(number(minimum_), number(maximum_)));
+        showDefaultState();
     }
 private:
+    void showDefaultState() {
+        if (edit_->property("toneDefault").toBool() == automatic_) return;
+        edit_->setProperty("toneDefault", automatic_);
+        edit_->style()->unpolish(edit_);
+        edit_->style()->polish(edit_);
+    }
     static QString number(double value) {
         QString text = QString::number(value, 'f', 6);
         while (text.endsWith('0')) text.chop(1);
@@ -173,6 +200,12 @@ private:
         if (key == "smoothing_period") return 1.;
         if (key == "percentile") return .001;
         return .01;
+    }
+    double resetValue() const {
+        if (QString::fromUtf8(spec_.key) == QStringLiteral("knee_default") &&
+            !(default_ > minimum_ && default_ < maximum_))
+            return (minimum_ + maximum_) / 2.0;
+        return default_;
     }
     double sliderMinimum() const { return fine_ && fine_->isChecked() ? 99. : sliderLow_; }
     void displayDefault() { const QSignalBlocker blocker(edit_); edit_->setText(number(default_)); }
