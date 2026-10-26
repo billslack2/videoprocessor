@@ -91,3 +91,11 @@ Full solution x64 Release build passed. Final verification passed **3,312 native
 Broader runs also exposed two older label-only authority fixtures and a baseline GPU probe placed inside the intentional display overhang. The authority tests now require real current evidence and explicitly reject relabeling; the GPU test positively checks the overhang and verifies unchanged pixels beyond it. The original GPU failure reproduced on clean beta; no shader/geometry behavior was changed for that test. [Implementation and limits](../assets/VP-0214/benhur-subtitle-framing-fix-20261026/implementation.txt) and [pinned build/test/hash receipt](../assets/VP-0214/benhur-subtitle-framing-fix-20261026/validation.json).
 
 No beta merge, runtime deployment or active configuration edit. Native incident captures precede the affected transitions, so live Ben-Hur scene acceptance remains pending. The wider story stays In Progress.
+
+## Ben-Hur fix deployed - 2026-10-26
+
+At the user's explicit request, deployed tested source `0f807d43051036a6f25fc75ea4a7e43c36a909f3` from the successful x64 Release build to `C:\Videoprocessor\vp`. Replaced the host, standard renderer and beta renderer together, including matching generated runtime sidecars and PDB symbols. All nine installed file hashes match their exact build sources; all 18 existing renderer dependency DLLs match and were retained. Existing display observers and Config editor were retained.
+
+Backup: `C:\Videoprocessor\vp\backup-before-benhur-fix-0f807d43-20261026-174350-103`. It contains every replaced runtime file plus `VideoProcessor.cfg` and `VideoProcessor.state`. Configuration edits: **none**; both active files are byte-identical to their backups. VP was already closed and remains closed; the open Config editor was not modified. [Deployment receipt and exact before/after hashes](../assets/VP-0214/benhur-subtitle-framing-fix-20261026/deployment-receipt.json).
+
+The deployed source passed the full x64 Release solution build, 3,312 native regressions and 4 targeted GPU checks. Draft PR #210 remains unmerged. Live Ben-Hur replay with subtitles enabled is still pending; this record confirms deployment and hashes, not visual acceptance. The wider story remains In Progress.
