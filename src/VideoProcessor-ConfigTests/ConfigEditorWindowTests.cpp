@@ -5404,6 +5404,9 @@ void testResponsiveWorkspacesPreserveEditsAndFit()
     const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
     if (!images.isEmpty()) { QDir().mkpath(images); window.grab().save(images + "/docked-1920.png"); }
     requireControl<QAbstractButton>(window, "workspaceAdvancedToggle")->click();
+    // Explicit sizes below exercise responsive layout, not the platform's
+    // maximized work area (which can be smaller on a scaled offscreen desktop).
+    window.showNormal();
     auto* compare = requireControl<QPushButton>(window, "toneCharts.compareAdd");
     for (int n = 0; n < 3; ++n)
     {
