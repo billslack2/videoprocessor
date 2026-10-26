@@ -393,6 +393,19 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         // picture, so neither can overwrite the certified black source bars.
         if(move.generatedCleanup.Valid() && !contains(baseRect,move.generatedCleanup))
             return reject("prepared-cleanup-outside-picture");
+        // Row masks are the actual erase spans for rounded backing lips. The
+        // legacy common rectangle can be contained even when an individual
+        // row crosses a cropped horizontal picture edge, so validate every
+        // active row independently. A zero count keeps the legacy rectangle
+        // path unchanged.
+        if(move.generatedCleanupRowCount>move.generatedCleanupRows.size())
+            return reject("prepared-cleanup-rows-invalid");
+        for(unsigned rowIndex=0;rowIndex<move.generatedCleanupRowCount;++rowIndex) {
+            const auto& row=move.generatedCleanupRows[rowIndex];
+            if(!row.Valid() || row.top<baseRect.top || row.bottom>baseRect.bottom ||
+                row.left<baseRect.left || row.right>baseRect.right)
+                return reject("prepared-cleanup-row-outside-picture");
+        }
         const bool displayPicture=move.displayPictureRight>move.displayPictureLeft &&
             move.displayPictureBottom>move.displayPictureTop;
         if(move.extendToBar && displayPicture &&

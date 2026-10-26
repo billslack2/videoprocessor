@@ -61,6 +61,21 @@ TEST_CLASS(SubtitleCutPasteTests) {
         p.current.glyphLocalBottom=local&&!top;
         p.current.glyphLocalVerifiedBounds=local?localBounds:SubtitleBoxRect{};
     }
+    static SubtitleCutPasteGeometry TemporalContour(bool top=false,int order=0) {
+        SubtitleCutPasteGeometry g;g.valid=true;g.pictureTop=16;g.pictureBottom=48;
+        const auto mirror=[&](SubtitleBoxRect r) {
+            return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
+        };
+        g.generatedCleanup=mirror({14,42,50,48});g.generatedCleanupExclusion=mirror({12,42,52,48});
+        g.generatedCleanupRowCount=6;
+        for(unsigned i=0;i<6;++i) {
+            const int inset=(std::max)(0,2-int(i));
+            g.generatedCleanupRows[i]=mirror({12+inset,42+int(i),52-inset,43+int(i)});
+        }
+        if(order==1)std::reverse(g.generatedCleanupRows.begin(),g.generatedCleanupRows.begin()+6);
+        if(order==2)std::rotate(g.generatedCleanupRows.begin(),g.generatedCleanupRows.begin()+2,g.generatedCleanupRows.begin()+6);
+        return g;
+    }
     static SubtitleBoxResult Text() {
         SubtitleBoxResult r;r.detected=true;r.cue=1;r.bounds={200,295,400,330};return r;
     }
@@ -86,6 +101,96 @@ public:
         auto count=SubtitleTemporalFill::AdvanceCleanRun(7,true,true,true);
         count=SubtitleTemporalFill::AdvanceCleanRun(count,true,false,true);
         Assert::AreEqual(8u,count,L"Only a new certified source reaches the threshold.");
+    }
+    TEST_METHOD(TemporalContourRestoresEveryShoulderAndPreservesLiveCornersInAnyRowOrder) {
+        for(bool top:{false,true})for(int order:{0,1,2}) {
+            const auto g=TemporalContour(top,order);
+            const auto inside=[](const SubtitleBoxRect& r,int x,int y) {
+                return x>=r.left && x<r.right && y>=r.top && y<r.bottom;
+            };
+            std::array<int,64*64> pixels{};pixels.fill(100);
+            for(const auto& row:g.generatedCleanupRows)if(row.Valid())
+                for(int x=row.left;x<row.right;++x)pixels[size_t(row.top)*64+x]=0;
+            std::vector<SubtitleBoxRect> emitted;
+            Assert::IsTrue(SubtitleTemporalFill::ForEachCleanupRect(g,[&](const SubtitleBoxRect& r) {
+                emitted.push_back(r);
+                for(int y=r.top;y<r.bottom;++y)for(int x=r.left;x<r.right;++x)pixels[size_t(y)*64+x]=61;
+            }));
+            Assert::AreEqual(size_t(3),emitted.size(),L"Four adjacent equal spans must become one blit, with two separate rounded rows.");
+            unsigned shoulderPixels=0,liveCorners=0;
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                bool body=false;
+                for(unsigned i=0;i<g.generatedCleanupRowCount;++i)body|=inside(g.generatedCleanupRows[i],x,y);
+                Assert::AreEqual(body?61:100,pixels[size_t(y)*64+x]);
+                shoulderPixels+=body&&!inside(g.generatedCleanup,x,y);
+                liveCorners+=!body&&inside(g.generatedCleanupExclusion,x,y);
+            }
+            Assert::IsTrue(shoulderPixels>0 && liveCorners>0);
+        }
+    }
+    TEST_METHOD(TemporalContourValidatesTheEntireMaskBeforeAnyCallbackAndNeverFallsBack) {
+        for(int fault=0;fault<12;++fault) {
+            auto g=TemporalContour();
+            if(fault==0)g.generatedCleanupRowCount=129;
+            if(fault==1)g.generatedCleanupRows[5]=g.generatedCleanupRows[4];
+            if(fault==2)g.generatedCleanupRows[5]={12,49,52,50};
+            if(fault==3)--g.generatedCleanupRows[5].left;
+            if(fault==4)--g.generatedCleanupRows[5].top;
+            if(fault==5)g.generatedCleanupRows[5].left=g.generatedCleanup.left+1;
+            if(fault==6)g.generatedCleanupExclusion=g.generatedCleanup;
+            if(fault==7)g.generatedCleanupExclusion.top=15;
+            if(fault==8)g.generatedCleanupRows[5].right=65537;
+            if(fault==9)++g.generatedCleanup.top;
+            if(fault==10)g.generatedCleanup={};
+            if(fault==11)g.valid=false;
+            unsigned callbacks=0;
+            Assert::IsFalse(SubtitleTemporalFill::ForEachCleanupRect(g,[&](const SubtitleBoxRect&){++callbacks;}));
+            Assert::AreEqual(0u,callbacks,L"Even a malformed final row must prevent every blit; no legacy-rectangle fallback is allowed.");
+        }
+    }
+    TEST_METHOD(TemporalCleanupKeepsLegacyRectangleAndCoalescesTheMaximumRowCount) {
+        auto g=TemporalContour();g.generatedCleanupRowCount=0;
+        unsigned callbacks=0;SubtitleBoxRect emitted;
+        Assert::IsTrue(SubtitleTemporalFill::ForEachCleanupRect(g,[&](const SubtitleBoxRect& r){++callbacks;emitted=r;}));
+        Assert::AreEqual(1u,callbacks);
+        Assert::IsTrue(SubtitleBoxLookahead::SameLine(g.generatedCleanup,emitted,0));
+        Assert::IsTrue(emitted.left>g.generatedCleanupExclusion.left,
+            L"Without a row mask, the donor bounding box cannot enlarge legacy cleanup.");
+        g.pictureBottom=160;g.generatedCleanup=g.generatedCleanupExclusion={12,16,52,144};
+        g.generatedCleanupRowCount=128;
+        for(unsigned i=0;i<128;++i)g.generatedCleanupRows[127-i]={12,16+int(i),52,17+int(i)};
+        callbacks=0;
+        Assert::IsTrue(SubtitleTemporalFill::ForEachCleanupRect(g,[&](const SubtitleBoxRect& r){++callbacks;emitted=r;}));
+        Assert::AreEqual(1u,callbacks);
+        Assert::IsTrue(SubtitleBoxLookahead::SameLine(g.generatedCleanup,emitted,0));
+    }
+    TEST_METHOD(TemporalDonorMatchExcludesFullMeasuredBackingButStillChecksSurroundingScene) {
+        constexpr int width=640,height=360;
+        std::vector<uint16_t> pixels(size_t(width)*height*2,uint16_t(512<<6));
+        std::fill(pixels.begin(),pixels.begin()+size_t(width)*height,uint16_t(300<<6));
+        AnalysisLumaSource source;source.width=width;source.height=height;source.generation=2;
+        source.data=reinterpret_cast<const uint8_t*>(pixels.data());source.dataBytes=pixels.size()*2;
+        source.rowBytes=source.chromaRowBytes=width*2;source.format=AnalysisLumaFormat::P210;
+        SubtitleTemporalFill::Signature donor{};Assert::IsTrue(SubtitleTemporalFill::Capture(source,donor));
+        SubtitleCutPasteGeometry g;g.valid=true;g.pictureTop=45;g.pictureBottom=315;
+        g.generatedCleanup={300,270,340,310};g.generatedCleanupExclusion={180,270,460,310};
+        g.generatedCleanupRowCount=40;
+        for(unsigned i=0;i<40;++i)g.generatedCleanupRows[i]={180,270+int(i),460,271+int(i)};
+        for(int y=270;y<310;++y)for(int x=180;x<460;++x)pixels[size_t(y)*width+x]=0;
+        Assert::IsFalse(SubtitleTemporalFill::Matches(source,donor,g.generatedCleanup,g.pictureTop,g.pictureBottom),
+            L"The old common-rectangle exclusion incorrectly treats source backing shoulders as changed scene.");
+        Assert::IsTrue(SubtitleTemporalFill::Matches(source,donor,g),
+            L"Matching excludes the full measured source backing; only row masks control restoration.");
+        pixels[size_t(250)*width+10]=uint16_t(700<<6);
+        Assert::IsFalse(SubtitleTemporalFill::Matches(source,donor,g),L"A changed sampled pixel outside backing must still reject the donor.");
+        pixels[size_t(250)*width+10]=uint16_t(300<<6);
+        auto malformed=g;malformed.generatedCleanupRows[39]=malformed.generatedCleanupRows[38];
+        Assert::IsFalse(SubtitleTemporalFill::Matches(source,donor,malformed));
+        malformed=g;malformed.generatedCleanupExclusion={};
+        Assert::IsFalse(SubtitleTemporalFill::Matches(source,donor,malformed),
+            L"A narrow fallback rectangle does not cover a wider row mask.");
+        g.generatedCleanup=g.generatedCleanupExclusion;g.generatedCleanupExclusion={};g.generatedCleanupRowCount=0;
+        Assert::IsTrue(SubtitleTemporalFill::Matches(source,donor,g),L"Legacy rectangular callers retain their original matching behavior.");
     }
     TEST_METHOD(VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption) {
         // Sequence modeled on the reported UHD playback: its glyphs matched 100%,
@@ -2283,6 +2388,60 @@ struct SubtitleShaderGpuFixture {
         for(int y=0;y<64;++y)for(int x=0;x<64;++x)for(int c=0;c<3;++c)
             Assert::IsTrue(std::abs(Pixel(direct,x,y)[c]-Pixel(split,x,y)[c])<=0.008f,
                 L"The exact same rounded native cleanup must survive All versus CleanupOnly plus the independent-alpha layer.");
+        // Exercise the exact temporal row-blit helper on real GPU textures.
+        // Immediate copies use native source coordinates; retained packet
+        // donors use offsets into the conservative measured envelope.
+        struct DonorSurfaces {
+            pl_gpu gpu=nullptr;pl_tex full=nullptr,packet=nullptr;
+            ~DonorSurfaces() {pl_tex_destroy(gpu,&full);pl_tex_destroy(gpu,&packet);}
+        } donor;
+        donor.gpu=device->gpu;
+        auto donorParams=cleanTexture->params;
+        donorParams.w=donorParams.h=64;donorParams.initial_data=nullptr;donorParams.user_data=nullptr;
+        donorParams.import_handle=donorParams.export_handle=static_cast<pl_handle_type>(0);
+        donorParams.sampleable=donorParams.renderable=donorParams.blit_src=donorParams.blit_dst=true;
+        donor.full=pl_tex_create(device->gpu,&donorParams);Assert::IsNotNull(donor.full);
+        const float donorColor[4]={0.16f,0.55f,0.85f,1.0f};
+        pl_tex_clear(device->gpu,donor.full,donorColor);
+        const auto& retained=geometry.generatedCleanupExclusion;
+        donorParams.w=retained.right-retained.left;donorParams.h=retained.bottom-retained.top;
+        donor.packet=pl_tex_create(device->gpu,&donorParams);Assert::IsNotNull(donor.packet);
+        pl_tex_blit_params retain{};retain.src=donor.full;retain.dst=donor.packet;
+        retain.src_rc={retained.left,retained.top,0,retained.right,retained.bottom,1};
+        retain.dst_rc={0,0,0,donorParams.w,donorParams.h,1};retain.sample_mode=PL_TEX_SAMPLE_NEAREST;
+        pl_tex_blit(device->gpu,&retain);
+        auto donorFrame=clean;donorFrame.planes[0].texture=donor.full;
+        Assert::IsTrue(pl_render_image(renderer,&donorFrame,&allTarget,&params));
+        const auto expectedDonor=ReadLinear(allOutput);
+        for(bool packetOffsets:{false,true}) {
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,style,0,SubtitleCompositionPhase::CleanupOnly));
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean,true));
+            auto temporalTarget=target(splitOutput);
+            Assert::IsTrue(pl_render_image(renderer,&clean,&temporalTarget,&params));
+            const auto beforeDonor=ReadLinear(splitOutput);
+            unsigned blits=0;
+            Assert::IsTrue(SubtitleTemporalFill::ForEachCleanupRect(geometry,[&](const SubtitleBoxRect& rect) {
+                ++blits;pl_tex_blit_params copy{};
+                copy.src=packetOffsets?donor.packet:donor.full;copy.dst=cleanTexture;
+                const int dx=packetOffsets?retained.left:0,dy=packetOffsets?retained.top:0;
+                copy.src_rc={rect.left-dx,rect.top-dy,0,rect.right-dx,rect.bottom-dy,1};
+                copy.dst_rc={rect.left,rect.top,0,rect.right,rect.bottom,1};
+                copy.sample_mode=PL_TEX_SAMPLE_NEAREST;pl_tex_blit(device->gpu,&copy);
+            }));
+            Assert::IsTrue(blits>0);
+            Assert::IsTrue(pl_render_image(renderer,&clean,&temporalTarget,&params));
+            const auto temporal=ReadLinear(splitOutput);
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                bool inMask=false;
+                for(unsigned row=0;row<geometry.generatedCleanupRowCount;++row)
+                    inMask|=contains(geometry.generatedCleanupRows[row],x,y);
+                for(int c=0;c<3;++c) {
+                    const float expected=inMask?Pixel(expectedDonor,x,y)[c]:Pixel(beforeDonor,x,y)[c];
+                    Assert::IsTrue(std::abs(Pixel(temporal,x,y)[c]-expected)<0.005f,
+                        L"Temporal donor blits must cover every current shoulder/core span and preserve all live corners and unrelated pixels in both coordinate domains.");
+                }
+            }
+        }
         auto malformed=geometry;malformed.generatedCleanupRowCount=129;
         Assert::IsFalse(BindSubtitleCutPasteHook(hook,malformed,mode,input.color.transfer,style));
         malformed=geometry;malformed.generatedCleanupRows[1]=malformed.generatedCleanupRows[0];

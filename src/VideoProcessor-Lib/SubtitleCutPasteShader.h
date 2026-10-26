@@ -6,7 +6,6 @@
 #include <string>
 #include <array>
 #include <unordered_map>
-#include <string_view>
 #include <functional>
 #include <libplacebo/renderer.h>
 #include <libplacebo/colorspace.h>
@@ -1088,10 +1087,20 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
             row.top<exclusion.top || row.bottom>exclusion.bottom)return false;
         rowTop=(std::min)(rowTop,row.top);rowBottom=(std::max)(rowBottom,row.bottom);
     }
-    if(geometry.generatedCleanupRowCount &&
-        (rowBottom-rowTop!=int(geometry.generatedCleanupRowCount) || rowBottom-rowTop>128))return false;
+    if(geometry.generatedCleanupRowCount) {
+        const auto& common=geometry.generatedCleanup;
+        if(!geometry.valid || !common.Valid() || !exclusion.Valid() ||
+            geometry.pictureTop<0 || geometry.pictureBottom>65536 ||
+            geometry.pictureTop>=geometry.pictureBottom ||
+            exclusion.left<0 || exclusion.right>65536 ||
+            exclusion.top<geometry.pictureTop || exclusion.bottom>geometry.pictureBottom ||
+            common.left<exclusion.left || common.right>exclusion.right ||
+            common.top!=rowTop || common.bottom!=rowBottom ||
+            rowBottom-rowTop!=int(geometry.generatedCleanupRowCount) || rowBottom-rowTop>128)return false;
+    }
     for(unsigned n=0;n<geometry.generatedCleanupRowCount;++n) {
         const auto& row=geometry.generatedCleanupRows[n];
+        if(row.left>geometry.generatedCleanup.left || row.right<geometry.generatedCleanup.right)return false;
         const auto index=unsigned(row.top-rowTop)*2;
         if(rowValues[index+1]>rowValues[index])return false;
         rowValues[index]=float(row.left);rowValues[index+1]=float(row.right);
@@ -1128,13 +1137,24 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
             result[2*row+side]="cleanup_row_"+std::to_string(row)+(side?"_right":"_left");
         return result;
     }();
+    struct ParameterNameHash {
+        size_t operator()(const char* name) const noexcept {
+            size_t hash=14695981039346656037ull;
+            for(;*name;++name) {hash^=static_cast<unsigned char>(*name);hash*=1099511628211ull;}
+            return hash;
+        }
+    };
+    struct ParameterNameEqual {
+        bool operator()(const char* a,const char* b) const noexcept {return std::strcmp(a,b)==0;}
+    };
     static const auto parameterIndices=[] {
-        // Views refer only to static literal/owned row-name storage. Binding
+        // Keys refer only to static literal/owned row-name storage. Binding
         // performs no temporary string construction or per-frame allocation.
-        std::unordered_map<std::string_view,unsigned> indices;
-        indices.reserve(parameterCount+rowNames.size());
-        for(unsigned n=0;n<parameterCount;++n)indices.emplace(names[n],n);
-        for(unsigned n=0;n<rowNames.size();++n)indices.emplace(rowNames[n],parameterCount+n);
+        constexpr unsigned count=sizeof(names)/sizeof(names[0]);
+        std::unordered_map<const char*,unsigned,ParameterNameHash,ParameterNameEqual> indices;
+        indices.reserve(count+rowNames.size());
+        for(unsigned n=0;n<count;++n)indices.emplace(names[n],n);
+        for(unsigned n=0;n<rowNames.size();++n)indices.emplace(rowNames[n].c_str(),count+n);
         return indices;
     }();
     std::array<bool,parameterCount+256> found{};
@@ -1142,7 +1162,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         const auto& parameter=hook->parameters[i];
         if(!parameter.name || !parameter.data || parameter.type!=PL_VAR_FLOAT ||
             parameter.mode!=PL_HOOK_PAR_DYNAMIC) continue;
-        const auto entry=parameterIndices.find(std::string_view(parameter.name));
+        const auto entry=parameterIndices.find(parameter.name);
         if(entry==parameterIndices.end())continue;
         const auto n=entry->second;
         parameter.data->f=n<parameterCount?values[n]:rowValues[n-parameterCount];found[n]=true;

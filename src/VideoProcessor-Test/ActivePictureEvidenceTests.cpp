@@ -2038,6 +2038,38 @@ namespace VideoProcessorTest
                 Assert::IsFalse(semantic.renewsHold);Assert::IsFalse(prepared.renewsHold);
             }
         }
+        TEST_METHOD(PreparedErasureChecksEachCleanupRowAgainstPhysicalBase)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                auto input=f.Input();
+
+                const auto legacy=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(legacy.qualified,L"Legacy cleanup rectangles remain supported when no row mask is present.");
+                Assert::AreEqual(0u,f.composition.generatedCleanupRowCount);
+
+                f.composition.generatedCleanupRowCount=1;
+                f.composition.generatedCleanupRows[0]={1362,1743,f.base.right,1744};
+                const auto contained=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(contained.qualified,L"A row mask fully inside the base keeps prepared erasure eligible.");
+                Assert::IsTrue(f.base.left<=f.composition.generatedCleanup.left &&
+                    f.base.top<=f.composition.generatedCleanup.top &&
+                    f.composition.generatedCleanup.right<=f.base.right &&
+                    f.composition.generatedCleanup.bottom<=f.base.bottom,
+                    L"The legacy common cleanup rectangle remains contained in this regression.");
+
+                // Keep the common rectangle unchanged and contained, but let a
+                // single actual erase row cross the physical base right edge.
+                f.composition.generatedCleanupRows[0].right=f.base.right+1;
+                Assert::IsTrue(f.composition.generatedCleanup.right<=f.base.right,
+                    L"The common cleanup rectangle remains contained after the row overhang.");
+                const auto overhanging=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(overhanging.qualified);
+                Assert::AreEqual("prepared-cleanup-row-outside-picture",overhanging.reason);
+                Assert::IsFalse(overhanging.renewsHold);
+            }
+        }
         TEST_METHOD(PreparedErasureDoesNotRenewAnEarlierSemanticCaptionLease)
         {
             LoggedRelocatedCaptionFixture f(false,true);

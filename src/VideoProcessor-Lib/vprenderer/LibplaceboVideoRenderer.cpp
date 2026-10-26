@@ -14512,7 +14512,6 @@ struct LibplaceboVideoRenderer::Impl
                         subtitlePerf.composeCpu[perfMode]+=std::chrono::duration<double,std::milli>(SteadyClock::now()-compositionStart).count();
                         if(subtitleHookBound) {
                             const auto tick=GetTickCount64();
-                            const auto& cleanup=move.generatedCleanup;
                             const bool donorReady=activeSettings.subtitleTemporalFill &&
                                 subtitleCutPasteBackground==5 && subtitleTemporalValid &&
                                 subtitleTemporalTexture && subtitleCompositionTexture &&
@@ -14524,19 +14523,15 @@ struct LibplaceboVideoRenderer::Impl
                                 subtitleTemporalScene==sceneResult.eventId &&
                                 tick>=subtitleTemporalTick && tick-subtitleTemporalTick<=10000 &&
                                 !videoFrame.IsSourceDiscontinuity() &&
-                                SubtitleTemporalFill::Matches(analysisSource,
-                                    subtitleTemporalSamples,cleanup,
-                                    move.pictureTop,move.pictureBottom);
+                                SubtitleTemporalFill::Matches(analysisSource,subtitleTemporalSamples,move);
                             if(donorReady) {
-                                pl_rect3d region{};
-                                region.x0=cleanup.left;region.y0=cleanup.top;
-                                region.x1=cleanup.right;region.y1=cleanup.bottom;
-                                pl_tex_blit_params blit{};
-                                blit.src=subtitleTemporalTexture;
-                                blit.dst=subtitleCompositionTexture;
-                                blit.src_rc=region;blit.dst_rc=region;
-                                blit.sample_mode=PL_TEX_SAMPLE_NEAREST;
-                                pl_tex_blit(d3d11->gpu,&blit);
+                                if(!SubtitleTemporalFill::ForEachCleanupRect(move,[&](const SubtitleBoxRect& region) {
+                                    pl_tex_blit_params blit{};
+                                    blit.src=subtitleTemporalTexture;blit.dst=subtitleCompositionTexture;
+                                    blit.src_rc={region.left,region.top,0,region.right,region.bottom,1};
+                                    blit.dst_rc=blit.src_rc;blit.sample_mode=PL_TEX_SAMPLE_NEAREST;
+                                    pl_tex_blit(d3d11->gpu,&blit);
+                                }))return failSubtitleMotion("Subtitle: invalid temporal cleanup mask");
                             }
                             subtitleComposedImage=composed;
                             relocatedSubtitle=move;
@@ -14738,13 +14733,16 @@ struct LibplaceboVideoRenderer::Impl
                         subtitleTemporalGeneration==analysisSource.generation &&
                         subtitleTemporalScene==sceneResult.eventId && tick>=subtitleTemporalTick &&
                         tick-subtitleTemporalTick<=10000 && !videoFrame.IsSourceDiscontinuity() &&
-                        SubtitleTemporalFill::Matches(analysisSource,subtitleTemporalSamples,cleanup,
-                            relocatedSubtitle.pictureTop,relocatedSubtitle.pictureBottom);
+                        SubtitleTemporalFill::Matches(analysisSource,subtitleTemporalSamples,relocatedSubtitle);
                     if(donorReady) {
+                        // Retain the donor envelope, then restore only the exact current
+                        // cleanup spans below. Live rounded corners are never copied over.
+                        const auto donorBounds=relocatedSubtitle.generatedCleanupExclusion.Valid()?
+                            relocatedSubtitle.generatedCleanupExclusion:cleanup;
                         donor=std::make_shared<SubtitlePacketDonor>();
-                        donor->gpu=d3d11->gpu;donor->bounds=cleanup;
+                        donor->gpu=d3d11->gpu;donor->bounds=donorBounds;
                         auto storage=subtitleTemporalTexture->params;
-                        storage.w=cleanup.right-cleanup.left;storage.h=cleanup.bottom-cleanup.top;
+                        storage.w=donorBounds.right-donorBounds.left;storage.h=donorBounds.bottom-donorBounds.top;
                         storage.initial_data=nullptr;storage.user_data=nullptr;
                         storage.import_handle=static_cast<pl_handle_type>(0);
                         storage.export_handle=static_cast<pl_handle_type>(0);
@@ -14753,7 +14751,7 @@ struct LibplaceboVideoRenderer::Impl
                             return failSubtitleMotion("Motion: subtitle donor retention failed");
                         pl_tex_blit_params copy{};
                         copy.src=subtitleTemporalTexture;copy.dst=donor->texture;
-                        copy.src_rc={cleanup.left,cleanup.top,0,cleanup.right,cleanup.bottom,1};
+                        copy.src_rc={donorBounds.left,donorBounds.top,0,donorBounds.right,donorBounds.bottom,1};
                         copy.dst_rc={0,0,0,storage.w,storage.h,1};
                         pl_tex_blit(d3d11->gpu,&copy);
                     }
@@ -14779,12 +14777,16 @@ struct LibplaceboVideoRenderer::Impl
                             true,static_cast<bool>(donor),false,&deinterlace,&subtitleSourceProcessing))return false;
                         if(donor) {
                             if(!subtitleCompositionTexture->params.blit_dst)return false;
-                            const auto& rc=donor->bounds;
-                            pl_tex_blit_params copy{};
-                            copy.src=donor->texture;copy.dst=subtitleCompositionTexture;
-                            copy.src_rc={0,0,0,rc.right-rc.left,rc.bottom-rc.top,1};
-                            copy.dst_rc={rc.left,rc.top,0,rc.right,rc.bottom,1};
-                            pl_tex_blit(d3d11->gpu,&copy);
+                            const auto& retained=donor->bounds;
+                            if(!SubtitleTemporalFill::ForEachCleanupRect(geometry,[&](const SubtitleBoxRect& rc) {
+                                pl_tex_blit_params copy{};
+                                copy.src=donor->texture;copy.dst=subtitleCompositionTexture;
+                                copy.src_rc={rc.left-retained.left,rc.top-retained.top,0,
+                                    rc.right-retained.left,rc.bottom-retained.top,1};
+                                copy.dst_rc={rc.left,rc.top,0,rc.right,rc.bottom,1};
+                                copy.sample_mode=PL_TEX_SAMPLE_NEAREST;
+                                pl_tex_blit(d3d11->gpu,&copy);
+                            }))return false;
                         }
                         if(hasCue) {
                             pl_frame ignored{};
