@@ -1960,7 +1960,7 @@ struct SubtitleShaderGpuFixture {
         auto g=Geometry();g.source=g.content=g.generatedCleanup={16,24,48,56};
         g.glyphLines[0]={};g.pictureCapture={};g.destination={20,8,44,20};
         g.pictureTop=4;g.pictureBottom=64;
-        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},2,SubtitleCompositionPhase::CleanupOnly));
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},3,SubtitleCompositionPhase::CleanupOnly));
         std::vector<uint8_t> previousInput;
         std::vector<float> previousOutput,firstOutput;
         float worstGain=0.0f,worstExcess=0.0f;
@@ -2014,7 +2014,7 @@ struct SubtitleShaderGpuFixture {
         g.glyphLines[0]={};g.pictureCapture={};g.destination={1100,1450,2700,1580};
         g.pictureTop=280;g.pictureBottom=1880;
         SubtitleGeneratedGrayStyle style;style.blurPixels=0;
-        for(int fill:{0,2}) {
+        for(int fill:{0,2,3}) {
             Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,input.color.transfer,style,fill,SubtitleCompositionPhase::CleanupOnly));
             pl_frame clean{};
             for(int i=0;i<3;++i)Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
@@ -2057,7 +2057,7 @@ struct SubtitleShaderGpuFixture {
             Assert::IsTrue(pl_render_image(renderer,&clean,&target,&params));
             return ReadLinear(allOutput);
         };
-        const auto mirror=render(0),surround=render(2);
+        const auto mirror=render(0),surround=render(3);
         double mirrorError=0,surroundError=0,seamError=0;int samples=0,seamSamples=0;
         for(int y=g.source.top;y<g.source.bottom;++y)for(int x=g.source.left;x<g.source.right;++x) {
             const int depth=top?g.source.bottom-1-y:y-g.source.top;
@@ -2083,7 +2083,7 @@ struct SubtitleShaderGpuFixture {
             if(x<g.source.left || x>=g.source.right || y<g.source.top || y>=g.source.bottom)
                 for(int c=0;c<3;++c)Assert::IsTrue(std::abs(Pixel(surround,x,y)[c]-truth[(y*64+x)*4+c]/255.0f)<0.005f);
     }
-    void VerifySurroundDonors(bool barAttached) {
+    void VerifySurroundDonors(bool barAttached,int spatialFill=2) {
         auto g=Geometry();g.source=g.content=g.generatedCleanup={16,24,48,56};
         g.glyphLines[0]={};g.pictureCapture={};g.destination={20,12,44,20};
         g.pictureTop=4;g.pictureBottom=barAttached?56:64;
@@ -2118,7 +2118,7 @@ struct SubtitleShaderGpuFixture {
             Logger::WriteMessage((std::string("spatial render mode=")+std::to_string(fill)+" wall_ms="+std::to_string(ms)).c_str());
             return pixels;
         };
-        const auto mirrored=render(0),blended=render(2),again=render(2);
+        const auto mirrored=render(0),blended=render(spatialFill),again=render(spatialFill);
         const auto left=Pixel(blended,16,40),right=Pixel(blended,47,40),top=Pixel(blended,32,24);
         Assert::IsTrue(left[2]>left[0]+0.1f && left[2]>left[1]+0.1f,L"left clean edge must contribute blue");
         Assert::IsTrue(right[0]>right[1]+0.1f && right[0]>right[2]+0.1f,L"right clean edge must contribute red");
@@ -2452,7 +2452,7 @@ TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
     TEST_METHOD(TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination) {
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
-        for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2})
+        for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2,3})
             gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,reduction,fill,true);
     }
     TEST_METHOD(SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs) {
@@ -2498,17 +2498,17 @@ public:
     }
     TEST_METHOD(SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors) {
         SubtitleShaderGpuFixture gpu;
-        gpu.VerifySurroundDonors(false);gpu.VerifySurroundDonors(true);
+        for(int fill:{2,3}) {gpu.VerifySurroundDonors(false,fill);gpu.VerifySurroundDonors(true,fill);}
     }
     TEST_METHOD(SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars) {
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
         for(int mode:{3,5})for(bool top:{false,true})for(int reduction:{0,75})
-            rgb.VerifyFreshBackingLipCleanupAndOriginalWidth(mode,top,reduction,2);
+            for(int fill:{2,3})rgb.VerifyFreshBackingLipCleanupAndOriginalWidth(mode,top,reduction,fill);
     }
     TEST_METHOD(SurroundFillPreservesSplitCompositionAndTransferFunctions) {
         for(auto transfer:{PL_COLOR_TRC_LINEAR,PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_HLG}) {
             SubtitleShaderGpuFixture rgb(transfer);
-            for(int mode:{3,5})rgb.Run(mode,false,false,false,2);
+            for(int mode:{3,5})for(int fill:{2,3})rgb.Run(mode,false,false,false,fill);
         }
     }
     TEST_METHOD(FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer) {

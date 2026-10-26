@@ -186,7 +186,7 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!PARAM cleanup_fill_mode
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
-//!MAXIMUM 2.0
+//!MAXIMUM 3.0
 0.0
 //!PARAM generated_clean_left
 //!TYPE DYNAMIC float
@@ -518,10 +518,42 @@ bool subtitleInGeneratedCleanup(vec2 p) {
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
 }
+// Bounded spatial reconstruction: at most two samples per usable edge.
+// Both taps remain beyond ALL removal/glyph bounds. Blend in linear light;
+// the outer edge gets most weight so it joins its neighbouring real picture.
+// No frame history, search iterations, or geometry-specific shader source.
+vec3 subtitleSurroundingPicture(vec2 p) {
+    vec4 edges=vec4(subtitleSafeDonorLeft()-1.5,subtitleSafeDonorRight()+1.5,
+        subtitleSafeDonorEdge(false)-0.5,subtitleSafeDonorEdge(true)+0.5);
+    vec3 sum=vec3(0.0);float weights=0.0;
+    // Uniform loop bound (always eight in this mode) keeps texture sampling
+    // and transfer decoding at ONE compiled call site, not eight expanded ones.
+    int count=4*int(clamp(cleanup_fill_mode,0.0,2.0));
+    for(int tap=0;tap<count;tap++) {
+        int side=tap/2;bool mirrored=(tap-2*side)!=0;
+        vec2 edge=p,dir=vec2(0.0);float d=0.0,available=-1.0;
+        if(side==0) {
+            edge.x=edges.x;dir.x=-1.0;d=p.x-generated_clean_left;available=edges.x-0.5;
+        } else if(side==1) {
+            edge.x=edges.y;dir.x=1.0;d=generated_clean_right-p.x;available=HOOKED_size.x-0.5-edges.y;
+        } else if(side==2) {
+            edge.y=edges.z;dir.y=-1.0;d=p.y-generated_clean_top;available=edges.z-picture_top-0.5;
+        } else {
+            edge.y=edges.w;dir.y=1.0;d=generated_clean_bottom-p.y;available=picture_bottom-0.5-edges.w;
+        }
+        if(available<0.0)continue;
+        edge=clamp(edge,vec2(0.5,picture_top+0.5),vec2(HOOKED_size.x-0.5,picture_bottom-0.5));
+        d=max(0.0,d);float w=1.0/((d+2.0)*(d+2.0));
+        w*=mirrored?0.35:0.65;
+        vec2 donor=edge+dir*min(available,(mirrored?1.0:0.35)*d);
+        sum+=w*subtitleLinear(HOOKED_tex(donor*HOOKED_pt).rgb);weights+=w;
+    }
+    return weights>0.0 ? sum/weights : vec3(0.0);
+}
 // Fixed, current-frame reconstruction. Donor positions and normalized weights
 // depend only on geometry, never on image gradients or color comparisons. This
 // keeps small frame changes from moving the sampling pattern and causing shimmer.
-vec3 subtitleSurroundingPicture(vec2 p) {
+vec3 subtitleStableSurroundingPicture(vec2 p) {
     vec4 edges=vec4(subtitleSafeDonorLeft()-1.5,subtitleSafeDonorRight()+1.5,
         subtitleSafeDonorEdge(false)-0.5,subtitleSafeDonorEdge(true)+0.5);
     vec2 lo=vec2(0.5,picture_top+0.5),hi=vec2(HOOKED_size.x-0.5,picture_bottom-0.5);
@@ -568,6 +600,7 @@ vec3 subtitleSurroundingPicture(vec2 p) {
 }
 vec3 subtitleGeneratedRawFill(vec2 p) {
     if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
+    if(cleanup_fill_mode>2.5) return subtitleStableSurroundingPicture(p);
     if(cleanup_fill_mode>1.5) return subtitleSurroundingPicture(p);
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
     float safeEdge=subtitleSafeDonorEdge(fromTop);
@@ -1005,7 +1038,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
         float(geometry.pictureTop),float(geometry.pictureBottom),float(displayTop),float(displayBottom),gamma,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
-        float((std::max)(0,(std::min)(2,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
+        float((std::max)(0,(std::min)(3,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),
         generated.textColor[0],generated.textColor[1],generated.textColor[2],
         generated.color[0],generated.color[1],generated.color[2],generated.opacity,
