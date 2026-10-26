@@ -604,3 +604,12 @@ The deployed source passed the full x64 Release solution build, 3,312 native reg
 
 
 2026-10-26 follow-up: the first Ben-Hur deployment failed live acceptance. Exact paused native input proves caption presence during VP inspection starvation; current glyph continuation/cache-plane and rounded-lip reference proof paths were also corrected. Source0f39d530 is deployed from a clean x64 Release build after 3,320 native and 4 targeted GPU passes, including twelve exact native composition/cleanup updates. See VP-0214's Ben-Hur live-failure follow-up and [validation receipt](../assets/VP-0214/benhur-live-failure-20261026/validation.json). Moving-scene acceptance remains pending; status stays In Progress.
+
+
+## Ben-Hur partial acceptance and rounded-shoulder follow-up - 2026-10-26
+
+The user confirms most prior subtitle/framing behavior is resolved on deployed0f39d530. Remaining Float screenshots show original rounded black shoulders wider than the cleaned center; Extend hides more of them but occasionally exposes the lip. The frozen log corroborates per-frame cleanup withdrawal/reacquisition in unchanged cues14 and28. Cue31 has stable no-attachment rejection and is a separate case. This is partial live acceptance; the story remains In Progress.
+
+Astra, Sol and Luna reviews identify the rounded-row common-intersection rectangle as incomplete coverage. Current native dark-neutral row spans now carry separate cleanup authority, preserving the conservative rectangle for existing framing contracts and preserving live rounded corners. Edge revalidation trims only contiguous bounded unsafe endpoints; interior/disconnected changes still reject. The measured envelope is donor exclusion/storage only. Temporal restoration is being made exact to the same row spans, and prepared erasure validates each span against the physical base. Added mismatch-pixel/coverage telemetry will distinguish remaining live contradictions without collecting large frame sequences.
+
+Build and native/GPU qualification are in progress. The first build caught a C++14 compatibility issue in the allocation-free shader parameter lookup; corrected before requalification. No new deployment or beta merge has occurred at this point. Final commit, tests, hashes and deployment receipt will be appended after qualification. Native movie frames and screenshots remain local.
