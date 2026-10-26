@@ -277,7 +277,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0215 | Review | Make configuration choices clear and consolidate scaling |
 
-| VP-0216 | In Progress | Disable Config Apply when no settings are pending |
+| VP-0216 | Review | Disable Config Apply when no settings are pending |
 
 ## Codex story workflow
 

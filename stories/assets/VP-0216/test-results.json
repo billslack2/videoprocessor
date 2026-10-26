@@ -1,0 +1,67 @@
+[
+  {
+    "test": "Apply OK Cancel contract",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-Apply-OK-Cancel-contract.log"
+  },
+  {
+    "test": "clean Apply is inactive without saving or notifying",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-clean-Apply-is-inactive-without-saving-or-notifying.log"
+  },
+  {
+    "test": "remote Apply tracks pending settings",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-remote-Apply-tracks-pending-settings.log"
+  },
+  {
+    "test": "failed Apply retains pending settings",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-failed-Apply-retains-pending-settings.log"
+  },
+  {
+    "test": "missing configuration can be created from editor",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-missing-configuration-can-be-created-from-editor.log"
+  },
+  {
+    "test": "invalid renderer is rejected continuously",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-invalid-renderer-recovery-corrected.log"
+  },
+  {
+    "test": "shortcut effects are classified live",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-shortcut-effects-are-classified-live.log"
+  },
+  {
+    "test": "ordinary edits avoid disk validation",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-ordinary-edits-avoid-disk-validation.log"
+  },
+  {
+    "test": "legacy renderer visibility filters existing UI immediately",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-legacy-renderer-visibility-filters-existing-UI-immediately.log"
+  },
+  {
+    "test": "LUT selector discovers installation LUT files",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-LUT-selector-discovers-installation-LUT-files.log"
+  },
+  {
+    "test": "calibration profile owns LUT and HDR gamma",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-calibration-profile-owns-LUT-and-HDR-gamma.log"
+  },
+  {
+    "test": "General input Apply preserves backend overrides",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-General-input-Apply-preserves-backend-overrides.log"
+  },
+  {
+    "test": "subtitle surrounding fill round trip",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\config-apply-dirty-state-20261026\\test-subtitle-surrounding-fill-round-trip.log"
+  }
+]

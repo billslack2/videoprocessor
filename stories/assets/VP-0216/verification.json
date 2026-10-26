@@ -1,0 +1,27 @@
+{
+  "commit": "09f9f38217af07dd4ac781be388bbe54aed76469",
+  "base": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "cleanWorkingTree": true,
+  "build": "Config editor and test targets x64 Release",
+  "tests": {
+    "total": 13,
+    "scope": "Focused Qt Config integration cases; no full UI/native suite claim",
+    "passed": 13,
+    "failed": 0
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\config-apply-dirty-state-20261026\\src\\VideoProcessor-Config\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "140B21BE0E314F607C4D409CF8E4A10BB823D4620651744375E0D35DEA90101C",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\config-apply-dirty-state-20261026\\src\\VideoProcessor-ConfigTests\\x64\\Release\\VideoProcessorConfigTests.exe",
+      "sha256": "24D709860FD2AB983799A9566D9D625DE0B51B8A942FB143452B244E2D1F0B91",
+      "configuration": "Release",
+      "architecture": "x64"
+    }
+  ],
+  "deployed": false
+}
