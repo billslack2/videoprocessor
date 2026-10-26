@@ -596,3 +596,20 @@ playback validation. The intended behavior remains: ordinary video with original
 subtitles continues while a private worker prepares the requested effect, then
 activation occurs at a frame boundary. This follow-up is an implementation
 assessment, not evidence that current beta renders continuously during compilation.
+
+## User authorizes integration after mockup review - 2026-10-26
+
+User requests bringing background preparation forward, incorporating it into the
+same reconstruction test deployment, and testing continued playback. Before
+building/deploying, user requires review of an accurate animated UI mockup:
+Preparing shaders with a subtle spinner, positioned/styled like top-left profile OSD.
+Mockup: C:\Users\bslac\.codex\visualizations\2027\10\22\01a8bb95-df97-7332-97f0-83d3d73d12d5\shader-preparation-osd.html.
+It shows a single-line compact notice alone or below a visible profile banner.
+Source references: StatsOverlayWindow::RenderProfileChangesBgra and
+NativeStatsOverlayPlacement::ResolveProfileSizing. Active scale_osd is true.
+Preview is a 1080p top-left crop over placeholder video; browser font rasterization
+is illustrative. Proposed spinner is a muted 14-reference-pixel ring, 1.6s rotation.
+No application build/deployment performed for this request. Await visual review.
+Next: selectively port isolated preparation onto fresh current beta, retain the
+separate stable_surround configuration, implement agreed notice and test cold-cache
+playback, rapid changes, retirement and failure before updating the same trial.
