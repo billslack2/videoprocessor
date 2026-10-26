@@ -1,0 +1,87 @@
+{
+  "preparation": [
+    "2026-10-26 11:57:36 | VP NLS background preparation: thread=76344 ready=1 elapsed_ms=448.15",
+    "2026-10-26 11:58:00 | VP subtitle background preparation: ready=1 elapsed_ms=25364.39",
+    "2026-10-26 11:58:01 | VP subtitle background preparation: ready=1 elapsed_ms=1015.60",
+    "2026-10-26 11:58:31 | VP subtitle background preparation: ready=1 elapsed_ms=187.22",
+    "2026-10-26 11:58:40 | VP subtitle background preparation: ready=1 elapsed_ms=175.43",
+    "2026-10-26 11:58:52 | VP subtitle background preparation: ready=1 elapsed_ms=198.74",
+    "2026-10-26 11:58:56 | VP subtitle background preparation: ready=1 elapsed_ms=218.61",
+    "2026-10-26 11:59:02 | VP subtitle background preparation: ready=1 elapsed_ms=179.43"
+  ],
+  "during_preparation": [
+    {
+      "timestamp": "2026-10-26 11:57:41",
+      "window_ms": 2000.0,
+      "submissions": 106,
+      "render_avg_ms": 4.688,
+      "render_peak_ms": 108.877
+    },
+    {
+      "timestamp": "2026-10-26 11:57:43",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 3.452,
+      "render_peak_ms": 14.27
+    },
+    {
+      "timestamp": "2026-10-26 11:57:45",
+      "window_ms": 2015.0,
+      "submissions": 120,
+      "render_avg_ms": 2.889,
+      "render_peak_ms": 13.878
+    },
+    {
+      "timestamp": "2026-10-26 11:57:47",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 2.739,
+      "render_peak_ms": 13.699
+    },
+    {
+      "timestamp": "2026-10-26 11:57:49",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 3.075,
+      "render_peak_ms": 14.637
+    },
+    {
+      "timestamp": "2026-10-26 11:57:51",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 2.732,
+      "render_peak_ms": 13.798
+    },
+    {
+      "timestamp": "2026-10-26 11:57:53",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 3.163,
+      "render_peak_ms": 15.276
+    },
+    {
+      "timestamp": "2026-10-26 11:57:55",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 2.88,
+      "render_peak_ms": 15.874
+    },
+    {
+      "timestamp": "2026-10-26 11:57:57",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 2.843,
+      "render_peak_ms": 13.792
+    },
+    {
+      "timestamp": "2026-10-26 11:57:59",
+      "window_ms": 2000.0,
+      "submissions": 120,
+      "render_avg_ms": 2.793,
+      "render_peak_ms": 13.373
+    }
+  ],
+  "presentation_hz": 59.255558331251564,
+  "process_id": 71224,
+  "note": "Live validation config only; user changed subtitle/NLS profiles during the observed session."
+}

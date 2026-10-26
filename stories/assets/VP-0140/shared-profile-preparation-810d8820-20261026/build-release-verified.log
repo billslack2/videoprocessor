@@ -1,0 +1,221 @@
+MSBuild version 18.7.8+1ac568fee for .NET Framework
+
+  mpc_video_renderer.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\MPC Video Renderer.lib
+  BlackMagicDeckLink.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\BlackMagic DeckLink SDK.lib
+  VideoProcessor-OutputProbe.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessorOutputProbe.exe
+  MicrosoftDirectshowBaseclasses.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\Microsoft Directshow Baseclasses.lib
+  VideoProcessor-ConfigTests.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessorConfigTests.exe
+  LAVFilters.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\LAVFilters.lib
+  VideoProcessor-Lib.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessor-Lib.lib
+  E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessorConfigTests.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding Qt6Network for qtuiotouchplugin.dll from plugin type: generic
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  vc_redist.x64.exe is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+          1 file(s) copied.
+  VideoProcessor-ConfigDiscovery.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll
+  VideoProcessor-Test.vcxproj.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessor-Test.dll
+  VideoProcessor-Config.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessorConfig.exe
+          1 file(s) copied.
+          1 file(s) copied.
+  E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessorConfig.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  dxcompiler.dll is up to date.
+  dxil.dll is up to date.
+  vc_redist.x64.exe is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+  Written E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-GUI\.\version.h as:
+  
+  Written E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #pragma once
+  #include <atlstr.h>
+  
+  
+  #include <atlstr.h>
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/810d8820fa0faa7f70b1330c4468f0f362b43345");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-26 11:55:41 -0400");
+  
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.4.02-beta-810d882");
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/810d8820fa0faa7f70b1330c4468f0f362b43345");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/shader-background-preparation-20261026");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-26 11:55:41 -0400");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("810d882");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.4.02-beta-810d882");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/shader-background-preparation-20261026");
+  const bool VERSION_DIRTY=false;
+  
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("810d882");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+  
+  LibplaceboVideoRenderer.cpp
+  ModernOperatorView.cpp
+  VideoProcessorApp.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  VideoProcessorDlg.cpp
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11988,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11989,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11989,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(12014,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(12014,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj]
+  version.cpp
+  Generating code
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  9 of 20807 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    392 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-GUI.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\VideoProcessor-GUI.exe
+     Creating library E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer\VideoProcessorVPRenderer.lib and object E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer\VideoProcessorVPRenderer.exp
+  Generating code
+  13 of 15804 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    244 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-VPRenderer.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer\VideoProcessorVPRenderer.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libdovi.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libplacebo-360.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\gcc-libs\README
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.
+  Written E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\.\version.h as:
+  
+  #pragma once
+  
+  #include <atlstr.h>
+  
+  static const TCHAR* VERSION_URL=TEXT("https://github.com/billslack2/videoprocessor/commit/810d8820fa0faa7f70b1330c4468f0f362b43345");
+  static const TCHAR* VERSION_DATE=TEXT("2026-10-26 11:55:41 -0400");
+  static const TCHAR* VERSION_DESCRIBE=TEXT("v1.4.02-beta-810d882");
+  static const TCHAR* VERSION_BRANCH=TEXT("codex/shader-background-preparation-20261026");
+  static const TCHAR* VERSION_COMMIT_SHORT=TEXT("810d882");
+  static const TCHAR* VERSION_AUTHOR=TEXT("billslack2 <bslack@gmail.com>");
+  const bool VERSION_DIRTY=false;
+  
+  
+  LibplaceboVideoRenderer.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11988,75): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11989,34): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(11989,78): warning C4244: '=': conversion from 'uint64_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(12014,46): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp(12014,88): warning C4244: '=': conversion from 'size_t' to 'double', possible loss of data [E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-VPRenderer\VideoProcessor-VPRendererBeta.vcxproj]
+  LibplaceboPluginExports.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+     Creating library E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.lib and object E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.exp
+  Generating code
+  10 of 15792 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    245 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  VideoProcessor-VPRendererBeta.vcxproj -> E:\codex\videoprocessor\shader-background-preparation-20261026\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libdovi.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libgcc_s_seh-1.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\liblcms2-2.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libplacebo-377.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libshaderc_shared.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libspirv-cross-c-shared.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libstdc++-6.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\libwinpthread-1.dll
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\bin\vulkan-1.dll
+          9 file(s) copied.
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.LIB
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING.RUNTIME
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\gcc-libs\COPYING3
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\gcc-libs\README
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\lcms2\LICENSE-fast_float
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\libdovi\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\shaderc\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\spirv-cross\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\spirv-tools\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\vulkan-loader\LICENSE
+  E:\codex\videoprocessor\shader-background-preparation-20261026\3rdparty\libplacebo-beta\licenses\winpthreads\COPYING
+  12 File(s) copied
+          1 file(s) copied.
+          1 file(s) copied.
+          1 file(s) copied.

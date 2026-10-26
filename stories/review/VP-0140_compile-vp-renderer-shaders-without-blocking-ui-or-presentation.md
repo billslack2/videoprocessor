@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-26). Current integration: codex/shader-background-preparation-20261026 at freshly fetched beta 87f61f77. Historical implementation below: NLS and subtitle activation fixes are implemented and built in
+Review (2026-10-26). Current integration 810d8820 is built, tested and deployed to the existing reconstruction trial. See the latest evidence below. Historical implementation: NLS and subtitle activation fixes are implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
@@ -626,3 +626,57 @@ port preserves the separate stable_surround option. x64 Release build and
 background worker/cache-handoff/playback regression validation are underway.
 Target is the existing E:\codex\reconstruction-fill-options-trial-20261026 trial,
 with config/state preservation and binary backups; main installation unchanged.
+
+## Current-beta shared-profile preparation trial ready - 2026-10-26
+
+Committed/pushed source: 810d8820fa0faa7f70b1330c4468f0f362b43345 on
+codex/shader-background-preparation-20261026, freshly based on beta 87f61f77.
+The accepted stable reconstruction remains a separate stable_surround option.
+No merge or public release has been performed.
+
+The existing profile banner now owns a Shaders column, with its existing small
+header and value typography. Preparing... includes a subtle rotating indicator;
+Unavailable is static on failure. NLS, subtitles and the general VP render-stall
+status feed this shared column. Profile changes are coalesced in the same panel,
+held during preparation, and resume normal fading after completion. The separate
+centered loading popup is no longer used by this status path.
+
+Background NLS/subtitle work owns a separate same-adapter device, renderer,
+textures, hooks and metadata snapshots; only the thread-safe shader cache is
+shared. Generation checks prevent superseded requests from activating. Retirement
+joins work before destroying cache/device/library. Native-field preparation and
+missing-neighbor BOB are covered. The old October 16 implementation's post-mix
+NLS assumption was deliberately adapted to current per-source processing, and
+subtitle preparation warms the final RGB-to-output graph before activation.
+
+Validation: final clean x64 Release solution build passed. All 151 selected
+native/GPU regressions passed (motion, subtitles, both original/stable fill,
+ten-second continued drawing, stale-request rejection, failure/retry, interlaced
+lookahead, exact cache reuse through final presentation, and shared banner
+composition). Prior failing diagnostics are retained: the extended test initially
+held a stale cleanup texture after helper recreation; corrected to use the current
+texture. SDR, temporal RGB and native HDR composition now reuse prepared entries.
+
+Existing trial updated in place:
+E:\codex\reconstruction-fill-options-trial-20261026.
+Runtime backup: backups\before-background-shaders-20261026-115656.
+All existing CFG/STATE files matched their pre-update hashes, verified again after
+the initial live run. Separate ShaderValidation.cfg/state copies were used for
+playback testing; the main installation was not changed. Shader caches were
+backed up before the cold-cache test.
+
+Live capture (3840x2160, approximately 23.976 Hz; output approximately 59.95 Hz):
+NLS prepared in 448 ms; initial cold subtitle preparation took 25.364 seconds.
+Video continued during that interval: sampled two-second windows total 59.256
+submissions/second, mostly 120 submissions per window. Later profile requests
+prepared in approximately 175-219 ms. Logs showed preparation status sharing the
+same native profile bitmap during live subtitle/NLS selection changes, then the
+Shaders column disappearing when ready.
+
+Limit: one profile-switch window had a 108.877 ms render peak and 106 submissions;
+this is not a zero-stutter guarantee. Other internal cold rendering paths remain
+outside the isolated NLS/subtitle work, though their reported preparation uses the
+same status UI. The live trial was left available for user review; a subsequent
+process from the same trial was observed running. Remaining acceptance is user's
+visual assessment of shared layout/spinner and actual switching responsiveness.
+Evidence: assets/VP-0140/shared-profile-preparation-810d8820-20261026/.

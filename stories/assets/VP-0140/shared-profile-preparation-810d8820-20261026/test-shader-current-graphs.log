@@ -1,0 +1,22 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed NlsPreparationFailureRemainsFailedAndCanRetry [< 1 ms]
+  Passed NlsPreparationCacheReusedAcrossIsolatedDevices [3 s]
+  Passed NlsPreparationTenSecondGateKeepsLiveFramesRendering [10 s]
+  Passed NlsPreparationOnlyNewestRequestCanActivate [< 1 ms]
+  Passed NlsPreparationUsesActualCompositionContract [237 ms]
+  Failed SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases [20 s]
+  Error Message:
+   Assert failed. Live subtitle geometry/phase created an unprepared shader
+  Stack Trace:
+  	at MotionRendererTests::SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases() in E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Test\MotionRendererTests.cpp:line 236
+  Passed ShaderPreparationSharesProfileBannerAcrossSelectionChanges [< 1 ms]
+Results File: E:\codex\videoprocessor\shader-background-preparation-20261026\TestResults\shader-current-graphs.trx
+
+Total tests: 7
+Test Run Failed.
+     Passed: 6
+     Failed: 1
+ Total time: 34.7531 Seconds

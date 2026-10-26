@@ -1,0 +1,23 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead [238 ms]
+Subtitle cache scenario=0 hooks_reused=1
+
+  Failed SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases [20 s]
+  Error Message:
+   Assert failed
+  Stack Trace:
+  	at MotionRendererTests::SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases() in E:\codex\videoprocessor\shader-background-preparation-20261026\src\VideoProcessor-Test\MotionRendererTests.cpp:line 235
+  Standard Output Messages:
+ Subtitle cache scenario=0 hooks_reused=1
+
+
+Results File: E:\codex\videoprocessor\shader-background-preparation-20261026\TestResults\shader-cache-diagnostic.trx
+
+Total tests: 2
+     Passed: 1
+Test Run Failed.
+     Failed: 1
+ Total time: 21.1512 Seconds

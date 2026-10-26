@@ -1,0 +1,30 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+4K warmed full preparation fill=0 mean_wall_ms=4.911600
+4K warmed full preparation fill=2 mean_wall_ms=3.396570
+4K warmed full preparation fill=3 mean_wall_ms=0.473705
+  Passed SurroundFill4KPreparationCost [8 s]
+  Passed SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs [20 s]
+  Passed NativeCompositionPreparationFailureClearsHistory [235 ms]
+  Passed NlsPreparationFailureRemainsFailedAndCanRetry [< 1 ms]
+  Passed NlsPreparationCacheReusedAcrossIsolatedDevices [1 s]
+  Passed NlsPreparationTenSecondGateKeepsLiveFramesRendering [10 s]
+  Passed NlsPreparationOnlyNewestRequestCanActivate [< 1 ms]
+  Passed NlsPreparationUsesActualCompositionContract [235 ms]
+  Passed SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases [1 m 1 s]
+  Passed ShaderPreparationSharesProfileBannerAcrossSelectionChanges [< 1 ms]
+  Passed PreparationCountsFutureSourcesRatherThanRepeatQueuePositions [< 1 ms]
+  Passed PreparationWithoutOutwardRequirementKeepsPreviewClamping [< 1 ms]
+  Passed PreparationShortQueuesNeverInventMissingFutureFrames [< 1 ms]
+  Passed PreparationDeduplicatesOverlappingPreviewAndOutwardWindows [< 1 ms]
+  Passed PreparationWithRepeatedHeadUsesOnlyNonrepeatFutureEntries [< 1 ms]
+  Passed PreparationWithDisabledArHorizonStillSelectsIndependentFutureSources [< 1 ms]
+  Passed PreparationIncludesOutwardTailBeyondConfiguredTwoFrameHorizon [< 1 ms]
+Results File: E:\codex\videoprocessor\shader-background-preparation-20261026\TestResults\shader-preparation-focused.trx
+
+Test Run Successful.
+Total tests: 17
+     Passed: 17
+ Total time: 1.7136 Minutes
