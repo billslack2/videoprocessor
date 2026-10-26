@@ -1126,6 +1126,7 @@ inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl
     target.repr.sys=PL_COLOR_SYSTEM_RGB;target.repr.levels=PL_COLOR_LEVELS_FULL;
     target.repr.alpha=independentAlpha?PL_ALPHA_INDEPENDENT:PL_ALPHA_NONE;target.color=source.color;
     auto params=pl_render_fast_params;
+    params.dynamic_constants=true; // Cue geometry must not introduce cold shader variants.
     params.dither_params=nullptr;params.peak_detect_params=nullptr;
     // Native-plane deinterlacing runs before the MAIN subtitle hook. Keep the
     // caller's field, first_field, prev and next on the copied source frame.

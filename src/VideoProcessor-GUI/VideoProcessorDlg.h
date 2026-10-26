@@ -919,6 +919,7 @@ protected:
 		m_profileChangeOverlayEffectiveSelections;
 	std::map<std::string, std::string> m_profileChangeOverlaySelections;
 	std::vector<ProfileChangeOverlay::Item> m_profileChangeOverlayItems;
+    CString m_profileShaderStatus;
 	unsigned int m_profileChangeDisplaySeconds =
 		ProfileChangeOverlay::DefaultDisplaySeconds;
 	ULONGLONG m_profileChangeOverlayHoldUntil = 0;

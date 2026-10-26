@@ -36,12 +36,25 @@ namespace ProfileChangeOverlay
 
 	struct Item
 	{
-		enum class Indicator { None, Off, On };
+		enum class Indicator { None, Off, On, Preparing };
 		std::string group;
 		std::string label;
 		std::string value;
 		Indicator indicator = Indicator::None;
 	};
+
+    // One shared banner owns profile selections and preparation status.
+    inline std::vector<Item> WithShaderStatus(const std::vector<Item>& profiles,
+        bool preparing, bool failed = false) {
+        auto items = profiles;
+        items.erase(std::remove_if(items.begin(), items.end(), [](const Item& item) {
+            return item.group == "shader_preparation";
+        }), items.end());
+        if (preparing || failed) items.push_back({"shader_preparation", "Shaders",
+            preparing ? "Preparing..." : "Unavailable",
+            preparing ? Item::Indicator::Preparing : Item::Indicator::None});
+        return items;
+    }
 
 	inline std::string GroupLabel(const std::string& group)
 	{

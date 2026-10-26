@@ -200,6 +200,35 @@ public:
             requested.cadence=="field"?2.0:1.0);
         return MotionConfig::Mix(requested,nominalHz,displayHz);
     }
+    double NlsPreparationMixDuration() const {
+        const double unit = sourceDuration / (interlaced && settings.cadence == "field" ? 2.0 : 1.0);
+        return mixing && unit > 0.0 ? displayDuration / unit : 1.0;
+    }
+    // NLS runs on each source BEFORE output mixing on the current pipeline.
+    // Only metadata is copied; no history texture crosses the worker boundary.
+    pl_frame NlsPreparationInput(const pl_frame& source, pl_render_params& params) const {
+        pl_frame input = source;
+        if (composition && Active()) {
+            if (history.empty()) return {};
+            const Stored* packet = history.back().get();
+            if (nativeMode) {
+                const auto it = std::find_if(packet->prepared.begin(), packet->prepared.end(),
+                    [](const auto& field) { return field.valid; });
+                if (it == packet->prepared.end()) return {};
+                input = it->frame;
+            } else input = packet->frame;
+            input.crop = source.crop; input.rotation = source.rotation;
+            input.overlays = nullptr; input.num_overlays = 0;
+            params.deinterlace_params = nullptr;
+            params.deband_params = nullptr;
+        } else if (Active()) {
+            params.deinterlace_params = interlaced ? &deinterlace : nullptr;
+            if (interlaced) input.field = input.first_field = topFirst ? PL_FIELD_TOP : PL_FIELD_BOTTOM;
+        }
+        params.frame_mixer = nullptr; // Mixing consumes already-processed frames.
+        return input;
+    }
+    bool PreparesComposedSources() const { return composition && Active(); }
     double ScheduledOutputRateHz() const {
         return Active() && initialized && std::isfinite(displayDuration) && displayDuration>0.0
             ? 1.0/displayDuration : 0.0;
