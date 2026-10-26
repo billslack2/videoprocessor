@@ -2,7 +2,18 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-25 window-size follow-up: Advanced tone mapping must maximize the
+editor window (ordinary maximized state, not borderless full-screen). Basic
+must restore the exact prior size/position and prior maximized state. The user
+clarified this before implementation. Continue the requested deployed trial
+branch at 405cdea1; discovered/fetched beta remains v1.4.02-beta at 8c453746.
+Preserve panel/section/scroll restoration and pending edits. Implement and test
+normal/repeated/already-maximized transitions, then deploy a completed matched
+x64 Release build with configuration backups and no active-file edits.
+
+Previous trial evidence follows; it remains valid for that recorded commit.
 
 2026-10-25: The requested follow-up is implemented, tested and deployed for user
 trial. Clean source `405cdea1987a720666b3d2a87e2c1c4e0c0ff710` is pushed on
