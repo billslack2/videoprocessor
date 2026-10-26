@@ -572,3 +572,27 @@ performing those operations.
   preparation. It cannot guarantee where madVR performs its private internal
   compilation, but VP-controlled DirectShow shader preprocessing must remain
   off the UI thread and must not reintroduce synchronous lifecycle waits.
+
+## Preparation wording and live-video follow-up - 2026-10-26
+
+User requests Preparing shaders instead of Preparing video pipeline and asks
+whether video can continue during compilation. Current fetched beta v1.4.02-beta
+at 87f61f77d3d95ddbfc1eeae343501d763d49e80b still runs cold subtitle/core render
+calls synchronously on the rendering thread. The stall status observes calls
+lasting at least 500 ms; changing its text does not make compilation asynchronous.
+
+Wording changed to Preparing shaders... in clean current-beta worktree
+E:\codex\videoprocessor\shader-preparation-wording-20261026, committed/pushed as
+98eea048 on codex/shader-preparation-wording-20261026. Exact single occurrence
+replacement and git diff --check passed. This wording-only change has not been
+built or deployed; the existing trial still contains its previous wording.
+
+The isolated NLS/subtitle preparation implementation described above still exists
+in nls-live-preparation-20261016, alongside substantial unrelated uncommitted work.
+It has not been incorporated into current beta. Preserve that checkout. Bringing
+its preparation changes forward requires selective porting against current
+subtitle composition/motion and new stable_surround mode, followed by cold-cache
+playback validation. The intended behavior remains: ordinary video with original
+subtitles continues while a private worker prepares the requested effect, then
+activation occurs at a frame boundary. This follow-up is an implementation
+assessment, not evidence that current beta renders continuously during compilation.
