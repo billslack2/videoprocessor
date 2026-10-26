@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
@@ -10,6 +11,8 @@
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <future>
+#include <vprenderer/NlsPipelinePreparation.h>
+#include <vprenderer/SubtitlePipelinePreparation.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <SubtitleCutPasteShader.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
@@ -158,6 +161,277 @@ struct GpuFixture {
 };
 }
 TEST_CLASS(MotionRendererTests){public:
+    TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
+        for (int scenario : {0, 1, 2}) {
+            GpuFixture g;
+            struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
+            pl_gpu_set_cache(g.device->gpu,cache.value);
+            g.Upload(100);
+            if (scenario==2) g.CreateP010AlternatingChroma();
+            auto source=scenario==2?g.p010Input:g.input;
+            auto params=pl_render_high_quality_params;
+            pl_deinterlace_params deinterlace{};deinterlace.algo=PL_DEINTERLACE_YADIF;
+            if(scenario==2) {
+                source.field=source.first_field=PL_FIELD_TOP;
+                params.deinterlace_params=&deinterlace;
+            } else params.deinterlace_params=nullptr;
+            const bool temporal=scenario!=0;
+            SubtitleGeneratedGrayStyle style;
+            auto request=std::make_shared<SubtitlePipelinePreparationRequest>(source,params,temporal,style,3,&g.output);
+            CComPtr<IDXGIDevice> dxgi;CComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC description{};
+            Assert::IsTrue(SUCCEEDED(g.device->device->QueryInterface(IID_PPV_ARGS(&dxgi))));
+            Assert::IsTrue(SUCCEEDED(dxgi->GetAdapter(&adapter))&&SUCCEEDED(adapter->GetDesc(&description)));
+            request->adapter=description.AdapterLuid;request->featureLevel=g.device->device->GetFeatureLevel();
+            NlsPipelinePreparation worker;
+            Assert::IsTrue(worker.Submit("subtitles",[request,&cache]{return request->Compile(cache.value);}));
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(300);
+            while(worker.Get("subtitles")==NlsPipelinePreparation::Status::Pending && std::chrono::steady_clock::now()<deadline) {
+                // The live GPU remains available while the independent worker
+                // builds subtitle programs. Draw real changing video throughout.
+                g.Upload(100);
+                Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&pl_render_fast_params));
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            Assert::IsTrue(worker.Get("subtitles")==NlsPipelinePreparation::Status::Ready);
+            worker.Stop();
+            const auto before=pl_cache_signature(cache.value);
+            const auto* hook=CreateSubtitleCutPasteHook(g.device->gpu);
+            Assert::IsNotNull(hook);
+            const auto processing=CaptureSubtitleSourceProcessingOptions(params);
+            pl_frame neighbor=source;source.prev=source.next=scenario==2?&neighbor:nullptr;
+            for(int fill:{0,1,2,3})for(int shift:{0,3,7})for(int background:{3,5})for(float radius:{0.0f,3.0f,8.0f}) {
+                SubtitleCutPasteGeometry geometry{};geometry.valid=true;geometry.glyphScale=1.0f;
+                geometry.pictureTop=16;geometry.pictureBottom=48;
+                geometry.source={8+shift,54,55,61};geometry.destination={8+shift,36,55,43};
+                geometry.content=geometry.destination;geometry.pictureCapture=geometry.destination;
+                geometry.generatedCleanup=geometry.source;geometry.glyphLines[0]=geometry.source;
+                style.blurPixels=radius;
+                style.opacity=shift==0?0.0f:0.75f;
+                style.maxLuminance=shift==0?1.0f:0.25f;
+                style.textColor[2]=shift==0?0.0f:1.0f;
+                style.borderWidth=shift==0?0.0f:4.0f;
+                style.borderOpacity=shift==0?0.0f:1.0f;
+                geometry.roundedCorners=shift!=0;
+                geometry.extendToBar=shift!=0;
+                for(auto phase:{SubtitleCompositionPhase::All,SubtitleCompositionPhase::CleanupOnly,SubtitleCompositionPhase::LayerOnly}) {
+                    auto input=source;
+                    const bool layer=phase==SubtitleCompositionPhase::LayerOnly;
+                    if(layer){input.field=input.first_field=PL_FIELD_NONE;input.prev=input.next=nullptr;}
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,input.color.transfer,style,fill,phase));
+                    pl_frame composed{};
+                    Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,input,hook,
+                        layer?&g.layer:&g.clean,composed,layer||temporal,!layer&&background==5,layer,
+                        !layer&&scenario==2?&deinterlace:nullptr,temporal?&processing:nullptr));
+                }
+            }
+            Logger::WriteMessage(("Subtitle cache scenario="+std::to_string(scenario)+
+                " hooks_reused="+std::to_string(before==pl_cache_signature(cache.value))+"\n").c_str());
+            Assert::IsTrue(before==pl_cache_signature(cache.value),L"Subtitle hook phases added a cache entry before final presentation");
+            // Exercise the newly activated RGB-to-output path as well as the hooks.
+            auto normalized=g.cleanInput; normalized.color=source.color; normalized.planes[0].texture=g.clean;
+            auto destination=g.output;
+            auto finalParams=params;
+            finalParams.deinterlace_params=nullptr; finalParams.frame_mixer=nullptr;
+            if(temporal) {
+                destination.planes[0].texture=g.layer;
+                destination.repr=pl_color_repr_rgb; destination.repr.levels=PL_COLOR_LEVELS_FULL;
+                destination.repr.alpha=PL_ALPHA_NONE;
+                finalParams.deband_params=nullptr; finalParams.dither_params=nullptr;
+                finalParams.error_diffusion=nullptr; finalParams.blend_params=nullptr;
+            }
+            Assert::IsTrue(pl_render_image(g.renderer,&normalized,&destination,&finalParams));
+            pl_gpu_finish(g.device->gpu);
+            const auto after=pl_cache_signature(cache.value);
+            pl_mpv_user_shader_destroy(&hook);
+            pl_gpu_set_cache(g.device->gpu,nullptr);
+            Assert::IsTrue(before==after,L"Live subtitle geometry/phase created an unprepared shader");
+        }
+    }
+    TEST_METHOD(NlsPreparationUsesActualCompositionContract) {
+        GpuFixture g;
+        MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="linear";settings.deinterlace="off";
+        auto params=pl_render_default_params;
+        g.temporal.Begin(settings,24,60,false,0,1,1,0,false,true);
+        Assert::AreEqual(0,g.temporal.NlsPreparationInput(g.input,params).num_planes,
+            L"First composition frame must defer NLS preparation");
+        for(uint64_t i=0;i<4;++i) {
+            g.UploadComposition(false,0);
+            g.temporal.Begin(settings,24,60,false,0,1,i+1,double(i)/24,false,true);
+            Assert::IsTrue(g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,i+1));
+        }
+        g.temporal.outputPts=1.0/24;
+        g.Draw();
+        auto raw=g.input;
+        raw.icc=reinterpret_cast<pl_icc_object>(uintptr_t(1));
+        raw.film_grain.type=PL_FILM_GRAIN_H274;
+        raw.acquire=[](pl_gpu,pl_frame*){return true;};
+        const auto actual=g.temporal.NlsPreparationInput(raw,params);
+        Assert::AreEqual(1,actual.num_planes);
+        Assert::IsTrue(!actual.icc&&!actual.acquire&&!actual.lut);
+        Assert::IsTrue(actual.film_grain.type==PL_FILM_GRAIN_NONE);
+        Assert::IsTrue(actual.color.transfer==g.cleanInput.color.transfer);
+        Assert::IsTrue(actual.planes[0].texture->params.w==g.cleanInput.planes[0].texture->params.w);
+        Assert::IsTrue(!params.deband_params&&!params.frame_mixer&&!params.deinterlace_params);
+        NlsPipelinePreparation::Frame snapshot;
+        snapshot.Copy(actual); // Must not reject the consumed raw metadata.
+    }
+    TEST_METHOD(NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead) {
+        GpuFixture g;
+        MotionConfig::Settings settings;
+        settings.smoothMotion="off"; settings.deinterlace="force";
+        settings.algorithm="bob"; settings.fieldOrder="top";
+        for(uint64_t sequence=1;sequence<=3;++sequence) {
+            g.UploadComposition(false,0);
+            g.temporal.Begin(settings,30,60,true,1,1,sequence,double(sequence-1)/30,false,true);
+            Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,sequence,
+                [&](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                    clean=g.cleanInput;layer=nullptr;bounds={};return true;
+                }));
+        }
+        g.temporal.outputPts=0;
+        Assert::IsTrue(g.temporal.PreflightCompositionOutput());
+        auto params=pl_render_high_quality_params;
+        const auto prepared=g.temporal.NlsPreparationInput(g.input,params);
+        Assert::AreEqual(1,prepared.num_planes);
+        Assert::IsTrue(prepared.repr.sys==PL_COLOR_SYSTEM_RGB);
+        Assert::IsTrue(prepared.color.transfer==g.cleanInput.color.transfer);
+        Assert::IsTrue(!params.deinterlace_params&&!params.frame_mixer&&!params.deband_params);
+    }
+    TEST_METHOD(NlsPreparationTenSecondGateKeepsLiveFramesRendering) {
+        GpuFixture g;
+        NlsPipelinePreparation worker;
+        struct Gate { std::promise<void> release; ~Gate(){try{release.set_value();}catch(...){}} } gate;
+        auto released = gate.release.get_future().share();
+        auto entered = std::make_shared<std::promise<void>>();
+        auto started = entered->get_future();
+        g.Upload(90); g.Draw();
+        Assert::IsTrue(worker.Submit("nls", [entered,released] { entered->set_value(); released.wait(); return true; }));
+        Assert::IsTrue(started.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+        const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        int rendered = 0;
+        while (std::chrono::steady_clock::now() < end) {
+            g.Upload((rendered & 1) ? 80 : 120);
+            const auto pixel = g.Draw();
+            Assert::IsTrue(pixel[0] > 40, L"Fallback output went black during preparation");
+            Assert::IsTrue(worker.Get("nls") == NlsPipelinePreparation::Status::Pending);
+            ++rendered;
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+        Assert::IsTrue(rendered > 30, L"Presentation did not progress during the compiler gate");
+        gate.release.set_value();
+        worker.Stop();
+    }
+    TEST_METHOD(NlsPreparationOnlyNewestRequestCanActivate) {
+        NlsPipelinePreparation worker;
+        struct Gate { std::promise<void> release; ~Gate(){try{release.set_value();}catch(...){}} } gate;
+        auto released = gate.release.get_future().share();
+        auto entered = std::make_shared<std::promise<void>>();
+        auto started = entered->get_future();
+        auto executed = std::make_shared<std::atomic<int>>(0);
+        Assert::IsTrue(worker.Submit("old", [entered,released,executed] { entered->set_value(); released.wait(); ++*executed; return true; }));
+        Assert::IsTrue(started.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+        for (int i = 0; i < 100; ++i)
+            Assert::IsTrue(worker.Submit(std::to_string(i), [executed] { ++*executed; return true; }));
+        gate.release.set_value();
+        const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (worker.Get("99") != NlsPipelinePreparation::Status::Ready && std::chrono::steady_clock::now() < end)
+            std::this_thread::yield();
+        Assert::IsTrue(worker.Get("99") == NlsPipelinePreparation::Status::Ready);
+        Assert::IsTrue(worker.Get("old") == NlsPipelinePreparation::Status::Missing);
+        Assert::AreEqual(2, executed->load(), L"More than one active and newest pending job executed");
+        worker.Invalidate();
+        Assert::IsTrue(worker.Get("99") == NlsPipelinePreparation::Status::Missing);
+    }
+    TEST_METHOD(NlsPreparationFailureRemainsFailedAndCanRetry) {
+        NlsPipelinePreparation worker;
+        Assert::IsTrue(worker.Submit("bad", []()->bool {throw std::runtime_error("compile");}));
+        const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while(worker.Get("bad") == NlsPipelinePreparation::Status::Pending && std::chrono::steady_clock::now() < end)
+            std::this_thread::yield();
+        Assert::IsTrue(worker.Get("bad") == NlsPipelinePreparation::Status::Failed);
+        worker.Invalidate();
+        Assert::IsTrue(worker.Submit("bad", [] {return true;}));
+        while(worker.Get("bad") == NlsPipelinePreparation::Status::Pending && std::chrono::steady_clock::now() < end)
+            std::this_thread::yield();
+        Assert::IsTrue(worker.Get("bad") == NlsPipelinePreparation::Status::Ready);
+    }
+    TEST_METHOD(NlsPreparationCacheReusedAcrossIsolatedDevices) {
+        for (const char* name : {"NLS.glsl", "NLSPlus.glsl"}) {
+            std::string path = __FILE__;
+            for (int i = 0; i < 3; ++i) path.resize(path.find_last_of("\\/"));
+            std::ifstream file(path + "\\shaders\\" + name);
+            std::string shader((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            Assert::IsFalse(shader.empty());
+            for (const auto& item : std::vector<std::pair<std::string,std::string>>{
+                {"strength","1.0"},{"curve","2.0"},{"geometry","1"},{"center_protection","0.35"},
+                {"axis_balance","0.5"},{"max_center_zoom","1.08"},
+                {"horizontal_center_protection","0.35"},{"vertical_center_protection","0.25"}}) {
+                const auto token = "{{" + item.first + "}}";
+                for (auto pos = shader.find(token); pos != std::string::npos; pos = shader.find(token))
+                    shader.replace(pos, token.size(), item.second);
+            }
+            for (bool hdr : {false, true}) for (bool processed : {false,true}) {
+                GpuFixture g;
+                struct Cache {pl_cache value=pl_cache_create(nullptr);~Cache(){pl_cache_destroy(&value);}} cache;
+                pl_gpu_set_cache(g.device->gpu, cache.value);
+                auto params = pl_render_high_quality_params;
+                params.dynamic_constants = true;
+                params.peak_detect_params = nullptr;
+                if (hdr) {
+                    g.input.color.transfer=PL_COLOR_TRC_PQ;g.input.color.primaries=PL_COLOR_PRIM_BT_2020;g.input.color.hdr.max_luma=1000;
+                    params.frame_mixer=&pl_filter_bicubic; // Wider than the original two-frame prewarm.
+                    Assert::IsTrue(pl_frame_mix_radius(&params)>0.75f);
+                }
+                g.Upload(100);
+                Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params),L"Ordinary-fit baseline failed");
+                auto request = std::make_shared<NlsPipelinePreparation::Request>(g.input,g.output,params,shader);
+                CComPtr<IDXGIDevice> dxgi; CComPtr<IDXGIAdapter> adapter; DXGI_ADAPTER_DESC description{};
+                Assert::IsTrue(SUCCEEDED(g.device->device->QueryInterface(IID_PPV_ARGS(&dxgi))));
+                Assert::IsTrue(SUCCEEDED(dxgi->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&description)));
+                request->adapter=description.AdapterLuid;request->featureLevel=g.device->device->GetFeatureLevel();
+                request->stretch=1.25f; request->processedSource=processed;
+                NlsPipelinePreparation worker;
+                Assert::IsTrue(worker.Submit("gpu", [request,&cache]{return request->Compile(cache.value);}));
+                const auto end = std::chrono::steady_clock::now()+std::chrono::seconds(60);
+                while(worker.Get("gpu")==NlsPipelinePreparation::Status::Pending && std::chrono::steady_clock::now()<end)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                Assert::IsTrue(worker.Get("gpu")==NlsPipelinePreparation::Status::Ready,L"Isolated NLS compilation failed");
+                worker.Stop();
+                const auto before=pl_cache_signature(cache.value);
+                const pl_hook* hook=pl_mpv_user_shader_parse(g.device->gpu,shader.data(),shader.size());
+                Assert::IsNotNull(hook);
+                for(int i=0;i<hook->num_parameters;++i)
+                    if(std::string(hook->parameters[i].name)=="stretch_ratio")hook->parameters[i].data->f=1.25f;
+                params.hooks=&hook;params.num_hooks=1;
+                if(processed) {
+                    g.output.planes[0].texture=g.clean;
+                    g.output.repr=pl_color_repr_rgb; g.output.repr.levels=PL_COLOR_LEVELS_FULL;
+                    g.output.repr.alpha=PL_ALPHA_NONE;
+                    params.dither_params=nullptr; params.error_diffusion=nullptr;
+                    params.blend_params=nullptr; params.frame_mixer=nullptr;
+                }
+                g.Upload(100);
+                Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+                if (hdr && !processed) {
+                    const pl_frame* frames[8]{};uint64_t signatures[8]{};float timestamps[8]{};
+                    for (int count : {1,2,4,8}) {
+                        for (int i=0;i<count;++i) {frames[i]=&g.input;signatures[i]=uint64_t(i+1);timestamps[i]=float(i-count/2)+0.25f;}
+                        pl_frame_mix mix{};mix.num_frames=count;mix.frames=frames;mix.signatures=signatures;
+                        mix.timestamps=timestamps;mix.vsync_duration=0.5f;
+                        Assert::IsTrue(pl_render_image_mix(g.renderer,&mix,&g.output,&params));
+                    }
+                }
+                pl_gpu_finish(g.device->gpu);
+                const auto after=pl_cache_signature(cache.value);
+                pl_mpv_user_shader_destroy(&hook);
+                pl_gpu_set_cache(g.device->gpu,nullptr);
+                Assert::IsTrue(before==after,L"First live NLS draw generated a missing cache entry");
+                Assert::IsTrue(g.Read(32,32)[0]>0,L"Prepared NLS draw returned black");
+            }
+        }
+    }
+
     TEST_METHOD(DisplayRefreshCacheSurvivesSourceAndBackbufferReuseWithExactPixels) {
         GpuFixture g;
         g.Upload(90);
@@ -269,6 +543,41 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(first.sourceRenders+1,g.temporal.ProcessingSnapshot().sourceRenders);
         Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,parameters,1));
         Assert::AreEqual(first.sourceRenders+2,g.temporal.ProcessingSnapshot().sourceRenders);
+    }
+    TEST_METHOD(ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition) {
+        for(int path:{0,1,2})for(int crop:{0,1,2}) {
+            GpuFixture g;g.Upload(128);g.UploadComposition(false,1);
+            g.output.crop=crop==0?pl_rect2df{0,0,64,64}:crop==1?pl_rect2df{0,20,64,52}:pl_rect2df{-10,-10,74,74};
+            const auto placement=NativeStatsOverlayPlacement::PlaceProfileTopLeft(
+                {g.output.crop.x0,g.output.crop.y0,g.output.crop.x1,g.output.crop.y1},
+                {0,0,64,64},{0,20,64,52},24,8,4,4);
+            Assert::IsTrue(placement.panel.top>=20 && placement.panel.bottom<=52);
+            MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";
+            if(path) {
+                g.temporal.Begin(settings,24,60,false,0,1,1,0,false,path==2);
+                Assert::IsTrue(path==2?g.temporal.CaptureComposition(g.device->gpu,g.cleanInput,nullptr,1):
+                    g.temporal.Capture(g.device->gpu,g.input,1));
+                g.temporal.outputPts=0;
+            }
+            const auto draw=[&] {
+                if(path)g.Draw();
+                else Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&pl_render_fast_params));
+            };
+            draw();const auto beforeMatte=g.Read(16,10),beforePanel=g.Read(16,28);
+            pl_overlay_part part{};part.src={24,24,40,40};
+            part.dst={placement.panel.left,placement.panel.top,placement.panel.right,placement.panel.bottom};
+            pl_overlay overlay{};overlay.tex=g.layer;overlay.mode=PL_OVERLAY_NORMAL;
+            overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;overlay.repr=pl_color_repr_rgb;
+            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;overlay.color=pl_color_space_srgb;
+            overlay.parts=&part;overlay.num_parts=1;g.output.overlays=&overlay;g.output.num_overlays=1;
+            draw();const auto red=g.Read(16,28),matte=g.Read(16,10);
+            Assert::IsTrue(red[0]>200 && red[2]<20,L"profile banner must render inside the visible CIH screen");
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(matte[c]-beforeMatte[c])<=2,L"profile banner must not paint the masked top area");
+            g.UploadComposition(false,2);draw();const auto blue=g.Read(16,28);
+            Assert::IsTrue(blue[2]>200 && blue[0]<20,L"shared shader spinner/profile updates must remain live");
+            g.output.overlays=nullptr;g.output.num_overlays=0;draw();const auto cleared=g.Read(16,28);
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(cleared[c]-beforePanel[c])<=2,L"expired banner must clear without a retained tile");
+        }
     }
     TEST_METHOD(OutputOverlayStaysLiveWhileSourceProcessingIsCached) {
         GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";

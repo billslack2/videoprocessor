@@ -43,7 +43,7 @@ inline pl_rect2d ComputeSubtitleLayerBounds(const SubtitleCutPasteGeometry& g,
     const int displayTop=selectedPicture?g.displayPictureTop:g.pictureTop;
     const int displayBottom=selectedPicture?g.displayPictureBottom:g.pictureBottom;
     // The shader extends six pixels horizontally and antialiases the panel.
-    // Include two pixels at each vertical edge, including its selected bar edge.
+    // Include the two-pixel bar-facing sampling overlap as well as panel AA.
     bounds.x0=(std::max)(0,g.destination.left-8);
     bounds.x1=(std::min)(width,g.destination.right+8);
     bounds.y0=(std::max)(0,(g.extendToBar && g.fromTopBar?
@@ -186,7 +186,7 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!PARAM cleanup_fill_mode
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
-//!MAXIMUM 2.0
+//!MAXIMUM 3.0
 0.0
 //!PARAM generated_clean_left
 //!TYPE DYNAMIC float
@@ -550,8 +550,57 @@ vec3 subtitleSurroundingPicture(vec2 p) {
     }
     return weights>0.0 ? sum/weights : vec3(0.0);
 }
+// Fixed, current-frame reconstruction. Donor positions and normalized weights
+// depend only on geometry, never on image gradients or color comparisons. This
+// keeps small frame changes from moving the sampling pattern and causing shimmer.
+vec3 subtitleStableSurroundingPicture(vec2 p) {
+    vec4 edges=vec4(subtitleSafeDonorLeft()-1.5,subtitleSafeDonorRight()+1.5,
+        subtitleSafeDonorEdge(false)-0.5,subtitleSafeDonorEdge(true)+0.5);
+    vec2 lo=vec2(0.5,picture_top+0.5),hi=vec2(HOOKED_size.x-0.5,picture_bottom-0.5);
+    float seam=clamp(0.20*min(generated_clean_right-generated_clean_left,
+        generated_clean_bottom-generated_clean_top),6.0,20.0);
+    vec3 sum=vec3(0.0);float weights=0.0;
+    int count=2*int(clamp(cleanup_fill_mode,0.0,2.0));
+    for(int side=0;side<count;side++) {
+        vec2 edge=p,dir=vec2(0.0);float d=0.0,available=-1.0;
+        if(side==0) {
+            edge.x=edges.x;dir.x=-1.0;d=p.x-generated_clean_left;available=edges.x-0.5;
+        } else if(side==1) {
+            edge.x=edges.y;dir.x=1.0;d=generated_clean_right-p.x;available=HOOKED_size.x-0.5-edges.y;
+        } else if(side==2) {
+            edge.y=edges.z;dir.y=-1.0;d=p.y-generated_clean_top;available=edges.z-picture_top-0.5;
+        } else {
+            edge.y=edges.w;dir.y=1.0;d=generated_clean_bottom-p.y;available=picture_bottom-0.5-edges.w;
+        }
+        if(available<0.0)continue;
+        edge=clamp(edge,lo,hi);d=max(0.0,d);
+        vec2 tangent=vec2(-dir.y,dir.x);
+        float radius=min(2.0,0.25*d);
+        vec3 boundary=vec3(0.0),filled=vec3(0.0);
+        // One transfer-decoding site, five fixed taps per available edge.
+        // Positive, normalized weights make this a non-amplifying linear
+        // operator in scene light while the accepted geometry is unchanged.
+        int taps=2*int(clamp(cleanup_fill_mode,0.0,2.0))+1;
+        for(int tap=0;tap<taps;tap++) {
+            vec2 donor=edge;
+            if(tap==1)donor-=tangent*radius;
+            else if(tap==2)donor+=tangent*radius;
+            else if(tap>=3)donor+=dir*min(available,(tap==3?0.35:1.0)*d);
+            vec3 color=subtitleLinear(HOOKED_tex(clamp(donor,lo,hi)*HOOKED_pt).rgb);
+            if(tap<3)boundary+=(tap==0?0.5:0.25)*color;
+            else filled+=(tap==3?0.65:0.35)*color;
+        }
+        // A slightly wider transition joins the clean boundary to the fixed
+        // interior fill. Never blend the original subtitle/card pixels back in.
+        filled=mix(boundary,filled,smoothstep(0.0,seam,d));
+        float w=1.0/((d+0.5)*(d+0.5));
+        sum+=w*filled;weights+=w;
+    }
+    return weights>0.0 ? sum/weights : vec3(0.0);
+}
 vec3 subtitleGeneratedRawFill(vec2 p) {
     if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
+    if(cleanup_fill_mode>2.5) return subtitleStableSurroundingPicture(p);
     if(cleanup_fill_mode>1.5) return subtitleSurroundingPicture(p);
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
     float safeEdge=subtitleSafeDonorEdge(fromTop);
@@ -617,12 +666,15 @@ float subtitlePanelSideExtension() {
 float subtitlePanelTop() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && fromTop ? min(destination_top,display_picture_top) : destination_top;
+    // Two source pixels overlap the bar so fractional crop/scaling samples
+    // cannot interpolate an opaque panel edge with transparent layer pixels.
+    // This is display backing only; glyph placement and cleanup stay unchanged.
+    return attached && fromTop ? min(destination_top,display_picture_top)-2.0 : destination_top;
 }
 float subtitlePanelBottom() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && !fromTop ? max(destination_bottom,display_picture_bottom) : destination_bottom;
+    return attached && !fromTop ? max(destination_bottom,display_picture_bottom)+2.0 : destination_bottom;
 }
 float subtitleRoundedPanelDistance(vec2 p) {
     float radius=mod(panel_flags,2.0)>0.5 ? min(28.0,min(destination_right-destination_left,
@@ -989,7 +1041,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
         float(geometry.pictureTop),float(geometry.pictureBottom),float(displayTop),float(displayBottom),gamma,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
-        float((std::max)(0,(std::min)(2,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
+        float((std::max)(0,(std::min)(3,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),
         generated.textColor[0],generated.textColor[1],generated.textColor[2],
         generated.color[0],generated.color[1],generated.color[2],generated.opacity,
@@ -1077,6 +1129,7 @@ inline bool RenderSubtitleFullRaster(SubtitlePreparationRenderer& preparation,pl
     target.repr.sys=PL_COLOR_SYSTEM_RGB;target.repr.levels=PL_COLOR_LEVELS_FULL;
     target.repr.alpha=independentAlpha?PL_ALPHA_INDEPENDENT:PL_ALPHA_NONE;target.color=source.color;
     auto params=pl_render_fast_params;
+    params.dynamic_constants=true; // Cue geometry must not introduce cold shader variants.
     params.dither_params=nullptr;params.peak_detect_params=nullptr;
     // Native-plane deinterlacing runs before the MAIN subtitle hook. Keep the
     // caller's field, first_field, prev and next on the copied source frame.

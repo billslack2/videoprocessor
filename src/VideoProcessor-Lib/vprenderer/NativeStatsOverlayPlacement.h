@@ -260,4 +260,18 @@ namespace NativeStatsOverlayPlacement
 		result.panel.right = left + width;
 		return result;
 	}
+    // The output raster can extend beyond a CIH screen. A full-raster shader
+    // fallback or software zoom must not move profile/status UI into that masked
+    // area. Constrain placement to both the movie and the physical screen; if
+    // movie geometry is unavailable, fall back to the screen, never its matte.
+    inline Result PlaceProfileTopLeft(const Rect& requestedPicture, const Rect& output,
+        const Rect& configuredScreen, float panelWidth, float panelHeight,
+        float insetPixels = kProfileOverlayInsetPixels, float leftInsetPixels = -1.0f,
+        float maxScale = 1.0f, float horizontalInsetPixels = -1.0f)
+    {
+        const Rect screen = configuredScreen.IsValid() ? Intersect(configuredScreen, output) : output;
+        return PlaceTopLeft(requestedPicture, screen, panelWidth, panelHeight,
+            insetPixels, leftInsetPixels, maxScale, horizontalInsetPixels);
+    }
+
 }

@@ -126,7 +126,7 @@ bool StatsOverlayWindow::RenderBgra(
 bool StatsOverlayWindow::RenderProfileChangesBgra(
 	const std::vector<ProfileChangeOverlay::Item>& items,
 	uint8_t opacity, std::vector<uint8_t>& pixels,
-	int& width, int& height, int& stride)
+	int& width, int& height, int& stride, unsigned long long animationTick)
 {
 	if (items.empty() || opacity == 0)
 		return false;
@@ -242,6 +242,25 @@ bool StatsOverlayWindow::RenderProfileChangesBgra(
 		if (items[index].indicator !=
 			ProfileChangeOverlay::Item::Indicator::None)
 		{
+            if (items[index].indicator == ProfileChangeOverlay::Item::Indicator::Preparing) {
+                // Small twelve-segment ring, one quiet revolution every 1.6 seconds.
+                const int phase = static_cast<int>((animationTick % 1600) * 12 / 1600);
+                for (int segment = 0; segment < 12; ++segment) {
+                    const int age = (segment - phase + 12) % 12;
+                    const double intensity = 0.25 + 0.75 * (11 - age) / 11.0;
+                    HPEN pen = CreatePen(PS_SOLID, 1, overlayColor(
+                        static_cast<BYTE>(174 * intensity), static_cast<BYTE>(187 * intensity),
+                        static_cast<BYTE>(197 * intensity)));
+                    HGDIOBJ previous = SelectObject(memory, pen);
+                    const double angle = segment * 6.283185307179586 / 12;
+                    const double cx = valueX + 5, cy = 40;
+                    MoveToEx(memory, static_cast<int>(cx + 3 * std::cos(angle)),
+                        static_cast<int>(cy + 3 * std::sin(angle)), nullptr);
+                    LineTo(memory, static_cast<int>(cx + 5 * std::cos(angle)),
+                        static_cast<int>(cy + 5 * std::sin(angle)));
+                    SelectObject(memory, previous); DeleteObject(pen);
+                }
+            } else {
 			const bool enabled = items[index].indicator ==
 				ProfileChangeOverlay::Item::Indicator::On;
 			const COLORREF color = enabled ? overlayColor(52, 211, 153) :
@@ -257,6 +276,7 @@ bool StatsOverlayWindow::RenderProfileChangesBgra(
 			SelectObject(memory, previousPen);
 			if (enabled) DeleteObject(indicatorBrush);
 			DeleteObject(indicatorPen);
+            }
 			valueX += indicatorDiameter + indicatorGap;
 		}
 		TextOut(memory, valueX, 29,
