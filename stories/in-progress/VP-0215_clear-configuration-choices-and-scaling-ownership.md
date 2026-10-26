@@ -4,68 +4,39 @@
 
 In Progress
 
-2026-10-25: Implemented on the user-selected local Config docking integration
-and deployed for the requested trial. Feature branch:
-`codex/vp0215-config-choices-20261025`; clean source commit:
-`a37dab1f7c518de7c585dff3c479e84c70038598`. Base remains local Config
-`eab55b4830877a8ebfb943c40a1d5dacbcf795ae`, on discovered current beta
-`8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. No beta merge or public release.
+2026-10-25 follow-up implementation is committed and pushed on
+`codex/vp0215-config-choices-20261025` at
+`405cdea1987a720666b3d2a87e2c1c4e0c0ff710`, continuing the requested local Config
+trial `a37dab1f7c518de7c585dff3c479e84c70038598`. Local docking integration base is
+`eab55b4830877a8ebfb943c40a1d5dacbcf795ae`; discovered beta remains
+`v1.4.02-beta` at `8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. No beta merge or
+public release is requested.
 
-The trial implements four-choice dithering and legacy Auto/On -> Blue noise,
-concrete profile selections with Reset outside the menu, friendly motion and
-deinterlacing names, Clamped Mitchell, scaler ordering independent of defaults,
-one image-scaler editor on Scaling, and a visible Chroma scaling section.
-Rendering retains debanding/dithering/depth controls. Only provably redundant
-Rendering image scalers are migrated automatically; conflicts remain readable
-and visibly identified, with an explicit Use Scaling settings action. Existing
-Cubic files retain their previous no-mixing behavior and Cubic is no longer a
-selectable mixer: enabling true Cubic failed the opaque-subtitle GPU regression.
-The supplied duplicate controls match the prior local Config integration;
-the current beta research alone did not describe that local integration.
+The user explicitly superseded the prior retained-overrides design: remove the
+entire Processing overrides section, load its values into visible Scaling
+profiles as faithfully as possible, combine image and chroma in one Scaling
+section, use Debanding / Dithering and Blue noise labels, rename the tab/page
+Tone Mapping, and use one Advanced tone mapping / Basic tone mapping toggle.
+Returning to Basic restores prior expanded controls, docking, and scroll.
 
-Validation: completed x64 Release solution build; 141 targeted native tests;
-46 Config regression cases; 100%, 150%, 200% layout checks; beta parameter
-regression; clean source identity and Release/x64 runtime receipt hashes for
-host, Config, discovery DLL, stable renderer and beta renderer. Calibration
-visibility and inherited Fast presentation regressions found during testing
-were repaired. The old all-pages tab-size assertion also fails on unchanged
-local base eab55b48; it is recorded separately, not counted as a pass. An
-optional whole-repository native run was interrupted after the required suite
-passed; no whole-suite pass is claimed. Evidence is linked below.
+Shared parser/editor migration preserves prior processing precedence, keeps
+legacy dithering methods readable, carries rules/shortcuts where possible, and
+preserves comments. It changes memory on load; Save/Apply persists it with a
+migration backup. Independent cross-family profile-selection combinations
+still require user review after ownership moves.
 
-Deployment: `2026-10-25T19:49:25.1718500-04:00` to `C:\Videoprocessor\vp`, with
-matched binaries verified against build hashes. Rollback backup:
-`C:\Videoprocessor\vp\backup-before-vp0215-a37dab1f7c51-20261025-194923`. All 7 captured active configuration/state
-files were backed up and verified byte-for-byte unchanged; configuration edits:
-none. The deployment does not save the editor's in-memory migration. The deployed Config executable also passed a read-only open/screenshot/exit smoke against the active file; all seven settings hashes remained unchanged.
+The first clean build passed 140 targeted native tests and 44/46 Config cases
+plus all three DPI cases. Two saved-state cases exposed named peak-detection
+and contrast-recovery defaults left for a second migration. Commit 405cdea1
+freezes their effective inherited values in the same migration and adds a
+regression test. A fresh complete x64 Release rebuild and final validation are
+running. All failed logs are retained separately; no failed build is deployed.
 
-Remaining acceptance: user trial of the menus, inheritance/Reset and canonical
-Scaling page; physical playback/performance and perceived-quality comparisons;
-exhaustive General/input/dynamic-policy presentation review; conflicting legacy
-ownership and remote/profile-selection edge cases; both-runtime end-to-end
-chroma/deinterlacing qualification. Existing Hermite downscale and Bicubic chroma
-fallbacks remain pending measured default review; no cost multiplier or universal
-quality ranking is claimed. This story is Review, not Done. Preserve VP-0032 and
-VP-0033 review states. Proposed decision: collect trial feedback before merging.
-
-Trial evidence:
-
-- [Choice inventory/default matrix](../assets/VP-0215/trial-choice-inventory.md).
-- [Build, tests and runtime hashes](../assets/VP-0215/trial-validation.json).
-- [Deployment and configuration-preservation receipt](../assets/VP-0215/trial-deployment.json).
-- [Installed editor smoke](../assets/VP-0215/trial-deployed-smoke.json) and [active-file Scaling screenshot](../assets/VP-0215/trial-deployed-scaling.png).
-- [Motion choices](../assets/VP-0215/trial-motion.png).
-- [Visible Chroma scaling](../assets/VP-0215/trial-scaling.png).
-- [Pre-existing all-pages assertion](../assets/VP-0215/baseline-every-page.log).
-- [Optional suite disposition](../assets/VP-0215/optional-whole-suite-disposition.json).
-
-2026-10-25 follow-up: User explicitly requests removing the entire Processing overrides section, moving its existing values into canonical Scaling as faithfully as possible, combining image and chroma into one Scaling section, Debanding / Dithering naming, Blue noise without a recommendation suffix, Tone Mapping tab/page naming, and one Advanced/Basic tone-mapping toggle. Continue the deployed local Config branch at a37dab1f; discovered beta remains v1.4.02-beta at 8c453746. This supersedes the earlier decision to retain Rendering processing controls. Preserve active configuration on binary deployment; legacy loading migrates in memory and Save/Apply persists the comment-preserving plan.
-
-### Follow-up implementation checkpoint
-
-Source commit e5ac36efe2e04df7e72025fb9903c120c63966bb is committed and pushed on codex/vp0215-config-choices-20261025. It removes the complete Processing overrides section, combines image/chroma scaling, uses Debanding / Dithering and Blue noise labels, renames the page/tab Tone Mapping, and replaces Restore panels with one Advanced/Basic toggle that restores the prior basic view. Shared parser/editor migration moves legacy processing values to visible Scaling profiles, retains earlier precedence, keeps rules/shortcuts where possible, and preserves inline comments. Independent selection combinations require review after ownership moves.
-
-Development validation: migration checks and focused GUI save/reopen, comment, import/export, docking and toggle checks passed. The projection regression now combines canonical Tone Mapping and Scaling selections and preserves the same native rendering parameters. A complete clean x64 Release rebuild is running because incremental link attempts produced MSVC PDB/type-record errors; failed logs are retained under E:\codex\diagnostics\vp0215-scaling-followup-20261025. Deployment is pending successful final build/test gates. The old Config window is now closed; active configuration is to remain unchanged during binary replacement.
+Previous trial a37dab1f was deployed at 2026-10-25T19:49:25-04:00 with seven
+configuration/state files unchanged. Its evidence remains under trial-* assets.
+The new follow-up supersedes its Rendering processing controls and separate
+Image scaling / Chroma scaling sections. Active configuration will remain
+unchanged during binary replacement.
 
 ### Readiness and implementation base
 
@@ -251,8 +222,8 @@ Sources: [libplacebo filter definitions](https://github.com/haasn/libplacebo/blo
   with universally better. Modes, monitors and transfer contracts use meaningful
   semantic ordering rather than a fabricated quality hierarchy.
 - Default selection is independent of list position: choose the best practical
-  quality without unusually high video-rendering cost. Mark that actual option
-  Recommended; do not add a duplicate default row. Expensive high-end choices
+  quality without unusually high video-rendering cost. Select that actual option
+  directly; do not add a duplicate default row or recommendation suffix. Expensive high-end choices
   may be first while a lower-cost option is initially selected.
 - Specifically keep **EWA Lanczos 4 sharpest** above **EWA Lanczos sharp** in
   the upscaler list; leave 4 sharpest opt-in. EWA Lanczos sharp is the starting
@@ -269,28 +240,28 @@ Sources: [libplacebo filter definitions](https://github.com/haasn/libplacebo/blo
 
 ### One Scaling page with visible image and chroma controls
 
-- **VP Renderer -> Scaling** is the sole editor for image Upscaler, Downscaler,
-  Sigmoid upscaling, and Chroma upscaler. Remove these editable fields from
-  **Rendering/DTM -> Processing overrides** and any other duplicate editor.
-  Rendering may keep DTM, debanding, dithering and its overall quality preset.
-- Use clear **Image scaling** and **Chroma scaling** sections on Scaling. Keep
-  Chroma upscaling visible in the main page, with its selected algorithm and
-  brief explanation of 4:2:0/4:2:2 reconstruction and RGB applicability. It must
-  be reachable by normal scrolling and keyboard navigation at supported window
-  sizes/DPI, not hidden behind an unrelated profile or legacy page.
-- Reconcile existing Rendering scaler overrides with canonical Scaling profiles.
-  Preserve intended effective values, rules, shortcuts, inherited behavior and
-  profile selection. Where both locations specify different values, account
-  for the old precedence; do not silently discard the higher-precedence value
-  or create duplicate selectable profiles. Reuse/fix existing migration rather
-  than adding a competing ownership layer. Report unresolved mappings clearly.
-  Opening/cancelling must not write; persist deliberate migration on Save/Apply.
-- Confirm parser, editor, migration, active-profile status, live Apply and runtime
-  all resolve the same Scaling owner. Retain legacy file compatibility where
-  needed without continuing an invisible Rendering override over the visible
-  Scaling choice. Keep DirectShow chroma downsampling clearly distinguished
-  from VP Renderer chroma reconstruction; do not invent an unsupported chroma
-  downscaler.
+- **Scaling / Quality** is the sole editor for image Upscaler, Downscaler,
+  Sigmoid upscaling, Chroma upscaler, Debanding, Dithering and dither depth.
+  **Tone Mapping** has no Processing overrides section or legacy adoption button.
+- Use one **Scaling** section containing image and chroma controls. Keep Chroma
+  upscaler beside image scaling with a brief explanation of 4:2:0/4:2:2
+  reconstruction and RGB applicability. Use **Debanding / Dithering** for the
+  remaining section. All controls must remain reachable by scrolling/keyboard.
+- Load existing Rendering processing values into visible Scaling profiles,
+  honoring the prior higher precedence. Reuse a matching destination or create
+  a named Scaling profile for a distinct legacy choice; avoid redundant copies.
+  Preserve values, comments and unknown keys, and carry relevant rules/shortcuts
+  when the destination lacks them. Review independently selected profile
+  combinations rather than claiming a lossless mapping for every cross-product.
+  Open/Cancel must not write; Save/Apply deliberately persists migration with
+  an original-file backup.
+- Parser, editor, migration, profile status and rendering use the same canonical
+  Scaling owner. Preserve legacy file compatibility without invisible Rendering
+  overrides. DirectShow chroma downsampling remains distinct from VP Renderer
+  reconstruction; do not invent a chroma downscaler.
+- Rename Rendering / DTM to **Tone Mapping**. Provide one **Advanced tone
+  mapping** toggle that reads **Basic tone mapping** while enabled. It must
+  restore the prior basic layout without a separate Restore panels button.
 
 ### Dithering and motion specifics already agreed
 
@@ -298,7 +269,7 @@ One Dithering selector; no enable checkbox or Advanced methods list:
 
 | Stored token | Display label, in order |
 | --- | --- |
-| `blue_noise` | Blue noise (recommended) |
+| `blue_noise` | Blue noise |
 | `ordered_fixed` | Ordered (fixed) |
 | `white_noise` | White noise |
 | `off` | Off |
@@ -342,9 +313,9 @@ Do not change their applicability or introduce motion-compensated interpolation.
    file writes or blanket freezing of dynamic policies. Existing explicit
    values, comments and unknown keys survive unrelated edits.
 3. A verified editor build has one Scaling navigation destination and one
-   editable owner per scaler key. Rendering/DTM Processing overrides contains
-   no Upscaler/Downscaler/Sigmoid/Chroma controls. Chroma is visible under
-   Scaling, with readable screenshots at supported sizes/DPI. Record the
+   editable owner per scaler key. Tone Mapping has no
+   Processing overrides section. Image and chroma share one Scaling section,
+   with Debanding / Dithering below it, with readable screenshots at supported sizes/DPI. Record the
    deployed/source identity difference and whether code, packaging, migration,
    or delivery caused the supplied duplicate-controls observation.
 4. Test legacy Rendering scalers plus existing Scaling profiles, conflicting
@@ -374,6 +345,8 @@ Do not change their applicability or introduce motion-compensated interpolation.
    ConfigEditorWindow, ConfigEditorCore/config-validation, renderer-profile,
    LibplaceboRenderParameters and MotionRenderer regression coverage and a
    successful x64 Release build. Record untested interactive/GPU coverage.
+10. Tone Mapping uses one Advanced/Basic toggle; returning to Basic restores
+    expanded controls and prior workspace layout. Blue noise has no suffix.
 
 ## Boundaries and source touchpoints
 
