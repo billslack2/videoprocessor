@@ -1,0 +1,31 @@
+Held-envelope logic investigation, 2026-10-25
+Source: billslack2/videoprocessor v1.4.02-beta, 81ac960fbd62619374fba1c16630b8feac364d59.
+No production source edits or deployment. Investigation follows first finding in five-luna-review-20261025.
+
+1. Confirmed conditional state-machine defect: qualified frame projection suppresses persistent presentation evidence only in a local view.
+SubtitleAspectRetention.h:550-565 copies raw history, then empties only result.envelope for qualified current source. LibplaceboVideoRenderer.cpp:15190 makes suppression depend on qualified proof or the unknown hold. On a complete negative scan, EvaluateQualifiedSubtitleUnknownHold (SubtitleAspectRetention.h:640) rejects the unknown lease. The next unqualified frame therefore exposes old history again. UpdatePresentationEnvelopeExtents (AlphaSourceCropPolicy.cpp:1991) retains old per-edge extents within their hold, even when the current bounds are the native base. SelectPresentationEnvelopeBounds (:2059) chooses that history before current bounds.
+This is conditional on compatible, unexpired state and an active FIT route. It is not evidence that every cue gap must flash.
+
+2. There are TWO retained inputs: generic envelope and dense vertical FIT.
+Renderer :15249 enables stored vertical action on matching generation/base and no current suppression, without requiring a fresh dense scan. :15380 accepts stored FIT; :15528 routes the held detector top/bottom; :15538 also accepts retained dense extents; :15595 composes them with padding. Incident frame2871 explicitly has dense_scan=skipped, dense_evaluated=0, vertical_action=fit, envelope_state=held, generic_fit_held=0. Detector 270..1948 and dense bottom1916 plus44 compose exactly 270..1960. Thus clearing only raw scopePresentationHistory would not remove the independent dense contribution.
+
+3. Confirmation precedence violates the stated native-base-retention contract / produces misleading ownership.
+AlphaSourceCropPolicy.h Input comments promise retaining the trusted base during translation confirmation. AlphaSourceCropPolicy.cpp:6458 admits same-generation/base pending confirmation. :6522 onward applies outward geometry first; :6645 onward assigns TRANSLATION_CONFIRMATION and says trusted crop retained even with outwardExpanded=true. The final advanced-mode SubtitlePresentationBounds helper only undoes translation, not expansion; its noCaptionConfirmed argument is ignored. A pending translation does not protect scale here.
+
+4. Related timing loophole, separately reproduced, not established as the incident's trigger.
+AlphaSourceCropPolicy.cpp:876 IsVerticalBarPresentationActiveForFrame returns true after ordinary hold expiry when current dense analysis was skipped, current bar authority exists and generation matches. A FIT last seen at1000ms remains active at10000ms with hold2000ms in that branch. Current-analysis and generation-change controls return false. Consequently the nominal hold is not a hard upper bound on stored dense presentation while scans are skipped. Incident onset had skipped scans, but logs cited here do not establish a nine-second-old state; do not claim that duration occurred live.
+
+Verification
+Built and ran standalone native probe with production functions from current beta: projection, envelope update/select/evaluate, crop Evaluate, final mode placement, composition, and FIT lifetime. No function stubs or stale binaries. Three dependency .cpp files copied byte-identically beside minimal pch shim solely to avoid DirectShow/MFC precompiled-header dependencies. Others compiled directly from clean source. Build uses MSVC2019 x64 /O2 /MD; this is a diagnostic executable, not a full product build.
+Assertions pass:
+- Qualified/unqualified/qualified -> final vertical bounds278..1882 /270..1960 /278..1882 with native base fixed and raw hold surviving.
+- Expanded middle frame labelled translation confirmation.
+- Exact incident detector+dense padding composition.
+- Skipped-scan FIT lifetime bypass; current-scan and changed-generation controls expire.
+- Raw per-edge history expires after its configured hold.
+Synthetic qualified-proof and FIT-routing fixtures deliberately isolate the policy interaction. The harness does not execute the complete renderer, image detector, shader preparation, admission/recovery or final aspect-fill chain. It is a production-function state reproduction, not an end-to-end video replay. The immutable incident log independently confirms actual submitted expanded bounds on the matching path.
+
+Repair direction (not implemented)
+Separate caption-owned presentation extents from independently observed picture/UI extents, across BOTH raw envelope and dense FIT state. Qualified relocated output must not merely hide a competing owner for one frame and revive it on a negative scan. Define complete-negative, unknown, current-positive and conflict transitions explicitly; maintain current pixel/cleanup proof and genuine UI safety. Enforce a consistent final owner/geometry contract for confirmation. Bound skipped-analysis retention or require explicit continuation evidence. Add cue->negative->cue output-geometry regression with both historical contributors and dim/UI conflict controls. Do not blanket-clear all history or equate no-bright-ink with safe empty bars.
+
+Still unresolved: why the source glyph proof disappeared on bright fixed-ratio playback. No matching native pixel capture proves detector error versus a real cue gap. The demonstrated framing oscillation needs no C++ thread race, source reset, scene change or near-black event.
