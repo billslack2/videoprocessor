@@ -7,6 +7,7 @@
 #include <dxgi1_2.h>
 
 #include "ConfigEditorWindow.h"
+#include "SettingsNavigationIcons.h"
 #include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
@@ -4623,57 +4624,7 @@ QWidget* ConfigEditorWindow::createShell()
 QPushButton* ConfigEditorWindow::addNavigationButton(const QString& text, int pageIndex)
 {
     auto* button = new QPushButton;
-    // Monochrome navigation marks remain legible in the 48px settings rail.
-    QPixmap glyph(40, 40);
-    glyph.setDevicePixelRatio(2);
-    glyph.fill(Qt::transparent);
-    QPainter painter(&glyph);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(QColor("#afc0d0"), 1.3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    switch (pageIndex)
-    {
-    case 0: case 2:
-        for (int y : { 5, 10, 15 }) painter.drawLine(3, y, 17, y);
-        painter.setBrush(QColor("#0d1621"));
-        painter.drawEllipse(QPointF(7, 5), 2, 2);
-        painter.drawEllipse(QPointF(13, 10), 2, 2);
-        painter.drawEllipse(QPointF(8, 15), 2, 2);
-        break;
-    case 22: case 3:
-        painter.drawRoundedRect(QRectF(2.5, 3, 15, 11), 1, 1);
-        painter.drawLine(10, 14, 10, 17); painter.drawLine(6, 17, 14, 17);
-        if (pageIndex == 3) { painter.drawLine(6, 1, 10, 3); painter.drawLine(14, 1, 10, 3); }
-        break;
-    case 1:
-        for (int y : { 5, 10, 15 }) { painter.drawPoint(3, y); painter.drawLine(7, y, 17, y); }
-        break;
-    case 5:
-        painter.drawRoundedRect(QRectF(3, 5, 14, 11), 1, 1);
-        painter.drawLine(3, 8, 17, 8); painter.drawLine(5, 3, 7, 6); painter.drawLine(11, 3, 13, 6);
-        break;
-    case 14:
-        painter.drawPolygon(QPolygonF{QPointF(10,2),QPointF(18,7),QPointF(10,12),QPointF(2,7)});
-        painter.drawPolyline(QPolygonF{QPointF(2,11),QPointF(10,16),QPointF(18,11)});
-        break;
-    case 7:
-        painter.drawPolygon(QPolygonF{QPointF(11,2),QPointF(4,11),QPointF(9,11),QPointF(8,18),QPointF(16,8),QPointF(11,8)});
-        break;
-    case 15:
-        painter.drawRoundedRect(QRectF(2, 5, 16, 10), 1, 1);
-        for (int x : {5,8,11,14}) { painter.drawPoint(x,8); painter.drawPoint(x,10); }
-        painter.drawLine(6,13,14,13);
-        break;
-    case 10:
-        painter.drawRoundedRect(QRectF(4, 2, 12, 16), 1, 1);
-        for (int y : {7,10,13}) painter.drawLine(7,y,13,y);
-        break;
-    default:
-        painter.drawLine(10,2,10,12); painter.drawPolyline(QPolygonF{QPointF(6,8),QPointF(10,12),QPointF(14,8)});
-        painter.drawPolyline(QPolygonF{QPointF(3,13),QPointF(3,17),QPointF(17,17),QPointF(17,13)});
-        break;
-    }
-    painter.end();
-    button->setIcon(QIcon(glyph));
+    button->setIcon(SettingsNavigationIcons::create(pageIndex));
     button->setIconSize(QSize(18, 18));
     button->setToolTip(text);
     button->setText(text);
