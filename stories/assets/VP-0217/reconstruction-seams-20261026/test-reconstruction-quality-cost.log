@@ -1,0 +1,16 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+contour top=0 mirror_mae=0.050365 surround_mae=0.015620 seam_mae=0.002780
+contour top=1 mirror_mae=0.048600 surround_mae=0.015620 seam_mae=0.002780
+  Passed SurroundFillContinuesColorContoursWithoutBlurAtBothBars [8 s]
+4K warmed full preparation fill=0 mean_wall_ms=0.940810
+4K warmed full preparation fill=2 mean_wall_ms=0.552810
+  Passed SurroundFill4KPreparationCost [9 s]
+Results File: E:\codex\videoprocessor\reconstruction-seams-20261026\TestResults\reconstruction-quality-cost.trx
+
+Test Run Successful.
+Total tests: 2
+     Passed: 2
+ Total time: 18.7559 Seconds
