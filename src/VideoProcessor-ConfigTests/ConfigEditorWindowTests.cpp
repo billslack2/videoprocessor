@@ -40,6 +40,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -557,6 +558,57 @@ void testToneSliderDragPerformance()
     require(low->text().toDouble()<.001,"Fine typed high threshold produced an invalid low slider range");
 }
 
+void testToneSliderWheelScrollsPanelWithoutEditing()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create wheel fixture");
+    file.write("[general]\nrenderer: VP Renderer\n[vprenderer.Test]\nquality: high\ntone_mapping: spline\nknee_adaptation: 0.6\n");
+    file.close();
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show(); window.selectPage(2);
+    for (const char* section : { "toneMapping", "toneCurves", "tonePeak" })
+        requireControl<QToolButton>(window, QString("rendererSection.") + section)->setChecked(true);
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto* workspace = requireControl<QWidget>(window, "workspace.config.vprenderer.profiles");
+    auto* scroll = requireControl<QScrollArea>(*workspace, "workspaceSettingsViewport");
+    require(window.width() == 1120, "Unexpected default editor width");
+    require(scroll->horizontalScrollBar()->maximum() == 0,
+        "Tone controls need horizontal scrolling at the default width");
+    auto* slider = requireControl<QSlider>(window, "config.vprenderer.knee_adaptation.slider");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.knee_adaptation");
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    require(slider->isEnabled(), "Wheel fixture slider is disabled");
+    auto* bar = scroll->verticalScrollBar();
+    require(bar->maximum() > 0, "Wheel fixture has no vertical scroll range");
+    for (bool focused : { false, true })
+    {
+        if (focused) slider->setFocus(); else slider->clearFocus();
+        scroll->ensureWidgetVisible(slider); events();
+        const int beforeScroll = bar->value();
+        const int beforeValue = slider->value();
+        const QString beforeText = edit->text();
+        const bool beforeApply = apply->isEnabled();
+        const QPointF local = slider->rect().center();
+        QWheelEvent wheel(local, slider->mapToGlobal(local.toPoint()), QPoint(),
+            QPoint(0, beforeScroll < bar->maximum() ? -120 : 120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(slider, &wheel); events();
+        require(slider->value() == beforeValue && edit->text() == beforeText,
+            "Mouse wheel changed a tone-mapping value");
+        require(apply->isEnabled() == beforeApply, "Wheel changed pending-edit state");
+        require(bar->value() != beforeScroll, "Wheel over slider did not scroll the panel");
+    }
+    slider->setFocus();
+    const int beforeKey = slider->value();
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+    QApplication::sendEvent(slider, &key);
+    require(slider->value() > beforeKey, "Wheel suppression disabled keyboard adjustment");
+    require(readBytes(path) == original, "Scrolling or keyboard adjustment wrote the configuration");
+}
 void testToneMappingControls()
 {
     QTemporaryDir directory;
@@ -8269,6 +8321,7 @@ int main(int argc, char** argv)
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
+    failures += run("Tone slider wheel scrolls panel without editing", testToneSliderWheelScrollsPanelWithoutEditing);
     failures += run("renderer promotion migration and cache selection", testRendererPromotionMigrationAndCacheSelection);
     failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);

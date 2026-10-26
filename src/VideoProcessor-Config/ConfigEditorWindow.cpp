@@ -1062,7 +1062,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     setWindowFlag(Qt::WindowStaysOnTopHint, true);
     // Navigation and profile workspaces compact before the editor is squeezed.
     // Use logical pixels so the same layout works on scaled Windows displays.
-    resize(1040, 700);
+    resize(1120, 700);
     setMinimumSize(760, 540);
     loadConfiguration();
     migrateLldvInputPolicy();
