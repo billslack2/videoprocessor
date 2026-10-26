@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-26). Current integration 37946697 is built, tested and deployed to the existing reconstruction trial. See the latest evidence below. Historical implementation: NLS and subtitle activation fixes are implemented and built in
+Review (2026-10-26). Current integration aef76053 is built, tested and deployed to the existing reconstruction trial. See the latest evidence below. Historical implementation: NLS and subtitle activation fixes are implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
@@ -724,3 +724,36 @@ frames, output about 59.951 Hz, source about 23.976 Hz, worker_failed=0. This ch
 running playback only. Windows computer-use helper initialization repeatedly failed
 (sandbox setup/trusted Node exit), so actual keyboard cycling and visible seam
 acceptance remain for the user. Evidence: assets/VP-0140/cycle-bar-fix-37946697-20261026/.
+
+
+## Shared OSD stays within visible CIH screen - 2026-10-26
+
+User clarified that movement into the top black bar is the defect: the shared
+profile/shader OSD must remain inside the visible configured screen, especially
+with CIH. Raster space outside that screen is not eligible for OSD placement.
+
+Fresh beta 87f61f77 worktree with the deployed changes carried forward:
+E:\codex\videoprocessor\profile-osd-top-bar-20261026. Final committed/pushed source
+is aef7605397319ba40614f9b4d243beb213c8003b on codex/profile-osd-top-bar-20261026.
+The final implementation has no top-bar preference. It intersects the final movie
+rectangle, configured physical screen and output. During full-raster preparation
+or zoom the screen remains the containment boundary; missing movie geometry falls
+back to that screen. Output-frame coordinates avoid crop-relative translation.
+Shared typography, spinner, profile aggregation and earlier subtitle fixes remain.
+
+47 focused native/GPU tests passed. A geometry regression reproduces the old
+full-raster CIH escape (panel top 75 versus screen top 283) and verifies the fixed
+position (top 358). Resolution/lens and multi-column cases are covered. GPU
+readback verifies the banner inside a synthetic CIH screen and unchanged masked
+pixels during direct, temporal and composed output with normal/fallback/zoom
+crops; live updates and removal also pass. Final x64 Release solution build passed.
+
+Existing reconstruction-fill-options trial updated and restarted. Host/stable/beta
+renderer hashes verified, original runtime backed up under
+backups\before-profile-osd-visible-screen-20261026-130133. Running Config editor
+preserved. All six CFG/STATE hashes unchanged, verified again after launch; no
+configuration edits. Main installation unchanged; no merge or public release.
+
+Player is responsive and presentation telemetry continues. Windows computer-use
+helper still fails at sandbox setup, so no physical-screen screenshot/keyboard
+verification is claimed. Evidence: assets/VP-0140/cih-osd-aef76053-20261026/.

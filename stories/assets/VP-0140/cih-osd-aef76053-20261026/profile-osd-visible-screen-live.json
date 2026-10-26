@@ -1,0 +1,40 @@
+{
+  "sourceCommit": "aef7605397319ba40614f9b4d243beb213c8003b",
+  "processId": 92984,
+  "started": "2026-10-26T13:01:33.7480954-04:00",
+  "configuration": "E:\\codex\\reconstruction-fill-options-trial-20261026\\VideoProcessor.cfg",
+  "desktopVisualCheck": "Unavailable: Windows computer-use helper sandbox setup failed",
+  "recentPresentationWindows": [
+    {
+      "time": "2026-10-26 13:03:27",
+      "window_ms": 2000.0,
+      "source_hz": 23.97642,
+      "display_hz": 59.95051,
+      "submissions": 119.0,
+      "render_avg_ms": 5.689,
+      "render_peak_ms": 37.36,
+      "worker_failed": 0.0
+    },
+    {
+      "time": "2026-10-26 13:03:29",
+      "window_ms": 2000.0,
+      "source_hz": 23.97642,
+      "display_hz": 59.95056,
+      "submissions": 120.0,
+      "render_avg_ms": 6.634,
+      "render_peak_ms": 21.108,
+      "worker_failed": 0.0
+    },
+    {
+      "time": "2026-10-26 13:03:31",
+      "window_ms": 2000.0,
+      "source_hz": 23.97642,
+      "display_hz": 59.94983,
+      "submissions": 119.0,
+      "render_avg_ms": 6.279,
+      "render_peak_ms": 20.687,
+      "worker_failed": 0.0
+    }
+  ],
+  "settingsRecheckedAfterLaunch": true
+}

@@ -1,0 +1,57 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed AlphaRestorationHonorsPaddingAndRejectsInvalidBuffers [< 1 ms]
+  Passed HalftoneTargetReceivesSourceAlphaAfterScaling [< 1 ms]
+  Passed OversizedPersonalCalibrationHonorsContainmentAndReportsShrink [< 1 ms]
+  Passed PersonalSizePreferenceIsIgnoredWhenScalingIsDisabled [< 1 ms]
+  Passed PersonalSizePercentValidatesFiniteBoundsAndKeepsDefault [< 1 ms]
+  Passed PersonalCalibrationRemainsStableAcrossMovieCropAndSoftwareZoom [< 1 ms]
+  Passed PersonalCalibrationResolutionAndLensMatrixUsesActualPlacedDimensions [< 1 ms]
+  Passed PersonalCalibrationUsesActualStatsBitmapAndOldScopePhysicalBaseline [< 1 ms]
+  Passed ExplicitLegacy100CalibrationRetainsItsPreviousPhysicalDimensions [< 1 ms]
+  Passed WholeUi100MapsToOld150CalibrationWithoutRetuningExplicitSavedValues [< 1 ms]
+  Passed RebasedDefaultMatchesExplicitOld150ForActualPlacedStatsPanel [< 1 ms]
+  Passed TinyVisiblePictureMayUniformlyShrinkPhysicalSizingForContainment [< 1 ms]
+  Passed NonfiniteScaleAndInsetsAlwaysProduceFiniteContainedPanels [< 1 ms]
+  Passed PlacementRejectsNonfiniteRectsAndDimensions [< 1 ms]
+  Passed SizingRejectsInvalidGeometryAndUsesDocumentedFallback [< 1 ms]
+  Passed DisabledScalingPreservesLegacyStatsAndBannerSizing [< 1 ms]
+  Passed ScaledSweepAndProfilePlacementRetainPhysicalMarginsAndTypography [< 1 ms]
+  Passed SweepAndProfileUseSameStableScreenGeometryFactor [< 1 ms]
+  Passed AnamorphicLensCorrectsWidthAndHorizontalMarginExactlyOnce [< 1 ms]
+  Passed MovieFitCropAndSoftwareZoomDoNotChangeNominalSize [< 1 ms]
+  Passed HeightLimitedScreenFitDoesNotInventAnExtraAspectCorrection [< 1 ms]
+  Passed ScreenResolutionAndRawAspectMatrixKeepsProjectedSize [< 1 ms]
+  Passed StatsFlatAndScopeCompensateExternalOpticalZoom [< 1 ms]
+  Passed SmallPictureScalesUniformlyAndRemainsContained [< 1 ms]
+  Passed FixedCropUsesTheFinalVisiblePictureInsteadOfThePhysicalScreen [< 1 ms]
+  Passed LetterboxAndPillarboxUseTheirActualPictureBounds [< 1 ms]
+  Passed ProfileBannerScalesFromVisibleZoomPicture [< 1 ms]
+  Passed ProfileBannerScalesWithVisiblePictureResolution [< 1 ms]
+  Passed ProfileCihContainmentRespectsResolutionScalingAndAnamorphicWidth [< 1 ms]
+  Passed ProfileAndShaderColumnsKeepTheSameVisibleScreenAnchor [< 1 ms]
+  Passed ProfileBannerStaysInsideBothMovieAndConfiguredScreen [< 1 ms]
+  Passed ProfileBannerCannotEscapeCihScreenDuringFullRasterPreparation [< 1 ms]
+  Passed ProfileBannerAnchorsAtTopLeftInsideScopePicture [< 1 ms]
+  Passed SweepBannerFollowsTheScopeFittedPicture [< 1 ms]
+  Passed SweepBannerAnchorsAtTheTopRightOfTheActivePicture [< 1 ms]
+  Passed ScopeViewportAnchorsInsideTheFittedPicture [< 1 ms]
+  Passed FullFrameUsesBottomRightInset [< 1 ms]
+  Passed OutputOverlayStaysLiveWhileSourceProcessingIsCached [334 ms]
+  Passed ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition [2 s]
+  Passed ShaderPreparationSharesProfileBannerAcrossSelectionChanges [< 1 ms]
+  Passed BothBackendsDeriveNativeHeightFromExactRowsAndConditionalSections [96 ms]
+  Passed LongProfileShaderLutAndStatusNamesAreMeasuredAndEllipsized [18 ms]
+  Passed WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers [18 ms]
+  Passed RasterAndShaderContinuationRowsUseExplicitSharedValueColumn [< 1 ms]
+  Passed ProductionHdrAndGpuValuesFitOrWrapWithoutLosingDiagnosticNumbers [146 ms]
+  Passed MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows [61 ms]
+  Passed SectionGapsFollowExistingSectionsWithoutDoubleAlphaGap [< 1 ms]
+Results File: E:\codex\videoprocessor\profile-osd-top-bar-20261026\TestResults\profile-osd-visible-screen.trx
+
+Test Run Successful.
+Total tests: 47
+     Passed: 47
+ Total time: 3.8809 Seconds

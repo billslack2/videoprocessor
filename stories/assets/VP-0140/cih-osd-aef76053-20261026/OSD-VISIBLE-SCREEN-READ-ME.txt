@@ -1,0 +1,26 @@
+CIH-visible profile/shader OSD correction - 2026-10-26
+Source: aef7605397319ba40614f9b4d243beb213c8003b
+
+Requirement: the shared Profiles / Shaders banner must stay inside the visible
+configured screen. A black raster bar outside a CIH screen is not visible space.
+
+Placement now intersects the final picture with the configured screen and output.
+Full-raster shader-preparation fallback and software zoom cannot move the banner
+into the masked top region. If movie geometry is missing, placement uses the
+configured screen. Absolute output coordinates prevent crop-origin translation.
+There is NO preference to put the banner in a top bar. Existing style, spinner,
+profile coalescing, subtitle fixes and separate stable surround choice remain.
+
+47 focused native/GPU tests passed. Tests reproduce the old full-raster CIH escape
+and verify containment for fallback, normal crop, zoom, resolution and anamorphic
+scaling. GPU readback verifies banner pixels inside the screen, no overlay in the
+masked area, live color updates and clean removal across direct/temporal/composed
+rendering. Final x64 Release build passed. Runtime hashes verified after copying.
+
+Updated the existing trial; player restarted and live presentation telemetry
+checked. Config editor and all six CFG/STATE files preserved; no config edits.
+Backup: backups\before-profile-osd-visible-screen-20261026-130133
+Main installation unchanged. Branch pushed; no merge or public release.
+Desktop capture/input helper still fails to initialize, so the physical projector
+view was not directly inspected. See profile-osd-visible-screen-evidence.json and
+profile-osd-visible-screen-live.json for deployment and running-player evidence.
