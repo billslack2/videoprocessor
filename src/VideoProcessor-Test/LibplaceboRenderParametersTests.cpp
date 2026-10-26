@@ -3,6 +3,7 @@
 
 #include "ConfigFile.h"
 #include "RendererProfileConfig.h"
+#include "QualityProfileMigration.h"
 #include <vprenderer/LibplaceboRenderParameters.h>
 
 #include <Windows.h>
@@ -423,7 +424,7 @@ namespace VideoProcessorTest
                 const bool fast = settings.quality == "fast";
                 Assert::AreEqual(fast ? "off" : settings.quality == "high" ? "high_quality" : "standard",
                     ResolvedPeakDetection(projection.renderParams));
-                Assert::AreEqual(fast ? "off" : "blue_noise", ResolvedDithering(projection.renderParams).c_str());
+                Assert::AreEqual("blue_noise", ResolvedDithering(projection.renderParams).c_str());
                 settings.dithering = "error_diffusion_sierra3";
                 BuildOrFail(settings, false, projection);
                 Assert::IsTrue(ResolvedDithering(projection.renderParams).find("sierra-3") != std::string::npos);
@@ -713,6 +714,53 @@ namespace VideoProcessorTest
 				L"Disabled dithering must also disable the preferred error-diffusion path.");
 		}
 
+        TEST_METHOD(ExplicitMigrationDefaultsMatchTheRetiredNativePresets)
+        {
+            for (const char* quality : { "fast", "balanced", "high" })
+            {
+                const auto value = [&](const char* key) { return std::string(QualityProfileMigration::PresetValue(quality, key)); };
+                Settings settings;
+                settings.upscaler = value("upscaler");
+                settings.downscaler = value("downscaler");
+                settings.sigmoid = value("sigmoid") == "on" ? Toggle::On : Toggle::Off;
+                settings.debandStrength = value("deband_strength");
+                settings.dithering = value("dithering");
+                settings.peakDetection = value("peak_detection") == "off" ? PeakDetection::Off :
+                    value("peak_detection") == "on" ? PeakDetection::Standard : PeakDetection::HighQuality;
+                settings.hasContrastRecovery = true;
+                settings.contrastRecovery = std::stof(value("contrast_recovery"));
+                Projection projection;
+                BuildOrFail(settings, false, projection);
+                const auto* native = NativeData<pl_render_params>(std::string(quality) == "fast" ? "pl_render_fast_params" :
+                    std::string(quality) == "balanced" ? "pl_render_default_params" : "pl_render_high_quality_params");
+                AssertPointer(native->upscaler, projection.renderParams.upscaler, L"Migrated upscaler differs from old Auto.");
+                AssertPointer(native->downscaler, projection.renderParams.downscaler, L"Migrated downscaler differs from old Auto.");
+                Assert::AreEqual(native->sigmoid_params != nullptr, projection.renderParams.sigmoid_params != nullptr);
+                Assert::AreEqual(native->deband_params != nullptr, projection.renderParams.deband_params != nullptr);
+                if (native->deband_params)
+                {
+                    Assert::AreEqual(native->deband_params->threshold, projection.renderParams.deband_params->threshold);
+                    Assert::AreEqual(native->deband_params->grain, projection.renderParams.deband_params->grain);
+                }
+                Assert::AreEqual(ResolvedDithering(*native).c_str(), ResolvedDithering(projection.renderParams).c_str());
+                Assert::AreEqual(ResolvedPeakDetection(*native), ResolvedPeakDetection(projection.renderParams));
+                const float oldContrast = native->color_map_params ? native->color_map_params->contrast_recovery : 0.0f;
+                Assert::AreEqual(oldContrast, projection.colorMapParams.contrast_recovery);
+            }
+        }
+        TEST_METHOD(MatchOutputFormatPreservesActiveRepresentation)
+        {
+            for (int depth : { 8, 10, 16 })
+            {
+                pl_color_repr target{};
+                target.bits.sample_depth = depth;
+                target.bits.color_depth = depth;
+                ApplyDisplayBitDepth("output", target);
+                Assert::AreEqual(depth, target.bits.sample_depth);
+                Assert::AreEqual(depth, target.bits.color_depth);
+                Assert::AreEqual(0, target.bits.bit_shift);
+            }
+        }
 		TEST_METHOD(DisplayBitDepthTargetsDitheringWithoutChangingSwapchainStorage)
 		{
 			pl_color_repr target{};
@@ -864,9 +912,11 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
 				[](const std::string&, std::string&) { return false; },
 				selections, error), Wide(error).c_str());
-			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("display", selections.front().group.c_str());
-			Assert::AreEqual("cinema", selections.front().profiles.front().c_str());
+			Assert::AreEqual(static_cast<size_t>(2), selections.size());
+            for (const auto& selection : selections) {
+                Assert::IsTrue(selection.group == "display" || selection.group == "scaling");
+                Assert::AreEqual("cinema", selection.profiles.front().c_str());
+            }
 
 			const auto selected = model.profiles.find("display.cinema");
 			Assert::IsTrue(selected != model.profiles.end());
@@ -874,11 +924,15 @@ namespace VideoProcessorTest
 			// profile, proving that this exercises the resolver's inheritance path.
 			Assert::AreEqual("balanced",
 				RequiredProfileSetting(selected->second, "quality").c_str());
-			Assert::AreEqual("gpu",
-				RequiredProfileSetting(selected->second, "downscaler").c_str());
+            const auto scaling = model.profiles.find("scaling.cinema");
+            Assert::IsTrue(scaling != model.profiles.end());
+            Assert::AreEqual("gpu", RequiredProfileSetting(scaling->second, "downscaler").c_str());
+            Assert::IsTrue(selected->second.settings.count("upscaler") == 0);
+            auto effective = selected->second;
+            for (const auto& setting : scaling->second.settings) effective.settings[setting.first] = setting.second;
 
-			Projection projection;
-			BuildOrFail(SettingsFromResolvedDisplayProfile(selected->second),
+            Projection projection;
+            BuildOrFail(SettingsFromResolvedDisplayProfile(effective),
 				false, projection);
 
 			Assert::IsTrue(projection.qualityPresetExport ==

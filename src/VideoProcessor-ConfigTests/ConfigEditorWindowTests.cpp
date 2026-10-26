@@ -5,6 +5,7 @@
 
 #include "ConfigEditorWindow.h"
 #include "../VideoProcessor-Config/UpdatePanel.h"
+#include "../VideoProcessor-Config/AdaptiveWorkspace.h"
 #include "ConfigEditorCore.h"
 #include "../VideoProcessor-Config/ProfileListController.h"
 #include "VpTheme.h"
@@ -46,6 +47,9 @@
 #include <QListWidget>
 #include <QListView>
 #include <QMessageBox>
+#include <QMenu>
+#include <QFileDialog>
+#include "../VideoProcessor-Config/ToneProfileFile.h"
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -403,6 +407,7 @@ bool hasPendingConfigurationChanges(ConfigEditorWindow& window)
 
 void save(ConfigEditorWindow& window)
 {
+    QCoreApplication::processEvents();
     QPushButton* button = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
     require(button->isEnabled(), "Apply button was not enabled after an edit");
     if (!hasPendingConfigurationChanges(window)) return;
@@ -569,7 +574,7 @@ void testToneMappingControls()
     editor("knee_adaptation")->setText("0.125");
     require(slider->value() == 125000, "Numeric field did not update slider");
     profiles->setCurrentRow(1);
-    require(editor("knee_adaptation")->text() == "0.125", "Named profile did not inherit tuning");
+    require(editor("knee_adaptation")->text() == "0.6", "Named tone profile did not retain its frozen saved baseline");
     require(editor("percentile")->text() == "100", "Balanced percentile default incorrect");
     reset->click();
     require(editor("knee_adaptation")->text() == "0.4" && reset->toolTip().contains("0.4"), "Reset did not show built-in value");
@@ -590,6 +595,9 @@ void testToneMappingControls()
     require(!apply->isEnabled(), "Explicit fallback below knee minimum accepted");
     requireControl<QToolButton>(window,"config.vprenderer.knee_default.reset")->click();
     require(apply->isEnabled(), "Fallback reset did not clear validation");
+    require(editor("knee_default")->text().toDouble() > editor("knee_minimum")->text().toDouble() &&
+        editor("knee_default")->text().toDouble() < editor("knee_maximum")->text().toDouble(),
+        "Fallback reset selected a forbidden boundary");
     auto* curve = requireControl<QComboBox>(window,"config.vprenderer.tone_mapping");
     curve->setCurrentIndex(curve->findData("bt2390"));
     require(!editor("slope_tuning")->isEnabled() && editor("knee_offset")->isEnabled(), "Curve applicability incorrect");
@@ -601,6 +609,10 @@ void testToneMappingControls()
     requireControl<QListWidget>(reloaded,"config.vprenderer.profiles")->setCurrentRow(1);
     require(requireControl<QLineEdit>(reloaded,"config.vprenderer.knee_adaptation")->text()=="0.4", "Reset did not survive reload");
     require(requireControl<QLineEdit>(reloaded,"config.vprenderer.scene_threshold_high")->text()=="6", "Peak settings did not survive reload");
+    // The new section reset affects visible controls; hidden peak settings stay saved.
+    requireControl<QPushButton>(window,"config.vprenderer.tonePeak.restore_defaults")->click();
+    require(editor("smoothing_period")->text()=="1000", "Hidden peak settings changed on visible-only reset");
+    peak->setCurrentIndex(peak->findData("high_quality"));
     requireControl<QPushButton>(window,"config.vprenderer.tonePeak.restore_defaults")->click();
     require(editor("scene_threshold_low")->text()=="1" && editor("scene_threshold_high")->text()=="3" &&
         editor("smoothing_period")->text()=="20", "Section restore did not restore all defaults");
@@ -610,7 +622,7 @@ void testToneMappingControls()
         window.selectPage(2);
         window.resize(1120, 1120);
         window.show();
-        for (const char* id : { "toneSpline", "toneOther", "tonePeak" }) {
+        for (const char* id : { "toneCurves", "tonePeak" }) {
             auto* toggle = requireControl<QToolButton>(window, QString("rendererSection.")+id);
             toggle->setChecked(true);
             auto* section = requireControl<QWidget>(window, QString("rendererSection.")+id+".content")->parentWidget();
@@ -727,7 +739,9 @@ void testBetaToneMappingControls()
         requireControl<QComboBox>(enabledReload, "config.general.renderer")->findData("VP Renderer"));
     require(requireControl<QComboBox>(enabledReload, "config.vprenderer.gamut_mapping")->isEnabled(), "Reloaded correction must preserve upstream gamut editing");
     renderer->setCurrentIndex(renderer->findData("VP Renderer"));
-    requireControl<QPushButton>(window, "config.vprenderer.toneHighlightBeta.restore_defaults")->click();
+    custom->setChecked(false); dynamic->setChecked(true);
+    requireControl<QToolButton>(window,"config.vprenderer.film_strength.reset")->click();
+    requireControl<QToolButton>(window,"config.vprenderer.mastering_clip.reset")->click();
     require(!custom->isChecked() && dynamic->isChecked() && film->text() == "0.3" && clip->text() == "1", "Beta restore failed");
     require(gamut->isEnabled() && gamut->property("effectiveValue").toString() == "relative", "Correction reset must retain upstream gamut choice");
     film->setText("2.1");
@@ -740,7 +754,7 @@ void testBetaToneMappingControls()
     const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
     if (!captures.isEmpty()) {
         window.selectPage(2); window.resize(1440, 1100); window.show();
-        requireControl<QToolButton>(window, "rendererSection.toneHighlightBeta")->setChecked(true);
+        requireControl<QToolButton>(window, "rendererSection.toneMapping")->setChecked(true);
         QCoreApplication::processEvents();
         require(window.grab().save(QDir(captures).filePath("beta-highlight.png")), "Cannot capture Beta controls");
         renderer->setCurrentIndex(renderer->findData("VP Renderer (Legacy)"));
@@ -815,7 +829,7 @@ void testBlackDefaultAndLegacyAutoInheritance()
             require(black->text().compare(expected, Qt::CaseInsensitive) == 0,
                 "Default/inherited black differs from effective value");
             if (blackLine.contains("AUTO"))
-                require(status->text() == "Auto: 0 nits (0.000001 nit internally)",
+                require(status->text() == "Resolved: 0 nits (0.000001 nit internally)",
                     "Legacy Auto black still depends on inherited white");
         }
         auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
@@ -868,12 +882,8 @@ void testAuditedBooleanAliasesAndInheritedAutoStatus()
         const bool expected = alias == "true" || alias == "yes" || alias == "on" || alias == "1";
         for (const char* key : { "output_diagnostics", "report_bt2020_to_display" })
             require(requireControl<QCheckBox>(window,"config.vprenderer.color."+QString::fromLatin1(key))->isChecked() == expected,"Boolean alias differs from runtime");
-        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Off", "Inherited Fast shown as High");
-        require(requireControl<QLabel>(window,"config.vprenderer.color.output_transport_gamma.auto_status")->text() == "Auto: 2.4", "Inherited Limited shown unused");
-        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(0);
-        selectData(requireControl<QComboBox>(window,"config.vprenderer.quality"),"balanced");
-        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(1);
-        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Standard", "Inherited Balanced shown as High");
+        require(requireControl<QComboBox>(window,"config.vprenderer.peak_detection")->currentData() == "off", "Inherited Fast shown as High");
+        require(requireControl<QLabel>(window,"config.vprenderer.color.output_transport_gamma.auto_status")->text() == "Resolved: 2.4", "Inherited Limited shown unused");
         save(window);
         require(readBytes(path).contains("output_diagnostics: " + alias), "Untouched Boolean alias rewritten");
     }
@@ -2195,7 +2205,7 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     const QByteArray beforeLive = readBytes(path);
     const quint64 identity = ConfigurationIdentity::FromText(beforeLive.toStdString());
     const QString color = display->property("profileSection").toString();
-    const QString rendering = requireControl<QComboBox>(window, "config.vprenderer.quality")->property("profileSection").toString();
+    const QString rendering = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")->property("profileSection").toString();
     for (bool attached : { false, true })
         for (bool hdrSource : { false, true })
         {
@@ -4156,13 +4166,17 @@ void testChoiceLabelsAndVpRendererName()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
+    QFile scaling(path);
+    require(scaling.open(QIODevice::Append), "Cannot add named Scaling fixture");
+    scaling.write("\n[vprenderer.scaling.Default]\nupscaler: ewa_lanczossharp\ndownscaler: hermite\nsigmoid: on\ndithering: blue_noise\ndisplay_bit_depth: output\n");
+    scaling.close();
     ConfigEditorWindow window(path, 0, true);
 
     QComboBox* nominalRange = requireControl<QComboBox>(window,
         QStringLiteral("config.directshow.renderer_nominal_range"));
-    require(nominalRange->itemText(0) == QStringLiteral("Auto") &&
+    require(nominalRange->itemText(0) == QStringLiteral("From input") &&
         nominalRange->itemData(0).toString() == QStringLiteral("AUTO"),
-        "DirectShow Auto is not presented with normal title casing");
+        "DirectShow adaptive range is not described as From input");
     require(nominalRange->findText(QStringLiteral("Default")) < 0,
         "DirectShow selector still contains a fabricated Default entry");
 
@@ -4182,14 +4196,12 @@ void testChoiceLabelsAndVpRendererName()
 
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
-    require(peakDetection->findText(QStringLiteral("Auto")) >= 0 &&
+    require(peakDetection->findText(QStringLiteral("Auto")) < 0 &&
         peakDetection->findText(QStringLiteral("AUTO")) < 0 &&
         peakDetection->findText(QStringLiteral("Standard")) >= 0 &&
         peakDetection->findData(QStringLiteral("default")) < 0,
         "Renderer selector exposes duplicate or inconsistently cased automatic choices");
 
-    QComboBox* quality = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.quality"));
     QComboBox* displayPrimaries = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.color.target_primaries"));
 	require(displayPrimaries->count() == 3 &&
@@ -4200,7 +4212,7 @@ void testChoiceLabelsAndVpRendererName()
         "Target gamut still exposes Default as a separate choice");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Follows accepted transport; see live output"),
+			QStringLiteral("Resolved: Follows accepted transport; see live output"),
 		"Output gamma Auto control does not identify its effective policy");
 	auto* calibrationEnabled = requireControl<QCheckBox>(window,
 		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
@@ -4208,7 +4220,7 @@ void testChoiceLabelsAndVpRendererName()
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Follows accepted transport; see live output"),
+			QStringLiteral("Resolved: Follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
     require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
@@ -4216,10 +4228,9 @@ void testChoiceLabelsAndVpRendererName()
     require(requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer")->currentData() == "2.4",
         "Saved SDR automatic reference was not translated to 2.4");
 
-	require(requireControl<QLabel>(window,
-		QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
-			QStringLiteral("Auto: Output format"),
-		"Display bit-depth Auto control does not identify its effective policy");
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.scaling.display_bit_depth"))->currentData() == "output",
+        "Scaling dither depth does not select the actual output-format policy");
     QLineEdit* targetWhiteLevel = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.sdr_target_nits"));
     QLineEdit* targetBlackLevel = requireControl<QLineEdit>(window,
@@ -4229,7 +4240,7 @@ void testChoiceLabelsAndVpRendererName()
     targetWhiteLevel->setText(QStringLiteral("79"));
     targetBlackLevel->setText(QStringLiteral("Auto"));
     QCoreApplication::processEvents();
-    require(targetBlackStatus->text() == QStringLiteral("Auto: 0 nits (0.000001 nit internally)"),
+    require(targetBlackStatus->text() == QStringLiteral("Resolved: 0 nits (0.000001 nit internally)"),
         "Legacy Auto target black does not show the zero default and internal floor");
     QComboBox* upscaler = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.upscaler"));
@@ -4238,26 +4249,13 @@ void testChoiceLabelsAndVpRendererName()
     for (const QString key : { QStringLiteral("upscaler"), QStringLiteral("downscaler"), QStringLiteral("sigmoid") })
     {
         auto* choice = requireControl<QComboBox>(window, "config.vprenderer.scaling." + key);
-        require(qobject_cast<QListView*>(choice->view())->isRowHidden(0) &&
-            !(choice->model()->flags(choice->model()->index(0, 0)) & Qt::ItemIsEnabled),
-            "Default scaling profile still offers a redundant default choice");
-        require(choice->currentData().toString() == "AUTO" && choice->currentText() == "Auto",
-            "Omitted scaling setting does not display Auto");
+        require(choice->findData(QString()) < 0 && choice->findData("AUTO") < 0,
+            "Scaling still offers a duplicate default or Auto choice");
+        require(!choice->currentData().toString().isEmpty(), "Scaling did not select its actual effective algorithm");
     }
-    require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
-        upscalerStatus->font().italic(),
-        "Auto upscaler does not use a concise italic effective-value label");
-    require(requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.dithering.auto_status"))->text() ==
-            QStringLiteral("Auto: Blue noise"),
-        "Auto dithering does not identify its blue-noise policy");
-    selectData(quality, QStringLiteral("balanced"));
-    require(upscalerStatus->text() == QStringLiteral("Auto: Lanczos"),
-        "Auto policy preview did not refresh after rendering quality changed");
     selectData(upscaler, QStringLiteral("lanczos"));
     require(upscalerStatus->isHidden() && upscalerStatus->text().isEmpty(),
-        "An Auto-policy preview remains visible for an explicit filter choice");
-    selectData(upscaler, QStringLiteral("AUTO"));
+        "A policy preview remains visible for an explicit filter choice");
 
     QComboBox* shaderStage = requireControl<QComboBox>(window,
         QStringLiteral("config.shader.nls.stage"));
@@ -4914,7 +4912,7 @@ void testCleanRemoteApplyUsesUnchangedRpcCandidate()
         ~StopServer() { stop = true; if (server.joinable()) server.join(); }
     } join{stop, server};
     ConfigEditorWindow remote(path, 0, true, {}, {}, "127.0.0.1", ntohs(address.sin_port));
-    require(!hasPendingConfigurationChanges(remote), "Remote baseline was not clean");
+    require(!hasPendingConfigurationChanges(remote), (QStringLiteral("Remote baseline was not clean: %1; %2").arg(requireControl<QLabel>(remote, "configurationEffectSummary")->text(), requireControl<QLabel>(remote, "configurationStatus")->text()).toStdString()).c_str());
     auto* apply = requireControl<QPushButton>(remote, "applyConfiguration");
     require(apply->isEnabled(), "Clean remote Apply was unavailable");
     apply->click();
@@ -5038,7 +5036,7 @@ void testApplyOkCancelContract()
             QStringLiteral("config.general.fullscreen"))->isChecked() == initial,
             "Cancel retained the discarded working-copy value");
         require(!hasPendingConfigurationChanges(window),
-            "Cancel retained a dirty working copy");
+            (QStringLiteral("Cancel retained a dirty working copy: %1; %2").arg(requireControl<QLabel>(window, "configurationEffectSummary")->text(), requireControl<QLabel>(window, "configurationStatus")->text()).toStdString()).c_str());
     }
 
     {
@@ -5375,6 +5373,292 @@ QShortcut* shortcutFor(ConfigEditorWindow& window, const QKeySequence& sequence)
     return nullptr;
 }
 
+void testResponsiveWorkspacesPreserveEditsAndFit()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile extra(path);
+    require(extra.open(QIODevice::Append), "Cannot add long profile names");
+    for (int i = 0; i < 3; ++i)
+        extra.write(QStringLiteral("\n[vprenderer.Comparison%1%2]\ntone_mapping: spline\n")
+            .arg(i).arg(QString(50, QChar('W'))).toUtf8());
+    extra.close();
+    const QByteArray originalBytes = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    selectData(requireControl<QComboBox>(window, "config.general.renderer"), "VP Renderer");
+    auto* toneToggle = requireControl<QToolButton>(window, "rendererSection.toneMapping");
+    toneToggle->setChecked(true);
+    window.resize(1920, 1080);
+    window.show(); window.selectPage(2);
+    for (int n = 0; n < 5; ++n) QApplication::processEvents();
+    auto* pages = requireControl<QStackedWidget>(window, "settingsPages");
+    auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.shortcut");
+    const int row = profiles->count() > 1 ? 1 : 0;
+    profiles->setCurrentRow(row);
+    edit->setText(QStringLiteral("Ctrl+Alt+F9"));
+    const QString text = edit->text();
+    require(!window.findChild<QComboBox*>("settingsNavigationCompact") &&
+        !window.findChild<QComboBox*>("config.vprenderer.profiles.compact") &&
+        !window.findChild<QTabBar*>("workspaceViewTabs"), "Dropdown/tabbed replacement navigation remains");
+    const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
+    if (!images.isEmpty()) { QDir().mkpath(images); window.grab().save(images + "/docked-1920.png"); }
+    requireControl<QAbstractButton>(window, "workspaceAdvancedToggle")->click();
+    // Explicit sizes below exercise responsive layout, not the platform's
+    // maximized work area (which can be smaller on a scaled offscreen desktop).
+    window.showNormal();
+    auto* compare = requireControl<QPushButton>(window, "toneCharts.compareAdd");
+    for (int n = 0; n < 3; ++n)
+    {
+        QMetaObject::invokeMethod(compare->menu(), "aboutToShow", Qt::DirectConnection);
+        for (auto* action : compare->menu()->actions())
+            if (action->isEnabled() && action->text().startsWith("Comparison", Qt::CaseInsensitive))
+            { action->trigger(); break; }
+    }
+    for (const QSize size : { QSize(1920, 1080), QSize(1440, 900), QSize(1280, 720),
+        QSize(1040, 700), QSize(800, 600), QSize(760, 540), QSize(1920, 1080) })
+    {
+        std::cerr << "RESIZE " << size.width() << "x" << size.height() << std::endl;
+        window.resize(size); window.selectPage(2);
+        for (int n = 0; n < 6; ++n) QApplication::processEvents();
+        require(profiles->currentRow() == row && edit->text() == text,
+            "Docking changed profile selection or discarded an unsaved edit");
+        auto* settings = pages->currentWidget()->findChild<QScrollArea*>("workspaceSettingsViewport");
+        auto* charts = pages->currentWidget()->findChild<QScrollArea*>("workspaceChartsViewport");
+        require(settings && charts && settings->isVisibleTo(&window) && charts->isVisibleTo(&window),
+            "Advanced settings and charts must remain available together");
+        require(settings->width() >= 320 && charts->width() >= 320,
+            "Docking squeezed settings or charts below a usable width");
+        if (settings->horizontalScrollBar()->maximum() || charts->horizontalScrollBar()->maximum())
+        {
+            if (!images.isEmpty()) window.grab().save(images + "/overflow.png");
+            throw std::runtime_error(QStringLiteral("Horizontal overflow at %1: settings %2/%3, charts %4/%5")
+                .arg(size.width()).arg(settings->width()).arg(settings->horizontalScrollBar()->maximum())
+                .arg(charts->width()).arg(charts->horizontalScrollBar()->maximum()).toStdString());
+        }
+        require(requireControl<QAbstractButton>(window, "settingsRailExpand")->isVisibleTo(&window),
+            "Collapsed settings rail disappeared");
+        require(requireControl<QAbstractButton>(window, "config.vprenderer.profiles.railExpand")->isVisibleTo(&window),
+            "Collapsed profiles rail disappeared");
+        if (qEnvironmentVariableIsSet("VP_REQUIRE_CHART_RUNTIME"))
+            require(compare->isVisibleTo(&window), "Real chart runtime unavailable");
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/advanced-%1.png").arg(size.width()));
+        charts->verticalScrollBar()->setValue(charts->verticalScrollBar()->maximum());
+        QApplication::processEvents();
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/charts-bottom-%1.png").arg(size.width()));
+        auto* chartTabs = requireControl<QTabBar>(window, "toneChartsTabs");
+        chartTabs->setCurrentIndex(1);
+        for (int n = 0; n < 3; ++n) QApplication::processEvents();
+        require(charts->horizontalScrollBar()->maximum() == 0, "Colour charts overflow horizontally");
+        if (!images.isEmpty()) window.grab().save(images + QStringLiteral("/colour-%1.png").arg(size.width()));
+        chartTabs->setCurrentIndex(0); charts->verticalScrollBar()->setValue(0);
+        auto* ok = requireControl<QPushButton>(window, "okConfiguration");
+        require(window.rect().contains(QRect(ok->mapTo(&window, QPoint()), ok->size())),
+            "Footer actions leave the window");
+        for (int page = 0; page < pages->count(); ++page)
+        {
+            std::cerr << "PAGE " << page << std::endl;
+            window.selectPage(page);
+            for (int n = 0; n < 4; ++n) QApplication::processEvents();
+            auto* viewport = qobject_cast<QScrollArea*>(pages->currentWidget());
+            if (viewport && viewport->horizontalScrollBar()->maximum() != 0)
+                throw std::runtime_error(QStringLiteral("Page %1 overflows horizontally at %2px (%3px)")
+                    .arg(page).arg(size.width()).arg(viewport->horizontalScrollBar()->maximum()).toStdString());
+        }
+    }
+    require(readBytes(path) == originalBytes, "Docking wrote the source configuration");
+}
+
+void testLeftDocksRestoreManualChoicesAndDrawerEditing()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray originalBytes = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    selectData(requireControl<QComboBox>(window, "config.general.renderer"), "VP Renderer");
+    window.resize(1920, 1080); window.show(); window.selectPage(2);
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto* workspace = dynamic_cast<AdaptiveProfileWorkspace*>(
+        requireControl<QWidget>(window, "workspace.config.vprenderer.profiles"));
+    AdaptiveNavigationHost* navigation = nullptr;
+    for (auto* widget : window.findChildren<QWidget*>())
+        if (auto* candidate = dynamic_cast<AdaptiveNavigationHost*>(widget)) navigation = candidate;
+    require(workspace && navigation, "Dock hosts missing");
+    auto* advanced = requireControl<QAbstractButton>(window, "workspaceAdvancedToggle");
+    const bool previousCurves = requireControl<QToolButton>(window,"rendererSection.toneCurves")->isChecked();
+    auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+    require(workspace->isProfilesExpanded() && navigation->isPanelExpanded(), "Normal workspace must start docked");
+    require(advanced->text()=="Advanced tone mapping","Basic state has the wrong toggle label");
+    advanced->click(); events();
+    require(advanced->text()=="Basic tone mapping"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
+    require(workspace->isAdvancedFocus() && !workspace->isProfilesExpanded() && !navigation->isPanelExpanded(),
+        "Advanced toggle did not collapse both left panels");
+    auto* toneSection = requireControl<QToolButton>(window, "rendererSection.toneMapping");
+    auto* toneCurves = requireControl<QToolButton>(window, "rendererSection.toneCurves");
+    auto* settingsScroll = workspace->findChild<QScrollArea*>("workspaceSettingsViewport");
+    require(toneSection->isChecked() && toneCurves->isChecked(), "Advanced controls were not expanded");
+    require(settingsScroll && toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() >= 0 &&
+        toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() < 40,
+        "Advanced focus did not bring tone controls into view");
+    requireControl<QAbstractButton>(window, "settingsRail.settingsNavigation.22")->click(); events();
+    require(requireControl<QStackedWidget>(window, "settingsPages")->currentIndex() == 22,
+        "Settings rail did not activate the original Display page action");
+    window.selectPage(2); events();
+    require(!navigation->isPanelExpanded(), "Page navigation changed the rail state");
+    requireControl<QAbstractButton>(window, "settingsRailExpand")->click();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.railExpand")->click(); events();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.dockToggle")->click(); events();
+    advanced->click(); events();
+    require(navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
+        "Leaving advanced focus overwrote a manual panel choice");
+    require(advanced->text()=="Advanced tone mapping"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
+    advanced->click(); events();
+    // Docking below needs a wide desktop, independently of the test platform's
+    // maximized size. The dedicated window-state test covers maximization.
+    window.showNormal(); window.resize(1920, 1080); events();
+    requireControl<QAbstractButton>(window, "settingsRailExpand")->click(); events();
+    require(workspace->isAdvancedFocus() && navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
+        "Restore panels changed manual profile choice or hid advanced charts");
+    auto* drawer = requireControl<QAbstractButton>(window, "config.vprenderer.profiles.drawerToggle");
+    drawer->click(); events();
+    require(profiles->isVisibleTo(&window), "Profile drawer did not expose original profile management");
+    const QString images = qEnvironmentVariable("VP_RESPONSIVE_SCREENSHOTS");
+    if (!images.isEmpty()) window.grab().save(images + "/profile-drawer.png");
+    bool unexpectedModal = false;
+    QTimer modalWatch;
+    QObject::connect(&modalWatch, &QTimer::timeout, &window, [&unexpectedModal] {
+        if (auto* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget()))
+        { unexpectedModal = true; modal->reject(); }
+    });
+    modalWatch.start(1000);
+    const int oldCount = profiles->count();
+    auto* menu = requireControl<QPushButton>(window, "rendererProfileMenu")->menu();
+    for (auto* action : menu->actions())
+        if (action->text() == "Duplicate selected") { action->trigger(); break; }
+    events();
+    require(!unexpectedModal && profiles->count() == oldCount + 1 && profiles->currentRow() >= 0,
+        "Duplicating from the drawer lost its selection or produced an error");
+    workspace->closeProfileDrawer(); events();
+    drawer->click(); events();
+    profiles->setCurrentRow(0);
+    QMetaObject::invokeMethod(profiles, "itemClicked", Qt::DirectConnection,
+        Q_ARG(QListWidgetItem*, profiles->item(0)));
+    events();
+    require(profiles->currentRow() == 0 && !profiles->isVisibleTo(&window),
+        "Profile selection did not close the temporary drawer");
+    drawer->click(); events();
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(profiles, &escape); events();
+    require(!profiles->isVisibleTo(&window), "Escape did not close the profile drawer");
+    drawer->click(); events();
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.drawerPin")->click(); events();
+    require(workspace->isProfilesExpanded(), "Pin did not dock the profile panel");
+    requireControl<QAbstractButton>(window, "config.vprenderer.profiles.dockToggle")->click(); events();
+    drawer->click(); events();
+    QMouseEvent outside(QEvent::MouseButtonPress, QPointF(2, 2), QPointF(window.mapToGlobal(QPoint(2, 2))),
+        Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &outside); events();
+    require(!profiles->isVisibleTo(&window), "Outside click did not close the profile drawer");
+    window.resize(760, 540); events();
+    drawer->click(); events();
+    auto* frame = workspace->findChild<QFrame*>("profileDrawer");
+    auto* viewport = workspace->findChild<QScrollArea*>("profileDrawerViewport");
+    require(frame && viewport && frame->isVisibleTo(&window), "Small-window drawer missing");
+    require(window.rect().contains(QRect(frame->mapTo(&window, QPoint()), frame->size())),
+        "Small-window drawer extends outside the window");
+    require(viewport->horizontalScrollBar()->maximum() == 0, "Small-window drawer overflows horizontally");
+    for (auto* parent = workspace->parentWidget(); parent; parent = parent->parentWidget())
+        if (auto* outer = qobject_cast<QScrollArea*>(parent))
+            require(QRect(outer->viewport()->mapToGlobal(QPoint()), outer->viewport()->size()).contains(
+                QRect(frame->mapToGlobal(QPoint()), frame->size())),
+                "Profile drawer extends beyond the visible page viewport");
+    if (!images.isEmpty()) window.grab().save(images + "/profile-drawer-760.png");
+    viewport->verticalScrollBar()->setValue(viewport->verticalScrollBar()->maximum()); events();
+    require(workspace->property("profileDrawerOpen").toBool(), "Internal drawer scrolling dismissed it");
+    for (auto* parent = workspace->parentWidget(); parent; parent = parent->parentWidget())
+        if (auto* outer = qobject_cast<QScrollArea*>(parent))
+        {
+            auto* bar = outer->verticalScrollBar();
+            if (bar->maximum() == 0) continue;
+            bar->setValue(bar->value() == 0 ? bar->maximum() : 0); events();
+            require(!workspace->property("profileDrawerOpen").toBool(), "Outer scrolling left a detached drawer open");
+            drawer->click(); events();
+            require(QRect(outer->viewport()->mapToGlobal(QPoint()), outer->viewport()->size()).contains(
+                QRect(frame->mapToGlobal(QPoint()), frame->size())),
+                "Reopened drawer ignores the scrolled page viewport");
+            break;
+        }
+    workspace->closeProfileDrawer(); events();
+    require(readBytes(path) == originalBytes, "Docking or drawer management wrote the configuration");
+}
+void testAdvancedToneMappingMaximizesAndRestoresWindow()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show(); window.selectPage(2);
+    auto events = [] { for (int n = 0; n < 6; ++n) QApplication::processEvents(); };
+    events();
+    auto* advanced = requireControl<QAbstractButton>(window, "workspaceAdvancedToggle");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.shortcut");
+    edit->setText("Ctrl+Alt+F9");
+    for (const QSize size : { QSize(1040, 700), QSize(1280, 800) })
+    {
+        window.showNormal(); window.resize(size); window.move(37, 53); events();
+        const QRect previous = window.geometry();
+        advanced->click(); events();
+        require(window.isMaximized() && !window.isFullScreen(),
+            "Advanced tone mapping must maximize the ordinary window");
+        require(advanced->text() == "Basic tone mapping", "Maximized mode lost the Basic toggle");
+        advanced->click(); events();
+        require(!window.isMaximized() && !window.isFullScreen() && window.geometry() == previous,
+            "Basic did not restore the size and position from before this Advanced click");
+        require(edit->text() == "Ctrl+Alt+F9", "Window restoration discarded an unsaved edit");
+    }
+    window.showMaximized(); events();
+    const QRect normal = window.normalGeometry();
+    advanced->click(); events();
+    advanced->click(); events();
+    require(window.isMaximized() && !window.isFullScreen() && window.normalGeometry() == normal,
+        "An already maximized window did not retain its prior maximized state and restore geometry");
+    window.showNormal(); events();
+    const QRect beforeCancel = window.geometry();
+    advanced->click(); events();
+    requireControl<QPushButton>(window, "cancelConfiguration")->click(); events();
+    require(!window.isVisible() && !window.isMaximized(),
+        "Cancel exposed or left a rebuilt Basic editor maximized");
+    window.show(); events();
+    require(window.geometry() == beforeCancel &&
+        !requireControl<QAbstractButton>(window, "workspaceAdvancedToggle")->isChecked(),
+        "Rebuilding Basic after Cancel lost the previous window placement");
+    require(readBytes(path) == original, "Window state changes wrote the configuration");
+}
+
+void testMigrationNoticeOnlyForPendingMigration()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create migration fixture");
+    file.write("[vprenderer.Default]\nquality: high\ntone_mapping: spline\n[vprenderer.Child]\nshortcut: Ctrl+2\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    window.show(); window.selectPage(2); QApplication::processEvents();
+    auto* notice = requireControl<QLabel>(window, "rendererNoInheritanceNote");
+    require(notice->isVisibleTo(&window), "Initial migration notice missing");
+    save(window); QApplication::processEvents();
+    require(notice->isHidden(), "Migration notice remains after successful save");
+    requireControl<QLineEdit>(window, "config.vprenderer.shortcut")->setText("Ctrl+3");
+    QApplication::processEvents();
+    require(notice->isHidden(), "Ordinary edit repeats acknowledged migration notice");
+    ConfigEditorWindow reopened(path, 0, true);
+    reopened.show(); reopened.selectPage(2); QApplication::processEvents();
+    require(requireControl<QLabel>(reopened, "rendererNoInheritanceNote")->isHidden(),
+        "Saved migration warns again on next start");
+}
+
 void testDpiKeyboardAndAccessibilityBehavior()
 {
     QTemporaryDir directory;
@@ -5384,7 +5668,7 @@ void testDpiKeyboardAndAccessibilityBehavior()
     window.resize(1040, 700);
     QCoreApplication::processEvents();
 
-    require(window.minimumWidth() == 1040 && window.minimumHeight() == 700,
+    require(window.minimumWidth() == 760 && window.minimumHeight() == 540,
         "Minimum window size no longer preserves the usable dashboard layout");
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
@@ -6625,14 +6909,14 @@ void testCalibratedUiDefaultsAndDerivedTransport()
         auto combo = [&](const char* name) { return requireControl<QComboBox>(window, QString::fromLatin1(name)); };
         require(combo("config.vprenderer.color.output_gamma")->currentData() == QStringLiteral("2.2"), "Fresh display gamma is not 2.2");
         require(combo("config.vprenderer.color.sdr_input_transfer")->currentData() == QStringLiteral("2.4"), "Fresh input gamma is not 2.4");
-        require(combo("config.vprenderer.display_bit_depth")->currentData() == QStringLiteral("10"), "Fresh dither depth is not 10");
+        require(combo("config.vprenderer.scaling.display_bit_depth")->currentData() == QStringLiteral("output"), "Fresh dither depth does not follow output");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_target_nits"))->text() == QStringLiteral("100"), "Fresh target nits is not 100");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_black_nits"))->text() == QStringLiteral("0"), "Fresh target black is not 0");
         auto* range = combo("config.vprenderer.color.output_range");
         auto* gamma = combo("config.vprenderer.color.output_transport_gamma");
         auto* flag = requireControl<QCheckBox>(window, QStringLiteral("config.vprenderer.color.diagnostic_allow_limited_g22"));
         require(range->currentData() == QStringLiteral("full") && !gamma->isEnabled(), "Full does not disable Limited transport");
-        require(!qobject_cast<QStandardItemModel*>(combo("config.vprenderer.color.output_gamma")->model())->item(0)->isEnabled(), "Fresh root omission can recreate removed Auto");
+        require(combo("config.vprenderer.color.output_gamma")->findData(QString()) < 0, "Fresh root omission can recreate a duplicate default row");
         require(range->findData(QStringLiteral("AUTO")) < 0 && combo("config.vprenderer.color.output_gamma")->findData(QStringLiteral("AUTO")) < 0, "Fresh calibrated selector exposes Auto");
         selectData(range, QStringLiteral("limited"));
         require(gamma->isEnabled() && flag->isChecked() && !flag->isEnabled(), "Limited2.2 flag not derived");
@@ -7006,8 +7290,8 @@ void testNoTargetStartupIsQuiet()
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     auto* title = requireControl<QLabel>(window, "config.targetSearchTitle");
     auto* progress = requireControl<QProgressBar>(window, "configTargetSearchProgress");
-    require(choice->currentText() == QStringLiteral("Searchingâ€¦") &&
-        title->text() == QStringLiteral("Looking for VideoProcessorâ€¦") &&
+    require(choice->currentText() == QStringLiteral("Searching\u2026") &&
+        title->text() == QStringLiteral("Looking for VideoProcessor\u2026") &&
         progress->minimum() == 0 && progress->maximum() == 0 &&
         !progress->isHidden() &&
         !requireControl<QPushButton>(window, "applyConfiguration")->isEnabled() &&
@@ -7024,7 +7308,7 @@ void testNoTargetStartupIsQuiet()
         window.hide();
     }
     window.setDiscoveredTargets({});
-    require(choice->currentText() == QStringLiteral("Searchingâ€¦"),
+    require(choice->currentText() == QStringLiteral("Searching\u2026"),
         "An empty first scan hid the loading state");
     window.finishInitialTargetSearch();
     require(choice->currentText() == QStringLiteral("No target"),
@@ -7634,12 +7918,77 @@ void testSubtitleHdrLegacyFallbackAndSharedModes()
     require(!requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent")->isEnabled(),"Percentage controls enabled during Smart mode");
 }
 
+void testConcreteVideoChoicesAndCanonicalScaling()
+{
+    QTemporaryDir directory;
+    const QString path=copyFixture(directory);
+    QFile file(path);require(file.open(QIODevice::Append),"Cannot add choice fixture");
+    file.write("\n[vprenderer.scaling.Default]\nupscaler: ewa_lanczossharp\ndownscaler: hermite\nsigmoid: on\ndithering: blue_noise\nchroma_upscaler: bicubic\n[vprenderer.motion.Default]\nsmooth_motion: auto\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\n"
+               "[vprenderer.motion.Child]\nlabel: Child\n");file.close();
+    const auto original=readBytes(path);
+    ConfigEditorWindow window(path,0,true);
+    require(!window.findChild<QComboBox*>("config.vprenderer.upscaler"),"Rendering still has duplicate Upscaler");
+    require(!window.findChild<QComboBox*>("config.vprenderer.downscaler"),"Rendering still has duplicate Downscaler");
+    require(!window.findChild<QComboBox*>("config.vprenderer.sigmoid"),"Rendering still has duplicate Sigmoid");
+    for(const char* key:{"dithering","deband_strength","display_bit_depth"})
+        require(!window.findChild<QComboBox*>(QString("config.vprenderer.")+key),"Tone Mapping still has a processing override");
+    window.selectPage(17);window.resize(1200,900);window.show();QApplication::processEvents();
+    auto* combined=requireControl<QToolButton>(window,"rendererSection.scaling");
+    require(combined->text()=="Scaling","Scaling section is not combined");combined->setChecked(true);
+    require(!window.findChild<QToolButton*>("rendererSection.chromaScaling"),"Separate Chroma accordion remains");
+    require(!window.findChild<QToolButton*>("rendererSection.processingOverrides"),"Processing overrides remains on Tone Mapping");
+    require(requireControl<QToolButton>(window,"rendererSection.debandingDithering")->text()=="Debanding / Dithering","Debanding heading is not readable");
+    require(requireControl<QComboBox>(window,"config.vprenderer.scaling.chroma_upscaler")->isVisible(),"Chroma algorithm is hidden");
+    auto* dither=requireControl<QComboBox>(window,"config.vprenderer.scaling.dithering");
+    QStringList offered;
+    for(int i=0;i<dither->count();++i) {
+        auto* view=qobject_cast<QListView*>(dither->view());
+        if(view&&!view->isRowHidden(i))offered<<dither->itemData(i).toString();
+    }
+    require(offered==QStringList({"blue_noise","ordered_fixed","white_noise","off"}), (QStringLiteral("Dithering menu: ")+offered.join(",")).toStdString().c_str());
+    auto* scaler=requireControl<QComboBox>(window,"config.vprenderer.scaling.upscaler");
+    require(scaler->findData("ewa_lanczos4sharpest")<scaler->findData("ewa_lanczossharp"),"Quality order was coupled to default selection");
+    window.selectPage(21);QApplication::processEvents();
+    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.motion.profiles");profiles->setCurrentRow(1);
+    auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
+    require(mixer->currentData()=="oversample"&&mixer->currentText()=="Oversample","Inherited default is not the actual mixer selection");
+    require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm")->currentText()=="BWDIF","Inherited algorithm is not correctly named");
+    require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace")->currentText()=="Interlaced input only","Automatic deinterlacing policy was lost");
+    require(mixer->findText("Linear")>=0&&mixer->findText("Cubic")<0&&mixer->findData("mitchell_clamp")>=0,"Mixer labels or Clamped Mitchell are missing");
+    require(readBytes(path)==original,"Viewing concrete defaults wrote the configuration");
+    selectData(mixer,"hermite");
+    auto* reset=requireControl<QPushButton>(window,"config.vprenderer.motion.frame_mixer.reset_override");
+    require(reset->isEnabled(),"Explicit edit cannot be reset");reset->click();
+    require(mixer->currentData()=="oversample","Reset did not restore inherited mixer");
+    profiles->setCurrentRow(0);profiles->setCurrentRow(1);
+    require(mixer->currentData()=="oversample","Revisiting a profile lost its concrete inherited mixer");
+    auto* generalConversion=requireControl<QComboBox>(window,"config.general.video_conversion");
+    require(generalConversion->count()==2&&generalConversion->itemText(0)=="Disabled","Video conversion repeats its default option");
+    const QString legacyPath=directory.filePath("legacy-cubic.cfg");
+    QFile legacyFile(legacyPath);require(legacyFile.open(QIODevice::WriteOnly),"Cannot create legacy mixer fixture");
+    const QByteArray legacyBytes="[vprenderer.motion.Default]\nframe_mixer: cubic\n";
+    legacyFile.write(legacyBytes);legacyFile.close();
+    ConfigEditorWindow legacyWindow(legacyPath,0,true);
+    auto* legacyMixer=requireControl<QComboBox>(legacyWindow,"config.vprenderer.motion.frame_mixer");
+    require(legacyMixer->currentIndex()<0&&legacyMixer->placeholderText().contains("Cubic (no mixing)"),"Legacy Cubic was silently replaced or offered as supported");
+    require(readBytes(legacyPath)==legacyBytes,"Loading legacy Cubic changed the saved config");
+    const QString images=qEnvironmentVariable("VP_CHOICE_SCREENSHOTS");
+    if(!images.isEmpty()){
+        QDir().mkpath(images);window.grab().save(images+"/motion.png");
+        window.selectPage(17);requireControl<QToolButton>(window,"rendererSection.debandingDithering")->setChecked(true);QApplication::processEvents();window.grab().save(images+"/scaling.png");
+        combined->parentWidget()->grab().save(images+"/scaling-section.png");
+        requireControl<QToolButton>(window,"rendererSection.debandingDithering")->parentWidget()->grab().save(images+"/debanding-dithering-section.png");
+        window.selectPage(2);QApplication::processEvents();window.grab().save(images+"/tone-basic.png");
+        requireControl<QAbstractButton>(window,"workspaceAdvancedToggle")->click();QApplication::processEvents();window.grab().save(images+"/tone-advanced.png");
+    }
+}
+
 void testMotionAndChromaControlsPersistAndExposeNewTab()
 {
     QTemporaryDir directory;
     const QString path=copyFixture(directory);
     QFile file(path); require(file.open(QIODevice::Append),"Cannot add Motion fixture");
-    file.write("\n[vprenderer.motion]\nsmooth_motion: off\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\nfield_order: auto\ndeinterlace_cadence: field\ndeinterlace_skip_spatial: false\n");file.close();
+    file.write("\n[vprenderer.scaling.Default]\nchroma_upscaler: bicubic\n[vprenderer.motion]\nsmooth_motion: off\nframe_mixer: oversample\ndeinterlace: auto\ndeinterlace_algorithm: bwdif\nfield_order: auto\ndeinterlace_cadence: field\ndeinterlace_skip_spatial: false\n");file.close();
     ConfigEditorWindow window(path,0,true);window.selectPage(21);window.show();QApplication::processEvents();
     auto* tabs=requireControl<QTabBar>(window,"settingsSectionTabs");
     require(tabs->count()==8&&tabs->tabText(6)=="Motion"&&tabs->currentIndex()==6,"Motion tab is missing or not selected");
@@ -7657,7 +8006,7 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     }
     require(mixer->toolTip().contains("Applies only to smooth motion"),"Mixer relationship is not explained");
 
-    selectData(mode,"always");selectData(mixer,"cubic");
+    selectData(mode,"always");selectData(mixer,"mitchell_clamp");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.field_order"),"bottom");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm"),"yadif");
     selectData(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_cadence"),"frame");
@@ -7668,10 +8017,146 @@ void testMotionAndChromaControlsPersistAndExposeNewTab()
     selectData(chroma,"lanczos");save(window);
     ConfigEditorWindow reopened(path,0,true);reopened.selectPage(21);
     require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.smooth_motion")->currentData()=="always","Smooth motion did not persist");
-    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.frame_mixer")->currentData()=="cubic","Mixer did not persist");
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.motion.frame_mixer")->currentData()=="mitchell_clamp","Mixer did not persist");
     reopened.selectPage(17);require(requireControl<QComboBox>(reopened,"config.vprenderer.scaling.chroma_upscaler")->currentData()=="lanczos","Chroma did not persist");
     const QString images=qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
     if(!images.isEmpty()){reopened.resize(1040,700);reopened.show();reopened.selectPage(21);QApplication::processEvents();reopened.grab().save(images+"/motion.png");reopened.selectPage(17);QApplication::processEvents();reopened.grab().save(images+"/chroma.png");}
+}
+
+void testExplicitPresetDefaultsAndOutputMatching()
+{
+    QTemporaryDir directory;
+    const QString path=directory.filePath("VideoProcessor.cfg");
+    ConfigEditorWindow window(path,0,true);
+    QCoreApplication::processEvents();
+    for (const char* key : { "upscaler", "downscaler", "sigmoid", "deband_strength", "dithering" })
+        require(requireControl<QComboBox>(window,QString("config.vprenderer.scaling.")+key)->currentData().toString().compare("AUTO",Qt::CaseInsensitive)!=0,
+            "Fresh defaults must resolve to explicit algorithms");
+    require(requireControl<QComboBox>(window,"config.vprenderer.scaling.upscaler")->currentData()=="ewa_lanczossharp","High default scaler was not explicit");
+    auto* depth=requireControl<QComboBox>(window,"config.vprenderer.scaling.display_bit_depth");
+    require(depth->currentData()=="output" && depth->currentText()=="Match output format","New dither-depth policy is not explicit");
+    require(requireControl<QComboBox>(window,"config.vprenderer.peak_detection")->currentData()=="high_quality","Peak default was not explicit");
+    save(window);
+    ConfigFile saved; require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload explicit defaults");
+    std::string value;
+    require(saved.TryGetString("vprenderer.scaling.default","dithering",value) && value=="blue_noise","Fresh dithering default did not persist");
+    require(saved.TryGetString("vprenderer.scaling.default","display_bit_depth",value) && value=="output","Output matching did not persist");
+}
+
+void testExplicitAutoMigrationPreservesPerProfileChoices()
+{
+    QTemporaryDir directory; const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path); require(file.open(QIODevice::WriteOnly),"Cannot create migration fixture");
+    const QByteArray original="[vprenderer.Default]\ndithering: off # retain deliberate choice\ndisplay_bit_depth: 8\n[vprenderer.Hdr]\nshortcut: Ctrl+2\ndithering: AUTO\ndisplay_bit_depth: AUTO\n";
+    file.write(original);file.close();
+    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();
+    require(readBytes(path)==original,"Opening Config wrote the original file");
+    save(window);
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload migrated defaults");
+    std::string value;
+    require(saved.TryGetString("vprenderer.scaling.default","dithering",value) && value=="off","Explicit default Off was lost");
+    require(saved.TryGetString("vprenderer.scaling.hdr","dithering",value) && value=="blue_noise","HDR Auto inherited Off");
+    require(saved.TryGetString("vprenderer.scaling.hdr","display_bit_depth",value) && value=="output","HDR Auto inherited 8-bit");
+    const auto bytes=readBytes(path);
+    ConfigEditorWindow reopened(path,0,true);QCoreApplication::processEvents();
+    require(readBytes(path)==bytes,"Reopening Config wrote another migration");
+}
+
+void testPresetResolutionPrecedesEditorSectionMigration()
+{
+    QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create preset fixture");
+    file.write("[vprenderer.Default]\nquality: balanced\n[vprenderer.Fast]\nquality: fast\nshortcut: Ctrl+2\nupscaler: AUTO\ncontrast_recovery: AUTO\n");file.close();
+    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();save(window);
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload preset fixture");
+    std::string value;
+    require(saved.TryGetString("vprenderer.fast","quality",value) && value=="fast","Legacy Fast fallback was lost");
+    require(saved.TryGetString("vprenderer.scaling.fast","upscaler",value) && value=="none","Explicit Auto reset changed owner or precedence");
+    require(saved.TryGetString("vprenderer.default","quality",value) && value=="balanced","Legacy Balanced fallback drifted");
+    require(saved.HasSection("vprenderer.scaling.fast"),"Legacy Fast processing was not loaded into Scaling");
+}
+
+void testRenderingProcessingOwnershipSaveReopenAndRename()
+{
+    QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create processing fixture");
+    const QByteArray original="# keep owner comment\n[general]\nrenderer: VP Renderer\n"
+        "[vprenderer.Default]\ndithering: off # keep deliberate choice\ndisplay_bit_depth: 8\n"
+        "[vprenderer.HDR]\nshortcut: Ctrl+2\ndithering: blue_noise\ndisplay_bit_depth: 10\n"
+        "[vprenderer.scaling.Default]\nupscaler: bilinear\n"
+        "[calibration_archive.operator_extension]\nkeep_this: exact # custom comment\n";
+    file.write(original);file.close();ConfigEditorWindow window(path,0,true);
+    require(readBytes(path)==original,"Opening Config wrote user bytes");
+    require(!window.findChild<QComboBox*>("config.vprenderer.dithering"),"Tone Mapping retained the old control");
+    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.scaling.profiles");
+    auto* dither=requireControl<QComboBox>(window,"config.vprenderer.scaling.dithering");
+    require(profiles->count()==2,"Old processing choices were not loaded into Scaling");profiles->setCurrentRow(1);
+    require(dither->currentData()=="blue_noise","Migrated profile did not load its saved value");
+    selectData(dither,"white_noise");save(window);
+    const auto bytes=readBytes(path);require(bytes.contains("# keep deliberate choice")&&bytes.contains("keep_this: exact # custom comment"),"Migration dropped comments or unknown content");
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot read migrated file");std::string value;
+    require(!saved.TryGetString("vprenderer.hdr","dithering",value),"Hidden Tone Mapping owner remains");
+    require(saved.TryGetString("vprenderer.scaling.hdr","dithering",value)&&value=="white_noise","Scaling edit was not saved");
+    ConfigEditorWindow reopened(path,0,true);auto* list=requireControl<QListWidget>(reopened,"config.vprenderer.scaling.profiles");list->setCurrentRow(1);
+    auto* reset=requireControl<QPushButton>(reopened,"config.vprenderer.scaling.dithering.reset_override");reset->click();
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.scaling.dithering")->currentData()=="off","Reset did not use migrated parent value");save(reopened);
+}
+
+void testRenderingProfileFileRoundTripRetainsOwnedOverrides()
+{
+    QTemporaryDir directory;const QString path=directory.filePath("roundtrip.vpprofile");
+    ToneProfileFile::Profile original{"vprenderer.Exported",{{"quality","fast"},{"dithering","error_diffusion_sierra3"},
+        {"display_bit_depth","output"},{"upscaler","AUTO"},{"contrast_recovery","AUTO"},{"tone_mapping","bt2390"}}};
+    QString error;require(ToneProfileFile::Write(path,original,error),error.toStdString().c_str());
+    ToneProfileFile::Profile read;require(ToneProfileFile::Read(path,read,error),error.toStdString().c_str());
+    require(read.settings==original.settings,"Export/import changed owned overrides or preset fallback");
+    const QString configPath=directory.filePath("VideoProcessor.cfg");
+    QFile config(configPath);require(config.open(QIODevice::WriteOnly),"Cannot create imported fixture");
+    config.write("[vprenderer.Default]\ndithering: off\n");config.write(readBytes(path));config.close();
+    ConfigEditorWindow editor(configPath,0,true);QCoreApplication::processEvents();save(editor);
+    ConfigFile saved;require(saved.Load(configPath.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load imported profile");
+    std::string setting;require(saved.TryGetString("vprenderer.scaling.exported","dithering",setting)&&setting=="error_diffusion_sierra3","Imported override changed owner");
+    require(saved.TryGetString("vprenderer.exported","quality",setting)&&setting=="fast","Imported fallback was flattened");
+    require(saved.HasSection("vprenderer.scaling.exported"),"Imported processing is not visible in Scaling");
+}
+
+void testRenderingMenuDuplicateExportImportPreservesLegacyOwner()
+{
+    QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create profile-menu fixture");
+    file.write("[vprenderer.Default]\nquality: fast\ndithering: off\n[vprenderer.Child]\nsdr_target_nits: 80\nshortcut: Ctrl+2\nupscaler: AUTO\n");file.close();
+    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();
+    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.profiles");profiles->setCurrentRow(1);
+    auto* menu=requireControl<QPushButton>(window,"rendererProfileMenu")->menu();require(menu,"Missing profile menu");
+    const auto action=[&](const QString& text){for(auto* item:menu->actions())if(item->text()==text)return item;return static_cast<QAction*>(nullptr);};
+    auto* duplicate=action("Duplicate selected");require(duplicate,"Missing duplicate action");duplicate->trigger();
+    require(profiles->count()==3,"Duplicate did not create exactly one Rendering profile");
+    const QString exportPath=directory.filePath("exported.vpprofile");
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs,true);
+    const auto answerFile=[&](const QString& selected){QTimer::singleShot(100,&window,[selected]{
+        if(auto* dialog=qobject_cast<QFileDialog*>(QApplication::activeModalWidget())) {
+            dialog->setDirectory(QFileInfo(selected).absolutePath());
+            dialog->selectFile(QFileInfo(selected).fileName());
+            if (auto* filename=dialog->findChild<QLineEdit*>("fileNameEdit")) filename->setText(QFileInfo(selected).fileName());
+            QMetaObject::invokeMethod(dialog,"accept",Qt::QueuedConnection);
+        }
+    });};
+    answerFile(exportPath);auto* exportAction=action("Export selected...");require(exportAction,"Missing export action");exportAction->trigger();
+    ToneProfileFile::Profile exported;QString error;
+    const bool exportedRead = ToneProfileFile::Read(exportPath,exported,error);
+    require(exportedRead,(QStringLiteral("Export did not produce a readable profile: %1; status=%2; path=%3")
+        .arg(error,requireControl<QLabel>(window,"configurationStatus")->text(),exportPath).toStdString()).c_str());
+    const auto setting=[&](const char* key){for(const auto& item:exported.settings)if(item.first==QString::fromLatin1(key))return item.second;return QString();};
+    require(setting("quality")=="fast" && setting("dithering").isEmpty() && setting("upscaler").isEmpty(),
+        "Duplicate/export lost the resolved Rendering owner or inherited preset");
+    require(setting("shortcut").isEmpty() && setting("cycle_shortcut").isEmpty(),"Export duplicated live shortcuts");
+    exported.section="vprenderer.Imported";require(ToneProfileFile::Write(exportPath,exported,error),error.toStdString().c_str());
+    answerFile(exportPath);auto* importAction=action("Import from file...");require(importAction,"Missing import action");importAction->trigger();
+    require(profiles->count()==4,"Import did not create one independently owned Rendering profile");save(window);
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load menu round trip");
+    std::string value;require(saved.TryGetString("vprenderer.imported","quality",value)&&value=="fast","Imported legacy preset changed");
+    require(!saved.TryGetString("vprenderer.imported","dithering",value),"Imported Tone Mapping retained a hidden processing value");
+    require(!saved.HasSection("vprenderer.scaling.imported"),"Import created an independently selected processing copy");
 }
 
 int run(const char* name, const std::function<void()>& test)
@@ -7713,6 +8198,17 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("concrete video choices and canonical Scaling", testConcreteVideoChoicesAndCanonicalScaling);
+    failures += run("responsive workspaces preserve edits and fit", testResponsiveWorkspacesPreserveEditsAndFit);
+    failures += run("left docks restore manual choices and drawer editing", testLeftDocksRestoreManualChoicesAndDrawerEditing);
+    failures += run("advanced tone mapping maximizes and restores window", testAdvancedToneMappingMaximizesAndRestoresWindow);
+    failures += run("migration notice only for pending migration", testMigrationNoticeOnlyForPendingMigration);
+    failures += run("Rendering menu duplicate export import preserves ownership",testRenderingMenuDuplicateExportImportPreservesLegacyOwner);
+    failures += run("Rendering processing ownership save reopen and rename",testRenderingProcessingOwnershipSaveReopenAndRename);
+    failures += run("Rendering profile file ownership round trip",testRenderingProfileFileRoundTripRetainsOwnedOverrides);
+    failures += run("explicit preset defaults and output matching", testExplicitPresetDefaultsAndOutputMatching);
+    failures += run("explicit Auto migration preserves profile choices", testExplicitAutoMigrationPreservesPerProfileChoices);
+    failures += run("preset resolution precedes editor section migration", testPresetResolutionPrecedesEditorSectionMigration);
     failures += run("subtitle surrounding fill round trip", testSubtitleSurroundFillRoundTrip);
     failures += run("subtitle retired temporal fill preserves saved profiles", testSubtitleRetiredTemporalFillPreservesSavedProfiles);
     failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);

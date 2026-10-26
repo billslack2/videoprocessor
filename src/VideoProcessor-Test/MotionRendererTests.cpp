@@ -795,7 +795,7 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(uint64_t(0),g.temporal.LastSubtitleSequence());
     }
     TEST_METHOD(CompositionModeRendersEveryMixerWithOpaqueGlyphs){
-        for(const char* filter:{"oversample","hermite","linear","cubic"}){
+        for(const char* filter:{"oversample","hermite","linear","mitchell_clamp","cubic"}){
             GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";
             settings.mixer=filter;settings.deinterlace="off";
             for(uint64_t i=0;i<7;++i){
@@ -1197,7 +1197,7 @@ TEST_CLASS(MotionRendererTests){public:
         g.Draw();
     }
     TEST_METHOD(AllMixerFiltersRenderOnGpu){
-        for(const char* filter:{"oversample","hermite","linear","cubic"}){
+        for(const char* filter:{"oversample","hermite","linear","mitchell_clamp","cubic"}){
             GpuFixture g;MotionConfig::Settings settings;settings.smoothMotion="always";settings.mixer=filter;settings.deinterlace="off";
             for(uint64_t i=0;i<7;++i){g.Upload(static_cast<int>(i)*25);g.temporal.Begin(settings,24,60,false,0,1,i+1,double(i)/24,false);Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,i+1));}
             const pl_filter_config* requested=nullptr;

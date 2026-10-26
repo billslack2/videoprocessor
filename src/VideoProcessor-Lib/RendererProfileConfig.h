@@ -639,7 +639,7 @@ namespace RendererProfileConfig
 		}
         if (group == "motion") {
             if(key=="smooth_motion")return IsChoice(value,{"off","auto","always"});
-            if(key=="frame_mixer")return IsChoice(value,{"oversample","hermite","linear","cubic"});
+            if(key=="frame_mixer")return IsChoice(value,{"oversample","hermite","linear","cubic","mitchell_clamp"});
             if(key=="deinterlace")return IsChoice(value,{"auto","off","force"});
             if(key=="deinterlace_algorithm")return IsChoice(value,{"weave","bob","yadif","bwdif"});
             if(key=="field_order")return IsChoice(value,{"auto","top","bottom"});
@@ -671,6 +671,9 @@ namespace RendererProfileConfig
 				"error_diffusion_stucki", "error_diffusion_burkes",
 				"error_diffusion_sierra2", "error_diffusion_sierra3" });
 			if (key == "deband_strength") return IsChoice(value, { "auto", "off", "light", "default" });
+			// Dither precision moved here with dithering; Rendering profiles still
+			// accept it so older configurations load.
+			if (key == "display_bit_depth") return IsChoice(value, { "auto", "output", "8", "10" });
 			expected = "a scaling-owned setting"; return false;
 		}
 		if (group == "display")
@@ -705,7 +708,7 @@ namespace RendererProfileConfig
 				return normalized == "none" || (normalized.size() > 5 &&
 					normalized.substr(normalized.size() - 5) == ".cube");
 			}
-			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
+			if (key == "display_bit_depth") return IsChoice(value, { "auto", "output", "8", "10" });
 			if (key == "sdr_target_nits")
 			{
 				expected = "a finite HDR-to-SDR target above 0.000001 and at most 10000 nits (and above target black; SDR input is unaffected)";

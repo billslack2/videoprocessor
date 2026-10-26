@@ -927,8 +927,8 @@ namespace
 		std::string debandStrength = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
-		std::string dithering = "auto";
-		std::string displayBitDepth = "auto";
+		std::string dithering = "blue_noise";
+		std::string displayBitDepth = "output";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
 		// Limited-range DXGI declarations are output-path policy, independent of
@@ -1729,9 +1729,9 @@ namespace
 	std::string ReadDithering(const ConfigFile& config, const char* key)
 	{
 		std::string rawValue;
-		if (!TryGetDisplayString(config, key, rawValue)) return "auto";
+		if (!TryGetDisplayString(config, key, rawValue)) return "blue_noise";
 		const std::string value = ConfigFile::NormalizeName(rawValue);
-		if (value == "on" || value == "true") return "blue_noise";
+		if (value == "auto" || value == "on" || value == "true") return "blue_noise";
 		if (value == "off" || value == "false") return "off";
 		if (value == "auto" || value == "blue_noise" ||
 			value == "ordered_lut" || value == "ordered_fixed" ||
@@ -1860,7 +1860,7 @@ namespace
 			std::string raw;
 			if (!config.TryGetString(rule.section, "dithering", raw)) return;
 			const std::string value = ConfigFile::NormalizeName(raw);
-			if (value == "on" || value == "true") { target = "blue_noise"; return; }
+			if (value == "auto" || value == "on" || value == "true") { target = "blue_noise"; return; }
 			if (value == "off" || value == "false") { target = "off"; return; }
 			if (value == "auto" || value == "blue_noise" ||
 				value == "ordered_lut" || value == "ordered_fixed" ||
@@ -1941,7 +1941,7 @@ namespace
 		readToggle("sigmoid", settings.sigmoid);
 		readDithering(settings.dithering);
 		readChoice("display_bit_depth", settings.displayBitDepth,
-			{ "auto", "8", "10" });
+			{ "auto", "output", "8", "10" });
 		readChoice("output_presentation", settings.outputPresentation,
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
@@ -2330,8 +2330,8 @@ namespace
 			settings.switchRefreshRate =
 				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 
-		settings.quality = ReadChoice(
-			config, "quality", "high", { "fast", "balanced", "high" });
+		// New defaults are High; retained legacy presets remain fallback inputs.
+		settings.quality = ReadChoice(config, "quality", "high", { "fast", "balanced", "high" });
 		settings.toneMapping = ReadChoice(
 			config, "tone_mapping", "auto",
 			{ "auto", "spline", "bt2390", "st2094-40", "reinhard" });
@@ -2357,7 +2357,7 @@ namespace
         MotionConfig::Read(config,"vprenderer.motion",settings.motion);
 		settings.dithering = ReadDithering(config, "dithering");
 		settings.displayBitDepth = ReadChoice(
-			config, "display_bit_depth", "auto", { "auto", "8", "10" });
+			config, "display_bit_depth", "output", { "auto", "output", "8", "10" });
 		settings.outputPresentation = ReadChoice(
 			config, "output_presentation", "auto",
 			{ "auto", "composed", "direct" });
