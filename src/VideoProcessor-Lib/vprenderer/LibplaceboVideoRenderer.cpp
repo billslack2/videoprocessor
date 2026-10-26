@@ -4528,6 +4528,8 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t subtitleUnknownLogTick=0;
     std::string subtitleUnknownLogReason;
     uint64_t subtitleOwnershipLogTick=0;
+    uint64_t subtitleExpansionGuardLogTick=0;
+    std::string subtitleExpansionGuardLogReason;
     std::string subtitleOwnershipLogReason;
     struct SubtitlePresentationPacket {
         bool composed=false;
@@ -8957,6 +8959,7 @@ struct LibplaceboVideoRenderer::Impl
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
+        key.requestNegativeClearance=SubtitlePreviewOverridesClassicHandling(CurrentSubtitlePreviewMode());
         key.analysisStride=fps>30.0?2u:1u;
         key.cadenceSkipped=!InputFrameAnalysisDue(fps,identity.acceptedSequence);
         key.identity.analysisDomainKey=prepared.domainKey;
@@ -16802,8 +16805,43 @@ releaseDriftBaseRetention =
                         coldCaptionDecision.presentation.sourceBounds,
                         coldCaptionDecision.presentation.sourceBounds);
             }
-            const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
+            auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
+            const auto guardCandidate=uncertainPicture.retained ? uncertainPicture.presentation : admissionDecision.presentation;
+            const auto expansionGuard=ProtectClearedSubtitleExpansion(recoveryInput,guardCandidate,
+                currentSubtitleBarStripClearance,subtitleIdentity,localBoundaryPolicyGeneration,
+                localBoundaryContinuityGeneration,subtitlePreviewMode,
+                currentNoCaptionConfirmed && !fixedCropAspectConfigured && !nlsRequested);
+            if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
+                (guardCandidate.outwardExpanded || guardCandidate.sourceBounds.top<effectiveGeometry.top ||
+                 guardCandidate.sourceBounds.bottom>effectiveGeometry.bottom)) {
+                const auto tick=GetTickCount64();
+                if(subtitleExpansionGuardLogReason!=expansionGuard.reason || tick-subtitleExpansionGuardLogTick>=2000) {
+                    subtitleExpansionGuardLogReason=expansionGuard.reason;subtitleExpansionGuardLogTick=tick;
+                    DebugLog::Log("Alpha subtitle expansion guard: generation=%llu sequence=%llu epoch=%llu protected=%d reason=%s owner=%s candidate=%d,%d-%d,%d base=%d,%d-%d,%d required=%d..%d clearance=%d proof_sequence=%llu clear=%d..%d samples=%zu cpu_ms=%.3f policy=%llu continuity=%llu scan=%s absent=%d analyzed=%d pending=%d work_limit=%d complete=%d/%d requested=%d proof_policy=%llu proof_continuity=%llu max_rows_per_side=128",
+                        frameGeneration,sourceSequence,viewportRequestSerial,expansionGuard.protectedPicture?1:0,
+                        expansionGuard.reason,AlphaSourceCrop::DecisionOwnerName(guardCandidate.owner),
+                        guardCandidate.sourceBounds.left,guardCandidate.sourceBounds.top,guardCandidate.sourceBounds.right,guardCandidate.sourceBounds.bottom,
+                        effectiveGeometry.left,effectiveGeometry.top,effectiveGeometry.right,effectiveGeometry.bottom,
+                        expansionGuard.requiredTop,expansionGuard.requiredBottom,currentSubtitleBarStripClearance.available?1:0,
+                        currentSubtitleBarStripClearance.identity.acceptedSequence,currentSubtitleBarStripClearance.clearTopFrom,
+                        currentSubtitleBarStripClearance.clearBottomTo,currentSubtitleBarStripClearance.samples,
+                        currentSubtitleBarStripClearance.elapsedMs,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                        currentSubtitleScanReason.c_str(),currentNoCaptionConfirmed?1:0,
+                        subtitleSourcePreparation.ownershipObservation.analyzed?1:0,
+                        subtitleSourcePreparation.ownershipObservation.pendingRefresh?1:0,
+                        subtitleSourcePreparation.ownershipObservation.text.workLimit?1:0,
+                        subtitleSourcePreparation.ownershipObservation.text.topSearchComplete?1:0,
+                        subtitleSourcePreparation.ownershipObservation.text.bottomSearchComplete?1:0,
+                        subtitleSourcePreparation.ownershipObservation.requestNegativeClearance?1:0,
+                        currentSubtitleBarStripClearance.policyGeneration,currentSubtitleBarStripClearance.continuityGeneration);
+                }
+            }
+            if(expansionGuard.protectedPicture) {
+                uncertainPicture.retained=true;uncertainPicture.expanded=false;
+                uncertainPicture.nativeCrop=effectiveGeometry;
+                uncertainPicture.presentation=expansionGuard.presentation;
+            }
             if (uncertainPicture.retained)
             {
                 // Restore only the already submitted native reference. This is

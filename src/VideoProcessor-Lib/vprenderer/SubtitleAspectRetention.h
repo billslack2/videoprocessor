@@ -666,3 +666,77 @@ inline QualifiedSubtitleUnknownHoldDecision EvaluateQualifiedSubtitleUnknownHold
     result.reason="retain-submitted-picture-during-caption-unknown";
     return result;
 }
+
+// Presentation-only veto. Never grants crop/glyph/cleanup authority and never
+// clears unclassified history. All removed rows need current full-pixel proof.
+struct ClearedSubtitleExpansionDecision
+{
+    bool protectedPicture=false;
+    const char* reason="not-advanced-absent";
+    int requiredTop=0, requiredBottom=0;
+    AlphaSourceCrop::Decision presentation;
+};
+inline ClearedSubtitleExpansionDecision ProtectClearedSubtitleExpansion(
+    const AlphaSourceCrop::PresentationRecoveryInput& input,
+    const AlphaSourceCrop::Decision& proposed,
+    const SubtitleBarStripClearance& clear,const ActivePictureFrameIdentity& identity,
+    uint64_t policy,uint64_t continuity,SubtitlePreviewMode mode,bool confirmedAbsent)
+{
+    ClearedSubtitleExpansionDecision result;result.presentation=proposed;
+    auto reject=[&](const char* reason){result.reason=reason;return result;};
+    if(!SubtitlePreviewOverridesClassicHandling(mode) || !confirmedAbsent)return result;
+    const auto& c=input.crop;const auto& anchor=input.submittedScopeAnchor;const auto& base=c.geometry;
+    const auto& bounds=proposed.sourceBounds;
+    if(!c.automaticCropEnabled || !c.sharedGeometryAvailable ||
+        c.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+        c.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+        c.geometrySourceGeneration!=c.frameSourceGeneration ||
+        !AlphaSourceCrop::IsCurrentSubmittedNativeScopeAnchor(anchor,c.frameSourceGeneration,
+            c.frameSourceSequence,input.presentationEpoch,c.rasterWidth,c.rasterHeight) ||
+        !SameSubtitlePresentationBounds(anchor.crop,base) ||
+        base.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        base.left!=0 || base.right!=c.rasterWidth)
+        return reject("native-anchor-mismatch");
+    if(c.fullRasterPresentationAuthoritative || c.presentationFailOpen ||
+        c.nearBlackEpisodeRetainCrop || c.nearBlackEpisodeFullRaster || input.globalNearBlack ||
+        c.movingPictureTransition || c.pictureTransitionHandoff.active ||
+        c.movingPictureHold.competingPresentation || c.verticalTranslationActive ||
+        c.verticalTranslationBaseRetentionActive || c.verticalTranslationEngageBaseRetentionActive ||
+        proposed.verticallyTranslated)
+        return reject("competing-presentation");
+    if(!input.measurementCurrent || !input.observationAvailable ||
+        input.observationClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+        !SameSubtitlePresentationBounds(input.observation,base) ||
+        !input.retentionEvaluated || input.retentionSourceGeneration!=c.frameSourceGeneration ||
+        input.retentionSourceSequence!=c.frameSourceSequence ||
+        !SameSubtitlePresentationBounds(input.retentionBounds,base))
+        return reject("current-native-observation-missing");
+    if(!proposed.applyCrop || bounds.left!=base.left || bounds.right!=base.right ||
+        bounds.top<0 || bounds.bottom>c.rasterHeight || bounds.top>base.top || bounds.bottom<base.bottom ||
+        bounds.rasterWidth!=base.rasterWidth || bounds.rasterHeight!=base.rasterHeight ||
+        (bounds.top==base.top && bounds.bottom==base.bottom))return reject("not-vertical-expansion");
+    result.requiredTop=bounds.top;result.requiredBottom=bounds.bottom;
+    if(anchor.submittedEnvelopeAvailable) {
+        const auto& old=anchor.submittedEnvelope;
+        if(old.left!=base.left || old.right!=base.right || old.top<0 || old.bottom>c.rasterHeight ||
+            old.top>base.top || old.bottom<base.bottom || old.rasterWidth!=base.rasterWidth ||
+            old.rasterHeight!=base.rasterHeight)return reject("submitted-envelope-conflict");
+        result.requiredTop=(std::min)(result.requiredTop,old.top);
+        result.requiredBottom=(std::max)(result.requiredBottom,old.bottom);
+    }
+    if(!clear.available)return reject("clearance-unavailable");
+    if(!policy || !continuity || clear.policyGeneration!=policy || clear.continuityGeneration!=continuity ||
+        !SameAnalysisFrameIdentity(clear.identity,identity) ||
+        identity.transportGeneration!=c.frameSourceGeneration || identity.acceptedSequence!=c.frameSourceSequence ||
+        identity.viewportGeneration!=c.framePresentationEpoch || input.presentationEpoch!=c.framePresentationEpoch ||
+        clear.rasterWidth!=c.rasterWidth || clear.rasterHeight!=c.rasterHeight ||
+        clear.pictureTop!=base.top || clear.pictureBottom!=base.bottom)
+        return reject("clearance-context-mismatch");
+    if(clear.clearTopFrom>result.requiredTop || clear.clearBottomTo<result.requiredBottom)
+        return reject("removed-rows-not-clear");
+    result.protectedPicture=true;result.reason="current-clear-rows-reject-historical-expansion";
+    result.presentation={};result.presentation.applyCrop=true;result.presentation.sourceBounds=base;
+    result.presentation.owner=AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION;
+    result.presentation.reason=result.reason;
+    return result;
+}

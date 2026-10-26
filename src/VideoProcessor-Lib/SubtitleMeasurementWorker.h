@@ -67,7 +67,7 @@ public:
         m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
-            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture,key.requestNegativeClearance);
         result.analysisStride=key.analysisStride;
         if (result.independentBarAnalysis && result.text.detected && !result.text.held &&
             !result.text.workLimit) {
@@ -241,7 +241,8 @@ public:
                     !b.pictureAuthorityUnavailableForMeasurement &&
                     !a.independentBarAnalysis && !b.independentBarAnalysis &&
                     a.sharedPicture.required && b.sharedPicture.required)) &&
-            a.discontinuity==b.discontinuity && (samePicture || sameUnavailablePictureScan);
+            a.discontinuity==b.discontinuity && a.requestNegativeClearance==b.requestNegativeClearance &&
+            (samePicture || sameUnavailablePictureScan);
     }
     // The head has advanced; queued scans for older transport frames cannot
     // become current. The active worker is left alone and remains nonblocking.

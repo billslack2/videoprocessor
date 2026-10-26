@@ -7605,6 +7605,118 @@ namespace VideoProcessorTest
             Assert::AreEqual(72,classicMode.top);
         }
 
+        TEST_METHOD(CompleteNegativeWorkerRequestMeasuresBoundedClearance)
+        {
+            P010Frame frame(640,720);frame.BlackOutside(0,160,640,560,64);
+            auto source=frame.P010Source();source.range=AnalysisLumaRange::Limited;
+            const auto id=MakeSubtitleProofIdentity(source,4842);
+            SubtitleBoxDetector scanner;
+            const auto ordinary=SubtitleBoxLookahead::Measure(scanner,source,{},id,false,{},2,3,{},false);
+            Assert::IsTrue(ordinary.text.topSearchComplete && ordinary.text.bottomSearchComplete);
+            Assert::IsFalse(ordinary.barStripClearance.available);
+            const auto advanced=SubtitleBoxLookahead::Measure(scanner,source,{},id,false,{},2,3,{},true);
+            Assert::IsTrue(advanced.requestNegativeClearance);
+            Assert::IsTrue(advanced.barStripClearance.available);
+            Assert::AreEqual(32,advanced.barStripClearance.clearTopFrom);
+            Assert::AreEqual(688,advanced.barStripClearance.clearBottomTo);
+            Assert::IsTrue(advanced.barStripClearance.topSamples<=size_t(640)*128);
+            Assert::IsTrue(advanced.barStripClearance.bottomSamples<=size_t(640)*128);
+        }
+        TEST_METHOD(ClearRowsProtectHistoricalExpansionOnlyWithExactCurrentProof)
+        {
+            P010Frame frame(640,360);frame.BlackOutside(0,48,640,312,64);
+            auto source=frame.P010Source();source.range=AnalysisLumaRange::Limited;
+            const auto id=MakeSubtitleProofIdentity(source,4842);
+            const auto base=ScopePresentation(640,360,48,312);
+            AlphaSourceCrop::PresentationRecoveryInput in;
+            auto& c=in.crop;c.automaticCropEnabled=c.sharedGeometryAvailable=true;
+            c.geometry=base;c.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            c.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            c.frameSourceGeneration=c.geometrySourceGeneration=id.transportGeneration;
+            c.frameSourceSequence=id.acceptedSequence;c.framePresentationEpoch=id.viewportGeneration;
+            c.rasterWidth=640;c.rasterHeight=360;c.verticalTranslationConfirmationPending=true;
+            in.presentationEpoch=id.viewportGeneration;
+            in.measurementCurrent=in.observationAvailable=in.retentionEvaluated=true;
+            in.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            in.observation=in.retentionBounds=base;
+            in.retentionSourceGeneration=id.transportGeneration;in.retentionSourceSequence=id.acceptedSequence;
+            auto& anchor=in.submittedScopeAnchor;anchor.available=true;anchor.crop=base;
+            anchor.sourceGeneration=id.transportGeneration;anchor.presentationEpoch=id.viewportGeneration;
+            anchor.lastSubmittedSourceSequence=id.acceptedSequence-1;
+            AlphaSourceCrop::Decision proposed;proposed.applyCrop=proposed.outwardExpanded=true;
+            proposed.sourceBounds=ScopePresentation(640,360,40,336);
+            proposed.owner=AlphaSourceCrop::DecisionOwner::TRANSLATION_CONFIRMATION;
+            auto clear=MeasureSubtitleBarStripClearance(source,id,2,3,48,312);
+            const auto run=[&](const SubtitleBarStripClearance& proof) {
+                return ProtectClearedSubtitleExpansion(in,proposed,proof,id,2,3,
+                    SubtitlePreviewMode::GeneratedGrayBackground,true);
+            };
+            auto guarded=run(clear);Assert::IsTrue(guarded.protectedPicture);
+            Assert::AreEqual(48,guarded.presentation.sourceBounds.top);
+            Assert::AreEqual(312,guarded.presentation.sourceBounds.bottom);
+            Assert::IsFalse(guarded.presentation.outwardExpanded);
+            // Qualified -> complete negative -> qualified: the negative frame
+            // must preserve the same optional side fill and final source pose.
+            AlphaSourceCrop::AspectLimitFillInput configured;
+            configured.trustedContentAuthorityAccepted=true;configured.screenAspect=2.35;
+            configured.cropWiderContentToFillScreen=configured.widerLimitConfigured=true;
+            configured.widerAspectLimit=2.5;configured.sourceBounds=base;
+            const auto expectedFill=AlphaSourceCrop::EvaluateAspectLimitFill(configured);
+            Assert::IsTrue(expectedFill.applied);
+            anchor.submittedOptionalFillAvailable=true;anchor.submittedOptionalFill=expectedFill.sourceBounds;
+            anchor.submittedOptionalFillSourceSequence=id.acceptedSequence-1;
+            anchor.submittedOptionalFillScreenAspect=2.35;
+            for(int phase=0;phase<3;++phase) {
+                AlphaSourceCrop::FinalAspectLimitFillInput fill;
+                fill.configured=configured;fill.configuredScreenActive=true;fill.crop=c;fill.evidence=in;
+                fill.presentation=guarded.presentation;
+                if(phase==1) {
+                    fill.uncertainPicture.retained=true;fill.uncertainPicture.nativeCrop=base;
+                    fill.uncertainPicture.presentation=guarded.presentation;
+                    fill.samplingCompetingPresentation=true; // Stored FIT/confirmation still exists.
+                } else fill.presentation.owner=AlphaSourceCrop::DecisionOwner::TRUSTED_CROP;
+                const auto final=AlphaSourceCrop::EvaluateFinalAspectLimitFill(fill);
+                Assert::IsTrue(final.applied);
+                Assert::AreEqual(expectedFill.sourceBounds.left,final.sourceBounds.left);
+                Assert::AreEqual(expectedFill.sourceBounds.right,final.sourceBounds.right);
+                Assert::AreEqual(base.top,final.sourceBounds.top);
+                Assert::AreEqual(base.bottom,final.sourceBounds.bottom);
+            }
+            Assert::IsTrue(guarded.presentation.owner==AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION);
+            Assert::IsFalse(ProtectClearedSubtitleExpansion(in,proposed,clear,id,2,3,
+                SubtitlePreviewMode::None,true).protectedPicture);
+            Assert::IsFalse(ProtectClearedSubtitleExpansion(in,proposed,clear,id,2,3,
+                SubtitlePreviewMode::GeneratedGrayBackground,false).protectedPicture);
+            for(int i=0;i<6;++i) {
+                auto wrong=clear;
+                if(i==0)++wrong.identity.acceptedSequence;
+                if(i==1)++wrong.identity.analysisDomainKey;
+                if(i==2)++wrong.policyGeneration;
+                if(i==3)++wrong.continuityGeneration;
+                if(i==4)++wrong.pictureTop;
+                if(i==5)wrong.available=false;
+                Assert::IsFalse(run(wrong).protectedPicture);
+            }
+            c.fullRasterPresentationAuthoritative=true;Assert::IsFalse(run(clear).protectedPicture);
+            c.fullRasterPresentationAuthoritative=false;c.movingPictureTransition=true;
+            Assert::IsFalse(run(clear).protectedPicture);c.movingPictureTransition=false;
+            in.observation.bottom-=2;Assert::IsFalse(run(clear).protectedPicture);in.observation=base;
+            for(int scenario=0;scenario<3;++scenario) {
+                frame.BlackOutside(0,48,640,312,64);
+                frame.FillRectangle(639,321,640,322,scenario==0?73:64,scenario==1?600:512,512);
+                if(scenario==2)frame.FillRectangle(639,42,640,43,73);
+                Assert::IsFalse(run(MeasureSubtitleBarStripClearance(source,id,2,3,48,312)).protectedPicture);
+            }
+            frame.BlackOutside(0,48,640,312,64);
+            auto partial=MeasureSubtitleBarStripClearance(source,id,2,3,48,312,640*8+320);
+            Assert::IsFalse(run(partial).protectedPicture);
+            auto enough=MeasureSubtitleBarStripClearance(source,id,2,3,48,312,640*24);
+            Assert::IsTrue(run(enough).protectedPicture);
+            anchor.submittedEnvelopeAvailable=true;anchor.submittedEnvelope=ScopePresentation(640,360,40,340);
+            anchor.submittedEnvelopeSourceSequence=id.acceptedSequence-1;
+            Assert::IsFalse(run(enough).protectedPicture);
+            Assert::IsTrue(run(clear).protectedPicture);
+        }
         TEST_METHOD(ExactCurrentClearStripRejectsTinyInkColorAndWrongProvenance)
         {
             const ActivePictureBounds physical=ScopePresentation(640,360,48,312);
@@ -7765,6 +7877,10 @@ namespace VideoProcessorTest
             observation.text.diagnosticReason="no-bright-ink";
             Assert::IsFalse(SubtitleBoxLookahead::
                 NeedsCurrentSubtitleBarStripClearance(observation));
+            observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;
+            Assert::IsFalse(SubtitleBoxLookahead::NeedsCurrentSubtitleBarStripClearance(observation));
+            observation.requestNegativeClearance=true;
+            Assert::IsTrue(SubtitleBoxLookahead::NeedsCurrentSubtitleBarStripClearance(observation));
             observation.text.diagnosticReason="no-centered-text-line";
             observation.independentBarAnalysis=false;
             Assert::IsFalse(SubtitleBoxLookahead::

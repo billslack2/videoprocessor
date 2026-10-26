@@ -138,6 +138,14 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return guard.Resolve(preview,source,frameMs,holdMs);
     }
 public:
+    TEST_METHOD(NegativeClearanceDemandIsPartOfWorkerCacheIdentity) {
+        auto a=Ready(42).current;auto b=a;
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(a,b));
+        b.requestNegativeClearance=true;
+        Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
+        a.requestNegativeClearance=true;
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(a,b));
+    }
     TEST_METHOD(FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource) {
         auto pixels=Pixels();
         auto source=Source(pixels);

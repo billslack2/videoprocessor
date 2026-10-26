@@ -93,6 +93,7 @@ struct SubtitleBoxObservation
     SubtitleAssistedVerticalBarProof subtitleArProof;
     ActivePictureArDarknessEvidence subtitleArDarkness;
     bool analyzed = false, barAuthority = false, barTrackingAuthority = false;
+    bool requestNegativeClearance = false; // Advanced-mode worker request, never evidence.
     bool currentAnchorUsesTrackedEdge = false, discontinuity = false;
     bool sharedProbeAttempted = false, sharedProbeDetected = false, sharedProbeWorkLimit = false;
     const char* sharedProbeReason = "not-attempted";
@@ -210,7 +211,8 @@ namespace SubtitleBoxLookahead
             !observation.pendingRefresh && !observation.text.detected &&
             !observation.text.held && !observation.text.workLimit &&
             observation.text.diagnosticReason &&
-            std::strcmp(observation.text.diagnosticReason,"no-bright-ink")!=0;
+            (std::strcmp(observation.text.diagnosticReason,"no-bright-ink")!=0 ||
+             (observation.requestNegativeClearance && observation.text.topSearchComplete && observation.text.bottomSearchComplete));
     }
 
 
@@ -250,11 +252,12 @@ namespace SubtitleBoxLookahead
         const ActivePictureFrameIdentity& identity, bool discontinuity,
         const SubtitleBarTrackingReference& priorBar = {},
         uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
-        const SubtitlePictureAuthority& sharedPicture = {})
+        const SubtitlePictureAuthority& sharedPicture = {}, bool requestNegativeClearance = false)
     {
         SubtitleBoxObservation result;
         const auto start = std::chrono::steady_clock::now();
         result.identity = identity; result.analyzed = true;
+        result.requestNegativeClearance=requestNegativeClearance;
         result.nearBarDistance=scanner.NearBarDistance();
         result.optimizationMode=scanner.OptimizationMode();
         result.scriptHint=scanner.ScriptHint();
@@ -267,11 +270,15 @@ namespace SubtitleBoxLookahead
         auto measureClearance=[&]() {
             // A rejected grouping can contain bright picture components while
             // the exterior native bar remains clear. Measure only that
-            // ambiguous completed scan, off the render thread.
+            // ambiguous completed scan, off the render thread. Complete negative
+            // scans also inspect at most 128 full rows per side for historical
+            // expansion rejection. Uncovered rows never authorize shrinking.
             if(NeedsCurrentSubtitleBarStripClearance(result))
                 result.barStripClearance=MeasureSubtitleBarStripClearance(
                     source,identity,policyGeneration,continuityGeneration,
-                    result.pictureTop,result.pictureBottom);
+                    result.pictureTop,result.pictureBottom,
+                    result.text.diagnosticReason && std::strcmp(result.text.diagnosticReason,"no-bright-ink")==0
+                        ? static_cast<size_t>(source.width)*128 : 1048576);
         };
         if(sharedPicture.required) {
             const bool sharedPictureAvailable=
