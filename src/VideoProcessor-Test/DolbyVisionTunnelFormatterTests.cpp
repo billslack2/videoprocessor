@@ -264,7 +264,7 @@ namespace Tests
         std::vector<std::string>* trimDiagnosticLines = nullptr;
         void __cdecl CaptureTrimDiagnostic(const char* message)
         {
-            if (trimDiagnosticLines && std::strstr(message, "DV trim diagnostic:"))
+            if (trimDiagnosticLines && (std::strstr(message, "DV trim diagnostic:") || std::strstr(message, "DV metadata ")))
                 trimDiagnosticLines->emplace_back(message);
         }
         struct ScopedTrimDiagnosticSink
@@ -313,7 +313,99 @@ namespace Tests
             const unsigned fields[] = {target, slope, 2048, 2048, 2048, 2048, ms};
             for (size_t i = 0; i < 7; ++i) Put16(body, at + 5 + i * 2, uint16_t(fields[i]));
         }
+        static void AddBlock(std::vector<uint8_t>& body, unsigned level, const std::vector<uint8_t>& payload)
+        {
+            const size_t at = body.size();
+            body.resize(at + 5);
+            Put32(body.data() + at, static_cast<uint32_t>(payload.size()));
+            body[at + 4] = static_cast<uint8_t>(level);
+            ++body[70];
+            body.insert(body.end(), payload.begin(), payload.end());
+        }
     public:
+        TEST_METHOD(ExtraLevelsDecodeBigEndianAndKeepAmbiguousFieldsRaw)
+        {
+            auto body = DmBody();
+            AddBlock(body, 3, {8,1,8,2,8,3});
+            AddBlock(body, 4, {7,255,8,0});
+            AddBlock(body, 5, {0,1,0,2,1,0,1,1});
+            AddBlock(body, 11, {2,24,0,0});
+            AddBlock(body, 254, {0,2});
+            Trace trace; trace.Observe(body);
+            Assert::IsTrue(trace.Has("min_pq_offset_raw=2049 max_pq_offset_raw=2050 avg_pq_offset_raw=2051"));
+            Assert::IsTrue(trace.Has("anchor_pq=2047 anchor_power=2048"));
+            Assert::IsTrue(trace.Has("left_offset=1 right_offset=2 top_offset=256 bottom_offset=257"));
+            Assert::IsTrue(trace.Has("whitepoint_reference_packed_raw=24"));
+            Assert::IsTrue(trace.Has("bitfield_interpretation=unresolved"));
+            Assert::IsTrue(trace.Has("dm_mode=0 dm_version_index=2"));
+        }
+        TEST_METHOD(L8OptionalFieldsArePresentOnlyAtQualifiedLengths)
+        {
+            for (const size_t bytes : {13,15,17,23,29})
+            {
+                std::vector<uint8_t> p(bytes, 0); p[0] = 42;
+                for (size_t i=0; i<6; ++i) Put16(p, 1+i*2, uint16_t(2048+i));
+                if (bytes>=15) Put16(p,13,2055);
+                if (bytes>=17) Put16(p,15,2056);
+                for (size_t i=17; i<bytes; ++i) p[i]=uint8_t(i);
+                auto body = DmBody(); AddBlock(body,8,p);
+                Trace trace; trace.Observe(body);
+                Assert::IsTrue(trace.Has("L8 candidate=cb1 valid_codes=1 target_display_index=42 target_nits=unresolved"));
+                Assert::IsTrue(trace.Has(bytes>=15 ? "mid_contrast_present=1 mid_contrast=2055" : "mid_contrast_present=0 mid_contrast=-1"));
+                Assert::IsTrue(trace.Has(bytes>=17 ? "clip_present=1 clip_trim=2056" : "clip_present=0 clip_trim=-1"));
+                Assert::AreEqual(bytes>=23,trace.Has("saturation_vector_raw=17,18,19,20,21,22"));
+                Assert::AreEqual(bytes==29,trace.Has("hue_vector_raw=23,24,25,26,27,28"));
+            }
+        }
+        TEST_METHOD(PrimariesAndCustomTargetKeepIndicesAndCoordinateWords)
+        {
+            auto body=DmBody();
+            std::vector<uint8_t> p9(17,0); p9[0]=255;
+            for(size_t i=0;i<8;++i) Put16(p9,1+2*i,uint16_t(1000+i));
+            AddBlock(body,9,p9);
+            std::vector<uint8_t> p10(22,0); p10[0]=42; p10[5]=255;
+            Put16(p10,1,3072); Put16(p10,3,12);
+            for(size_t i=0;i<8;++i) Put16(p10,6+2*i,uint16_t(2000+i));
+            AddBlock(body,10,p10);
+            Trace trace; trace.Observe(body);
+            Assert::IsTrue(trace.Has("source_primary_index=255 custom_present=1 index_length_consistent=1"));
+            Assert::IsTrue(trace.Has("target_display_index=42 target_max_pq=3072 target_min_pq=12"));
+            Assert::IsTrue(trace.Has("primaries_raw_rx_ry_gx_gy_bx_by_wx_wy=1000,1001,1002,1003,1004,1005,1006,1007"));
+            Assert::IsTrue(trace.Has("primaries_raw_rx_ry_gx_gy_bx_by_wx_wy=2000,2001,2002,2003,2004,2005,2006,2007"));
+            body=DmBody(); AddBlock(body,9,{255}); AddBlock(body,10,{42,16,0,0,0,255});
+            Trace bad; bad.Observe(body);
+            Assert::IsTrue(bad.Has("custom_present=0 index_length_consistent=0"));
+            Assert::IsTrue(bad.Has("L10 candidate=cb1 valid_pq_codes=0"));
+        }
+        TEST_METHOD(UnsupportedLengthsAndOutOfRangeValuesRemainEvidence)
+        {
+            auto body=DmBody();
+            for (unsigned level : {3,4,5,8,9,10,11,254}) AddBlock(body,level,{});
+            AddBlock(body,6,{1,2,3}); AddBlock(body,199,{4});
+            Trace trace; trace.Observe(body);
+            Assert::IsTrue(trace.Has("layout=unsupported_length"));
+            Assert::IsTrue(trace.Has("raw_only_no_qualified_HDMI_layout"));
+            Assert::IsTrue(trace.Has("level=199 payload_bytes=1 layout=raw_only_unknown_level"));
+            Assert::IsFalse(trace.Has("DV metadata fields:"));
+            body=DmBody(); AddBlock(body,4,{16,0,0,0}); AddBlock(body,5,{32,0,0,0,0,0,0,0});
+            Trace invalid; invalid.Observe(body);
+            Assert::IsTrue(invalid.Has("L4 candidate=cb1 valid_codes=0"));
+            Assert::IsTrue(invalid.Has("L5 valid_codes=0"));
+        }
+        TEST_METHOD(InventorySurvivesSnapshotBudgetAndCountsDuplicateBodies)
+        {
+            auto body=DmBody(); Trace trace;
+            for (unsigned i=0;i<129;++i) {body.back()=uint8_t(i);trace.Observe(body,i*1000ULL);}
+            trace.lines.clear();
+            AddBlock(body,254,{0,2});
+            trace.Observe(body,130000);
+            Assert::IsTrue(trace.Has("level=254 payload_bytes=2 layout=cb1_candidate"));
+            Assert::IsTrue(trace.Has("dm_version_index=2"));
+            Assert::IsFalse(trace.Has("raw_offset="));
+            for(unsigned i=130;i<600;++i) trace.Observe(body,131000);
+            Assert::IsTrue(trace.Has("last_complete_dm=600 L1=600"));
+            Assert::IsTrue(trace.Has("L254=471 snapshot_budget_exhausted=1"));
+        }
         TEST_METHOD(DecodesMultipleTargetsAndUnspecifiedMultiscaleWithoutApplyingTrims)
         {
             auto body = DmBody();
@@ -333,6 +425,7 @@ namespace Tests
         {
             auto body = DmBody(3072, true, 180);
             AddL2(body, 2081, 2200, 65535);
+            AddBlock(body, 254, {0,2});
             SenderPicture picture(true);
             picture.Embed(Packetize(body));
             picture.CorruptAllCopies(1);
@@ -373,7 +466,7 @@ namespace Tests
             for (const auto& line : trace.lines)
             {
                 const auto hex = line.find(" hex=");
-                if (hex == std::string::npos) continue;
+                if (hex == std::string::npos || line.find("raw_offset=") == std::string::npos) continue;
                 for (size_t i = hex + 5; i < line.size(); i += 2)
                     reconstructed.push_back(uint8_t(std::stoul(line.substr(i, 2), nullptr, 16)));
             }

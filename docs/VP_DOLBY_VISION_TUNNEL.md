@@ -148,7 +148,8 @@ ST 2084 values using the ETSI PQ code / 4096 convention. `ms_unspecified=1`
 means the 0xffff sentinel. `five_trims_centered` describes only the five codes
 being 2048; it is not a claim that the entire Dolby mapping is neutral.
 Out-of-range L2 values and unsupported lengths are diagnostic evidence only;
-they never reject an otherwise accepted picture. L8/unknown blocks remain raw.
+they never reject an otherwise accepted picture. Additional qualified layouts
+receive diagnostic fields as described below; every block retains raw evidence.
 
 All bytes of each sampled body, including every extension, are logged in
 256-byte hex chunks with snapshot number, offset and length, followed by an
@@ -168,3 +169,46 @@ scene cuts from each source/title. Inspect L2 target coverage, non-centered
 values, the multiscale sentinel and variation between snapshots. Compare sources
 and titles before deciding which trim operations to implement. Syntax reference:
 ETSI GS CCM 001 V1.1.1 tables 3-5 and section 6.2.2 (linked above).
+
+## HDMI extension receive/decode inventory
+
+`DV metadata inventory:` reports first receipt of each extension level, its
+payload length, layout classification, current/affected IDs and up to 32 raw
+payload bytes. Known diagnostic layouts fit completely in that prefix.
+Discovery is bounded to 16 new levels per complete body (additional levels
+can be discovered on subsequent bodies), once per level per capture state.
+It continues after the sampled-body budget is exhausted. Every 600 complete
+DM bodies, a compact count window reports L1/L2/L3/L4/L5/L6/L8/L9/L10/L11/L254.
+Counts are block occurrences, including duplicate bodies, not scene counts.
+Unknown IDs receive first-discovery records too. A zero count means absent
+in that window of accepted DM bodies, not absent from every title or source.
+A changed layout for an already seen level requires a sampled snapshot or
+capture restart to retain new field detail after the dump budget is consumed.
+
+| Level | HDMI payload bytes decoded | Potential information |
+| --- | --- | --- |
+| L3 | 6 | Min/max/average PQ offsets |
+| L4 | 4 | Temporal anchor PQ and power |
+| L5 | 8 | Active-area offsets; geometry not yet validated |
+| L6 | Raw only | No qualified HDMI layout; do not parse as compressed RPU |
+| L8 | 13, 15, 17, 23, 29 | Target index, trims, optional contrast/clip and saturation/hue vectors |
+| L9 | 1, 17 | Source primary index or eight custom coordinate words |
+| L10 | 6, 22 | Custom target index, luminance PQ range and primary information |
+| L11 | 4, partial | Content-type byte and packed/raw fields; bit interpretation unresolved |
+| L254 | 2 | DM mode and version index |
+
+L5 uses ETSI GS CCM 001. Other new layouts are explicitly **candidates** based
+on the independent [CB1 HDMI serializer](https://github.com/CroqueMr/libreelec-x86-DV/blob/d9ad989ee92846afc32957cbeab6d5e2a5cb49b4/CB1/src/mpv_dvbridge_cm4.h)
+and its [wire-body builder](https://github.com/CroqueMr/libreelec-x86-DV/blob/d9ad989ee92846afc32957cbeab6d5e2a5cb49b4/CB1/src/dvbridge_metadata.h).
+These are HDMI expanded byte/word layouts, not compressed RPU lengths. This
+reference omits L6 as HDR10 fallback metadata; that does not establish what
+all HDMI sources transmit. Unsupported lengths and unknown levels stay raw.
+
+`DV metadata fields:` preserves raw values and checks documented code bounds
+where possible. Missing L8 optional fields are explicitly absent, never zero
+by inference. L8 target nits remain unresolved pending target-index mapping;
+L9/L10 log index/length consistency and raw coordinates. Public interpretations
+of L11 packed fields differ, so whitepoint/reference bits are not guessed.
+All candidate fields require real-source corroboration before processing use.
+No new fields are applied to tone mapping. Receipt/decode success does not
+establish correct Dolby processing, FEL reconstruction, or visual benefit.

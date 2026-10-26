@@ -181,6 +181,9 @@
     <ClInclude Include="video_frame_formatter\DolbyVisionTrimDiagnostics.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
+    <ClInclude Include="video_frame_formatter\DolbyVisionExtensionDiagnostics.h">
+      <Filter>Header Files\video_frame_formatter</Filter>
+    </ClInclude>
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>

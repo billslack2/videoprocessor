@@ -341,6 +341,7 @@
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.h" />
     <ClInclude Include="video_frame_formatter\DolbyVisionTrimDiagnostics.h" />
+    <ClInclude Include="video_frame_formatter\DolbyVisionExtensionDiagnostics.h" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
