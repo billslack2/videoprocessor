@@ -216,8 +216,11 @@ TEST_CLASS(MotionRendererTests){public:
                         !layer&&scenario==2?&deinterlace:nullptr,temporal?&processing:nullptr));
                 }
             }
+            Logger::WriteMessage(("Subtitle cache scenario="+std::to_string(scenario)+
+                " hooks_reused="+std::to_string(before==pl_cache_signature(cache.value))+"\n").c_str());
+            Assert::IsTrue(before==pl_cache_signature(cache.value),L"Subtitle hook phases added a cache entry before final presentation");
             // Exercise the newly activated RGB-to-output path as well as the hooks.
-            auto normalized=g.cleanInput; normalized.color=source.color;
+            auto normalized=g.cleanInput; normalized.color=source.color; normalized.planes[0].texture=g.clean;
             auto destination=g.output;
             auto finalParams=params;
             finalParams.deinterlace_params=nullptr; finalParams.frame_mixer=nullptr;
@@ -264,6 +267,28 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::IsTrue(!params.deband_params&&!params.frame_mixer&&!params.deinterlace_params);
         NlsPipelinePreparation::Frame snapshot;
         snapshot.Copy(actual); // Must not reject the consumed raw metadata.
+    }
+    TEST_METHOD(NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead) {
+        GpuFixture g;
+        MotionConfig::Settings settings;
+        settings.smoothMotion="off"; settings.deinterlace="force";
+        settings.algorithm="bob"; settings.fieldOrder="top";
+        for(uint64_t sequence=1;sequence<=3;++sequence) {
+            g.UploadComposition(false,0);
+            g.temporal.Begin(settings,30,60,true,1,1,sequence,double(sequence-1)/30,false,true);
+            Assert::IsTrue(g.temporal.CaptureNativeComposition(g.device->gpu,g.input,sequence,
+                [&](const pl_frame&,const pl_deinterlace_params&,pl_frame& clean,pl_tex& layer,pl_rect2d& bounds) {
+                    clean=g.cleanInput;layer=nullptr;bounds={};return true;
+                }));
+        }
+        g.temporal.outputPts=0;
+        Assert::IsTrue(g.temporal.PreflightCompositionOutput());
+        auto params=pl_render_high_quality_params;
+        const auto prepared=g.temporal.NlsPreparationInput(g.input,params);
+        Assert::AreEqual(1,prepared.num_planes);
+        Assert::IsTrue(prepared.repr.sys==PL_COLOR_SYSTEM_RGB);
+        Assert::IsTrue(prepared.color.transfer==g.cleanInput.color.transfer);
+        Assert::IsTrue(!params.deinterlace_params&&!params.frame_mixer&&!params.deband_params);
     }
     TEST_METHOD(NlsPreparationTenSecondGateKeepsLiveFramesRendering) {
         GpuFixture g;
