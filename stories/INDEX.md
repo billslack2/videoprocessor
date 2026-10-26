@@ -172,7 +172,7 @@ they must not contain requirements that are absent from this file.
 | VP-0137 | Done | Restore bounded madVR queue, NLS, and renderer-switch behavior |
 | VP-0138 | In Progress | Preserve Clock-Smart2 real-time timestamps |
 | VP-0139 | Done | Configuration inheritance and VP Renderer quality clarity |
-| VP-0140 | Review | Compile VP Renderer shaders without blocking UI or presentation |
+| VP-0140 | Done | Compile VP Renderer shaders without blocking UI or presentation |
 | VP-0141 | Done | Apply VP Renderer settings live and preserve fullscreen control |
 | VP-0142 | Backlog | Design profile-selection persistence policy |
 | VP-0143 | Done | Restart renderer after queue-profile changes |
@@ -278,7 +278,7 @@ they must not contain requirements that are absent from this file.
 | VP-0215 | Review | Make configuration choices clear and consolidate scaling |
 
 | VP-0216 | Done | Disable Config Apply when no settings are pending |
-| VP-0217 | Review | Stable reconstructed subtitle background and soft boundary blending |
+| VP-0217 | Done | Stable reconstructed subtitle background and soft boundary blending |
 
 ## Codex story workflow
 

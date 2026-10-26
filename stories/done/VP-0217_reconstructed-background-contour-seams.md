@@ -1,6 +1,26 @@
 # VP-0217 - Improve reconstructed subtitle background color and contour seams
 
 ## Status
+
+Done
+
+Accepted by the user on 2026-10-26 after reviewing the deployed trial: "OK THESE LOOk good now; merge them".
+Merged through [PR #208](https://github.com/billslack2/videoprocessor/pull/208)
+into v1.4.02-beta at 62700c3b122a0d9723651471f4cae16a6a11efbf.
+Approved source: aef7605397319ba40614f9b4d243beb213c8003b; integration base:
+87f61f77d3d95ddbfc1eeae343501d763d49e80b. GitHub merge and beta tip verified.
+
+Validation: final x64 Release build and 47 native/GPU OSD containment tests passed;
+earlier subtitle/preparation integration passed 187 tests and the separate fill
+option passed 87 tests plus Config round-trip checks. Runtime hashes and preserved
+configuration/state files are recorded in the trial evidence. User acceptance
+completes the requested visual review. No new package or deployment was requested.
+
+Historical implementation and validation notes follow; earlier pending-acceptance
+and unmerged statements describe their dated stage, not the current status.
+
+## Historical progress
+
 Review
 
 Current revision: f766f1d5 adds the accepted stable blend as a separate choice.
