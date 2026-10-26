@@ -284,6 +284,13 @@ private:
 struct SubtitleCutPasteGeometry
 {
     SubtitleBoxRect source, destination, content, generatedCleanup, pictureCapture;
+    // Exact-current native row spans remove a rounded backing without erasing
+    // the live corners of its bounding box. The legacy cleanup rectangle stays
+    // the fully proved common intersection for existing ownership contracts.
+    std::array<SubtitleBoxRect,128> generatedCleanupRows{};
+    unsigned generatedCleanupRowCount=0;
+    // Donor exclusion only: includes the measured edge collar, never erasure.
+    SubtitleBoxRect generatedCleanupExclusion;
     std::array<SubtitleBoxRect,3> glyphLines{};
     // Display-only mapping, applied after stable placement. Source ownership and
     // source cleanup stay in the original raster. Default keeps the exact old path.

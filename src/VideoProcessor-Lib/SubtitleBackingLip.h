@@ -131,6 +131,14 @@ struct CurrentSubtitleBackingLipProof
     // surrounding boundary are revalidated against the selected native frame.
     std::array<SubtitleBoxRect,128> bodyRows{};
     unsigned bodyRowCount=0;
+    // Only these CURRENT dark, neutral row spans may extend rectangular cleanup.
+    // bodyRows can include a tolerated edge collar and are never an erase mask.
+    std::array<SubtitleBoxRect,128> cleanupRows{};
+    unsigned cleanupRowCount=0;
+    const char* mismatchPhase="none";
+    int mismatchX=-1,mismatchY=-1,mismatchLuma=0,mismatchU=0,mismatchV=0;
+    int mismatchFloor=0,mismatchDarkLimit=0;
+    SubtitleBoxRect mismatchExpectedRow,mismatchExpectedCore;
     bool revalidatedOutline=false;
     bool outlineBaseAnchored=false;
 };
@@ -398,6 +406,20 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         }
         return false;
     };
+    // One native row buffer serves acquisition and continuation; neither path
+    // repeats the body scan to derive its current cleanup spans.
+    std::array<AnalysisLumaSample,8192> rowPixels;
+    const auto neutral=[](const AnalysisLumaSample& value) {
+        return std::abs(int(value.chromaU)-512)<=32 && std::abs(int(value.chromaV)-512)<=32;
+    };
+    const auto mismatch=[&](const char* phase,int x,int y,const AnalysisLumaSample& value,
+        const SubtitleBoxRect& row,const SubtitleBoxRect& core) {
+        if(result.mismatchX>=0)return;
+        result.mismatchPhase=phase;result.mismatchX=x;result.mismatchY=y;
+        result.mismatchLuma=value.luma;result.mismatchU=value.chromaU;result.mismatchV=value.chromaV;
+        result.mismatchFloor=floor;result.mismatchDarkLimit=darkLimit;
+        result.mismatchExpectedRow=row;result.mismatchExpectedCore=core;
+    };
     if(candidateCueSideWithinTolerance &&
         (allTop?candidate->pictureTop==result.pictureTop:candidate->pictureBottom==result.pictureBottom) &&
         candidate->measured.top>=result.pictureTop && candidate->measured.bottom<=result.pictureBottom) {
@@ -407,6 +429,9 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         // body evidence. This is not a timed hold and cannot authorize AR/capture.
         unsigned leftBright=0,rightBright=0;
         size_t edgePixels=0;
+        int commonLeft=0,commonRight=source.width;
+        if(candidate->bodyRowCount!=unsigned(candidate->measured.bottom-candidate->measured.top))
+            return reject("lip-outline-invalid");
         // Native card antialiasing changes with the scene immediately outside
         // its rounded edge. Permit only a two-pixel collar INSIDE the already
         // measured mask; the interior stays exhaustively black/neutral.
@@ -415,26 +440,45 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             const auto& r=candidate->bodyRows[row];
             if(!inRaster(r) || r.bottom!=r.top+1 || r.left<3 || r.right>source.width-3 ||
                 r.top<candidate->measured.top || r.bottom>candidate->measured.bottom ||
-                r.left<candidate->measured.left || r.right>candidate->measured.right)
+                r.left<candidate->measured.left || r.right>candidate->measured.right ||
+                r.top!=(allTop?candidate->measured.top+int(row):candidate->measured.bottom-1-int(row)))
                 return reject("lip-outline-invalid");
             if(candidate->blackInterior.left<r.left || candidate->blackInterior.right>r.right ||
                 r.top<candidate->blackInterior.top || r.top>=candidate->blackInterior.bottom)
                 return reject("lip-outline-interior-not-in-current-body");
+            const auto expectedCore=candidate->cleanupRowCount==candidate->bodyRowCount?
+                candidate->cleanupRows[row]:candidate->blackInterior;
             for(int x=r.left;x<r.right;++x) {
-                AnalysisLumaSample value;
+                auto& value=rowPixels[x];
                 if(!sample(x,r.top,value))return reject(exhausted?"lip-work-budget":"lip-native-sample-unavailable");
-                const bool inPreviousInterior=x>=candidate->blackInterior.left && x<candidate->blackInterior.right;
-                if(inPreviousInterior && (value.luma>darkLimit ||
-                    std::abs(int(value.chromaU)-512)>32 || std::abs(int(value.chromaV)-512)>32))
-                    return reject("lip-outline-body-changed");
                 if(value.luma>darkLimit) {
-                    if(x>=r.left+collar && x<r.right-collar)return reject("lip-outline-body-changed");
+                    if(x>=r.left+collar && x<r.right-collar) {
+                        mismatch("outline-interior-luma",x,r.top,value,r,expectedCore);
+                        return reject("lip-outline-body-changed");
+                    }
                     ++edgePixels;
                 }
-                if(x>=r.left+6 && x<r.right-6 &&
-                    (std::abs(int(value.chromaU)-512)>32 || std::abs(int(value.chromaV)-512)>32))
+                if(x>=r.left+6 && x<r.right-6 && !neutral(value)) {
+                    mismatch("outline-interior-chroma",x,r.top,value,r,expectedCore);
                     return reject("lip-outline-body-changed");
+                }
             }
+            // Trim only contiguous currently unsafe edge pixels. A former
+            // common-rectangle border may move by one pixel without discarding
+            // all the other proved body pixels. Interior holes still fail.
+            const auto safe=[&](int x){return rowPixels[x].luma<=darkLimit && neutral(rowPixels[x]);};
+            int left=r.left,right=r.right;
+            while(left<right && !safe(left))++left;
+            while(right>left && !safe(right-1))--right;
+            if(left>=right)return reject("lip-outline-no-black-interior");
+            for(int x=left;x<right;++x)if(!safe(x)) {
+                mismatch(rowPixels[x].luma>darkLimit?"outline-disconnected-luma":"outline-disconnected-chroma",
+                    x,r.top,rowPixels[x],r,expectedCore);
+                return reject("lip-outline-body-changed");
+            }
+            result.cleanupRows[row]={left,r.top,right,r.bottom};
+            result.cleanupRowCount=row+1;
+            commonLeft=(std::max)(commonLeft,left);commonRight=(std::min)(commonRight,right);
             // Distributed flank evidence tolerates isolated scene shadows. No
             // outside pixel is ever added to the remembered removal rectangle.
             bool l=false,rgt=false;
@@ -459,12 +503,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             !closure(left,right,closureY,false,true))
             return reject(exhausted?"lip-work-budget":failedRead?"lip-native-sample-unavailable":"lip-outline-boundary-occluded");
         result.measured=candidate->measured;
-        // Preserve the original rectangle only after every pixel passes current
-        // luma/chroma checks; this prevents rounded-edge cleanup jitter.
-        result.blackInterior=candidate->blackInterior;
+        // The legacy rectangle remains the current common intersection; the
+        // additional row mask restores proved shoulders without live corners.
+        result.blackInterior={commonLeft,candidate->measured.top,commonRight,candidate->measured.bottom};
         if(!result.blackInterior.Valid())return reject("lip-outline-no-black-interior");
-        // The rectangular mask is the exhaustive black intersection. Rounded
-        // corner pixels remain live picture and are never sent to reconstruction.
         result.cleanup=result.blackInterior;
         result.cornerPixels=candidate->cornerPixels;
         result.bodyRows=candidate->bodyRows;result.bodyRowCount=candidate->bodyRowCount;
@@ -479,7 +521,6 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         return reject("lip-glyphs-too-far-from-edge");
     // Reuse chroma from each exhaustive native luma probe; no second sampling
     // pass, image conversion, allocation, or persistent image storage.
-    std::array<AnalysisLumaSample,8192> rowPixels;
     struct Row {int left=0,right=0,y=0;};
     Row first,last;
     std::array<int,128> neutralLeftByRow{},neutralRightByRow{};
@@ -491,7 +532,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(y<result.pictureTop || y>=result.pictureBottom)break;
         if(!sample(center,y,rowPixels[center]))break;
         if(rowPixels[center].luma>darkLimit){
-            if(!rows)return reject("lip-no-attached-black-backing");
+            if(!rows) {
+                mismatch("attachment-center-luma",center,y,rowPixels[center],
+                    {glyphs.left,y,glyphs.right,y+1},{});
+                return reject("lip-no-attached-black-backing");
+            }
             const int left=last.left+6,right=last.right-6;
             if(left>=right)return reject("lip-top-closure-too-narrow");
             // The backing body remains exhaustively black. The adjacent
@@ -546,7 +591,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
                 return reject("lip-attachment-seam-unbounded");
             for(int x=left;x<right;++x){
                 AnalysisLumaSample value;if(!sample(x,first.y,value))break;
-                if(value.luma>darkLimit)return reject("lip-attachment-seam-body-mismatch");
+                if(value.luma>darkLimit) {
+                    mismatch("attachment-seam-luma",x,first.y,value,
+                        {left,first.y,right,first.y+1},{neutralLeftByRow[0],first.y,neutralRightByRow[0],first.y+1});
+                    return reject("lip-attachment-seam-body-mismatch");
+                }
             }
             if(exhausted || failedRead)break;
             first.left=last.left=left;first.right=last.right=right;
@@ -555,6 +604,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
             commonLeft=minLeft=neutralLeftByRow[0];commonRight=maxRight=neutralRightByRow[0];
             rowBodyPixels=size_t(right-left);result.attachmentSeamClipped=true;
             result.bodyRows[0]={left,first.y,right,first.y+1};
+            result.cleanupRows[0]={neutralLeftByRow[0],first.y,neutralRightByRow[0],first.y+1};
         }
         if(rows){
             const int maximumRowInset=(std::max)(1,glyphHeight/8);
@@ -566,18 +616,23 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         // Decoded 4:2:2 chroma may bleed into a bounded edge collar. Trim
         // only contiguous nonneutral pixels touching either edge; every pixel
         // retained for cleanup must be neutral on acquisition and revalidation.
-        const auto neutral=[&](int x){return std::abs(int(rowPixels[x].chromaU)-512)<=32 &&
-            std::abs(int(rowPixels[x].chromaV)-512)<=32;};
+        const auto neutralAt=[&](int x){return neutral(rowPixels[x]);};
         int neutralLeft=left,neutralRight=right;
-        while(neutralLeft<(std::min)(right,left+6) && !neutral(neutralLeft))++neutralLeft;
-        while(neutralRight>(std::max)(left,right-6) && !neutral(neutralRight-1))--neutralRight;
+        while(neutralLeft<(std::min)(right,left+6) && !neutralAt(neutralLeft))++neutralLeft;
+        while(neutralRight>(std::max)(left,right-6) && !neutralAt(neutralRight-1))--neutralRight;
         if(neutralLeft>=neutralRight)return reject("lip-colored-interior");
         for(int x=neutralLeft;x<neutralRight;++x)
-            if(!neutral(x))return reject("lip-colored-interior");
+            if(!neutralAt(x)) {
+                mismatch("acquisition-interior-chroma",x,y,rowPixels[x],
+                    {left,y,right,y+1},{neutralLeft,y,neutralRight,y+1});
+                return reject("lip-colored-interior");
+            }
         neutralLeftByRow[rows]=neutralLeft;neutralRightByRow[rows]=neutralRight;
         if(rows && (left>first.left || right<first.right))++result.roundingRows;
         result.bodyRows[rows]={left,y,right,y+1};
         result.bodyRowCount=unsigned(rows+1);
+        result.cleanupRows[rows]={neutralLeft,y,neutralRight,y+1};
+        result.cleanupRowCount=unsigned(rows+1);
         last={left,right,y};++rows;
         commonLeft=(std::max)(commonLeft,neutralLeftByRow[rows-1]);
         commonRight=(std::min)(commonRight,neutralRightByRow[rows-1]);
@@ -591,9 +646,9 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     result.blackInterior={commonLeft,allTop?result.pictureTop:last.y,commonRight,
         allTop?last.y+1:result.pictureBottom};
     if(!result.blackInterior.Valid())return reject("lip-no-common-cleanup-interior");
-    // The measured rows establish a finite backing outline. Cleanup uses only
-    // their common luma-dark and chroma-neutral intersection; edge fringes
-    // trimmed for chroma bleed and rounded live corners remain outside it.
+    // The measured rows establish a finite backing outline. The legacy rect
+    // remains their common intersection; each cleanup row separately retains
+    // all its proved dark, neutral pixels, excluding fringe and live corners.
     result.measured={minLeft,result.blackInterior.top,maxRight,result.blackInterior.bottom};
     result.cornerPixels=size_t(maxRight-minLeft)*size_t(rows)-rowBodyPixels;
     const size_t boundingPixels=size_t(maxRight-minLeft)*size_t(rows);
@@ -602,7 +657,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         return reject("lip-rounded-corner-area-too-large");
     if(result.roundingRows>unsigned((std::max)(1,glyphHeight/3)))
         return reject("lip-rounded-corner-depth-too-large");
-    result.cleanup=result.blackInterior; // Preserve rounded pixels outside the exhaustive black interior.
+    result.cleanup=result.blackInterior;
     result.valid=true;result.reason="current-finite-rounded-backing-lip";
     return result;
 }
@@ -618,7 +673,7 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     const auto contains=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b){return a.Valid() && b.Valid() &&
         b.left>=a.left && b.top>=a.top && b.right<=a.right && b.bottom<=a.bottom;};
     if(!geometry.valid || !proof.valid)return reject("lip-application-unavailable");
-    if(geometry.generatedCleanup.Valid() || geometry.cleanupLimit.Valid())
+    if(geometry.generatedCleanup.Valid() || geometry.generatedCleanupRowCount || geometry.cleanupLimit.Valid())
         return reject("lip-application-existing-cleanup");
     if(!SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
         proof.policyGeneration!=policy || proof.continuityGeneration!=continuity)
@@ -632,6 +687,7 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     if(proof.width<1 || proof.height<1 || proof.pictureTop<0 || proof.pictureBottom>proof.height ||
         !picture.Valid() || geometry.pictureTop<0 || geometry.pictureBottom>proof.height ||
         !composedPicture.Valid() || geometry.fromTopBar!=proof.fromTopBar ||
+        !contains(picture,proof.measured) || !contains(composedPicture,proof.measured) ||
         !contains(picture,proof.cleanup) || !contains(composedPicture,proof.cleanup))
         return reject("lip-application-physical-binding-mismatch");
     if(!contains(proof.measured,proof.blackInterior) ||
@@ -640,7 +696,24 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
         proof.cleanup.right!=proof.blackInterior.right || proof.cleanup.bottom!=proof.blackInterior.bottom ||
         (proof.fromTopBar?proof.blackInterior.top!=proof.pictureTop:proof.blackInterior.bottom!=proof.pictureBottom))
         return reject("lip-application-invalid-cleanup");
+    if(proof.cleanupRowCount<2 || proof.cleanupRowCount>proof.cleanupRows.size() ||
+        proof.cleanupRowCount!=proof.bodyRowCount ||
+        proof.cleanupRowCount!=unsigned(proof.measured.bottom-proof.measured.top))
+        return reject("lip-application-invalid-row-mask");
+    for(unsigned i=0;i<proof.cleanupRowCount;++i) {
+        const auto& row=proof.cleanupRows[i];const auto& body=proof.bodyRows[i];
+        const int y=proof.fromTopBar?proof.measured.top+int(i):proof.measured.bottom-1-int(i);
+        if(row.top!=y || row.bottom!=y+1 || body.top!=y || body.bottom!=y+1 ||
+            !contains(proof.measured,body) || !contains(body,row) ||
+            !contains(picture,row) || !contains(composedPicture,row) ||
+            row.left>proof.blackInterior.left || row.right<proof.blackInterior.right ||
+            (i && (body.left<proof.bodyRows[i-1].left || body.right>proof.bodyRows[i-1].right)))
+            return reject("lip-application-invalid-row-mask");
+    }
     geometry.generatedCleanup=proof.cleanup;
+    geometry.generatedCleanupRows=proof.cleanupRows;
+    geometry.generatedCleanupRowCount=proof.cleanupRowCount;
+    geometry.generatedCleanupExclusion=proof.measured; // Donor exclusion only; never an erase rectangle.
     if(applicationReason)*applicationReason="lip-current-cleanup-applied";
     return geometry;
 }

@@ -32,6 +32,19 @@ TEST_CLASS(SubtitleBackingLipTests) {
         return outer.Valid() && inner.Valid() && outer.left<=inner.left && outer.top<=inner.top &&
             outer.right>=inner.right && outer.bottom>=inner.bottom;
     }
+    static bool InCleanupRows(const CurrentSubtitleBackingLipProof& proof,int x,int y) {
+        for(unsigned i=0;i<proof.cleanupRowCount;++i) {
+            const auto& row=proof.cleanupRows[i];
+            if(y==row.top && x>=row.left && x<row.right)return true;
+        }
+        return false;
+    }
+    static size_t CleanupArea(const CurrentSubtitleBackingLipProof& proof) {
+        size_t area=0;
+        for(unsigned i=0;i<proof.cleanupRowCount;++i)
+            area+=size_t(proof.cleanupRows[i].right-proof.cleanupRows[i].left);
+        return area;
+    }
     struct Frame {
         int scale,width,height,pictureTop,pictureBottom,floor;
         Format format;bool top;
@@ -125,6 +138,25 @@ TEST_CLASS(SubtitleBackingLipTests) {
                 Identity(sequence),false,{},7,8,authority);
         }
     };
+    static void AssertCurrentCleanupRows(const CurrentSubtitleBackingLipProof& proof,const Frame& frame) {
+        Assert::IsTrue(proof.valid);
+        Assert::AreEqual(proof.bodyRowCount,proof.cleanupRowCount);
+        Assert::AreEqual(unsigned(proof.measured.bottom-proof.measured.top),proof.cleanupRowCount);
+        for(unsigned i=0;i<proof.cleanupRowCount;++i) {
+            const auto& row=proof.cleanupRows[i];const auto& body=proof.bodyRows[i];
+            Assert::IsTrue(Contains(body,row));
+            Assert::AreEqual(proof.fromTopBar?proof.measured.top+int(i):proof.measured.bottom-1-int(i),row.top);
+            Assert::AreEqual(row.top+1,row.bottom);
+            Assert::IsTrue(row.left<=proof.blackInterior.left && row.right>=proof.blackInterior.right);
+            for(int x=body.left;x<body.right;++x) {
+                AnalysisLumaSample value;Assert::IsTrue(frame.Source().Sample(x,row.top,value));
+                const bool safe=value.luma<=frame.floor+4 &&
+                    std::abs(int(value.chromaU)-512)<=32 && std::abs(int(value.chromaV)-512)<=32;
+                Assert::IsTrue(safe==InCleanupRows(proof,x,row.top),
+                    L"Every currently dark, neutral body pixel is covered; no unsafe collar pixel is erased.");
+            }
+        }
+    }
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> list) {
         return SubtitleBoxLookahead::Resolve(list.begin(),list.size(),7,8);
     }
@@ -194,7 +226,9 @@ TEST_CLASS(SubtitleBackingLipTests) {
             <<" measured="<<proof.measured.left<<","<<proof.measured.top<<"-"<<proof.measured.right<<","<<proof.measured.bottom
             <<" context_mask="<<proof.contextMismatchMask<<" edge_mask="<<proof.edgeEvidenceMask
             <<" pixel_inspected="<<proof.pixelInspectionPerformed<<" candidate_retained="<<proof.candidateRetained
-            <<" candidate_age="<<proof.candidateAgeFrames;
+            <<" candidate_age="<<proof.candidateAgeFrames<<" cleanup_rows="<<proof.cleanupRowCount
+            <<" mismatch="<<proof.mismatchPhase<<"@"<<proof.mismatchX<<","<<proof.mismatchY
+            <<" YUV="<<proof.mismatchLuma<<","<<proof.mismatchU<<","<<proof.mismatchV;
         Logger::WriteMessage(out.str().c_str());
     }
     static SubtitleCutPasteGeometry Geometry(const Acquired& cue,SubtitleBoxPadding padding={12,8,6}) {
@@ -660,19 +694,29 @@ public:
     TEST_METHOD(CurrentChromaEdgeBleedIsTrimmedAndStableAcrossRevalidation) {
         Frame frame(2,Format::P210,false);frame.Lip(16,false);
         frame.Chroma({224*2,frame.pictureBottom-2,224*2+2,frame.pictureBottom-1},700,512);
-        auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
-        const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+        auto cue=AcquireOnHeap(frame);SubtitleBackingLipContinuity continuity;
+        const auto first=continuity.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
         LogProof(first,frame,"chroma-edge-acquisition");
         Assert::IsTrue(first.valid && first.cleanup.left==first.measured.left+2);
-        auto current=Resolve({frame.Measure(3)});const auto text=cue.tracker.Consume(current);
-        const auto second=continuity.Consume(frame.Source(),current,text,Identity(3),7,8);
+        auto observation=frame.Measure(3);auto current=ResolveOnHeap(&observation,1);
+        auto text=cue->tracker.Consume(*current);
+        const auto second=continuity.Consume(frame.Source(),*current,text,Identity(3),7,8);
         LogProof(second,frame,"chroma-edge-revalidation");
         Assert::IsTrue(second.valid && second.revalidatedOutline);
-        Assert::IsTrue(Same(first.cleanup,second.cleanup),L"A proven chroma-bleed edge is trimmed identically on acquisition and revalidation.");
+        Assert::IsTrue(Same(first.cleanup,second.cleanup));AssertCurrentCleanupRows(second,frame);
         frame.Chroma({first.cleanup.left,frame.pictureBottom-2,first.cleanup.left+2,frame.pictureBottom-1},700,512);
-        current=Resolve({frame.Measure(4)});const auto changedText=cue.tracker.Consume(current);
-        const auto changed=continuity.Consume(frame.Source(),current,changedText,Identity(4),7,8);
-        Assert::IsFalse(changed.valid);Assert::AreEqual("lip-outline-body-changed",changed.reason);
+        observation=frame.Measure(4);current=ResolveOnHeap(&observation,1);text=cue->tracker.Consume(*current);
+        const auto changed=continuity.Consume(frame.Source(),*current,text,Identity(4),7,8);
+        Assert::IsTrue(changed.valid && changed.revalidatedOutline,
+            L"Contiguous current chroma bleed trims only the affected row instead of blanking the whole lip.");
+        Assert::AreEqual(first.measured.left+4,changed.cleanup.left);AssertCurrentCleanupRows(changed,frame);
+        frame.Chroma({first.measured.left+10,frame.pictureBottom-2,first.measured.left+12,frame.pictureBottom-1},700,512);
+        observation=frame.Measure(5);current=ResolveOnHeap(&observation,1);text=cue->tracker.Consume(*current);
+        const auto interior=continuity.Consume(frame.Source(),*current,text,Identity(5),7,8);
+        Assert::IsFalse(interior.valid);Assert::AreEqual("lip-outline-body-changed",interior.reason);
+        Assert::AreEqual("outline-interior-chroma",interior.mismatchPhase);
+        Assert::AreEqual(first.measured.left+10,interior.mismatchX);
+        Assert::AreEqual(frame.pictureBottom-2,interior.mismatchY);
     }
     TEST_METHOD(CurrentOutlineAntialiasCollarIsBoundedInsideTheMeasuredMask) {
         for(bool top:{false,true})for(int depth:{1,2,3}) {
@@ -706,20 +750,65 @@ public:
             Assert::IsFalse(proof.valid);Assert::AreEqual("lip-outline-body-changed",proof.reason);
         }
     }
-    TEST_METHOD(CurrentOutlineRejectsBrightPixelAtRememberedBlackInteriorBorder) {
-        for(bool top:{false,true}) {
-            Frame frame(1,Format::P010,top);frame.Lip(8,true);auto cue=Acquire(frame);
+    TEST_METHOD(CurrentRowEndpointChangesTrimAndRegrowOnlyFreshProvedPixels) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv})for(bool top:{false,true}) {
+            Frame frame(2,format,top);frame.Lip(16,true);auto cue=AcquireOnHeap(frame);
             SubtitleBackingLipContinuity continuity;
-            const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
-            Assert::IsTrue(first.valid && first.blackInterior.Valid());
-            const int rasterY=first.blackInterior.top;
-            const int lowerY=top?frame.height-1-rasterY:rasterY;
-            frame.Pixel(first.blackInterior.left,lowerY,500);
-            auto preview=Resolve({frame.Measure(3)});const auto text=cue.tracker.Consume(preview);
-            const auto rejected=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8);
-            Assert::IsFalse(rejected.valid);
-            Assert::AreEqual("lip-outline-body-changed",rejected.reason,
-                L"A newly bright edge pixel inside the retained cleanup is not hidden by the AA collar.");
+            const auto first=continuity.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+            AssertCurrentCleanupRows(first,frame);
+            const auto narrowest=first.bodyRows[first.bodyRowCount-1];
+            Assert::AreEqual(first.blackInterior.left,narrowest.left);
+            const int lowerY=top?frame.height-1-narrowest.top:narrowest.top;
+            frame.Pixel(narrowest.left,lowerY,500);
+            auto observation=frame.Measure(3);auto preview=ResolveOnHeap(&observation,1);
+            auto text=cue->tracker.Consume(*preview);
+            const auto trimmed=continuity.Consume(frame.Source(),*preview,text,Identity(3),7,8);
+            LogProof(trimmed,frame,"current-row-edge-trim");AssertCurrentCleanupRows(trimmed,frame);
+            Assert::IsTrue(trimmed.revalidatedOutline);
+            Assert::AreEqual(first.blackInterior.left+1,trimmed.blackInterior.left);
+            Assert::IsFalse(InCleanupRows(trimmed,narrowest.left,narrowest.top));
+            Assert::AreEqual(CleanupArea(first)-size_t(1),CleanupArea(trimmed),
+                L"A changed edge excludes exactly that pixel; other proved shoulders remain covered.");
+            Assert::AreEqual(-1,trimmed.mismatchX);
+            frame.Pixel(narrowest.left,lowerY,frame.floor);
+            observation=frame.Measure(4);preview=ResolveOnHeap(&observation,1);text=cue->tracker.Consume(*preview);
+            const auto restored=continuity.Consume(frame.Source(),*preview,text,Identity(4),7,8);
+            AssertCurrentCleanupRows(restored,frame);
+            Assert::IsTrue(restored.revalidatedOutline && Same(first.cleanup,restored.cleanup));
+            Assert::AreEqual(CleanupArea(first),CleanupArea(restored));
+            Assert::IsTrue(InCleanupRows(restored,narrowest.left,narrowest.top),
+                L"An endpoint grows back only after its actual selected native pixel is proved again.");
+            // A new dark corner is outside the remembered body, even though
+            // it lies inside the measured bounding box and two flanks remain bright.
+            frame.Pixel(narrowest.left-1,lowerY,frame.floor);
+            observation=frame.Measure(5);preview=ResolveOnHeap(&observation,1);text=cue->tracker.Consume(*preview);
+            const auto outside=continuity.Consume(frame.Source(),*preview,text,Identity(5),7,8);
+            AssertCurrentCleanupRows(outside,frame);Assert::IsTrue(outside.revalidatedOutline);
+            Assert::AreEqual(CleanupArea(first),CleanupArea(outside));
+            Assert::IsFalse(InCleanupRows(outside,narrowest.left-1,narrowest.top),
+                L"Weak flank evidence cannot enlarge cleanup into a previously live rounded corner.");
+        }
+    }
+    TEST_METHOD(CurrentRowMaskRejectsDisconnectedUnsafePixelsInsideTheEdgeCollar) {
+        for(bool top:{false,true})for(bool colored:{false,true}) {
+            Frame frame(2,Format::P210,top);frame.Lip(16,false);auto cue=AcquireOnHeap(frame);
+            SubtitleBackingLipContinuity continuity;
+            const auto first=continuity.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid);
+            const int x=first.measured.left+(colored?2:1),lowerY=frame.pictureBottom-5;
+            if(colored)frame.Chroma({x,lowerY,x+2,lowerY+1},700,512);
+            else frame.Pixel(x,lowerY,500);
+            auto observation=frame.Measure(3);auto preview=ResolveOnHeap(&observation,1);
+            const auto text=cue->tracker.Consume(*preview);
+            const auto rejected=continuity.Consume(frame.Source(),*preview,text,Identity(3),7,8);
+            Assert::IsFalse(rejected.valid);Assert::AreEqual("lip-outline-body-changed",rejected.reason);
+            Assert::AreEqual(colored?"outline-disconnected-chroma":"outline-disconnected-luma",rejected.mismatchPhase);
+            Assert::AreEqual(x,rejected.mismatchX);Assert::AreEqual(frame.Y(lowerY),rejected.mismatchY);
+            Assert::AreEqual(frame.floor,rejected.mismatchFloor);
+            Assert::IsTrue(rejected.mismatchDarkLimit>=frame.floor);
+            Assert::IsTrue(rejected.mismatchExpectedRow.Valid() && rejected.mismatchExpectedCore.Valid());
+            Assert::AreEqual(colored?700:512,rejected.mismatchU);
+            Assert::AreEqual(colored?frame.floor:500,rejected.mismatchLuma);
         }
     }
     TEST_METHOD(CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure) {
@@ -896,6 +985,23 @@ public:
             LogProof(proof,frame,"rounded");Assert::IsTrue(proof.valid);
             Assert::IsTrue(Contains(lip,proof.cleanup) && Same(proof.cleanup,proof.blackInterior),L"Cleanup is limited to the exhaustively black rounded-body intersection.");
             Assert::IsTrue(proof.cleanup.left>=lip.left && proof.cleanup.right<=lip.right);
+            AssertCurrentCleanupRows(proof,frame);
+            const size_t commonArea=size_t(proof.cleanup.right-proof.cleanup.left)*size_t(proof.cleanup.bottom-proof.cleanup.top);
+            Assert::IsTrue(CleanupArea(proof)>commonArea,L"The mask covers proved rounded shoulders beyond the legacy rectangle.");
+            size_t liveCorners=0;
+            for(int y=proof.measured.top;y<proof.measured.bottom;++y)
+                for(int x=proof.measured.left;x<proof.measured.right;++x) {
+                    AnalysisLumaSample value;Assert::IsTrue(frame.Source().Sample(x,y,value));
+                    if(value.luma>frame.floor+4) {
+                        ++liveCorners;Assert::IsFalse(InCleanupRows(proof,x,y),L"Rounded live-picture corners are never erased.");
+                    }
+                }
+            Assert::IsTrue(liveCorners>0);
+            const auto base=Geometry(cue);const auto applied=ApplyCurrentSubtitleBackingLip(base,proof,Identity(2),7,8);
+            AssertGeometryExceptCleanup(base,applied);
+            Assert::AreEqual(proof.cleanupRowCount,applied.generatedCleanupRowCount);
+            Assert::IsTrue(Same(proof.measured,applied.generatedCleanupExclusion));
+            for(unsigned i=0;i<proof.cleanupRowCount;++i)Assert::IsTrue(Same(proof.cleanupRows[i],applied.generatedCleanupRows[i]));
         }
     }
     TEST_METHOD(SingleUnsampledNativeHoleAndColoredInteriorCannotBecomeCleanup) {
@@ -1026,6 +1132,22 @@ public:
         const auto exact=ProveCurrentSubtitleBackingLip(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8,full.samples);
         Assert::IsTrue(exact.valid);Assert::IsTrue(exact.samples==full.samples);
     }
+    TEST_METHOD(CurrentRowMaskDerivationSharesTheExactNativeRevalidationBudget) {
+        Frame frame(6,Format::DecodedDv);frame.Lip(30,true);auto cue=AcquireOnHeap(frame);
+        const auto first=ProveCurrentSubtitleBackingLip(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+        Assert::IsTrue(first.valid);
+        auto observation=frame.Measure(3);auto preview=ResolveOnHeap(&observation,1);
+        const auto text=cue->tracker.Consume(*preview);
+        const auto full=ProveCurrentSubtitleBackingLip(frame.Source(),*preview,text,Identity(3),7,8,65536,&first);
+        AssertCurrentCleanupRows(full,frame);
+        Assert::IsTrue(full.revalidatedOutline && full.samples>32768 && full.samples<=65536);
+        const auto shortBudget=ProveCurrentSubtitleBackingLip(frame.Source(),*preview,text,Identity(3),7,8,full.samples-1,&first);
+        Assert::IsFalse(shortBudget.valid);Assert::AreEqual("lip-work-budget",shortBudget.reason);
+        Assert::IsTrue(shortBudget.samples==full.samples-1);
+        const auto exact=ProveCurrentSubtitleBackingLip(frame.Source(),*preview,text,Identity(3),7,8,full.samples,&first);
+        Assert::IsTrue(exact.valid && exact.samples==full.samples);
+        Assert::AreEqual(CleanupArea(full),CleanupArea(exact));
+    }
     TEST_METHOD(LipApplyDecoratesOnlyFreshCleanupWithoutMutatingGeometryOrCaches) {
         for(bool top:{false,true}) {
             Frame frame(1,Format::P210,top);const auto lip=frame.Lip(3);const auto cue=Acquire(frame);
@@ -1054,6 +1176,32 @@ public:
             if(fault==9)++p.policyGeneration;if(fault==10)++p.continuityGeneration;
             const auto result=ApplyCurrentSubtitleBackingLip(g,p,expected,7,8);
             AssertGeometryExceptCleanup(g,result);Assert::IsTrue(Same(g.generatedCleanup,result.generatedCleanup));
+        }
+    }
+    TEST_METHOD(LipApplyRejectsMalformedPerRowAuthorityWithoutUsingItsBoundingBox) {
+        for(bool top:{false,true}) {
+            Frame frame(2,Format::P210,top);frame.Lip(16,true);auto cue=AcquireOnHeap(frame);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+            const auto base=Geometry(*cue);Assert::IsTrue(proof.valid);
+            for(int fault=0;fault<10;++fault) {
+                auto invalid=proof;
+                if(fault==0)invalid.cleanupRowCount=0;
+                if(fault==1)invalid.cleanupRowCount=129;
+                if(fault==2)--invalid.bodyRowCount;
+                if(fault==3)invalid.cleanupRows[1]=invalid.cleanupRows[0];
+                if(fault==4)++invalid.cleanupRows[1].top;
+                if(fault==5)--invalid.cleanupRows[0].left;
+                if(fault==6)invalid.cleanupRows[0].right=invalid.blackInterior.right-1;
+                if(fault==7)invalid.bodyRows[1].left=invalid.bodyRows[0].left-1;
+                if(fault==8)++invalid.measured.bottom;
+                if(fault==9)invalid.cleanupRows[0]=invalid.measured;
+                const char* reason=nullptr;
+                const auto rejected=ApplyCurrentSubtitleBackingLip(base,invalid,Identity(2),7,8,&reason);
+                AssertGeometryExceptCleanup(base,rejected);
+                Assert::IsFalse(rejected.generatedCleanup.Valid() || rejected.generatedCleanupExclusion.Valid());
+                Assert::AreEqual(0u,rejected.generatedCleanupRowCount);
+                Assert::IsTrue(reason && std::string(reason)!="lip-current-cleanup-applied");
+            }
         }
     }
     TEST_METHOD(LipDisappearanceHasNoTimerCacheOrOldIdentityCleanup) {

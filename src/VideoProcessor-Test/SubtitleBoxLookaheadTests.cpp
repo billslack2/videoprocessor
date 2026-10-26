@@ -4823,8 +4823,29 @@ public:
             Assert::IsTrue(lip.valid && lip.pixelInspectionPerformed,
                 L"Cold inspection recovery must earn fresh finite backing cleanup, not only glyph display.");
             Assert::IsTrue(SubtitleCueContinuation::SameRect({1442,1746,2398,1776},lip.measured));
+            Assert::AreEqual(lip.bodyRowCount,lip.cleanupRowCount);
+            size_t shoulderPixels=0,liveCorners=0;
+            for(unsigned row=0;row<lip.cleanupRowCount;++row) {
+                const auto& span=lip.cleanupRows[row];const auto& body=lip.bodyRows[row];
+                Assert::IsTrue(span.top==body.top && span.bottom==body.bottom &&
+                    span.left>=body.left && span.right<=body.right);
+                for(int x=lip.measured.left;x<lip.measured.right;++x) {
+                    const bool erased=x>=span.left && x<span.right;
+                    AnalysisLumaSample pixel;Assert::IsTrue(source.Sample(x,span.top,pixel));
+                    if(erased) {
+                        Assert::IsTrue(pixel.luma<=current.barEvidence.bottomFloor+4 &&
+                            std::abs(int(pixel.chromaU)-512)<=32 && std::abs(int(pixel.chromaV)-512)<=32);
+                        shoulderPixels+=x<lip.cleanup.left || x>=lip.cleanup.right;
+                    }
+                    else if((x<body.left || x>=body.right) && pixel.luma>current.barEvidence.bottomFloor+4)
+                        ++liveCorners;
+                }
+            }
+            Assert::IsTrue(shoulderPixels>0,L"Current native row masks must include proved backing shoulders outside the common rectangle.");
+            Assert::IsTrue(liveCorners>0,L"Actual bright rounded corner pixels remain outside every emitted cleanup span.");
             move=ApplyCurrentSubtitleBackingLip(move,lip,currentKey.identity,policy,continuity);
             Assert::IsTrue(move.valid && move.generatedCleanup.Valid());
+            Assert::AreEqual(lip.cleanupRowCount,move.generatedCleanupRowCount);
             if(i==0){firstDestination=move.destination;firstCleanup=move.generatedCleanup;}
             else {
                 Assert::IsTrue(lip.revalidatedOutline);

@@ -14381,6 +14381,11 @@ struct LibplaceboVideoRenderer::Impl
                     subtitlePerf.consumeMs+=lipMs;
                     subtitlePerf.consumePeak=(std::max)(subtitlePerf.consumePeak,cost+lipMs);
                     const auto now=GetTickCount64();
+                    size_t cleanupPixels=0;
+                    for(unsigned row=0;row<move.generatedCleanupRowCount && row<move.generatedCleanupRows.size();++row) {
+                        const auto& span=move.generatedCleanupRows[row];
+                        if(span.Valid())cleanupPixels+=size_t(span.right-span.left);
+                    }
                     const auto& prior=subtitleLipLogCleanup;
                     const bool changed=std::strcmp(subtitleLipLogReason,lip.reason)!=0 ||
                         subtitleLipLogContextMask!=lip.contextMismatchMask || subtitleLipLogEdgeMask!=lip.edgeEvidenceMask ||
@@ -14388,7 +14393,7 @@ struct LibplaceboVideoRenderer::Impl
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_age_frames=%llu",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_age_frames=%llu cleanup_rows=%u cleanup_pixels=%zu mismatch_phase=%s mismatch_xy=%d,%d mismatch_yuv=%d,%d,%d mismatch_floor=%d mismatch_dark_limit=%d expected_row=%d,%d-%d,%d expected_core=%d,%d-%d,%d",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
@@ -14401,12 +14406,21 @@ struct LibplaceboVideoRenderer::Impl
                             lip.attachmentSeamClipped?1:0,subtitlePreview->current.pictureTop,
                             subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0,
                             lip.contextMismatchMask,lip.edgeEvidenceMask,lip.pixelInspectionPerformed?1:0,
-                            lip.candidateRetained?1:0,lip.candidateAgeFrames);
+                            lip.candidateRetained?1:0,lip.candidateAgeFrames,
+                            move.generatedCleanupRowCount,cleanupPixels,lip.mismatchPhase,
+                            lip.mismatchX,lip.mismatchY,lip.mismatchLuma,lip.mismatchU,lip.mismatchV,
+                            lip.mismatchFloor,lip.mismatchDarkLimit,
+                            lip.mismatchExpectedRow.left,lip.mismatchExpectedRow.top,
+                            lip.mismatchExpectedRow.right,lip.mismatchExpectedRow.bottom,
+                            lip.mismatchExpectedCore.left,lip.mismatchExpectedCore.top,
+                            lip.mismatchExpectedCore.right,lip.mismatchExpectedCore.bottom);
                         auto lipTrace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-backing",lip.reason);
                         AnalysisTraceRect(lipTrace.measured,lip.measured);AnalysisTraceRect(lipTrace.displayed,move.generatedCleanup);
                         lipTrace.counters[0]=subtitleBoxResult.cue;lipTrace.counters[1]=lip.contextMismatchMask;
                         lipTrace.counters[2]=lip.edgeEvidenceMask;lipTrace.counters[3]=lip.candidateAgeFrames;
                         lipTrace.metrics[0]=static_cast<double>(lip.samples);lipTrace.metrics[1]=static_cast<double>(lip.cornerPixels);
+                        lipTrace.metrics[2]=static_cast<double>(cleanupPixels);
+                        lipTrace.metrics[3]=static_cast<double>(move.generatedCleanupRowCount);
                         lipTrace.flags=(lip.valid?1u:0u)|(move.generatedCleanup.Valid()?2u:0u)|
                             (lip.pixelInspectionPerformed?4u:0u)|(lip.candidateRetained?8u:0u);
                         AnalysisDiagnosticTrace::Emit(lipTrace);
