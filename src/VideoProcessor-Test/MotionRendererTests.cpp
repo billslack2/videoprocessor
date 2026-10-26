@@ -205,6 +205,13 @@ TEST_CLASS(MotionRendererTests){public:
                 geometry.content=geometry.destination;geometry.pictureCapture=geometry.destination;
                 geometry.generatedCleanup=geometry.source;geometry.glyphLines[0]=geometry.source;
                 style.blurPixels=radius;
+                style.opacity=shift==0?0.0f:0.75f;
+                style.maxLuminance=shift==0?1.0f:0.25f;
+                style.textColor[2]=shift==0?0.0f:1.0f;
+                style.borderWidth=shift==0?0.0f:4.0f;
+                style.borderOpacity=shift==0?0.0f:1.0f;
+                geometry.roundedCorners=shift!=0;
+                geometry.extendToBar=shift!=0;
                 for(auto phase:{SubtitleCompositionPhase::All,SubtitleCompositionPhase::CleanupOnly,SubtitleCompositionPhase::LayerOnly}) {
                     auto input=source;
                     const bool layer=phase==SubtitleCompositionPhase::LayerOnly;
