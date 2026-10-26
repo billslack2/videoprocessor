@@ -3972,6 +3972,9 @@ void ConfigEditorWindow::setAdvancedToneMappingWindow(bool active)
     {
         const QRect geometry = basicWindowGeometry_;
         basicWindowGeometry_ = {};
+        // Already maximized on entry and still maximized: keep Qt's native
+        // restore geometry untouched rather than unmaximize/maximize again.
+        if (basicWindowState_.testFlag(Qt::WindowMaximized) && isMaximized() && !isFullScreen()) return;
         const bool visible = isVisible();
         setWindowState(Qt::WindowNoState);
         setGeometry(geometry);
