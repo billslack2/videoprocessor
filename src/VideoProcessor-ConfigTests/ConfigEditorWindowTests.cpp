@@ -40,6 +40,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -59,6 +60,8 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QVBoxLayout>
 #include <QSlider>
 #include <QStandardItemModel>
 #include <QSplitter>
@@ -557,6 +560,140 @@ void testToneSliderDragPerformance()
     require(low->text().toDouble()<.001,"Fine typed high threshold produced an invalid low slider range");
 }
 
+void testToneSliderWheelScrollsPanelWithoutEditing()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create wheel fixture");
+    file.write("[general]\nrenderer: VP Renderer\n[vprenderer.Test]\nquality: high\ntone_mapping: spline\nknee_adaptation: 0.6\n");
+    file.close();
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show(); window.selectPage(2);
+    for (const char* section : { "toneMapping", "toneCurves", "tonePeak" })
+        requireControl<QToolButton>(window, QString("rendererSection.") + section)->setChecked(true);
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto* workspace = requireControl<QWidget>(window, "workspace.config.vprenderer.profiles");
+    auto* scroll = requireControl<QScrollArea>(*workspace, "workspaceSettingsViewport");
+    require(window.width() == 1120, "Unexpected default editor width");
+    require(scroll->horizontalScrollBar()->maximum() == 0,
+        "Tone controls need horizontal scrolling at the default width");
+    auto* slider = requireControl<QSlider>(window, "config.vprenderer.knee_adaptation.slider");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.knee_adaptation");
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    require(slider->isEnabled(), "Wheel fixture slider is disabled");
+    auto* bar = scroll->verticalScrollBar();
+    require(bar->maximum() > 0, "Wheel fixture has no vertical scroll range");
+    for (bool focused : { false, true })
+    {
+        if (focused) slider->setFocus(); else slider->clearFocus();
+        scroll->ensureWidgetVisible(slider); events();
+        const int beforeScroll = bar->value();
+        const int beforeValue = slider->value();
+        const QString beforeText = edit->text();
+        const bool beforeApply = apply->isEnabled();
+        const QPointF local = slider->rect().center();
+        QWheelEvent wheel(local, slider->mapToGlobal(local.toPoint()), QPoint(),
+            QPoint(0, beforeScroll < bar->maximum() ? -120 : 120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(slider, &wheel); events();
+        require(slider->value() == beforeValue && edit->text() == beforeText,
+            "Mouse wheel changed a tone-mapping value");
+        require(apply->isEnabled() == beforeApply, "Wheel changed pending-edit state");
+        require(bar->value() != beforeScroll, "Wheel over slider did not scroll the panel");
+    }
+    slider->setFocus();
+    const int beforeKey = slider->value();
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+    QApplication::sendEvent(slider, &key);
+    require(slider->value() > beforeKey, "Wheel suppression disabled keyboard adjustment");
+    require(readBytes(path) == original, "Scrolling or keyboard adjustment wrote the configuration");
+}
+void testWheelGuardsAllConfigValueControlsAndAllowsPopupLists()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show();
+    auto events = [] { for (int n = 0; n < 5; ++n) QApplication::processEvents(); };
+    events();
+    auto wheelOver = [&](QWidget* target, int delta) {
+        const QPointF local = target->rect().center();
+        QWheelEvent wheel(local, target->mapToGlobal(local.toPoint()), QPoint(),
+            QPoint(0, delta), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(target, &wheel);
+    };
+    int comboCount = 0, spinCount = 0;
+    for (auto* combo : window.findChildren<QComboBox*>())
+    {
+        if (!combo->isEnabled() || combo->count() < 2) continue;
+        const int before = combo->currentIndex();
+        for (bool focus : { false, true })
+        {
+            if (focus) combo->setFocus(); else combo->clearFocus();
+            wheelOver(combo->isEditable() ? static_cast<QWidget*>(combo->lineEdit()) : combo,
+                before < combo->count() - 1 ? -120 : 120);
+            require(combo->currentIndex() == before,
+                QString("Wheel changed dropdown %1").arg(combo->objectName()).toStdString().c_str());
+        }
+        ++comboCount;
+    }
+    for (auto* spin : window.findChildren<QSpinBox*>())
+    {
+        if (!spin->isEnabled() || spin->minimum() == spin->maximum()) continue;
+        const int before = spin->value();
+        for (bool focus : { false, true })
+        {
+            if (focus) spin->setFocus(); else spin->clearFocus();
+            wheelOver(spin->findChild<QLineEdit*>(), before < spin->maximum() ? 120 : -120);
+            require(spin->value() == before, "Wheel changed a numeric field through its editor");
+        }
+        ++spinCount;
+    }
+    require(comboCount > 0 && spinCount > 0, "No real Config value controls were checked");
+    std::cout << "WHEEL: " << comboCount << " dropdowns and " << spinCount << " numeric controls protected" << std::endl;
+
+    // Controls created after the main window, including floating dialogs, must
+    // follow the same policy without per-widget installation.
+    QDialog dialog(&window);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true); layout->addWidget(scroll);
+    auto* content = new QWidget;
+    auto* form = new QVBoxLayout(content);
+    auto* combo = new QComboBox;
+    for (int n = 0; n < 60; ++n) combo->addItem(QString::number(n));
+    combo->setMaxVisibleItems(8); form->addWidget(combo);
+    auto* spin = new QDoubleSpinBox;
+    spin->setValue(10); form->addWidget(spin); form->addSpacing(900);
+    scroll->setWidget(content);
+    dialog.resize(420, 220); dialog.show(); events();
+    for (QWidget* target : {static_cast<QWidget*>(combo), static_cast<QWidget*>(spin->findChild<QLineEdit*>())})
+    {
+        scroll->ensureWidgetVisible(target); events();
+        auto* bar = scroll->verticalScrollBar(); bar->setValue(0);
+        target->setFocus(); wheelOver(target, -120); events();
+        require(combo->currentIndex() == 0 && spin->value() == 10,
+            "Wheel changed a dynamically created dialog value");
+        require(bar->value() > 0, "Wheel over a dialog value control did not scroll its page");
+    }
+    scroll->ensureWidgetVisible(combo); events();
+    combo->showPopup(); events();
+    auto* popupBar = combo->view()->verticalScrollBar();
+    require(popupBar->maximum() > 0, "Popup fixture has no scroll range");
+    const int beforePopup = popupBar->value();
+    wheelOver(combo->view()->viewport(), -120); events();
+    require(popupBar->value() > beforePopup, "Open dropdown list no longer scrolls");
+    combo->hidePopup();
+    const int beforeKey = combo->currentIndex();
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(combo, &key);
+    require(combo->currentIndex() != beforeKey, "Wheel policy disabled deliberate keyboard selection");
+    require(readBytes(path) == original, "Wheel protection test wrote the source configuration");
+}
 void testToneMappingControls()
 {
     QTemporaryDir directory;
@@ -5533,9 +5670,9 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     const bool previousCurves = requireControl<QToolButton>(window,"rendererSection.toneCurves")->isChecked();
     auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
     require(workspace->isProfilesExpanded() && navigation->isPanelExpanded(), "Normal workspace must start docked");
-    require(advanced->text()=="Advanced tone mapping","Basic state has the wrong toggle label");
+    require(advanced->text()=="Show Tone Charts","Basic state has the wrong toggle label");
     advanced->click(); events();
-    require(advanced->text()=="Basic tone mapping"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
+    require(advanced->text()=="Hide Tone Charts"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
     require(workspace->isAdvancedFocus() && !workspace->isProfilesExpanded() && !navigation->isPanelExpanded(),
         "Advanced toggle did not collapse both left panels");
     auto* toneSection = requireControl<QToolButton>(window, "rendererSection.toneMapping");
@@ -5556,7 +5693,7 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     advanced->click(); events();
     require(navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
         "Leaving advanced focus overwrote a manual panel choice");
-    require(advanced->text()=="Advanced tone mapping"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
+    require(advanced->text()=="Show Tone Charts"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
     advanced->click(); events();
     // Docking below needs a wide desktop, independently of the test platform's
     // maximized size. The dedicated window-state test covers maximization.
@@ -5655,7 +5792,7 @@ void testAdvancedToneMappingMaximizesAndRestoresWindow()
         advanced->click(); events();
         require(window.isMaximized() && !window.isFullScreen(),
             "Advanced tone mapping must maximize the ordinary window");
-        require(advanced->text() == "Basic tone mapping", "Maximized mode lost the Basic toggle");
+        require(advanced->text() == "Hide Tone Charts", "Maximized mode lost the Basic toggle");
         advanced->click(); events();
         require(!window.isMaximized() && !window.isFullScreen() && window.geometry() == previous,
             "Basic did not restore the size and position from before this Advanced click");
@@ -8269,6 +8406,8 @@ int main(int argc, char** argv)
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
+    failures += run("Tone slider wheel scrolls panel without editing", testToneSliderWheelScrollsPanelWithoutEditing);
+    failures += run("Wheel guards all Config value controls and allows popup lists", testWheelGuardsAllConfigValueControlsAndAllowsPopupLists);
     failures += run("renderer promotion migration and cache selection", testRendererPromotionMigrationAndCacheSelection);
     failures += run("Beta tone mapping controls", testBetaToneMappingControls);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);

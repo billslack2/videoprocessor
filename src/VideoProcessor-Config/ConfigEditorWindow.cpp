@@ -7,6 +7,8 @@
 #include <dxgi1_2.h>
 
 #include "ConfigEditorWindow.h"
+#include "ConfigWheelGuard.h"
+#include "SettingsNavigationIcons.h"
 #include "DisplayMonitorInventory.h"
 #include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
@@ -1055,13 +1057,14 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 		QStringLiteral("VideoProcessor Configuration"));
     setAccessibleName(QStringLiteral("VideoProcessor Configuration"));
     setObjectName(QStringLiteral("root"));
+    ConfigWheelGuard::install();
     // This must be a Qt-owned flag, not only a later SetWindowPos call: the
     // QWindows backend can otherwise recreate or restyle the native HWND and
     // silently remove WS_EX_TOPMOST after Config has been revealed.
     setWindowFlag(Qt::WindowStaysOnTopHint, true);
     // Navigation and profile workspaces compact before the editor is squeezed.
     // Use logical pixels so the same layout works on scaled Windows displays.
-    resize(1040, 700);
+    resize(1120, 700);
     setMinimumSize(760, 540);
     loadConfiguration();
     migrateLldvInputPolicy();
@@ -4623,57 +4626,7 @@ QWidget* ConfigEditorWindow::createShell()
 QPushButton* ConfigEditorWindow::addNavigationButton(const QString& text, int pageIndex)
 {
     auto* button = new QPushButton;
-    // Monochrome navigation marks remain legible in the 48px settings rail.
-    QPixmap glyph(40, 40);
-    glyph.setDevicePixelRatio(2);
-    glyph.fill(Qt::transparent);
-    QPainter painter(&glyph);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(QColor("#afc0d0"), 1.3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    switch (pageIndex)
-    {
-    case 0: case 2:
-        for (int y : { 5, 10, 15 }) painter.drawLine(3, y, 17, y);
-        painter.setBrush(QColor("#0d1621"));
-        painter.drawEllipse(QPointF(7, 5), 2, 2);
-        painter.drawEllipse(QPointF(13, 10), 2, 2);
-        painter.drawEllipse(QPointF(8, 15), 2, 2);
-        break;
-    case 22: case 3:
-        painter.drawRoundedRect(QRectF(2.5, 3, 15, 11), 1, 1);
-        painter.drawLine(10, 14, 10, 17); painter.drawLine(6, 17, 14, 17);
-        if (pageIndex == 3) { painter.drawLine(6, 1, 10, 3); painter.drawLine(14, 1, 10, 3); }
-        break;
-    case 1:
-        for (int y : { 5, 10, 15 }) { painter.drawPoint(3, y); painter.drawLine(7, y, 17, y); }
-        break;
-    case 5:
-        painter.drawRoundedRect(QRectF(3, 5, 14, 11), 1, 1);
-        painter.drawLine(3, 8, 17, 8); painter.drawLine(5, 3, 7, 6); painter.drawLine(11, 3, 13, 6);
-        break;
-    case 14:
-        painter.drawPolygon(QPolygonF{QPointF(10,2),QPointF(18,7),QPointF(10,12),QPointF(2,7)});
-        painter.drawPolyline(QPolygonF{QPointF(2,11),QPointF(10,16),QPointF(18,11)});
-        break;
-    case 7:
-        painter.drawPolygon(QPolygonF{QPointF(11,2),QPointF(4,11),QPointF(9,11),QPointF(8,18),QPointF(16,8),QPointF(11,8)});
-        break;
-    case 15:
-        painter.drawRoundedRect(QRectF(2, 5, 16, 10), 1, 1);
-        for (int x : {5,8,11,14}) { painter.drawPoint(x,8); painter.drawPoint(x,10); }
-        painter.drawLine(6,13,14,13);
-        break;
-    case 10:
-        painter.drawRoundedRect(QRectF(4, 2, 12, 16), 1, 1);
-        for (int y : {7,10,13}) painter.drawLine(7,y,13,y);
-        break;
-    default:
-        painter.drawLine(10,2,10,12); painter.drawPolyline(QPolygonF{QPointF(6,8),QPointF(10,12),QPointF(14,8)});
-        painter.drawPolyline(QPolygonF{QPointF(3,13),QPointF(3,17),QPointF(17,17),QPointF(17,13)});
-        break;
-    }
-    painter.end();
-    button->setIcon(QIcon(glyph));
+    button->setIcon(SettingsNavigationIcons::create(pageIndex));
     button->setIconSize(QSize(18, 18));
     button->setToolTip(text);
     button->setText(text);
@@ -5566,7 +5519,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         choiceLayout->addWidget(combo, 1);
         auto* reset = new QPushButton(QStringLiteral("Reset"), choiceRow);
         reset->setAccessibleName(QStringLiteral("Reset override"));
-        reset->setFixedWidth(56);
+        // Keep the styled text and padding visible at every font/DPI size.
+        reset->setStyleSheet(QStringLiteral("QPushButton { padding: 0 6px; }"));
+        reset->setMinimumWidth(56);
+        reset->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         reset->setObjectName(combo->objectName() + QStringLiteral(".reset_override"));
         reset->setToolTip(QStringLiteral("Remove this setting's override and follow the inherited or built-in value."));
         reset->setVisible(allowInherited);
@@ -7067,7 +7023,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         };
 
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
-            QStringLiteral("Tone Mapping: General"), QStringLiteral(
+            QStringLiteral("General"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target nits"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
@@ -7136,7 +7092,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // One section for every curve's settings: the chosen curve's show, the
         // rest hide with a note.
         const char* ids[] = { "toneCurves", "tonePeak" };
-        const char* headings[] = { "Tone Mapping: Curves", "Tone Mapping: Peak Detection" };
+        const char* headings[] = { "Curves", "Peak Detection" };
         const char* descriptions[] = {
             "Shows the settings the chosen tone-mapping curve uses. Knee controls also apply to ST2094-40.",
             "Controls apply while peak detection is enabled. Defaults follow the selected peak-detection mode." };

@@ -115,6 +115,8 @@ copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\Vid
     <ClInclude Include="InlineColorPicker.h" />
     <ClInclude Include="UpdatePanel.h" />
     <ClInclude Include="ConfigEditorWindow.h" />
+    <ClInclude Include="ConfigWheelGuard.h" />
+    <ClInclude Include="SettingsNavigationIcons.h" />
     <ClInclude Include="ProfileListController.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="VpTheme.h" />

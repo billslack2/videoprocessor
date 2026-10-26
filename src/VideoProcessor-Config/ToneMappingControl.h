@@ -32,6 +32,7 @@ public:
         label->setFixedWidth(160);
         line->addWidget(label);
         slider_ = new QSlider(Qt::Horizontal);
+        slider_->setFocusPolicy(Qt::StrongFocus);
         slider_->setObjectName(edit->objectName() + ".slider");
         slider_->setAccessibleName(label->text());
         slider_->setRange(0, 1000000);
