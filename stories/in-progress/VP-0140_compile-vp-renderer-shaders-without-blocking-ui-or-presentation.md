@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-16). NLS and subtitle activation fixes are implemented and built in
+In Progress (2026-10-26). Current integration: codex/shader-background-preparation-20261026 at freshly fetched beta 87f61f77. Historical implementation below: NLS and subtitle activation fixes are implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
@@ -613,3 +613,16 @@ No application build/deployment performed for this request. Await visual review.
 Next: selectively port isolated preparation onto fresh current beta, retain the
 separate stable_surround configuration, implement agreed notice and test cold-cache
 playback, rapid changes, retirement and failure before updating the same trial.
+
+
+## Approved shared profile panel integration - 2026-10-26
+
+User approved the mockup, then refined the design: preparation must be an entry
+inside the existing profile panel, not a separate notice. Header Shaders, with
+a subtle spinner and Preparing... as the value. Applies to all reported shader
+preparation, including NLS and subtitles. Keep current profile changes alongside
+it until preparation completes; never create two competing panels. The source
+port preserves the separate stable_surround option. x64 Release build and
+background worker/cache-handoff/playback regression validation are underway.
+Target is the existing E:\codex\reconstruction-fill-options-trial-20261026 trial,
+with config/state preservation and binary backups; main installation unchanged.
