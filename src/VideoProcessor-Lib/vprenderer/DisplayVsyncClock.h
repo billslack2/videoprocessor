@@ -101,7 +101,13 @@ public:
     void Submitted() { if (Active()) ++tick; }
     double SourceToleranceSeconds() const { return sourceTolerance; }
     bool HasFeedback() const { return feedback; }
-    void InvalidateFeedback() { feedback=false; feedbackSamples=0; lastSyncNs=0; }
+    void InvalidateFeedback()
+    {
+        feedback = false;
+        feedbackSamples = 0;
+        lastSyncNs = 0;
+        lastSyncRefresh = 0;
+    }
     // mpv's guarded estimate of the last queued flip's display time. DXGI
     // counts are wrapping UINTs. Feedback disciplines only missed-slot timing;
     // it never changes the source origin or asserts that a flip was displayed.
@@ -111,7 +117,14 @@ public:
     {
         feedback=false;
         if (!Active() || !tick || !lastPresent || !displayedPresent ||
-            !displayedRefresh || !syncRefresh || syncNs<=0 || cap<1 || cap>8) return false;
+            !displayedRefresh || !syncRefresh || cap<1 || cap>8) return false;
+        const int64_t maximumSampleAgeNs = std::max<int64_t>(250000000,
+            static_cast<int64_t>(std::ceil(3.0 * periodNs)));
+        if (syncNs <= 0 || syncNs > nowNs ||
+            nowNs - syncNs > maximumSampleAgeNs) {
+            InvalidateFeedback();
+            return false;
+        }
         const uint32_t queued=lastPresent-displayedPresent;
         const uint32_t elapsed=syncRefresh-displayedRefresh;
         if (queued>cap+1 || elapsed>cap+1 || queued<elapsed) return false;

@@ -371,6 +371,58 @@ namespace Tests
             Assert::IsFalse(clock.ObserveQueueTail(30,11,92,92,1020000000,1020000000,1020000000,2));
             clock.InvalidateFeedback(); Assert::IsFalse(clock.HasFeedback());
         }
+        TEST_METHOD(FutureFeedbackCannotRephaseTheSlotClock)
+        {
+            const int64_t baseNs = 1000000000;
+            const int64_t intervalNs = 16666667;
+            DisplayVsyncClock clock;
+            clock.BeginSource(0.0, baseNs, 1, 60.0, false);
+            for (int i = 0; i < 3; ++i) clock.Submitted();
+            const int64_t originalDeadlineNs = clock.DeadlineNs();
+
+            for (int i = 0; i < 3; ++i) {
+                const int64_t nowNs = baseNs + i * intervalNs;
+                const int64_t futureSyncNs = nowNs + 50000000;
+                Assert::IsFalse(clock.ObserveQueueTail(10u + i, 9u + i,
+                    90u + i, 91u + i, futureSyncNs, nowNs, nowNs, 2));
+                Assert::IsFalse(clock.HasFeedback());
+                Assert::AreEqual(originalDeadlineNs, clock.DeadlineNs());
+            }
+        }
+        TEST_METHOD(StaleFeedbackClearsPriorQualificationAndFreshSamplesCanRequalify)
+        {
+            const int64_t baseNs = 1000000000;
+            DisplayVsyncClock clock;
+            clock.BeginSource(0.0, baseNs, 1, 100.0, false);
+            for (int i = 0; i < 3; ++i) clock.Submitted();
+
+            Assert::IsFalse(clock.ObserveQueueTail(10, 9, 90, 91,
+                baseNs, baseNs, baseNs, 2));
+            Assert::IsFalse(clock.ObserveQueueTail(11, 10, 91, 92,
+                baseNs + 10000000, baseNs + 10000000,
+                baseNs + 10000000, 2));
+            Assert::IsFalse(clock.HasFeedback());
+
+            const int64_t staleNowNs = baseNs + 300000000;
+            Assert::IsFalse(clock.ObserveQueueTail(12, 11, 92, 93,
+                baseNs + 10000000, staleNowNs, staleNowNs, 2));
+            Assert::IsFalse(clock.HasFeedback());
+
+            // This sample would complete the old two-interval qualification if
+            // the stale rejection left its prior sample count and timestamp.
+            Assert::IsFalse(clock.ObserveQueueTail(13, 12, 121, 122,
+                staleNowNs + 10000000, staleNowNs + 10000000,
+                staleNowNs + 10000000, 2));
+            Assert::IsFalse(clock.HasFeedback());
+            Assert::IsFalse(clock.ObserveQueueTail(14, 13, 122, 123,
+                staleNowNs + 20000000, staleNowNs + 20000000,
+                staleNowNs + 20000000, 2));
+            Assert::IsFalse(clock.HasFeedback());
+            Assert::IsTrue(clock.ObserveQueueTail(15, 14, 123, 124,
+                staleNowNs + 30000000, staleNowNs + 30000000,
+                staleNowNs + 30000000, 2));
+            Assert::IsTrue(clock.HasFeedback());
+        }
         TEST_METHOD(NonfiniteTimestampCannotDrainAnActiveSlotClock)
         {
             DisplayVsyncClock clock;

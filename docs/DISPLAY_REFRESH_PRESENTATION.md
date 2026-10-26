@@ -36,6 +36,9 @@ reported mismatch. These are VP heuristics. Microsoft warns that frame
 statistics can be unreliable on multiple monitors; agreement does not certify
 physical scanout. Absolute sample age must be no more than the larger of
 250 ms and three target periods, and sample timestamps cannot be in the future.
+The guarded DXGI queue-tail phase estimate applies the same age limit. Invalid
+ages clear its accumulated qualification, so fresh observations must establish
+agreement again before feedback can shift the local clock.
 
 A mismatch suppresses cached repeats and returns to source-paced capture.
 Swapchain recreation additionally requires three distinct successful-submission
