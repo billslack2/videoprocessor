@@ -1,0 +1,26 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+contour top=0 mirror_mae=0.050365 surround_mae=0.040881 seam_mae=0.012541
+  Failed SurroundFillContinuesColorContoursWithoutBlurAtBothBars [9 s]
+  Error Message:
+   Assert failed. Contour guided fill should improve sloping structure over reflected fill
+  Stack Trace:
+  	at Tests::`anonymous namespace'::SubtitleShaderGpuFixture::VerifyContourAndSeamReconstruction() in E:\codex\videoprocessor\reconstruction-seams-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 2035
+	at Tests::SubtitleCutPasteShaderTests::SurroundFillContinuesColorContoursWithoutBlurAtBothBars() in E:\codex\videoprocessor\reconstruction-seams-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 2450
+  Standard Output Messages:
+ contour top=0 mirror_mae=0.050365 surround_mae=0.040881 seam_mae=0.012541
+
+4K warmed full preparation fill=0 mean_wall_ms=0.733580
+4K warmed full preparation fill=2 mean_wall_ms=0.561795
+  Passed SurroundFill4KPreparationCost [8 s]
+moving texture worst temporal gain=0.996094 excess=0.000000
+  Passed SurroundFillDoesNotAmplifyMovingTextureOrNoise [7 s]
+Results File: E:\codex\videoprocessor\reconstruction-seams-20261026\TestResults\reconstruction-stable-quality-cost.trx
+
+Total tests: 3
+     Passed: 2
+     Failed: 1
+Test Run Failed.
+ Total time: 25.5907 Seconds

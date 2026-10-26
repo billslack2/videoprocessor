@@ -1,7 +1,10 @@
 # VP-0217 - Improve reconstructed subtitle background color and contour seams
 
 ## Status
-In Progress
+Review
+
+Current revision: 301dd70 fixed-sampling trial, ready for visual validation after
+the first trial was rejected for shimmer. See the stability revision evidence below.
 
 2026-10-26: User approved trying color matching, edge-aware clean sample selection,
 and a narrow boundary blend after showing visible joins without blur or overlays.
@@ -17,12 +20,12 @@ measured cleanup geometry, source glyph bounds, HDR transfer handling or live
 configuration. Current-frame MAIN RGB samples decode to linear light before
 comparison and blending. Donors must remain beyond all measured card/glyph bounds
 and inside the picture. No history resource or extra frame queue is introduced.
-Implementation uses bounded local contour guidance, soft donor-color scores and
+The current implementation uses fixed normalized clean samples and
 an internal boundary transition that never mixes the original subtitle back in.
 
 ## Acceptance and validation
 
-- Actual D3D11 shader tests: unblurred color continuity and sloping contour quality
+- Actual D3D11 shader tests: unblurred color continuity and moving-frame stability
   against independent undamaged synthetic ground truth, at both top and bottom bars.
 - Preserve excluded bars, glyph isolation, unrelated pixels, deterministic output,
   split composition, and SDR/PQ/HLG handling through existing GPU regressions.
@@ -85,3 +88,46 @@ Remove image-dependent donor steering and color scoring, which can change sampli
 locations/weights with small frame differences. Replace with fixed normalized spatial
 sampling and a slightly wider internal border transition. Add actual GPU multi-frame
 motion/perturbation coverage; still-image contour quality is insufficient acceptance.
+## Stable revision ready for review - 2026-10-26
+
+Saved/pushed source: `301dd70ff9dec942636bb1c4756a72642d487135` on the same feature
+branch. Final complete x64 Release solution build passed with clean source identity.
+No merge or deployment to the installed player was performed.
+
+The actual GPU moving-texture/noise test reproduces the first implementation's
+failure: small input changes produced maximum temporal gain 16.248779, with
+0.179397 excess channel change. The revised geometry-fixed, positive normalized
+sampler reports gain 0.996094 and zero excess. It has no image-dependent donor
+coordinates, color scores or gradient extrapolation. It adds no temporal history
+or frame latency. The internal transition grows modestly from 2-12 source pixels
+to 6-20, scaled to the removal region. No original subtitle pixels are mixed in.
+
+Validation: **85 selected native/GPU tests passed**, covering cut/paste geometry,
+all surrounding-fill tests, both bars, SDR/PQ/HLG split composition, poisoned-donor
+exclusion, transparent yellow cleanup, motion/noise and repeated-frame behavior.
+The targeted Config save/reopen test also passed. Warmed 4K full preparation in
+the final regression run averaged 0.517395 ms (Mirror 0.582870 ms); this remains
+a bounded synthetic test, not live playback timing or a speedup claim.
+
+The old still-ramp requirement of 35% improvement over Mirror was specific to
+the rejected adaptive contour fitter. Fixed sampling deliberately sacrifices
+that fit for temporal consistency. The replacement acceptance requires unchanged
+0.025 boundary-error tolerance, lower ramp error than Mirror, and a separate
+non-amplification test across moving/noisy frames. Final ramp error is 0.040881
+versus Mirror 0.050365/0.048600; boundary error is 0.012541 at both bars. The initial
+failure against the obsolete contour-fit threshold is retained in the evidence.
+
+New isolated trial: `E:\codex\reconstruction-stable-trial-20261026`.
+Launch `TRY-STABLE-BLEND.cmd`; `COMPARE-STRETCH.cmd` provides the original Stretch
+choice using the same new binaries. The original rejected trial remains separate.
+Manifest payload hashes match the clean Release build. The copied active config
+changes only Clear__Yellow.cleanup_fill from stretch to surround, with its original
+backup retained. No changes were made to the active installed configuration.
+
+Remaining: user assessment of actual scene motion, seam softness and consistency.
+The new regression isolates image changes at fixed accepted subtitle geometry;
+it does not establish stability under arbitrary geometry changes or all scenes.
+Evidence: `assets/VP-0217/stable-blend-301dd70-20261026/`.
+Both new trial state files select clear__yellow for immediate comparison. Their
+copied prior Classic selection is backed up in the trial's backups directory.
+The installed state remains untouched.

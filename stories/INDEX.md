@@ -278,7 +278,7 @@ they must not contain requirements that are absent from this file.
 | VP-0215 | Review | Make configuration choices clear and consolidate scaling |
 
 | VP-0216 | Done | Disable Config Apply when no settings are pending |
-| VP-0217 | In Progress | Improve reconstructed subtitle background color and contour seams |
+| VP-0217 | Review | Stable reconstructed subtitle background and soft boundary blending |
 
 ## Codex story workflow
 

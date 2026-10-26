@@ -1,0 +1,567 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e1f4cbbb-e2ee-4d8c-bd38-b318cbb9f09a" name="bslac@DESKTOP-3G35SCJ 2026-10-26 10:42:36" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-26T10:42:36.2245567-04:00" queuing="2026-10-26T10:42:36.2245567-04:00" start="2026-10-26T10:42:35.7938698-04:00" finish="2026-10-26T10:45:20.3467002-04:00" />
+  <TestSettings name="default" id="93482a5d-e1cc-4302-a7c6-1aa3720d5209">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-26_10_42_36" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="550c2989-855d-4e33-859b-f0be1e204872" testId="2214dd3d-f05d-b6e3-41d4-d3f3eef3d280" testName="SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000383" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103915-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="550c2989-855d-4e33-859b-f0be1e204872" />
+    <UnitTestResult executionId="335f0948-011c-41a9-93dd-960b5fe27d91" testId="84748c09-14bf-f3fc-1770-ecd75756e645" testName="GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000274" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3113793-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="335f0948-011c-41a9-93dd-960b5fe27d91" />
+    <UnitTestResult executionId="e9987887-4d78-4eb8-8657-a6c0ae9d855b" testId="9758a259-11a4-ab56-4632-76f0dc2fb5b8" testName="PlacementNeverSurvivesLostCueOrFreshBarAuthority" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000374" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2225906-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e9987887-4d78-4eb8-8657-a6c0ae9d855b" />
+    <UnitTestResult executionId="470c2892-e99d-49ab-9197-aa9ccc7de658" testId="a217bdea-6a02-284d-88ad-fe6ecdb84685" testName="RejectsTooTallCueAndInvalidInsetsRatherThanClippingText" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000254" startTime="2026-10-26T10:42:36.1759984-04:00" endTime="2026-10-26T10:42:36.1760238-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="470c2892-e99d-49ab-9197-aa9ccc7de658" />
+    <UnitTestResult executionId="89e848d0-a695-4c98-85d7-2b351c7e3f62" testId="e6312a5d-ab51-9b01-99f5-687476bbb152" testName="MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000041" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103573-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="89e848d0-a695-4c98-85d7-2b351c7e3f62" />
+    <UnitTestResult executionId="dcb8abdd-440a-4e9c-ab18-f17f3ef750e6" testId="d0276e08-5ee2-1a24-51da-431b3539e4f9" testName="FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0049991" startTime="2026-10-26T10:42:36.3353748-04:00" endTime="2026-10-26T10:42:36.3403739-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="dcb8abdd-440a-4e9c-ab18-f17f3ef750e6" />
+    <UnitTestResult executionId="23147cba-5018-49fd-aee0-46ce6335434b" testId="8d163fa4-1e85-7642-76e1-53121a1b982c" testName="MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000196" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3133745-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="23147cba-5018-49fd-aee0-46ce6335434b" />
+    <UnitTestResult executionId="63e6f871-afaa-49a7-a3a3-fca20f0b6bba" testId="77de6d47-6990-4db5-2ec2-0e0b9d7c3b90" testName="LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000349" startTime="2026-10-26T10:42:36.1759984-04:00" endTime="2026-10-26T10:42:36.1760333-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="63e6f871-afaa-49a7-a3a3-fca20f0b6bba" />
+    <UnitTestResult executionId="b79be4cc-e87e-4101-917b-6e701b5251a9" testId="1fbddf4d-17ec-2c3e-e517-f5ff36d27f04" testName="GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000113" startTime="2026-10-26T10:42:36.1759984-04:00" endTime="2026-10-26T10:42:36.1760097-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b79be4cc-e87e-4101-917b-6e701b5251a9" />
+    <UnitTestResult executionId="9e2a9e5d-d513-4103-a5d6-93fd263991d4" testId="1ca36ccd-8887-dbaa-16ec-afc1b4381c77" testName="SubtitlePreviewCycleAndResyncRestoreNormalConfiguration" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000264" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103796-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9e2a9e5d-d513-4103-a5d6-93fd263991d4" />
+    <UnitTestResult executionId="a638b081-1b20-4b09-a6c8-29180804404e" testId="f7ca8f5c-cac4-72da-3277-fa0eb4dd5a81" testName="PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000574" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2226106-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a638b081-1b20-4b09-a6c8-29180804404e" />
+    <UnitTestResult executionId="c760467a-741d-4dc2-a7cf-6d221efd0c63" testId="ce3b9e17-18e7-2be5-146e-5becc1804705" testName="NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000129" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103661-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c760467a-741d-4dc2-a7cf-6d221efd0c63" />
+    <UnitTestResult executionId="69546974-0838-4efb-bbe9-f9365d90cb38" testId="7482eaef-829e-be70-809e-b44e3dd2a815" testName="ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000026" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093529-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="69546974-0838-4efb-bbe9-f9365d90cb38" />
+    <UnitTestResult executionId="17aa7548-bd8c-40ea-9dee-cec0c5b88cbe" testId="ea8f5cf6-b97f-0e21-caca-7107683589fb" testName="TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000106" startTime="2026-10-26T10:42:36.3412739-04:00" endTime="2026-10-26T10:42:36.3412845-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="17aa7548-bd8c-40ea-9dee-cec0c5b88cbe" />
+    <UnitTestResult executionId="e50bd236-ec62-440b-b0b3-e68f62ae68a6" testId="c7256398-31e1-dcd7-978f-622c49eea115" testName="DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000203" startTime="2026-10-26T10:42:36.3123536-04:00" endTime="2026-10-26T10:42:36.3123739-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e50bd236-ec62-440b-b0b3-e68f62ae68a6" />
+    <UnitTestResult executionId="80ca3dd0-0e95-4e03-a497-285e0d5a02e9" testId="f655ae5b-8e89-3686-275d-d5af0d631bcb" testName="GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001053" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3114572-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="80ca3dd0-0e95-4e03-a497-285e0d5a02e9" />
+    <UnitTestResult executionId="6573c9dc-45fe-417b-953e-4d84358288fb" testId="0053d0ea-7ce2-116b-684b-599166b70697" testName="ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000361" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215885-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6573c9dc-45fe-417b-953e-4d84358288fb" />
+    <UnitTestResult executionId="c9d2b9b3-378c-48d0-ad9f-29c821a9a1c5" testId="f1cb9d63-3738-92b0-bdb7-8c5b14d134b4" testName="SurroundFill4KPreparationCost" computerName="DESKTOP-3G35SCJ" duration="00:00:09.4436477" startTime="2026-10-26T10:44:50.4976046-04:00" endTime="2026-10-26T10:44:59.9412523-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c9d2b9b3-378c-48d0-ad9f-29c821a9a1c5">
+      <Output>
+        <StdOut>4K warmed full preparation fill=0 mean_wall_ms=0.582870&#xD;
+4K warmed full preparation fill=2 mean_wall_ms=0.517395</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="434d768a-f43a-4d21-8bf2-ce33d72fb561" testId="8299f6e9-94f4-2bac-06ee-f00a6b343416" testName="LegacyGeometryIsPreservedButIgnored" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0861078" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.3086610-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="434d768a-f43a-4d21-8bf2-ce33d72fb561" />
+    <UnitTestResult executionId="0b149e28-25a5-44c7-89d4-6f00fbe55ddb" testId="97b27282-1fea-ffcc-c06e-bab75a184165" testName="ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000178" startTime="2026-10-26T10:42:36.3123536-04:00" endTime="2026-10-26T10:42:36.3123714-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0b149e28-25a5-44c7-89d4-6f00fbe55ddb" />
+    <UnitTestResult executionId="1688f218-fd2a-4254-8572-e19cf61c315f" testId="a155cec7-1dd8-8e88-9639-28ced4d5a563" testName="MovePreservesSizeAndReachesTheActivePictureBoundary" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000099" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215623-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1688f218-fd2a-4254-8572-e19cf61c315f" />
+    <UnitTestResult executionId="b480235b-8eab-4fdd-8b3a-27233591522b" testId="c7970158-eb77-7678-1984-495673a787ab" testName="MeasuredSourceCardCleanupIsIndependentOfDisplayPadding" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000419" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215943-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b480235b-8eab-4fdd-8b3a-27233591522b" />
+    <UnitTestResult executionId="2b1bc2ec-8f59-4f85-9cf2-03a40cd11a9a" testId="0795b7df-7418-d62e-e3af-af2c9ebdde9c" testName="TopBarMovesEntirePaddedCueDownIntoPicture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000564" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2216088-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2b1bc2ec-8f59-4f85-9cf2-03a40cd11a9a" />
+    <UnitTestResult executionId="670b7d15-d78b-4d57-8843-5a123422326e" testId="3a3658f8-fd86-bac2-fe63-d8a5a89ef73c" testName="ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000310" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093813-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="670b7d15-d78b-4d57-8843-5a123422326e" />
+    <UnitTestResult executionId="7f05ba02-8bd3-49d7-870b-c717f38630e9" testId="a5f1e4c5-bf79-0047-3762-6f27500a23de" testName="TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000099" startTime="2026-10-26T10:42:36.3412739-04:00" endTime="2026-10-26T10:42:36.3412838-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7f05ba02-8bd3-49d7-870b-c717f38630e9" />
+    <UnitTestResult executionId="f88d887e-0694-4e95-bf43-e3fc101c4bd9" testId="a12fffcf-1e73-bfda-5cdd-33522f2604f4" testName="TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination" computerName="DESKTOP-3G35SCJ" duration="00:00:10.3775497" startTime="2026-10-26T10:45:09.9524831-04:00" endTime="2026-10-26T10:45:20.3300328-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f88d887e-0694-4e95-bf43-e3fc101c4bd9" />
+    <UnitTestResult executionId="c28ad3ac-55ea-441f-9346-fc59d9c59bda" testId="b4eb5d93-69cf-b798-78a4-c90d47aa543a" testName="CenteredLargeCueKeepsLargestFittingSymmetricMargins" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000372" startTime="2026-10-26T10:42:36.3333726-04:00" endTime="2026-10-26T10:42:36.3334098-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c28ad3ac-55ea-441f-9346-fc59d9c59bda" />
+    <UnitTestResult executionId="5e5867b0-c574-4b75-81ef-395b7e2378bd" testId="a3404403-e5a1-7e38-6e25-942136e2599d" testName="RejectsMissingBarInvalidPictureAndOppositeBarCue" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000035" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215559-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5e5867b0-c574-4b75-81ef-395b7e2378bd" />
+    <UnitTestResult executionId="6ceb746c-3b5e-4f0e-974c-849b5b2dc0a2" testId="166f360a-c881-40b2-e65d-b8d519d00e49" testName="StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000670" startTime="2026-10-26T10:42:36.3402725-04:00" endTime="2026-10-26T10:42:36.3403395-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6ceb746c-3b5e-4f0e-974c-849b5b2dc0a2" />
+    <UnitTestResult executionId="f59c8aad-5cd2-40a4-9177-ab89e92d167f" testId="e6aa9b24-0e54-e890-d3be-093fa693ba66" testName="FreshCardCoverageCanGrowWithoutMovingAnchoredGlyphs" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000290" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3344027-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f59c8aad-5cd2-40a4-9177-ab89e92d167f" />
+    <UnitTestResult executionId="b56836f9-49d4-4dd9-9af7-6e221b5b096d" testId="f3df2a64-b0d5-9af6-3a29-3b808430bb8a" testName="GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000174" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3113693-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b56836f9-49d4-4dd9-9af7-6e221b5b096d" />
+    <UnitTestResult executionId="34e56084-e17a-43e3-85e1-4f679b424321" testId="0008f4b5-ac90-4f6f-2105-5a1a5b58c05e" testName="GlyphPaddingScalesWithLineHeightNotMultilineHeight" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000903" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3134452-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="34e56084-e17a-43e3-85e1-4f679b424321" />
+    <UnitTestResult executionId="a18b4422-fe15-478d-a4de-88c723688e44" testId="de1ad07a-4f4a-c6b0-d019-3bb576654382" testName="SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars" computerName="DESKTOP-3G35SCJ" duration="00:00:09.3188578" startTime="2026-10-26T10:44:41.1788930-04:00" endTime="2026-10-26T10:44:50.4977508-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a18b4422-fe15-478d-a4de-88c723688e44">
+      <Output>
+        <StdOut>contour top=0 mirror_mae=0.050365 surround_mae=0.040881 seam_mae=0.012541&#xD;
+contour top=1 mirror_mae=0.048600 surround_mae=0.040881 seam_mae=0.012541</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="acaf0414-638f-407c-ae16-5d1fd15588e4" testId="da4d6db7-f9c6-455d-eb61-a461339558e0" testName="GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001554" startTime="2026-10-26T10:42:36.1689886-04:00" endTime="2026-10-26T10:42:36.1691440-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="acaf0414-638f-407c-ae16-5d1fd15588e4" />
+    <UnitTestResult executionId="2956ee15-85fa-453f-a83e-3a78e65f5e07" testId="76ecd8e7-5430-aa47-f853-c840fc971f25" testName="SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors" computerName="DESKTOP-3G35SCJ" duration="00:00:09.9697379" startTime="2026-10-26T10:44:31.2084763-04:00" endTime="2026-10-26T10:44:41.1782142-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2956ee15-85fa-453f-a83e-3a78e65f5e07">
+      <Output>
+        <StdOut>spatial render mode=0 wall_ms=9810.390300&#xD;
+spatial render mode=2 wall_ms=1.170800&#xD;
+spatial render mode=2 wall_ms=1.906700&#xD;
+spatial render mode=0 wall_ms=1.050300&#xD;
+spatial render mode=2 wall_ms=1.225100&#xD;
+spatial render mode=2 wall_ms=1.201100</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="6516cdf2-3d29-446b-92eb-0432e6c3a4e2" testId="4f9c4b33-2327-9342-7b35-20849f7ae14d" testName="RelocationOverridesClassicHandlingThroughoutHotkeyCycle" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000122" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3113641-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6516cdf2-3d29-446b-92eb-0432e6c3a4e2" />
+    <UnitTestResult executionId="295c5bd0-f694-40db-9af3-e1afccbf550a" testId="44f287a0-d5a0-5f3e-bc4d-2bc6bfd06ce9" testName="FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000188" startTime="2026-10-26T10:42:36.3333726-04:00" endTime="2026-10-26T10:42:36.3333914-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="295c5bd0-f694-40db-9af3-e1afccbf550a" />
+    <UnitTestResult executionId="888f64ee-2095-4d1d-b6a4-6baae57e69ba" testId="e3240429-1d44-750f-813e-79d5a116ea49" testName="SubtitlePreviewRequiresControlShiftT" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000305" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093808-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="888f64ee-2095-4d1d-b6a4-6baae57e69ba" />
+    <UnitTestResult executionId="b9e1ecd0-2071-4cd3-9764-5ef651048528" testId="205abd20-2799-18db-0ae0-b43d8de51a6f" testName="PaddingStopsBeforeNearbyUnclaimedGlyphRows" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000160" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2225692-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b9e1ecd0-2071-4cd3-9764-5ef651048528" />
+    <UnitTestResult executionId="602e0db3-b933-44ea-b2bd-2a466f140c91" testId="ebf8a45d-798f-3406-5493-083f5d6f638a" testName="TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000324" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3344061-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="602e0db3-b933-44ea-b2bd-2a466f140c91" />
+    <UnitTestResult executionId="98172390-8e05-4baa-911f-89899f5a9a02" testId="4f837cb9-75a3-a30d-dc7f-a0d897915a86" testName="MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000714" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3344451-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="98172390-8e05-4baa-911f-89899f5a9a02" />
+    <UnitTestResult executionId="e65f6996-5b10-4c35-a7a9-178a44cc0c7b" testId="6a2aff5f-61af-6fd9-913e-6873b744daff" testName="SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000279" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093782-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e65f6996-5b10-4c35-a7a9-178a44cc0c7b" />
+    <UnitTestResult executionId="d744944c-2b09-4d9e-9fb7-09556895c5ce" testId="c1f76b61-e708-a0fd-76ff-c4365dc6d754" testName="NearBarConfigurationValidatesSourcePixelRange" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0191406" startTime="2026-10-26T10:42:36.1980238-04:00" endTime="2026-10-26T10:42:36.2171644-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d744944c-2b09-4d9e-9fb7-09556895c5ce" />
+    <UnitTestResult executionId="26202b82-1c7f-4c5d-a9f0-427fd6ea32c2" testId="29681dcf-1000-d48c-9ef4-be0258026678" testName="IndependentPaddingAndInsetChangesInvalidateCachedPlacement" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000277" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093780-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="26202b82-1c7f-4c5d-a9f0-427fd6ea32c2" />
+    <UnitTestResult executionId="e2efb740-2e22-4b40-8076-8616c87a0461" testId="02c9b2e7-8541-356b-c4fe-71b9da026d86" testName="GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000295" startTime="2026-10-26T10:42:36.3123536-04:00" endTime="2026-10-26T10:42:36.3123831-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e2efb740-2e22-4b40-8076-8616c87a0461" />
+    <UnitTestResult executionId="f7f6ef5e-c02d-41e6-aaa4-e94443185e5a" testId="66e55389-3cab-ccdc-b71d-9d9830fcb38b" testName="PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000127" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2225659-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f7f6ef5e-c02d-41e6-aaa4-e94443185e5a" />
+    <UnitTestResult executionId="87db44c3-df92-4e23-ba80-89f082868ed6" testId="b487daa8-83b1-b1bc-3f02-6fca87923887" testName="MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001139" startTime="2026-10-26T10:42:36.3143582-04:00" endTime="2026-10-26T10:42:36.3144721-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="87db44c3-df92-4e23-ba80-89f082868ed6" />
+    <UnitTestResult executionId="9637fc14-c473-4287-a82a-78a9cb16596f" testId="38153346-f6fe-6cdb-fb5a-189ea7a16f05" testName="PictureIntrusionDisablesFloatUntilCueChanges" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000135" startTime="2026-10-26T10:42:36.3333726-04:00" endTime="2026-10-26T10:42:36.3333861-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9637fc14-c473-4287-a82a-78a9cb16596f" />
+    <UnitTestResult executionId="2d271870-195d-47b2-ad23-3a3f74f19b6b" testId="64540afe-9b8f-d50c-8f7d-ee9d400b5ab2" testName="FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0003217" startTime="2026-10-26T10:42:36.3333726-04:00" endTime="2026-10-26T10:42:36.3336943-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2d271870-195d-47b2-ad23-3a3f74f19b6b" />
+    <UnitTestResult executionId="2c3f8d6a-183c-41e6-b57a-31cf987010f5" testId="0047edb4-9a22-ec5b-ec09-d3d27673185c" testName="NearBarBackingCoversGapWithoutEnlargingGlyphCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000384" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103916-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2c3f8d6a-183c-41e6-b57a-31cf987010f5" />
+    <UnitTestResult executionId="0c4c9ca5-2346-4f98-845a-43969d40d441" testId="9f864185-d696-f39f-d9fb-61148c731a1b" testName="SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000447" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3133996-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0c4c9ca5-2346-4f98-845a-43969d40d441" />
+    <UnitTestResult executionId="e7f42405-6261-4b53-8919-ffe5209448e7" testId="6d18e4ee-b1a3-4a2e-842b-9b2d530672e9" testName="GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000321" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3113840-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e7f42405-6261-4b53-8919-ffe5209448e7" />
+    <UnitTestResult executionId="409e682f-5640-4332-83d7-7a0f84d71d22" testId="6ef27455-2a16-f7a8-6ab3-941eae1481b4" testName="AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000698" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3134247-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="409e682f-5640-4332-83d7-7a0f84d71d22" />
+    <UnitTestResult executionId="16542444-1f2a-46f9-a304-ae8319bf4fde" testId="c112c147-d83c-3380-0762-e04a2e7aabf0" testName="TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001958" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3345695-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="16542444-1f2a-46f9-a304-ae8319bf4fde" />
+    <UnitTestResult executionId="0e9c0c51-615b-4da8-9301-bf1866d15497" testId="085b6b6a-049d-3205-26fa-7cd6eca40eca" testName="CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000281" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3133830-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0e9c0c51-615b-4da8-9301-bf1866d15497" />
+    <UnitTestResult executionId="61d4ba67-0812-4ec6-8f17-e158272785cc" testId="cc1f7cd1-6e3a-507a-c0e4-153fff8e127b" testName="BackingFootprintReleasesOnCueAndContextChanges" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000366" startTime="2026-10-26T10:42:36.3402725-04:00" endTime="2026-10-26T10:42:36.3403091-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="61d4ba67-0812-4ec6-8f17-e158272785cc" />
+    <UnitTestResult executionId="2b5d8435-b526-441f-b278-ff4a3a55da58" testId="7c5ba99d-0ecd-1f07-3cbe-40ab573f3d92" testName="DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001421" startTime="2026-10-26T10:42:36.1749977-04:00" endTime="2026-10-26T10:42:36.1751398-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2b5d8435-b526-441f-b278-ff4a3a55da58" />
+    <UnitTestResult executionId="ffac01d1-733e-4d83-afd6-e9671a6afe82" testId="c8c970b5-bc05-5e7f-73e3-0d4efe555012" testName="PaddingClipsEveryRasterEdgeWithoutOverflow" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000252" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215776-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ffac01d1-733e-4d83-afd6-e9671a6afe82" />
+    <UnitTestResult executionId="0490f80e-5444-4b02-91ce-3f29c0805be5" testId="929059e7-261b-186a-6d5a-566d8d8b9bdf" testName="SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars" computerName="DESKTOP-3G35SCJ" duration="00:00:22.3556776" startTime="2026-10-26T10:44:08.8520678-04:00" endTime="2026-10-26T10:44:31.2077454-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0490f80e-5444-4b02-91ce-3f29c0805be5" />
+    <UnitTestResult executionId="cf35aa8e-2fff-428c-9fe9-5938cc55496e" testId="d55c8279-5dcc-e2a4-c6b5-e18caece4495" testName="PlacementFreezesBarFringeButResetsForNewCueOrContext" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000404" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2225936-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cf35aa8e-2fff-428c-9fe9-5938cc55496e" />
+    <UnitTestResult executionId="17f1c64e-4108-423f-af8b-4823e31b303e" testId="ab444362-e304-4f89-748f-a1d4140eaf33" testName="NearBarPlacementDoesNotPullGlyphsTowardEitherBar" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000252" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103784-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="17f1c64e-4108-423f-af8b-4823e31b303e" />
+    <UnitTestResult executionId="265ed80a-f368-4ee7-a037-caea78568a75" testId="a283bcc6-b02c-87b8-b5f0-abdf6e7a3716" testName="CoverageMarginProtectsMaximumRadiusAtViewportSides" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000139" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3343876-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="265ed80a-f368-4ee7-a037-caea78568a75" />
+    <UnitTestResult executionId="e21003c7-edaf-4ad7-a045-81d96d956d52" testId="bfd14b01-a8ca-ed2a-c08f-69b7f303fd7e" testName="VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0008428" startTime="2026-10-26T10:42:36.3402725-04:00" endTime="2026-10-26T10:42:36.3411153-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e21003c7-edaf-4ad7-a045-81d96d956d52" />
+    <UnitTestResult executionId="7f9056ad-1ed6-405c-8931-3fd7d3ba624b" testId="a4a3d749-6697-fc38-f513-9ee08eb982ac" testName="GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0003478" startTime="2026-10-26T10:42:36.3123536-04:00" endTime="2026-10-26T10:42:36.3127014-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7f9056ad-1ed6-405c-8931-3fd7d3ba624b" />
+    <UnitTestResult executionId="6dcc785c-620a-4a8e-aa57-7270386e2dac" testId="3e1d64ba-e2cd-541c-f8a0-e0db30f0339c" testName="CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000224" startTime="2026-10-26T10:42:36.3333726-04:00" endTime="2026-10-26T10:42:36.3333950-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6dcc785c-620a-4a8e-aa57-7270386e2dac" />
+    <UnitTestResult executionId="89b74dc0-5b3c-4b9a-9179-efa8942df801" testId="7c274bb1-238a-3a33-21f0-d48894e1cc3e" testName="BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000157" startTime="2026-10-26T10:42:36.3402725-04:00" endTime="2026-10-26T10:42:36.3402882-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="89b74dc0-5b3c-4b9a-9179-efa8942df801" />
+    <UnitTestResult executionId="778193f8-886e-4f8e-90dc-621a0df3bcfd" testId="c2c7f49a-3498-a15e-1fa7-73330093795c" testName="MeasuredCoverageClipsOnlyDisplayAtVisibleViewport" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000123" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3343860-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="778193f8-886e-4f8e-90dc-621a0df3bcfd" />
+    <UnitTestResult executionId="87df1aa4-9adb-4205-b690-8417164a345b" testId="e25d9dba-d4eb-b788-46ae-1a9348a1f628" testName="DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000151" startTime="2026-10-26T10:42:36.2225532-04:00" endTime="2026-10-26T10:42:36.2225683-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="87df1aa4-9adb-4205-b690-8417164a345b" />
+    <UnitTestResult executionId="8a349458-7fc4-4c91-b973-85c9206ed169" testId="663c8c5e-46f2-4c8a-4201-44905c3a0c4d" testName="GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000248" startTime="2026-10-26T10:42:36.1749977-04:00" endTime="2026-10-26T10:42:36.1750225-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8a349458-7fc4-4c91-b973-85c9206ed169" />
+    <UnitTestResult executionId="3c673c63-ed82-41d4-b85b-76e397db2d17" testId="118b7048-c7fe-a525-ebc5-406f934e3a27" testName="GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000378" startTime="2026-10-26T10:42:36.3113519-04:00" endTime="2026-10-26T10:42:36.3113897-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3c673c63-ed82-41d4-b85b-76e397db2d17" />
+    <UnitTestResult executionId="31c8bb61-45c3-4adb-b003-6defeca52bd3" testId="7a979da6-282d-2b80-73b8-b4d2e88ea737" testName="NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0002366" startTime="2026-10-26T10:42:36.3153620-04:00" endTime="2026-10-26T10:42:36.3155986-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="31c8bb61-45c3-4adb-b003-6defeca52bd3" />
+    <UnitTestResult executionId="3f31f293-77b4-4b6b-bfc2-8a108901ac41" testId="c54ef227-bfb0-f5dc-11c3-f4aa15b44847" testName="DestinationWinsOverlapAndUncoveredSourceClears" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000247" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215771-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3f31f293-77b4-4b6b-bfc2-8a108901ac41" />
+    <UnitTestResult executionId="4655541e-0fe1-449f-97eb-dae6108bd23c" testId="ce5671ca-7e40-14c3-fd8b-af58ac8bee70" testName="FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000233" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3343970-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4655541e-0fe1-449f-97eb-dae6108bd23c" />
+    <UnitTestResult executionId="78648d77-6079-4b0c-8abd-214678c71f24" testId="e70bff30-3e6d-90ba-630c-0bf4a9b4cc6c" testName="ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001639" startTime="2026-10-26T10:42:36.1749977-04:00" endTime="2026-10-26T10:42:36.1751616-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="78648d77-6079-4b0c-8abd-214678c71f24" />
+    <UnitTestResult executionId="e4b74cc5-ba65-4208-975b-d6aaffd1c9cb" testId="d84ae6e7-4fcd-e076-c54b-20e779551fdb" testName="FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000600" startTime="2026-10-26T10:42:36.3343737-04:00" endTime="2026-10-26T10:42:36.3344337-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e4b74cc5-ba65-4208-975b-d6aaffd1c9cb" />
+    <UnitTestResult executionId="ea139717-580a-448b-a9ce-e34f614fe2bf" testId="29fc708c-92ed-03f4-67f3-cbc6febd7b4b" testName="DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000181" startTime="2026-10-26T10:42:36.3103532-04:00" endTime="2026-10-26T10:42:36.3103713-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ea139717-580a-448b-a9ce-e34f614fe2bf" />
+    <UnitTestResult executionId="6cab52d7-e8e0-4bae-b1b5-a4b83a160b41" testId="b5b9c5fa-a9c7-6cc0-b59a-abc190ea5222" testName="AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000387" startTime="2026-10-26T10:42:36.3093503-04:00" endTime="2026-10-26T10:42:36.3093890-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6cab52d7-e8e0-4bae-b1b5-a4b83a160b41" />
+    <UnitTestResult executionId="0bedfe51-5ec6-4793-acd0-6c539b4538dd" testId="85132087-d6cd-72e8-fc3a-8b4c21b1c014" testName="HoldConfigurationValidatesMillisecondsInSubtitleProfiles" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0223170" startTime="2026-10-26T10:42:36.1759984-04:00" endTime="2026-10-26T10:42:36.1983154-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0bedfe51-5ec6-4793-acd0-6c539b4538dd" />
+    <UnitTestResult executionId="97d86129-f8ab-434c-9c60-1a71ede6bb77" testId="86901084-774c-9ba1-fa8a-e4d3d684cce4" testName="SurroundFillDoesNotAmplifyMovingTextureOrNoise" computerName="DESKTOP-3G35SCJ" duration="00:00:10.0097511" startTime="2026-10-26T10:44:59.9417928-04:00" endTime="2026-10-26T10:45:09.9515439-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="97d86129-f8ab-434c-9c60-1a71ede6bb77">
+      <Output>
+        <StdOut>moving texture worst temporal gain=0.996094 excess=0.000000</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="38664b2b-193b-41a0-9fa9-3e3118b7d484" testId="4ea9cd8d-f72f-f0e3-82f0-63b6f26080d2" testName="ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000133" startTime="2026-10-26T10:42:36.3133549-04:00" endTime="2026-10-26T10:42:36.3133682-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="38664b2b-193b-41a0-9fa9-3e3118b7d484" />
+    <UnitTestResult executionId="d5d84d98-26db-45a5-8239-fc079730d070" testId="4a851ed2-3f52-4df0-fb52-ffed97407916" testName="PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000402" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215926-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d5d84d98-26db-45a5-8239-fc079730d070" />
+    <UnitTestResult executionId="c3f9199b-18d8-43d7-b86b-71c0d9fce735" testId="6c5b111a-1114-22c6-19d2-d175ab469b92" testName="SurroundFillPreservesSplitCompositionAndTransferFunctions" computerName="DESKTOP-3G35SCJ" duration="00:01:32.5095490" startTime="2026-10-26T10:42:36.3412739-04:00" endTime="2026-10-26T10:44:08.8508229-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c3f9199b-18d8-43d7-b86b-71c0d9fce735" />
+    <UnitTestResult executionId="4fea0172-efd2-4852-a554-cbeaf70dfbe0" testId="cbc00c42-7a1c-616e-bb14-ceff2265a9cb" testName="DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0171823" startTime="2026-10-26T10:42:36.3153620-04:00" endTime="2026-10-26T10:42:36.3325443-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4fea0172-efd2-4852-a554-cbeaf70dfbe0" />
+    <UnitTestResult executionId="f2260b61-f906-482e-a06b-c0ebb3174be4" testId="c3b9f667-d285-6536-b420-e882a4f76b4e" testName="PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000479" startTime="2026-10-26T10:42:36.3143582-04:00" endTime="2026-10-26T10:42:36.3144061-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f2260b61-f906-482e-a06b-c0ebb3174be4" />
+    <UnitTestResult executionId="a8e59e2c-f422-4b96-833d-985840739a62" testId="8308b2f5-f8e4-a55a-f082-39af5c8efffc" testName="WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000281" startTime="2026-10-26T10:42:36.2215524-04:00" endTime="2026-10-26T10:42:36.2215805-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a8e59e2c-f422-4b96-833d-985840739a62" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="085b6b6a-049d-3205-26fa-7cd6eca40eca">
+      <Execution id="0e9c0c51-615b-4da8-9301-bf1866d15497" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping" />
+    </UnitTest>
+    <UnitTest name="SubtitlePreviewRequiresControlShiftT" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="e3240429-1d44-750f-813e-79d5a116ea49">
+      <Execution id="888f64ee-2095-4d1d-b6a4-6baae57e69ba" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::SubtitlePreviewRequiresControlShiftT" />
+    </UnitTest>
+    <UnitTest name="NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="7a979da6-282d-2b80-73b8-b4d2e88ea737">
+      <Execution id="31c8bb61-45c3-4adb-b003-6defeca52bd3" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter" />
+    </UnitTest>
+    <UnitTest name="ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="4ea9cd8d-f72f-f0e3-82f0-63b6f26080d2">
+      <Execution id="38664b2b-193b-41a0-9fa9-3e3118b7d484" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping" />
+    </UnitTest>
+    <UnitTest name="RejectsMissingBarInvalidPictureAndOppositeBarCue" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a3404403-e5a1-7e38-6e25-942136e2599d">
+      <Execution id="5e5867b0-c574-4b75-81ef-395b7e2378bd" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::RejectsMissingBarInvalidPictureAndOppositeBarCue" />
+    </UnitTest>
+    <UnitTest name="RelocationOverridesClassicHandlingThroughoutHotkeyCycle" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="4f9c4b33-2327-9342-7b35-20849f7ae14d">
+      <Execution id="6516cdf2-3d29-446b-92eb-0432e6c3a4e2" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::RelocationOverridesClassicHandlingThroughoutHotkeyCycle" />
+    </UnitTest>
+    <UnitTest name="StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="166f360a-c881-40b2-e65d-b8d519d00e49">
+      <Execution id="6ceb746c-3b5e-4f0e-974c-849b5b2dc0a2" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery" />
+    </UnitTest>
+    <UnitTest name="DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="e25d9dba-d4eb-b788-46ae-1a9348a1f628">
+      <Execution id="87df1aa4-9adb-4205-b690-8417164a345b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation" />
+    </UnitTest>
+    <UnitTest name="HoldConfigurationValidatesMillisecondsInSubtitleProfiles" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="85132087-d6cd-72e8-fc3a-8b4c21b1c014">
+      <Execution id="0bedfe51-5ec6-4793-acd0-6c539b4538dd" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::HoldConfigurationValidatesMillisecondsInSubtitleProfiles" />
+    </UnitTest>
+    <UnitTest name="NearBarConfigurationValidatesSourcePixelRange" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c1f76b61-e708-a0fd-76ff-c4365dc6d754">
+      <Execution id="d744944c-2b09-4d9e-9fb7-09556895c5ce" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::NearBarConfigurationValidatesSourcePixelRange" />
+    </UnitTest>
+    <UnitTest name="GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="84748c09-14bf-f3fc-1770-ecd75756e645">
+      <Execution id="335f0948-011c-41a9-93dd-960b5fe27d91" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement" />
+    </UnitTest>
+    <UnitTest name="MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="8d163fa4-1e85-7642-76e1-53121a1b982c">
+      <Execution id="23147cba-5018-49fd-aee0-46ce6335434b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture" />
+    </UnitTest>
+    <UnitTest name="PaddingClipsEveryRasterEdgeWithoutOverflow" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c8c970b5-bc05-5e7f-73e3-0d4efe555012">
+      <Execution id="ffac01d1-733e-4d83-afd6-e9671a6afe82" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PaddingClipsEveryRasterEdgeWithoutOverflow" />
+    </UnitTest>
+    <UnitTest name="TopBarMovesEntirePaddedCueDownIntoPicture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="0795b7df-7418-d62e-e3af-af2c9ebdde9c">
+      <Execution id="2b1bc2ec-8f59-4f85-9cf2-03a40cd11a9a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::TopBarMovesEntirePaddedCueDownIntoPicture" />
+    </UnitTest>
+    <UnitTest name="SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="6a2aff5f-61af-6fd9-913e-6873b744daff">
+      <Execution id="e65f6996-5b10-4c35-a7a9-178a44cc0c7b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture" />
+    </UnitTest>
+    <UnitTest name="GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="663c8c5e-46f2-4c8a-4201-44905c3a0c4d">
+      <Execution id="8a349458-7fc4-4c91-b973-85c9206ed169" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation" />
+    </UnitTest>
+    <UnitTest name="WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="8308b2f5-f8e4-a55a-f082-39af5c8efffc">
+      <Execution id="a8e59e2c-f422-4b96-833d-985840739a62" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines" />
+    </UnitTest>
+    <UnitTest name="DestinationWinsOverlapAndUncoveredSourceClears" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c54ef227-bfb0-f5dc-11c3-f4aa15b44847">
+      <Execution id="3f31f293-77b4-4b6b-bfc2-8a108901ac41" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DestinationWinsOverlapAndUncoveredSourceClears" />
+    </UnitTest>
+    <UnitTest name="TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="ebf8a45d-798f-3406-5493-083f5d6f638a">
+      <Execution id="602e0db3-b933-44ea-b2bd-2a466f140c91" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema" />
+    </UnitTest>
+    <UnitTest name="PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="4a851ed2-3f52-4df0-fb52-ffed97407916">
+      <Execution id="d5d84d98-26db-45a5-8239-fc079730d070" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding" />
+    </UnitTest>
+    <UnitTest name="GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="6d18e4ee-b1a3-4a2e-842b-9b2d530672e9">
+      <Execution id="e7f42405-6261-4b53-8919-ffe5209448e7" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded" />
+    </UnitTest>
+    <UnitTest name="LegacyGeometryIsPreservedButIgnored" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="8299f6e9-94f4-2bac-06ee-f00a6b343416">
+      <Execution id="434d768a-f43a-4d21-8bf2-ce33d72fb561" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::LegacyGeometryIsPreservedButIgnored" />
+    </UnitTest>
+    <UnitTest name="SurroundFill4KPreparationCost" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="f1cb9d63-3738-92b0-bdb7-8c5b14d134b4">
+      <Execution id="c9d2b9b3-378c-48d0-ad9f-29c821a9a1c5" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFill4KPreparationCost" />
+    </UnitTest>
+    <UnitTest name="ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="0053d0ea-7ce2-116b-684b-599166b70697">
+      <Execution id="6573c9dc-45fe-417b-953e-4d84358288fb" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint" />
+    </UnitTest>
+    <UnitTest name="GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="1fbddf4d-17ec-2c3e-e517-f5ff36d27f04">
+      <Execution id="b79be4cc-e87e-4101-917b-6e701b5251a9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars" />
+    </UnitTest>
+    <UnitTest name="DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="cbc00c42-7a1c-616e-bb14-ceff2265a9cb">
+      <Execution id="4fea0172-efd2-4852-a554-cbeaf70dfbe0" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture" />
+    </UnitTest>
+    <UnitTest name="PlacementNeverSurvivesLostCueOrFreshBarAuthority" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="9758a259-11a4-ab56-4632-76f0dc2fb5b8">
+      <Execution id="e9987887-4d78-4eb8-8657-a6c0ae9d855b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PlacementNeverSurvivesLostCueOrFreshBarAuthority" />
+    </UnitTest>
+    <UnitTest name="CenteredLargeCueKeepsLargestFittingSymmetricMargins" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="b4eb5d93-69cf-b798-78a4-c90d47aa543a">
+      <Execution id="c28ad3ac-55ea-441f-9346-fc59d9c59bda" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::CenteredLargeCueKeepsLargestFittingSymmetricMargins" />
+    </UnitTest>
+    <UnitTest name="FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="d0276e08-5ee2-1a24-51da-431b3539e4f9">
+      <Execution id="dcb8abdd-440a-4e9c-ab18-f17f3ef750e6" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary" />
+    </UnitTest>
+    <UnitTest name="GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="f3df2a64-b0d5-9af6-3a29-3b808430bb8a">
+      <Execution id="b56836f9-49d4-4dd9-9af7-6e221b5b096d" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics" />
+    </UnitTest>
+    <UnitTest name="FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="44f287a0-d5a0-5f3e-bc4d-2bc6bfd06ce9">
+      <Execution id="295c5bd0-f694-40db-9af3-e1afccbf550a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay" />
+    </UnitTest>
+    <UnitTest name="BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="7c274bb1-238a-3a33-21f0-d48894e1cc3e">
+      <Execution id="89b74dc0-5b3c-4b9a-9179-efa8942df801" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow" />
+    </UnitTest>
+    <UnitTest name="FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="64540afe-9b8f-d50c-8f7d-ee9d400b5ab2">
+      <Execution id="2d271870-195d-47b2-ad23-3a3f74f19b6b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale" />
+    </UnitTest>
+    <UnitTest name="CoverageMarginProtectsMaximumRadiusAtViewportSides" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a283bcc6-b02c-87b8-b5f0-abdf6e7a3716">
+      <Execution id="265ed80a-f368-4ee7-a037-caea78568a75" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::CoverageMarginProtectsMaximumRadiusAtViewportSides" />
+    </UnitTest>
+    <UnitTest name="DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="7c5ba99d-0ecd-1f07-3cbe-40ab573f3d92">
+      <Execution id="2b5d8435-b526-441f-b278-ff4a3a55da58" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup" />
+    </UnitTest>
+    <UnitTest name="PictureIntrusionDisablesFloatUntilCueChanges" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="38153346-f6fe-6cdb-fb5a-189ea7a16f05">
+      <Execution id="9637fc14-c473-4287-a82a-78a9cb16596f" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PictureIntrusionDisablesFloatUntilCueChanges" />
+    </UnitTest>
+    <UnitTest name="ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="97b27282-1fea-ffcc-c06e-bab75a184165">
+      <Execution id="0b149e28-25a5-44c7-89d4-6f00fbe55ddb" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding" />
+    </UnitTest>
+    <UnitTest name="NearBarBackingCoversGapWithoutEnlargingGlyphCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="0047edb4-9a22-ec5b-ec09-d3d27673185c">
+      <Execution id="2c3f8d6a-183c-41e6-b57a-31cf987010f5" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::NearBarBackingCoversGapWithoutEnlargingGlyphCapture" />
+    </UnitTest>
+    <UnitTest name="SurroundFillDoesNotAmplifyMovingTextureOrNoise" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="86901084-774c-9ba1-fa8a-e4d3d684cce4">
+      <Execution id="97d86129-f8ab-434c-9c60-1a71ede6bb77" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFillDoesNotAmplifyMovingTextureOrNoise" />
+    </UnitTest>
+    <UnitTest name="PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="f7ca8f5c-cac4-72da-3277-fa0eb4dd5a81">
+      <Execution id="a638b081-1b20-4b09-a6c8-29180804404e" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue" />
+    </UnitTest>
+    <UnitTest name="TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c112c147-d83c-3380-0762-e04a2e7aabf0">
+      <Execution id="16542444-1f2a-46f9-a304-ae8319bf4fde" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge" />
+    </UnitTest>
+    <UnitTest name="PaddingStopsBeforeNearbyUnclaimedGlyphRows" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="205abd20-2799-18db-0ae0-b43d8de51a6f">
+      <Execution id="b9e1ecd0-2071-4cd3-9764-5ef651048528" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PaddingStopsBeforeNearbyUnclaimedGlyphRows" />
+    </UnitTest>
+    <UnitTest name="GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a4a3d749-6697-fc38-f513-9ee08eb982ac">
+      <Execution id="7f9056ad-1ed6-405c-8931-3fd7d3ba624b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames" />
+    </UnitTest>
+    <UnitTest name="GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="da4d6db7-f9c6-455d-eb61-a461339558e0">
+      <Execution id="acaf0414-638f-407c-ae16-5d1fd15588e4" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport" />
+    </UnitTest>
+    <UnitTest name="NearBarPlacementDoesNotPullGlyphsTowardEitherBar" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="ab444362-e304-4f89-748f-a1d4140eaf33">
+      <Execution id="17f1c64e-4108-423f-af8b-4823e31b303e" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::NearBarPlacementDoesNotPullGlyphsTowardEitherBar" />
+    </UnitTest>
+    <UnitTest name="RejectsTooTallCueAndInvalidInsetsRatherThanClippingText" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a217bdea-6a02-284d-88ad-fe6ecdb84685">
+      <Execution id="470c2892-e99d-49ab-9197-aa9ccc7de658" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::RejectsTooTallCueAndInvalidInsetsRatherThanClippingText" />
+    </UnitTest>
+    <UnitTest name="ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="7482eaef-829e-be70-809e-b44e3dd2a815">
+      <Execution id="69546974-0838-4efb-bbe9-f9365d90cb38" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable" />
+    </UnitTest>
+    <UnitTest name="MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="b487daa8-83b1-b1bc-3f02-6fca87923887">
+      <Execution id="87db44c3-df92-4e23-ba80-89f082868ed6" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache" />
+    </UnitTest>
+    <UnitTest name="SubtitlePreviewCycleAndResyncRestoreNormalConfiguration" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="1ca36ccd-8887-dbaa-16ec-afc1b4381c77">
+      <Execution id="9e2a9e5d-d513-4103-a5d6-93fd263991d4" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::SubtitlePreviewCycleAndResyncRestoreNormalConfiguration" />
+    </UnitTest>
+    <UnitTest name="MeasuredSourceCardCleanupIsIndependentOfDisplayPadding" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c7970158-eb77-7678-1984-495673a787ab">
+      <Execution id="b480235b-8eab-4fdd-8b3a-27233591522b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MeasuredSourceCardCleanupIsIndependentOfDisplayPadding" />
+    </UnitTest>
+    <UnitTest name="ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="e70bff30-3e6d-90ba-630c-0bf4a9b4cc6c">
+      <Execution id="78648d77-6079-4b0c-8abd-214678c71f24" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture" />
+    </UnitTest>
+    <UnitTest name="AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="b5b9c5fa-a9c7-6cc0-b59a-abc190ea5222">
+      <Execution id="6cab52d7-e8e0-4bae-b1b5-a4b83a160b41" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents" />
+    </UnitTest>
+    <UnitTest name="SurroundFillPreservesSplitCompositionAndTransferFunctions" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="6c5b111a-1114-22c6-19d2-d175ab469b92">
+      <Execution id="c3f9199b-18d8-43d7-b86b-71c0d9fce735" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFillPreservesSplitCompositionAndTransferFunctions" />
+    </UnitTest>
+    <UnitTest name="SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="9f864185-d696-f39f-d9fb-61148c731a1b">
+      <Execution id="0c4c9ca5-2346-4f98-845a-43969d40d441" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately" />
+    </UnitTest>
+    <UnitTest name="GlyphPaddingScalesWithLineHeightNotMultilineHeight" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="0008f4b5-ac90-4f6f-2105-5a1a5b58c05e">
+      <Execution id="34e56084-e17a-43e3-85e1-4f679b424321" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphPaddingScalesWithLineHeightNotMultilineHeight" />
+    </UnitTest>
+    <UnitTest name="PlacementFreezesBarFringeButResetsForNewCueOrContext" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="d55c8279-5dcc-e2a4-c6b5-e18caece4495">
+      <Execution id="cf35aa8e-2fff-428c-9fe9-5938cc55496e" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PlacementFreezesBarFringeButResetsForNewCueOrContext" />
+    </UnitTest>
+    <UnitTest name="DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="29fc708c-92ed-03f4-67f3-cbc6febd7b4b">
+      <Execution id="ea139717-580a-448b-a9ce-e34f614fe2bf" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership" />
+    </UnitTest>
+    <UnitTest name="SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="2214dd3d-f05d-b6e3-41d4-d3f3eef3d280">
+      <Execution id="550c2989-855d-4e33-859b-f0be1e204872" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel" />
+    </UnitTest>
+    <UnitTest name="FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="d84ae6e7-4fcd-e076-c54b-20e779551fdb">
+      <Execution id="e4b74cc5-ba65-4208-975b-d6aaffd1c9cb" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges" />
+    </UnitTest>
+    <UnitTest name="DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c7256398-31e1-dcd7-978f-622c49eea115">
+      <Execution id="e50bd236-ec62-440b-b0b3-e68f62ae68a6" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale" />
+    </UnitTest>
+    <UnitTest name="GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="118b7048-c7fe-a525-ebc5-406f934e3a27">
+      <Execution id="3c673c63-ed82-41d4-b85b-76e397db2d17" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation" />
+    </UnitTest>
+    <UnitTest name="TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a5f1e4c5-bf79-0047-3762-6f27500a23de">
+      <Execution id="7f05ba02-8bd3-49d7-870b-c717f38630e9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames" />
+    </UnitTest>
+    <UnitTest name="MeasuredCoverageClipsOnlyDisplayAtVisibleViewport" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c2c7f49a-3498-a15e-1fa7-73330093795c">
+      <Execution id="778193f8-886e-4f8e-90dc-621a0df3bcfd" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MeasuredCoverageClipsOnlyDisplayAtVisibleViewport" />
+    </UnitTest>
+    <UnitTest name="PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="66e55389-3cab-ccdc-b71d-9d9830fcb38b">
+      <Execution id="f7f6ef5e-c02d-41e6-aaa4-e94443185e5a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss" />
+    </UnitTest>
+    <UnitTest name="TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="ea8f5cf6-b97f-0e21-caca-7107683589fb">
+      <Execution id="17aa7548-bd8c-40ea-9dee-cec0c5b88cbe" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity" />
+    </UnitTest>
+    <UnitTest name="GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="02c9b2e7-8541-356b-c4fe-71b9da026d86">
+      <Execution id="e2efb740-2e22-4b40-8076-8616c87a0461" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement" />
+    </UnitTest>
+    <UnitTest name="MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="e6312a5d-ab51-9b01-99f5-687476bbb152">
+      <Execution id="89e848d0-a695-4c98-85d7-2b351c7e3f62" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster" />
+    </UnitTest>
+    <UnitTest name="GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="f655ae5b-8e89-3686-275d-d5af0d631bcb">
+      <Execution id="80ca3dd0-0e95-4e03-a497-285e0d5a02e9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages" />
+    </UnitTest>
+    <UnitTest name="CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="3e1d64ba-e2cd-541c-f8a0-e0db30f0339c">
+      <Execution id="6dcc785c-620a-4a8e-aa57-7270386e2dac" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks" />
+    </UnitTest>
+    <UnitTest name="LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="77de6d47-6990-4db5-2ec2-0e0b9d7c3b90">
+      <Execution id="63e6f871-afaa-49a7-a3a3-fca20f0b6bba" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback" />
+    </UnitTest>
+    <UnitTest name="FreshCardCoverageCanGrowWithoutMovingAnchoredGlyphs" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="e6aa9b24-0e54-e890-d3be-093fa693ba66">
+      <Execution id="f59c8aad-5cd2-40a4-9177-ab89e92d167f" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FreshCardCoverageCanGrowWithoutMovingAnchoredGlyphs" />
+    </UnitTest>
+    <UnitTest name="NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="ce3b9e17-18e7-2be5-146e-5becc1804705">
+      <Execution id="c760467a-741d-4dc2-a7cf-6d221efd0c63" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary" />
+    </UnitTest>
+    <UnitTest name="SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="de1ad07a-4f4a-c6b0-d019-3bb576654382">
+      <Execution id="a18b4422-fe15-478d-a4de-88c723688e44" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars" />
+    </UnitTest>
+    <UnitTest name="PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="c3b9f667-d285-6536-b420-e882a4f76b4e">
+      <Execution id="f2260b61-f906-482e-a06b-c0ebb3174be4" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs" />
+    </UnitTest>
+    <UnitTest name="VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="bfd14b01-a8ca-ed2a-c08f-69b7f303fd7e">
+      <Execution id="e21003c7-edaf-4ad7-a045-81d96d956d52" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption" />
+    </UnitTest>
+    <UnitTest name="BackingFootprintReleasesOnCueAndContextChanges" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="cc1f7cd1-6e3a-507a-c0e4-153fff8e127b">
+      <Execution id="61d4ba67-0812-4ec6-8f17-e158272785cc" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::BackingFootprintReleasesOnCueAndContextChanges" />
+    </UnitTest>
+    <UnitTest name="SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="76ecd8e7-5430-aa47-f853-c840fc971f25">
+      <Execution id="2956ee15-85fa-453f-a83e-3a78e65f5e07" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors" />
+    </UnitTest>
+    <UnitTest name="ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="3a3658f8-fd86-bac2-fe63-d8a5a89ef73c">
+      <Execution id="670b7d15-d78b-4d57-8843-5a123422326e" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource" />
+    </UnitTest>
+    <UnitTest name="MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="4f837cb9-75a3-a30d-dc7f-a0d897915a86">
+      <Execution id="98172390-8e05-4baa-911f-89899f5a9a02" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction" />
+    </UnitTest>
+    <UnitTest name="TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a12fffcf-1e73-bfda-5cdd-33522f2604f4">
+      <Execution id="f88d887e-0694-4e95-bf43-e3fc101c4bd9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination" />
+    </UnitTest>
+    <UnitTest name="AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="6ef27455-2a16-f7a8-6ab3-941eae1481b4">
+      <Execution id="409e682f-5640-4332-83d7-7a0f84d71d22" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture" />
+    </UnitTest>
+    <UnitTest name="MovePreservesSizeAndReachesTheActivePictureBoundary" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="a155cec7-1dd8-8e88-9639-28ced4d5a563">
+      <Execution id="1688f218-fd2a-4254-8572-e19cf61c315f" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::MovePreservesSizeAndReachesTheActivePictureBoundary" />
+    </UnitTest>
+    <UnitTest name="SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="929059e7-261b-186a-6d5a-566d8d8b9bdf">
+      <Execution id="0490f80e-5444-4b02-91ce-3f29c0805be5" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteShaderTests" name="Tests::SubtitleCutPasteShaderTests::SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars" />
+    </UnitTest>
+    <UnitTest name="FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="ce5671ca-7e40-14c3-fd8b-af58ac8bee70">
+      <Execution id="4655541e-0fe1-449f-97eb-dae6108bd23c" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText" />
+    </UnitTest>
+    <UnitTest name="IndependentPaddingAndInsetChangesInvalidateCachedPlacement" storage="e:\codex\videoprocessor\reconstruction-seams-20261026\x64\release\videoprocessor-test.dll" id="29681dcf-1000-d48c-9ef4-be0258026678">
+      <Execution id="26202b82-1c7f-4c5d-a9f0-427fd6ea32c2" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-seams-20261026\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleCutPasteTests" name="Tests::SubtitleCutPasteTests::IndependentPaddingAndInsetChangesInvalidateCachedPlacement" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="2214dd3d-f05d-b6e3-41d4-d3f3eef3d280" executionId="550c2989-855d-4e33-859b-f0be1e204872" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="84748c09-14bf-f3fc-1770-ecd75756e645" executionId="335f0948-011c-41a9-93dd-960b5fe27d91" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9758a259-11a4-ab56-4632-76f0dc2fb5b8" executionId="e9987887-4d78-4eb8-8657-a6c0ae9d855b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a217bdea-6a02-284d-88ad-fe6ecdb84685" executionId="470c2892-e99d-49ab-9197-aa9ccc7de658" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e6312a5d-ab51-9b01-99f5-687476bbb152" executionId="89e848d0-a695-4c98-85d7-2b351c7e3f62" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d0276e08-5ee2-1a24-51da-431b3539e4f9" executionId="dcb8abdd-440a-4e9c-ab18-f17f3ef750e6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8d163fa4-1e85-7642-76e1-53121a1b982c" executionId="23147cba-5018-49fd-aee0-46ce6335434b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="77de6d47-6990-4db5-2ec2-0e0b9d7c3b90" executionId="63e6f871-afaa-49a7-a3a3-fca20f0b6bba" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1fbddf4d-17ec-2c3e-e517-f5ff36d27f04" executionId="b79be4cc-e87e-4101-917b-6e701b5251a9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1ca36ccd-8887-dbaa-16ec-afc1b4381c77" executionId="9e2a9e5d-d513-4103-a5d6-93fd263991d4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f7ca8f5c-cac4-72da-3277-fa0eb4dd5a81" executionId="a638b081-1b20-4b09-a6c8-29180804404e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ce3b9e17-18e7-2be5-146e-5becc1804705" executionId="c760467a-741d-4dc2-a7cf-6d221efd0c63" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7482eaef-829e-be70-809e-b44e3dd2a815" executionId="69546974-0838-4efb-bbe9-f9365d90cb38" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ea8f5cf6-b97f-0e21-caca-7107683589fb" executionId="17aa7548-bd8c-40ea-9dee-cec0c5b88cbe" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c7256398-31e1-dcd7-978f-622c49eea115" executionId="e50bd236-ec62-440b-b0b3-e68f62ae68a6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f655ae5b-8e89-3686-275d-d5af0d631bcb" executionId="80ca3dd0-0e95-4e03-a497-285e0d5a02e9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0053d0ea-7ce2-116b-684b-599166b70697" executionId="6573c9dc-45fe-417b-953e-4d84358288fb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f1cb9d63-3738-92b0-bdb7-8c5b14d134b4" executionId="c9d2b9b3-378c-48d0-ad9f-29c821a9a1c5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8299f6e9-94f4-2bac-06ee-f00a6b343416" executionId="434d768a-f43a-4d21-8bf2-ce33d72fb561" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="97b27282-1fea-ffcc-c06e-bab75a184165" executionId="0b149e28-25a5-44c7-89d4-6f00fbe55ddb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a155cec7-1dd8-8e88-9639-28ced4d5a563" executionId="1688f218-fd2a-4254-8572-e19cf61c315f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c7970158-eb77-7678-1984-495673a787ab" executionId="b480235b-8eab-4fdd-8b3a-27233591522b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0795b7df-7418-d62e-e3af-af2c9ebdde9c" executionId="2b1bc2ec-8f59-4f85-9cf2-03a40cd11a9a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3a3658f8-fd86-bac2-fe63-d8a5a89ef73c" executionId="670b7d15-d78b-4d57-8843-5a123422326e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a5f1e4c5-bf79-0047-3762-6f27500a23de" executionId="7f05ba02-8bd3-49d7-870b-c717f38630e9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a12fffcf-1e73-bfda-5cdd-33522f2604f4" executionId="f88d887e-0694-4e95-bf43-e3fc101c4bd9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b4eb5d93-69cf-b798-78a4-c90d47aa543a" executionId="c28ad3ac-55ea-441f-9346-fc59d9c59bda" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a3404403-e5a1-7e38-6e25-942136e2599d" executionId="5e5867b0-c574-4b75-81ef-395b7e2378bd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="166f360a-c881-40b2-e65d-b8d519d00e49" executionId="6ceb746c-3b5e-4f0e-974c-849b5b2dc0a2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e6aa9b24-0e54-e890-d3be-093fa693ba66" executionId="f59c8aad-5cd2-40a4-9177-ab89e92d167f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f3df2a64-b0d5-9af6-3a29-3b808430bb8a" executionId="b56836f9-49d4-4dd9-9af7-6e221b5b096d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0008f4b5-ac90-4f6f-2105-5a1a5b58c05e" executionId="34e56084-e17a-43e3-85e1-4f679b424321" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="de1ad07a-4f4a-c6b0-d019-3bb576654382" executionId="a18b4422-fe15-478d-a4de-88c723688e44" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="da4d6db7-f9c6-455d-eb61-a461339558e0" executionId="acaf0414-638f-407c-ae16-5d1fd15588e4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="76ecd8e7-5430-aa47-f853-c840fc971f25" executionId="2956ee15-85fa-453f-a83e-3a78e65f5e07" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4f9c4b33-2327-9342-7b35-20849f7ae14d" executionId="6516cdf2-3d29-446b-92eb-0432e6c3a4e2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="44f287a0-d5a0-5f3e-bc4d-2bc6bfd06ce9" executionId="295c5bd0-f694-40db-9af3-e1afccbf550a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e3240429-1d44-750f-813e-79d5a116ea49" executionId="888f64ee-2095-4d1d-b6a4-6baae57e69ba" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="205abd20-2799-18db-0ae0-b43d8de51a6f" executionId="b9e1ecd0-2071-4cd3-9764-5ef651048528" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ebf8a45d-798f-3406-5493-083f5d6f638a" executionId="602e0db3-b933-44ea-b2bd-2a466f140c91" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4f837cb9-75a3-a30d-dc7f-a0d897915a86" executionId="98172390-8e05-4baa-911f-89899f5a9a02" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6a2aff5f-61af-6fd9-913e-6873b744daff" executionId="e65f6996-5b10-4c35-a7a9-178a44cc0c7b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c1f76b61-e708-a0fd-76ff-c4365dc6d754" executionId="d744944c-2b09-4d9e-9fb7-09556895c5ce" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="29681dcf-1000-d48c-9ef4-be0258026678" executionId="26202b82-1c7f-4c5d-a9f0-427fd6ea32c2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="02c9b2e7-8541-356b-c4fe-71b9da026d86" executionId="e2efb740-2e22-4b40-8076-8616c87a0461" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="66e55389-3cab-ccdc-b71d-9d9830fcb38b" executionId="f7f6ef5e-c02d-41e6-aaa4-e94443185e5a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b487daa8-83b1-b1bc-3f02-6fca87923887" executionId="87db44c3-df92-4e23-ba80-89f082868ed6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="38153346-f6fe-6cdb-fb5a-189ea7a16f05" executionId="9637fc14-c473-4287-a82a-78a9cb16596f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="64540afe-9b8f-d50c-8f7d-ee9d400b5ab2" executionId="2d271870-195d-47b2-ad23-3a3f74f19b6b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0047edb4-9a22-ec5b-ec09-d3d27673185c" executionId="2c3f8d6a-183c-41e6-b57a-31cf987010f5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9f864185-d696-f39f-d9fb-61148c731a1b" executionId="0c4c9ca5-2346-4f98-845a-43969d40d441" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d18e4ee-b1a3-4a2e-842b-9b2d530672e9" executionId="e7f42405-6261-4b53-8919-ffe5209448e7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6ef27455-2a16-f7a8-6ab3-941eae1481b4" executionId="409e682f-5640-4332-83d7-7a0f84d71d22" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c112c147-d83c-3380-0762-e04a2e7aabf0" executionId="16542444-1f2a-46f9-a304-ae8319bf4fde" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="085b6b6a-049d-3205-26fa-7cd6eca40eca" executionId="0e9c0c51-615b-4da8-9301-bf1866d15497" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cc1f7cd1-6e3a-507a-c0e4-153fff8e127b" executionId="61d4ba67-0812-4ec6-8f17-e158272785cc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7c5ba99d-0ecd-1f07-3cbe-40ab573f3d92" executionId="2b5d8435-b526-441f-b278-ff4a3a55da58" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c8c970b5-bc05-5e7f-73e3-0d4efe555012" executionId="ffac01d1-733e-4d83-afd6-e9671a6afe82" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="929059e7-261b-186a-6d5a-566d8d8b9bdf" executionId="0490f80e-5444-4b02-91ce-3f29c0805be5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d55c8279-5dcc-e2a4-c6b5-e18caece4495" executionId="cf35aa8e-2fff-428c-9fe9-5938cc55496e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ab444362-e304-4f89-748f-a1d4140eaf33" executionId="17f1c64e-4108-423f-af8b-4823e31b303e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a283bcc6-b02c-87b8-b5f0-abdf6e7a3716" executionId="265ed80a-f368-4ee7-a037-caea78568a75" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bfd14b01-a8ca-ed2a-c08f-69b7f303fd7e" executionId="e21003c7-edaf-4ad7-a045-81d96d956d52" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a4a3d749-6697-fc38-f513-9ee08eb982ac" executionId="7f9056ad-1ed6-405c-8931-3fd7d3ba624b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3e1d64ba-e2cd-541c-f8a0-e0db30f0339c" executionId="6dcc785c-620a-4a8e-aa57-7270386e2dac" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7c274bb1-238a-3a33-21f0-d48894e1cc3e" executionId="89b74dc0-5b3c-4b9a-9179-efa8942df801" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c2c7f49a-3498-a15e-1fa7-73330093795c" executionId="778193f8-886e-4f8e-90dc-621a0df3bcfd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e25d9dba-d4eb-b788-46ae-1a9348a1f628" executionId="87df1aa4-9adb-4205-b690-8417164a345b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="663c8c5e-46f2-4c8a-4201-44905c3a0c4d" executionId="8a349458-7fc4-4c91-b973-85c9206ed169" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="118b7048-c7fe-a525-ebc5-406f934e3a27" executionId="3c673c63-ed82-41d4-b85b-76e397db2d17" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7a979da6-282d-2b80-73b8-b4d2e88ea737" executionId="31c8bb61-45c3-4adb-b003-6defeca52bd3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c54ef227-bfb0-f5dc-11c3-f4aa15b44847" executionId="3f31f293-77b4-4b6b-bfc2-8a108901ac41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ce5671ca-7e40-14c3-fd8b-af58ac8bee70" executionId="4655541e-0fe1-449f-97eb-dae6108bd23c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e70bff30-3e6d-90ba-630c-0bf4a9b4cc6c" executionId="78648d77-6079-4b0c-8abd-214678c71f24" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d84ae6e7-4fcd-e076-c54b-20e779551fdb" executionId="e4b74cc5-ba65-4208-975b-d6aaffd1c9cb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="29fc708c-92ed-03f4-67f3-cbc6febd7b4b" executionId="ea139717-580a-448b-a9ce-e34f614fe2bf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b5b9c5fa-a9c7-6cc0-b59a-abc190ea5222" executionId="6cab52d7-e8e0-4bae-b1b5-a4b83a160b41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="85132087-d6cd-72e8-fc3a-8b4c21b1c014" executionId="0bedfe51-5ec6-4793-acd0-6c539b4538dd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="86901084-774c-9ba1-fa8a-e4d3d684cce4" executionId="97d86129-f8ab-434c-9c60-1a71ede6bb77" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4ea9cd8d-f72f-f0e3-82f0-63b6f26080d2" executionId="38664b2b-193b-41a0-9fa9-3e3118b7d484" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4a851ed2-3f52-4df0-fb52-ffed97407916" executionId="d5d84d98-26db-45a5-8239-fc079730d070" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6c5b111a-1114-22c6-19d2-d175ab469b92" executionId="c3f9199b-18d8-43d7-b86b-71c0d9fce735" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cbc00c42-7a1c-616e-bb14-ceff2265a9cb" executionId="4fea0172-efd2-4852-a554-cbeaf70dfbe0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c3b9f667-d285-6536-b420-e882a4f76b4e" executionId="f2260b61-f906-482e-a06b-c0ebb3174be4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8308b2f5-f8e4-a55a-f082-39af5c8efffc" executionId="a8e59e2c-f422-4b96-833d-985840739a62" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="85" executed="85" passed="85" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>spatial render mode=0 wall_ms=9810.390300&#xD;
+spatial render mode=2 wall_ms=1.170800&#xD;
+spatial render mode=2 wall_ms=1.906700&#xD;
+spatial render mode=0 wall_ms=1.050300&#xD;
+spatial render mode=2 wall_ms=1.225100&#xD;
+spatial render mode=2 wall_ms=1.201100&#xD;
+contour top=0 mirror_mae=0.050365 surround_mae=0.040881 seam_mae=0.012541&#xD;
+contour top=1 mirror_mae=0.048600 surround_mae=0.040881 seam_mae=0.012541&#xD;
+4K warmed full preparation fill=0 mean_wall_ms=0.582870&#xD;
+4K warmed full preparation fill=2 mean_wall_ms=0.517395&#xD;
+moving texture worst temporal gain=0.996094 excess=0.000000&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

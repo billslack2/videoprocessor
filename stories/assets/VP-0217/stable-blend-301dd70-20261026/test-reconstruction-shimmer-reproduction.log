@@ -1,0 +1,20 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+moving texture worst temporal gain=16.248779 excess=0.179397
+  Failed SurroundFillDoesNotAmplifyMovingTextureOrNoise [8 s]
+  Error Message:
+   Assert failed. Small moving-frame changes must not be amplified into reconstruction shimmer
+  Stack Trace:
+  	at Tests::`anonymous namespace'::SubtitleShaderGpuFixture::VerifySurroundMovingTextureDoesNotAmplifySmallFrameChanges() in E:\codex\videoprocessor\reconstruction-seams-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 1961
+	at Tests::SubtitleCutPasteShaderTests::SurroundFillDoesNotAmplifyMovingTextureOrNoise() in E:\codex\videoprocessor\reconstruction-seams-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 2442
+  Standard Output Messages:
+ moving texture worst temporal gain=16.248779 excess=0.179397
+
+Results File: E:\codex\videoprocessor\reconstruction-seams-20261026\TestResults\reconstruction-shimmer-reproduction.trx
+
+Total tests: 1
+     Failed: 1
+Test Run Failed.
+ Total time: 8.9632 Seconds
