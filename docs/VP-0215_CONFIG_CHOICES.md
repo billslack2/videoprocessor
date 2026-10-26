@@ -38,7 +38,10 @@ mapping is promised for previously conflicting independent selectors.
 
 Advanced tone mapping has one toggle. It reads Advanced tone mapping in basic
 mode and Basic tone mapping while expanded. Manual navigation/profile docking
-choices are preserved; there is no additional Restore panels button.
+choices are preserved; there is no additional Restore panels button. Advanced
+maximizes the ordinary editor window. Basic restores the previous size/position
+and maximized state, captured again on each Advanced click. Cancel or a target
+switch also restores that placement when rebuilding the Basic editor.
 
 Actual defaults, quality ordering and cost differ: the list is not a benchmark
 ranking. The user requested 4 sharpest ahead of sharp; representative live VP

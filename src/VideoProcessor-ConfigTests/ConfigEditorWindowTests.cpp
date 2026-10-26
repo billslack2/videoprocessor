@@ -5586,6 +5586,50 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     workspace->closeProfileDrawer(); events();
     require(readBytes(path) == originalBytes, "Docking or drawer management wrote the configuration");
 }
+void testAdvancedToneMappingMaximizesAndRestoresWindow()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray original = readBytes(path);
+    ConfigEditorWindow window(path, 0, true);
+    window.show(); window.selectPage(2);
+    auto events = [] { for (int n = 0; n < 6; ++n) QApplication::processEvents(); };
+    events();
+    auto* advanced = requireControl<QAbstractButton>(window, "workspaceAdvancedToggle");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.shortcut");
+    edit->setText("Ctrl+Alt+F9");
+    for (const QSize size : { QSize(1040, 700), QSize(1280, 800) })
+    {
+        window.showNormal(); window.resize(size); window.move(37, 53); events();
+        const QRect previous = window.geometry();
+        advanced->click(); events();
+        require(window.isMaximized() && !window.isFullScreen(),
+            "Advanced tone mapping must maximize the ordinary window");
+        require(advanced->text() == "Basic tone mapping", "Maximized mode lost the Basic toggle");
+        advanced->click(); events();
+        require(!window.isMaximized() && !window.isFullScreen() && window.geometry() == previous,
+            "Basic did not restore the size and position from before this Advanced click");
+        require(edit->text() == "Ctrl+Alt+F9", "Window restoration discarded an unsaved edit");
+    }
+    const QRect normal = window.normalGeometry();
+    window.showMaximized(); events();
+    advanced->click(); events();
+    advanced->click(); events();
+    require(window.isMaximized() && !window.isFullScreen() && window.normalGeometry() == normal,
+        "An already maximized window did not retain its prior maximized state and restore geometry");
+    window.showNormal(); events();
+    const QRect beforeCancel = window.geometry();
+    advanced->click(); events();
+    requireControl<QPushButton>(window, "cancelConfiguration")->click(); events();
+    require(!window.isVisible() && !window.isMaximized(),
+        "Cancel exposed or left a rebuilt Basic editor maximized");
+    window.show(); events();
+    require(window.geometry() == beforeCancel &&
+        !requireControl<QAbstractButton>(window, "workspaceAdvancedToggle")->isChecked(),
+        "Rebuilding Basic after Cancel lost the previous window placement");
+    require(readBytes(path) == original, "Window state changes wrote the configuration");
+}
+
 void testMigrationNoticeOnlyForPendingMigration()
 {
     QTemporaryDir directory;
@@ -8151,6 +8195,7 @@ int main(int argc, char** argv)
     failures += run("concrete video choices and canonical Scaling", testConcreteVideoChoicesAndCanonicalScaling);
     failures += run("responsive workspaces preserve edits and fit", testResponsiveWorkspacesPreserveEditsAndFit);
     failures += run("left docks restore manual choices and drawer editing", testLeftDocksRestoreManualChoicesAndDrawerEditing);
+    failures += run("advanced tone mapping maximizes and restores window", testAdvancedToneMappingMaximizesAndRestoresWindow);
     failures += run("migration notice only for pending migration", testMigrationNoticeOnlyForPendingMigration);
     failures += run("Rendering menu duplicate export import preserves ownership",testRenderingMenuDuplicateExportImportPreservesLegacyOwner);
     failures += run("Rendering processing ownership save reopen and rename",testRenderingProcessingOwnershipSaveReopenAndRename);
