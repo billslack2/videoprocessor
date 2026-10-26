@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-26). Current integration 810d8820 is built, tested and deployed to the existing reconstruction trial. See the latest evidence below. Historical implementation: NLS and subtitle activation fixes are implemented and built in
+Review (2026-10-26). Current integration 37946697 is built, tested and deployed to the existing reconstruction trial. See the latest evidence below. Historical implementation: NLS and subtitle activation fixes are implemented and built in
 `E:\codex\videoprocessor\nls-live-preparation-20261016`, branch
 `codex/nls-live-preparation-20261016`, based on remote `v1.4.02-beta` at
 `51b211dc0d1d45f9e65883ea07e1d1ad9a3a7e10` plus the latest local rational-clock,
@@ -680,3 +680,47 @@ same status UI. The live trial was left available for user review; a subsequent
 process from the same trial was observed running. Remaining acceptance is user's
 visual assessment of shared layout/spinner and actual switching responsiveness.
 Evidence: assets/VP-0140/shared-profile-preparation-810d8820-20261026/.
+
+## Subtitle cycling and attached bar edge correction - 2026-10-26
+
+User reported Ctrl+Shift+T sometimes exposing subtitles in the black bar, and
+Black backing occasionally stopping about one pixel short of the bar.
+Fresh current-beta worktree: E:\codex\videoprocessor\subtitle-cycle-bar-edge-20261026,
+beta 87f61f77, with prior trial features carried forward. Committed/pushed tip
+379466972611a30a9aeca376172b865501fccfcb on codex/subtitle-cycle-bar-edge-20261026.
+
+Root cause found in preparation policy: the complete effective-settings key
+revoked ready subtitle programs for dynamic style changes. Each cycle therefore
+briefly entered the original-full-raster fallback, exposing native bar captions.
+The key now excludes dynamic subtitle/viewport values while retaining source,
+transport and processing identity. Subtitle-only changes also retain the NLS
+preparation revision. Initial cold or genuinely changed graphs still use fallback.
+
+Attached backing now overlaps its bar-facing boundary by two source pixels so
+fractional sampling cannot interpolate with transparent pixels immediately outside
+the panel. Glyph placement and cleanup stay unchanged; floating panels keep their
+gap. The active saved Black profile was float, which can still attach when covering
+an original picture-intruding card. No configuration values were changed.
+
+The new fractional-sampling GPU regression failed against the old shader, then
+passed at both bars with rounded/square panels and a floating-panel control.
+All 187 selected native/GPU tests passed, including expanded style/blur/border/
+fill cache reuse in SDR, temporal RGB and native HDR, history policy, original and
+stable surround, transparency, failure/retry and continued rendering. Final clean
+x64 Release solution build completed successfully.
+
+Same existing trial updated and restarted at
+E:\codex\reconstruction-fill-options-trial-20261026. Host and both stable/beta
+renderer DLL hashes match this Release build. Backup:
+backups\before-subtitle-cycle-bar-20261026-122745. The first full-manifest copy
+encountered the running Config editor's locked executable; the update was completed
+with only the player/renderers, retaining the original first-attempt runtime backup.
+The editor session stayed open; no editor code change was needed. All six CFG/STATE
+files matched their pre-copy hashes and were rechecked after launch. Main deployment
+unchanged. No integration merge or public release performed.
+
+Live telemetry after restart: four sampled two-second windows each submitted 120
+frames, output about 59.951 Hz, source about 23.976 Hz, worker_failed=0. This checks
+running playback only. Windows computer-use helper initialization repeatedly failed
+(sandbox setup/trusted Node exit), so actual keyboard cycling and visible seam
+acceptance remain for the user. Evidence: assets/VP-0140/cycle-bar-fix-37946697-20261026/.

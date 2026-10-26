@@ -1,0 +1,47 @@
+{
+  "sourceCommit": "379466972611a30a9aeca376172b865501fccfcb",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "E:\\codex\\reconstruction-fill-options-trial-20261026\\backups\\before-subtitle-cycle-bar-20261026-122745",
+  "settingsPreserved": [
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\Before.cfg",
+      "sha256": "8B194DE307ED84D487BB18D897B20E0F96870097CDD3B975854007898A0BE085"
+    },
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\Before.state",
+      "sha256": "459A67E8F4344D7CC2B89111621AA1A95D3E75020471E630D49849416E47DCA8"
+    },
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\ShaderValidation.cfg",
+      "sha256": "6A394AC8844B9AC6310D2B86858934EC738CAF4F377EDB371E6DC5134780828E"
+    },
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\ShaderValidation.state",
+      "sha256": "A7515BFEFFCCD889CCF8AA259BDBFFD648FE855AC12157C26D99FDE6078E5669"
+    },
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\VideoProcessor.cfg",
+      "sha256": "6A394AC8844B9AC6310D2B86858934EC738CAF4F377EDB371E6DC5134780828E"
+    },
+    {
+      "path": "E:\\codex\\reconstruction-fill-options-trial-20261026\\VideoProcessor.state",
+      "sha256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470"
+    }
+  ],
+  "files": [
+    {
+      "file": "VideoProcessor.exe",
+      "sha256": "4755B7E345B42E2EEF7A28FA422211DD0A7F8524EA3691248CC1EEF45C505B24"
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "7F4FD8B0ED9538C456DF8D9B68203BC4582ABE4902B34ED6BE04DF4A48BFE107"
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "B65FB39FE9885D3DEC9FAC731A45237E1485AEFE210DD8B725336B38E545CFCE"
+    }
+  ],
+  "configEditor": "Existing running editor preserved; no editor code changes required"
+}

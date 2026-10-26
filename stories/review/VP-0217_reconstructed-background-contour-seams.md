@@ -163,3 +163,13 @@ and configuration backed up. Manifest runtime hashes match the Release build.
 The installed player and settings remain unchanged. No merge or release performed.
 Remaining acceptance: user validation of the separate choice in actual playback.
 Evidence: assets/VP-0217/separate-option-f766f1d5-20261026/.
+
+## Follow-up subtitle trial correction - 2026-10-26
+
+Existing trial now runs source 37946697 with subtitle-style preparation readiness
+preserved and a bounded two-pixel attached-backing sampling overlap at the bar.
+Original surround and separate stable_surround remain unchanged. 187 selected
+native/GPU tests passed, including seam reproduction/fix, transparent edges,
+cross-style cache reuse, and shimmer tests. No saved settings changed; the open
+Config editor was preserved. See VP-0140's cycle-bar-fix-37946697-20261026 evidence
+and follow-up section for deployment identity, backup and live-test limitations.

@@ -1,0 +1,16 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Failed AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar [9 s]
+  Error Message:
+   Assert failed. fractional bar-edge sampling must remain opaque
+  Stack Trace:
+  	at Tests::`anonymous namespace'::SubtitleShaderGpuFixture::VerifyAttachedPanelSamplingGuard() in E:\codex\videoprocessor\subtitle-cycle-bar-edge-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 1890
+	at Tests::SubtitleCutPasteShaderTests::AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar() in E:\codex\videoprocessor\subtitle-cycle-bar-edge-20261026\src\VideoProcessor-Test\SubtitleCutPasteTests.cpp:line 2562
+Results File: E:\codex\videoprocessor\subtitle-cycle-bar-edge-20261026\TestResults\bar-seam-before.trx
+
+Total tests: 1
+     Failed: 1
+Test Run Failed.
+ Total time: 10.0191 Seconds

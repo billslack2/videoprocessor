@@ -1,0 +1,24 @@
+Subtitle cycling and bar-edge trial update - 2026-10-26
+Source: 379466972611a30a9aeca376172b865501fccfcb
+Branch: codex/subtitle-cycle-bar-edge-20261026
+
+Subtitle styling no longer revokes prepared subtitle shaders or unnecessarily
+increments the NLS preparation revision. Genuine processing/source changes still
+prepare independently. Initial cold preparation still uses the original-frame fallback.
+Attached panel backing overlaps the bar by two source pixels to prevent fractional
+sampling from exposing a thin seam. Text coordinates, cleanup and floating gaps
+are preserved. Original surround and stable_surround remain separate choices.
+
+187 selected native/GPU tests passed. The edge regression failed with the old
+shader and passes with the correction at both bars, rounded and square.
+Cross-style cache reuse passed for SDR, temporal RGB and native HDR.
+Final x64 Release solution build passed. Host and both renderer DLL hashes verified.
+Existing Config editor was open and preserved; no Config editor changes required.
+All six CFG/STATE files preserved byte-for-byte by deployment. No config edits.
+Runtime backup: backups\before-subtitle-cycle-bar-20261026-122745
+Main installation unchanged. Source branch pushed; no merge/release performed.
+
+Player restarted using the existing VideoProcessor.cfg; live presentation checked
+from runtime telemetry. Desktop UI helper failed to initialize, so actual keyboard
+cycling and the visible edge still need user acceptance on the display.
+See subtitle-cycle-bar-evidence.json and subtitle-cycle-bar-live.json.

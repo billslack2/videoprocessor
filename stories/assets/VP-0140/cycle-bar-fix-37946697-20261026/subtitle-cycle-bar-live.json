@@ -1,0 +1,49 @@
+{
+  "processId": 75924,
+  "started": "2026-10-26T12:28:36.0314341-04:00",
+  "configuration": "E:\\codex\\reconstruction-fill-options-trial-20261026\\VideoProcessor.cfg",
+  "uiShortcutTest": "Unavailable: Windows computer-use helper failed to initialize",
+  "recentPresentationWindows": [
+    {
+      "time": "2026-10-26 12:29:20",
+      "window_ms": 2000.0,
+      "source_hz": 23.97641,
+      "display_hz": 59.951,
+      "submissions": 120.0,
+      "render_avg_ms": 5.354,
+      "render_peak_ms": 20.87,
+      "worker_failed": 0.0
+    },
+    {
+      "time": "2026-10-26 12:29:22",
+      "window_ms": 2000.0,
+      "source_hz": 23.97641,
+      "display_hz": 59.95091,
+      "submissions": 120.0,
+      "render_avg_ms": 4.731,
+      "render_peak_ms": 14.785,
+      "worker_failed": 0.0
+    },
+    {
+      "time": "2026-10-26 12:29:24",
+      "window_ms": 2016.0,
+      "source_hz": 23.97642,
+      "display_hz": 59.95086,
+      "submissions": 120.0,
+      "render_avg_ms": 5.349,
+      "render_peak_ms": 13.905,
+      "worker_failed": 0.0
+    },
+    {
+      "time": "2026-10-26 12:29:26",
+      "window_ms": 2000.0,
+      "source_hz": 23.97642,
+      "display_hz": 59.95087,
+      "submissions": 120.0,
+      "render_avg_ms": 5.372,
+      "render_peak_ms": 16.031,
+      "worker_failed": 0.0
+    }
+  ],
+  "sourceCommit": "379466972611a30a9aeca376172b865501fccfcb"
+}
