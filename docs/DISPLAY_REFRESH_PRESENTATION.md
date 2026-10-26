@@ -56,6 +56,15 @@ upstream player code nor the CPU tests establish that rebuilding repairs the
 Windows compositor or physical HDMI timing. User settings and capture PTS
 remain unchanged.
 
+The host continuously estimates the selected output's rate from QPC timestamps
+after `IDXGIOutput::WaitForVBlank`. These timestamps include worker wake latency;
+they support a filtered rate estimate, not exact scanout phase. The estimator is
+seeded from the selected target's nominal rate. DWM composition timing is not
+used to seed or timestamp this output-specific measurement. A failed wait or an
+unusable successive wake interval invalidates the measurement generation and
+backs off for 100 ms, with an earlier wake on target changes. Wakes from an old
+target generation cannot publish timestamps or rate evidence for the new one.
+
 Source PTS chooses pictures; a separate output-slot estimate controls repeats.
 For nominal 24 fps at 120 Hz there are five slots per picture; 24 at 60 Hz keeps
 3:2 cadence. Clock drift and late sources can retire due source frames while

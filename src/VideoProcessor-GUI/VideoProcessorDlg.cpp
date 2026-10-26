@@ -1642,6 +1642,38 @@ private:
 		m_refreshPeriodQpc.store(0, std::memory_order_release);
 	}
 
+	uint64_t InvalidateMeasurementGeneration(
+		uint64_t expectedGeneration, bool& invalidatedCurrentGeneration)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		invalidatedCurrentGeneration = m_targetGeneration == expectedGeneration;
+		if (invalidatedCurrentGeneration)
+		{
+			++m_targetGeneration;
+			ClearMeasurementLocked();
+		}
+		return m_targetGeneration;
+	}
+
+	void WaitForGenerationChangeOrTimeout(
+		uint64_t generation, std::chrono::milliseconds timeout)
+	{
+		std::unique_lock<std::mutex> lock(m_mutex);
+		m_wake.wait_for(lock, timeout, [this, generation] {
+			return m_targetGeneration != generation;
+		});
+	}
+
+	void InvalidateAndBackoff(uint64_t expectedGeneration)
+	{
+		bool invalidatedCurrentGeneration = false;
+		const uint64_t retryGeneration = InvalidateMeasurementGeneration(
+			expectedGeneration, invalidatedCurrentGeneration);
+		if (invalidatedCurrentGeneration)
+			WaitForGenerationChangeOrTimeout(
+				retryGeneration, std::chrono::milliseconds(100));
+	}
+
 	static bool FindOutput(HMONITOR monitor, ComPtr<IDXGIOutput>& result)
 	{
 		ComPtr<IDXGIFactory1> factory;
@@ -1685,14 +1717,12 @@ private:
 		for (;;)
 		{
 			HMONITOR monitor = nullptr;
-			HWND window = nullptr;
 			double nominalRateHz = 0.0;
 			uint64_t targetGeneration = 0;
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
 				m_wake.wait(lock, [this] { return m_monitor != nullptr; });
 				monitor = m_monitor;
-				window = m_window;
 				nominalRateHz = m_nominalRateHz;
 				targetGeneration = m_targetGeneration;
 			}
@@ -1707,12 +1737,12 @@ private:
 				continue;
 			}
 
-			// Measure a long set of physical vblank intervals. WaitForVBlank is
-			// tied to the output, but the worker can be descheduled across more
-			// than one vblank at 24 Hz. Compensate for multi-period QPC gaps rather
-			// than assuming every wake-up represents exactly one refresh. DWM's
-			// cRefresh is a compositor wake count and can miss a vblank too, so use
-			// its period only as the initial interval estimate for this sampler.
+			// Estimate the selected output's cadence from successive QPC timestamps
+			// taken after WaitForVBlank returns. These are worker wake observations,
+			// not exact physical-vblank phase timestamps. The worker can be descheduled
+			// across multiple refreshes, so compensate for plausible multi-period gaps.
+			// Seed the interval estimate from the selected target's nominal rate; keep
+			// DWM timing out of this independent output-wake measurement.
 			// The estimator keeps three deliberately distinct evidence products:
 			// a post-transition quarantine, a clean current rate for readiness,
 			// and a longer recency-weighted rate for phase correction.
@@ -1733,33 +1763,36 @@ private:
 			for (;;)
 			{
 				if (output->WaitForVBlank() != S_OK)
+				{
+					InvalidateAndBackoff(targetGeneration);
 					break;
+				}
 
 				LARGE_INTEGER now = {};
 				QueryPerformanceCounter(&now);
-
-				DWM_TIMING_INFO timing = {};
-				timing.cbSize = sizeof(timing);
-				const bool hasDwmTiming = window &&
-					SUCCEEDED(DwmGetCompositionTimingInfo(window, &timing)) &&
-					timing.qpcRefreshPeriod > 0 && timing.qpcVBlank > 0;
-				const int64_t observedVBlankQpc = hasDwmTiming ?
-					static_cast<int64_t>(timing.qpcVBlank) : now.QuadPart;
-				m_lastVBlankQpc.store(observedVBlankQpc, std::memory_order_release);
+				int64_t elapsedSincePreviousQpc = 0;
 				if (samples == 0)
 				{
 					first = now;
 					previous = now;
-					if (hasDwmTiming)
-						estimatedRefreshPeriodQpc =
-							static_cast<long double>(timing.qpcRefreshPeriod);
-					std::lock_guard<std::mutex> lock(m_mutex);
-					if (m_targetGeneration == targetGeneration)
-						m_measurementStartedQpc = first.QuadPart;
 				}
 				else
 				{
-					const int64_t elapsedSincePreviousQpc = now.QuadPart - previous.QuadPart;
+					elapsedSincePreviousQpc = now.QuadPart - previous.QuadPart;
+					const long double targetPeriodQpc = nominalRateHz > 0.0 ?
+						static_cast<long double>(frequency.QuadPart) / nominalRateHz :
+						estimatedRefreshPeriodQpc;
+					const long double maximumGapQpc = std::max(
+						0.5L * frequency.QuadPart, targetPeriodQpc * 8.0L);
+					const int64_t minimumWakeIntervalQpc = std::max<int64_t>(
+						1, frequency.QuadPart / 1000);
+					if (elapsedSincePreviousQpc <= 0 ||
+						elapsedSincePreviousQpc < minimumWakeIntervalQpc ||
+						static_cast<long double>(elapsedSincePreviousQpc) > maximumGapQpc)
+					{
+						InvalidateAndBackoff(targetGeneration);
+						break;
+					}
 					if (estimatedRefreshPeriodQpc <= 0.0L)
 						estimatedRefreshPeriodQpc =
 							static_cast<long double>(elapsedSincePreviousQpc);
@@ -1784,6 +1817,14 @@ private:
 							(observedPeriod - estimatedRefreshPeriodQpc) * weight;
 					}
 					previous = now;
+				}
+				{
+					std::lock_guard<std::mutex> lock(m_mutex);
+					if (m_targetGeneration != targetGeneration)
+						break;
+					m_lastVBlankQpc.store(now.QuadPart, std::memory_order_release);
+					if (samples == 0)
+						m_measurementStartedQpc = first.QuadPart;
 				}
 				last = now;
 				++samples;
