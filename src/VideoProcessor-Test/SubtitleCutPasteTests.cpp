@@ -2385,9 +2385,29 @@ struct SubtitleShaderGpuFixture {
         Assert::IsTrue(pl_render_image(renderer,&all,&allTarget,&params));
         Assert::IsTrue(pl_render_image(renderer,&clean,&splitTarget,&params));
         const auto direct=ReadLinear(allOutput),split=ReadLinear(splitOutput);
-        for(int y=0;y<64;++y)for(int x=0;x<64;++x)for(int c=0;c<3;++c)
-            Assert::IsTrue(std::abs(Pixel(direct,x,y)[c]-Pixel(split,x,y)[c])<=0.008f,
-                L"The exact same rounded native cleanup must survive All versus CleanupOnly plus the independent-alpha layer.");
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x)for(int c=0;c<3;++c) {
+            const float difference=std::abs(Pixel(direct,x,y)[c]-Pixel(split,x,y)[c]);
+            if(difference>0.008f) {
+                pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
+                stagingParams.format=layerTexture->params.format;
+                stagingParams.blit_dst=true;stagingParams.host_readable=true;
+                pl_tex staging=pl_tex_create(device->gpu,&stagingParams);Assert::IsNotNull(staging);
+                pl_tex_blit_params layerCopy{};layerCopy.src=layerTexture;layerCopy.dst=staging;
+                pl_tex_blit(device->gpu,&layerCopy);
+                const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+                const auto layerPixel=Pixel(layerPixels,x,y);
+                const std::wstring detail=L"rounded contour split mismatch mode="+std::to_wstring(mode)+
+                    L" top="+std::to_wstring(top)+L" float="+std::to_wstring(floating)+
+                    L" x="+std::to_wstring(x)+L" y="+std::to_wstring(y)+L" channel="+std::to_wstring(c)+
+                    L" all="+std::to_wstring(Pixel(direct,x,y)[c])+L" split="+std::to_wstring(Pixel(split,x,y)[c])+
+                    L" clean="+std::to_wstring(Pixel(after,x,y)[c])+L" difference="+std::to_wstring(difference)+
+                    L" raw_layer_rgba="+std::to_wstring(layerPixel[0])+L","+std::to_wstring(layerPixel[1])+
+                    L","+std::to_wstring(layerPixel[2])+L","+std::to_wstring(layerPixel[3])+
+                    L" destination="+std::to_wstring(geometry.destination.left)+L","+std::to_wstring(geometry.destination.top)+
+                    L"-"+std::to_wstring(geometry.destination.right)+L","+std::to_wstring(geometry.destination.bottom);
+                Logger::WriteMessage(detail.c_str());Assert::IsTrue(false,detail.c_str());
+            }
+        }
         // Exercise the exact temporal row-blit helper on real GPU textures.
         // Immediate copies use native source coordinates; retained packet
         // donors use offsets into the conservative measured envelope.

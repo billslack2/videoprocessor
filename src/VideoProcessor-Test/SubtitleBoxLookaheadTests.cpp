@@ -10,6 +10,7 @@
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <vprenderer/SubtitleBarRecovery.h>
 #include <future>
+#include <memory>
 #include <atomic>
 #include <fstream>
 #include <chrono>
@@ -106,6 +107,17 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
     }
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> frames) {
         return SubtitleBoxLookahead::Resolve(frames.begin(),frames.size(),7,8);
+    }
+    // Large fixture sequences must not accumulate by-value preview/list
+    // temporaries in their caller's one-megabyte test-runner stack frame.
+    __declspec(noinline) static SubtitleBoxResult ConsumeOnHeap(SubtitleBoxPresentation& tracker,
+        std::initializer_list<const SubtitleBoxObservation*> frames) {
+        auto observations=std::make_unique<std::vector<SubtitleBoxObservation>>();
+        observations->reserve(frames.size());
+        for(const auto* frame:frames)observations->push_back(*frame);
+        auto preview=std::make_unique<SubtitleBoxPreview>();
+        *preview=SubtitleBoxLookahead::Resolve(observations->data(),observations->size(),7,8);
+        return tracker.Consume(*preview);
     }
     static SubtitleBoxPreview ConfirmedPreview(const SubtitleBoxObservation& current) {
         auto b=current,c=current,d=current;
@@ -2568,32 +2580,45 @@ public:
         checkRejected(workLimit);
     }
     TEST_METHOD(UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine) {
+        struct Workspace {
+            SubtitleBoxObservation first,lock,current,next,next2,next3,removed,stillRemoved;
+            SubtitleBoxPresentation tracker,unconfirmed;
+        };
+        auto workspace=std::make_unique<Workspace>();
+        auto& first=workspace->first;
+        auto& lock=workspace->lock;
+        auto& current=workspace->current;
+        auto& next=workspace->next;
+        auto& next2=workspace->next2;
+        auto& next3=workspace->next3;
+        auto& removed=workspace->removed;
+        auto& stillRemoved=workspace->stillRemoved;
+        auto& tracker=workspace->tracker;
+        auto& unconfirmed=workspace->unconfirmed;
         auto single=Pixels();Text(single,175,307,22);
         auto both=single;Text(both,240,336,12);
-        const auto first=Measure(single,1),lock=Measure(single,2);
-        auto current=Measure(both,2),next=Measure(both,3);
+        first=Measure(single,1);lock=Measure(single,2);
+        current=Measure(both,2);next=Measure(both,3);
         const auto completeBounds=current.text.bounds;
         // Simulate repeated detector under-grouping while raw current pixels
         // contain a newly appeared second line on every frame.
         current.text=first.text;next.text=first.text;
-        SubtitleBoxPresentation tracker;
-        const auto acquired=tracker.Consume(Resolve({first,lock}));
-        auto next2=next;next2.identity=Identity(4);next2.text=first.text;
-        auto next3=next;next3.identity=Identity(5);next3.text=first.text;
-        const auto expanded=tracker.Consume(Resolve({current,next,next2,next3}));
+        const auto acquired=ConsumeOnHeap(tracker,{&first,&lock});
+        next2=next;next2.identity=Identity(4);next2.text=first.text;
+        next3=next;next3.identity=Identity(5);next3.text=first.text;
+        const auto expanded=ConsumeOnHeap(tracker,{&current,&next,&next2,&next3});
         Assert::IsTrue(expanded.detected);Assert::AreEqual(acquired.cue,expanded.cue);
         Assert::IsTrue(expanded.bounds.bottom>=completeBounds.bottom-4);
         Assert::IsTrue(expanded.bounds.bottom>acquired.bounds.bottom);
-        const auto retained=tracker.Consume(Resolve({next}));
+        const auto retained=ConsumeOnHeap(tracker,{&next});
         Assert::IsTrue(retained.detected);Assert::AreEqual(expanded.cue,retained.cue);
         Assert::IsTrue(SubtitleBoxLookahead::SameLine(expanded.bounds,retained.bounds,0));
-        auto removed=Measure(single,4),stillRemoved=Measure(single,5);
-        const auto shortened=tracker.Consume(Resolve({removed,stillRemoved}));
+        removed=Measure(single,4);stillRemoved=Measure(single,5);
+        const auto shortened=ConsumeOnHeap(tracker,{&removed,&stillRemoved});
         Assert::IsTrue(shortened.detected);Assert::IsTrue(shortened.cue!=expanded.cue);
         Assert::IsTrue(shortened.bounds.bottom<expanded.bounds.bottom);
-        SubtitleBoxPresentation unconfirmed;
-        unconfirmed.Consume(Resolve({first,lock}));
-        const auto awaiting=unconfirmed.Consume(Resolve({current,next}));
+        ConsumeOnHeap(unconfirmed,{&first,&lock});
+        const auto awaiting=ConsumeOnHeap(unconfirmed,{&current,&next});
         Assert::IsTrue(awaiting.detected);
         Assert::IsTrue(SubtitleBoxLookahead::SameLine(acquired.bounds,awaiting.bounds,0),
             L"unconfirmed scene candidates cannot resize or revoke the validated current cue");
@@ -3063,55 +3088,70 @@ public:
         Assert::AreEqual(1,result.lineCount);
     }
     TEST_METHOD(LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph) {
-        auto first=Cue(1,true),lock=Cue(2,true);
-        SubtitleBoxPresentation tracker;
-        const auto acquired=tracker.Consume(Resolve({first,lock}));
-        tracker.Consume(Resolve({lock}));
+        struct Workspace {
+            SubtitleBoxObservation first,lock,initial,initialFollowing,later,laterFollowing,oneFrameDropout,returned,lostSecond,stillLost;
+            SubtitleBoxPresentation tracker;
+        };
+        auto workspace=std::make_unique<Workspace>();
+        auto& first=workspace->first;
+        auto& lock=workspace->lock;
+        auto& initial=workspace->initial;
+        auto& initialFollowing=workspace->initialFollowing;
+        auto& later=workspace->later;
+        auto& laterFollowing=workspace->laterFollowing;
+        auto& oneFrameDropout=workspace->oneFrameDropout;
+        auto& returned=workspace->returned;
+        auto& lostSecond=workspace->lostSecond;
+        auto& stillLost=workspace->stillLost;
+        auto& tracker=workspace->tracker;
+        first=Cue(1,true);lock=Cue(2,true);
+        const auto acquired=ConsumeOnHeap(tracker,{&first,&lock});
+        ConsumeOnHeap(tracker,{&lock});
 
-        auto initial=LowerOnlyCue(3);
+        initial=LowerOnlyCue(3);
         auto initialInk=std::make_shared<SubtitleInkSnapshot>(*initial.ink);
         AddNewGlyph(*initialInk,448,318);
         initial.ink=initialInk;
-        auto initialFollowing=initial;initialFollowing.identity=Identity(4);
-        const auto firstExpansion=tracker.Consume(Resolve({initial,initialFollowing}));
+        initialFollowing=initial;initialFollowing.identity=Identity(4);
+        const auto firstExpansion=ConsumeOnHeap(tracker,{&initial,&initialFollowing});
         Assert::AreEqual(acquired.cue,firstExpansion.cue);
         Assert::IsTrue(firstExpansion.bounds.right>acquired.bounds.right);
-        tracker.Consume(Resolve({initialFollowing}));
+        ConsumeOnHeap(tracker,{&initialFollowing});
 
-        auto later=LowerOnlyCue(5);
+        later=LowerOnlyCue(5);
         auto laterInk=std::make_shared<SubtitleInkSnapshot>(*later.ink);
         AddNewGlyph(*laterInk,448,318);
         AddNewGlyph(*laterInk,470,318);
         later.ink=laterInk;
-        auto laterFollowing=later;laterFollowing.identity=Identity(6);
-        const auto secondExpansion=tracker.Consume(Resolve({later,laterFollowing}));
+        laterFollowing=later;laterFollowing.identity=Identity(6);
+        const auto secondExpansion=ConsumeOnHeap(tracker,{&later,&laterFollowing});
         Assert::AreEqual(acquired.cue,secondExpansion.cue);
         Assert::IsTrue(secondExpansion.bounds.right>firstExpansion.bounds.right,
             L"a second confirmed glyph expands the existing cue box");
-        tracker.Consume(Resolve({laterFollowing}));
+        ConsumeOnHeap(tracker,{&laterFollowing});
 
-        auto oneFrameDropout=LowerOnlyCue(7);
+        oneFrameDropout=LowerOnlyCue(7);
         auto oneFrameInk=std::make_shared<SubtitleInkSnapshot>(*oneFrameDropout.ink);
         AddNewGlyph(*oneFrameInk,448,318);
         oneFrameDropout.ink=oneFrameInk;
-        auto returned=LowerOnlyCue(8);
+        returned=LowerOnlyCue(8);
         auto returnedInk=std::make_shared<SubtitleInkSnapshot>(*returned.ink);
         AddNewGlyph(*returnedInk,448,318);
         AddNewGlyph(*returnedInk,470,318);
         returned.ink=returnedInk;
-        const auto bridged=tracker.Consume(Resolve({oneFrameDropout,returned}));
+        const auto bridged=ConsumeOnHeap(tracker,{&oneFrameDropout,&returned});
         Assert::IsTrue(bridged.detected && bridged.held,
             L"a single missing extension glyph bridges only when the exact learned mask returns next");
         Assert::AreEqual(acquired.cue,bridged.cue);
         Assert::IsTrue(SubtitleBoxLookahead::SameLine(bridged.bounds,secondExpansion.bounds,0));
-        tracker.Consume(Resolve({returned}));
+        ConsumeOnHeap(tracker,{&returned});
 
-        auto lostSecond=LowerOnlyCue(9);
+        lostSecond=LowerOnlyCue(9);
         auto lostSecondInk=std::make_shared<SubtitleInkSnapshot>(*lostSecond.ink);
         AddNewGlyph(*lostSecondInk,448,318);
         lostSecond.ink=lostSecondInk;
-        auto stillLost=lostSecond;stillLost.identity=Identity(10);
-        const auto reacquired=tracker.Consume(Resolve({lostSecond,stillLost}));
+        stillLost=lostSecond;stillLost.identity=Identity(10);
+        const auto reacquired=ConsumeOnHeap(tracker,{&lostSecond,&stillLost});
         Assert::IsTrue(reacquired.detected);
         Assert::AreEqual(1,reacquired.lineCount);
         Assert::IsTrue(reacquired.cue!=acquired.cue,

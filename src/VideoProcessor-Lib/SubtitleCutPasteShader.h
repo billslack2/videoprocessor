@@ -909,7 +909,9 @@ vec4 hook() {
                 // Transparent output carries glyphs only. Copying the live
                 // picture as an opaque tile lets overlay color management and
                 // temporal blending expose a rectangular one-pixel seam.
-                if(layerOnly)return vec4(alpha>0.0?subtitleSignal(glyphColor):vec3(0.0),alpha);
+                // MAIN receives premultiplied signal RGB. libplacebo converts
+                // the finished layer back to independent alpha afterward.
+                if(layerOnly)return vec4(alpha>0.0?subtitleSignal(glyphColor)*alpha:vec3(0.0),alpha);
                 // Avoid a transfer-function round trip on untouched picture.
                 // Overlap with the old glyph footprint still needs its fill.
                 if(alpha<=0.0 && !inCleanup && !(p.x>=content_left && p.x<content_right &&
@@ -917,12 +919,14 @@ vec4 hook() {
                 if(background_mode>4.5)canvas=original;
             }
             if(layerOnly) {
-                // Straight source-transfer RGB plus independent alpha. Compose
-                // over the temporally processed picture in linear light.
+                // MAIN's internal contract is premultiplied signal RGB;
+                // independent-alpha output conversion follows this hook. Return
+                // signal-space premultiplication so fractional edges are not
+                // unpremultiplied twice. The retained texture stays independent.
                 float opacity=1.0-(1.0-panelMask)*(1.0-borderAlpha)*(1.0-alpha);
                 vec3 premultiplied=((backing*panelMask)*(1.0-borderAlpha)+
                     borderColor*borderAlpha)*(1.0-alpha)+glyphColor*alpha;
-                return vec4(subtitleSignal(premultiplied/max(opacity,0.000001)),opacity);
+                return vec4(subtitleSignal(premultiplied/max(opacity,0.000001))*opacity,opacity);
             }
             return vec4(subtitleSignal(mix(canvas,glyphColor,alpha)),1.0);
         }

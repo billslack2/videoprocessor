@@ -1220,46 +1220,47 @@ public:
     }
     TEST_METHOD(PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip) {
         for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})for(bool top:{false,true}) {
-            Frame frame(1,format,top);frame.Lip(3);const auto cue=Acquire(frame);
-            SubtitlePendingMeasurementGuard guard;
-            Assert::IsTrue(guard.RememberAccepted(cue.preview,cue.accepted,frame.Source(),41.708,250));
+            Frame frame(1,format,top);frame.Lip(3);const auto cue=AcquireOnHeap(frame);
+            auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(guard->RememberAccepted(cue->preview,cue->accepted,frame.Source(),41.708,250));
             auto pendingFor=[&](uint64_t sequence) {
-                auto key=cue.preview.current;key.identity=Identity(sequence);key.analyzed=false;key.text={};key.ink.reset();
-                return Resolve({key});
+                auto key=std::make_unique<SubtitleBoxObservation>(cue->preview.current);
+                key->identity=Identity(sequence);key->analyzed=false;key->text={};key->ink.reset();
+                return ResolveOnHeap(key.get(),1);
             };
             auto pending=pendingFor(3);
-            Assert::IsTrue(guard.Resolve(pending,frame.Source(),41.708,250));
-            Assert::IsTrue(pending.current.pendingRefresh && !pending.current.analysisRefresh);
-            auto tracker=cue.tracker;tracker.RefreshReferencePixels(pending,frame.Source());
-            const auto accepted=tracker.Consume(pending,250,41.708);
+            Assert::IsTrue(guard->Resolve(*pending,frame.Source(),41.708,250));
+            Assert::IsTrue(pending->current.pendingRefresh && !pending->current.analysisRefresh);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>(cue->tracker);tracker->RefreshReferencePixels(*pending,frame.Source());
+            const auto accepted=tracker->Consume(*pending,250,41.708);
             Assert::IsTrue(accepted.detected && !accepted.held && accepted.observations>=3);
-            Assert::IsTrue(SameFreshSubtitleGlyphs(accepted,pending.current.text,0));
-            const auto repeated=tracker.Consume(pending,250,41.708);
+            Assert::IsTrue(SameFreshSubtitleGlyphs(accepted,pending->current.text,0));
+            const auto repeated=tracker->Consume(*pending,250,41.708);
             Assert::AreEqual(accepted.observations,repeated.observations);
-            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),pending,accepted,Identity(3),7,8);
+            const auto proof=ProveCurrentSubtitleBackingLip(frame.Source(),*pending,accepted,Identity(3),7,8);
             LogProof(proof,frame,"native-pending-guard");Assert::IsTrue(proof.valid);
-            Assert::IsFalse(pending.current.subtitleArProof.accepted,L"Fresh cleanup revalidation is not an AR lease.");
+            Assert::IsFalse(pending->current.subtitleArProof.accepted,L"Fresh cleanup revalidation is not an AR lease.");
             for(bool removeInk:{false,true}) {
                 Frame changed=frame;
                 // Unit-level malformed producer: the newly identified source
                 // carries old pending mask metadata. Lip proof independently
                 // checks both positive and negative current classifier cells.
                 changed.Pixel(removeInk?240:243,frame.pictureBottom+6,removeInk?64:700);
-                auto staleMask=pending;staleMask.current.identity=Identity(4);
-                const auto rejected=ProveCurrentSubtitleBackingLip(changed.Source(),staleMask,cue.accepted,Identity(4),7,8);
+                auto staleMask=std::make_unique<SubtitleBoxPreview>(*pending);staleMask->current.identity=Identity(4);
+                const auto rejected=ProveCurrentSubtitleBackingLip(changed.Source(),*staleMask,cue->accepted,Identity(4),7,8);
                 LogProof(rejected,changed,"changed-pending-glyph-class");Assert::IsFalse(rejected.valid);
-                auto actual=pendingFor(4);auto independentGuard=guard;
-                Assert::IsFalse(independentGuard.Resolve(actual,changed.Source(),41.708,250),
+                auto actual=pendingFor(4);auto independentGuard=std::make_unique<SubtitlePendingMeasurementGuard>(*guard);
+                Assert::IsFalse(independentGuard->Resolve(*actual,changed.Source(),41.708,250),
                     L"The production pending guard also rejects the changed current glyph pixels.");
             }
             Frame noLip(1,format,top);auto next=pendingFor(4);
-            Assert::IsTrue(guard.Resolve(next,noLip.Source(),41.708,250),L"An unchanged bar-only glyph cue may remain pending after its picture-side lip disappears.");
-            tracker.RefreshReferencePixels(next,noLip.Source());
-            const auto nextAccepted=tracker.Consume(next,250,41.708);
+            Assert::IsTrue(guard->Resolve(*next,noLip.Source(),41.708,250),L"An unchanged bar-only glyph cue may remain pending after its picture-side lip disappears.");
+            tracker->RefreshReferencePixels(*next,noLip.Source());
+            const auto nextAccepted=tracker->Consume(*next,250,41.708);
             Assert::IsTrue(nextAccepted.detected && !nextAccepted.held);
-            const auto absent=ProveCurrentSubtitleBackingLip(noLip.Source(),next,nextAccepted,Identity(4),7,8);
+            const auto absent=ProveCurrentSubtitleBackingLip(noLip.Source(),*next,nextAccepted,Identity(4),7,8);
             Assert::IsFalse(absent.valid);
-            const auto base=Geometry(cue);
+            const auto base=Geometry(*cue);
             Assert::IsFalse(ApplyCurrentSubtitleBackingLip(base,absent,Identity(4),7,8).generatedCleanup.Valid());
             Assert::IsFalse(ApplyCurrentSubtitleBackingLip(base,proof,Identity(4),7,8).generatedCleanup.Valid());
         }
