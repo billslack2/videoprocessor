@@ -1,0 +1,117 @@
+[
+  {
+    "test": "Apply OK Cancel contract",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-Apply-OK-Cancel-contract.log"
+  },
+  {
+    "test": "clean Apply is inactive without saving or notifying",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-clean-Apply-is-inactive-without-saving-or-notifying.log"
+  },
+  {
+    "test": "remote Apply tracks pending settings",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-remote-Apply-tracks-pending-settings.log"
+  },
+  {
+    "test": "failed Apply retains pending settings",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-failed-Apply-retains-pending-settings.log"
+  },
+  {
+    "test": "missing configuration can be created from editor",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-missing-configuration-can-be-created-from-editor.log"
+  },
+  {
+    "test": "invalid renderer is rejected continuously",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-invalid-renderer-is-rejected-continuously.log"
+  },
+  {
+    "test": "shortcut effects are classified live",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-shortcut-effects-are-classified-live.log"
+  },
+  {
+    "test": "ordinary edits avoid disk validation",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-ordinary-edits-avoid-disk-validation.log"
+  },
+  {
+    "test": "legacy renderer visibility filters existing UI immediately",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-legacy-renderer-visibility-filters-existing-UI-immediately.log"
+  },
+  {
+    "test": "LUT selector discovers installation LUT files",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-LUT-selector-discovers-installation-LUT-files.log"
+  },
+  {
+    "test": "calibration profile owns LUT and HDR gamma",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-calibration-profile-owns-LUT-and-HDR-gamma.log"
+  },
+  {
+    "test": "General input Apply preserves backend overrides",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-General-input-Apply-preserves-backend-overrides.log"
+  },
+  {
+    "test": "subtitle surrounding fill round trip",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-subtitle-surrounding-fill-round-trip.log"
+  },
+  {
+    "test": "concrete video choices and canonical Scaling",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-concrete-video-choices-and-canonical-Scaling.log"
+  },
+  {
+    "test": "responsive workspaces preserve edits and fit",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\windows-responsive-workspaces-preserve-edits-and-fit.log"
+  },
+  {
+    "test": "left docks restore manual choices and drawer editing",
+    "exitCode": 1,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\windows-left-docks-restore-manual-choices-and-drawer-editing.log"
+  },
+  {
+    "test": "advanced tone mapping maximizes and restores window",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-advanced-tone-mapping-maximizes-and-restores-window.log"
+  },
+  {
+    "test": "migration notice only for pending migration",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-migration-notice-only-for-pending-migration.log"
+  },
+  {
+    "test": "Rendering menu duplicate export import preserves ownership",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-Rendering-menu-duplicate-export-import-preserves-ownership.log"
+  },
+  {
+    "test": "Rendering processing ownership save reopen and rename",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-Rendering-processing-ownership-save-reopen-and-rename.log"
+  },
+  {
+    "test": "explicit preset defaults and output matching",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-explicit-preset-defaults-and-output-matching.log"
+  },
+  {
+    "test": "explicit Auto migration preserves profile choices",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-explicit-Auto-migration-preserves-profile-choices.log"
+  },
+  {
+    "test": "preset resolution precedes editor section migration",
+    "exitCode": 0,
+    "log": "E:\\codex\\diagnostics\\deploy-config-apply-combined-20261026\\config-preset-resolution-precedes-editor-section-migration.log"
+  }
+]

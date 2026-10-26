@@ -1,0 +1,74 @@
+{
+  "commit": "b3b36c1d69739c6f046092ae332f6e8914cdb2a1",
+  "includedCommits": [
+    "e8bc0638224634e1946877df7fc7f1ca239ae47d",
+    "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+    "09f9f38217af07dd4ac781be388bbe54aed76469"
+  ],
+  "cleanWorkingTree": true,
+  "build": {
+    "exitCode": 0,
+    "configuration": "Release",
+    "log": "build-final-release.log",
+    "architecture": "x64"
+  },
+  "tests": {
+    "failed": 0,
+    "total": 979,
+    "passed": 979,
+    "trx": "combined-native-final.trx"
+  },
+  "configTests": {
+    "priorControl": "prior-config-docking-control.log",
+    "failed": 1,
+    "applySpecificCasesPassed": 13,
+    "newFailures": 0,
+    "passed": 22,
+    "total": 23,
+    "knownPreExistingFailure": "left docks restore manual choices and drawer editing: Advanced focus did not bring tone controls into view"
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "7F129BCEE265603FFA01D9118F979F4AB92FBC1B02A958AEFD68B33B6F65F7AA",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "5B10DA63301D0AED3215165885A20A343A004721B757FE3F6BBCD2A61D678F0A",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "2FDF0B40C8BEDA4B62113D390549E8A1E3C7017601C8D51B28DA04C1C590CFFD",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "58091F99AF4FABB384312502B7CD2363B7CDD845F67EC00A46FC257496059A51",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "6A6D2F723BAE51B5C5909645010CD59E68575AE1E31DEAE72EDC790405AE9E7A",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "C5836F113C9FF664B866B3890AEB26F70CF124E14AFCEA40D7DE9D3D64B12D87",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-config-apply-combined-20261026\\x64\\Release\\VideoProcessorConfigTests.exe",
+      "sha256": "7E001F106E5A18EC11CF5E73B5A89338498A00757B8F3B2CA399D78EFBE8EF18",
+      "configuration": "Release",
+      "architecture": "x64"
+    }
+  ]
+}
