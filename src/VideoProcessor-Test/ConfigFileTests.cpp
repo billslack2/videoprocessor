@@ -213,6 +213,28 @@ namespace VideoProcessorTest
             Assert::AreEqual(std::string("vp_low_rate"), selected.snapshot->queue.profile);
         }
 
+        TEST_METHOD(ShaderPreparationSharesProfileBannerAcrossSelectionChanges) {
+            using namespace ProfileChangeOverlay;
+            const std::vector<Item> initial{{"subtitles", "Subtitles", "Clear / Yellow"}};
+            auto items = WithShaderStatus(initial, true);
+            Assert::AreEqual(size_t(2), items.size());
+            Assert::AreEqual(std::string("Shaders"), items.back().label);
+            Assert::IsTrue(items.back().indicator == Item::Indicator::Preparing);
+            items = WithShaderStatus(items, true); // Repeated poll cannot duplicate a column.
+            Assert::AreEqual(size_t(2), items.size());
+            const std::vector<Item> changed{{"nls", "NLS", "NLS+", Item::Indicator::On}};
+            items = WithShaderStatus(changed, true);
+            Assert::AreEqual(std::string("NLS+"), items.front().value);
+            Assert::AreEqual(size_t(2), items.size());
+            items = WithShaderStatus(items, false);
+            Assert::AreEqual(size_t(1), items.size());
+            Assert::AreEqual(size_t(1), WithShaderStatus({}, true).size());
+            Assert::AreEqual(size_t(0), WithShaderStatus({}, false).size());
+            items = WithShaderStatus(changed, false, true);
+            Assert::IsTrue(items.back().indicator == Item::Indicator::None);
+            Assert::AreEqual(std::string("Unavailable"), items.back().value);
+        }
+
 		TEST_METHOD(ManualQueueSelectionUsesSavedSectionIdWithoutShortcut)
 		{
 			CachedConfigTestFile file;
