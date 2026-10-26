@@ -212,10 +212,14 @@ public:
             if (history.empty()) return {};
             const Stored* packet = history.back().get();
             if (nativeMode) {
-                const auto it = std::find_if(packet->prepared.begin(), packet->prepared.end(),
-                    [](const auto& field) { return field.valid; });
-                if (it == packet->prepared.end()) return {};
-                input = it->frame;
+                bool available = false;
+                // The newest lookahead packet need not have been prepared yet.
+                for (auto candidate = history.rbegin(); candidate != history.rend() && !available; ++candidate) {
+                    for (const auto& field : (*candidate)->prepared) if (field.valid) {
+                        input = field.frame; available = true; break;
+                    }
+                }
+                if (!available) return {};
             } else input = packet->frame;
             input.crop = source.crop; input.rotation = source.rotation;
             input.overlays = nullptr; input.num_overlays = 0;

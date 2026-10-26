@@ -192,6 +192,18 @@ public:
                 source.value.field = pl_field_other(source.value.field);
                 if (!pl_render_image(owned.renderer, &source.value, &target.value, &params)) return false;
             }
+            if (source.value.field != PL_FIELD_NONE && params.deinterlace_params &&
+                params.deinterlace_params->algo != PL_DEINTERLACE_BOB) {
+                auto fallback = *params.deinterlace_params;
+                fallback.algo = PL_DEINTERLACE_BOB;
+                auto bob = params; bob.deinterlace_params = &fallback;
+                source.value.prev = source.value.next = nullptr;
+                for (int field = 0; field < 2; ++field) {
+                    if (!pl_render_image(owned.renderer, &source.value, &target.value, &bob)) return false;
+                    source.value.field = pl_field_other(source.value.field);
+                }
+                source.value.prev = source.value.next = &neighbor;
+            }
             // Per-source subtitle layers are composited before scaling/tone mapping.
             // Prepare both presence/absence; only this private device owns the texture.
             if (subtitleOverlay) {
