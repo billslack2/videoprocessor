@@ -9380,7 +9380,7 @@ struct LibplaceboVideoRenderer::Impl
 			std::memory_order_acquire);
 		if (started == 0 || GetTickCount64() - started < 500)
 			return false;
-		status = TEXT("Preparing video pipeline...");
+		status = TEXT("Preparing shaders...");
 		return true;
 	}
 
