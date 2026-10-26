@@ -2,7 +2,24 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-25 PR #204 integration: the user explicitly requested rebasing the current
+trial after merging #204, rebuilding and deploying it. GitHub current beta/default
+v1.4.02-beta was discovered/fetched at 81ac960fbd62619374fba1c16630b8feac364d59,
+the merge commit for #204 (Stabilize every-refresh cadence after subtitle and
+profile changes). All 17 local Config/UI commits rebased cleanly, with range-diff
+showing each patch unchanged. New clean source bf44dbeee536c4bbf949a4f79db513147a9f0f8f
+is pushed on codex/vp0215-config-choices-20261025 using an exact remote lease.
+Original deployed 934489bb is preserved locally/remotely on
+codex/vp0215-before-pr204-20261025. No local UI/config behavior was dropped.
+
+A complete clean x64 Release Rebuild is running. Validation will cover the
+configuration/migration, motion and window-state regressions plus all
+DisplayVsyncClock tests from #204, DPI layouts and both renderer parameter paths.
+Deployment remains gated on successful checks, matching host/editor/discovery/
+stable/beta hashes, backup and preservation of the active configuration. No source
+sample configuration will be deployed. Previous trial evidence follows.
 
 2026-10-25 maximize/restore follow-up is implemented and deployed for user trial.
 Clean source `934489bb17b2b8e04b9cd259d0be8b8c99a80909` is committed and pushed on
