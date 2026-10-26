@@ -214,9 +214,13 @@ namespace QualityProfileMigration
             for (const auto& key : TonePresetKeys())
             {
                 const auto raw = Lower(Get(work, section, key));
-                // Missing named values inherit their original Rendering baseline.
+                // Freeze the effective baseline in the same migration. The
+                // Tone Mapping editor saves profiles independently; leaving a
+                // named value absent would schedule a second migration on reopen.
                 if (raw == "auto" || (section == rendering.front() && raw.empty()))
                     set(section, key, PresetValue("high", key));
+                else if (raw.empty())
+                    set(section, key, Get(work, rendering.front(), key));
             }
             remove(section, "quality");
         }
