@@ -1,0 +1,63 @@
+Coordinated five-Luna review: subtitle loss and fixed-ratio framing flash
+2026-10-25
+
+Scope and evidence
+
+The user requested five Luna reviewers at extra-high reasoning, including conflict, source, race-condition and timing reviews. Five distinct gpt-6-luna agents ran with reasoning_effort=xhigh in two waves, followed by peer challenges and reconciliation. Roles: geometry ownership; threading/buffer lifetime; timing/output selection; settings/reset boundaries; skeptical reproduction and diagnostics. No production implementation was requested or performed in this review.
+
+Source: clean worktree E:\codex\videoprocessor\subtitle-rewind-ar-20261025 at freshly fetched current beta v1.4.02-beta, 81ac960fbd62619374fba1c16630b8feac364d59. Incident runtime bf44dbeee536c4bbf949a4f79db513147a9f0f8f has the same subtitle core; renderer differences are configuration/default handling. Preserved evidence is in ../fixed-ratio-subtitle-handoff-20261025/. The full snapshot hash is EF774202663EDB755C6907538B2B37EA164E0A21F99EC08B2C108C0BC7FAF70B.
+
+At 22:52:59-22:53:04, native geometry stayed 0,278-3840,1882. Complete current no-bright-ink observations at source 2871,2935,2983 coincided with actual submitted expansion to 0,270-3840,1960/1978. Prepared caption sources 2903,2942,2987 restored 36,278-3804,1882. Generation 2 and viewport 4 were stable; temporal rendering, mixing and NLS were off. Source and selected output identities matched. No native/output pixel pair was captured. A player rewind over HDMI is not independently timestamped by these logs; absence of a renderer reset does not prove that no upstream seek occurred.
+
+1. Strongest incident mechanism: persistent raw hold and prepared-caption projection disagree
+
+scopePresentationHistory stores raw presentation bounds with per-edge release timers (LibplaceboVideoRenderer.cpp:4897,12105; AlphaSourceCropPolicy.h:756). EvaluatePresentationEnvelope accepts matching generation/base history within its configured hold (AlphaSourceCropPolicy.cpp:2112-2155). The observed 2-second hold was still live, not expired.
+
+ProjectQualifiedSubtitlePresentationEvidence starts from a copy of raw retention/history/current bounds. For qualified current prepared-caption proof it clears only the temporary envelope and uses the physical picture base (SubtitleAspectRetention.h:550-565). The persistent history survives. The exact-current prepared proof permits native presentation (AlphaSourceCropPolicy.cpp:5549-5565,6605-6608).
+
+On a completed negative subtitle scan, no prepared-caption projection exists, so the same live raw envelope becomes visible to crop selection again. currentNoCaptionConfirmed is computed separately and is not an input to that projection (LibplaceboVideoRenderer.cpp:13951,15113-15116,15160). The emitted negative-frame records say envelope_state=held, translation_wait=1, owner=translation-confirm, and matching envelope retained during release hold. This directly explains how alternating subtitle proof states can produce alternating picture scale with stable native AR.
+
+Geometry, timing, reset and skeptical reviewers independently traced this mechanism. The threading reviewer found it better supported than a race in the active path. Confidence: strong code/log match for the framing mechanism; not a pixel-level explanation of why caption proof disappeared. Complete no-bright-ink scans could be true cue gaps or incorrect detection. The initial expansion is ordinary hold/projection behavior; it should not be mislabeled as an expired hold or selected-frame lag. Recovery can then prolong expansion: source 2984 detects a new cue, but final geometry does not contract until 2987.
+
+2. Missing owner provenance limits a safe repair
+
+PresentationEnvelopeExtentState records bounds, base, source identities and timers, without caption-versus-UI ownership or subtitle mode (AlphaSourceCropPolicy.h:756-764; cpp:1991-2076). Raw history can include caption, UI or transient picture evidence. A global history clear, or treating no-bright-ink as permission to crop, would be unsafe.
+
+ConfirmedSubtitleAbsentForPresentation is a completed subtitle-search predicate, not a proof that all pixels in a historical extent are absent. It lacks the final native-base/retention contract (SubtitleAspectRetention.h:185-195). excludedBandsPixelSafe is sampled (ActivePictureEvidence.cpp:589-597); visible-extent detection uses sparse samples (:721 onward). Dim text or small icons can evade these tests. Prepared-erasure proof has different semantics. Pending/active translation and genuine picture expansion also need explicit handling.
+
+Discussion outcome: reject a blanket no-caption/coarse-safe shortcut. Investigate one consistent mode-specific presentation owner with caption/UI provenance and bounded lifetimes. Any narrowly qualified absence path must bind exact current source, policy/continuity, native base and current pixels across the relevant extent, while retaining fallback for unknown or visible content. This is a design direction for qualification, not an implemented or proven fix.
+
+3. No demonstrated data race in the incident's active VP Renderer path
+
+PreparedAnalysisFrame retains source buffers via balanced references, and worker jobs capture that frame by value (LibplaceboVideoRenderer.cpp:8897-8948,9019-9023). Worker queues, active work, ready results and source-window head are protected by the worker mutex (SubtitleMeasurementWorker.h:248-420). Exact identity/context checks reject mismatched source, policy, continuity and geometry. Magewell buffer reuse respects outstanding references. Review found no producer that reuses one identity for different pixels.
+
+Current failure scans were complete, not pending/timeouts. Source==selected and matching PTS exclude the simple delayed-output explanation for the recorded alternation. The 250 ms unknown-caption lease is distinct from the 2-second raw scope hold. Successful submission commits the selected packet's state, with source identity checks.
+
+Full reset and viewport-boundary paths clear scope subtitle and presentation evidence together (LibplaceboVideoRenderer.cpp:9731-9807,12434-12438). No such boundary appears in the onset interval. Subtitle-only updates intentionally preserve AR/history and can carry a bounded envelope across mode changes (:9234-9260); later updates at 22:53:18-27 cannot explain the earlier onset. This carryover is an explicit policy, not a newly established reset defect.
+
+These checks reduce the likelihood of an active-path race; source bytes were not captured, so they cannot exclude every upstream acquisition fault.
+
+4. Separate logical reset race in the DirectShow analyzer
+
+CBufferedLiveSourceVideoOutputPin::ResetSubtitleAnalysis increments the generation and clears tracking/bar atomics before acquiring m_subtitleAnalysisMutex (microsoft_directshow/live_source_filter/CBufferedLiveSourceVideoOutputPin.cpp:5084-5103). An old worker can finish analysis after the reset and unconditionally republish trackActive and picture edges (:5293-5300). Only the later latest-result publication is generation-checked (:5306-5323).
+
+A feasible interleaving is old worker Analyze -> reset clears state -> old worker publishes old tracking/bar atomics -> old latest result is rejected. Stale or mixed atomic tuples can influence signature sampling and next analyzer cadence (:5116-5194). This is a logical stale-publication race, not an unsynchronized C++ data race. The compositor still checks result generation/age, limiting impact.
+
+A pre-store generation check alone does not close the race because reset can occur between check and stores. Reset generation/clearing and publication need common serialization with the check inside it, or a versioned coherent snapshot; readers of the tuple need the same consistency contract. A forced interleaving test is required.
+
+The concurrency and reset reviewers agree this is outside the incident's Libplacebo path: GUI selects LibplaceboPluginVideoRenderer for this runtime, whereas CBufferedLiveSourceVideoOutputPin belongs to CLiveSource's DirectShow pipeline. Confidence: concrete code-level ordering risk; very low incident relevance; no executed interleaving test or live failure claim.
+
+5. Regression and diagnostic gaps
+
+ActivePictureEvidenceTests.cpp:1710 tests blank confirmation in isolation; :1943-1948 intentionally asserts prepared proof clears only the temporary view and preserves raw history. RetainedScopeUnknownPresentationTests and SubtitleTranslationReversalTests cover adjacent policies, but not the production sequence raw held extent -> prepared cue -> complete blank -> prepared cue with final submitted source and target geometry.
+
+VP_SUBTITLE_CAPTURE_ON_PROOF_FAILURE would miss this incident shape. IsSubtitleProofFailureCaptureCandidate requires a detected shared probe plus loss of a shared picture edge (SubtitleMeasurementWorker.h:12-30). These no-bright-ink frames retain picture bounds 278-1882, so the existing predicate does not match. A diagnostic trigger keyed to a current complete-negative scan plus active history and actual geometry change is needed to capture this specific mechanism.
+
+Discriminating qualification
+
+- Use independently verified bright fixed-ratio native frames at 3840x2160, picture 0,278-3840,1882, Reconstruction, stable generation/viewport. Replay cue -> true blank for approximately 0.3 s, 1.3 s and >2 s -> cue, including pending translation. Exercise the production projection, admission, recovery and successful selected-output commit.
+- Capture native luma/chroma and selected output for the same source identity before loss, on loss and on recovery. Record raw history base/bounds/edge timestamps, ownership/proof/absence, current visible extent, translation/FIT state and final source/target rectangles. Preserve native pixels outside Git.
+- Add controls with dim/sparse glyphs, a small non-glyph menu/icon, unknown/incomplete scans, genuine AR changes, mode switches, repeated/skipped/failed output and hold expiry. Verify stable clean-picture scale without clipping real content or renewing old evidence.
+- Force the separate DirectShow worker/reset interleaving and assert both latest-result and tracking/cadence state remain generation-consistent.
+
+Review result: likely framing ownership conflict identified and cross-challenged; upstream caption-loss root cause remains unproven. No source changes, builds, new test execution, restart, configuration edit or deployment were performed by this review. VP-0207 remains In Progress and VP-0214 remains Backlog during investigation.

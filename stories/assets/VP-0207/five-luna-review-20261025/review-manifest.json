@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-25",
+  "reviewerCount": 5,
+  "model": "gpt-6-luna",
+  "reasoningEffort": "xhigh",
+  "sourceCommit": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "runtimeIncidentCommit": "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+  "reviewers": [
+    {
+      "agent": "/root/luna_geometry",
+      "discussion": "Primary mechanism, absence shortcut and UI/sparse-pixel challenge",
+      "focus": "Competing geometry ownership"
+    },
+    {
+      "agent": "/root/luna_races",
+      "discussion": "Active-path lifetime audit and DirectShow reset interleaving with reset reviewer",
+      "focus": "Threading, buffers and stale publication"
+    },
+    {
+      "agent": "/root/luna_timing",
+      "discussion": "Independent projection confirmation, same-source output and delayed reacquisition",
+      "focus": "Source/output selection and hold clocks"
+    },
+    {
+      "agent": "/root/luna_resets",
+      "discussion": "Full-reset audit, mode carryover policy and DirectShow race challenge",
+      "focus": "Settings, reset and authority boundaries"
+    },
+    {
+      "agent": "/root/luna_skeptic",
+      "discussion": "Reject coarse-absence shortcut; identify missing production replay and capture predicate",
+      "focus": "Falsification, test coverage and capture"
+    }
+  ],
+  "productionChanges": false,
+  "testsExecuted": false,
+  "nativePixelReproductionAvailable": false
+}
