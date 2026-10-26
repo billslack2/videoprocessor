@@ -1956,6 +1956,82 @@ struct SubtitleShaderGpuFixture {
                 L"prepared cleanup must preserve unrelated picture");
         }
     }
+    void MeasureSurroundCostAt4K() {
+        pl_tex_destroy(device->gpu,&inputTexture);
+        pl_tex_params storage{};storage.w=3840;storage.h=2160;
+        storage.format=pl_find_named_fmt(device->gpu,"rgba8");storage.sampleable=true;storage.host_writable=true;
+        std::vector<uint8_t> pixels(size_t(storage.w)*storage.h*4,100);
+        storage.initial_data=pixels.data();inputTexture=pl_tex_create(device->gpu,&storage);
+        Assert::IsTrue(inputTexture!=nullptr);input.planes[0].texture=inputTexture;input.crop={0,0,3840,2160};
+        auto g=Geometry();g.source=g.content=g.generatedCleanup={1100,1750,2700,1880};
+        g.glyphLines[0]={};g.pictureCapture={};g.destination={1100,1450,2700,1580};
+        g.pictureTop=280;g.pictureBottom=1880;
+        SubtitleGeneratedGrayStyle style;style.blurPixels=0;
+        for(int fill:{0,2}) {
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,input.color.transfer,style,fill,SubtitleCompositionPhase::CleanupOnly));
+            pl_frame clean{};
+            for(int i=0;i<3;++i)Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+            pl_gpu_finish(device->gpu);
+            const auto start=std::chrono::steady_clock::now();
+            for(int i=0;i<20;++i)Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+            pl_gpu_finish(device->gpu);
+            const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/20.0;
+            Logger::WriteMessage((std::string("4K warmed full preparation fill=")+std::to_string(fill)+" mean_wall_ms="+std::to_string(ms)).c_str());
+        }
+    }
+    void VerifyContourAndSeamReconstruction(bool top) {
+        auto g=Geometry();
+        const auto flip=[&](SubtitleBoxRect r) {return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;};
+        g.source=g.content=g.generatedCleanup=flip({8,38,56,56});
+        g.glyphLines[0]={};g.pictureCapture={};g.destination=flip({16,8,48,20});
+        g.pictureTop=top?8:0;g.pictureBottom=top?64:56;
+        // A sloping color ramp stands in for a skin/clothing contour. The
+        // undamaged frame supplies independent ground truth for the removed area.
+        std::vector<uint8_t> pixels(64*64*4,255),truth=pixels;
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const int row=top?63-y:y;
+            const float contour=(std::max)(0.0f,(std::min)(1.0f,0.5f+(x-32.0f-0.5f*(row-38))/48.0f));
+            const size_t n=(y*64+x)*4;
+            truth[n]=uint8_t(30+150*contour);truth[n+1]=uint8_t(35+85*contour);truth[n+2]=uint8_t(45+30*contour);
+            for(int c=0;c<3;++c)pixels[n+c]=truth[n+c];
+            if(x>=g.source.left && x<g.source.right && y>=g.source.top && y<g.source.bottom)
+                pixels[n]=pixels[n+1]=pixels[n+2]=255; // subtitle poison
+            if(y<g.pictureTop || y>=g.pictureBottom)
+                pixels[n]=255,pixels[n+1]=0,pixels[n+2]=255; // excluded bar poison
+        }
+        pl_tex_transfer_params up{};up.tex=inputTexture;up.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&up));
+        const auto render=[&](int fill) {
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},fill,SubtitleCompositionPhase::CleanupOnly));
+            pl_frame clean{};
+            Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+            auto target=input;target.planes[0].texture=allOutput;
+            auto params=pl_render_fast_params;params.dither_params=nullptr;
+            Assert::IsTrue(pl_render_image(renderer,&clean,&target,&params));
+            return ReadLinear(allOutput);
+        };
+        const auto mirror=render(0),surround=render(2);
+        double mirrorError=0,surroundError=0,seamError=0;int samples=0,seamSamples=0;
+        for(int y=g.source.top;y<g.source.bottom;++y)for(int x=g.source.left;x<g.source.right;++x) {
+            const int depth=top?g.source.bottom-1-y:y-g.source.top;
+            for(int c=0;c<3;++c) {
+                const float expected=truth[(y*64+x)*4+c]/255.0f;
+                const float error=std::abs(Pixel(surround,x,y)[c]-expected);
+                surroundError+=error;mirrorError+=std::abs(Pixel(mirror,x,y)[c]-expected);++samples;
+                if(depth<2 && x>12 && x<52) {seamError+=error;++seamSamples;}
+                Assert::IsTrue(std::isfinite(Pixel(surround,x,y)[c]));
+            }
+        }
+        Logger::WriteMessage((std::string("contour top=")+std::to_string(top)+" mirror_mae="+
+            std::to_string(mirrorError/samples)+" surround_mae="+std::to_string(surroundError/samples)+
+            " seam_mae="+std::to_string(seamError/seamSamples)).c_str());
+        Assert::IsTrue(seamError/seamSamples<0.025,L"Unblurred boundary should continue local color with little visible jump");
+        Assert::IsTrue(surroundError<0.65*mirrorError,L"Contour guided fill should improve sloping structure over reflected fill");
+        // Clean pixels are never feathered with original subtitle pixels.
+        for(int y=g.pictureTop;y<g.pictureBottom;++y)for(int x=0;x<64;++x)
+            if(x<g.source.left || x>=g.source.right || y<g.source.top || y>=g.source.bottom)
+                for(int c=0;c<3;++c)Assert::IsTrue(std::abs(Pixel(surround,x,y)[c]-truth[(y*64+x)*4+c]/255.0f)<0.005f);
+    }
     void VerifySurroundDonors(bool barAttached) {
         auto g=Geometry();g.source=g.content=g.generatedCleanup={16,24,48,56};
         g.glyphLines[0]={};g.pictureCapture={};g.destination={20,12,44,20};
@@ -2356,6 +2432,14 @@ public:
         Assert::IsTrue(snapshot.debandEnabled);
         Assert::AreEqual(3,snapshot.debandParams.iterations);
         Assert::IsTrue(snapshot.debandParams.threshold==7.0f);
+    }
+    TEST_METHOD(SurroundFill4KPreparationCost) {
+        SubtitleShaderGpuFixture gpu;
+        gpu.MeasureSurroundCostAt4K();
+    }
+    TEST_METHOD(SurroundFillContinuesColorContoursWithoutBlurAtBothBars) {
+        SubtitleShaderGpuFixture gpu;
+        gpu.VerifyContourAndSeamReconstruction(false);gpu.VerifyContourAndSeamReconstruction(true);
     }
     TEST_METHOD(SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors) {
         SubtitleShaderGpuFixture gpu;

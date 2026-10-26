@@ -518,19 +518,18 @@ bool subtitleInGeneratedCleanup(vec2 p) {
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
 }
-// Bounded spatial reconstruction: at most two samples per usable edge.
-// Both taps remain beyond ALL removal/glyph bounds. Blend in linear light;
-// the outer edge gets most weight so it joins its neighbouring real picture.
-// No frame history, search iterations, or geometry-specific shader source.
+// Bounded, current-frame reconstruction. Follow the local color contour into
+// clean picture before comparing two donor depths. Soft scores avoid a hard
+// winner changing between frames; all samples remain outside every glyph/card.
 vec3 subtitleSurroundingPicture(vec2 p) {
     vec4 edges=vec4(subtitleSafeDonorLeft()-1.5,subtitleSafeDonorRight()+1.5,
         subtitleSafeDonorEdge(false)-0.5,subtitleSafeDonorEdge(true)+0.5);
+    vec2 lo=vec2(0.5,picture_top+0.5),hi=vec2(HOOKED_size.x-0.5,picture_bottom-0.5);
+    float seam=clamp(0.15*min(generated_clean_right-generated_clean_left,
+        generated_clean_bottom-generated_clean_top),2.0,12.0);
     vec3 sum=vec3(0.0);float weights=0.0;
-    // Uniform loop bound (always eight in this mode) keeps texture sampling
-    // and transfer decoding at ONE compiled call site, not eight expanded ones.
-    int count=4*int(clamp(cleanup_fill_mode,0.0,2.0));
-    for(int tap=0;tap<count;tap++) {
-        int side=tap/2;bool mirrored=(tap-2*side)!=0;
+    int count=2*int(clamp(cleanup_fill_mode,0.0,2.0));
+    for(int side=0;side<count;side++) {
         vec2 edge=p,dir=vec2(0.0);float d=0.0,available=-1.0;
         if(side==0) {
             edge.x=edges.x;dir.x=-1.0;d=p.x-generated_clean_left;available=edges.x-0.5;
@@ -542,11 +541,50 @@ vec3 subtitleSurroundingPicture(vec2 p) {
             edge.y=edges.w;dir.y=1.0;d=generated_clean_bottom-p.y;available=picture_bottom-0.5-edges.w;
         }
         if(available<0.0)continue;
-        edge=clamp(edge,vec2(0.5,picture_top+0.5),vec2(HOOKED_size.x-0.5,picture_bottom-0.5));
-        d=max(0.0,d);float w=1.0/((d+2.0)*(d+2.0));
-        w*=mirrored?0.35:0.65;
-        vec2 donor=edge+dir*min(available,(mirrored?1.0:0.35)*d);
-        sum+=w*subtitleLinear(HOOKED_tex(donor*HOOKED_pt).rgb);weights+=w;
+        edge=clamp(edge,lo,hi);d=max(0.0,d);
+        vec2 tangent=vec2(-dir.y,dir.x);
+        float normalStep=min(2.0,available);
+        float inward=max(dot(edge-p,dir),0.0);
+        vec3 anchor=vec3(0.0),outer=vec3(0.0),before=vec3(0.0),guide=vec3(0.0);
+        vec3 candidates=vec3(0.0);float candidateWeights=0.0,scale=0.02,slope=0.0;
+        // Keep transfer decoding at one compiled sampling site. A dynamic
+        // six-tap bound prevents shader compilers expanding the PQ/HLG math.
+        int taps=3*int(clamp(cleanup_fill_mode,0.0,2.0));
+        for(int tap=0;tap<taps;tap++) {
+            vec2 donor=edge;
+            if(tap==1)donor+=dir*normalStep;
+            else if(tap==2)donor-=tangent*2.0;
+            else if(tap==3)donor+=tangent*2.0;
+            else if(tap>=4) {
+                float depth=min(available,(tap==4?0.35:1.0)*d);
+                donor+=dir*depth-tangent*slope*(inward+depth);
+            }
+            vec3 color=subtitleLinear(HOOKED_tex(clamp(donor,lo,hi)*HOOKED_pt).rgb);
+            if(tap==0)anchor=color;
+            else if(tap==1)outer=color;
+            else if(tap==2)before=color;
+            else if(tap==3) {
+                vec3 normalGradient=(outer-anchor)/max(normalStep,1.0);
+                vec3 tangentGradient=(color-before)*0.25;
+                scale=max(max(anchor.r,anchor.g),max(anchor.b,0.02));
+                slope=clamp(dot(tangentGradient,normalGradient)/
+                    (dot(tangentGradient,tangentGradient)+0.0001*scale*scale),-1.5,1.5);
+                // Bound color extrapolation so a contrast edge cannot produce
+                // a bright halo or negative HDR values at the seam.
+                guide=max(anchor-clamp(normalGradient*min(inward,4.0),
+                    vec3(-0.25*scale),vec3(0.25*scale)),vec3(0.0));
+            } else {
+                vec3 delta=(color-guide)/scale;
+                float score=(tap==4?0.65:0.35)/(1.0+8.0*dot(delta,delta));
+                candidates+=score*color;candidateWeights+=score;
+            }
+        }
+        vec3 filled=candidateWeights>0.0?candidates/candidateWeights:anchor;
+        // Blend toward clean boundary color, never toward original subtitle
+        // pixels. Keep the transition inside the authorized removal rectangle.
+        filled=mix(guide,filled,smoothstep(0.0,seam,d));
+        float w=1.0/((d+0.5)*(d+0.5));
+        sum+=w*filled;weights+=w;
     }
     return weights>0.0 ? sum/weights : vec3(0.0);
 }
