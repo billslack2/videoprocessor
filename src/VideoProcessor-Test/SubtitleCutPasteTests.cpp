@@ -1867,6 +1867,42 @@ struct SubtitleShaderGpuFixture {
                     Assert::IsTrue(std::abs(Pixel(original,x,y)[c]-Pixel(composed,x,y)[c])<0.0001f,
                         L"transparent subtitle edges must preserve the actual picture pixels");
     }
+    void VerifyAttachedPanelSamplingGuard(bool top,bool rounded) {
+        auto geometry=Geometry();
+        geometry.fromTopBar=top;geometry.roundedCorners=rounded;geometry.extendToBar=true;
+        geometry.pictureTop=16;geometry.pictureBottom=48;
+        geometry.source=geometry.content=top?SubtitleBoxRect{20,4,44,14}:SubtitleBoxRect{20,50,44,60};
+        geometry.destination=top?SubtitleBoxRect{20,20,44,30}:SubtitleBoxRect{20,34,44,44};
+        geometry.glyphLines[0]=geometry.content;
+        pl_frame layer{};
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,input.color.transfer,
+            {},0,SubtitleCompositionPhase::LayerOnly));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+        // Sample the layer at fractional positions straddling the viewport/bar
+        // boundary. A transparent neighboring texel makes a one-pixel bright
+        // line when the layer is filtered onto a non-integer output placement.
+        pl_tex_params params{};params.w=params.h=64;params.format=layerTexture->params.format;
+        params.blit_dst=true;params.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&params);Assert::IsNotNull(staging);
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;pl_tex_blit(device->gpu,&copy);
+        const auto pixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        const int edge=top?16:48;
+        for(float fraction:{0.1f,0.5f,0.9f}) {
+            const float coverage=Pixel(pixels,32,edge-1)[3]*(1-fraction)+Pixel(pixels,32,edge)[3]*fraction;
+            Assert::IsTrue(coverage>0.999f,L"fractional bar-edge sampling must remain opaque");
+        }
+        const auto bounds=ComputeSubtitleLayerBounds(geometry,64,64);
+        Assert::IsTrue(bounds.y0<=edge-2 && bounds.y1>=edge+2);
+        Assert::IsTrue(Pixel(pixels,32,top?12:51)[3]<0.001f,
+            L"sampling guard must remain bounded near the bar edge");
+        geometry.extendToBar=false;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,input.color.transfer,
+            {},0,SubtitleCompositionPhase::LayerOnly));
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+        staging=pl_tex_create(device->gpu,&params);copy.src=layerTexture;copy.dst=staging;pl_tex_blit(device->gpu,&copy);
+        const auto floating=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        Assert::IsTrue(Pixel(floating,32,top?15:48)[3]<0.001f,L"floating panels must keep their gap");
+    }
     void VerifyViewportClippedCoverage(int mode,bool top,bool rounded) {
         auto geometry=Geometry(false,true);
         geometry.fromTopBar=top;geometry.roundedCorners=rounded;
@@ -2520,6 +2556,11 @@ public:
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
         for(int mode:{3,5})for(bool top:{false,true})
             rgb.VerifyPreparedBarContentErasure(mode,top);
+    }
+    TEST_METHOD(AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar) {
+        SubtitleShaderGpuFixture gpu;
+        for(bool top:{false,true})for(bool rounded:{false,true})
+            gpu.VerifyAttachedPanelSamplingGuard(top,rounded);
     }
     TEST_METHOD(ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars) {
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);

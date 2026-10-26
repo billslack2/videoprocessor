@@ -43,7 +43,7 @@ inline pl_rect2d ComputeSubtitleLayerBounds(const SubtitleCutPasteGeometry& g,
     const int displayTop=selectedPicture?g.displayPictureTop:g.pictureTop;
     const int displayBottom=selectedPicture?g.displayPictureBottom:g.pictureBottom;
     // The shader extends six pixels horizontally and antialiases the panel.
-    // Include two pixels at each vertical edge, including its selected bar edge.
+    // Include the two-pixel bar-facing sampling overlap as well as panel AA.
     bounds.x0=(std::max)(0,g.destination.left-8);
     bounds.x1=(std::min)(width,g.destination.right+8);
     bounds.y0=(std::max)(0,(g.extendToBar && g.fromTopBar?
@@ -666,12 +666,15 @@ float subtitlePanelSideExtension() {
 float subtitlePanelTop() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && fromTop ? min(destination_top,display_picture_top) : destination_top;
+    // Two source pixels overlap the bar so fractional crop/scaling samples
+    // cannot interpolate an opaque panel edge with transparent layer pixels.
+    // This is display backing only; glyph placement and cleanup stay unchanged.
+    return attached && fromTop ? min(destination_top,display_picture_top)-2.0 : destination_top;
 }
 float subtitlePanelBottom() {
     bool attached=mod(floor(panel_flags/2.0),2.0)>0.5 && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5));
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
-    return attached && !fromTop ? max(destination_bottom,display_picture_bottom) : destination_bottom;
+    return attached && !fromTop ? max(destination_bottom,display_picture_bottom)+2.0 : destination_bottom;
 }
 float subtitleRoundedPanelDistance(vec2 p) {
     float radius=mod(panel_flags,2.0)>0.5 ? min(28.0,min(destination_right-destination_left,

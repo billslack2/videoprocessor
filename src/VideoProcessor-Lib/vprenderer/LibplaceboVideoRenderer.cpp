@@ -6226,9 +6226,9 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	void ConfigureRenderParams(const RendererSettings& settings,
-		const char* lifecycle)
+		const char* lifecycle, bool invalidateShaderPreparation = true)
 	{
-		++nlsPreparationRevision;
+        if (invalidateShaderPreparation) ++nlsPreparationRevision;
 		LibplaceboRenderParameters::Settings parameterSettings;
 		parameterSettings.quality = settings.quality;
 		parameterSettings.toneMapping = settings.toneMapping;
@@ -8332,6 +8332,8 @@ struct LibplaceboVideoRenderer::Impl
         WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-initialize", L"VP Renderer", this);
 		const RendererSettings settings = LoadRendererSettings(
 			config, *state, activeDisplayRule, manualRule, manualUnifiedProfiles);
+        const bool shaderProcessingChanged = EffectiveSettingsFingerprint(activeSettings, false) !=
+            EffectiveSettingsFingerprint(settings, false);
 		activeSettings = settings;
         displayRepeatValid = false;
         displayVsyncClock.Reset();
@@ -9292,6 +9294,8 @@ struct LibplaceboVideoRenderer::Impl
 				: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
+        const bool shaderProcessingChanged = EffectiveSettingsFingerprint(activeSettings, false) !=
+            EffectiveSettingsFingerprint(settings, false);
 		activeSettings = settings;
         displayRepeatValid = false;
         displayVsyncClock.Reset();
@@ -9321,7 +9325,7 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackAttempts = 0;
 			diagnosticReadbackNonBlack = false;
 		}
-		ConfigureRenderParams(settings, "live profile update");
+		ConfigureRenderParams(settings, "live profile update", shaderProcessingChanged);
         // Future repairs must use donors with these source-processing settings.
         // Retained temporal packets already own their immutable donor snapshots.
         subtitleTemporalValid=false;
@@ -9551,9 +9555,12 @@ struct LibplaceboVideoRenderer::Impl
             return requested;
         }
         // Decide once, before Begin, so all outputs from this capture use the
-        // same composition contract. Settings and source-format changes cannot
-        // reuse a completion for an older graph. Both background modes warm
-        // together, so switching between them needs no further preparation.
+        // same composition contract. Subtitle style and viewport geometry are
+        // dynamic uniforms, and preparation warms both backgrounds and blur
+        // on/off together. They must not revoke readiness when profiles cycle:
+        // doing so exposes original bar subtitles through the raw-frame fallback.
+        // Keep source/transport/processing settings in the identity so genuinely
+        // different normalization or output graphs still prepare independently.
         const auto& motion = activeSettings.motion;
         const bool knownOrder = motion.fieldOrder != "auto" || inputOrder != 0;
         const bool deinterlacing = std::isfinite(sourceHz) && sourceHz > 0.0 &&
@@ -9564,7 +9571,7 @@ struct LibplaceboVideoRenderer::Impl
         subtitlePipelinePreparationKey = std::to_string(generation) + "|" +
             std::to_string(sourceFormat) + "|" + std::to_string(deinterlacing) + "|" +
             std::to_string(mixing) + "|" + std::to_string(inputOrder) + "|" +
-            EffectiveSettingsFingerprint(activeSettings);
+            EffectiveSettingsFingerprint(activeSettings, false);
         auto state = subtitlePipelinePreparation.Get(subtitlePipelinePreparationKey);
         if (!previouslyRequested && state == NlsPipelinePreparation::Status::Failed) {
             subtitlePipelinePreparation.Invalidate();
