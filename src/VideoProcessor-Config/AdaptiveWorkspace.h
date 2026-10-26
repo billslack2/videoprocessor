@@ -201,9 +201,9 @@ public:
         auto* toolbar = new QWidget; auto* tools = new QHBoxLayout(toolbar); tools->setContentsMargins(0, 0, 0, 0); tools->setSpacing(8);
         selected_ = new WorkspaceProfileLabel; selected_->setObjectName(QStringLiteral("workspaceSelectedProfile"));
         selected_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred); tools->addWidget(selected_, 1);
-        advancedToggle_ = new QPushButton(QStringLiteral("Advanced tone mapping"));
+        advancedToggle_ = new QPushButton(QStringLiteral("Show Tone Charts"));
         advancedToggle_->setStyleSheet(QStringLiteral("QPushButton:checked { background: #164668; border-color: #49b6ff; color: #e9f5ff; }"));
-        advancedToggle_->setCheckable(true); advancedToggle_->setAccessibleName(QStringLiteral("Show advanced tone mapping charts and focus the workspace")); advancedToggle_->hide();
+        advancedToggle_->setCheckable(true); advancedToggle_->setAccessibleName(QStringLiteral("Show Tone Charts")); advancedToggle_->hide();
         tools->addWidget(advancedToggle_); content->addWidget(toolbar);
         editors_ = new QSplitter(Qt::Horizontal); editors_->setObjectName(QStringLiteral("workspaceEditors")); editors_->setChildrenCollapsible(false);
         content->addWidget(editors_, 1); root_->addWidget(rail_); root_->addWidget(dock_); root_->addWidget(editorHost, 1); rail_->hide();
@@ -276,8 +276,8 @@ public:
     {
         if (editors_->count() < 2 || advanced_ == active) return;
         advanced_ = active; restored_ = false;
-        advancedToggle_->setText(active ? QStringLiteral("Basic tone mapping") : QStringLiteral("Advanced tone mapping"));
-        advancedToggle_->setAccessibleName(active ? QStringLiteral("Return to basic tone mapping") : QStringLiteral("Show advanced tone mapping"));
+        advancedToggle_->setText(active ? QStringLiteral("Hide Tone Charts") : QStringLiteral("Show Tone Charts"));
+        advancedToggle_->setAccessibleName(advancedToggle_->text());
         { const QSignalBlocker blocker(advancedToggle_); advancedToggle_->setChecked(active); }
         if (active) autoCollapsed_ = requestedExpanded_;
         else autoCollapsed_ = false;

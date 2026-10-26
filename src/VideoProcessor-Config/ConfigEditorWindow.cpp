@@ -5566,7 +5566,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         choiceLayout->addWidget(combo, 1);
         auto* reset = new QPushButton(QStringLiteral("Reset"), choiceRow);
         reset->setAccessibleName(QStringLiteral("Reset override"));
-        reset->setFixedWidth(56);
+        // Keep the styled text and padding visible at every font/DPI size.
+        reset->setStyleSheet(QStringLiteral("QPushButton { padding: 0 6px; }"));
+        reset->setMinimumWidth(56);
+        reset->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         reset->setObjectName(combo->objectName() + QStringLiteral(".reset_override"));
         reset->setToolTip(QStringLiteral("Remove this setting's override and follow the inherited or built-in value."));
         reset->setVisible(allowInherited);
