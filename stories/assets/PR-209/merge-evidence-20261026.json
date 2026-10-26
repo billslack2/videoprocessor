@@ -1,0 +1,51 @@
+{
+  "repository": "billslack2/videoprocessor",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/209",
+  "integrationBranch": "v1.4.02-beta",
+  "baseCommit": "62700c3b122a0d9723651471f4cae16a6a11efbf",
+  "featureCommit": "a35d94ccd588bda366f7fbbe315660396e445785",
+  "mergeCommit": "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+  "mergedAt": "2026-10-26T19:47:36Z",
+  "userAcceptance": "ok this looks good and can be merged.",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildTargets": [
+    "VideoProcessor-Config",
+    "VideoProcessor-ConfigTests"
+  ],
+  "focusedChecks": [
+    "Wheel guards all Config value controls and allows popup lists",
+    "Tone slider wheel scrolls panel without editing",
+    "Tone mapping controls round trip",
+    "responsive workspaces preserve edits and fit",
+    "DPI keyboard and accessibility behavior"
+  ],
+  "focusedChecksPassed": 5,
+  "protectedDropdowns": 51,
+  "protectedNumericControls": 12,
+  "artifacts": [
+    {
+      "name": "VideoProcessorConfig.exe",
+      "path": "E:\\codex\\videoprocessor\\profile-section-labels-20261026\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "260216EDD62EB0CB2F6C4AB14FB057047E11CB7B8C4C7E761B222F01BB6E282E"
+    },
+    {
+      "name": "VideoProcessorConfigDiscovery.dll",
+      "path": "E:\\codex\\videoprocessor\\profile-section-labels-20261026\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "9E31D9AC45A73DDE02374986D28CDE74F75C932F321EC4D75CC543B3047EA671"
+    },
+    {
+      "name": "VideoProcessorConfigTests.exe",
+      "path": "E:\\codex\\videoprocessor\\profile-section-labels-20261026\\x64\\Release\\VideoProcessorConfigTests.exe",
+      "sha256": "0FE68DA55B70A0CF9A249C406104D1E85147CD6FC0C7AA468BAD414F14285D0C"
+    }
+  ],
+  "githubStatusChecks": [],
+  "acceptedTestDeploymentCommit": "d4d491feca88f38cf66e9f3cccbba7f9fd542c62",
+  "deploymentReceipt": "C:\\Videoprocessor\\vp\\backup-before-config-wheel-guard-20261026-153704\\deployment-receipt.json",
+  "configurationEdits": [],
+  "knownBaselineLimitations": [
+    "Legacy discovery selector test refers to removed config.general.fullscreen_monitor_name; same failure on prior executable",
+    "Drag timing threshold also exceeded on previous executable (542 ms versus 546 ms during development)"
+  ]
+}
