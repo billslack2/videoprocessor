@@ -4912,7 +4912,7 @@ void testCleanRemoteApplyUsesUnchangedRpcCandidate()
         ~StopServer() { stop = true; if (server.joinable()) server.join(); }
     } join{stop, server};
     ConfigEditorWindow remote(path, 0, true, {}, {}, "127.0.0.1", ntohs(address.sin_port));
-    require(!hasPendingConfigurationChanges(remote), "Remote baseline was not clean");
+    require(!hasPendingConfigurationChanges(remote), (QStringLiteral("Remote baseline was not clean: %1; %2").arg(requireControl<QLabel>(remote, "configurationEffectSummary")->text(), requireControl<QLabel>(remote, "configurationStatus")->text()).toStdString()).c_str());
     auto* apply = requireControl<QPushButton>(remote, "applyConfiguration");
     require(apply->isEnabled(), "Clean remote Apply was unavailable");
     apply->click();
@@ -5036,7 +5036,7 @@ void testApplyOkCancelContract()
             QStringLiteral("config.general.fullscreen"))->isChecked() == initial,
             "Cancel retained the discarded working-copy value");
         require(!hasPendingConfigurationChanges(window),
-            "Cancel retained a dirty working copy");
+            (QStringLiteral("Cancel retained a dirty working copy: %1; %2").arg(requireControl<QLabel>(window, "configurationEffectSummary")->text(), requireControl<QLabel>(window, "configurationStatus")->text()).toStdString()).c_str());
     }
 
     {

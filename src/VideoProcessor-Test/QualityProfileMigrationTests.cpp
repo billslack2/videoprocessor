@@ -38,6 +38,17 @@ public:
         Value(s,"vprenderer.default","peak_detection","high_quality");
         NoOldProcessing(s);Assert::IsTrue(QualityProfileMigration::Build(s,order).Empty());
     }
+    TEST_METHOD(ToneDefaultsAreFrozenForNamedProfilesInOneMigration) {
+        Sections s{{"vprenderer.default",{{"peak_detection","off"},{"contrast_recovery","0.6"}}},
+          {"vprenderer.inherited",{}}, {"vprenderer.reset",{{"peak_detection","AUTO"},{"contrast_recovery","AUTO"}}}};
+        std::vector<std::string> order{"vprenderer.default","vprenderer.inherited","vprenderer.reset"};
+        QualityProfileMigration::Apply(s,order);
+        Value(s,"vprenderer.inherited","peak_detection","off");
+        Value(s,"vprenderer.inherited","contrast_recovery","0.6");
+        Value(s,"vprenderer.reset","peak_detection","high_quality");
+        Value(s,"vprenderer.reset","contrast_recovery","0.3");
+        Assert::IsTrue(QualityProfileMigration::Build(s,order).Empty());
+    }
     TEST_METHOD(LegacyAliasesMoveToVisibleScalingAndKeepParentInheritance) {
         Sections s{{"vprenderer.default",{{"dithering","off"},{"display_bit_depth","8"}}},
           {"vprenderer.hdr",{{"shortcut","Ctrl+2"},{"dithering","AUTO"},{"display_bit_depth","AUTO"}}}};
