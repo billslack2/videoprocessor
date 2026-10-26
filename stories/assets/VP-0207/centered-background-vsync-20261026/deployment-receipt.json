@@ -1,0 +1,202 @@
+{
+  "deployedUtc": "2026-10-26T11:56:47.6451445Z",
+  "sourceCommit": "e8bc0638224634e1946877df7fc7f1ca239ae47d",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backupRoot": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248",
+  "files": [
+    {
+      "kind": "binary",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\VideoProcessor-GUI.exe",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\VideoProcessor.exe",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\VideoProcessor.exe",
+      "oldSha256": "3560F4162D551ECD69A8F0003DAC914E704709A318F161922271BB74EB3F9185",
+      "newSha256": "EBE6C5527CD0E8D43126F1C771D1F5C734C0EA68E2FDA29806275D408C8A11DC"
+    },
+    {
+      "kind": "runtime-record",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\VideoProcessor.exe.runtime.json",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\VideoProcessor.exe.runtime.json",
+      "oldSha256": "DA73EEB105D48643B6137C3B1ED90C72F8C7695FEDE286A2D4A879738027A60E",
+      "newSha256": "A81893B29CEADEBCE5CBB0BDF136DD44ABC26CAF76A81C7ABD97DA99660D9895"
+    },
+    {
+      "kind": "symbols",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "destination": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\VideoProcessor-GUI.pdb",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\VideoProcessor-GUI.pdb",
+      "oldSha256": "A3FC88D333AD99305CEA1B515BD1B7D75F90A74C47FD128C3DBADB4B5EB37424",
+      "newSha256": "D439634F51BE4B80FEF6CE512F233D4730E526802D2759AFE29CCAD93153BD8B"
+    },
+    {
+      "kind": "binary",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "oldSha256": "C9350EB464C13FB93EDDC40B440BD0DF5B0B17AFE8AF999B1838664BC1736EF8",
+      "newSha256": "1504381538892C17E7ABA9EB1A6666D45D92EAAD46820D430A03751D9CE62EED"
+    },
+    {
+      "kind": "runtime-record",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "oldSha256": "1F41104763C01C05042A5B562CA3420E0B66A76896053665DD1034580109DA25",
+      "newSha256": "4A6D77166D30063061E17372D32DF5C39FCB486BA77AA06D58FF0BDB1335411C"
+    },
+    {
+      "kind": "symbols",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "oldSha256": "84FE0EC08AD12EE4F6BACD485C476AC78D5025BEF5DA4A43E70454EDD1EEA367",
+      "newSha256": "FB9ECD48DBF7C478FF0161F6E947D159B7C95B29CABF61CE616F996932830FB1"
+    },
+    {
+      "kind": "binary",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "oldSha256": "F4FAEC608355099F9ADCA1EE5EC5823DC8A8A6445DF64967B1C384BA01CC9F12",
+      "newSha256": "2738302AEEB5C64079C6A303FCA4EFF2615161F6FAA1C1022A9BDACC07185C9A"
+    },
+    {
+      "kind": "runtime-record",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "oldSha256": "7131BC1393FDEB948BFC088DAE91285E063209AB458F368FF512DC49BBD32B5B",
+      "newSha256": "7043F17E796F18C8A3F3A8829AAC28A83E3BD3F82B98E8BEF26B1074C4E0EBE6"
+    },
+    {
+      "kind": "symbols",
+      "source": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "destination": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "stage": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\staged-reviewed-build\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "oldSha256": "202DC0F2DC3FA5B2241515271C3A0F04EAF2548646A1DE6521B56E1A50EDF341",
+      "newSha256": "480018FDC2E2ACC908B8DB8C01F244F2D2A3106A7EEADDFD1286F35251BD6B34"
+    }
+  ],
+  "dependencies": [
+    {
+      "relativePath": "vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libplacebo-377.dll",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "unchanged": true
+    },
+    {
+      "relativePath": "vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "unchanged": true
+    }
+  ],
+  "configurationVerification": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\VideoProcessor.cfg",
+      "beforeSha256": "9536FFF3CA4343BFAF5FB7E5D5E2D9F417DEF12C661BE905FC6DF7C9F26646B2",
+      "afterSha256": "9536FFF3CA4343BFAF5FB7E5D5E2D9F417DEF12C661BE905FC6DF7C9F26646B2",
+      "unchanged": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-subtitle-centered-vsync-e8bc0638-20261026-075646-248\\VideoProcessor.state",
+      "beforeSha256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "afterSha256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "unchanged": true
+    }
+  ],
+  "configurationEdits": [],
+  "playerWasRunning": false,
+  "playerStarted": false,
+  "hashVerificationPassed": true
+}

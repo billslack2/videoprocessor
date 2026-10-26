@@ -1,0 +1,43 @@
+{
+  "commit": "e8bc0638224634e1946877df7fc7f1ca239ae47d",
+  "parent": "28b0e42a4c3774614e2056dc75f752d2a3a48f75",
+  "cleanWorkingTree": true,
+  "build": {
+    "architecture": "x64",
+    "configuration": "Release",
+    "exitCode": 0,
+    "log": "build-release.log"
+  },
+  "tests": {
+    "total": 719,
+    "trx": "combined-subtitle-vsync.trx",
+    "failed": 0,
+    "passed": 719
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "EBE6C5527CD0E8D43126F1C771D1F5C734C0EA68E2FDA29806275D408C8A11DC",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "1504381538892C17E7ABA9EB1A6666D45D92EAAD46820D430A03751D9CE62EED",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "2738302AEEB5C64079C6A303FCA4EFF2615161F6FAA1C1022A9BDACC07185C9A",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-centered-padding-20261025\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "9F17BD57C98451F5AA02925B477BC14223E85E49B4B55CC3403E2CCD81D3BDD1",
+      "configuration": "Release",
+      "architecture": "x64"
+    }
+  ]
+}
