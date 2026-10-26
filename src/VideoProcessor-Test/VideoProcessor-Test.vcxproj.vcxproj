@@ -276,6 +276,8 @@
     <ClCompile Include="AnalysisDiagnosticReplayTests.cpp"><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
     <ClCompile Include="DisplayVsyncClockTests.cpp" />
+    <ClCompile Include="DisplayCadenceHealthTests.cpp" />
+    <ClCompile Include="DisplayCadenceRecoveryTests.cpp" />
     <ClCompile Include="DisplayWindowGeometryTests.cpp" />
     <ClCompile Include="DisplayRasterInfoTests.cpp" />
     <ClCompile Include="..\VideoProcessor-GUI\StatsOverlayWindow.cpp" />

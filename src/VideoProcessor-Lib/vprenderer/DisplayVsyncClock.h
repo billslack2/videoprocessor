@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 // Render-thread-only next-unsubmitted-slot estimate, not scanout confirmation.
 // Present(1) supplies bounded FIFO backpressure; this class never sleeps.
@@ -54,6 +55,22 @@ public:
     int64_t DeadlineNs() const
     {
         return wallOriginNs + static_cast<int64_t>(std::llround(tick * periodNs));
+    }
+    // Leave bounded room for the configured presentation queue. This is a
+    // work-ahead allowance, not permission to advance the clock indefinitely
+    // when Present returns faster than the selected display cadence.
+    int64_t SubmissionWaitNs(int64_t nowNs, unsigned presentationDepth) const
+    {
+        if (!Active()) return 0;
+        const unsigned depth = (std::max)(1u, (std::min)(presentationDepth, 8u));
+        const long double waitNs = static_cast<long double>(DeadlineNs()) -
+            static_cast<long double>(nowNs) -
+            static_cast<long double>(depth) * static_cast<long double>(periodNs);
+        if (waitNs <= 0.0L) return 0;
+        const long double maxNs = static_cast<long double>(
+            (std::numeric_limits<int64_t>::max)());
+        if (waitNs >= maxNs) return (std::numeric_limits<int64_t>::max)();
+        return static_cast<int64_t>(std::ceil(waitNs));
     }
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
     double DecisionBandSeconds() const

@@ -50,6 +50,8 @@
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
 #include <vprenderer/DisplayVsyncClock.h>
+#include <vprenderer/DisplayCadenceHealth.h>
+#include <vprenderer/DisplayCadenceRecovery.h>
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/TemporalRenderer.h>
 #include <vprenderer/InputAnalysisCadence.h>
@@ -4400,6 +4402,11 @@ struct LibplaceboVideoRenderer::Impl
 	pl_swapchain swapchain = nullptr;
     DisplayVsyncClock displayVsyncClock;
     DisplaySourceClock displaySourceClock;
+    DisplayCadenceHealth displayCadenceHealth;
+    DisplayCadenceRecovery displayCadenceRecovery;
+    uint64_t displayCadenceOutputEpoch = 1;
+    uint64_t displayCadenceSourceGeneration = 0;
+    HMONITOR displayCadenceMonitor = nullptr;
     UINT appliedPresentationDepth = PresentationConfig::DefaultDepth;
     int displayCadenceOwner = -1;
     DisplayCadenceTransition displayCadenceTransition;
@@ -7858,11 +7865,45 @@ struct LibplaceboVideoRenderer::Impl
         WindowsDisplayDiagnostics::Log(videoHwnd, "vp-after-colorspace", L"VP Renderer", this, nativeSwapchain);
 	}
 
+    // Called only at a render safe point, before acquiring a backbuffer.
+    // Output changes must retire timing/cache state for either swapchain owner.
+    void InvalidateDisplayCadence()
+    {
+        displayRepeatValid = false;
+        displayVsyncClock.Reset();
+        displayFrameCache.Clear();
+        displayCadenceHealth.Reset();
+        displayCadenceRecovery.OutputChanged();
+        ++displayCadenceOutputEpoch;
+        presentationTelemetry.Reset(displayCadenceSourceGeneration);
+        analysisWorkBudget = {};
+        lastFramePacingStatsAvailable = false;
+        lastFramePacingSubmitQpc = 0;
+    }
+
+    void RecoverDisplayCadenceLocked()
+    {
+        // Let a queued display transition replace obsolete mismatch evidence
+        // before spending a recovery attempt on the previous output contract.
+        if (resizePending.load(std::memory_order_acquire) ||
+            outputRenegotiationPending.load(std::memory_order_acquire)) return;
+        if (!displayCadenceRecovery.TakeRequest(SteadyClockNowNs())) return;
+        const auto health = displayCadenceHealth.Get();
+        startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
+        InvalidateHdrStatus();
+        const bool recreated = RecreateSwapchain(swapchainBlit,
+            suppressLimitedNegotiation, "display cadence mismatch");
+        DebugLog::Log("VP display timing recovery: attempt=%u expected_hz=%.6f observed_hz=%.6f window_ms=%.1f recreated=%d timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+            displayCadenceRecovery.Attempts(), health.expectedHz, health.observedHz,
+            health.windowMs, recreated ? 1 : 0);
+    }
+
 	bool RecreateSwapchain(
 		bool blit,
 		bool suppressLimited,
 		const char* trigger)
 	{
+        InvalidateDisplayCadence();
 		osdTelemetry.InvalidateOutput();
         displayRefreshRate.ForgetDrawnRaster();
 		temporalRenderer.Clear();
@@ -20035,6 +20076,45 @@ releaseDriftBaseRetention =
         record.observedSyncQpc = sample.syncQpc;
         presentationTelemetry.RecordSubmission(record);
         presentationTelemetry.Observe(sample);
+
+        const auto previousHealth = displayCadenceHealth.Get().state;
+        const bool wasFallback = displayCadenceRecovery.Fallback();
+        const bool wasPending = displayCadenceRecovery.Pending();
+        displayCadenceSourceGeneration = record.generation;
+        if (displayCadenceMonitor != negotiatedMonitor)
+        {
+            displayCadenceMonitor = negotiatedMonitor;
+            ++displayCadenceOutputEpoch;
+            displayCadenceHealth.Reset();
+            displayCadenceRecovery.OutputChanged();
+        }
+        displayCadenceRecovery.SetTarget(
+            static_cast<uint64_t>(reinterpret_cast<uintptr_t>(negotiatedMonitor)),
+            sample.expectedDisplayHz);
+        displayCadenceHealth.Observe(sample, PerformanceCounterNow(), displayCadenceOutputEpoch);
+        const auto health = displayCadenceHealth.Get();
+        displayCadenceRecovery.Observe(health.state == DisplayCadenceHealth::State::Mismatch,
+            health.state == DisplayCadenceHealth::State::Healthy, SteadyClockNowNs());
+        if (wasFallback != displayCadenceRecovery.Fallback())
+        {
+            // Do not reuse slots from the failed path or from source-paced recovery.
+            displayRepeatValid = false;
+            displayVsyncClock.Reset();
+        }
+        if (health.state == DisplayCadenceHealth::State::Mismatch)
+            displayVsyncClock.InvalidateFeedback();
+        if (health.state != previousHealth || wasFallback != displayCadenceRecovery.Fallback() ||
+            (!wasPending && displayCadenceRecovery.Pending()))
+        {
+            const char* status = health.state == DisplayCadenceHealth::State::Healthy ? "healthy" :
+                health.state == DisplayCadenceHealth::State::Mismatch ? "mismatch" :
+                health.state == DisplayCadenceHealth::State::Warming ? "warming" : "unavailable";
+            DebugLog::Log("VP display timing state: state=%s expected_hz=%.6f observed_hz=%.6f intervals=%u window_ms=%.1f cached_repeats_suppressed=%d recovery_pending=%d attempts=%u epoch=%llu stats_hr=0x%08X",
+                status, health.expectedHz, health.observedHz, health.uniqueIntervals, health.windowMs,
+                displayCadenceRecovery.Fallback() ? 1 : 0,
+                displayCadenceRecovery.Pending() ? 1 : 0, displayCadenceRecovery.Attempts(),
+                displayCadenceOutputEpoch, static_cast<unsigned>(sample.frameStatisticsResult));
+        }
         return sample;
     }
 
@@ -20064,8 +20144,9 @@ releaseDriftBaseRetention =
         uint64_t viewport, uint64_t revision)
     {
         displayRepeatValid = false;
-        if (!PresentationConfig::UseRepeatCadence(activeSettings.presentEveryVsync,
-            temporalRenderer.Mixing()) || !displayVsyncClock.Active()) return;
+        if (displayCadenceRecovery.Fallback() ||
+            !PresentationConfig::UseRepeatCadence(activeSettings.presentEveryVsync,
+                temporalRenderer.Mixing()) || !displayVsyncClock.Active()) return;
         if (!output || !output->params.blit_src)
         {
             displayVsyncClock.Reset();
@@ -20089,7 +20170,12 @@ releaseDriftBaseRetention =
     // No source buffer, detector, subtitle lease, or temporal history is consumed.
     bool PresentDisplayRepeat(double nextSourcePts, size_t queuedSources)
     {
-        if (!displayRepeatValid) return false;
+        if (!displayRepeatValid || displayCadenceRecovery.Fallback() ||
+            displayCadenceRecovery.Pending() ||
+            resizePending.load(std::memory_order_acquire) ||
+            outputRenegotiationPending.load(std::memory_order_acquire) ||
+            displayRepeatRevision != startupReadinessRevision.load(std::memory_order_acquire))
+            return false;
         auto failed = [&]() {
             displayRepeatValid = false; displayVsyncClock.Reset(); return false;
         };
@@ -24016,6 +24102,43 @@ void LibplaceboVideoRenderer::ConversionLoop()
 }
 
 
+// A correct Present(1) normally supplies the pacing. Bound CPU workahead even
+// when it instead follows a stale/faster compositor. Wait without either mutex
+// held, and recheck stop, queue generation, output changes and the clock.
+bool LibplaceboVideoRenderer::WaitForDisplaySlot(
+    std::unique_lock<std::mutex>& renderGuard, uint64_t sourceGeneration)
+{
+    for (;;)
+    {
+        {
+            std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+            if (m_stopRequested || (sourceGeneration && sourceGeneration != m_queueGeneration))
+                return false;
+            if (!m_impl->displayVsyncClock.Matches(m_queueGeneration,
+                    m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire)))
+                return true;
+        }
+        if (m_impl->displayCadenceRecovery.Fallback() ||
+            m_impl->displayCadenceRecovery.Pending() ||
+            m_impl->resizePending.load(std::memory_order_acquire) ||
+            m_impl->outputRenegotiationPending.load(std::memory_order_acquire) ||
+            m_impl->displayRepeatRevision != m_impl->startupReadinessRevision.load(std::memory_order_acquire))
+            return true;
+        const int64_t nowNs = SteadyClockNowNs();
+        m_impl->displayVsyncClock.SkipMissed(nowNs);
+        const int64_t waitNs = m_impl->displayVsyncClock.SubmissionWaitNs(
+            nowNs, m_impl->appliedPresentationDepth);
+        if (waitNs <= 0) return true;
+        renderGuard.unlock();
+        {
+            std::unique_lock<std::mutex> queueGuard(m_queueMutex);
+            m_queueChanged.wait_for(queueGuard,
+                std::chrono::nanoseconds((std::min)(waitNs, int64_t(10000000))));
+        }
+        renderGuard.lock();
+    }
+}
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -24087,8 +24210,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 	{
         bool refreshRepeated = false;
         {
-            std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+            std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex);
+            if (!WaitForDisplaySlot(renderGuard, 0)) break;
             auto& output = *m_impl;
+            output.RecoverDisplayCadenceLocked();
             auto pendingOutput = [&]() {
                 bool pendingShader = false;
                 {
@@ -24102,8 +24227,9 @@ void LibplaceboVideoRenderer::RenderLoop()
                     output.displayRepeatRevision !=
                         output.startupReadinessRevision.load(std::memory_order_acquire);
             };
-            if (PresentationConfig::UseRepeatCadence(output.activeSettings.presentEveryVsync,
-                output.temporalRenderer.Mixing()) && output.displayRepeatValid)
+            if (!output.displayCadenceRecovery.Fallback() &&
+                PresentationConfig::UseRepeatCadence(output.activeSettings.presentEveryVsync,
+                    output.temporalRenderer.Mixing()) && output.displayRepeatValid)
             {
                 std::unique_lock<std::mutex> queueGuard(m_queueMutex);
                 auto queuedWillMix = [&](const QueuedFrame& queued) {
@@ -24710,7 +24836,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		try
 		{
 			const auto lockStarted = SteadyClock::now();
-			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex);
 			renderLockWaitMs = std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - lockStarted).count();
 			preRenderTimings.renderLockWaitMs = renderLockWaitMs;
@@ -24722,7 +24848,10 @@ void LibplaceboVideoRenderer::RenderLoop()
             // before clearing either pending flag that the UI query checks.
             if (m_impl->resizePending.load(std::memory_order_acquire) ||
                 m_impl->outputRenegotiationPending.load(std::memory_order_acquire))
+            {
                 m_impl->startupReadinessRevision.fetch_add(1,std::memory_order_acq_rel);
+                m_impl->InvalidateDisplayCadence();
+            }
 			if (m_impl->resizePending.exchange(false,
 				std::memory_order_acq_rel))
 			{
@@ -24890,8 +25019,9 @@ void LibplaceboVideoRenderer::RenderLoop()
                     state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0,
                     temporalCaptureEpoch,sourceSequence,sourcePts,frame.IsSourceDiscontinuity(),
                     sourceSubtitleComposition,cadenceRepeat);
-                const bool effectiveRepeatCadence=PresentationConfig::UseRepeatCadence(
-                    m_impl->activeSettings.presentEveryVsync,m_impl->temporalRenderer.Mixing());
+                const bool effectiveRepeatCadence=!m_impl->displayCadenceRecovery.Fallback() &&
+                    PresentationConfig::UseRepeatCadence(
+                        m_impl->activeSettings.presentEveryVsync,m_impl->temporalRenderer.Mixing());
                 const int cadenceOwner=m_impl->temporalRenderer.Mixing()?2:effectiveRepeatCadence?1:0;
                 if (cadenceOwner!=m_impl->displayCadenceOwner) {
                     m_impl->displayCadenceOwner=cadenceOwner;
@@ -24913,11 +25043,28 @@ void LibplaceboVideoRenderer::RenderLoop()
                     m_impl->displayRepeatValid = false;
                 }
                 const auto motionOutputs=m_impl->temporalRenderer.outputs;
+                const auto motionOutputEpoch=m_impl->displayCadenceOutputEpoch;
+                const auto motionOutputRevision=m_impl->startupReadinessRevision.load(std::memory_order_acquire);
+                const bool recoveryAlreadyPending=m_impl->displayCadenceRecovery.Pending();
+                auto currentMotionOutput = [&]() {
+                    return motionOutputEpoch == m_impl->displayCadenceOutputEpoch &&
+                        motionOutputRevision == m_impl->startupReadinessRevision.load(std::memory_order_acquire) &&
+                        !m_impl->resizePending.load(std::memory_order_acquire) &&
+                        !m_impl->outputRenegotiationPending.load(std::memory_order_acquire) &&
+                        // Keep source frames flowing during the retry cooldown;
+                        // only a newly detected fault interrupts this batch.
+                        (recoveryAlreadyPending || !m_impl->displayCadenceRecovery.Pending());
+                };
                 const size_t motionDraws=(std::max)(size_t(1),motionOutputs.size());
                 SourceUploadBatch sourceUploadBatch;
                 ActivePictureMeasurementCache pixelMeasurements;
                 size_t renderedMotionDraws=0;
                 for(size_t motionDraw=0;motionDraw<motionDraws;++motionDraw) {
+                    // Pacing releases renderMutex. Do not reuse temporal slots
+                    // or source-upload state after an output/control change.
+                    if (!WaitForDisplaySlot(renderGuard, frameGeneration) || !currentMotionOutput()) {
+                        staleGeneration = true; break;
+                    }
                     if(!motionOutputs.empty())m_impl->temporalRenderer.outputPts=motionOutputs[motionDraw];
                     if (effectiveRepeatCadence && m_impl->displayVsyncClock.Active() && !motionOutputs.empty()) {
                         m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
@@ -24933,11 +25080,15 @@ void LibplaceboVideoRenderer::RenderLoop()
                                     staleGeneration=true; break;
                                 }
                             }
+                            if (!WaitForDisplaySlot(renderGuard, frameGeneration) || !currentMotionOutput()) {
+                                staleGeneration = true; break;
+                            }
                             if (!m_impl->PresentDisplayRepeat(motionOutputs[motionDraw],0)) break;
                             m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
                         }
                         if (staleGeneration) break;
                     }
+                    if (!currentMotionOutput()) { staleGeneration = true; break; }
                 const uint64_t beforeSubmission=m_impl->renderLoadSubmissionSerial;
 				rendered = state && m_impl->RenderLocked(
 					frame,

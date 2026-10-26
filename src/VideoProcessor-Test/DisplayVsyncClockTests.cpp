@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <vprenderer/DisplayVsyncClock.h>
 #include <limits>
+#include <utility>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace Tests
 {
@@ -30,6 +31,25 @@ namespace Tests
                 }
             Assert::AreEqual(3, counts[0]); Assert::AreEqual(2, counts[1]);
             Assert::AreEqual(3, counts[2]); Assert::AreEqual(2, counts[3]);
+        }
+        TEST_METHOD(SubmissionWaitPreservesFilmCadenceAt60Hz)
+        {
+            DisplayVsyncClock clock;
+            const int64_t baseNs = 1000000000;
+            clock.BeginSource(0.0, baseNs, 1, 60.0, false);
+            int64_t nowNs = baseNs;
+            int counts[4]{};
+            for (int frame = 0; frame < 4; ++frame)
+                while (!clock.SourceDue((frame + 1) / 24.0)) {
+                    Assert::AreEqual(int64_t(0), clock.SubmissionWaitNs(nowNs, 2));
+                    ++counts[frame];
+                    clock.Submitted();
+                    nowNs = clock.DeadlineNs();
+                }
+            Assert::AreEqual(3, counts[0]);
+            Assert::AreEqual(2, counts[1]);
+            Assert::AreEqual(3, counts[2]);
+            Assert::AreEqual(2, counts[3]);
         }
         TEST_METHOD(MatchedQuantizedCaptureDoesNotAlternateRepeatsAndRetirement)
         {
@@ -175,6 +195,72 @@ namespace Tests
             Assert::AreEqual(0.5, clock.SourcePts(), 1e-9);
             clock.Submitted(); Assert::IsTrue(clock.DeadlineNs() > 1500000000);
         }
+        TEST_METHOD(SubmissionWaitBoundsFastPresentsWithoutFeedback)
+        {
+            const double targetHz = 24000.0 / 1001.0;
+            const unsigned depth = 2;
+            const int64_t baseNs = 1000000000;
+            const int64_t fastPresentIntervalNs = 16666667;
+            const double periodSeconds = 1.0 / targetHz;
+            DisplayVsyncClock clock;
+            clock.BeginSource(0.0, baseNs, 1, targetHz, false);
+            int64_t nowNs = baseNs;
+            bool waited = false;
+            for (unsigned attempt = 0; attempt < 600; ++attempt) {
+                nowNs += fastPresentIntervalNs;
+                const int64_t waitNs = clock.SubmissionWaitNs(nowNs, depth);
+                if (waitNs > 0) { waited = true; nowNs += waitNs; }
+                clock.Submitted();
+                const double leadSeconds = clock.SourcePts() -
+                    static_cast<double>(nowNs - baseNs) / 1e9;
+                Assert::IsTrue(leadSeconds <= (depth + 1.0) * periodSeconds + 1e-8);
+            }
+            Assert::IsTrue(waited);
+        }
+        TEST_METHOD(SubmissionWaitAllowsMatched24And60HzWorkAhead)
+        {
+            const int64_t baseNs = 1000000000;
+            for (const auto& rates : {std::pair<double, double>{24000.0 / 1001.0, 24.0},
+                                      std::pair<double, double>{60.0, 60.0}}) {
+                DisplayVsyncClock clock;
+                clock.BeginSource(0.0, baseNs, 1, rates.first, false);
+                const int64_t intervalNs = static_cast<int64_t>(
+                    std::llround(1e9 / rates.second));
+                int64_t nowNs = baseNs;
+                for (unsigned slot = 0; slot < 240; ++slot) {
+                    Assert::AreEqual(int64_t(0), clock.SubmissionWaitNs(nowNs, 2));
+                    clock.Submitted();
+                    nowNs += intervalNs;
+                }
+            }
+        }
+        TEST_METHOD(SubmissionWaitClampsDepthAndBoundsPostStallWorkAhead)
+        {
+            DisplayVsyncClock clock;
+            const int64_t baseNs = 1000000000;
+            clock.BeginSource(0.0, baseNs, 1, 60.0, false);
+            for (int slot = 0; slot < 10; ++slot) clock.Submitted();
+            Assert::AreEqual(clock.SubmissionWaitNs(baseNs, 1),
+                clock.SubmissionWaitNs(baseNs, 0));
+            Assert::AreEqual(clock.SubmissionWaitNs(baseNs, 8),
+                clock.SubmissionWaitNs(baseNs, 100));
+
+            clock.Reset();
+            clock.BeginSource(0.0, baseNs, 1, 60.0, false);
+            clock.Submitted();
+            const int64_t afterStallNs = baseNs + 500000000;
+            clock.SkipMissed(afterStallNs);
+            unsigned immediateSlots = 0;
+            int64_t waitNs = 0;
+            do {
+                waitNs = clock.SubmissionWaitNs(afterStallNs, 2);
+                if (waitNs > 0) break;
+                clock.Submitted();
+                ++immediateSlots;
+            } while (immediateSlots <= 3);
+            Assert::AreEqual(3u, immediateSlots);
+            Assert::IsTrue(waitNs > 0);
+        }
         TEST_METHOD(IndependentSourceClockDriftDoesNotReanchorPlayback)
         {
             DisplayVsyncClock clock;
@@ -251,6 +337,8 @@ namespace Tests
             Assert::IsTrue(clock.ObserveQueueTail(12,11,92,92,1020000000,1020000000,1020000000,2));
             Assert::IsTrue(clock.HasFeedback());
             Assert::AreEqual(int64_t(1040000000),clock.DeadlineNs());
+            Assert::AreEqual(int64_t(0),clock.SubmissionWaitNs(1020000000,2));
+            Assert::AreEqual(int64_t(10000000),clock.SubmissionWaitNs(1020000000,1));
             clock.SkipMissed(1030000000);
             Assert::AreEqual(0.03,clock.SourcePts(),1e-9);
             Assert::IsFalse(clock.ObserveQueueTail(30,11,92,92,1020000000,1020000000,1020000000,2));
