@@ -1,7 +1,7 @@
 # VP-0217 - Improve reconstructed subtitle background color and contour seams
 
 ## Status
-Review
+In Progress
 
 2026-10-26: User approved trying color matching, edge-aware clean sample selection,
 and a narrow boundary blend after showing visible joins without blur or overlays.
@@ -75,3 +75,13 @@ Remaining acceptance: user comparison on the actual scene and moving video,
 particularly seam visibility, contour distortion and temporal shimmer. The
 feature remains Review pending that visual assessment.
 Evidence: `assets/VP-0217/reconstruction-seams-20261026/`.
+## Live rejection and stability revision - 2026-10-26
+
+User rejects the first trial: substantial shimmer and inconsistent reconstruction.
+Priority is consistent reconstruction and subtly wider blending. Reopen implementation
+on the existing clean feature worktree; freshly verified GitHub default/latest beta
+is still v1.4.02-beta at 81ac960f. Preserve the rejected trial as comparison evidence.
+Remove image-dependent donor steering and color scoring, which can change sampling
+locations/weights with small frame differences. Replace with fixed normalized spatial
+sampling and a slightly wider internal border transition. Add actual GPU multi-frame
+motion/perturbation coverage; still-image contour quality is insufficient acceptance.
