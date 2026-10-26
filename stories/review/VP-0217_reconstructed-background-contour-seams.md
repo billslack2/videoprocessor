@@ -1,10 +1,10 @@
 # VP-0217 - Improve reconstructed subtitle background color and contour seams
 
 ## Status
-In Progress
+Review
 
-Current revision: 301dd70 fixed-sampling trial, ready for visual validation after
-the first trial was rejected for shimmer. See the stability revision evidence below.
+Current revision: f766f1d5 adds the accepted stable blend as a separate choice.
+Original surround behavior is restored; existing configurations retain their results.
 
 2026-10-26: User approved trying color matching, edge-aware clean sample selection,
 and a narrow boundary blend after showing visible joins without blur or overlays.
@@ -141,3 +141,25 @@ behavior. Fresh worktree E:\codex\videoprocessor\reconstruction-stable-option-20
 starts from freshly fetched v1.4.02-beta at 87f61f77d3d95ddbfc1eeae343501d763d49e80b.
 Source f766f1d531a336354686b9417a0a00c1df8826f0 on codex/reconstruction-stable-option-20261026.
 Release build and both-option validation underway.
+
+## Separate option ready - 2026-10-26
+
+Original Blend surrounding picture (surround) is restored verbatim from beta.
+Stable blend surrounding picture (stable_surround) is a fourth dropdown choice.
+Existing saved surround configurations retain their original behavior; stable is opt-in.
+Source f766f1d531a336354686b9417a0a00c1df8826f0 is committed and pushed.
+
+Full clean x64 Release build passed. All 87 selected native/GPU tests passed,
+including both modes for donor rejection, source cleanup and SDR/PQ/HLG composition.
+Both Config save/reopen and retired-temporal preservation tests passed.
+The motion/noise regression reports temporal gain 0.996094 and zero excess.
+Warmed synthetic 4K preparation means: original surround 0.833710 ms and stable
+0.909475 ms. These are bounded synthetic timings, not live playback guarantees.
+
+Isolated trial: E:\codex\reconstruction-fill-options-trial-20261026.
+TRY-STABLE-BLEND.cmd selects the new stable option; TRY-ORIGINAL-BLEND.cmd selects
+original surround. Both copied states select Clear / Yellow, with prior states
+and configuration backed up. Manifest runtime hashes match the Release build.
+The installed player and settings remain unchanged. No merge or release performed.
+Remaining acceptance: user validation of the separate choice in actual playback.
+Evidence: assets/VP-0217/separate-option-f766f1d5-20261026/.

@@ -1,0 +1,115 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport [< 1 ms]
+  Passed DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup [< 1 ms]
+  Passed ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture [< 1 ms]
+  Passed GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation [< 1 ms]
+  Passed GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars [< 1 ms]
+  Passed LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback [< 1 ms]
+  Passed RejectsTooTallCueAndInvalidInsetsRatherThanClippingText [< 1 ms]
+  Passed HoldConfigurationValidatesMillisecondsInSubtitleProfiles [15 ms]
+  Passed NearBarConfigurationValidatesSourcePixelRange [9 ms]
+  Passed TopBarMovesEntirePaddedCueDownIntoPicture [< 1 ms]
+  Passed RejectsMissingBarInvalidPictureAndOppositeBarCue [< 1 ms]
+  Passed DestinationWinsOverlapAndUncoveredSourceClears [< 1 ms]
+  Passed WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines [< 1 ms]
+  Passed ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint [< 1 ms]
+  Passed MeasuredSourceCardCleanupIsIndependentOfDisplayPadding [< 1 ms]
+  Passed MovePreservesSizeAndReachesTheActivePictureBoundary [< 1 ms]
+  Passed PaddingClipsEveryRasterEdgeWithoutOverflow [< 1 ms]
+  Passed PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding [< 1 ms]
+  Passed PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue [< 1 ms]
+  Passed PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss [< 1 ms]
+  Passed PaddingStopsBeforeNearbyUnclaimedGlyphRows [< 1 ms]
+  Passed DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation [< 1 ms]
+  Passed PlacementNeverSurvivesLostCueOrFreshBarAuthority [< 1 ms]
+  Passed PlacementFreezesBarFringeButResetsForNewCueOrContext [< 1 ms]
+  Passed LegacyGeometryIsPreservedButIgnored [48 ms]
+  Passed AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents [< 1 ms]
+  Passed IndependentPaddingAndInsetChangesInvalidateCachedPlacement [< 1 ms]
+  Passed ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource [< 1 ms]
+  Passed ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable [< 1 ms]
+  Passed SubtitlePreviewRequiresControlShiftT [< 1 ms]
+  Passed SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture [< 1 ms]
+  Passed MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster [< 1 ms]
+  Passed SubtitlePreviewCycleAndResyncRestoreNormalConfiguration [< 1 ms]
+  Passed NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary [< 1 ms]
+  Passed SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel [< 1 ms]
+  Passed DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership [< 1 ms]
+  Passed NearBarPlacementDoesNotPullGlyphsTowardEitherBar [< 1 ms]
+  Passed NearBarBackingCoversGapWithoutEnlargingGlyphCapture [< 1 ms]
+  Passed GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation [< 1 ms]
+  Passed RelocationOverridesClassicHandlingThroughoutHotkeyCycle [< 1 ms]
+  Passed GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement [< 1 ms]
+  Passed GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages [< 1 ms]
+  Passed GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded [< 1 ms]
+  Passed GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics [< 1 ms]
+  Passed GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement [< 1 ms]
+  Passed ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding [< 1 ms]
+  Passed GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames [< 1 ms]
+  Passed DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale [< 1 ms]
+  Passed GlyphPaddingScalesWithLineHeightNotMultilineHeight [< 1 ms]
+  Passed ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping [< 1 ms]
+  Passed SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately [< 1 ms]
+  Passed MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture [< 1 ms]
+  Passed CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping [< 1 ms]
+  Passed AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture [< 1 ms]
+  Passed PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs [< 1 ms]
+  Passed MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache [< 1 ms]
+  Passed NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter [< 1 ms]
+  Passed DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture [12 ms]
+  Passed CenteredLargeCueKeepsLargestFittingSymmetricMargins [< 1 ms]
+  Passed FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay [< 1 ms]
+  Passed CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks [< 1 ms]
+  Passed PictureIntrusionDisablesFloatUntilCueChanges [< 1 ms]
+  Passed FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale [< 1 ms]
+  Passed TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema [< 1 ms]
+  Passed TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge [< 1 ms]
+  Passed MeasuredCoverageClipsOnlyDisplayAtVisibleViewport [< 1 ms]
+  Passed CoverageMarginProtectsMaximumRadiusAtViewportSides [< 1 ms]
+  Passed FreshCardCoverageRecentersVerticallyAndRetainsHorizontalAnchor [< 1 ms]
+  Passed FinalBackgroundCentersTextAfterReservingConfiguredEdgePixels [2 ms]
+  Passed MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction [< 1 ms]
+  Passed FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText [< 1 ms]
+  Passed FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges [< 1 ms]
+  Passed FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary [4 ms]
+  Passed BackingFootprintReleasesOnCueAndContextChanges [< 1 ms]
+  Passed BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow [< 1 ms]
+  Passed StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery [< 1 ms]
+  Passed VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption [< 1 ms]
+  Passed TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity [< 1 ms]
+  Passed TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames [< 1 ms]
+  Passed SurroundFillPreservesSplitCompositionAndTransferFunctions [1 m 46 s]
+  Passed SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars [29 s]
+spatial render mode=0 wall_ms=11777.172500
+spatial render mode=2 wall_ms=1.006200
+spatial render mode=2 wall_ms=1.071000
+spatial render mode=0 wall_ms=0.826500
+spatial render mode=2 wall_ms=1.081900
+spatial render mode=2 wall_ms=2.434200
+spatial render mode=0 wall_ms=0.865500
+spatial render mode=3 wall_ms=0.685700
+spatial render mode=3 wall_ms=1.419500
+spatial render mode=0 wall_ms=1.088300
+spatial render mode=3 wall_ms=0.801700
+spatial render mode=3 wall_ms=0.858200
+  Passed SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors [11 s]
+contour top=0 mirror_mae=0.050365 surround_mae=0.040881 seam_mae=0.012541
+contour top=1 mirror_mae=0.048600 surround_mae=0.040881 seam_mae=0.012541
+  Passed SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars [13 s]
+4K warmed full preparation fill=0 mean_wall_ms=0.600040
+4K warmed full preparation fill=2 mean_wall_ms=0.833710
+4K warmed full preparation fill=3 mean_wall_ms=0.909475
+  Passed SurroundFill4KPreparationCost [11 s]
+moving texture worst temporal gain=0.996094 excess=0.000000
+  Passed SurroundFillDoesNotAmplifyMovingTextureOrNoise [11 s]
+  Passed TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination [10 s]
+  Passed SubtitleSpatialCleanupModesValidateWithoutChangingLegacyChoices [< 1 ms]
+Results File: E:\codex\videoprocessor\reconstruction-stable-option-20261026\TestResults\reconstruction-option-regression.trx
+
+Test Run Successful.
+Total tests: 87
+     Passed: 87
+ Total time: 3.2612 Minutes

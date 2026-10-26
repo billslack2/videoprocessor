@@ -1,0 +1,12 @@
+Source: f766f1d531a336354686b9417a0a00c1df8826f0
+Base: v1.4.02-beta at 87f61f77d3d95ddbfc1eeae343501d763d49e80b
+Branch: codex/reconstruction-stable-option-20261026
+Original subtitleSurroundingPicture function compared exactly to fetched beta: MATCH.
+Stable implementation independently dispatched for cleanup_fill: stable_surround (mode 3).
+Existing cleanup_fill: surround continues selecting original function (mode 2).
+Complete x64 Release solution build: PASS.
+Configuration save/reopen and retired temporal compatibility tests: PASS.
+Trial: E:\codex\reconstruction-fill-options-trial-20261026
+TRY-STABLE-BLEND.cmd / TRY-ORIGINAL-BLEND.cmd use copied Clear / Yellow configs.
+Installed binaries, config and state unchanged. No merge or release performed.
+87 native/GPU regressions passed. Moving-texture temporal gain 0.996094; excess 0.000000. Warmed 4K preparation means: original surround 0.833710 ms; stable 0.909475 ms (synthetic benchmark only).
