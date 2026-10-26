@@ -4,6 +4,30 @@
 
 Review
 
+2026-10-25 PR #204 merged at the user's explicit request into current beta
+`v1.4.02-beta` as `81ac960fbd62619374fba1c16630b8feac364d59`.
+Tested feature head `6f6c0d2e58c2ea732bbe192ef5c7261d8df7dbbb`; unchanged
+integration base `8c4537462bbabd6ce07ba3e9ffd9be9bc8745492`. The merged source
+tree is identical to the tested feature. Existing clean x64 Release build
+passed with zero errors; recorded artifact hashes and generated host/renderer
+identity were rechecked. A fresh focused suite passed all 156 cadence, motion,
+queue, telemetry, temporal-ledger and reset tests. Guarded Prepare/Merge
+verified exact head/base and GitHub check state. This authorized merge
+supersedes the historical draft/no-merge statements below.
+
+The evening recurrence was on deployed `934489bb`, whose Config-only lineage
+omitted the earlier locally deployed #204 fix. Direct source and ancestry
+comparison confirmed the omission. Smooth Motion was Auto but bypassed in the
+captured session; every-refresh owned cadence. This does not establish a failure
+of #204 while present. Detailed incident logs remain local.
+
+Future builds carrying the current Config/UI work must rebase onto this beta
+or newer and verify that merge `81ac960f` is an ancestor before building. The
+existing Config worktree is preserved. This merge did not deploy or restart VP;
+the running installation still requires a separately requested build/deployment.
+Remain Review for continued hardware and subtitle/profile-transition qualification.
+[Merge validation](../assets/VP-0211/pr204-merge-20261025/validation.json).
+
 2026-10-25 positive live checkpoint through 14:44:33: user reports OSD and
 viewing look good and will continue visual testing. Matching clean host/renderer
 62122309 remains active, every-refresh on, Motion off, source/display ~59.941 Hz.

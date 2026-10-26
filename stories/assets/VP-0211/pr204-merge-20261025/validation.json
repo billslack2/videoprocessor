@@ -1,0 +1,16 @@
+{
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/204",
+  "mergeCommit": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "testedCommit": "6f6c0d2e58c2ea732bbe192ef5c7261d8df7dbbb",
+  "baseCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "mergedTreeEqualsTestedTree": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "existingBuildErrors": 0,
+  "freshFocusedTests": {
+    "passed": 156,
+    "failed": 0
+  },
+  "deployed": false,
+  "hardwareQualification": "Review"
+}
