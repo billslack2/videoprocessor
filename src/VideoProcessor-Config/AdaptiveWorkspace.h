@@ -204,8 +204,7 @@ public:
         advancedToggle_ = new QPushButton(QStringLiteral("Advanced tone mapping"));
         advancedToggle_->setStyleSheet(QStringLiteral("QPushButton:checked { background: #164668; border-color: #49b6ff; color: #e9f5ff; }"));
         advancedToggle_->setCheckable(true); advancedToggle_->setAccessibleName(QStringLiteral("Show advanced tone mapping charts and focus the workspace")); advancedToggle_->hide();
-        restore_ = new QPushButton(QStringLiteral("Restore panels")); restore_->hide();
-        tools->addWidget(advancedToggle_); tools->addWidget(restore_); content->addWidget(toolbar);
+        tools->addWidget(advancedToggle_); content->addWidget(toolbar);
         editors_ = new QSplitter(Qt::Horizontal); editors_->setObjectName(QStringLiteral("workspaceEditors")); editors_->setChildrenCollapsible(false);
         content->addWidget(editors_, 1); root_->addWidget(rail_); root_->addWidget(dock_); root_->addWidget(editorHost, 1); rail_->hide();
         drawer_ = new QFrame(this); drawer_->setObjectName(QStringLiteral("profileDrawer")); drawer_->setFrameShape(QFrame::StyledPanel);
@@ -217,7 +216,6 @@ public:
         connect(railExpand_, &QToolButton::clicked, this, [this] { setManualExpanded(true); });
         connect(drawerToggle_, &QToolButton::clicked, this, [this] { if (drawerOpen_) closeProfileDrawer(); else openProfileDrawer(); });
         connect(advancedToggle_, &QPushButton::toggled, this, [this](bool active) { setAdvancedFocus(active); });
-        connect(restore_, &QPushButton::clicked, this, [this] { restorePanels(); });
     }
     ~AdaptiveProfileWorkspace() override { if (qApp) qApp->removeEventFilter(this); }
     void addWidget(QWidget* widget)
@@ -269,7 +267,6 @@ public:
             if (chart)
             {
                 advancedToggle_->setObjectName(QStringLiteral("workspaceAdvancedToggle"));
-                restore_->setObjectName(QStringLiteral("workspaceRestorePanels"));
                 advancedToggle_->show(); scroll->hide();
             }
         }
@@ -279,6 +276,8 @@ public:
     {
         if (editors_->count() < 2 || advanced_ == active) return;
         advanced_ = active; restored_ = false;
+        advancedToggle_->setText(active ? QStringLiteral("Basic tone mapping") : QStringLiteral("Advanced tone mapping"));
+        advancedToggle_->setAccessibleName(active ? QStringLiteral("Return to basic tone mapping") : QStringLiteral("Show advanced tone mapping"));
         { const QSignalBlocker blocker(advancedToggle_); advancedToggle_->setChecked(active); }
         if (active) autoCollapsed_ = requestedExpanded_;
         else autoCollapsed_ = false;
@@ -413,7 +412,6 @@ private:
             editors_->widget(i)->setMinimumHeight(advanced_ && !horizontal ? 120 : 70);
         }
         if (changingOrientation) editors_->setSizes({ horizontal ? editorWidth / 2 : 180, horizontal ? editorWidth / 2 : 180 });
-        restore_->setVisible(advanced_ && !restored_);
         setProperty("profilesExpanded", expanded); setProperty("workspaceMode", advanced_ ? horizontal ? "horizontal" : "stacked" : "settings");
         if (focus && !expanded && (focus == profiles_ || profiles_->isAncestorOf(focus)) && !drawerOpen_) railExpand_->setFocus(Qt::OtherFocusReason);
         if (drawerOpen_) positionDrawer();
@@ -428,7 +426,7 @@ private:
     QListWidget* list_ = nullptr;
     WorkspaceProfileLabel* selected_ = nullptr;
     QToolButton *railExpand_ = nullptr, *drawerToggle_ = nullptr, *dockToggle_ = nullptr, *drawerPin_ = nullptr, *drawerClose_ = nullptr;
-    QPushButton *advancedToggle_ = nullptr, *restore_ = nullptr;
+    QPushButton *advancedToggle_ = nullptr;
     QSplitter* editors_ = nullptr;
     QString noun_ = QStringLiteral("profiles");
     bool requestedExpanded_ = true, autoCollapsed_ = false, advanced_ = false, restored_ = false;

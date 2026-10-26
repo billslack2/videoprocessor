@@ -11,7 +11,7 @@
 // Normalized section/key names, in original file order. No disk writes here.
 //
 // High defaults and explicit Auto resets can be written as concrete values.
-// Processing overrides retain their original Rendering owner. Legacy preset
+// Processing settings migrate to their visible Scaling owner. Legacy preset
 // fallbacks are preserved when flattening them would change independent Scaling
 // precedence. The editor and runtime share this lossless plan; neither load writes
 // the user file. Nothing here selects ewa_lanczos4sharpest.
@@ -152,32 +152,9 @@ namespace QualityProfileMigration
         return false;
     }
 
-    inline Plan Build(const Sections& sections, const std::vector<std::string>& order)
+    inline Plan BuildPresetDefaults(const Sections& sections, const std::vector<std::string>& order)
     {
         Plan plan;
-        // VP-0215: a Rendering scaler that equals every independent Scaling
-        // selection has no effect. Remove only provably redundant overrides.
-        // Conflicts retain their owner and are surfaced on the Scaling page;
-        // copying selectors across independent families would change behavior.
-        auto canonicalScaling = Variants(order, "vprenderer.scaling");
-        if (sections.count("vprenderer.scaling")) canonicalScaling.insert(canonicalScaling.begin(), "vprenderer.scaling");
-        auto legacyRendering = Variants(order, "vprenderer");
-        if (sections.count("vprenderer")) legacyRendering.insert(legacyRendering.begin(), "vprenderer");
-        if (!canonicalScaling.empty()) {
-            for (const auto& owner : legacyRendering) for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler" }) {
-                const std::string legacy = Lower(Get(sections, owner, key));
-                if (legacy.empty() || legacy == "auto") continue;
-                const std::string base = Lower(Get(sections, canonicalScaling.front(), key));
-                bool redundant = !base.empty() && base != "auto";
-                for (const auto& selected : canonicalScaling) {
-                    std::string actual = Lower(Get(sections, selected, key));
-                    if (actual.empty()) actual = base;
-                    redundant = redundant && actual == legacy;
-                }
-                if (redundant) plan.removals.emplace_back(owner, key);
-                else plan.warnings.push_back("Legacy Rendering scaler override retained: " + owner + "." + key + "; resolve it on Scaling.");
-            }
-        }
         // Preserve the complete legacy fallback relationship, including Auto
         // resets, rather than attempting a lossy conversion across selections.
         if (NeedsPresetCompatibility(sections)) return plan;
@@ -243,6 +220,106 @@ namespace QualityProfileMigration
             }
             remove(section, "quality");
         }
+        return plan;
+    }
+
+    // VP-0215: Scaling is the sole processing owner. Load old Rendering values
+    // into visible Scaling profiles, retaining the old higher-precedence value.
+    // This plan changes memory only; the editor persists it on Save/Apply.
+    inline Plan Build(const Sections& sections, const std::vector<std::string>& order)
+    {
+        Plan plan = BuildPresetDefaults(sections, order);
+        Sections work = sections;
+        std::vector<std::string> names = order;
+        for (const auto& name : plan.newSections) {
+            const auto normalized = Lower(name); work[normalized]; names.push_back(normalized);
+        }
+        for (const auto& item : plan.sets) work[std::get<0>(item)][std::get<1>(item)] = std::get<2>(item);
+        for (const auto& item : plan.removals) work[item.first].erase(item.second);
+        auto rendering = Variants(names, "vprenderer");
+        auto scaling = Variants(names, "vprenderer.scaling");
+        if (work.count("vprenderer")) rendering.insert(rendering.begin(), "vprenderer");
+        if (work.count("vprenderer.scaling")) scaling.insert(scaling.begin(), "vprenderer.scaling");
+        if (rendering.empty()) return plan;
+        const auto set = [&](const std::string& owner, const std::string& key, const std::string& value) {
+            if (Get(work, owner, key) == value) return;
+            work[owner][key] = value; plan.sets.emplace_back(owner, key, value);
+        };
+        const auto quality = [&](const std::string& owner) {
+            std::string value = Lower(Get(sections, owner, "quality"));
+            if (value.empty()) value = Lower(Get(sections, rendering.front(), "quality"));
+            return IsPreset(value) ? value : std::string("high");
+        };
+        if (scaling.empty()) {
+            scaling.push_back("vprenderer.scaling.default");
+            plan.newSections.push_back("vprenderer.scaling.Default");
+            work[scaling.front()]; names.push_back(scaling.front());
+            for (const auto& key : ScalingPresetKeys())
+                set(scaling.front(), key, key == "dithering" ? "blue_noise" : PresetValue(quality(rendering.front()), key));
+            set(scaling.front(), "display_bit_depth", "output");
+        }
+        const auto processing = [&](const std::string& owner) {
+            Settings values;
+            for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler", "deband_strength", "dithering", "display_bit_depth" }) {
+                std::string raw = Lower(Get(work, owner, key));
+                if (raw.empty() && std::string(key) == "deband_strength") {
+                    raw = Lower(Get(work, owner, "deband"));
+                    if (raw == "on" || raw == "true" || raw == "yes" || raw == "1") raw = "default";
+                    else if (raw == "false" || raw == "no" || raw == "0") raw = "off";
+                }
+                if (raw.empty()) continue;
+                if (std::string(key) == "dithering") {
+                    if (raw == "auto" || raw == "on" || raw == "true") raw = "blue_noise";
+                    else if (raw == "false") raw = "off";
+                } else if (raw == "auto" || (std::string(key) == "downscaler" && (raw == "none" || raw == "ewa_lanczos"))) {
+                    if (const auto* value = PresetValue(quality(owner), key)) raw = value;
+                    else if (std::string(key) == "chroma_upscaler") raw = "bicubic";
+                }
+                values[key] = raw;
+            }
+            return values;
+        };
+        for (size_t index = 0; index < rendering.size(); ++index) {
+            const auto& source = rendering[index];
+            const auto values = processing(source);
+            if (values.empty()) continue;
+            std::string target = scaling.front();
+            if (index == 0) {
+                // Rendering defaults used to override every independently
+                // selected Scaling profile. Preserve that precedence on move.
+                for (const auto& selected : scaling)
+                    for (const auto& item : values) set(selected, item.first, item.second);
+                for (const char* key : { "shortcut", "cycle_shortcut", "when" }) {
+                    const auto saved = Get(work, source, key);
+                    if (!saved.empty() && Get(work, scaling.front(), key).empty()) set(scaling.front(), key, saved);
+                }
+            } else {
+                const auto suffix = source.substr(std::string("vprenderer.").size());
+                target = "vprenderer.scaling." + suffix;
+                bool import = true;
+                if (!work.count(target)) {
+                    bool redundant = true;
+                    for (const auto& item : values)
+                        redundant = redundant && Lower(Get(work, scaling.front(), item.first)) == item.second;
+                    if (!redundant) {
+                        work[target]; plan.newSections.push_back(target); scaling.push_back(target); names.push_back(target);
+                    } else import = false;
+                }
+                if (import) {
+                    for (const auto& item : values) set(target, item.first, item.second);
+                    for (const char* key : { "label", "shortcut", "cycle_shortcut", "when" }) {
+                        const auto saved = Get(work, source, key);
+                        if (!saved.empty() && Get(work, target, key).empty()) set(target, key, saved);
+                    }
+                }
+            }
+            for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler", "deband", "deband_strength", "dithering", "display_bit_depth" })
+                if (work[source].erase(key)) plan.removals.emplace_back(source, key);
+        }
+        const auto finish = BuildPresetDefaults(work, names);
+        plan.newSections.insert(plan.newSections.end(), finish.newSections.begin(), finish.newSections.end());
+        plan.sets.insert(plan.sets.end(), finish.sets.begin(), finish.sets.end());
+        plan.removals.insert(plan.removals.end(), finish.removals.begin(), finish.removals.end());
         return plan;
     }
 

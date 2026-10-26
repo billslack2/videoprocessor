@@ -359,20 +359,24 @@ namespace ConfigEditorCore
 	}
 
 	bool ConfigDocument::RemoveKnown(const std::string& wantedSection,
-		const char* key)
+		const char* key, bool preserveComment)
 	{
         size_t line = 0, start = 0, end = 0;
         bool removed = false;
         if (Find(wantedSection, key, line, start, end))
         {
-            lines.erase(lines.begin() + line);
+            const auto comment = StripComment(lines[line]).size();
+            if (preserveComment && comment < lines[line].size()) lines[line] = lines[line].substr(comment);
+            else lines.erase(lines.begin() + line);
             removed = true;
         }
         const std::string alias = RendererProfileConfig::SettingAlias(
             wantedSection, ConfigFile::NormalizeName(key));
         if (!alias.empty() && Find(wantedSection, alias, line, start, end))
         {
-            lines.erase(lines.begin() + line);
+            const auto comment = StripComment(lines[line]).size();
+            if (preserveComment && comment < lines[line].size()) lines[line] = lines[line].substr(comment);
+            else lines.erase(lines.begin() + line);
             removed = true;
         }
         return removed;

@@ -7,9 +7,9 @@ on beta 8c4537462bbabd6ce07ba3e9ffd9be9bc8745492.
 | --- | --- | --- |
 | Image upscaler | EWA Lanczos 4 sharpest, EWA Lanczos sharp, EWA Lanczos, Lanczos, Catmull-Rom, Bicubic, Gaussian, Oversample, Bilinear, Nearest, GPU sampling | EWA Lanczos sharp for new High defaults; 4 sharpest remains opt-in. Preserve old Fast/Balanced policy and explicit values. |
 | Image downscaler | Lanczos, Mitchell, Catmull-Rom, Bicubic, Gaussian, Hermite, Bilinear, Box, GPU sampling | Retain existing Hermite fallback and explicit user choices for this trial. No new VP cost or visual benchmark is claimed. |
-| Chroma upscaler | EWA Lanczos sharp, EWA Lanczos, Lanczos, Bicubic, Bilinear | Retain Bicubic fallback and explicit EWA choices. Visible Chroma scaling section. RGB needs no reconstruction. |
+| Chroma upscaler | EWA Lanczos sharp, EWA Lanczos, Lanczos, Bicubic, Bilinear | Retain Bicubic fallback and explicit EWA choices. Chroma is in the combined Scaling section. RGB needs no reconstruction. |
 | Sigmoid upscaling | On, Off | Existing On fallback; reset removes only this profile's override. |
-| Dithering | Blue noise, Ordered (fixed), White noise, Off | Blue noise first/recommended. Auto/On/true mean Blue noise even with old Fast. Ordered LUT/error diffusion remain file-compatible, nonselectable legacy values. |
+| Dithering | Blue noise, Ordered (fixed), White noise, Off | Blue noise first, without a recommendation suffix. Auto/On/true mean Blue noise even with old Fast. Ordered LUT/error diffusion remain file-compatible, nonselectable legacy values. |
 | Debanding | Standard, Light, Off | Existing Standard High fallback. Retain deliberate Off/Light. |
 | Smooth motion mode | Off, Cadence mismatch only, Always | Off remains default. Preserve actual auto cadence behavior under a descriptive name. |
 | Frame mixer | Clamped Mitchell, Hermite, Linear, Oversample | Oversample remains default independently of ordering. Cubic is legacy-only: the old null-mixer behavior is preserved. Enabling true Cubic exposed an opaque-subtitle regression, so it is omitted from selectable choices. Motion quality tradeoffs depend on cadence and blur tolerance. |
@@ -22,14 +22,23 @@ selected value; file omission remains supported for inheritance. Concrete inheri
 override action removes the local value; selecting the same inherited value
 explicitly pins it. True adaptive policies remain intact.
 
-Image scaler controls exist only on Scaling. The local Rendering debanding,
-dithering and depth overrides are retained. Provably redundant Rendering image
-scalers (equal under every Scaling selection) are removed in the shared parser/
-editor migration. Conflicts retain their runtime owner and get a visible notice
-on Scaling plus an explicit Use Scaling settings action. This does not copy
-shortcuts/rules between independent profile families or silently change their
-precedence. The trial does not claim full automatic conversion of conflicting
-legacy files.
+Scaling / Quality now has one combined Scaling section for image and chroma
+controls, plus Debanding / Dithering. Tone Mapping replaces Rendering / DTM;
+its Processing overrides section is removed completely. Existing Rendering
+processing values load into canonical Scaling profiles, merging by name and
+using the old higher-precedence values on conflict. Default Rendering processing
+values are applied to existing Scaling profiles because they previously took
+precedence over those profiles. Nonredundant named values get visible Scaling
+profiles; applicable labels/rules/shortcuts are copied when not already present.
+Legacy error-diffusion values are retained, never reintroduced as selectable
+methods. Inline comments survive removal of the old entries. Loading/cancelling
+does not write the file; Save/Apply persists the migration with a backup.
+Independent profile selections require review after moving ownership; no exact
+mapping is promised for previously conflicting independent selectors.
+
+Advanced tone mapping has one toggle. It reads Advanced tone mapping in basic
+mode and Basic tone mapping while expanded. Manual navigation/profile docking
+choices are preserved; there is no additional Restore panels button.
 
 Actual defaults, quality ordering and cost differ: the list is not a benchmark
 ranking. The user requested 4 sharpest ahead of sharp; representative live VP

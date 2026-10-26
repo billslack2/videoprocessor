@@ -5483,9 +5483,12 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
         if (auto* candidate = dynamic_cast<AdaptiveNavigationHost*>(widget)) navigation = candidate;
     require(workspace && navigation, "Dock hosts missing");
     auto* advanced = requireControl<QAbstractButton>(window, "workspaceAdvancedToggle");
+    const bool previousCurves = requireControl<QToolButton>(window,"rendererSection.toneCurves")->isChecked();
     auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
     require(workspace->isProfilesExpanded() && navigation->isPanelExpanded(), "Normal workspace must start docked");
+    require(advanced->text()=="Advanced tone mapping","Basic state has the wrong toggle label");
     advanced->click(); events();
+    require(advanced->text()=="Basic tone mapping"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
     require(workspace->isAdvancedFocus() && !workspace->isProfilesExpanded() && !navigation->isPanelExpanded(),
         "Advanced toggle did not collapse both left panels");
     auto* toneSection = requireControl<QToolButton>(window, "rendererSection.toneMapping");
@@ -5506,8 +5509,9 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     advanced->click(); events();
     require(navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
         "Leaving advanced focus overwrote a manual panel choice");
+    require(advanced->text()=="Advanced tone mapping"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
     advanced->click(); events();
-    requireControl<QAbstractButton>(window, "workspaceRestorePanels")->click(); events();
+    requireControl<QAbstractButton>(window, "settingsRailExpand")->click(); events();
     require(workspace->isAdvancedFocus() && navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
         "Restore panels changed manual profile choice or hid advanced charts");
     auto* drawer = requireControl<QAbstractButton>(window, "config.vprenderer.profiles.drawerToggle");
@@ -7877,10 +7881,13 @@ void testConcreteVideoChoicesAndCanonicalScaling()
     require(!window.findChild<QComboBox*>("config.vprenderer.downscaler"),"Rendering still has duplicate Downscaler");
     require(!window.findChild<QComboBox*>("config.vprenderer.sigmoid"),"Rendering still has duplicate Sigmoid");
     for(const char* key:{"dithering","deband_strength","display_bit_depth"})
-        require(window.findChild<QComboBox*>(QString("config.vprenderer.")+key),"Unrelated Rendering override was removed");
+        require(!window.findChild<QComboBox*>(QString("config.vprenderer.")+key),"Tone Mapping still has a processing override");
     window.selectPage(17);window.resize(1200,900);window.show();QApplication::processEvents();
-    auto* chroma=requireControl<QToolButton>(window,"rendererSection.chromaScaling");
-    require(chroma->isVisible(),"Chroma scaling heading is not visible");chroma->setChecked(true);
+    auto* combined=requireControl<QToolButton>(window,"rendererSection.scaling");
+    require(combined->text()=="Scaling","Scaling section is not combined");combined->setChecked(true);
+    require(!window.findChild<QToolButton*>("rendererSection.chromaScaling"),"Separate Chroma accordion remains");
+    require(!window.findChild<QToolButton*>("rendererSection.processingOverrides"),"Processing overrides remains on Tone Mapping");
+    require(requireControl<QToolButton>(window,"rendererSection.debandingDithering")->text()=="Debanding / Dithering","Debanding heading is not readable");
     require(requireControl<QComboBox>(window,"config.vprenderer.scaling.chroma_upscaler")->isVisible(),"Chroma algorithm is hidden");
     auto* dither=requireControl<QComboBox>(window,"config.vprenderer.scaling.dithering");
     QStringList offered;
@@ -7916,7 +7923,14 @@ void testConcreteVideoChoicesAndCanonicalScaling()
     require(legacyMixer->currentIndex()<0&&legacyMixer->placeholderText().contains("Cubic (no mixing)"),"Legacy Cubic was silently replaced or offered as supported");
     require(readBytes(legacyPath)==legacyBytes,"Loading legacy Cubic changed the saved config");
     const QString images=qEnvironmentVariable("VP_CHOICE_SCREENSHOTS");
-    if(!images.isEmpty()){QDir().mkpath(images);window.grab().save(images+"/motion.png");window.selectPage(17);QApplication::processEvents();window.grab().save(images+"/scaling.png");}
+    if(!images.isEmpty()){
+        QDir().mkpath(images);window.grab().save(images+"/motion.png");
+        window.selectPage(17);requireControl<QToolButton>(window,"rendererSection.debandingDithering")->setChecked(true);QApplication::processEvents();window.grab().save(images+"/scaling.png");
+        combined->parentWidget()->grab().save(images+"/scaling-section.png");
+        requireControl<QToolButton>(window,"rendererSection.debandingDithering")->parentWidget()->grab().save(images+"/debanding-dithering-section.png");
+        window.selectPage(2);QApplication::processEvents();window.grab().save(images+"/tone-basic.png");
+        requireControl<QAbstractButton>(window,"workspaceAdvancedToggle")->click();QApplication::processEvents();window.grab().save(images+"/tone-advanced.png");
+    }
 }
 
 void testMotionAndChromaControlsPersistAndExposeNewTab()
@@ -7990,9 +8004,9 @@ void testExplicitAutoMigrationPreservesPerProfileChoices()
     save(window);
     ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload migrated defaults");
     std::string value;
-    require(saved.TryGetString("vprenderer.default","dithering",value) && value=="off","Explicit default Off was lost");
-    require(saved.TryGetString("vprenderer.hdr","dithering",value) && value=="blue_noise","HDR Auto inherited Off");
-    require(saved.TryGetString("vprenderer.hdr","display_bit_depth",value) && value=="output","HDR Auto inherited 8-bit");
+    require(saved.TryGetString("vprenderer.scaling.default","dithering",value) && value=="off","Explicit default Off was lost");
+    require(saved.TryGetString("vprenderer.scaling.hdr","dithering",value) && value=="blue_noise","HDR Auto inherited Off");
+    require(saved.TryGetString("vprenderer.scaling.hdr","display_bit_depth",value) && value=="output","HDR Auto inherited 8-bit");
     const auto bytes=readBytes(path);
     ConfigEditorWindow reopened(path,0,true);QCoreApplication::processEvents();
     require(readBytes(path)==bytes,"Reopening Config wrote another migration");
@@ -8007,55 +8021,35 @@ void testPresetResolutionPrecedesEditorSectionMigration()
     ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload preset fixture");
     std::string value;
     require(saved.TryGetString("vprenderer.fast","quality",value) && value=="fast","Legacy Fast fallback was lost");
-    require(saved.TryGetString("vprenderer.fast","upscaler",value) && value=="AUTO","Explicit Auto reset changed owner or precedence");
+    require(saved.TryGetString("vprenderer.scaling.fast","upscaler",value) && value=="none","Explicit Auto reset changed owner or precedence");
     require(saved.TryGetString("vprenderer.default","quality",value) && value=="balanced","Legacy Balanced fallback drifted");
-    require(!saved.HasSection("vprenderer.scaling.fast"),"Editor created independently selected processing copy");
+    require(saved.HasSection("vprenderer.scaling.fast"),"Legacy Fast processing was not loaded into Scaling");
 }
 
 void testRenderingProcessingOwnershipSaveReopenAndRename()
 {
     QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
-    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create ownership fixture");
-    const QByteArray original="# keep owner comment\n[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
-        "[vprenderer.Default]\nshortcut: Ctrl+1\ndithering: off # keep deliberate choice\ndisplay_bit_depth: 8\n"
-        "[vprenderer.A]\ncycle_shortcut: Ctrl+2\ndithering: blue_noise\ndisplay_bit_depth: 10\n"
-        "[vprenderer.B]\ncycle_shortcut: Ctrl+2\ndithering: off\n"
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create processing fixture");
+    const QByteArray original="# keep owner comment\n[general]\nrenderer: VP Renderer\n"
+        "[vprenderer.Default]\ndithering: off # keep deliberate choice\ndisplay_bit_depth: 8\n"
+        "[vprenderer.HDR]\nshortcut: Ctrl+2\ndithering: blue_noise\ndisplay_bit_depth: 10\n"
         "[vprenderer.scaling.Default]\nupscaler: bilinear\n"
-        "[vprenderer.scaling.A]\nshortcut: Ctrl+3\nupscaler: lanczos\n"
         "[calibration_archive.operator_extension]\nkeep_this: exact # custom comment\n";
-    file.write(original);file.close();
-    ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();
-    require(readBytes(path)==original,"Opening Config changed user bytes");
-    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.profiles");
-    auto* dither=requireControl<QComboBox>(window,"config.vprenderer.dithering");
-    for(int row:{1,2,0,1}) {profiles->setCurrentRow(row);QCoreApplication::processEvents();
-        require(dither->currentData().toString()==(row==1?"blue_noise":"off"),"Processing override did not follow Rendering selection");}
-    selectData(dither,"error_diffusion_sierra3");save(window);
-    const auto savedBytes=readBytes(path);
-    require(savedBytes.contains("# keep owner comment") && savedBytes.contains("# keep deliberate choice") &&
-        savedBytes.contains("keep_this: exact # custom comment"),"Migration changed user comments or unknown content");
-    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot reload ownership fixture");
-    std::string value;
-    require(saved.TryGetString("vprenderer.a","dithering",value) && value=="error_diffusion_sierra3","Saved override left its Rendering owner");
-    require(!saved.TryGetString("vprenderer.scaling.a","dithering",value),"Existing Scaling name collision stole the override");
-    ConfigEditorWindow reopened(path,0,true);QCoreApplication::processEvents();
-    auto* list=requireControl<QListWidget>(reopened,"config.vprenderer.profiles");list->setCurrentRow(1);
-    auto* name=requireControl<QLineEdit>(reopened,"config.vprenderer.name");name->setText("Renamed");
-    QMetaObject::invokeMethod(name,"editingFinished",Qt::DirectConnection);QCoreApplication::processEvents();save(reopened);
-    ConfigFile renamed;require(renamed.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load renamed profile");
-    RendererProfileConfig::Model model;std::string error;require(RendererProfileConfig::Read(renamed,model,error),error.c_str());
-    bool found=false;for(const auto& entry:model.profiles)if(entry.second.group=="display") {
-        const auto setting=entry.second.settings.find("dithering");
-        if(setting!=entry.second.settings.end()&&setting->second=="error_diffusion_sierra3")found=true;
-    }
-    require(found,"Renaming discarded the processing override");
-    auto* renamedProfiles=requireControl<QListWidget>(reopened,"config.vprenderer.profiles");
-    renamedProfiles->setCurrentRow(0);QCoreApplication::processEvents();
-    auto* resetDither=requireControl<QPushButton>(reopened,"config.vprenderer.dithering.reset_override");
-    require(resetDither->isEnabled(),"Default profile cannot reset its override back to Scaling");
-    resetDither->click();save(reopened);
-    ConfigFile cleared;require(cleared.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load cleared override");
-    require(!cleared.TryGetString("vprenderer.default","dithering",value),"Clearing an override recreated it on Save");
+    file.write(original);file.close();ConfigEditorWindow window(path,0,true);
+    require(readBytes(path)==original,"Opening Config wrote user bytes");
+    require(!window.findChild<QComboBox*>("config.vprenderer.dithering"),"Tone Mapping retained the old control");
+    auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.scaling.profiles");
+    auto* dither=requireControl<QComboBox>(window,"config.vprenderer.scaling.dithering");
+    require(profiles->count()==2,"Old processing choices were not loaded into Scaling");profiles->setCurrentRow(1);
+    require(dither->currentData()=="blue_noise","Migrated profile did not load its saved value");
+    selectData(dither,"white_noise");save(window);
+    const auto bytes=readBytes(path);require(bytes.contains("# keep deliberate choice")&&bytes.contains("keep_this: exact # custom comment"),"Migration dropped comments or unknown content");
+    ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot read migrated file");std::string value;
+    require(!saved.TryGetString("vprenderer.hdr","dithering",value),"Hidden Tone Mapping owner remains");
+    require(saved.TryGetString("vprenderer.scaling.hdr","dithering",value)&&value=="white_noise","Scaling edit was not saved");
+    ConfigEditorWindow reopened(path,0,true);auto* list=requireControl<QListWidget>(reopened,"config.vprenderer.scaling.profiles");list->setCurrentRow(1);
+    auto* reset=requireControl<QPushButton>(reopened,"config.vprenderer.scaling.dithering.reset_override");reset->click();
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.scaling.dithering")->currentData()=="off","Reset did not use migrated parent value");save(reopened);
 }
 
 void testRenderingProfileFileRoundTripRetainsOwnedOverrides()
@@ -8071,16 +8065,16 @@ void testRenderingProfileFileRoundTripRetainsOwnedOverrides()
     config.write("[vprenderer.Default]\ndithering: off\n");config.write(readBytes(path));config.close();
     ConfigEditorWindow editor(configPath,0,true);QCoreApplication::processEvents();save(editor);
     ConfigFile saved;require(saved.Load(configPath.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load imported profile");
-    std::string setting;require(saved.TryGetString("vprenderer.exported","dithering",setting)&&setting=="error_diffusion_sierra3","Imported override changed owner");
+    std::string setting;require(saved.TryGetString("vprenderer.scaling.exported","dithering",setting)&&setting=="error_diffusion_sierra3","Imported override changed owner");
     require(saved.TryGetString("vprenderer.exported","quality",setting)&&setting=="fast","Imported fallback was flattened");
-    require(!saved.HasSection("vprenderer.scaling.exported"),"Import created a second selected profile");
+    require(saved.HasSection("vprenderer.scaling.exported"),"Imported processing is not visible in Scaling");
 }
 
 void testRenderingMenuDuplicateExportImportPreservesLegacyOwner()
 {
     QTemporaryDir directory;const QString path=directory.filePath("VideoProcessor.cfg");
     QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot create profile-menu fixture");
-    file.write("[vprenderer.Default]\nquality: fast\ndithering: off\n[vprenderer.Child]\nshortcut: Ctrl+2\nupscaler: AUTO\n");file.close();
+    file.write("[vprenderer.Default]\nquality: fast\ndithering: off\n[vprenderer.Child]\nsdr_target_nits: 80\nshortcut: Ctrl+2\nupscaler: AUTO\n");file.close();
     ConfigEditorWindow window(path,0,true);QCoreApplication::processEvents();
     auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.profiles");profiles->setCurrentRow(1);
     auto* menu=requireControl<QPushButton>(window,"rendererProfileMenu")->menu();require(menu,"Missing profile menu");
@@ -8103,7 +8097,7 @@ void testRenderingMenuDuplicateExportImportPreservesLegacyOwner()
     require(exportedRead,(QStringLiteral("Export did not produce a readable profile: %1; status=%2; path=%3")
         .arg(error,requireControl<QLabel>(window,"configurationStatus")->text(),exportPath).toStdString()).c_str());
     const auto setting=[&](const char* key){for(const auto& item:exported.settings)if(item.first==QString::fromLatin1(key))return item.second;return QString();};
-    require(setting("quality")=="fast" && setting("dithering")=="off" && setting("upscaler")=="AUTO",
+    require(setting("quality")=="fast" && setting("dithering").isEmpty() && setting("upscaler").isEmpty(),
         "Duplicate/export lost the resolved Rendering owner or inherited preset");
     require(setting("shortcut").isEmpty() && setting("cycle_shortcut").isEmpty(),"Export duplicated live shortcuts");
     exported.section="vprenderer.Imported";require(ToneProfileFile::Write(exportPath,exported,error),error.toStdString().c_str());
@@ -8111,7 +8105,7 @@ void testRenderingMenuDuplicateExportImportPreservesLegacyOwner()
     require(profiles->count()==4,"Import did not create one independently owned Rendering profile");save(window);
     ConfigFile saved;require(saved.Load(path.toStdString(),ConfigFile::ReadPolicy::Fresh),"Cannot load menu round trip");
     std::string value;require(saved.TryGetString("vprenderer.imported","quality",value)&&value=="fast","Imported legacy preset changed");
-    require(saved.TryGetString("vprenderer.imported","dithering",value)&&value=="off","Imported processing override left its owner");
+    require(!saved.TryGetString("vprenderer.imported","dithering",value),"Imported Tone Mapping retained a hidden processing value");
     require(!saved.HasSection("vprenderer.scaling.imported"),"Import created an independently selected processing copy");
 }
 
