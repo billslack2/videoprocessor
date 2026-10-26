@@ -1,0 +1,164 @@
+{
+  "SourceCommit": "934489bb17b2b8e04b9cd259d0be8b8c99a80909",
+  "LocalConfigBase": "405cdea1987a720666b3d2a87e2c1c4e0c0ff710",
+  "BetaCommit": "8c4537462bbabd6ce07ba3e9ffd9be9bc8745492",
+  "BuildExitCode": 0,
+  "BuildLog": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\build-release.log",
+  "ConfigPassed": 8,
+  "ConfigFailed": 0,
+  "Scales": [
+    {
+      "Scale": "1",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-1-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-1-1.log"
+        }
+      ]
+    },
+    {
+      "Scale": "1.5",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-1.5-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-1.5-1.log"
+        }
+      ]
+    },
+    {
+      "Scale": "2",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-2-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\scale-final-2-1.log"
+        }
+      ]
+    }
+  ],
+  "ConfigResults": [
+    {
+      "Test": "advanced tone mapping maximizes and restores window",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-0.log"
+    },
+    {
+      "Test": "left docks restore manual choices and drawer editing",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-1.log"
+    },
+    {
+      "Test": "responsive workspaces preserve edits and fit",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-2.log"
+    },
+    {
+      "Test": "Tone mapping controls round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-3.log"
+    },
+    {
+      "Test": "Beta tone mapping controls",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-4.log"
+    },
+    {
+      "Test": "Apply OK Cancel contract",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-5.log"
+    },
+    {
+      "Test": "clean Apply notifies without saving",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-6.log"
+    },
+    {
+      "Test": "clean remote Apply uses unchanged RPC candidate",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\config-final-7.log"
+    }
+  ],
+  "NativePassed": 141,
+  "NativeFailed": 0,
+  "NativeTrx": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\native-final\\vp0215-native-final.trx",
+  "BetaTestsExitCode": 0,
+  "BetaTestsLog": "E:\\codex\\diagnostics\\vp0215-advanced-window-20261025\\verified-dpi\\beta-tests.log",
+  "RuntimeRecords": [
+    {
+      "Binary": "VideoProcessor-GUI.exe",
+      "SHA256": "636376B9A30E0CF77806605D8D77E789341360285D9C7F99C9598825C5DB4969",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "636376B9A30E0CF77806605D8D77E789341360285D9C7F99C9598825C5DB4969"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfig.exe",
+      "SHA256": "63D1B56D04423A7DDD6C837B4BF4D10D7E20E21BAF36ED9C45E08820DF96014C",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.44.35207",
+        "sha256": "63D1B56D04423A7DDD6C837B4BF4D10D7E20E21BAF36ED9C45E08820DF96014C"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfigDiscovery.dll",
+      "SHA256": "52C6355B179D353BC7771C4A3700D5AF85818B24A37FB60F17E917070B041271",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "52C6355B179D353BC7771C4A3700D5AF85818B24A37FB60F17E917070B041271"
+      }
+    },
+    {
+      "Binary": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "SHA256": "8AA91F940D1B09475EC69C66FE48B4B0EF6126A748B48270C3FABB6A5EDFE6D2",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "8AA91F940D1B09475EC69C66FE48B4B0EF6126A748B48270C3FABB6A5EDFE6D2"
+      }
+    },
+    {
+      "Binary": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "SHA256": "ABAD6E04D82A9C9C8E354850371E6095838F87F38D695C9ECFEF31339D5A0F07",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "ABAD6E04D82A9C9C8E354850371E6095838F87F38D695C9ECFEF31339D5A0F07"
+      }
+    }
+  ],
+  "PhysicalPlaybackTested": false
+}

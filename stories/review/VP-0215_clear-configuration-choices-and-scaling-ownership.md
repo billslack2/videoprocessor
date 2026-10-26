@@ -2,29 +2,52 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-25 window-size follow-up: Advanced tone mapping must maximize the
-editor window (ordinary maximized state, not borderless full-screen). Basic
-must restore the exact prior size/position and prior maximized state. The user
-clarified this before implementation. Continue the requested deployed trial
-branch at 405cdea1; discovered/fetched beta remains v1.4.02-beta at 8c453746.
-Preserve panel/section/scroll restoration and pending edits. Implement and test
-normal/repeated/already-maximized transitions, then deploy a completed matched
-x64 Release build with configuration backups and no active-file edits.
+2026-10-25 maximize/restore follow-up is implemented and deployed for user trial.
+Clean source `934489bb17b2b8e04b9cd259d0be8b8c99a80909` is committed and pushed on
+`codex/vp0215-config-choices-20261025`, continuing the requested deployed Config
+trial at 405cdea1. GitHub beta/default was rechecked and fetched as
+v1.4.02-beta at 8c4537462bbabd6ce07ba3e9ffd9be9bc8745492.
 
-Implementation checkpoint: 934489bb is committed/pushed on the existing trial
-branch. Ordinary maximize/restore, repeated entry, already-maximized placement,
-unsaved edits and Cancel/reopen now pass at 100%, 150%, 200%; the matching
-previous attempt also passed all 141 targeted native checks and beta parameters.
-The responsive/docking fixtures assumed their explicit width would override a
-maximized offscreen desktop, which is false at higher DPI. They now enter normal
-window state before testing explicit viewport sizes, independently of the new
-window-state regression. Fresh clean Release identity/validation is running;
-failed test evidence remains under vp0215-advanced-window-20261025. No failed
-attempt has been deployed.
+The user clarified ordinary maximization, with title bar/taskbar retained.
+Advanced tone mapping calls showMaximized; Basic restores the size/position and
+window state captured immediately before that Advanced click. Repeated clicks
+capture fresh placement, and an already-maximized window remains maximized
+without disturbing its native restore geometry. Cancel/target-switch rebuilds
+restore Basic placement while keeping hidden editors hidden. Existing docking,
+expanded controls, scroll, profile selection and pending edits remain covered.
+No borderless full-screen mode is introduced.
 
-Previous trial evidence follows; it remains valid for that recorded commit.
+Validation against this clean commit: completed x64 Release solution Build;
+eight focused Config regressions, including new normal/repeated/already-maximized,
+Cancel/reopen and unsaved-edit checks; maximize/restore and responsive tests at
+100%, 150%, 200% (two tests at each scale); 141 targeted native
+regressions and the beta parameter program all passed. The first GUI attempt
+caught redundant already-maximized state changes and the docking/responsive fixtures'
+assumption of a wide maximized offscreen desktop; failed evidence is retained
+locally. The final test captures placement immediately before the click, and the
+docking fixture explicitly controls its width independently of maximization.
+The earlier whole Config audit remains evidence for its recorded commit; it is
+not claimed as rerun for this narrow window behavior change.
+
+Deployed `2026-10-25T21:29:09.4490153-04:00` to `C:\Videoprocessor\vp` from the matched Release
+build. Rollback backup: `C:\Videoprocessor\vp\backup-before-vp0215-window-934489bb17b2-20261025-212908`. All five primary runtime
+identities and deployed hashes were verified. All 7
+captured active configuration/state files were backed up and stayed byte-for-byte
+unchanged; configuration edits: none. Read-only installed Scaling/Tone Mapping
+open/screenshot/exit smoke passed. Config reopened on Tone Mapping for the trial.
+Native Windows interaction and the earlier physical playback/quality acceptance
+remain for user validation; no beta merge or public release was performed.
+
+Window follow-up evidence:
+
+- [Build, focused tests, DPI cases and runtime hashes](../assets/VP-0215/window-validation.json).
+- [Deployment and preserved configuration](../assets/VP-0215/window-deployment.json).
+- [Installed editor smoke](../assets/VP-0215/window-deployed-smoke.json).
+
+Previous 405cdea1 trial evidence follows. Its configuration-choice/migration
+work is retained; this follow-up adds maximization and placement restoration.
 
 2026-10-25: The requested follow-up is implemented, tested and deployed for user
 trial. Clean source `405cdea1987a720666b3d2a87e2c1c4e0c0ff710` is pushed on
@@ -325,6 +348,8 @@ Sources: [libplacebo filter definitions](https://github.com/haasn/libplacebo/blo
 - Rename Rendering / DTM to **Tone Mapping**. Provide one **Advanced tone
   mapping** toggle that reads **Basic tone mapping** while enabled. It must
   restore the prior basic layout without a separate Restore panels button.
+  Advanced maximizes the ordinary window; Basic restores its prior size, position
+  and maximized state.
 
 ### Dithering and motion specifics already agreed
 
@@ -409,7 +434,8 @@ Do not change their applicability or introduce motion-compensated interpolation.
    LibplaceboRenderParameters and MotionRenderer regression coverage and a
    successful x64 Release build. Record untested interactive/GPU coverage.
 10. Tone Mapping uses one Advanced/Basic toggle; returning to Basic restores
-    expanded controls and prior workspace layout. Blue noise has no suffix.
+    expanded controls and prior workspace layout, size, position and maximized
+    state. Blue noise has no suffix.
 
 ## Boundaries and source touchpoints
 
