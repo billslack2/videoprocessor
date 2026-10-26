@@ -5533,9 +5533,9 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     const bool previousCurves = requireControl<QToolButton>(window,"rendererSection.toneCurves")->isChecked();
     auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
     require(workspace->isProfilesExpanded() && navigation->isPanelExpanded(), "Normal workspace must start docked");
-    require(advanced->text()=="Advanced tone mapping","Basic state has the wrong toggle label");
+    require(advanced->text()=="Show Tone Charts","Basic state has the wrong toggle label");
     advanced->click(); events();
-    require(advanced->text()=="Basic tone mapping"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
+    require(advanced->text()=="Hide Tone Charts"&&!window.findChild<QAbstractButton*>("workspaceRestorePanels"),"Advanced mode has a second button or wrong label");
     require(workspace->isAdvancedFocus() && !workspace->isProfilesExpanded() && !navigation->isPanelExpanded(),
         "Advanced toggle did not collapse both left panels");
     auto* toneSection = requireControl<QToolButton>(window, "rendererSection.toneMapping");
@@ -5556,7 +5556,7 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     advanced->click(); events();
     require(navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
         "Leaving advanced focus overwrote a manual panel choice");
-    require(advanced->text()=="Advanced tone mapping"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
+    require(advanced->text()=="Show Tone Charts"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
     advanced->click(); events();
     // Docking below needs a wide desktop, independently of the test platform's
     // maximized size. The dedicated window-state test covers maximization.
@@ -5655,7 +5655,7 @@ void testAdvancedToneMappingMaximizesAndRestoresWindow()
         advanced->click(); events();
         require(window.isMaximized() && !window.isFullScreen(),
             "Advanced tone mapping must maximize the ordinary window");
-        require(advanced->text() == "Basic tone mapping", "Maximized mode lost the Basic toggle");
+        require(advanced->text() == "Hide Tone Charts", "Maximized mode lost the Basic toggle");
         advanced->click(); events();
         require(!window.isMaximized() && !window.isFullScreen() && window.geometry() == previous,
             "Basic did not restore the size and position from before this Advanced click");
