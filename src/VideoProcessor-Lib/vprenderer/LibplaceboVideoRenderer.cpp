@@ -19007,9 +19007,9 @@ releaseDriftBaseRetention =
 			pl_overlay_part& overlayPart = overlayParts[overlayCount];
 			overlay.tex = profileOverlayTexture;
 			overlay.mode = PL_OVERLAY_NORMAL;
-            // The shared profile/shader banner may occupy the top letterbox.
-            // Final-output coordinates keep it visible outside the movie crop
-            // and prevent source zoom from translating it back into the picture.
+            // Keep the shared profile/shader banner inside the configured
+            // visible screen even while preparation temporarily fits a full
+            // raster. Frame coordinates avoid crop-relative translation.
             overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
 			overlay.repr = pl_color_repr_rgb;
 			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
@@ -19026,11 +19026,15 @@ releaseDriftBaseRetention =
 				0.0f, 0.0f, dstWidth, dstHeight };
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const NativeStatsOverlayPlacement::Rect visiblePicture =
-				NativeStatsOverlayPlacement::Intersect(pictureRect, outputRect);
+            const NativeStatsOverlayPlacement::Rect screenRect = validScreenRect(overlayScreen)
+                ? NativeStatsOverlayPlacement::Rect{static_cast<float>(overlayScreen.rect.left),
+                    static_cast<float>(overlayScreen.rect.top),static_cast<float>(overlayScreen.rect.right),
+                    static_cast<float>(overlayScreen.rect.bottom)} : outputRect;
+            const auto visibleScreen = NativeStatsOverlayPlacement::Intersect(screenRect, outputRect);
+            const auto visiblePicture = NativeStatsOverlayPlacement::Intersect(pictureRect, visibleScreen);
 			const float cropOriginX = pictureRect.left;
 			const float cropOriginY = pictureRect.top;
-            const float visibleHeight = visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight;
+            const float visibleHeight = visiblePicture.IsValid() ? visiblePicture.Height() : overlayScreenHeight;
             const auto sizing = NativeStatsOverlayPlacement::ResolveProfileSizing(
                 scaleOsd, overlayScreenHeight, dstHeight, visibleHeight);
             const float profileScale = sizing.scale;
@@ -19038,7 +19042,7 @@ releaseDriftBaseRetention =
                 ? AnamorphicPresentation::OverlayWidth(sizing.insetPixels, anamorphicScale)
                 : NativeStatsOverlayPlacement::ProfileOverlayLeftInset(visibleHeight);
             const NativeStatsOverlayPlacement::Result placement =
-                NativeStatsOverlayPlacement::PlaceProfileTopLeft(visiblePicture, outputRect,
+                NativeStatsOverlayPlacement::PlaceProfileTopLeft(pictureRect, outputRect, screenRect,
                     AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) * profileScale,
                     static_cast<float>(profileOverlayTexture->params.h) * profileScale,
                     sizing.insetPixels, horizontalInset, 1.0f, scaleOsd ? horizontalInset : -1.0f);
@@ -19060,7 +19064,7 @@ releaseDriftBaseRetention =
 					0.001f)
 			{
 				DebugLog::Log(
-					"Alpha native profile OSD placement: renderer_gen=%llu source_seq=%llu visible=%.1f,%.1f-%.1f,%.1f crop_origin=%.1f,%.1f bitmap=%dx%d profile_scale=%.3f fit_scale=%.3f output_panel=%.1f,%.1f-%.1f,%.1f clamped=%d fallback=%d top_bar=%d",
+					"Alpha native profile OSD placement: renderer_gen=%llu source_seq=%llu visible=%.1f,%.1f-%.1f,%.1f crop_origin=%.1f,%.1f bitmap=%dx%d profile_scale=%.3f fit_scale=%.3f output_panel=%.1f,%.1f-%.1f,%.1f clamped=%d fallback=%d screen=%.1f,%.1f-%.1f,%.1f",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					visiblePicture.left, visiblePicture.top,
@@ -19072,7 +19076,8 @@ releaseDriftBaseRetention =
 					placement.panel.left, placement.panel.top,
 					placement.panel.right, placement.panel.bottom,
 					placement.insetClamped ? 1 : 0,
-                    placement.usedOutputFallback ? 1 : 0, placement.usedTopBar ? 1 : 0);
+                    placement.usedOutputFallback ? 1 : 0,
+                    visibleScreen.left,visibleScreen.top,visibleScreen.right,visibleScreen.bottom);
 				lastProfileOverlayPlacement = absolutePlacement;
 				hasProfileOverlayPlacement = true;
 			}

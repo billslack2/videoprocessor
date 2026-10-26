@@ -544,19 +544,14 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,parameters,1));
         Assert::AreEqual(first.sourceRenders+2,g.temporal.ProcessingSnapshot().sourceRenders);
     }
-    TEST_METHOD(ProfileTopBarOverlayRendersOutsideMovieCropAndStaysLive) {
-        for(int path:{0,1,2}) {
+    TEST_METHOD(ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition) {
+        for(int path:{0,1,2})for(int crop:{0,1,2}) {
             GpuFixture g;g.Upload(128);g.UploadComposition(false,1);
-            g.output.crop={0,20,64,52};
+            g.output.crop=crop==0?pl_rect2df{0,0,64,64}:crop==1?pl_rect2df{0,20,64,52}:pl_rect2df{-10,-10,74,74};
             const auto placement=NativeStatsOverlayPlacement::PlaceProfileTopLeft(
-                {0,20,64,52},{0,0,64,64},24,8,4,4);
-            Assert::IsTrue(placement.usedTopBar);
-            pl_overlay_part part{};part.src={24,24,40,40};
-            part.dst={placement.panel.left,placement.panel.top,placement.panel.right,placement.panel.bottom};
-            pl_overlay overlay{};overlay.tex=g.layer;overlay.mode=PL_OVERLAY_NORMAL;
-            overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;overlay.repr=pl_color_repr_rgb;
-            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;overlay.color=pl_color_space_srgb;
-            overlay.parts=&part;overlay.num_parts=1;g.output.overlays=&overlay;g.output.num_overlays=1;
+                {g.output.crop.x0,g.output.crop.y0,g.output.crop.x1,g.output.crop.y1},
+                {0,0,64,64},{0,20,64,52},24,8,4,4);
+            Assert::IsTrue(placement.panel.top>=20 && placement.panel.bottom<=52);
             MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";
             if(path) {
                 g.temporal.Begin(settings,24,60,false,0,1,1,0,false,path==2);
@@ -568,12 +563,20 @@ TEST_CLASS(MotionRendererTests){public:
                 if(path)g.Draw();
                 else Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&pl_render_fast_params));
             };
-            draw();const auto red=g.Read(16,10);
-            Assert::IsTrue(red[0]>200 && red[2]<20,L"profile banner must render in the top bar outside the movie crop");
-            g.UploadComposition(false,2);draw();const auto blue=g.Read(16,10);
+            draw();const auto beforeMatte=g.Read(16,10),beforePanel=g.Read(16,28);
+            pl_overlay_part part{};part.src={24,24,40,40};
+            part.dst={placement.panel.left,placement.panel.top,placement.panel.right,placement.panel.bottom};
+            pl_overlay overlay{};overlay.tex=g.layer;overlay.mode=PL_OVERLAY_NORMAL;
+            overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;overlay.repr=pl_color_repr_rgb;
+            overlay.repr.alpha=PL_ALPHA_INDEPENDENT;overlay.color=pl_color_space_srgb;
+            overlay.parts=&part;overlay.num_parts=1;g.output.overlays=&overlay;g.output.num_overlays=1;
+            draw();const auto red=g.Read(16,28),matte=g.Read(16,10);
+            Assert::IsTrue(red[0]>200 && red[2]<20,L"profile banner must render inside the visible CIH screen");
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(matte[c]-beforeMatte[c])<=2,L"profile banner must not paint the masked top area");
+            g.UploadComposition(false,2);draw();const auto blue=g.Read(16,28);
             Assert::IsTrue(blue[2]>200 && blue[0]<20,L"shared shader spinner/profile updates must remain live");
-            g.output.overlays=nullptr;g.output.num_overlays=0;draw();const auto cleared=g.Read(16,10);
-            Assert::IsTrue(cleared[0]<5 && cleared[1]<5 && cleared[2]<5,L"expired banner must leave the bar black");
+            g.output.overlays=nullptr;g.output.num_overlays=0;draw();const auto cleared=g.Read(16,28);
+            for(int c=0;c<3;++c)Assert::IsTrue(std::abs(cleared[c]-beforePanel[c])<=2,L"expired banner must clear without a retained tile");
         }
     }
     TEST_METHOD(OutputOverlayStaysLiveWhileSourceProcessingIsCached) {

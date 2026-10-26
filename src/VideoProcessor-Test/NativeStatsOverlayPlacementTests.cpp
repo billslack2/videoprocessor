@@ -92,50 +92,55 @@ namespace Tests
 			Assert::IsTrue(std::fabs(result.panel.bottom - 446.3889f) < 0.01f);
 		}
 
-        TEST_METHOD(ProfileBannerUsesTopBarWithUnchangedSizeAndLeftMargin)
+        TEST_METHOD(ProfileBannerCannotEscapeCihScreenDuringFullRasterPreparation)
         {
-            const Rect picture{0,283,3840,1917},output{0,0,3840,2160};
-            const auto previous=PlaceTopLeft(picture,output,760,88,75,75);
-            const auto result=PlaceProfileTopLeft(picture,output,760,88,75,75);
-            Assert::IsTrue(result.usedTopBar);
-            Assert::AreEqual(previous.panel.left,result.panel.left);
-            Assert::AreEqual(previous.panel.Width(),result.panel.Width());
-            Assert::AreEqual(previous.panel.Height(),result.panel.Height());
-            Assert::AreEqual(97.5f,result.panel.top,.001f);
-            Assert::IsTrue(result.panel.bottom<picture.top);
-        }
-        TEST_METHOD(ProfileBannerFallsBackForMissingThinOrInvalidTopBar)
-        {
-            const Rect output{0,0,1920,1080};
-            for(Rect picture:std::array<Rect,5>{{{0,0,1920,1080},{200,0,1720,1080},
-                {0,40,1920,1040},{-100,-100,2020,1180},{0,0,0,0}}}) {
-                const auto result=PlaceProfileTopLeft(picture,output,500,80,30,30);
-                Assert::IsFalse(result.usedTopBar);Contained(result);
+            const Rect output{0,0,3840,2160},screen{0,283,3840,1917};
+            const auto previous=PlaceTopLeft(output,output,760,88,75,75);
+            Assert::IsTrue(previous.panel.top<screen.top,L"reproduce old full-raster fallback escaping CIH screen");
+            for(Rect picture:std::array<Rect,4>{{output,screen,{-120,-100,3960,2260},{0,0,0,0}}}) {
+                const auto result=PlaceProfileTopLeft(picture,output,screen,760,88,75,75);
+                Contained(result);
+                Assert::AreEqual(75.0f,result.panel.left,.001f);
+                Assert::AreEqual(358.0f,result.panel.top,.001f);
+                Assert::AreEqual(88.0f,result.panel.Height(),.001f);
+                Assert::IsTrue(result.panel.bottom<=screen.bottom);
             }
         }
-        TEST_METHOD(ProfileAndShaderColumnsShareTheSameBarPosition)
+        TEST_METHOD(ProfileBannerStaysInsideBothMovieAndConfiguredScreen)
         {
-            const Rect output{0,0,3840,2160},picture{-120,280,3960,1880};
+            const Rect output{0,0,1920,1080},screen{80,140,1840,940};
+            for(Rect picture:std::array<Rect,5>{{{200,200,1720,880},{0,0,1920,1080},
+                {-100,-100,2020,1180},{0,0,0,0},{0,0,1920,100}}}) {
+                const auto result=PlaceProfileTopLeft(picture,output,screen,500,80,30,30);
+                Contained(result);
+                Assert::IsTrue(result.panel.left>=screen.left && result.panel.right<=screen.right);
+                Assert::IsTrue(result.panel.top>=screen.top && result.panel.bottom<=screen.bottom);
+            }
+            const auto flat=PlaceProfileTopLeft(output,output,output,500,80,30,30);
+            Assert::AreEqual(30.0f,flat.panel.top,.001f);
+        }
+        TEST_METHOD(ProfileAndShaderColumnsKeepTheSameVisibleScreenAnchor)
+        {
+            const Rect output{0,0,3840,2160},screen{0,280,3840,1880};
             for(float width:{134.0f,248.0f,390.0f,900.0f}) {
-                const auto result=PlaceProfileTopLeft(picture,output,width*2,128,60,60);
-                Assert::IsTrue(result.usedTopBar);
+                const auto result=PlaceProfileTopLeft(output,output,screen,width*2,128,60,60);
+                Contained(result);
                 Assert::AreEqual(60.0f,result.panel.left,.001f);
-                Assert::AreEqual(76.0f,result.panel.top,.001f);
-                Assert::IsTrue(result.panel.right<=output.right);
+                Assert::AreEqual(340.0f,result.panel.top,.001f);
             }
         }
-        TEST_METHOD(ProfileTopBarPlacementRespectsResolutionScalingAndAnamorphicWidth)
+        TEST_METHOD(ProfileCihContainmentRespectsResolutionScalingAndAnamorphicWidth)
         {
             for(float height:{720.0f,1080.0f,1440.0f,2160.0f})for(double lens:{1.0,1.321875}) {
                 const float width=height*16.0f/9.0f;
-                const Rect output{0,0,width,height},picture{0,height*.15f,width,height*.85f};
-                const auto sizing=ResolveProfileSizing(true,height,height,picture.Height());
-                const auto result=PlaceProfileTopLeft(picture,output,
+                const Rect output{0,0,width,height},screen{0,height*.15f,width,height*.85f};
+                const auto sizing=ResolveProfileSizing(true,screen.Height(),height,screen.Height());
+                const auto result=PlaceProfileTopLeft(output,output,screen,
                     AnamorphicPresentation::OverlayWidth(760,lens)*sizing.scale,
                     64*sizing.scale,sizing.insetPixels,
                     AnamorphicPresentation::OverlayWidth(sizing.insetPixels,lens));
-                Assert::IsTrue(result.usedTopBar);
-                Assert::IsTrue(result.panel.top>=output.top && result.panel.bottom<=picture.top);
+                Contained(result);
+                Assert::IsTrue(result.panel.top>=screen.top && result.panel.bottom<=screen.bottom);
                 Assert::AreEqual(64*sizing.scale,result.panel.Height(),.001f);
             }
         }
