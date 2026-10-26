@@ -118,6 +118,8 @@ namespace Tests
             Assert::IsTrue(recovery.Fallback());
             Assert::AreEqual(uint32_t(1), recovery.Attempts());
 
+            // Start a fresh healthy interval after the output boundary.
+            recovery.Observe(false, true, 1'550'000'000LL);
             recovery.Observe(false, true, 2'049'999'999LL);
             Assert::IsTrue(recovery.Fallback());
             recovery.Observe(false, true, 2'050'000'000LL);
