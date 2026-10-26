@@ -1,0 +1,21 @@
+Independent review notes, 2026-10-25
+
+Confirmed: real submitted source/target geometry alternates while native picture remains stable. Reconstruction cue proof and fallback presentation change together. No root-cause claim is made about incoming subtitle pixels because no native/output frame pair was captured.
+
+Current-beta source inspected at 81ac960fbd62619374fba1c16630b8feac364d59, in E:\codex\videoprocessor\subtitle-rewind-ar-20261025.
+
+Caption ownership review:
+- LibplaceboVideoRenderer.cpp 15190-15206: qualified relocated-caption proof suppresses native caption envelope.
+- AlphaSourceCropPolicy.cpp 5549-5565: prepared subtitle proof permits native presentation.
+- AlphaSourceCropPolicy.cpp 5957-6032: uncertain recovery can restore the last submitted expanded envelope.
+- AlphaSourceCropPolicy.cpp 3967-4009: confirmed fit requires exact agreement with fresh approved bounds. Held extents can legitimately differ (1267-1393); this is a separate recovery hazard, not proven to cause this live incident.
+
+Reset/worker review:
+- Subtitle-only profile updates preserve AR history/admission and presentation epoch (LibplaceboVideoRenderer.cpp 9234-9264).
+- No reset boundary during the failure; generation 2 and viewport 4 remain stable.
+- Worker caches require exact source and compatible context (SubtitleMeasurementWorker.h 224-244, 341-391); scanners reset before current-source analysis (SubtitleBoxLookahead.h 324, 391).
+- Five-second telemetry at 22:53:04: 120 scans at 23.93 Hz, no pending/dropped/failed/expired jobs; average worker wait 0.012 ms. This does not support worker starvation as cause of the framing alternation.
+
+Next meaningful replay: actual bright fixed-ratio frames spanning cue loss and reacquisition, negative current scan, translation confirmation, expanded fallback, and successful selected submission. Assert final source/target geometry, intact captions, bounded release, and real-AR transition behavior. Existing RetainedScopeUnknownPresentationTests and SubtitleTranslationReversalTests exercise parts of the policy but do not cover the complete observed production handoff.
+
+No source implementation, build, restart, deployment or configuration change was made. No automated test result is claimed. The current incident remains unresolved.

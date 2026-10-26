@@ -1,0 +1,55 @@
+{
+  "reportedLocalDate": "2026-10-25",
+  "incidentLocalWindow": "22:52:59 through 22:53:04 America/New_York",
+  "runtimeCommit": "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+  "investigationBetaBranch": "v1.4.02-beta",
+  "investigationBetaCommit": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "snapshotSha256": "EF774202663EDB755C6907538B2B37EA164E0A21F99EC08B2C108C0BC7FAF70B",
+  "snapshotBytes": 8511361,
+  "hostSha256": "40C7239A23109F869A9B8B52B385387D91A777D884110FA936EDBB276F75EB6C",
+  "rendererSha256": "FEAE81F0DBC7BD2778D7E3F4FB70D31CDB8FA4CCB32634C0CAC244451E392CA6",
+  "generation": 2,
+  "viewport": 4,
+  "mode": "reconstruction",
+  "trustedNativeRect": [
+    0,
+    278,
+    3840,
+    1882
+  ],
+  "expandedSubmittedRects": [
+    [
+      0,
+      270,
+      3840,
+      1960
+    ],
+    [
+      0,
+      270,
+      3840,
+      1978
+    ]
+  ],
+  "restoredSubmittedRect": [
+    36,
+    278,
+    3804,
+    1882
+  ],
+  "submittedEvidenceLines": [
+    4888,
+    4967,
+    5028,
+    5078,
+    5157,
+    5188
+  ],
+  "nearBlack": false,
+  "sceneChange": false,
+  "temporal": false,
+  "mixing": false,
+  "nls": "off",
+  "productionChanges": false,
+  "nativeFrameCaptured": false
+}
