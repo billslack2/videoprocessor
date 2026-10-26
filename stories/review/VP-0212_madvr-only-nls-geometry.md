@@ -95,3 +95,11 @@ Test the production geometry policy and existing shader/runtime regressions.
 Build the complete x64 Release solution. Review the diff for any VP Renderer
 changes. Record madVR's detection-setting dependency and confidence limits;
 IMadVRInfo does not expose a detector confidence or frame timestamp.
+
+## Tester prerelease — 2026-10-26
+
+User requested a separate v1.4.01-beta branch with PR #200, then Setup and portable ZIP for a tester. Published https://github.com/billslack2/videoprocessor/releases/tag/tester-v1.4.01-beta-pr200-20261026 from 404ea6a34a7ca2a80ddf3ed338ec2e5c9cf6a65f on codex/v1.4.01-beta-pr200-20261026. Base c71b4459; PR feature backported as cb79824f. Packaging-only correction 404ea6a3 validates five recorded binaries rather than four. No merge to beta or deployment.
+
+Clean x64 Release rebuild and all 2,400 native tests passed (11.53 minutes); installer support/identity, runtime packaging and portable sample/archive checks passed. GitHub asset digests match local SHA-256 receipts. Only Setup EXE and portable ZIP published; normal updater feed unchanged. Evidence: stories/assets/VP-0212/tester-v1.4.01-pr200-20261026/.
+
+Unsigned tester prerelease. Live madVR acceptance, clean Windows/runtime and real installer lifecycle/Config Apply/OK/reopen remain unverified. Existing account has an installer registration, so lifecycle tests were not run against it. Story remains in Review.
