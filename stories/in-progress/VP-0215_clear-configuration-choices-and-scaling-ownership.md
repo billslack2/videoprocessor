@@ -13,6 +13,17 @@ Preserve panel/section/scroll restoration and pending edits. Implement and test
 normal/repeated/already-maximized transitions, then deploy a completed matched
 x64 Release build with configuration backups and no active-file edits.
 
+Implementation checkpoint: 934489bb is committed/pushed on the existing trial
+branch. Ordinary maximize/restore, repeated entry, already-maximized placement,
+unsaved edits and Cancel/reopen now pass at 100%, 150%, 200%; the matching
+previous attempt also passed all 141 targeted native checks and beta parameters.
+The responsive/docking fixtures assumed their explicit width would override a
+maximized offscreen desktop, which is false at higher DPI. They now enter normal
+window state before testing explicit viewport sizes, independently of the new
+window-state regression. Fresh clean Release identity/validation is running;
+failed test evidence remains under vp0215-advanced-window-20261025. No failed
+attempt has been deployed.
+
 Previous trial evidence follows; it remains valid for that recorded commit.
 
 2026-10-25: The requested follow-up is implemented, tested and deployed for user
