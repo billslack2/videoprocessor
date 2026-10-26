@@ -7067,7 +7067,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         };
 
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
-            QStringLiteral("Tone Mapping: General"), QStringLiteral(
+            QStringLiteral("General"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target nits"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
@@ -7136,7 +7136,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // One section for every curve's settings: the chosen curve's show, the
         // rest hide with a note.
         const char* ids[] = { "toneCurves", "tonePeak" };
-        const char* headings[] = { "Tone Mapping: Curves", "Tone Mapping: Peak Detection" };
+        const char* headings[] = { "Curves", "Peak Detection" };
         const char* descriptions[] = {
             "Shows the settings the chosen tone-mapping curve uses. Knee controls also apply to ST2094-40.",
             "Controls apply while peak detection is enabled. Defaults follow the selected peak-detection mode." };
