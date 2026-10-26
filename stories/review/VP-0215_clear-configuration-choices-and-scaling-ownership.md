@@ -2,24 +2,59 @@
 
 ## Status
 
-In Progress
+Review
 
-2026-10-25 PR #204 integration: the user explicitly requested rebasing the current
-trial after merging #204, rebuilding and deploying it. GitHub current beta/default
-v1.4.02-beta was discovered/fetched at 81ac960fbd62619374fba1c16630b8feac364d59,
-the merge commit for #204 (Stabilize every-refresh cadence after subtitle and
-profile changes). All 17 local Config/UI commits rebased cleanly, with range-diff
-showing each patch unchanged. New clean source bf44dbeee536c4bbf949a4f79db513147a9f0f8f
-is pushed on codex/vp0215-config-choices-20261025 using an exact remote lease.
-Original deployed 934489bb is preserved locally/remotely on
-codex/vp0215-before-pr204-20261025. No local UI/config behavior was dropped.
+2026-10-25 PR #204 rebase/rebuild/deployment is complete for the requested trial.
+GitHub current beta/default v1.4.02-beta was discovered/fetched at
+`81ac960fbd62619374fba1c16630b8feac364d59`, the merge commit for
+[#204](https://github.com/billslack2/videoprocessor/pull/204), Stabilize every-refresh
+cadence after subtitle and profile changes. All 17 local Config/UI patches
+rebased cleanly, with range-diff proving unchanged patches. New clean source
+`bf44dbeee536c4bbf949a4f79db513147a9f0f8f` is pushed on
+`codex/vp0215-config-choices-20261025`. The original deployed 934489bb history is
+preserved locally/remotely as `codex/vp0215-before-pr204-20261025`. The resulting
+difference from that trial is exactly #204's five files. No new source fix,
+beta merge, PR creation or public release was performed in this integration.
 
-A complete clean x64 Release Rebuild is running. Validation will cover the
-configuration/migration, motion and window-state regressions plus all
-DisplayVsyncClock tests from #204, DPI layouts and both renderer parameter paths.
-Deployment remains gated on successful checks, matching host/editor/discovery/
-stable/beta hashes, backup and preservation of the active configuration. No source
-sample configuration will be deployed. Previous trial evidence follows.
+A complete clean x64 Release solution Rebuild succeeded. Against that exact
+commit, 161 targeted native tests passed, including all 20
+DisplayVsyncClock cases covering #204 cadence/precision/generation/output-change
+behavior, configuration migration/core, motion and parameter projection. All
+47 Config regression cases passed, including canonical Scaling, legacy loading,
+labels, Apply/OK/Cancel, remote editing, docking and maximize/restore. Maximize/
+restore and responsive layouts passed at 100%, 150%, 200%; the beta parameter
+program passed. This is targeted coverage, not a whole-repository or physical
+playback/performance pass. User validation of the cadence change remains.
+
+Deployment `2026-10-25T22:09:54.3069422-04:00` to `C:\Videoprocessor\vp` replaced the matched
+host, Config, discovery, stable and beta renderers with verified Release/x64
+runtime receipts and matching deployed hashes. Binary rollback backup:
+`C:\Videoprocessor\vp\backup-before-vp0215-pr204-bf44dbeee536-20261025-220953`. A pre-shutdown settings backup is retained at
+`C:\Videoprocessor\vp\backup-before-pr204-shutdown-20261025-220950`. VP was closed gracefully for replacement;
+Config was closed after the save notice and reopened on Tone Mapping afterward.
+Playback was not restarted automatically. All captured settings/state hashes also remained unchanged during shutdown.
+
+All 7 captured configuration/state files remained
+byte-for-byte unchanged through binary replacement and installed read-only
+Scaling/Tone Mapping open/screenshot/exit smoke. Configuration edits: none; no
+sample configuration was deployed. The earlier remaining user/physical playback,
+quality/performance and legacy independent-selection acceptance still applies.
+Proposed decision: user trial and review before merging the local Config stack;
+keep VP-0215, VP-0032 and VP-0033 in Review.
+
+PR #204 integration evidence:
+
+- [Rebase identities](../assets/VP-0215/pr204-rebase.json) and
+  [unchanged patch range-diff](../assets/VP-0215/pr204-range-diff.txt).
+- [Build, tests, DPI and runtime hashes](../assets/VP-0215/pr204-validation.json).
+- [Native results including cadence cases](../assets/VP-0215/pr204-native-tests.txt).
+- [Deployment receipt](../assets/VP-0215/pr204-deployment.json),
+  [pre-shutdown backup and process disposition](../assets/VP-0215/pr204-shutdown.json),
+  and [installed editor smoke](../assets/VP-0215/pr204-deployed-smoke.json).
+
+Previous trial records below remain evidence for their exact recorded commits.
+The current deployment supersedes their source identities and retains their
+Config/migration/window behavior on top of #204.
 
 2026-10-25 maximize/restore follow-up is implemented and deployed for user trial.
 Clean source `934489bb17b2b8e04b9cd259d0be8b8c99a80909` is committed and pushed on

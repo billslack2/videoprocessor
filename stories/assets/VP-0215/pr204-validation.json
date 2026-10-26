@@ -1,0 +1,359 @@
+{
+  "SourceCommit": "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+  "LocalConfigBase": "934489bb17b2b8e04b9cd259d0be8b8c99a80909",
+  "BetaCommit": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "BuildExitCode": 0,
+  "BuildLog": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\build-release.log",
+  "ConfigPassed": 47,
+  "ConfigFailed": 0,
+  "Scales": [
+    {
+      "Scale": "1",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-1-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-1-1.log"
+        }
+      ]
+    },
+    {
+      "Scale": "1.5",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-1.5-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-1.5-1.log"
+        }
+      ]
+    },
+    {
+      "Scale": "2",
+      "Exit": 0,
+      "Tests": [
+        {
+          "Test": "advanced tone mapping maximizes and restores window",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-2-0.log"
+        },
+        {
+          "Test": "responsive workspaces preserve edits and fit",
+          "Exit": 0,
+          "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\scale-final-2-1.log"
+        }
+      ]
+    }
+  ],
+  "ConfigResults": [
+    {
+      "Test": "left docks restore manual choices and drawer editing",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-0.log"
+    },
+    {
+      "Test": "responsive workspaces preserve edits and fit",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-1.log"
+    },
+    {
+      "Test": "Rendering menu duplicate export import preserves ownership",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-2.log"
+    },
+    {
+      "Test": "Rendering processing ownership save reopen and rename",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-3.log"
+    },
+    {
+      "Test": "Rendering profile file ownership round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-4.log"
+    },
+    {
+      "Test": "explicit preset defaults and output matching",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-5.log"
+    },
+    {
+      "Test": "explicit Auto migration preserves profile choices",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-6.log"
+    },
+    {
+      "Test": "preset resolution precedes editor section migration",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-7.log"
+    },
+    {
+      "Test": "renderer promotion migration and cache selection",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-8.log"
+    },
+    {
+      "Test": "display refresh presentation defaults and round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-9.log"
+    },
+    {
+      "Test": "Apply OK Cancel contract",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-10.log"
+    },
+    {
+      "Test": "profile lifecycle through widgets",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-11.log"
+    },
+    {
+      "Test": "Tone mapping controls round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-12.log"
+    },
+    {
+      "Test": "Beta tone mapping controls",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-13.log"
+    },
+    {
+      "Test": "ordinary edits avoid disk validation",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-14.log"
+    },
+    {
+      "Test": "new action starts unconfigured",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-15.log"
+    },
+    {
+      "Test": "empty actions show an empty state",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-16.log"
+    },
+    {
+      "Test": "active profile opens selected after late status and preserves edits",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-17.log"
+    },
+    {
+      "Test": "shared profile list controller contract",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-18.log"
+    },
+    {
+      "Test": "migration notice only for pending migration",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-19.log"
+    },
+    {
+      "Test": "DPI keyboard and accessibility behavior",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-20.log"
+    },
+    {
+      "Test": "no-target startup is quiet",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-21.log"
+    },
+    {
+      "Test": "custom shader parameters expand into page scroll",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-22.log"
+    },
+    {
+      "Test": "concrete video choices and canonical Scaling",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-23.log"
+    },
+    {
+      "Test": "Motion and chroma controls persist and expose new tab",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-24.log"
+    },
+    {
+      "Test": "audited Boolean aliases and inherited Auto status",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-25.log"
+    },
+    {
+      "Test": "invalid audited values remain actionable",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-26.log"
+    },
+    {
+      "Test": "calibrated UI defaults and derived transport",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-27.log"
+    },
+    {
+      "Test": "calibrated legacy and inherited output preserved",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-28.log"
+    },
+    {
+      "Test": "unified Color Output migration and transfer round trip",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-29.log"
+    },
+    {
+      "Test": "Limited transport gamma notice and correction",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-30.log"
+    },
+    {
+      "Test": "calibration layout preserves independent slots",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-31.log"
+    },
+    {
+      "Test": "calibration controls follow confirmed runtime LUT",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-32.log"
+    },
+    {
+      "Test": "inherited calibration LUT uses effective control state",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-33.log"
+    },
+    {
+      "Test": "choice labels and VP Renderer name",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-34.log"
+    },
+    {
+      "Test": "inherited renderer Input selectors use effective labels",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-35.log"
+    },
+    {
+      "Test": "inherited renderer Input selectors refresh with General",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-36.log"
+    },
+    {
+      "Test": "DirectShow-only input persists and General can be cleared",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-37.log"
+    },
+    {
+      "Test": "General input Apply preserves backend overrides",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-38.log"
+    },
+    {
+      "Test": "clean remote Apply uses unchanged RPC candidate",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-39.log"
+    },
+    {
+      "Test": "clean Apply notifies without saving",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-40.log"
+    },
+    {
+      "Test": "calibration profile owns LUT and HDR gamma",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-41.log"
+    },
+    {
+      "Test": "subtitle retired temporal fill preserves saved profiles",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-42.log"
+    },
+    {
+      "Test": "black default and legacy Auto inheritance",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-43.log"
+    },
+    {
+      "Test": "independent SDR LUT gamma",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-44.log"
+    },
+    {
+      "Test": "SDR gamma adjustment labels and persistence",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-45.log"
+    },
+    {
+      "Test": "advanced tone mapping maximizes and restores window",
+      "Exit": 0,
+      "Log": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\config-final-46.log"
+    }
+  ],
+  "NativePassed": 161,
+  "NativeFailed": 0,
+  "NativeTrx": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\native-final\\vp0215-native-final.trx",
+  "BetaTestsExitCode": 0,
+  "BetaTestsLog": "E:\\codex\\diagnostics\\vp0215-pr204-rebase-20261025\\beta-tests.log",
+  "RuntimeRecords": [
+    {
+      "Binary": "VideoProcessor-GUI.exe",
+      "SHA256": "40C7239A23109F869A9B8B52B385387D91A777D884110FA936EDBB276F75EB6C",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "40C7239A23109F869A9B8B52B385387D91A777D884110FA936EDBB276F75EB6C"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfig.exe",
+      "SHA256": "EF86DD1D04B275C1715DE31F8BF477435039A69D095FF39FABD6BCF45AE3D81C",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.44.35207",
+        "sha256": "EF86DD1D04B275C1715DE31F8BF477435039A69D095FF39FABD6BCF45AE3D81C"
+      }
+    },
+    {
+      "Binary": "VideoProcessorConfigDiscovery.dll",
+      "SHA256": "51F0FB55A5691CBAD9CA5377FED2C73F4F4B2F3C8D1867CF9F2C5C82CF83AD17",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "51F0FB55A5691CBAD9CA5377FED2C73F4F4B2F3C8D1867CF9F2C5C82CF83AD17"
+      }
+    },
+    {
+      "Binary": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "SHA256": "FEAE81F0DBC7BD2778D7E3F4FB70D31CDB8FA4CCB32634C0CAC244451E392CA6",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "FEAE81F0DBC7BD2778D7E3F4FB70D31CDB8FA4CCB32634C0CAC244451E392CA6"
+      }
+    },
+    {
+      "Binary": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "SHA256": "7290B2E6A1D0438472102546E01167221D1DDFAE2A93C8295635E84220E92D87",
+      "Record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "7290B2E6A1D0438472102546E01167221D1DDFAE2A93C8295635E84220E92D87"
+      }
+    }
+  ],
+  "PhysicalPlaybackTested": false
+}

@@ -1,0 +1,17 @@
+ 1:  61b1431b =  1:  e1bc24e6 Add tone and colour charts to the Rendering / DTM page
+ 2:  00b0b6f9 =  2:  da4161ea Retire the Quality preset and migrate it on load
+ 3:  6133423c =  3:  104ba705 Move the chart engine and widgets into a shared ChartCore folder
+ 4:  c6d0d692 =  4:  fb1acff2 Draw the charts through a shared request and chart-data step
+ 5:  7995a035 =  5:  0b74a04d Use promoted VP Renderer for Config charts
+ 6:  2daaac22 =  6:  2d6492f1 Resolve retired quality Auto settings into explicit defaults
+ 7:  c08f5db2 =  7:  fe71fadd Preserve Rendering ownership and legacy defaults during tone GUI migration
+ 8:  e1d0c238 =  8:  0bddbde9 Make Config workspaces adapt to available space and acknowledge migration
+ 9:  eab55b48 =  9:  a874a9cb Restore left docks and focus advanced tone mapping workspace
+10:  2ebeee48 = 10:  4bb10b8f VP-0215 clarify video choices and canonical Scaling controls
+11:  0df24195 = 11:  4d5320dc Preserve calibration rows and inherited preset choices with Reset controls
+12:  a37dab1f = 12:  b7e0b9ef Exercise named Scaling defaults in the choice-label regression fixture
+13:  e5ac36ef = 13:  be78c8ec VP-0215 consolidate processing in Scaling and simplify Tone Mapping controls
+14:  405cdea1 = 14:  fe6fab2a Keep migrated tone defaults stable across reopen
+15:  843c02b5 = 15:  4f7b5166 Maximize Advanced tone mapping and restore the Basic window
+16:  ae9b74ae = 16:  332f4547 Preserve native restore geometry when already maximized
+17:  934489bb = 17:  bf44dbee Keep responsive fixture sizes independent of maximized test desktop

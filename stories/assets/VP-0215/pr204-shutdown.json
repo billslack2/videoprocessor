@@ -1,0 +1,55 @@
+{
+  "BackupDirectory": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950",
+  "ConfigurationBefore": [
+    {
+      "Path": "C:\\Videoprocessor\\vp\\active-output-sweep-hdr-template.cfg",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\active-output-sweep-hdr-template.cfg",
+      "SHA256": "54DECA40F8CDA2157E06D3089A73AE1A89318DAD8DB0926DE73FBD82FCDBBF67"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\active-output-sweep-sdr-template.cfg",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\active-output-sweep-sdr-template.cfg",
+      "SHA256": "629F45B04D711033C6205E4BEADB858A1F9E8F9585256C8915D5A672AB12F326"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\INSTALL-MANIFEST.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\INSTALL-MANIFEST.json",
+      "SHA256": "D6B4965FF8D31077999F6F36E1F7107A25098D12E04B4AD4F8AE9FAE49416852"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\NPNnnNPn.cfg",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\NPNnnNPn.cfg",
+      "SHA256": "A3998D9B6DE8C08536AF4C5D6125EF486E37A829DCCA9B63064B2473B3E459D6"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\RELEASE-MANIFEST.json",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\RELEASE-MANIFEST.json",
+      "SHA256": "9E521D5266E658F756692F89ECE4B1E767F4A49AA9948F7F6B2401270517485F"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\VideoProcessor.cfg",
+      "SHA256": "9536FFF3CA4343BFAF5FB7E5D5E2D9F417DEF12C661BE905FC6DF7C9F26646B2"
+    },
+    {
+      "Path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "Backup": "C:\\Videoprocessor\\vp\\backup-before-pr204-shutdown-20261025-220950\\VideoProcessor.state",
+      "SHA256": "7C67793E84A2C2437F3D4CF17CF5CA3A5AE116EB87FBF9227B23CC230FAEE9E3"
+    }
+  ],
+  "StoppedProcesses": [
+    {
+      "Name": "VideoProcessorConfig.exe",
+      "ProcessId": 22456,
+      "Graceful": false
+    },
+    {
+      "Name": "VideoProcessor.exe",
+      "ProcessId": 10564,
+      "Graceful": true
+    }
+  ],
+  "ChangedDuringShutdown": [],
+  "AgentConfigurationEdits": [],
+  "CheckedAt": "2026-10-25T22:09:52.4397830-04:00"
+}

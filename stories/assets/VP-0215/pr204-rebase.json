@@ -1,0 +1,10 @@
+{
+  "SourceCommit": "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+  "OldCommit": "934489bb17b2b8e04b9cd259d0be8b8c99a80909",
+  "BetaCommit": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "BetaBranch": "v1.4.02-beta",
+  "BackupBranch": "codex/vp0215-before-pr204-20261025",
+  "FeatureBranch": "codex/vp0215-config-choices-20261025",
+  "RebaseExitCode": 0,
+  "RemotePushed": true
+}
