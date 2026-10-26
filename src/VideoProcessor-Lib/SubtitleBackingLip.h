@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 
 // Exact-current cleanup only. Never an acquired card, glyph/capture mask,
@@ -70,6 +71,43 @@ inline bool HasExactCurrentLocalGlyphContinuationForLip(const SubtitleCueContinu
         certificate->sampledBounds.left<=glyphCapture.left && certificate->sampledBounds.top<=glyphCapture.top &&
         certificate->sampledBounds.right>=glyphCapture.right && certificate->sampledBounds.bottom>=glyphCapture.bottom;
     return sampleContainsGlyphs && SameFreshSubtitleGlyphs(localGlyphs,preview.current.text,0);
+}
+
+// Nearby/reference bar evidence may nominate a cue-side plane only when its
+// separate boundary metrics came from a current-source scan at that exact
+// plane. A scoped inspection candidate is only the scan window; it never
+// substitutes for those pixels or authorizes crop/AR changes.
+inline bool HasCurrentSubtitleLipBoundaryRevalidation(const SubtitleBoxObservation& current,
+    bool top,const AnalysisLumaSource& source,uint64_t policy,uint64_t continuity)
+{
+    const auto& authority=current.sharedPicture;
+    const auto& candidate=authority.inspectionCandidate;
+    const bool sharedCurrent=authority.AvailableFor(current.identity,current.width,current.height);
+    const bool inspectionCurrent=current.inspectionCandidateUsed && authority.required && !sharedCurrent &&
+        candidate.nativeGeometryRevision!=0 &&
+        candidate.AvailableFor(current.identity,current.width,current.height,policy,continuity);
+    if(!sharedCurrent && !inspectionCurrent)return false;
+    const auto& referenceBounds=sharedCurrent?authority.bounds:candidate.bounds;
+    const auto& bars=current.barEvidence;
+    const bool exact=top?bars.topRevalidatedAtReference:bars.bottomRevalidatedAtReference;
+    const bool nearby=top?bars.topRevalidatedNearby:bars.bottomRevalidatedNearby;
+    if(exact==nearby || !current.barAuthority || !bars.available)return false;
+    const int plane=top?current.pictureTop:current.pictureBottom;
+    const int evidencePlane=top?bars.top:bars.bottom;
+    const int reference=top?bars.referenceTop:bars.referenceBottom;
+    const int delta=top?bars.topReferenceDelta:bars.bottomReferenceDelta;
+    const int boundarySupport=top?bars.topReferenceBoundarySupport:bars.bottomReferenceBoundarySupport;
+    const int maxIntrusion=top?bars.topReferenceMaxIntrusion:bars.bottomReferenceMaxIntrusion;
+    const double blackFraction=top?bars.topReferenceBlackFraction:bars.bottomReferenceBlackFraction;
+    const int limit=(std::max)(1,source.height/3);
+    if(reference!=(top?referenceBounds.top:referenceBounds.bottom) ||
+        plane<=0 || plane>=source.height || evidencePlane!=plane || reference<=0 || reference>=source.height ||
+        boundarySupport<8 || !std::isfinite(blackFraction) || blackFraction<0.85 || blackFraction>1.0 ||
+        maxIntrusion<0 || maxIntrusion>=25)return false;
+    if(exact)return plane==reference && delta==0;
+    const int step=(std::max)(1,source.height/540);
+    return bars.nearbyProbes>0 && plane==reference+delta &&
+        std::abs(delta)<=2*step && std::abs(plane-reference)<limit;
 }
 
 struct CurrentSubtitleBackingLipProof
@@ -257,11 +295,24 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const bool captionEdgeOutward=candidateCueSideWithinTolerance && !cueSideGlyphLocal && (allTop?
         current.barEvidence.captionBackedTop && current.pictureTop<candidate->pictureTop:
         current.barEvidence.captionBackedBottom && current.pictureBottom>candidate->pictureBottom);
-    if(!cueSideCurrent && !captionEdgeOutward) {
+    const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
+        current,allTop,source,policy,continuity);
+    // A current cue-side boundary scan can justify a fresh strict contour scan
+    // in either shared or inspection-only context, but cold acquisition needs a
+    // fresh strong cue. Held local-glyph continuity can only revalidate a
+    // remembered finite outline; it cannot acquire cleanup after history expires.
+    const bool freshInitialCue=!accepted.held && !accepted.confirmationPending && !accepted.workLimit &&
+        !accepted.revised && !current.pendingRefresh && !current.analysisRefresh && !current.discontinuity &&
+        !current.cadenceSkipped && current.text.detected && !current.text.held &&
+        !current.text.confirmationPending && !current.text.workLimit && !current.text.revised &&
+        current.text.nearBarEligibilityMeasured && current.text.nearBarEligible;
+    const bool candidateCueSideRevalidated=currentCueSideBoundary &&
+        (candidateCueSideWithinTolerance || freshInitialCue);
+    if(!cueSideCurrent && !captionEdgeOutward && !candidateCueSideRevalidated) {
         result.contextMismatchMask|=allTop?LipContextCueSideTopUnavailable:LipContextCueSideBottomUnavailable;
         return reject("lip-current-context-unavailable");
     }
-    if(candidateCueSideWithinTolerance && (cueSideCurrent || captionEdgeOutward)) {
+    if(candidateCueSideWithinTolerance && (cueSideCurrent || captionEdgeOutward || candidateCueSideRevalidated)) {
         if(allTop)result.pictureTop=(std::max)(result.pictureTop,candidate->pictureTop);
         else result.pictureBottom=(std::min)(result.pictureBottom,candidate->pictureBottom);
         result.outlineBaseAnchored=(allTop?result.pictureTop!=current.pictureTop:

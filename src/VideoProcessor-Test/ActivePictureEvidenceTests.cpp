@@ -1721,6 +1721,9 @@ namespace VideoProcessorTest
             };
             Assert::IsTrue(confirms());
             Assert::IsFalse(SubtitleAbsenceIsUnknown(current));
+            current.inspectionCandidateUsed=true;
+            Assert::IsFalse(confirms(),L"An inspection-only scan cannot release the caption presentation envelope.");
+            current.inspectionCandidateUsed=false;Assert::IsTrue(confirms());
             current.text.bottomSearchComplete=false;
             Assert::IsFalse(confirms(),L"An unsearched bottom region cannot prove a blank subtitle.");
             Assert::IsTrue(SubtitleAbsenceIsUnknown(current));
@@ -2012,6 +2015,27 @@ namespace VideoProcessorTest
                 Assert::IsFalse(prepared.renewsHold);
                 Assert::AreEqual(raw.excludedBandsPixelSafe,prepared.retention.excludedBandsPixelSafe);
                 Assert::AreEqual(raw.outwardVisibleBounds.bottom,prepared.retention.outwardVisibleBounds.bottom);
+            }
+        }
+        TEST_METHOD(InspectionCandidateCannotQualifySemanticOrPreparedPictureEvidence)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                Assert::IsTrue(EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input()).qualified);
+                Assert::IsTrue(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input()).qualified);
+                f.accepted.observations=2;
+                Assert::AreEqual(3840,MeasureCurrentCaptionForPresentation(f.observation,f.accepted,
+                    f.observation.identity,true,3840,2160).rasterWidth);
+                f.observation.inspectionCandidateUsed=true;
+                Assert::AreEqual(0,MeasureCurrentCaptionForPresentation(f.observation,f.accepted,
+                    f.observation.identity,true,3840,2160).rasterWidth);
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                Assert::IsFalse(semantic.qualified);Assert::IsFalse(prepared.qualified);
+                Assert::AreEqual("inspection-candidate-is-not-picture-proof",semantic.reason);
+                Assert::AreEqual("inspection-candidate-is-not-picture-proof",prepared.reason);
+                Assert::IsFalse(semantic.renewsHold);Assert::IsFalse(prepared.renewsHold);
             }
         }
         TEST_METHOD(PreparedErasureDoesNotRenewAnEarlierSemanticCaptionLease)

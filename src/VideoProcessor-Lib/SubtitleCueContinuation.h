@@ -82,6 +82,8 @@ public:
         SubtitleCueContinuation out;const auto& c=preview.current;
         out.identity=c.identity;out.templateIdentity=m_reference.identity;out.previousIdentity=m_last;
         out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
+        // Diagnostic coordinates are retained on rejection too; valid still gates authority.
+        out.physicalBase=m_base;out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
         auto fail=[&](const char* why) {out.reason=why;m_valid=false;m_cached=out;return out;};
         if(!m_valid)return out;
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.analysisRefresh ||
@@ -119,7 +121,7 @@ public:
         // healthy positive on the cue side is freshly verified below each frame;
         // it does not reset that grace or renew the acquisition/physical baseline.
         if(edgeLoss==1 && m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
-        auto fresh=Verify(c,source,maxSamples,out.samples,out.reason);
+        auto fresh=Verify(c,source,maxSamples,out.samples,out.reason,edgeLoss==2,&out);
         if(!fresh)return fail(out.reason);
         out.valid=true;out.localGlyphsOnly=m_localGlyphsOnly || edgeLoss==2;
         out.reason=edgeLoss==2?"current-cue-opposite-edge-pixels":"current-cue-pixels";
@@ -187,9 +189,26 @@ private:
         return 0;
     }
     std::shared_ptr<SubtitleInkSnapshot> Verify(const SubtitleBoxObservation& c,const AnalysisLumaSource& source,
-        size_t maxSamples,unsigned& samples,const char*& reason) const {
+        size_t maxSamples,unsigned& samples,const char*& reason,bool currentPositiveBarOnly=false,
+        SubtitleCueContinuation* diagnostic=nullptr) const {
         auto fresh=Sample(*m_baseline,m_roi,source,maxSamples,samples,reason);
         if(!fresh)return {};
+        // The wide sampling ROI can enter a moving picture. Only the healthy
+        // current-positive bar-only route can exclude that picture interior
+        // from the added-caption-ink veto. Owned glyphs and their adjacent black
+        // backing are still compared below, and every new bar sample still vetoes.
+        const bool pictureIsNotCaption=currentPositiveBarOnly &&
+            BarOnlyCue(m_reference,m_reference.text,m_base);
+        const auto mismatch=[&](int x,int y,int sx,int sy) {
+            if(!diagnostic)return;
+            diagnostic->mismatchX=sx;diagnostic->mismatchY=sy;
+            diagnostic->mismatchBandMask=
+                (sy>=m_reference.pictureTop && sy<m_reference.pictureBottom?1u:0u) |
+                (sy>=c.pictureTop && sy<c.pictureBottom?2u:0u) |
+                (sx>=m_base.left && sx<m_base.right && sy>=m_base.top && sy<m_base.bottom?4u:0u);
+            diagnostic->mismatchPixelMask=(m_baseline->Get(x,y)?1u:0u)|(fresh->Get(x,y)?2u:0u)|
+                (m_baseline->Black(x,y)?4u:0u)|(fresh->Black(x,y)?8u:0u);
+        };
         for(int y=0;y<fresh->height;++y) {
             const int sy=fresh->sourceRows[size_t(y)];if(sy<m_roi.top || sy>=m_roi.bottom)continue;
             for(int x=(m_roi.left+fresh->step-1)/fresh->step;x<fresh->width && x*fresh->step<m_roi.right;++x) {
@@ -198,10 +217,14 @@ private:
                     const auto& b=m_reference.text.lineBounds[i];
                     line|=sx>=b.left && sx<b.right && sy>=b.top && sy<b.bottom;
                 }
-                if(!line && fresh->Get(x,y) && !m_baseline->Get(x,y)){reason="new-ink-outside-cue";return {};}
+                const bool acquiredPicture=sy>=m_reference.pictureTop && sy<m_reference.pictureBottom;
+                if(!line && fresh->Get(x,y) && !m_baseline->Get(x,y) &&
+                    !(pictureIsNotCaption && acquiredPicture)) {
+                    mismatch(x,y,sx,sy);reason="new-ink-outside-cue";return {};
+                }
                 const auto& panel=m_reference.text.sourcePanel;
                 if(panel.Valid() && sx>=panel.left && sx<panel.right && sy>=panel.top && sy<panel.bottom &&
-                    m_baseline->Black(x,y) && !fresh->Black(x,y)){reason="backing-changed";return {};}
+                    m_baseline->Black(x,y) && !fresh->Black(x,y)){mismatch(x,y,sx,sy);reason="backing-changed";return {};}
             }
         }
         // Geometry is local to comparison: raw measurement and AR stay untouched.

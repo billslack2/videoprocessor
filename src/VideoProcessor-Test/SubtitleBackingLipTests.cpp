@@ -11,6 +11,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -117,16 +118,54 @@ TEST_CLASS(SubtitleBackingLipTests) {
             return SubtitleBoxLookahead::Measure(scanner,source,ExtractActivePictureEvidence(source),
                 Identity(sequence),false,{},7,8);
         }
+        SubtitleBoxObservation MeasureWithAuthority(uint64_t sequence,
+            const SubtitlePictureAuthority& authority,int nearBarDistance=0) const {
+            const auto source=Source();SubtitleBoxDetector scanner;scanner.SetNearBarDistance(nearBarDistance);
+            return SubtitleBoxLookahead::Measure(scanner,source,ExtractActivePictureEvidence(source),
+                Identity(sequence),false,{},7,8,authority);
+        }
     };
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> list) {
         return SubtitleBoxLookahead::Resolve(list.begin(),list.size(),7,8);
+    }
+    static std::unique_ptr<SubtitleBoxPreview> ResolveOnHeap(const SubtitleBoxObservation* observations,size_t count) {
+        auto preview=std::make_unique<SubtitleBoxPreview>();
+        *preview=SubtitleBoxLookahead::Resolve(observations,count,7,8);
+        return preview;
     }
     struct Acquired {
         SubtitleBoxPreview preview;
         SubtitleBoxResult accepted;
         SubtitleBoxPresentation tracker;
     };
-    static Acquired Acquire(const Frame& frame,int nearBarDistance=0) {
+    static std::unique_ptr<Acquired> AcquireOnHeap(const Frame& frame,int nearBarDistance=0) {
+        auto observations=std::make_unique<std::array<SubtitleBoxObservation,2>>();
+        (*observations)[0]=frame.Measure(1,nearBarDistance);
+        (*observations)[1]=frame.Measure(2,nearBarDistance);
+        const auto& first=(*observations)[0];const auto& second=(*observations)[1];
+        std::ostringstream diagnostic;diagnostic<<"scale="<<frame.scale<<" format="<<int(frame.format)
+            <<" top="<<frame.top<<" first="<<first.text.diagnosticReason<<" current="<<second.text.diagnosticReason
+            <<" physical="<<second.pictureTop<<":"<<second.pictureBottom<<" lines="<<second.text.lineCount;
+        Logger::WriteMessage(diagnostic.str().c_str());
+        Assert::IsTrue(second.text.detected && first.text.detected);
+        Assert::IsTrue(second.independentBarAnalysis && second.barAuthority && second.barEvidence.available);
+        Assert::AreEqual(frame.pictureTop,second.pictureTop);Assert::AreEqual(frame.pictureBottom,second.pictureBottom);
+        Assert::IsTrue(second.ink && second.ink->rawEvidenceComplete);
+        for(int i=0;i<second.text.lineCount;++i) {
+            const auto& line=second.text.lineBounds[i];
+            Assert::IsTrue(frame.top?line.bottom<=frame.pictureTop:line.top>=frame.pictureBottom,
+                L"Real measured glyphs are wholly in the physical bar; detector display fringe is not ownership.");
+        }
+        Assert::IsFalse(second.text.sourcePanel.Valid() || second.text.provenSourcePanel.Valid());
+        Assert::IsTrue(second.text.capturePanelMeasured && !second.text.capturePanel.Valid());
+        auto result=std::make_unique<Acquired>();
+        auto combined=ResolveOnHeap(observations->data(),observations->size());
+        Assert::IsTrue(result->tracker.Consume(*combined).detected);
+        result->preview=*ResolveOnHeap(&second,1);
+        result->accepted=result->tracker.Consume(result->preview);
+        Assert::IsTrue(result->accepted.detected && !result->accepted.held && result->accepted.observations>=2);
+        return result;
+    }    static Acquired Acquire(const Frame& frame,int nearBarDistance=0) {
         const auto first=frame.Measure(1,nearBarDistance),second=frame.Measure(2,nearBarDistance);
         std::ostringstream diagnostic;diagnostic<<"scale="<<frame.scale<<" format="<<int(frame.format)
             <<" top="<<frame.top<<" first="<<first.text.diagnosticReason<<" current="<<second.text.diagnosticReason
@@ -333,6 +372,239 @@ public:
             Assert::IsTrue(proof.edgeEvidenceMask&(top?LipEdgeTopCurrent:LipEdgeBottomCurrent));
             const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8);
             Assert::IsTrue(Same(applied.generatedCleanup,proof.cleanup));
+        }
+    }
+    TEST_METHOD(NearbyCurrentBoundaryRevalidatesOnlyRememberedLipAfterLocalCueContinuation) {
+        Frame frame;frame.Lip(8,true);auto cue=AcquireOnHeap(frame);
+        const auto source=frame.Source();const auto geometry=Geometry(*cue);
+        auto seedObservation=std::make_unique<SubtitleBoxObservation>(frame.Measure(2));
+        Assert::AreEqual(64,seedObservation->pictureTop);Assert::AreEqual(296,seedObservation->pictureBottom);
+        ActivePictureBounds base;
+        base.left=0;base.top=seedObservation->pictureTop;base.right=frame.width;base.bottom=seedObservation->pictureBottom;
+        base.rasterWidth=frame.width;base.rasterHeight=frame.height;
+        const auto bindSharedPicture=[&](SubtitleBoxObservation& observation) {
+            observation.sharedPicture.required=true;
+            observation.sharedPicture.bounds=base;
+            observation.sharedPicture.identity=observation.identity;
+        };
+        bindSharedPicture(*seedObservation);
+        auto seedPreview=ResolveOnHeap(seedObservation.get(),1);
+        Assert::IsTrue(seedPreview->current.sharedPicture.AvailableFor(
+            seedPreview->current.identity,frame.width,frame.height));
+        auto lipContinuity=std::make_unique<SubtitleBackingLipContinuity>();
+        auto seed=std::make_unique<CurrentSubtitleBackingLipProof>(
+            lipContinuity->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry));
+        Assert::IsTrue(seed->valid && !seed->revalidatedOutline);
+
+        auto guard=std::make_unique<SubtitleCueContinuationGuard>();
+        const bool remembered=guard->Remember(*seedPreview,cue->accepted,base,source);
+        if(!remembered)Logger::WriteMessage(guard->LastSeedReason());
+        Assert::IsTrue(remembered);
+        Assert::AreEqual("seeded",guard->LastSeedReason());
+        auto observation=std::make_unique<SubtitleBoxObservation>(frame.Measure(3));
+        bindSharedPicture(*observation);
+        observation->pictureTop=0;observation->barEvidence.top=0;observation->independentBarAnalysis=false;
+        auto current=ResolveOnHeap(observation.get(),1);
+        Assert::IsTrue(guard->NeedsCurrentProof(*current));
+        auto continuation=std::make_unique<SubtitleCueContinuation>(guard->Prepare(*current,source,base,250,41.708));
+        Assert::IsTrue(continuation->valid && continuation->localGlyphsOnly && continuation->accepted.held);
+        auto tracker=std::make_unique<SubtitleBoxPresentation>(cue->tracker);
+        tracker->RefreshReferencePixels(*current,source);
+        const auto accepted=tracker->Consume(*current,250,41.708,nullptr,false,false,continuation.get());
+        Assert::IsTrue(accepted.detected && accepted.held);
+
+        const auto setNearbyBoundary=[&](SubtitleBoxPreview& preview,bool validMetrics) {
+            auto& bars=preview.current.barEvidence;
+            bars.bottomRevalidatedAtReference=false;bars.bottomRevalidatedNearby=true;
+            bars.referenceBottom=preview.current.sharedPicture.bounds.bottom;
+            preview.current.pictureBottom=bars.bottom=bars.referenceBottom+1;
+            bars.bottomReferenceDelta=1;
+            bars.bottomReferenceBoundarySupport=validMetrics?16:0;
+            bars.bottomReferenceBlackFraction=validMetrics?0.95:0.0;
+            bars.bottomReferenceMaxIntrusion=validMetrics?1:0;
+            bars.nearbyProbes=validMetrics?1:0;
+        };
+        setNearbyBoundary(*current,true);
+        auto noCandidate=std::make_unique<CurrentSubtitleBackingLipProof>(ProveCurrentSubtitleBackingLip(
+            source,*current,accepted,Identity(3),7,8,65536,nullptr,&geometry,continuation.get()));
+        Assert::IsFalse(noCandidate->valid,L"Current nearby edge pixels cannot acquire a new cleanup without a remembered finite outline.");
+        Assert::IsFalse(noCandidate->pixelInspectionPerformed);
+
+        auto unchangedNearby=std::make_unique<SubtitleBackingLipContinuity>();
+        Assert::IsTrue(unchangedNearby->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry).valid);
+        auto unchanged=std::make_unique<CurrentSubtitleBackingLipProof>(unchangedNearby->Consume(
+            source,*current,accepted,Identity(3),7,8,65536,&geometry,continuation.get()));
+        Assert::IsTrue(unchanged->valid && unchanged->revalidatedOutline);
+        LogProof(*unchanged,frame,"unchanged-nearby-positive");
+        Assert::IsTrue(Same(seed->cleanup,unchanged->cleanup) && Same(seed->blackInterior,unchanged->blackInterior));
+
+        auto noMetrics=std::make_unique<SubtitleBackingLipContinuity>();
+        const auto noMetricsSeed=noMetrics->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry);
+        Assert::IsTrue(noMetricsSeed.valid);
+        auto missingMetrics=std::make_unique<SubtitleBoxPreview>(*current);setNearbyBoundary(*missingMetrics,false);
+        auto missing=std::make_unique<CurrentSubtitleBackingLipProof>(noMetrics->Consume(
+            source,*missingMetrics,accepted,Identity(3),7,8,65536,&geometry,continuation.get()));
+        Assert::IsFalse(missing->valid);Assert::IsFalse(missing->pixelInspectionPerformed);
+        Assert::IsTrue(missing->contextMismatchMask&LipContextCueSideBottomUnavailable);
+
+        for(double fraction:{std::numeric_limits<double>::quiet_NaN(),
+            -0.01,std::numeric_limits<double>::infinity(),1.01}) {
+            auto invalidFraction=std::make_unique<SubtitleBackingLipContinuity>();
+            Assert::IsTrue(invalidFraction->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry).valid);
+            auto invalid=std::make_unique<SubtitleBoxPreview>(*current);setNearbyBoundary(*invalid,true);
+            invalid->current.barEvidence.bottomReferenceBlackFraction=fraction;
+            auto rejected=std::make_unique<CurrentSubtitleBackingLipProof>(invalidFraction->Consume(
+                source,*invalid,accepted,Identity(3),7,8,65536,&geometry,continuation.get()));
+            Assert::IsFalse(rejected->valid);Assert::IsFalse(rejected->pixelInspectionPerformed);
+        }
+        for(int intrusion:{-1,25}) {
+            auto invalidIntrusion=std::make_unique<SubtitleBackingLipContinuity>();
+            Assert::IsTrue(invalidIntrusion->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry).valid);
+            auto invalid=std::make_unique<SubtitleBoxPreview>(*current);setNearbyBoundary(*invalid,true);
+            invalid->current.barEvidence.bottomReferenceMaxIntrusion=intrusion;
+            auto rejected=std::make_unique<CurrentSubtitleBackingLipProof>(invalidIntrusion->Consume(
+                source,*invalid,accepted,Identity(3),7,8,65536,&geometry,continuation.get()));
+            Assert::IsFalse(rejected->valid);Assert::IsFalse(rejected->pixelInspectionPerformed);
+        }
+        auto staleReference=std::make_unique<SubtitleBackingLipContinuity>();
+        Assert::IsTrue(staleReference->Consume(source,*seedPreview,cue->accepted,Identity(2),7,8,65536,&geometry).valid);
+        auto stale=std::make_unique<SubtitleBoxPreview>(*current);setNearbyBoundary(*stale,true);
+        stale->current.barEvidence.referenceBottom+=12;
+        auto staleProof=std::make_unique<CurrentSubtitleBackingLipProof>(staleReference->Consume(
+            source,*stale,accepted,Identity(3),7,8,65536,&geometry,continuation.get()));
+        Assert::IsFalse(staleProof->valid);Assert::IsFalse(staleProof->pixelInspectionPerformed,
+            L"A stale reference coordinate cannot substitute for current per-side boundary metrics.");
+
+        // Current pixels, not the previous cleanup rectangle, decide whether a
+        // remembered card still exists. Change one pixel inside its body while
+        // keeping the exact current subtitle glyphs and edge revalidation.
+        frame.Pixel(300,frame.pictureBottom-4,300);
+        auto changedObservation=std::make_unique<SubtitleBoxObservation>(frame.Measure(4));
+        bindSharedPicture(*changedObservation);
+        changedObservation->pictureTop=0;changedObservation->barEvidence.top=0;
+        changedObservation->independentBarAnalysis=false;
+        auto changed=ResolveOnHeap(changedObservation.get(),1);
+        auto changedContinuation=std::make_unique<SubtitleCueContinuation>(
+            guard->Prepare(*changed,frame.Source(),base,250,41.708));
+        Assert::IsTrue(changedContinuation->valid && changedContinuation->localGlyphsOnly);
+        tracker->RefreshReferencePixels(*changed,frame.Source());
+        const auto changedAccepted=tracker->Consume(*changed,250,41.708,nullptr,false,false,changedContinuation.get());
+        Assert::IsTrue(changedAccepted.detected && changedAccepted.held);
+        setNearbyBoundary(*changed,true);
+        auto bodyChanged=std::make_unique<CurrentSubtitleBackingLipProof>(lipContinuity->Consume(
+            frame.Source(),*changed,changedAccepted,Identity(4),7,8,65536,&geometry,changedContinuation.get()));
+        Assert::IsFalse(bodyChanged->valid);Assert::AreEqual("lip-outline-body-changed",bodyChanged->reason);
+    }
+    TEST_METHOD(FreshBoundaryProofColdAcquiresRoundedLipForSharedAndInspectionCandidates) {
+        for(bool inspectionOnly:{false,true}) {
+            Frame frame(6,Format::P010,false);const auto lip=frame.Lip(30,true);auto acquired=AcquireOnHeap(frame);
+            const auto source=frame.Source();
+            auto baseObservation=std::make_unique<SubtitleBoxObservation>(frame.Measure(2));
+            Assert::AreEqual(384,baseObservation->pictureTop);Assert::AreEqual(1776,baseObservation->pictureBottom);
+            ActivePictureBounds base;
+            base.left=0;base.top=baseObservation->pictureTop;base.right=frame.width;base.bottom=baseObservation->pictureBottom;
+            base.rasterWidth=frame.width;base.rasterHeight=frame.height;
+            SubtitleInspectionCandidate candidate;
+            candidate.valid=true;candidate.bounds=base;candidate.originIdentity=Identity(2);
+            candidate.policyGeneration=7;candidate.continuityGeneration=8;candidate.nativeGeometryRevision=13;
+            const auto authorityFor=[&](uint64_t sequence) {
+                SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(sequence);
+                if(inspectionOnly)authority.inspectionCandidate=candidate;
+                else authority.bounds=base;
+                return authority;
+            };
+            auto firstObservation=std::make_unique<SubtitleBoxObservation>(frame.MeasureWithAuthority(3,authorityFor(3)));
+            auto secondObservation=std::make_unique<SubtitleBoxObservation>(frame.MeasureWithAuthority(4,authorityFor(4)));
+            Assert::IsTrue(firstObservation->text.detected && secondObservation->text.detected);
+            Assert::AreEqual(inspectionOnly,secondObservation->inspectionCandidateUsed);
+            Assert::AreEqual(!inspectionOnly,secondObservation->sharedPicture.AvailableFor(
+                secondObservation->identity,frame.width,frame.height));
+            Assert::IsTrue(firstObservation->barAuthority && firstObservation->barEvidence.available &&
+                firstObservation->barEvidence.bottom==base.bottom,
+                L"Bar authority and its bottom plane must come from the actual shared/inspection measurement.");
+            if(inspectionOnly) {
+                Assert::IsTrue(firstObservation->inspectionCandidateUsed);
+                Assert::IsTrue(firstObservation->sharedPicture.inspectionCandidate.AvailableFor(
+                    firstObservation->identity,frame.width,frame.height,7,8));
+            } else {
+                Assert::IsTrue(firstObservation->sharedPicture.AvailableFor(
+                    firstObservation->identity,frame.width,frame.height));
+            }
+            auto pair=std::make_unique<std::array<SubtitleBoxObservation,2>>();
+            (*pair)[0]=*firstObservation;(*pair)[1]=*secondObservation;
+            auto current=ResolveOnHeap(pair->data(),pair->size());
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            const auto accepted=tracker->Consume(*current);
+            Assert::IsTrue(accepted.detected && !accepted.held && !accepted.confirmationPending);
+            Assert::IsFalse(current->current.pendingRefresh || current->current.analysisRefresh ||
+                current->current.currentAnchorUsesTrackedEdge || current->current.discontinuity);
+            const auto expectedIdentity=current->current.identity;
+            Assert::IsTrue(SameAnalysisFrameIdentity(expectedIdentity,Identity(3)));
+            Assert::IsTrue(current->current.barAuthority && current->current.barEvidence.available &&
+                current->current.barEvidence.bottom==current->current.pictureBottom &&
+                current->current.pictureBottom==base.bottom);
+            const auto geometry=Geometry(*acquired);
+            auto continuity=std::make_unique<SubtitleBackingLipContinuity>();
+            auto fresh=std::make_unique<CurrentSubtitleBackingLipProof>(continuity->Consume(
+                source,*current,accepted,expectedIdentity,7,8,65536,&geometry));
+            LogProof(*fresh,frame,inspectionOnly?"inspection-cold-lip":"shared-cold-lip");
+            Assert::IsTrue(fresh->valid && !fresh->revalidatedOutline);
+            Assert::IsTrue(Same(fresh->measured,lip));
+            Assert::IsTrue(Same(fresh->cleanup,fresh->blackInterior) && Contains(lip,fresh->cleanup));
+            Assert::AreEqual(30,fresh->blackInterior.bottom-fresh->blackInterior.top);
+            AnalysisLumaSample roundedCorner,cleanupPixel;
+            Assert::IsTrue(source.Sample(lip.left,lip.top,roundedCorner));
+            Assert::IsTrue(roundedCorner.luma>68,L"Rounded live picture corner must stay outside cleanup.");
+            Assert::IsTrue(source.Sample(fresh->cleanup.left,fresh->cleanup.top,cleanupPixel));
+            Assert::IsTrue(cleanupPixel.luma<=68);
+            const auto applied=ApplyCurrentSubtitleBackingLip(geometry,*fresh,expectedIdentity,7,8);
+            Assert::IsTrue(Same(applied.generatedCleanup,fresh->cleanup));
+
+            auto missingMetrics=std::make_unique<SubtitleBoxPreview>(*current);
+            missingMetrics->current.barEvidence.bottomDepth=0;
+            missingMetrics->current.barEvidence.bottomSupport=0;
+            missingMetrics->current.barEvidence.bottomBoundarySupport=0;
+            missingMetrics->current.barEvidence.bottomBlackFraction=0.0;
+            missingMetrics->current.barEvidence.bottomMaxIntrusion=0;
+            missingMetrics->current.barEvidence.bottomRevalidatedAtReference=false;
+            missingMetrics->current.barEvidence.bottomRevalidatedNearby=false;
+            missingMetrics->current.barEvidence.bottomReferenceBoundarySupport=0;
+            missingMetrics->current.barEvidence.bottomReferenceBlackFraction=0.0;
+            missingMetrics->current.barEvidence.bottomReferenceMaxIntrusion=0;
+            auto noMetrics=std::make_unique<CurrentSubtitleBackingLipProof>(ProveCurrentSubtitleBackingLip(
+                source,*missingMetrics,accepted,expectedIdentity,7,8,65536,nullptr,&geometry));
+            Assert::IsFalse(noMetrics->valid);Assert::IsFalse(noMetrics->pixelInspectionPerformed);
+            auto held=accepted;held.held=true;
+            auto noHeldCold=std::make_unique<CurrentSubtitleBackingLipProof>(ProveCurrentSubtitleBackingLip(
+                source,*current,held,expectedIdentity,7,8,65536,nullptr,&geometry));
+            Assert::IsFalse(noHeldCold->valid);
+            if(inspectionOnly) {
+                auto notUsed=std::make_unique<SubtitleBoxPreview>(*missingMetrics);
+                notUsed->current.inspectionCandidateUsed=false;
+                auto noUsedCandidate=std::make_unique<CurrentSubtitleBackingLipProof>(ProveCurrentSubtitleBackingLip(
+                    source,*notUsed,accepted,expectedIdentity,7,8,65536,nullptr,&geometry));
+                Assert::IsFalse(noUsedCandidate->valid);Assert::IsFalse(noUsedCandidate->pixelInspectionPerformed);
+                auto stale=std::make_unique<SubtitleBoxPreview>(*missingMetrics);
+                stale->current.sharedPicture.inspectionCandidate.nativeGeometryRevision=0;
+                auto noStaleCandidate=std::make_unique<CurrentSubtitleBackingLipProof>(ProveCurrentSubtitleBackingLip(
+                    source,*stale,accepted,expectedIdentity,7,8,65536,nullptr,&geometry));
+                Assert::IsFalse(noStaleCandidate->valid);Assert::IsFalse(noStaleCandidate->pixelInspectionPerformed);
+            }
+
+            auto unchangedObservation=std::make_unique<SubtitleBoxObservation>(frame.MeasureWithAuthority(5,authorityFor(5)));
+            auto unchanged=ResolveOnHeap(unchangedObservation.get(),1);
+            auto heldLip=std::make_unique<CurrentSubtitleBackingLipProof>(continuity->Consume(
+                source,*unchanged,unchanged->current.text,Identity(5),7,8,65536,&geometry));
+            Assert::IsTrue(heldLip->valid && heldLip->revalidatedOutline);
+            Assert::IsTrue(Same(fresh->cleanup,heldLip->cleanup) && Same(fresh->blackInterior,heldLip->blackInterior));
+
+            frame.Pixel(frame.width/2,frame.pictureBottom-15,300);
+            auto changedObservation=std::make_unique<SubtitleBoxObservation>(frame.MeasureWithAuthority(6,authorityFor(6)));
+            auto changed=ResolveOnHeap(changedObservation.get(),1);
+            auto changedProof=std::make_unique<CurrentSubtitleBackingLipProof>(continuity->Consume(
+                source,*changed,changed->current.text,Identity(6),7,8,65536,&geometry));
+            Assert::IsFalse(changedProof->valid);
+            Assert::AreEqual("lip-outline-body-changed",changedProof->reason);
         }
     }
     TEST_METHOD(UnavailableOrReferenceOnlyCueSideCannotBorrowMatchingCoordinates) {

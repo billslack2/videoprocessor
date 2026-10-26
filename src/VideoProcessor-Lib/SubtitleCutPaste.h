@@ -742,7 +742,7 @@ public:
             m_continuity==preview.continuityGeneration && m_padding==padding && m_gap==gap &&
             m_relativeDisplay==(displayBounds!=nullptr) &&
             SubtitleCueContinuation::SameRect(displayBounds?*displayBounds:text.bounds,m_cachedDisplay) &&
-            m_geometry.pictureTop==cueContinuation->pictureTop && m_geometry.pictureBottom==cueContinuation->pictureBottom &&
+            cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) &&
             // Source padding is a display envelope; current glyph extraction
             // and erasure are limited to content and the measured cleanup card.
             SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&

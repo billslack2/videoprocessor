@@ -41,14 +41,47 @@ struct SubtitleBarTrackingReference
     }
 };
 
+// Coordinates nominated from an existing native geometry for a NEW source
+// scan. This record carries context and provenance, never bar/crop/ink proof.
+struct SubtitleInspectionCandidate {
+    bool valid=false;
+    ActivePictureBounds bounds;
+    ActivePictureFrameIdentity originIdentity;
+    uint64_t policyGeneration=0,continuityGeneration=0,nativeGeometryRevision=0;
+    bool Matches(const SubtitleInspectionCandidate& other) const {
+        const auto& a=originIdentity;const auto& b=other.originIdentity;
+        return valid==other.valid && (!valid ||
+            (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
+             bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
+             bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
+             bounds.trustedBarAxes==other.bounds.trustedBarAxes &&
+             a.transportGeneration==b.transportGeneration && a.sourceFormatGeneration==b.sourceFormatGeneration &&
+             a.analysisDomainKey==b.analysisDomainKey && a.viewportGeneration==b.viewportGeneration &&
+             a.rendererGeneration==b.rendererGeneration && policyGeneration==other.policyGeneration &&
+             continuityGeneration==other.continuityGeneration && nativeGeometryRevision==other.nativeGeometryRevision));
+    }
+    bool AvailableFor(const ActivePictureFrameIdentity& frame,int width,int height,
+        uint64_t policy,uint64_t continuity) const {
+        const auto& a=originIdentity;
+        return valid && nativeGeometryRevision && a.transportGeneration && a.sourceFormatGeneration && a.analysisDomainKey &&
+            a.acceptedSequence && a.acceptedSequence<=frame.acceptedSequence &&
+            a.transportGeneration==frame.transportGeneration && a.sourceFormatGeneration==frame.sourceFormatGeneration &&
+            a.analysisDomainKey==frame.analysisDomainKey && a.viewportGeneration==frame.viewportGeneration &&
+            a.rendererGeneration==frame.rendererGeneration && policyGeneration==policy && continuityGeneration==continuity &&
+            bounds.rasterWidth==width && bounds.rasterHeight==height && bounds.left==0 && bounds.right==width &&
+            bounds.top>0 && bounds.bottom<height && bounds.top<bounds.bottom &&
+            bounds.trustedBarAxes==ActivePictureBounds::BarAxes::NONE;
+    }
+};
 // Snapshot of the SAME bar authority consumed by Classic. Queued scans may
 // speculate with a snapshot, but presentation must match the current decision.
 struct SubtitlePictureAuthority {
     bool required=false;
     ActivePictureBounds bounds;
     ActivePictureFrameIdentity identity;
+    SubtitleInspectionCandidate inspectionCandidate;
     bool Matches(const SubtitlePictureAuthority& other) const {
-        return required==other.required && (!required ||
+        return inspectionCandidate.Matches(other.inspectionCandidate) && required==other.required && (!required ||
             (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
              bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
              bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
@@ -87,6 +120,8 @@ struct SubtitleBoxObservation
     // time. This is distinct from independentBarAnalysis: even a negative or
     // one-edge result can be independent of the unavailable snapshot.
     bool pictureAuthorityUnavailableForMeasurement = false;
+    // Fresh pixels were scanned using a nominated reference, not shared crop authority.
+    bool inspectionCandidateUsed = false;
     // Current physical bars, independently measured without retained presentation.
     // This permits analysis; only subtitleArProof can supply crop evidence.
     bool independentBarAnalysis = false;
@@ -278,8 +313,12 @@ namespace SubtitleBoxLookahead
                 sharedPicture.AvailableFor(identity,source.width,source.height);
             result.pictureAuthorityUnavailableForMeasurement=
                 source.IsValid() && !sharedPictureAvailable;
+            result.inspectionCandidateUsed=!sharedPictureAvailable &&
+                sharedPicture.inspectionCandidate.AvailableFor(identity,source.width,source.height,
+                    policyGeneration,continuityGeneration);
+            const auto& scanBounds=sharedPictureAvailable?sharedPicture.bounds:sharedPicture.inspectionCandidate.bounds;
             result.barEvidence.reason="shared-classic-authority-unavailable";
-            if (!sharedPictureAvailable && source.IsValid()) {
+            if (!sharedPictureAvailable && !result.inspectionCandidateUsed && source.IsValid()) {
                 // Cold acquisition must not wait for presentation authority.
                 // Scan only currently measured physical bars, without mirrored,
                 // tracked, or caption-derived planes. Keep the shared snapshot
@@ -297,7 +336,7 @@ namespace SubtitleBoxLookahead
                     result.ink=scanner.InkSnapshot();
                 }
             }
-            if(sharedPicture.AvailableFor(identity,source.width,source.height) && source.IsValid()) {
+            if((sharedPictureAvailable || result.inspectionCandidateUsed) && source.IsValid()) {
                 // Classic owns presentation geometry, but its retained bounds
                 // can lag a changed physical aspect ratio. Subtitle analysis
                 // must prove its bar sides against the current source pixels.
@@ -305,20 +344,20 @@ namespace SubtitleBoxLookahead
                 // checks; these effective planes never authorize a crop.
                 const auto current=ExtractSubtitleBarEvidence(source);
                 auto bars=ResolveCurrentSubtitleAnalysisBars(source,current,
-                    sharedPicture.bounds.top,sharedPicture.bounds.bottom);
+                    scanBounds.top,scanBounds.bottom);
                 SubtitleBoxResult candidate;
                 std::shared_ptr<const SubtitleInkSnapshot> candidateInk;
-                if((bars.top==0 && sharedPicture.bounds.top>0) ||
-                    (bars.bottom==source.height && sharedPicture.bounds.bottom<source.height) ||
+                if((bars.top==0 && scanBounds.top>0) ||
+                    (bars.bottom==source.height && scanBounds.bottom<source.height) ||
                     bars.topRevalidatedAtReference || bars.bottomRevalidatedAtReference ||
                     bars.topRevalidatedNearby || bars.bottomRevalidatedNearby) {
                     // A caption can obscure an otherwise flat encoded edge,
                     // and its strokes can also look like an unmasked edge.
                     // Probe at the candidate plane, then mask only current
                     // detector-owned crossing ink in a strict pixel reproof.
-                    const int probeTop=bars.top>0?bars.top:sharedPicture.bounds.top;
+                    const int probeTop=bars.top>0?bars.top:scanBounds.top;
                     const int probeBottom=bars.bottom<source.height?bars.bottom:
-                        sharedPicture.bounds.bottom;
+                        scanBounds.bottom;
                     if(probeTop<probeBottom) {
                         result.sharedProbeAttempted=true;
                         scanner.Reset();
@@ -332,7 +371,7 @@ namespace SubtitleBoxLookahead
                         if(candidate.detected && !candidate.workLimit &&
                             candidate.anchor.Valid() && candidateInk)
                             bars=ResolveCurrentSubtitleAnalysisBars(source,current,
-                                sharedPicture.bounds.top,sharedPicture.bounds.bottom,
+                                scanBounds.top,scanBounds.bottom,
                                 candidateInk.get(),&candidate.anchor);
                     }
                 }
@@ -350,15 +389,15 @@ namespace SubtitleBoxLookahead
                          bars.bottomRevalidatedAtReference || bars.bottomRevalidatedNearby);
                     const bool missingBottom=current.bottom==source.height &&
                         bars.bottom==source.height && provedTop &&
-                        sharedPicture.bounds.bottom<source.height &&
-                        bars.top<sharedPicture.bounds.bottom;
+                        scanBounds.bottom<source.height &&
+                        bars.top<scanBounds.bottom;
                     const bool missingTop=current.top==0 && bars.top==0 &&
-                        provedBottom && sharedPicture.bounds.top>0 &&
-                        sharedPicture.bounds.top<bars.bottom;
+                        provedBottom && scanBounds.top>0 &&
+                        scanBounds.top<bars.bottom;
                     result.glyphLocalProofReason="no-opposite-current-bar";
                     if(missingBottom != missingTop) {
-                        const int plane=missingBottom?sharedPicture.bounds.bottom:
-                            sharedPicture.bounds.top;
+                        const int plane=missingBottom?scanBounds.bottom:
+                            scanBounds.top;
                         const auto proof=ProveLocalSubtitleGlyphBacking(source,candidate,
                             candidateInk.get(),plane,missingBottom);
                         result.glyphLocalProofReason=proof.reason;
@@ -537,7 +576,17 @@ namespace SubtitleBoxLookahead
     inline bool RebindIndependentPicture(SubtitleBoxObservation& observation,
         const SubtitlePictureAuthority& picture)
     {
+        if((observation.sharedPicture.inspectionCandidate.valid &&
+                !observation.sharedPicture.inspectionCandidate.AvailableFor(observation.identity,observation.width,observation.height,
+                    observation.policyGeneration,observation.continuityGeneration)) ||
+            (picture.inspectionCandidate.valid &&
+                !picture.inspectionCandidate.AvailableFor(observation.identity,observation.width,observation.height,
+                    observation.policyGeneration,observation.continuityGeneration)))return false;
         if (observation.sharedPicture.Matches(picture)) return true;
+        // Empty-hint results must never be relabeled as nominated scans, nor
+        // can a completed dependent scan change its nomination or authority.
+        if(observation.sharedPicture.inspectionCandidate.valid || picture.inspectionCandidate.valid)
+            return false;
         const bool bothSnapshotsUnavailable=
             observation.pictureAuthorityUnavailableForMeasurement &&
             observation.sharedPicture.required && picture.required &&
@@ -632,6 +681,9 @@ namespace SubtitleBoxLookahead
             observation.policyGeneration != policyGeneration ||
             observation.continuityGeneration != continuityGeneration ||
             observation.discontinuity != discontinuity) return false;
+        if(observation.inspectionCandidateUsed &&
+            !observation.sharedPicture.inspectionCandidate.AvailableFor(identity,width,height,
+                policyGeneration,continuityGeneration))return false;
         // The available shared-picture branch measures current pixels and
         // returns before consulting priorBar. This includes partial/negative
         // scans: accepting their result does not turn unsearched bars into

@@ -13610,6 +13610,25 @@ struct LibplaceboVideoRenderer::Impl
         subtitleSharedPicture.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
         subtitleSharedPicture.identity.viewportGeneration=viewportRequestSerial;
         subtitleSharedPicture.identity.rendererGeneration=frameGeneration;
+        // Presentation lease expiry may clear Classic inspection authority.
+        // Nominate retained native coordinates separately for a fresh worker
+        // scan; AvailableFor stays false and no placement/crop state is renewed.
+        subtitleSharedPicture.inspectionCandidate={};
+        if(!subtitleSharedPicture.AvailableFor(subtitlePixelIdentity,width,height)) {
+            const bool currentFullRaster=(fullRasterPresentationAuthorityAvailable &&
+                fullRasterPresentationAuthoritySourceGeneration==frameGeneration) ||
+                latestActivePictureEvidenceClassification==ActivePictureClassification::FULL_RASTER_TRUSTED;
+            subtitleSharedPicture.inspectionCandidate=NominateSubtitleInspectionCandidate(analysisSource,nlsGeometry,
+                nlsGeometrySourceGeneration,nlsGeometrySourceFormatKey,nlsGeometryOrigin,nlsGeometryClassification,
+                nlsGeometryGeneration,subtitlePixelIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                subtitleMeasurementEnabled && automaticSourceCrop && configuredScreenActive && trustedNlsBarGeometry,
+                inspectionRecoveryBlocked || inwardCaptionProtected || currentFullRaster || nlsRequested || fixedCropAspectConfigured);
+            if(subtitleSharedPicture.inspectionCandidate.valid && sourceSequence%120==0)
+                DebugLog::Log("SUBTITLE INSPECTION CANDIDATE: frame=%llu revision=%llu origin=%llu bounds=%d-%d shared_available=0 policy=%llu continuity=%llu domain=%llu viewport=%llu",
+                    sourceSequence,nlsGeometryGeneration,subtitleSharedPicture.inspectionCandidate.originIdentity.acceptedSequence,
+                    nlsGeometry.top,nlsGeometry.bottom,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                    subtitlePixelIdentity.analysisDomainKey,subtitlePixelIdentity.viewportGeneration);
+        }
 
 		if (retiringTranslationFitInspection)
 		{
@@ -14060,9 +14079,12 @@ struct LibplaceboVideoRenderer::Impl
             relocatedSubtitle=subtitleSourcePreparation.geometry;
             subtitleCompositionSucceeded=subtitleSourcePreparation.composed;
             currentConfirmedCaptionBounds=subtitleSourcePreparation.captionBounds;
-            currentConfirmedCaptionAvailable=subtitleSourcePreparation.captionConfirmed;
-            currentMeasuredCaptionAvailable=subtitleSourcePreparation.captionMeasured;
-            currentNoCaptionConfirmed=subtitleSourcePreparation.noCaptionConfirmed;
+            currentConfirmedCaptionAvailable=subtitleSourcePreparation.captionConfirmed &&
+                !subtitleSourcePreparation.ownershipObservation.inspectionCandidateUsed;
+            currentMeasuredCaptionAvailable=subtitleSourcePreparation.captionMeasured &&
+                !subtitleSourcePreparation.ownershipObservation.inspectionCandidateUsed;
+            currentNoCaptionConfirmed=subtitleSourcePreparation.noCaptionConfirmed &&
+                !subtitleSourcePreparation.ownershipObservation.inspectionCandidateUsed;
             currentSubtitleBarStripClearance=subtitleSourcePreparation.barStripClearance;
             currentSubtitleScanReason=subtitleSourcePreparation.scanReason;
             safeSubtitlePadding=subtitleSourcePreparation.padding;
@@ -14182,13 +14204,16 @@ struct LibplaceboVideoRenderer::Impl
                      now-subtitleContinuationLogTick>=2000)) {
                     subtitleContinuationLogReason=currentCueContinuation.reason;
                     subtitleContinuationLogTick=now;
-                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d local_glyphs_only=%d",
+                    DebugLog::Log("SUBTITLE CONTINUATION: frame=%llu template=%llu verified=%d reason=%s samples=%u lease_ms=%.2f raw_picture=%d-%d retained_picture=%d-%d local_glyphs_only=%d native_picture=%d-%d mismatch=%d,%d mismatch_band_mask=0x%x mismatch_pixel_mask=0x%x",
                         sourceSequence,currentCueContinuation.templateIdentity.acceptedSequence,
                         currentCueContinuation.valid?1:0,currentCueContinuation.reason,
                         currentCueContinuation.samples,currentCueContinuation.elapsedMs,
                         currentSubtitlePreview.current.pictureTop,currentSubtitlePreview.current.pictureBottom,
                         currentCueContinuation.pictureTop,currentCueContinuation.pictureBottom,
-                        currentCueContinuation.localGlyphsOnly?1:0);
+                        currentCueContinuation.localGlyphsOnly?1:0,
+                        currentCueContinuation.physicalBase.top,currentCueContinuation.physicalBase.bottom,
+                        currentCueContinuation.mismatchX,currentCueContinuation.mismatchY,
+                        currentCueContinuation.mismatchBandMask,currentCueContinuation.mismatchPixelMask);
                 }
             }
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
@@ -14245,41 +14270,13 @@ struct LibplaceboVideoRenderer::Impl
             currentNoCaptionConfirmed=ConfirmedSubtitleAbsentForPresentation(
                 currentSubtitlePreview.current,subtitleBoxResult,subtitleIdentity);
             currentSubtitleBarStripClearance=currentSubtitlePreview.current.barStripClearance;
-            if (barAuthority &&
-                !currentSubtitlePreview.current.glyphLocalTop &&
-                !currentSubtitlePreview.current.glyphLocalBottom &&
-                SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,
-                    subtitleIdentity) &&
-                currentSubtitlePreview.current.analyzed &&
-                !currentSubtitlePreview.current.pendingRefresh &&
-                currentText.detected && !currentText.workLimit &&
-                currentText.nearBarEligibilityMeasured && currentText.nearBarEligible &&
-                subtitleBoxResult.detected && !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
-                subtitleBoxResult.observations >= 1 &&
-                subtitleBoxResult.bounds.Valid() && currentText.bounds.Valid())
-            {
-                SubtitleBoxRect caption = subtitleBoxResult.bounds;
-                caption.left = std::min(caption.left, currentText.bounds.left);
-                caption.top = std::min(caption.top, currentText.bounds.top);
-                caption.right = std::max(caption.right, currentText.bounds.right);
-                caption.bottom = std::max(caption.bottom, currentText.bounds.bottom);
-                if (currentText.provenSourcePanel.Valid())
-                {
-                    caption.left = std::min(caption.left, currentText.provenSourcePanel.left);
-                    caption.top = std::min(caption.top, currentText.provenSourcePanel.top);
-                    caption.right = std::max(caption.right, currentText.provenSourcePanel.right);
-                    caption.bottom = std::max(caption.bottom, currentText.provenSourcePanel.bottom);
-                }
-                currentConfirmedCaptionBounds = { caption.left, caption.top,
-                    caption.right, caption.bottom, width, height,
-                    static_cast<double>(caption.right - caption.left) /
-                        std::max(1, caption.bottom - caption.top),
-                    ActivePictureBounds::BarAxes::NONE };
-                // A measured cue may protect an already displayed superset.
-                // Acquiring a new crop still requires the original two observations.
-                currentMeasuredCaptionAvailable = true;
-                currentConfirmedCaptionAvailable = subtitleBoxResult.observations >= 2;
-            }
+            currentConfirmedCaptionBounds=MeasureCurrentCaptionForPresentation(
+                currentSubtitlePreview.current,subtitleBoxResult,subtitleIdentity,barAuthority,width,height);
+            currentMeasuredCaptionAvailable=currentConfirmedCaptionBounds.left<currentConfirmedCaptionBounds.right &&
+                currentConfirmedCaptionBounds.top<currentConfirmedCaptionBounds.bottom;
+            // A measured cue may protect an already displayed superset.
+            // Acquiring a new crop still requires the original two observations.
+            currentConfirmedCaptionAvailable=currentMeasuredCaptionAvailable && subtitleBoxResult.observations>=2;
             const bool temporalCaptureEnabled=subtitleCutPasteTest && activeSettings.subtitleTemporalFill &&
                 subtitleCutPasteBackground==5 && !subtitleBoxResult.detected && !videoFrame.IsSourceDiscontinuity();
             bool temporalSourceClean=analysisSource.IsValid() && subtitlePreview->available && currentNoCaptionConfirmed;
@@ -14643,7 +14640,7 @@ struct LibplaceboVideoRenderer::Impl
                     glyphProof.diagnosticInkDensityBasisPoints,glyphProof.diagnosticBaselineSupportBasisPoints,
                     glyphProof.diagnosticGlyphTopology);
                 const auto& probe=subtitlePreview->current;
-                DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d measured=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d",
+                DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d measured=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d inspection_nominee=%d inspection_used=%d nominee=%d-%d nominee_origin=%llu nominee_revision=%llu",
                     sourceSequence,probe.sharedPicture.AvailableFor(probe.identity,probe.width,probe.height)?1:0,
                     probe.sharedPicture.bounds.top,probe.sharedPicture.bounds.bottom,
                     probe.pictureTop,probe.pictureBottom,
@@ -14651,7 +14648,12 @@ struct LibplaceboVideoRenderer::Impl
                     bars.topReferenceDelta,bars.bottomReferenceDelta,bars.nearbyProbes,
                     probe.sharedProbeAttempted?1:0,probe.sharedProbeDetected?1:0,probe.sharedProbeWorkLimit?1:0,
                     probe.sharedProbeReason,probe.sharedProbeAnchor.left,probe.sharedProbeAnchor.top,
-                    probe.sharedProbeAnchor.right,probe.sharedProbeAnchor.bottom);
+                    probe.sharedProbeAnchor.right,probe.sharedProbeAnchor.bottom,
+                    probe.sharedPicture.inspectionCandidate.AvailableFor(probe.identity,probe.width,probe.height,
+                        probe.policyGeneration,probe.continuityGeneration)?1:0,probe.inspectionCandidateUsed?1:0,
+                    probe.sharedPicture.inspectionCandidate.bounds.top,probe.sharedPicture.inspectionCandidate.bounds.bottom,
+                    probe.sharedPicture.inspectionCandidate.originIdentity.acceptedSequence,
+                    probe.sharedPicture.inspectionCandidate.nativeGeometryRevision);
                 DebugLog::Log("SUBTITLE LOCAL GLYPH: frame=%llu top=%d bottom=%d reason=%s verified=%d,%d-%d,%d physical=%d-%d placement=%d-%d",
                     sourceSequence,probe.glyphLocalTop?1:0,probe.glyphLocalBottom?1:0,
                     probe.glyphLocalProofReason,probe.glyphLocalVerifiedBounds.left,
