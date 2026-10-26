@@ -2,7 +2,7 @@
 
 ## Status
 
-Review
+In Progress
 
 2026-10-25: Implemented on the user-selected local Config docking integration
 and deployed for the requested trial. Feature branch:
@@ -58,6 +58,8 @@ Trial evidence:
 - [Visible Chroma scaling](../assets/VP-0215/trial-scaling.png).
 - [Pre-existing all-pages assertion](../assets/VP-0215/baseline-every-page.log).
 - [Optional suite disposition](../assets/VP-0215/optional-whole-suite-disposition.json).
+
+2026-10-25 follow-up: User explicitly requests removing the entire Processing overrides section, moving its existing values into canonical Scaling as faithfully as possible, combining image and chroma into one Scaling section, Debanding / Dithering naming, Blue noise without a recommendation suffix, Tone Mapping tab/page naming, and one Advanced/Basic tone-mapping toggle. Continue the deployed local Config branch at a37dab1f; discovered beta remains v1.4.02-beta at 8c453746. This supersedes the earlier decision to retain Rendering processing controls. Preserve active configuration on binary deployment; legacy loading migrates in memory and Save/Apply persists the comment-preserving plan.
 
 ### Readiness and implementation base
 
