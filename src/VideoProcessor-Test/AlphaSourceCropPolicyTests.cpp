@@ -15967,24 +15967,81 @@ input.currentNativeBounds = crop.geometry;
         }
         TEST_METHOD(ConfirmedReplacementAndTranslationKeepOwnership)
         {
-            for (const auto owner : {DecisionOwner::VERTICAL_TRANSLATION,DecisionOwner::ENGAGE_BASE,
-                DecisionOwner::RELEASE_BASE,DecisionOwner::MOVING_PICTURE_HOLD})
+            Fixture f;
+            f.Run(2170,false,true,true);
+            f.Run(2171,true);
+            auto r=f.input;
+            r.submittedScopeAnchor=f.anchor;
+            for (const auto owner : {DecisionOwner::TRUSTED_CROP,DecisionOwner::VERTICAL_TRANSLATION,
+                DecisionOwner::ENGAGE_BASE,DecisionOwner::RELEASE_BASE,DecisionOwner::MOVING_PICTURE_HOLD})
             {
-                Fixture f;
-                f.Run(2170,false,true,true);
-                f.Run(2171,true);
-                auto r=f.input;
-                r.submittedScopeAnchor=f.anchor;
-                auto selected=Evaluate(r.crop);
-                selected.owner=owner;
-                Assert::IsFalse(ResolveUncertainPicturePresentation(r,selected).retained);
-                selected.owner=DecisionOwner::TRUSTED_CROP;
-                selected.sourceBounds.top=240;
-                selected.sourceBounds.bottom=1920;
-                Assert::IsFalse(ResolveUncertainPicturePresentation(r,selected).retained);
-                r.crop.fullRasterPresentationAuthoritative=true;
-                Assert::IsFalse(ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).retained);
+                Decision labelOnly;
+                labelOnly.applyCrop=true;
+                labelOnly.owner=owner;
+                labelOnly.sourceBounds=r.crop.geometry;
+                labelOnly.sourceBounds.top=240;
+                labelOnly.sourceBounds.bottom=1920;
+                labelOnly.sourceBounds.aspectRatio=3840.0/1680.0;
+                const auto unsupported=ResolveUncertainPicturePresentation(r,labelOnly);
+                Assert::IsTrue(unsupported.retained && unsupported.expanded,
+                    L"An owner label alone cannot replace unchanged native evidence or the actually submitted caption envelope.");
+                Assert::AreEqual(280,unsupported.presentation.sourceBounds.top);
+                Assert::AreEqual(2000,unsupported.presentation.sourceBounds.bottom);
+                Assert::AreEqual(1880,unsupported.nativeCrop.bottom);
             }
+
+            // Publish real current native geometry before replacing the envelope.
+            ++r.crop.frameSourceSequence;
+            r.crop.geometry.top=240;
+            r.crop.geometry.bottom=1920;
+            r.crop.geometry.aspectRatio=3840.0/1680.0;
+            r.crop.framePresentationEpoch=r.presentationEpoch;
+            r.crop.latestObservationSupportsCrop=true;
+            r.crop.latestObservationIsUnavailable=r.crop.latestObservationIsProvisional=false;
+            r.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            r.crop.nearBlackEpisodeRetainCrop=r.crop.sceneVerificationHoldActive=false;
+            r.crop.currentVisibleBoundsAvailable=false;
+            r.measurementCurrent=r.observationAvailable=true;
+            r.observation=r.crop.geometry;
+            r.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            r.candidate=Evaluate(r.crop);
+            Assert::IsTrue(r.candidate.applyCrop && r.candidate.owner==DecisionOwner::TRUSTED_CROP);
+            const auto physical=ResolveUncertainPicturePresentation(r,r.candidate);
+            Assert::IsFalse(physical.retained);
+            Assert::IsTrue(physical.presentation.owner==DecisionOwner::TRUSTED_CROP);
+            Assert::AreEqual(240,physical.presentation.sourceBounds.top);
+            Assert::AreEqual(1920,physical.presentation.sourceBounds.bottom);
+
+            // A current confirmed translation keeps the native height and uses
+            // Evaluate's actual translation contract rather than a renamed FIT.
+            r=f.input;
+            r.submittedScopeAnchor=f.anchor;
+            ++r.crop.frameSourceSequence;
+            r.crop.framePresentationEpoch=r.presentationEpoch;
+            r.crop.verticalTranslationActive=true;
+            r.crop.verticalTranslationPixels=96;
+            r.crop.verticalTranslationBase=r.crop.geometry;
+            r.crop.verticalTranslationSourceGeneration=r.crop.frameSourceGeneration;
+            r.measurementCurrent=r.retentionEvaluated=r.confirmedPresentationResolved=true;
+            r.retentionBounds=r.crop.geometry;
+            r.retentionSourceGeneration=r.crop.frameSourceGeneration;
+            r.retentionSourceSequence=r.crop.frameSourceSequence;
+            r.candidate=Evaluate(r.crop);
+            Assert::IsTrue(r.candidate.owner==DecisionOwner::VERTICAL_TRANSLATION &&
+                r.candidate.verticallyTranslated);
+            const auto translated=ResolveUncertainPicturePresentation(r,r.candidate);
+            Assert::IsFalse(translated.retained);
+            Assert::IsTrue(translated.presentation.owner==DecisionOwner::VERTICAL_TRANSLATION);
+            Assert::AreEqual(96,translated.presentation.verticalTranslationPixels);
+            Assert::AreEqual(376,translated.presentation.sourceBounds.top);
+            Assert::AreEqual(1976,translated.presentation.sourceBounds.bottom);
+            Assert::AreEqual(r.crop.geometry.bottom-r.crop.geometry.top,
+                translated.presentation.sourceBounds.bottom-translated.presentation.sourceBounds.top);
+
+            r.crop.fullRasterPresentationAuthoritative=true;
+            const auto full=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+            Assert::IsFalse(full.retained || full.presentation.applyCrop,
+                L"Independent full-raster authority must still replace the submitted envelope.");
         }
         TEST_METHOD(TranslatedSubmissionRetiresEnvelopeWithoutRenewingNativeAR)
         {
