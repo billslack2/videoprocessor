@@ -1,6 +1,8 @@
 #pragma once
 #include <ToneMappingTuning.h>
 #include <QCheckBox>
+#include <QAbstractScrollArea>
+#include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -14,13 +16,29 @@
 #include <cmath>
 
 // Scrolling a dense settings panel must not change the value beneath the cursor.
-// Ignoring the wheel lets Qt propagate it to the surrounding scroll viewport.
+// Forward the wheel to the nearest scroll viewport, even while focused.
 class ToneMappingSlider final : public QSlider
 {
 public:
     ToneMappingSlider() : QSlider(Qt::Horizontal) { setFocusPolicy(Qt::StrongFocus); }
 protected:
-    void wheelEvent(QWheelEvent* event) override { event->ignore(); }
+    void wheelEvent(QWheelEvent* event) override
+    {
+        for (QWidget* ancestor = parentWidget(); ancestor; ancestor = ancestor->parentWidget())
+        {
+            auto* scroll = qobject_cast<QAbstractScrollArea*>(ancestor);
+            if (!scroll) continue;
+            QWidget* viewport = scroll->viewport();
+            QWheelEvent forwarded(viewport->mapFromGlobal(event->globalPosition().toPoint()),
+                event->globalPosition(), event->pixelDelta(), event->angleDelta(),
+                event->buttons(), event->modifiers(), event->phase(), event->inverted(),
+                event->source(), event->pointingDevice());
+            QCoreApplication::sendEvent(viewport, &forwarded);
+            event->accept();
+            return;
+        }
+        event->ignore();
+    }
 };
 // Keeps the existing profile text binding as the single persistence path.
 class ToneMappingControl : public QWidget
