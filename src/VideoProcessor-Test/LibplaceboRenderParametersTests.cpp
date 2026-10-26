@@ -912,9 +912,11 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
 				[](const std::string&, std::string&) { return false; },
 				selections, error), Wide(error).c_str());
-			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("display", selections.front().group.c_str());
-			Assert::AreEqual("cinema", selections.front().profiles.front().c_str());
+			Assert::AreEqual(static_cast<size_t>(2), selections.size());
+            for (const auto& selection : selections) {
+                Assert::IsTrue(selection.group == "display" || selection.group == "scaling");
+                Assert::AreEqual("cinema", selection.profiles.front().c_str());
+            }
 
 			const auto selected = model.profiles.find("display.cinema");
 			Assert::IsTrue(selected != model.profiles.end());
@@ -922,11 +924,15 @@ namespace VideoProcessorTest
 			// profile, proving that this exercises the resolver's inheritance path.
 			Assert::AreEqual("balanced",
 				RequiredProfileSetting(selected->second, "quality").c_str());
-			Assert::AreEqual("gpu",
-				RequiredProfileSetting(selected->second, "downscaler").c_str());
+            const auto scaling = model.profiles.find("scaling.cinema");
+            Assert::IsTrue(scaling != model.profiles.end());
+            Assert::AreEqual("gpu", RequiredProfileSetting(scaling->second, "downscaler").c_str());
+            Assert::IsTrue(selected->second.settings.count("upscaler") == 0);
+            auto effective = selected->second;
+            for (const auto& setting : scaling->second.settings) effective.settings[setting.first] = setting.second;
 
-			Projection projection;
-			BuildOrFail(SettingsFromResolvedDisplayProfile(selected->second),
+            Projection projection;
+            BuildOrFail(SettingsFromResolvedDisplayProfile(effective),
 				false, projection);
 
 			Assert::IsTrue(projection.qualityPresetExport ==

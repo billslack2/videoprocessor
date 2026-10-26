@@ -949,9 +949,19 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("YADIF"), QStringLiteral("YADIF") },
         { QStringLiteral("BOB"), QStringLiteral("Bob") },
         { QStringLiteral("WEAVE"), QStringLiteral("Weave") },
-        { QStringLiteral("BLUE_NOISE"), QStringLiteral("Blue noise (recommended)") },
+        { QStringLiteral("BLUE_NOISE"), QStringLiteral("Blue noise") },
         { QStringLiteral("ORDERED_FIXED"), QStringLiteral("Ordered (fixed)") },
         { QStringLiteral("ORDERED_LUT"), QStringLiteral("Ordered (LUT)") },
+        { QStringLiteral("ERROR_DIFFUSION_SIMPLE"), QStringLiteral("Error diffusion (simple)") },
+        { QStringLiteral("ERROR_DIFFUSION_FALSE_FS"), QStringLiteral("Error diffusion (False Floyd-Steinberg)") },
+        { QStringLiteral("ERROR_DIFFUSION_SIERRA_LITE"), QStringLiteral("Error diffusion (Sierra Lite)") },
+        { QStringLiteral("ERROR_DIFFUSION_FLOYD_STEINBERG"), QStringLiteral("Error diffusion (Floyd-Steinberg)") },
+        { QStringLiteral("ERROR_DIFFUSION_ATKINSON"), QStringLiteral("Error diffusion (Atkinson)") },
+        { QStringLiteral("ERROR_DIFFUSION_JARVIS_JUDICE_NINKE"), QStringLiteral("Error diffusion (Jarvis-Judice-Ninke)") },
+        { QStringLiteral("ERROR_DIFFUSION_STUCKI"), QStringLiteral("Error diffusion (Stucki)") },
+        { QStringLiteral("ERROR_DIFFUSION_BURKES"), QStringLiteral("Error diffusion (Burkes)") },
+        { QStringLiteral("ERROR_DIFFUSION_SIERRA2"), QStringLiteral("Error diffusion (Sierra 2)") },
+        { QStringLiteral("ERROR_DIFFUSION_SIERRA3"), QStringLiteral("Error diffusion (Sierra 3)") },
         { QStringLiteral("WHITE_NOISE"), QStringLiteral("White noise") },
         { QStringLiteral("TRUE"), QStringLiteral("True") },
         { QStringLiteral("FALSE"), QStringLiteral("False") },
@@ -2271,7 +2281,7 @@ void ConfigEditorWindow::migrateProcessingToScaling()
         document_->SetKnown(originalNames.at(std::get<0>(item)), std::get<1>(item).c_str(),
             std::get<2>(item));
     for (const auto& item : plan.removals)
-        document_->RemoveKnown(originalNames.at(item.first), item.second.c_str());
+        document_->RemoveKnown(originalNames.at(item.first), item.second.c_str(), true);
     document_->requiresMigrationBackup = document_->existedAtLoad;
     dirty_ = true;
     hasPendingMigrations_ = true;
@@ -3211,7 +3221,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         binding.label->setVisible(true);
     }
     // Scaling / Quality: grey marks a setting at Auto or not set, in every
-    // profile, as on Rendering / DTM (his grey marks only inherited ones).
+    // profile, as on Tone Mapping (his grey marks only inherited ones).
     // This runs after his change handler and after a profile loads.
     QList<QComboBox*> scalingChoices;
     for (const RendererAutoStatusBinding& binding : rendererAutoStatusBindings_)
@@ -4402,7 +4412,7 @@ QWidget* ConfigEditorWindow::createShell()
 			page == 16 || page == 17 || page == 18 || page == 19 || page == 21)
         {
             vpNavigation->setChecked(true);
-            showSectionTabs({ { QStringLiteral("Rendering / DTM"), 2 },
+            showSectionTabs({ { QStringLiteral("Tone Mapping"), 2 },
 				{ QStringLiteral("Color / Output"), 16 },
 				{ QStringLiteral("Scaling / Quality"), 17 },
 				{ QStringLiteral("Screen"), 4 },
@@ -4444,25 +4454,32 @@ QWidget* ConfigEditorWindow::createShell()
         if (auto* workspace = dynamic_cast<AdaptiveProfileWorkspace*>(widget))
         {
             auto previousSettingsScroll = std::make_shared<int>(0);
-            workspace->advancedFocusChanged = [center, workspace, previousSettingsScroll](bool active) {
+            auto previousToneSections = std::make_shared<std::vector<std::pair<QString, bool>>>();
+            workspace->advancedFocusChanged = [center, workspace, previousSettingsScroll, previousToneSections](bool active) {
                 auto* scroll = workspace->findChild<QScrollArea*>(QStringLiteral("workspaceSettingsViewport"));
                 if (active && scroll) *previousSettingsScroll = scroll->verticalScrollBar()->value();
                 center->setAdvancedFocus(active);
                 if (active)
                 {
+                    previousToneSections->clear();
                     for (const auto& name : { "rendererSection.toneMapping", "rendererSection.toneCurves" })
-                        if (auto* section = workspace->findChild<QToolButton*>(QString::fromLatin1(name)))
+                        if (auto* section = workspace->findChild<QToolButton*>(QString::fromLatin1(name))) {
+                            previousToneSections->emplace_back(QString::fromLatin1(name), section->isChecked());
                             section->setChecked(true);
+                        }
                     QTimer::singleShot(0, workspace, [workspace, scroll] {
                         if (!scroll || !workspace->isAdvancedFocus()) return;
                         if (auto* section = workspace->findChild<QToolButton*>(QStringLiteral("rendererSection.toneMapping")))
                             scroll->verticalScrollBar()->setValue(section->mapTo(scroll->widget(), QPoint()).y() - 8);
                     });
                 }
-                else if (!workspace->isAdvancedFocus() && scroll)
-                    QTimer::singleShot(0, workspace, [scroll, previousSettingsScroll] {
+                else if (!workspace->isAdvancedFocus()) {
+                    for (const auto& item : *previousToneSections)
+                        if (auto* section = workspace->findChild<QToolButton*>(item.first)) section->setChecked(item.second);
+                    if (scroll) QTimer::singleShot(0, workspace, [scroll, previousSettingsScroll] {
                         scroll->verticalScrollBar()->setValue(*previousSettingsScroll);
                     });
+                }
             };
         }
     configurationHost_ = center;
@@ -5213,13 +5230,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     QWidget* dvModeControls = nullptr;
     QRadioButton* dvLldvMode = nullptr;
     ToneChartPanel* toneCharts = nullptr;
-    // Rendering / DTM only: what a save must write so that no profile
+    // Tone Mapping only: what a save must write so that no profile
     // inherits from the default profile (see the note on that page).
     struct RenderingFreezeWrite { QString section, key, value; bool frozen = false; };
     std::function<std::vector<RenderingFreezeWrite>()> renderingFreezePlan;
     std::function<void()> refreshNoInheritanceNote = [] {};
     QLabel* noInheritanceNote = nullptr; // placed under the page title
-    // Rendering / DTM only: fill every profile when the page is built, and
+    // Tone Mapping only: fill every profile when the page is built, and
     // grey only the values at their unset meaning.
     std::function<void()> fillRenderingProfiles;
     std::function<void()> restyleRenderingFields = [] {};
@@ -6910,7 +6927,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // repeat that for settings cleared since.
         static const QString noInheritance = QStringLiteral(
             "Tone settings are saved independently for each profile. "
-            "Processing overrides retain their existing inheritance and selection. "
+            "Scaling, debanding and dithering are configured on Scaling / Quality. "
             "Legacy preset defaults are preserved until replaced with explicit choices.");
         noInheritanceNote = helpLabel(noInheritance);
         noInheritanceNote->setObjectName(QStringLiteral("rendererNoInheritanceNote"));
@@ -7050,14 +7067,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
         };
 
-        form = addCollapsibleSection(QStringLiteral("processingOverrides"),
-            QStringLiteral("Processing overrides"), QStringLiteral(
-                "Debanding and dithering overrides for this Rendering profile. Image and chroma scaling are configured on Scaling."), false);
-        addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { "AUTO", "default", "light", "off" });
-        addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
-            { "blue_noise", "ordered_fixed", "white_noise", "off" });
-        auto* ownedDepth = addChoice(QStringLiteral("Dither target depth"), QStringLiteral("display_bit_depth"), { "output", "8", "10", "AUTO" });
-        ownedDepth->setItemText(ownedDepth->findData("output"), QStringLiteral("Match output format"));
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone Mapping: General"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
@@ -7423,32 +7432,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
 	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
 	{
-        auto* legacyScaling = helpLabel(QString());
-        legacyScaling->setObjectName(QStringLiteral("config.scaling.legacy_overrides"));
-        QStringList legacyValues;
-        for (const QString& owner : profileSections(QStringLiteral("vprenderer")))
-            for (const QString& key : { QStringLiteral("upscaler"), QStringLiteral("downscaler"), QStringLiteral("sigmoid"), QStringLiteral("chroma_upscaler") }) {
-                const QString saved = value(owner, key);
-                if (!saved.isEmpty()) legacyValues << QStringLiteral("%1: %2 = %3").arg(::displayName(owner, QStringLiteral("vprenderer")),
-                    key == "upscaler" ? QStringLiteral("Upscaler") : key == "downscaler" ? QStringLiteral("Downscaler") : key == "chroma_upscaler" ? QStringLiteral("Chroma upscaler") : QStringLiteral("Sigmoid"),
-                    saved.compare("auto", Qt::CaseInsensitive) == 0 ? QStringLiteral("Preset fallback") : friendlyChoiceLabel(saved));
-            }
-        legacyScaling->setText(QStringLiteral("Saved Rendering scaling overrides still take precedence: %1. Use Scaling settings to replace them.").arg(legacyValues.join(QStringLiteral("; "))));
-        legacyScaling->setVisible(!legacyValues.isEmpty());
-        profileFieldsLayout->addWidget(legacyScaling);
-        auto* adoptScaling = new QPushButton(QStringLiteral("Use Scaling settings"));
-        adoptScaling->setObjectName(QStringLiteral("config.scaling.adopt_settings"));
-        adoptScaling->setToolTip(QStringLiteral("Remove all saved Rendering image-scaler overrides. Your Scaling profiles then control scaling. Save or Apply commits this edit; Cancel discards it."));
-        adoptScaling->setVisible(!legacyValues.isEmpty());
-        profileFieldsLayout->addWidget(adoptScaling);
-        connect(adoptScaling, &QPushButton::clicked, this, [this, legacyScaling, adoptScaling] {
-            if (!document_) return;
-            for (const QString& owner : profileSections(QStringLiteral("vprenderer")))
-                for (const char* key : { "upscaler", "downscaler", "sigmoid", "chroma_upscaler" })
-                    document_->RemoveKnown(owner.toStdString(), key);
-            legacyScaling->hide(); adoptScaling->hide(); markDirty();
-        });
-        form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Image scaling"),
+        form = addCollapsibleSection(QStringLiteral("scaling"), QStringLiteral("Scaling"),
 			QString(), false);
 		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
 			QStringLiteral("upscaler"), { QStringLiteral("AUTO"),
@@ -7477,14 +7461,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		antiRinging->setToolTip(QStringLiteral(
 			"Optional sigmoidization before upscaling. It reduces ringing artifacts; the default is On."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
-        form = addCollapsibleSection(QStringLiteral("chromaScaling"), QStringLiteral("Chroma scaling"),
-            QStringLiteral("Reconstructs color detail in subsampled video."), false);
         addChoice(QStringLiteral("Chroma upscaler"), QStringLiteral("chroma_upscaler"),
             { "ewa_lanczossharp", "ewa_lanczos", "lanczos", "bicubic", "bilinear" });
         form->addRow(helpLabel(QStringLiteral("Chroma reconstruction applies to 4:2:0 and 4:2:2 input even at native image resolution. Bicubic is the default. RGB input does not need chroma upscaling.")));
         // Moved from the Rendering page: ordinary Scaling settings, inherited
         // from the first Scaling profile like the scalers above.
-        form = addCollapsibleSection(QStringLiteral("debandingDithering"), QStringLiteral("Debanding & Dithering"),
+        form = addCollapsibleSection(QStringLiteral("debandingDithering"), QStringLiteral("Debanding / Dithering"),
             QString(), false);
         auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
         debanding->setItemText(debanding->findData(QStringLiteral("default")), QStringLiteral("Standard"));
@@ -8834,7 +8816,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
     if (renderingFreezePlan)
     {
-        // Rendering / DTM: a new profile starts with every setting explicit
+        // Tone Mapping: a new profile starts with every setting explicit
         // (Auto), so it never shows or runs the default profile's values.
         listPolicy.addProfile = [this, his = listPolicy.addProfile, plan = renderingFreezePlan]() -> QString
         {
@@ -8854,7 +8836,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         { profileList->refresh(wanted); };
     if (renderingFreezePlan)
     {
-        // Rendering / DTM only: one "+ Add profile" button with a menu to add a
+        // Tone Mapping only: one "+ Add profile" button with a menu to add a
         // new profile, duplicate, import or export. His Add button stays in the
         // page, hidden, and "New profile" presses it. What a copy or a file
         // carries is the profile's own settings plus what the next save writes
@@ -8948,6 +8930,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             for (const RenderingFreezeWrite& write : plan()) // anything the file left out: Auto
                 if (write.section.compare(added, Qt::CaseInsensitive) == 0)
                     document_->SetKnown(section, write.key.toStdString().c_str(), write.value.toStdString());
+            migrateProcessingToScaling();
             markDirty();
             refresh(added);
         };
@@ -8973,7 +8956,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (source.isEmpty() || !document_) return;
             const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Export profile"),
                 profileName(source) + QStringLiteral(".vpprofile"),
-                QStringLiteral("VP Rendering / DTM profile (*.vpprofile)"));
+                QStringLiteral("VP Tone Mapping profile (*.vpprofile)"));
             if (path.isEmpty()) return;
             const ToneProfileFile::Profile file{
                 QStringLiteral("vprenderer.") + profileIdentifier(profileName(source)), profileSettings(source) };
@@ -8988,7 +8971,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         {
             if (!document_) return;
             const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Import profile"), QString(),
-                QStringLiteral("VP Rendering / DTM profile (*.vpprofile);;All files (*)"));
+                QStringLiteral("VP Tone Mapping profile (*.vpprofile);;All files (*)"));
             if (path.isEmpty()) return;
             ToneProfileFile::Profile file;
             QString error;
@@ -9137,7 +9120,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     });
     if (fillRenderingProfiles)
     {
-        // Rendering / DTM: no "Inherited / not set" in a drop-down. It goes
+        // Tone Mapping: no "Inherited / not set" in a drop-down. It goes
         // where the choices already hold Auto, or where VP has no Auto;
         // where VP takes auto but the choices lack it, it becomes Auto.
         for (const Field& field : *fields)
@@ -9218,7 +9201,7 @@ QWidget* ConfigEditorWindow::createQueuePage()
 
 QWidget* ConfigEditorWindow::createRendererPage()
 {
-    return createProfilePage(QStringLiteral("Rendering / DTM"),
+    return createProfilePage(QStringLiteral("Tone Mapping"),
         QStringLiteral("Configure ordered rendering profiles. The first profile is the default: VP uses it when no rule matches."), QStringLiteral("vprenderer"));
 }
 
