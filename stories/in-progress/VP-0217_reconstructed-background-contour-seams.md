@@ -1,7 +1,7 @@
 # VP-0217 - Improve reconstructed subtitle background color and contour seams
 
 ## Status
-Review
+In Progress
 
 Current revision: 301dd70 fixed-sampling trial, ready for visual validation after
 the first trial was rejected for shimmer. See the stability revision evidence below.
@@ -15,7 +15,7 @@ user's standing instruction authorizes this integration base.
 
 ## Scope and readiness
 
-Improve existing `cleanup_fill: surround` without changing mirror/stretch choices,
+Add `cleanup_fill: stable_surround` while preserving original surround/mirror/stretch choices,
 measured cleanup geometry, source glyph bounds, HDR transfer handling or live
 configuration. Current-frame MAIN RGB samples decode to linear light before
 comparison and blending. Donors must remain beyond all measured card/glyph bounds
@@ -131,3 +131,13 @@ Evidence: `assets/VP-0217/stable-blend-301dd70-20261026/`.
 Both new trial state files select clear__yellow for immediate comparison. Their
 copied prior Classic selection is backed up in the trial's backups directory.
 The installed state remains untouched.
+
+## Separate option requested - 2026-10-26
+
+User accepts the stable appearance but requires a new option, not replacement.
+Restore original surround sampling verbatim and add Stable blend surrounding picture
+(stable_surround) as a fourth choice. Existing saved surround values retain original
+behavior. Fresh worktree E:\codex\videoprocessor\reconstruction-stable-option-20261026
+starts from freshly fetched v1.4.02-beta at 87f61f77d3d95ddbfc1eeae343501d763d49e80b.
+Source f766f1d531a336354686b9417a0a00c1df8826f0 on codex/reconstruction-stable-option-20261026.
+Release build and both-option validation underway.
