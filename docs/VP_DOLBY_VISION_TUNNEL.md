@@ -130,3 +130,41 @@ With peak detection enabled, L1 PQ fields remain supplied, while measured
 maxRGB/average fields can also influence libplacebo's adaptive target. L1 is
 therefore an input to VP's selected tone mapping, not a complete Dolby display
 mapping implementation.
+
+## Bounded trim diagnostics
+
+The formatter now emits `DV trim diagnostic:` records in `logs/vp.log` for
+changed, fully CRC-validated and reassembled display-management bodies. These
+records do not apply trims or change rendering/metadata acceptance. No setting
+is required. Restart capture to rearm the diagnostic budget.
+
+Each snapshot identifies its capture frame counter, current/affected IDs,
+current-versus-next association at receipt, EOS and scene-refresh flag. This is
+receipt evidence, not a claim that the metadata was displayed on that frame.
+The first 16 extension blocks receive decoded summaries: L1 scene PQ values,
+and 14-byte L2 target PQ plus slope, offset, power, chroma weight, saturation gain
+and multiscale weight. L2 codes remain raw integers; target nits are approximate
+ST 2084 values using the ETSI PQ code / 4096 convention. `ms_unspecified=1`
+means the 0xffff sentinel. `five_trims_centered` describes only the five codes
+being 2048; it is not a claim that the entire Dolby mapping is neutral.
+Out-of-range L2 values and unsupported lengths are diagnostic evidence only;
+they never reject an otherwise accepted picture. L8/unknown blocks remain raw.
+
+All bytes of each sampled body, including every extension, are logged in
+256-byte hex chunks with snapshot number, offset and length, followed by an
+end marker. Check contiguous offsets and the declared total before treating a
+log dump as complete: the bounded asynchronous logger can drop records under
+load. Raw bytes contain metadata only, never video pixels.
+
+There is at most one changed snapshot per second, up to 128 snapshots and
+128 KiB of raw metadata per capture-state initialization. A snapshot is skipped
+whole if it cannot fit the budget; one exhaustion message explains how to rearm.
+Identical bodies are suppressed. `rate_skipped_packets` counts changed packets
+skipped since the previous snapshot, not distinct scenes. This is a bounded
+sample, not an exhaustive timeline; short-lived changes may be missed.
+
+For qualification, restart capture near the desired scene and play several
+scene cuts from each source/title. Inspect L2 target coverage, non-centered
+values, the multiscale sentinel and variation between snapshots. Compare sources
+and titles before deciding which trim operations to implement. Syntax reference:
+ETSI GS CCM 001 V1.1.1 tables 3-5 and section 6.2.2 (linked above).

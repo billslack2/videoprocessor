@@ -1,6 +1,7 @@
 #pragma once
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
+#include "DolbyVisionTrimDiagnostics.h"
 #include <Windows.h>
 #include <cstdint>
 #include <array>
@@ -64,6 +65,7 @@ private:
 	uint8_t m_lastAffectedId = 0;
 	bool m_haveDiagnosticIds = false;
 	std::array<bool, 256> m_seenExtensionLevels{};
+	DolbyVisionTrimDiagnostics m_trimDiagnostics;
 	DolbyVisionTunnelFrameMetadata m_metadata;
 	DolbyVisionTunnelFrameMetadata m_pendingMetadata;
 	bool m_hasPendingMetadata = false;

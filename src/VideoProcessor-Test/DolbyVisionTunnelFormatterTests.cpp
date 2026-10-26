@@ -7,11 +7,14 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <CpuFeatures.h>
+#include <DebugLog.h>
 #include <video_frame_formatter/CR210DolbyVisionTunnelFormatter.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <cstdio>
+#include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -256,6 +259,196 @@ namespace Tests
         }
     }
 
+    namespace
+    {
+        std::vector<std::string>* trimDiagnosticLines = nullptr;
+        void __cdecl CaptureTrimDiagnostic(const char* message)
+        {
+            if (trimDiagnosticLines && std::strstr(message, "DV trim diagnostic:"))
+                trimDiagnosticLines->emplace_back(message);
+        }
+        struct ScopedTrimDiagnosticSink
+        {
+            explicit ScopedTrimDiagnosticSink(std::vector<std::string>& lines)
+            {
+                trimDiagnosticLines = &lines;
+                DebugLog::SetExternalSink(CaptureTrimDiagnostic);
+            }
+            ~ScopedTrimDiagnosticSink()
+            {
+                DebugLog::SetExternalSink(nullptr);
+                trimDiagnosticLines = nullptr;
+            }
+        };
+    }
+    TEST_CLASS(DolbyVisionTrimDiagnosticsTests)
+    {
+        struct Trace
+        {
+            DolbyVisionTrimDiagnostics diagnostics;
+            std::vector<std::string> lines;
+            void Observe(const std::vector<uint8_t>& body, uint64_t time = 0)
+            {
+                diagnostics.Observe(body.data(), body.size(), 123, time, 3, 4, false,
+                    [this](const char* format, auto... args) {
+                        char text[2048];
+                        std::snprintf(text, sizeof(text), format, args...);
+                        lines.emplace_back(text);
+                    });
+            }
+            bool Has(const char* text) const
+            {
+                return std::any_of(lines.begin(), lines.end(), [text](const auto& line) {
+                    return line.find(text) != std::string::npos;
+                });
+            }
+        };
+        static void AddL2(std::vector<uint8_t>& body, unsigned target, unsigned slope, unsigned ms)
+        {
+            const size_t at = body.size();
+            body.resize(at + 19);
+            Put32(body.data() + at, 14);
+            body[at + 4] = 2;
+            ++body[70];
+            const unsigned fields[] = {target, slope, 2048, 2048, 2048, 2048, ms};
+            for (size_t i = 0; i < 7; ++i) Put16(body, at + 5 + i * 2, uint16_t(fields[i]));
+        }
+    public:
+        TEST_METHOD(DecodesMultipleTargetsAndUnspecifiedMultiscaleWithoutApplyingTrims)
+        {
+            auto body = DmBody();
+            AddL2(body, 2081, 2048, 65535);
+            AddL2(body, 3072, 2200, 4095);
+            Trace trace;
+            trace.Observe(body);
+            Assert::IsTrue(trace.Has("frame=123 received current_id=3 affected_id=4 association=next"));
+            Assert::IsTrue(trace.Has("L2 valid=1 target_max_pq=2081 target_nits_approx=99.978"));
+            Assert::IsTrue(trace.Has("trim_slope=2200"));
+            Assert::IsTrue(trace.Has("ms_weight_raw=65535 ms_unspecified=1 five_trims_centered=1"));
+            Assert::IsTrue(trace.Has("ms_weight_raw=4095 ms_unspecified=0 five_trims_centered=0"));
+            Assert::IsTrue(trace.Has("L2_blocks=2 L8_blocks=0"));
+            Assert::IsTrue(trace.Has("trims_applied=no"));
+        }
+        TEST_METHOD(FormatterLogsOnlyCompleteValidatedBodiesAndPreservesSamples)
+        {
+            auto body = DmBody(3072, true, 180);
+            AddL2(body, 2081, 2200, 65535);
+            SenderPicture picture(true);
+            picture.Embed(Packetize(body));
+            picture.CorruptAllCopies(1);
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            std::vector<std::string> lines;
+            ScopedTrimDiagnosticSink sink(lines);
+            Deliver(formatter, picture, 10);
+            Assert::IsTrue(lines.empty());
+            picture.Embed(Packetize(body));
+            std::vector<BYTE> output;
+            AssertPeak(Deliver(formatter, picture, 11, &output), 3072);
+            AssertExactSamples(picture, output);
+            Assert::IsTrue(std::any_of(lines.begin(), lines.end(), [](const auto& line) {
+                return line.find("trim_slope=2200") != std::string::npos;
+            }));
+            lines.clear();
+            picture.Embed(Packetize({}, 3, 3, true));
+            AssertPeak(Deliver(formatter, picture, 12), 3072);
+            Assert::IsTrue(lines.empty());
+        }        TEST_METHOD(InvalidTrimValuesRemainRawEvidence)
+        {
+            auto body = DmBody();
+            AddL2(body, 5000, 2048, 32768);
+            Trace trace;
+            trace.Observe(body);
+            Assert::IsTrue(trace.Has("L2 valid=0 target_max_pq=5000 target_nits_approx=-1.000"));
+            Assert::IsTrue(trace.Has("ms_weight_raw=32768 ms_unspecified=0"));
+        }
+        TEST_METHOD(UnknownAndUnsupportedBlocksHaveCompleteReconstructableRawDump)
+        {
+            auto body = DmBody(3072, true, 700);
+            body[75] = 8; // unknown L8 payload is retained without guessed interpretation
+            AddL2(body, 2081, 2048, 65535);
+            Trace trace;
+            trace.Observe(body);
+            std::vector<uint8_t> reconstructed;
+            for (const auto& line : trace.lines)
+            {
+                const auto hex = line.find(" hex=");
+                if (hex == std::string::npos) continue;
+                for (size_t i = hex + 5; i < line.size(); i += 2)
+                    reconstructed.push_back(uint8_t(std::stoul(line.substr(i, 2), nullptr, 16)));
+            }
+            Assert::IsTrue(body == reconstructed);
+            Assert::IsTrue(trace.Has("L2_blocks=1 L8_blocks=1"));
+            // Structurally valid unsupported L2 length stays raw-only.
+            body[75] = 2;
+            Trace other;
+            other.Observe(body);
+            Assert::IsTrue(other.Has("decode=unsupported_L2_length"));
+        }
+        TEST_METHOD(TruncatedBodiesEmitNoPartialTransaction)
+        {
+            auto body = DmBody();
+            AddL2(body, 2081, 2048, 65535);
+            Trace trace;
+            body.pop_back();
+            trace.Observe(body);
+            Assert::IsTrue(trace.lines.empty());
+            body.resize(70);
+            trace.Observe(body);
+            Assert::IsTrue(trace.lines.empty());
+        }
+        TEST_METHOD(DuplicateAndRateLimitsAllowDeferredChangedSnapshot)
+        {
+            auto body = DmBody();
+            Trace trace;
+            trace.Observe(body);
+            trace.lines.clear();
+            trace.Observe(body, 2000);
+            Assert::IsTrue(trace.lines.empty());
+            body.back() = 1;
+            trace.Observe(body, 999);
+            Assert::IsTrue(trace.lines.empty());
+            trace.Observe(body, 1000);
+            Assert::IsTrue(trace.Has("snapshot=2"));
+            Assert::IsTrue(trace.Has("rate_skipped_packets=1"));
+        }
+        TEST_METHOD(SnapshotBudgetReportsOnceAndResetRearms)
+        {
+            auto body = DmBody();
+            Trace trace;
+            for (unsigned i = 0; i < DolbyVisionTrimDiagnostics::MaxSnapshots; ++i)
+            {
+                body.back() = uint8_t(i);
+                trace.Observe(body, i * 1000ULL);
+                trace.lines.clear();
+            }
+            body.back() = 240;
+            trace.Observe(body, 200000);
+            Assert::IsTrue(trace.Has("budget exhausted snapshots=128"));
+            trace.lines.clear();
+            trace.Observe(body, 201000);
+            Assert::IsTrue(trace.lines.empty());
+            trace.diagnostics.Reset();
+            trace.Observe(body, 202000);
+            Assert::IsTrue(trace.Has("snapshot=1"));
+        }
+        TEST_METHOD(ByteBudgetRejectsWholeSnapshotWithoutPartialDump)
+        {
+            auto body = DmBody(3072, true, DolbyVisionTrimDiagnostics::MaxBodyBytes - 87);
+            Assert::AreEqual(DolbyVisionTrimDiagnostics::MaxBodyBytes, body.size());
+            Trace trace;
+            for (unsigned i = 0; i < 10; ++i)
+            {
+                body.back() = uint8_t(i);
+                trace.Observe(body, i * 1000ULL);
+                trace.lines.clear();
+            }
+            body.back() = 20;
+            trace.Observe(body, 10000);
+            Assert::IsTrue(trace.Has("budget exhausted snapshots=10"));
+            Assert::IsFalse(trace.Has("hex="));
+        }
+    };
     TEST_CLASS(DolbyVisionTunnelFormatterTests)
     {
     public:

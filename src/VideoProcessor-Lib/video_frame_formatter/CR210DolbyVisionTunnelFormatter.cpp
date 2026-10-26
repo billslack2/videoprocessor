@@ -246,6 +246,7 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 	m_lastCurrentId = m_lastAffectedId = 0;
 	m_haveDiagnosticIds = false;
 	m_seenExtensionLevels.fill(false);
+	m_trimDiagnostics.Reset();
 	m_metadata = {};
 	m_pendingMetadata = {};
 	m_hasPendingMetadata = false;
@@ -430,6 +431,9 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 				failureReason = "unsupported/malformed metadata body";
 				break;
 			}
+			m_trimDiagnostics.Observe(body.data(), length, frame.GetCounter(),
+				GetTickCount64(), parsed.currentId, parsed.affectedId, parsed.endOfStream,
+				[](const char* format, auto... args) { DebugLog::Log(format, args...); });
 		}
 
 		if (m_missingPacketReported && m_missingPacketFrames >= kPacketLossLimit)
