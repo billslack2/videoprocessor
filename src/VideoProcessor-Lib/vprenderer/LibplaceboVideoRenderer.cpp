@@ -8332,8 +8332,6 @@ struct LibplaceboVideoRenderer::Impl
         WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-initialize", L"VP Renderer", this);
 		const RendererSettings settings = LoadRendererSettings(
 			config, *state, activeDisplayRule, manualRule, manualUnifiedProfiles);
-        const bool shaderProcessingChanged = EffectiveSettingsFingerprint(activeSettings, false) !=
-            EffectiveSettingsFingerprint(settings, false);
 		activeSettings = settings;
         displayRepeatValid = false;
         displayVsyncClock.Reset();
