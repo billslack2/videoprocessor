@@ -1,0 +1,37 @@
+{
+  "commit": "ebb17efa710c9aea8a444bc348f493121aa562a8",
+  "betaBase": "81ac960fbd62619374fba1c16630b8feac364d59",
+  "dirty": false,
+  "binaries": [
+    {
+      "file": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "A8553758AC1980BBCCA0F02B48154733D471BE89EDCF71FD020853762318E3CC",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "file": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "EE5F14FE100FC3DA01102562AA5E6E9FA9EB2D1F530EC5348469A68B32B81A12",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "file": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "4F70C36FBD67272D9A07EEE467D46DA4F8B076E3AA66DADF39D3D527C1AF2F46",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "file": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "EE975C5EE19ACB89F535A5331F082E830C7B2B2F40621D5ECB628D3DC57F18B2",
+      "configuration": "Release",
+      "architecture": "x64"
+    },
+    {
+      "file": "x64/Release/VideoProcessorConfig.exe",
+      "sha256": "EB2DC156F9F2E438E2E777720696BD66DE3FA30CC118BA354A67AB0A6DC7E158",
+      "configuration": "Release",
+      "architecture": "x64"
+    }
+  ]
+}

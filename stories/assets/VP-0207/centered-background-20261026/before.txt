@@ -1,0 +1,1 @@
+valid=1 background=[228,315] reserved_bottom_px=15 usable=[228,300] glyph=[264.25,281.75] free_above=36.25 free_below=18.25
