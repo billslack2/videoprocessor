@@ -47,5 +47,7 @@
   "knownBaselineLimitations": [
     "Legacy discovery selector test refers to removed config.general.fullscreen_monitor_name; same failure on prior executable",
     "Drag timing threshold also exceeded on previous executable (542 ms versus 546 ms during development)"
-  ]
+  ],
+  "buildOutput": "exact-head-config-release-build-20261026.txt",
+  "buildOutputSha256": "5017E8F935D56EAD734C5CE3D89B1A7A4265753C143D2B21186ED95D7D83B2FC"
 }

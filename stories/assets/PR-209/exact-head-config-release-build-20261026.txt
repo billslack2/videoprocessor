@@ -1,0 +1,434 @@
+
+  64 bit Processing .\DeckLinkAPI.idl
+  DeckLinkAPI.idl
+  mpc_video_renderer.cpp
+  amextra.cpp
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\unknwn.idl
+  unknwn.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\wtypes.idl
+  wtypes.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\wtypesbase.idl
+  wtypesbase.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\basetsd.h
+  basetsd.h
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\guiddef.h
+  guiddef.h
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\oaidl.idl
+  oaidl.idl
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\objidl.idl
+  objidl.idl
+  amfilter.cpp
+  64 bit Processing C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\oaidl.acf
+  oaidl.acf
+  mpc_video_renderer.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\MPC Video Renderer.lib
+  DeckLinkAPI_i.c
+  amvideo.cpp
+  BlackMagicDeckLink.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\BlackMagic DeckLink SDK.lib
+  arithutil.cpp
+  combase.cpp
+  cprop.cpp
+  ctlutil.cpp
+  ddmm.cpp
+  dllentry.cpp
+  dllsetup.cpp
+  mtype.cpp
+  outputq.cpp
+  perflog.cpp
+  pstream.cpp
+  pullpin.cpp
+  refclock.cpp
+  renbase.cpp
+  schedule.cpp
+  seekpt.cpp
+  source.cpp
+  Compiling...
+  strmctl.cpp
+  sysclock.cpp
+  transfrm.cpp
+  transip.cpp
+  videoctl.cpp
+  vtrans.cpp
+  winctrl.cpp
+  winutil.cpp
+  wxdebug.cpp
+  wxlist.cpp
+  wxutil.cpp
+  MicrosoftDirectshowBaseclasses.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\Microsoft Directshow Baseclasses.lib
+  lavfilters.cpp
+  LAVFilters.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\LAVFilters.lib
+  pch.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  ShaderConfigValidation.cpp
+  DisplayRefreshRatePolicy.cpp
+  WindowsDisplayDiagnostics.cpp
+  ACaptureDevice.cpp
+  ActivePictureDecisionTimeline.cpp
+  ActivePictureTransitionModel.cpp
+  AnalysisLumaSource.cpp
+  AnalysisFrame.cpp
+  AnalysisDiagnosticTrace.cpp
+  SubtitleBoxDetector.cpp
+  ActivePictureAnalyzer.cpp
+  ActivePictureEvidence.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,51): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1001,31): warning C4244: 'initializing': conversion from 'double' to 'const int', possible loss of data [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,42): warning C4244: 'initializing': conversion from 'const _Ty' to 'int', possible loss of data [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+          with
+          [
+              _Ty=double
+          ]
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ActivePictureEvidence.cpp(1002,33): warning C4244: 'initializing': conversion from 'const _Ty' to 'const int', possible loss of data [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+          with
+          [
+              _Ty=double
+          ]
+  LocalBoundaryDiagnostics.cpp
+  SparseBoundaryCropExperiment.cpp
+  InwardCaptionEvidence.cpp
+  ACaptureDeviceDiscoverer.cpp
+  AutoPpmCalibrator.cpp
+  BitDepth.cpp
+  BlackMagicDeckLinkCaptureDevice.cpp
+  MagewellSdkInstance.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellSdkApi.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellBackend.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  Compiling...
+  MagewellCaptureDevice.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  MagewellCaptureDeviceDiscoverer.cpp
+E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3\Include\LibMWCapture\MWCaptureDef.h(27,2): warning C4091: 'typedef ': ignored on left of 'MW_RESULT' when no variable is declared [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj]
+  BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp
+  BlackMagicDeckLinkTranslate.cpp
+  CaptureInput.cpp
+  cie.cpp
+  ColorSpace.cpp
+  DisplayMode.cpp
+  DisplayRefreshRateEstimator.cpp
+  DisplayRefreshRateWindow.cpp
+  DirectShowFrameDeliverer.cpp
+  DirectShowDeliveryOutcome.cpp
+  DirectShowSegmentTransition.cpp
+  ColorFormat.cpp
+  FrameProcessor.cpp
+  LiveEpochConvergenceController.cpp
+  OutputReadinessController.cpp
+  RationalLiveOutputSequencer.cpp
+  ConfigFile.cpp
+  ConfigurationDiscovery.cpp
+  Compiling...
+  DisplayTopologySession.cpp
+  EOTF.cpp
+  guid.cpp
+  HDRData.cpp
+  InputLocked.cpp
+  IRenderer.cpp
+  EotfTransitionStabilizer.cpp
+  RendererResetCoordinator.cpp
+  RendererTransitionModel.cpp
+  RendererQueueLaunchContractModel.cpp
+  AlphaCadenceCorrectionPolicy.cpp
+  AlphaPresentationTelemetry.cpp
+  BufferedPictureExpansion.cpp
+  AlphaSourceCropPolicy.cpp
+  LibplaceboOutputPolicy.cpp
+  LibplaceboPluginVideoRenderer.cpp
+  DirectShowRendererStartStopTimeMethod.cpp
+  DirectShowTimingClock.cpp
+  DirectShowQueueConstructionContract.cpp
+  DirectShowVideoTimingAdapter.cpp
+  Compiling...
+  DirectShowTranslations.cpp
+  MadVRShaderRuntimeState.cpp
+  NlsGeometryPolicy.cpp
+  ALiveSourceVideoOutputPin.cpp
+  CBufferedLiveSourceVideoOutputPin.cpp
+  CLiveSource.cpp
+  CUnbufferedLiveSourceVideoOutputPin.cpp
+  DirectShowEnhancedVideoRenderer.cpp
+  DirectShowGenericHDRVideoRenderer.cpp
+  DirectShowGenericVideoRenderer.cpp
+  DirectShowMPCVideoRenderer.cpp
+  DirectShowVideoRenderer.cpp
+  DirectShowVideoRenderers.cpp
+  PixelValueRange.cpp
+  PPMCorrectionLoader.cpp
+  EventActionLauncher.cpp
+  RendererId.cpp
+  StateVariables.cpp
+  UnifiedProfileRuntime.cpp
+  SceneDetector.cpp
+  Compiling...
+  StringUtils.cpp
+  TimingClock.cpp
+  VideoTimingController.cpp
+  VideoConversionOverride.cpp
+  VideoFrame.cpp
+  VideoFrameEncoding.cpp
+  VideoState.cpp
+  CARGBtoP010VideoFrameFormatter.cpp
+  CDeckLinkRGBToP010VideoFrameFormatter.cpp
+  CR210toRGB48VideoFrameFormatter.cpp
+  CR210DolbyVisionTunnelFormatter.cpp
+  CR12BtoRGB48VideoFrameFormatter.cpp
+  CNoopVideoFrameFormatter.cpp
+  CUYVYtoP010VideoFrameFormatter.cpp
+  CUYVYtoP210VideoFrameFormatter.cpp
+  CV210toP010VideoFrameFormatter.cpp
+  CV210toP210VideoFrameFormatter.cpp
+  WallClock.cpp
+  CpuFeatures.cpp
+  RememberedEdgeReturn.cpp
+  Compiling...
+  LocalBoundaryRefinement.cpp
+  MadVRShaderLoader.cpp
+  _WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+  GpuSubtitleDetector.cpp
+  WindowsOcrSubtitleDetector.cpp
+  CARGBtoP010VideoFrameFormatter.AVX2.cpp
+  CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp
+  CR210DolbyVisionTunnelFormatter.AVX2.cpp
+  CR210toRGB48VideoFrameFormatter.AVX2.cpp
+  CR12BtoRGB48VideoFrameFormatter.AVX2.cpp
+  CUYVYtoP010VideoFrameFormatter.AVX2.cpp
+  CUYVYtoP210VideoFrameFormatter.AVX2.cpp
+  CV210toP210VideoFrameFormatter.AVX2.cpp
+  CV210toP010VideoFrameFormatter.AVX2.cpp
+  CpuProbe.AVX2.cpp
+  Generating Code...
+  VideoProcessor-Lib.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\VideoProcessor-Lib.lib
+  ConfigurationDiscoveryBridge.cpp
+     Creating library E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.lib and object E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 2523 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-ConfigDiscovery.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigDiscovery\x64\Release\VideoProcessorConfigDiscovery.dll
+  AppMain.cpp
+  ConfigEditorWindow.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(304,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(271,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2106,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2126,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2242,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2315,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file 'ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+  VpTheme.cpp
+  ToneCurveModel.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\3rdparty\libplacebo-beta\include\libplacebo\common.h(233,36): warning C4244: 'return': conversion from 'double' to 'float', possible loss of data [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ChartCore/ToneCurveModel.cpp')
+  
+  ToneCurveRuntime.cpp
+  ConfigEditorCore.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(304,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(271,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2106,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2126,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2242,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2315,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-ConfigCore/ConfigEditorCore.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+  ConfigurationRpcClient.cpp
+  ShaderConfigValidation.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(304,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(271,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2106,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2126,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2242,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2315,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  (compiling source file '../VideoProcessor-Lib/ShaderConfigValidation.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+  ConfigFile.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ConfigFile.cpp(378,10): warning C4456: declaration of 'sectionLineNumbers' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\ConfigFile.cpp(307,29):
+      see declaration of 'sectionLineNumbers'
+  
+  DisplayRefreshRatePolicy.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 18484 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VideoProcessor-Config.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\VideoProcessorConfig.exe
+          1 file(s) copied.
+          1 file(s) copied.
+  E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\VideoProcessorConfig.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+EXEC : warning : Cannot find any version of the dxcompiler.dll and dxil.dll. [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Config\VideoProcessor-Config.vcxproj]
+  Updating Qt6Core.dll.
+  Updating Qt6Gui.dll.
+  Updating Qt6Network.dll.
+  Updating Qt6Svg.dll.
+  Updating Qt6Widgets.dll.
+  Updating opengl32sw.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/generic.
+  Updating qtuiotouchplugin.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/iconengines.
+  Updating qsvgicon.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/imageformats.
+  Updating qgif.dll.
+  Updating qico.dll.
+  Updating qjpeg.dll.
+  Updating qsvg.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/networkinformation.
+  Updating qnetworklistmanager.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/platforms.
+  Updating qwindows.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/styles.
+  Updating qmodernwindowsstyle.dll.
+  Creating directory E:/codex/videoprocessor/profile-section-labels-20261026/x64/Release/tls.
+  Updating qcertonlybackend.dll.
+  Updating qschannelbackend.dll.
+  ConfigEditorWindow.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(304,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(271,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2106,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2126,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2242,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2315,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file '../VideoProcessor-Config/ConfigEditorWindow.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+  ConfigEditorWindowTests.cpp
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(304,16): warning C4456: declaration of 'legacyValue' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\MainConfigSchema.h(271,15):
+      see declaration of 'legacyValue'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2106,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2126,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2242,22): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(2315,21): warning C4456: declaration of 'value' hides previous local declaration [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  (compiling source file 'ConfigEditorWindowTests.cpp')
+      E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-Lib\RendererProfileConfig.h(1945,15):
+      see declaration of 'value'
+  
+  Generating Code...
+  VideoProcessor-ConfigTests.vcxproj -> E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\VideoProcessorConfigTests.exe
+  E:\codex\videoprocessor\profile-section-labels-20261026\x64\Release\VideoProcessorConfigTests.exe 64 bit, release executable
+  Adding in plugin type generic for module: Qt6Gui
+  Adding Qt6Network for qtuiotouchplugin.dll from plugin type: generic
+  Adding in plugin type iconengines for module: Qt6Gui
+  Adding Qt6Svg for qsvgicon.dll from plugin type: iconengines
+  Adding in plugin type imageformats for module: Qt6Gui
+  Adding in plugin type networkinformation for module: Qt6Network
+  Adding in plugin type platforms for module: Qt6Gui
+  Adding in plugin type styles for module: Qt6Widgets
+  Adding in plugin type tls for module: Qt6Network
+  Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+  Direct dependencies: Qt6Core Qt6Gui Qt6Widgets
+  All dependencies   : Qt6Core Qt6Gui Qt6Widgets
+  To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6Svg Qt6Widgets
+EXEC : warning : Cannot find any version of the dxcompiler.dll and dxil.dll. [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+EXEC : warning : Cannot find Visual Studio installation directory, VCINSTALLDIR is not set. [E:\codex\videoprocessor\profile-section-labels-20261026\src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj]
+  Qt6Core.dll is up to date.
+  Qt6Gui.dll is up to date.
+  Qt6Network.dll is up to date.
+  Qt6Svg.dll is up to date.
+  Qt6Widgets.dll is up to date.
+  opengl32sw.dll is up to date.
+  qtuiotouchplugin.dll is up to date.
+  qsvgicon.dll is up to date.
+  qgif.dll is up to date.
+  qico.dll is up to date.
+  qjpeg.dll is up to date.
+  qsvg.dll is up to date.
+  qnetworklistmanager.dll is up to date.
+  qwindows.dll is up to date.
+  qmodernwindowsstyle.dll is up to date.
+  qcertonlybackend.dll is up to date.
+  qschannelbackend.dll is up to date.
+          1 file(s) copied.

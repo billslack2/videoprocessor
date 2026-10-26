@@ -34,5 +34,6 @@ prior deployment backup and hash receipt remain at
 
 [Structured merge evidence](../assets/PR-209/merge-evidence-20261026.json)
 records source pins, local artifact hashes, test names, and deployment receipt.
-The adjacent build log is the actual exact-head x64 Release build output.
+[Build output](../assets/PR-209/exact-head-config-release-build-20261026.txt)
+is the actual exact-head x64 Release build output.
 This is a PR acceptance note, with no canonical story-state transition.
