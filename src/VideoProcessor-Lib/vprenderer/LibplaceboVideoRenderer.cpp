@@ -13080,7 +13080,14 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleTranslationConfirmation = {};
 			scopeSubtitleFitConfirmation = {};
 		}
-        SubtitleBoxPreview earlySubtitlePreview;
+        // Keep large per-frame snapshots off the render thread's 1 MiB stack.
+        // Construct each snapshot in place so initialization introduces no
+        // temporary preview on the stack, and preserve this call's ownership.
+        struct SubtitlePreviewWorkspace {
+            SubtitleBoxPreview early, current, rebound, live;
+        };
+        const auto subtitlePreviews=std::make_unique<SubtitlePreviewWorkspace>();
+        auto& earlySubtitlePreview=subtitlePreviews->early;
 		if (analysisSource.IsValid())
 		{
 			ActivePictureFrameIdentity currentActivePictureIdentity =
@@ -14057,7 +14064,7 @@ struct LibplaceboVideoRenderer::Impl
         subtitleIdentity.rendererGeneration = frameGeneration;
         bool currentMeasuredCaptionAvailable = false;
         bool currentSubtitlePendingPixelsVerified = false;
-        SubtitleBoxPreview currentSubtitlePreview;
+        auto& currentSubtitlePreview=subtitlePreviews->current;
         SubtitleCueContinuation currentCueContinuation;
         bool currentNoCaptionConfirmed = false;
         SubtitleBarStripClearance currentSubtitleBarStripClearance;
@@ -14092,7 +14099,7 @@ struct LibplaceboVideoRenderer::Impl
         }
         else if (subtitleMeasurementEnabled)
         {
-            SubtitleBoxPreview reboundPreview;
+            auto& reboundPreview=subtitlePreviews->rebound;
             if (subtitlePreview && subtitlePreview->available &&
                 subtitlePreview->current.independentBarAnalysis &&
                 !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
@@ -14117,7 +14124,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration) ||
                 (subtitlePreview && !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)))
                 subtitlePreview = nullptr;
-            SubtitleBoxPreview livePreview;
+            auto& livePreview=subtitlePreviews->live;
             if (!subtitlePreview)
             {
                 if (!subtitleBoxPresentation.ReusePreviewForRepeatedSourceFrame(
