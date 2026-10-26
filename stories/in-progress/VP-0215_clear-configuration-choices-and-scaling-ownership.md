@@ -61,6 +61,12 @@ Trial evidence:
 
 2026-10-25 follow-up: User explicitly requests removing the entire Processing overrides section, moving its existing values into canonical Scaling as faithfully as possible, combining image and chroma into one Scaling section, Debanding / Dithering naming, Blue noise without a recommendation suffix, Tone Mapping tab/page naming, and one Advanced/Basic tone-mapping toggle. Continue the deployed local Config branch at a37dab1f; discovered beta remains v1.4.02-beta at 8c453746. This supersedes the earlier decision to retain Rendering processing controls. Preserve active configuration on binary deployment; legacy loading migrates in memory and Save/Apply persists the comment-preserving plan.
 
+### Follow-up implementation checkpoint
+
+Source commit e5ac36efe2e04df7e72025fb9903c120c63966bb is committed and pushed on codex/vp0215-config-choices-20261025. It removes the complete Processing overrides section, combines image/chroma scaling, uses Debanding / Dithering and Blue noise labels, renames the page/tab Tone Mapping, and replaces Restore panels with one Advanced/Basic toggle that restores the prior basic view. Shared parser/editor migration moves legacy processing values to visible Scaling profiles, retains earlier precedence, keeps rules/shortcuts where possible, and preserves inline comments. Independent selection combinations require review after ownership moves.
+
+Development validation: migration checks and focused GUI save/reopen, comment, import/export, docking and toggle checks passed. The projection regression now combines canonical Tone Mapping and Scaling selections and preserves the same native rendering parameters. A complete clean x64 Release rebuild is running because incremental link attempts produced MSVC PDB/type-record errors; failed logs are retained under E:\codex\diagnostics\vp0215-scaling-followup-20261025. Deployment is pending successful final build/test gates. The old Config window is now closed; active configuration is to remain unchanged during binary replacement.
+
 ### Readiness and implementation base
 
 2026-10-25: GitHub default/current beta rechecked as v1.4.02-beta, fetched
