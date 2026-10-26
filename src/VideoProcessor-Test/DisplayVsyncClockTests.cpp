@@ -9,6 +9,33 @@ namespace Tests
     TEST_CLASS(DisplayVsyncClockTests)
     {
     public:
+        TEST_METHOD(ScheduleIdentityChangesOnlyWhenTimingIsReanchored)
+        {
+            DisplayVsyncClock clock;
+            const auto empty = clock.ScheduleSerial();
+            clock.BeginSource(1.0, 1000000000, 1, 24.0, false);
+            const auto first = clock.ScheduleSerial();
+            Assert::IsTrue(first > empty);
+            clock.Submitted();
+            clock.BeginSource(1.0 + 1.0 / 24.0, 1041666667, 1, 24.0, false);
+            clock.SkipMissed(1200000000);
+            Assert::AreEqual(first, clock.ScheduleSerial());
+            clock.Reset();
+            const auto reset = clock.ScheduleSerial();
+            Assert::IsTrue(reset > first);
+            clock.BeginSource(2.0, 2000000000, 1, 24.0, false);
+            const auto restarted = clock.ScheduleSerial();
+            Assert::IsTrue(restarted > reset);
+            clock.BeginSource(2.1, 2100000000, 2, 24.0, false);
+            const auto newGeneration = clock.ScheduleSerial();
+            Assert::IsTrue(newGeneration > restarted);
+            clock.BeginSource(2.2, 2200000000, 2, 60.0, false);
+            const auto newRate = clock.ScheduleSerial();
+            Assert::IsTrue(newRate > newGeneration);
+            clock.BeginSource(2.3, 2300000000, 2, 60.0, true);
+            Assert::IsTrue(clock.ScheduleSerial() > newRate);
+        }
+
         TEST_METHOD(FilmOn120HzRepeatsFourTimesBetweenSources)
         {
             DisplayVsyncClock clock;

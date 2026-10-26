@@ -85,6 +85,19 @@ public:
             return;
         }
 
+        // DXGI can keep returning advancing statistics whose timestamps are
+        // no longer useful for cadence classification. Require the sample
+        // itself to be recent, as well as the observation stream.
+        if (!IsTimestampFresh(nowQpc, sample.syncQpc, sample.qpcFrequency,
+                sample.expectedDisplayHz))
+        {
+            ClearWindow(State::Unavailable);
+            m_hasStaleReplay = true;
+            m_staleSyncRefresh = sample.syncRefreshCount;
+            m_staleSyncQpc = sample.syncQpc;
+            return;
+        }
+
         if (m_hasLastSample)
         {
             const bool duplicateSync =
@@ -203,18 +216,33 @@ private:
         return (std::max)(0.05, expectedHz * 0.001);
     }
 
+    static double StaleHorizonMs(double expectedHz)
+    {
+        const double targetStaleMs = 3000.0 / expectedHz;
+        return targetStaleMs > kStaleFloorMs ? targetStaleMs :
+            kStaleFloorMs;
+    }
+
+    static bool IsTimestampFresh(int64_t nowQpc, int64_t sampleQpc,
+        int64_t qpcFrequency, double expectedHz)
+    {
+        if (nowQpc <= 0 || sampleQpc <= 0 || sampleQpc > nowQpc ||
+            qpcFrequency <= 0 || !ValidRate(expectedHz))
+            return false;
+        const double ageMs = static_cast<double>(nowQpc - sampleQpc) *
+            1000.0 / static_cast<double>(qpcFrequency);
+        return std::isfinite(ageMs) && ageMs <= StaleHorizonMs(expectedHz);
+    }
+
     static bool IsStale(int64_t nowQpc, int64_t lastObservationQpc,
         int64_t qpcFrequency, double expectedHz)
     {
         if (nowQpc < lastObservationQpc || qpcFrequency <= 0 ||
             !ValidRate(expectedHz))
             return true;
-        const double targetStaleMs = 3000.0 / expectedHz;
-        const double staleMs = targetStaleMs > kStaleFloorMs ?
-            targetStaleMs : kStaleFloorMs;
         const double ageMs = static_cast<double>(nowQpc - lastObservationQpc) *
             1000.0 / static_cast<double>(qpcFrequency);
-        return ageMs > staleMs;
+        return ageMs > StaleHorizonMs(expectedHz);
     }
 
     void ClearWindow(State state)

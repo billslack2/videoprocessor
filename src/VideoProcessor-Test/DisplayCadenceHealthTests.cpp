@@ -36,6 +36,20 @@ namespace Tests
             }
         }
 
+        static void AddIntervalsAtOffset(DisplayCadenceHealth& health,
+            AlphaDxgiPresentationSample& sample, uint32_t refreshDelta,
+            int64_t qpcDelta, unsigned count, int64_t nowOffsetFromSampleQpc,
+            uint64_t outputEpoch = 1)
+        {
+            for (unsigned index = 0; index < count; ++index)
+            {
+                sample.syncRefreshCount += refreshDelta;
+                sample.syncQpc += qpcDelta;
+                health.Observe(sample,
+                    sample.syncQpc + nowOffsetFromSampleQpc, outputEpoch);
+            }
+        }
+
         TEST_METHOD(PersistentSixtyHzAgainstTwentyFourTargetIsDetectedWithinWindow)
         {
             DisplayCadenceHealth health;
@@ -97,6 +111,116 @@ namespace Tests
                 static_cast<int>(health.Get().state));
             Assert::AreEqual(60.0, health.Get().observedHz, 0.001);
             Assert::IsTrue(health.Get().windowMs >= 200.0);
+        }
+
+        TEST_METHOD(SampleAgeHorizonIncludesTheBoundaryAndRejectsTheNextQpcTick)
+        {
+            struct HorizonCase
+            {
+                double targetHz;
+                int64_t horizonQpc;
+            };
+            // 60 Hz uses the 250 ms floor; 10 Hz uses three target periods.
+            const HorizonCase cases[] = {
+                { 60.0, 15000 },
+                { 10.0, 18000 }
+            };
+            for (const HorizonCase& horizon : cases)
+            {
+                auto sample = Sample(10, 600000, horizon.targetHz);
+                DisplayCadenceHealth atBoundary;
+                atBoundary.Observe(sample,
+                    sample.syncQpc + horizon.horizonQpc, 1);
+                Assert::AreEqual(static_cast<int>(
+                        DisplayCadenceHealth::State::Warming),
+                    static_cast<int>(atBoundary.Get().state));
+
+                DisplayCadenceHealth beyondBoundary;
+                beyondBoundary.Observe(sample,
+                    sample.syncQpc + horizon.horizonQpc + 1, 1);
+                Assert::AreEqual(static_cast<int>(
+                        DisplayCadenceHealth::State::Unavailable),
+                    static_cast<int>(beyondBoundary.Get().state));
+            }
+
+            auto sample = Sample(10, 600000, 60.0);
+            DisplayCadenceHealth equalTimestamp;
+            equalTimestamp.Observe(sample, sample.syncQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Warming),
+                static_cast<int>(equalTimestamp.Get().state));
+
+            DisplayCadenceHealth futureTimestamp;
+            futureTimestamp.Observe(sample, sample.syncQpc - 1, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(futureTimestamp.Get().state));
+        }
+
+        TEST_METHOD(AdvancingFiveSecondOldStatisticsStayUnavailableUntilFreshWindow)
+        {
+            DisplayCadenceHealth health;
+            auto sample = Sample(100, 60000, 60.0);
+            constexpr int64_t staleAgeQpc = 5 * 60000;
+            health.Observe(sample, sample.syncQpc + staleAgeQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(health.Get().state));
+
+            AddIntervalsAtOffset(health, sample, 1, 1000, 12,
+                staleAgeQpc);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(health.Get().state));
+            Assert::AreEqual(static_cast<uint32_t>(0),
+                health.Get().uniqueIntervals);
+
+            // A distinct, current sample can restart the classifier, but the
+            // full minimum evidence window must be collected again.
+            sample.syncRefreshCount += 301;
+            sample.syncQpc += staleAgeQpc + 1000;
+            health.Observe(sample, sample.syncQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Warming),
+                static_cast<int>(health.Get().state));
+            AddIntervals(health, sample, 1, 1000, 12);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Healthy),
+                static_cast<int>(health.Get().state));
+        }
+
+        TEST_METHOD(FiveSecondFutureStatisticsCannotClassifyOrReplayAsFresh)
+        {
+            DisplayCadenceHealth health;
+            auto sample = Sample(100, 600000, 23.976);
+            constexpr int64_t futureOffsetQpc = -5 * 60000;
+            health.Observe(sample, sample.syncQpc + futureOffsetQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(health.Get().state));
+
+            AddIntervalsAtOffset(health, sample, 1, 1000, 12,
+                futureOffsetQpc);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(health.Get().state));
+
+            // Once the same future timestamp falls into the past, it still
+            // cannot seed a new baseline; the next distinct sample can.
+            health.Observe(sample, sample.syncQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Unavailable),
+                static_cast<int>(health.Get().state));
+            ++sample.syncRefreshCount;
+            sample.syncQpc += 1000;
+            health.Observe(sample, sample.syncQpc, 1);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Warming),
+                static_cast<int>(health.Get().state));
+            AddIntervals(health, sample, 1, 1000, 12);
+            Assert::AreEqual(static_cast<int>(
+                    DisplayCadenceHealth::State::Mismatch),
+                static_cast<int>(health.Get().state));
         }
 
         TEST_METHOD(HealthyCadenceAtOneHundredTwentyTwoFortyAndThreeSixtyHz)
@@ -169,9 +293,9 @@ namespace Tests
                 static_cast<int>(health.Get().state));
             Assert::AreEqual(static_cast<uint32_t>(0), health.Get().uniqueIntervals);
 
-            ++sample.syncRefreshCount;
-            sample.syncQpc += 1000;
-            health.Observe(sample, staleNowQpc + 31000, 1);
+            sample.syncRefreshCount += 46;
+            sample.syncQpc = staleNowQpc + 31000;
+            health.Observe(sample, sample.syncQpc, 1);
             Assert::AreEqual(static_cast<int>(DisplayCadenceHealth::State::Warming),
                 static_cast<int>(health.Get().state));
             Assert::AreEqual(static_cast<uint32_t>(0), health.Get().uniqueIntervals);

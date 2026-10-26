@@ -21,11 +21,40 @@ applied device limit. Neither the limit nor buffer count reports queue occupancy
 A rejected limit fails initialization rather than silently claiming it applied.
 
 Every-refresh mode uses interval-1 DXGI presentation and its bounded queue for
-backpressure. There is no independent sleep timer. Several calls can fill the
-queue before a call blocks: this is not a per-vblank callback. Valid, stable DXGI
-statistics can discipline the next queued-slot estimate using mpv's guarded
-queue-tail calculation. Missing, zero, disjoint or implausible statistics are
-rejected; FIFO pacing continues without claiming physical timing confirmation.
+backpressure. Several calls can fill the queue before a call blocks: this is not
+a per-vblank callback. An interruptible emergency wait caps software workahead
+at the configured depth when Present returns too quickly. It releases render
+and queue locks and rechecks the scheduling lifetime; it is not a vblank event
+or a replacement for normal Present pacing. Valid, stable DXGI statistics can
+discipline the next queued-slot estimate using mpv's guarded queue-tail calculation.
+Missing, zero, disjoint, stale, future or implausible statistics are rejected.
+
+Cadence classification compares paired DXGI sync-count/QPC deltas with the
+selected display rate, never with source FPS. A minimum 200 ms window, at least
+five unique intervals and 80% agreement outside a 3% tolerance identify a
+reported mismatch. These are VP heuristics. Microsoft warns that frame
+statistics can be unreliable on multiple monitors; agreement does not certify
+physical scanout. Absolute sample age must be no more than the larger of
+250 ms and three target periods, and sample timestamps cannot be in the future.
+
+A mismatch suppresses cached repeats and returns to source-paced capture.
+Swapchain recreation additionally requires three distinct successful-submission
+serials that each needed a workahead wait greater than a quarter target period.
+They must span at least one period and all be within 500 ms. Repeated CV wakeups
+cannot add evidence. Output, source, profile, depth or clock reanchors retire
+this evidence; only the mismatch's own fallback reset preserves a qualified
+request. The current containing output must also match the negotiated monitor.
+Each attempt consumes its evidence. At most two attempts are allowed per
+persistent episode, with a two-second cooldown; further stats-only mismatches
+continue source-paced playback. With a deep queue, fallback can occur before
+three clamps, deliberately avoiding an uncorroborated rebuild.
+
+Repeats resume after 500 ms of fresh DXGI agreement; five seconds of agreement
+replenish the attempt budget. A rebuild is logged with timing_verified=0 until
+later observations arrive. This local recovery policy is experimental: neither
+upstream player code nor the CPU tests establish that rebuilding repairs the
+Windows compositor or physical HDMI timing. User settings and capture PTS
+remain unchanged.
 
 Source PTS chooses pictures; a separate output-slot estimate controls repeats.
 For nominal 24 fps at 120 Hz there are five slots per picture; 24 at 60 Hz keeps

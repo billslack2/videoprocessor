@@ -4407,6 +4407,10 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t displayCadenceOutputEpoch = 1;
     uint64_t displayCadenceSourceGeneration = 0;
     HMONITOR displayCadenceMonitor = nullptr;
+    uint64_t workaheadClockSerial = 0, workaheadSourceGeneration = 0;
+    uint64_t workaheadOutputEpoch = 0, workaheadReadinessRevision = 0;
+    UINT workaheadDepth = 0;
+    int workaheadCadenceOwner = -1;
     UINT appliedPresentationDepth = PresentationConfig::DefaultDepth;
     int displayCadenceOwner = -1;
     DisplayCadenceTransition displayCadenceTransition;
@@ -7881,19 +7885,69 @@ struct LibplaceboVideoRenderer::Impl
         lastFramePacingSubmitQpc = 0;
     }
 
+    // Workahead belongs to one scheduling lifetime. In particular, a profile
+    // reanchor or a failed Present must not lend evidence to a later mismatch.
+    void SyncDisplayWorkaheadScope(uint64_t sourceGeneration, bool preserveEvidence = false)
+    {
+        const uint64_t revision = startupReadinessRevision.load(std::memory_order_acquire);
+        const uint64_t serial = displayVsyncClock.ScheduleSerial();
+        if (!preserveEvidence && (workaheadClockSerial != serial ||
+            workaheadSourceGeneration != sourceGeneration ||
+            workaheadOutputEpoch != displayCadenceOutputEpoch ||
+            workaheadReadinessRevision != revision ||
+            workaheadDepth != appliedPresentationDepth ||
+            workaheadCadenceOwner != displayCadenceOwner))
+            displayCadenceRecovery.ClearWorkahead();
+        workaheadClockSerial = serial;
+        workaheadSourceGeneration = sourceGeneration;
+        workaheadOutputEpoch = displayCadenceOutputEpoch;
+        workaheadReadinessRevision = revision;
+        workaheadDepth = appliedPresentationDepth;
+        workaheadCadenceOwner = displayCadenceOwner;
+        displayCadenceRecovery.SetTarget(
+            static_cast<uint64_t>(reinterpret_cast<uintptr_t>(negotiatedMonitor)),
+            renderLoadDisplayRefreshHz.load(std::memory_order_acquire));
+    }
+
     void RecoverDisplayCadenceLocked()
     {
         // Let a queued display transition replace obsolete mismatch evidence
         // before spending a recovery attempt on the previous output contract.
         if (resizePending.load(std::memory_order_acquire) ||
             outputRenegotiationPending.load(std::memory_order_acquire)) return;
+        const uint64_t recoveryRevision = startupReadinessRevision.load(std::memory_order_acquire);
+        SyncDisplayWorkaheadScope(displayCadenceSourceGeneration);
+        if (!displayCadenceRecovery.Pending()) return;
+        // Verify the current containing output before acting on the negotiated
+        // target. DXGI statistics alone may describe the wrong monitor.
+        CComPtr<IDXGISwapChain> native;
+        if (vpOwnedSwapchain) native = vpOwnedSwapchain;
+        else if (swapchain) native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        CComPtr<IDXGIOutput> containingOutput;
+        DXGI_OUTPUT_DESC description{};
+        if (!native || FAILED(native->GetContainingOutput(&containingOutput)) ||
+            !containingOutput || FAILED(containingOutput->GetDesc(&description)) ||
+            !negotiatedMonitor || description.Monitor != negotiatedMonitor)
+        {
+            displayCadenceRecovery.ClearWorkahead();
+            DebugLog::Log("VP display timing recovery deferred: reason=output-unverified cached_repeats_suppressed=1");
+            return;
+        }
+        if (resizePending.load(std::memory_order_acquire) ||
+            outputRenegotiationPending.load(std::memory_order_acquire) ||
+            recoveryRevision != startupReadinessRevision.load(std::memory_order_acquire))
+        {
+            displayCadenceRecovery.ClearWorkahead();
+            return;
+        }
+        SyncDisplayWorkaheadScope(displayCadenceSourceGeneration);
         if (!displayCadenceRecovery.TakeRequest(SteadyClockNowNs())) return;
         const auto health = displayCadenceHealth.Get();
         startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
         InvalidateHdrStatus();
         const bool recreated = RecreateSwapchain(swapchainBlit,
             suppressLimitedNegotiation, "display cadence mismatch");
-        DebugLog::Log("VP display timing recovery: attempt=%u expected_hz=%.6f observed_hz=%.6f window_ms=%.1f recreated=%d timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+        DebugLog::Log("VP display timing recovery: attempt=%u expected_hz=%.6f observed_hz=%.6f window_ms=%.1f recreated=%d workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
             displayCadenceRecovery.Attempts(), health.expectedHz, health.observedHz,
             health.windowMs, recreated ? 1 : 0);
     }
@@ -20080,6 +20134,8 @@ releaseDriftBaseRetention =
         const auto previousHealth = displayCadenceHealth.Get().state;
         const bool wasFallback = displayCadenceRecovery.Fallback();
         const bool wasPending = displayCadenceRecovery.Pending();
+        if (displayCadenceSourceGeneration != record.generation)
+            displayCadenceRecovery.OutputChanged();
         displayCadenceSourceGeneration = record.generation;
         if (displayCadenceMonitor != negotiatedMonitor)
         {
@@ -20088,9 +20144,7 @@ releaseDriftBaseRetention =
             displayCadenceHealth.Reset();
             displayCadenceRecovery.OutputChanged();
         }
-        displayCadenceRecovery.SetTarget(
-            static_cast<uint64_t>(reinterpret_cast<uintptr_t>(negotiatedMonitor)),
-            sample.expectedDisplayHz);
+        SyncDisplayWorkaheadScope(record.generation);
         displayCadenceHealth.Observe(sample, PerformanceCounterNow(), displayCadenceOutputEpoch);
         const auto health = displayCadenceHealth.Get();
         displayCadenceRecovery.Observe(health.state == DisplayCadenceHealth::State::Mismatch,
@@ -20100,6 +20154,9 @@ releaseDriftBaseRetention =
             // Do not reuse slots from the failed path or from source-paced recovery.
             displayRepeatValid = false;
             displayVsyncClock.Reset();
+            // A qualified pre-fallback clamp may authorize this one request.
+            // Other clock resets retire its evidence through the scope check.
+            SyncDisplayWorkaheadScope(record.generation, displayCadenceRecovery.Pending());
         }
         if (health.state == DisplayCadenceHealth::State::Mismatch)
             displayVsyncClock.InvalidateFeedback();
@@ -20109,10 +20166,12 @@ releaseDriftBaseRetention =
             const char* status = health.state == DisplayCadenceHealth::State::Healthy ? "healthy" :
                 health.state == DisplayCadenceHealth::State::Mismatch ? "mismatch" :
                 health.state == DisplayCadenceHealth::State::Warming ? "warming" : "unavailable";
-            DebugLog::Log("VP display timing state: state=%s expected_hz=%.6f observed_hz=%.6f intervals=%u window_ms=%.1f cached_repeats_suppressed=%d recovery_pending=%d attempts=%u epoch=%llu stats_hr=0x%08X",
+            DebugLog::Log("VP display timing state: state=%s expected_hz=%.6f observed_hz=%.6f intervals=%u window_ms=%.1f cached_repeats_suppressed=%d recovery_pending=%d workahead_corroborated=%d attempts=%u epoch=%llu stats_hr=0x%08X",
                 status, health.expectedHz, health.observedHz, health.uniqueIntervals, health.windowMs,
                 displayCadenceRecovery.Fallback() ? 1 : 0,
-                displayCadenceRecovery.Pending() ? 1 : 0, displayCadenceRecovery.Attempts(),
+                displayCadenceRecovery.Pending() ? 1 : 0,
+                displayCadenceRecovery.HasFreshWorkahead(SteadyClockNowNs()) ? 1 : 0,
+                displayCadenceRecovery.Attempts(),
                 displayCadenceOutputEpoch, static_cast<unsigned>(sample.frameStatisticsResult));
         }
         return sample;
@@ -24114,6 +24173,7 @@ bool LibplaceboVideoRenderer::WaitForDisplaySlot(
             std::lock_guard<std::mutex> queueGuard(m_queueMutex);
             if (m_stopRequested || (sourceGeneration && sourceGeneration != m_queueGeneration))
                 return false;
+            m_impl->SyncDisplayWorkaheadScope(m_queueGeneration);
             if (!m_impl->displayVsyncClock.Matches(m_queueGeneration,
                     m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire)))
                 return true;
@@ -24129,6 +24189,9 @@ bool LibplaceboVideoRenderer::WaitForDisplaySlot(
         const int64_t waitNs = m_impl->displayVsyncClock.SubmissionWaitNs(
             nowNs, m_impl->appliedPresentationDepth);
         if (waitNs <= 0) return true;
+        // Count each successful submission once, rather than each CV wake.
+        m_impl->displayCadenceRecovery.RecordWorkahead(nowNs,
+            m_impl->renderLoadSubmissionSerial, waitNs);
         renderGuard.unlock();
         {
             std::unique_lock<std::mutex> queueGuard(m_queueMutex);

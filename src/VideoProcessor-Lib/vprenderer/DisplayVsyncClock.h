@@ -11,7 +11,13 @@
 class DisplayVsyncClock
 {
 public:
-    void Reset() { *this = {}; }
+    void Reset()
+    {
+        const uint64_t nextSerial = scheduleSerial + 1;
+        *this = {};
+        scheduleSerial = nextSerial;
+    }
+    uint64_t ScheduleSerial() const { return scheduleSerial; }
     bool Active() const { return periodNs > 0.0; }
     bool Matches(uint64_t epoch, double hz) const
     {
@@ -29,6 +35,7 @@ public:
         if (!Matches(epoch, hz) || discontinuity ||
             pts < lastSourcePts || pts - lastSourcePts > 0.5)
         {
+            ++scheduleSerial;
             sourceOrigin = pts;
             wallOriginNs = nowNs;
             generation = epoch;
@@ -129,7 +136,7 @@ public:
         return true;
     }
 private:
-    uint64_t generation = 0, tick = 0;
+    uint64_t generation = 0, tick = 0, scheduleSerial = 0;
     int64_t wallOriginNs = 0;
     double sourceOrigin = 0.0, lastSourcePts = 0.0;
     double refreshHz = 0.0, periodNs = 0.0, sourceTolerance = 1e-5;
