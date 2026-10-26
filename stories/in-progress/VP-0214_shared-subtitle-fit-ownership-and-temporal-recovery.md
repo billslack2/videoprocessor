@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog
+In Progress
 
 2026-10-25: Follow-up concern identified during the independent team assessment
 for VP-0213. Investigation/implementation of shared subtitle behavior is not
@@ -69,3 +69,5 @@ The raw envelope lacks caption/UI provenance, so a blanket clear or coarse no-ca
 The follow-up [logic investigation and native probe](../assets/VP-0207/held-envelope-logic-20261025/review.txt) reproduces qualified/unqualified/qualified native-expanded-native crop transitions using current beta policy functions. It identifies both retained envelope and dense FIT contributors, expansion surviving translation-confirmation ownership, and a separate skipped-analysis hold-expiry bypass. All probe assertions and expiry/generation controls pass; synthetic proof/routing fixtures are not an end-to-end image replay. No production implementation or deployment; existing story status remains unchanged.
 
 Follow-up [safe protection review](../assets/VP-0207/held-envelope-logic-20261025/protection-review.txt) confirms a label-dependent recovery bypass and that strict clearance scheduling excludes no-bright-ink. Passing current-policy probe controls cover exact/stale UI proof and already-submitted envelopes. Recommends a bounded exact-frame full-row clearance certificate covering both retained contributors, plus geometry-based owner validation. Design only; no production patch or deployment.
+
+2026-10-26: User authorized the narrow exact-frame clearance guard and diagnostic logging. Implementation started on codex/subtitle-rewind-ar-20261025 from current beta81ac960f. Validation in progress; no deployment.
