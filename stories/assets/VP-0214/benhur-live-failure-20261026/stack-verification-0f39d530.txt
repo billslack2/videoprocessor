@@ -1,0 +1,12 @@
+Pinned source: 0f39d53007fff8f88f4379dc98e93cd918b3b313 (x64 Release)
+Method: static PE x64 unwind allocations resolved with adjacent PDB via DIA.
+Installed RenderLocked: 567,016 bytes; rebuilt standard: 348,936; rebuilt beta: 349,096.
+Immediately before heap change, measured beta RenderLocked: 576,776 bytes.
+Heap workspace removes exactly 227,680 bytes = 4 x 56,920-byte previews from beta RenderLocked.
+Known nested path RenderLoop -> RenderLocked -> SubtitleBoxPresentation::Consume -> Reset:
+Installed: 943,376 bytes; rebuilt standard: 732,048; rebuilt beta: 732,208.
+Executable default stack reserve: 1,048,576 bytes.
+Reserve minus measured path: installed 105,200; standard 316,528; beta 316,368 bytes.
+These are static known-chain sums, excluding thread wrappers, return addresses, CRT/destructors and other uninspected calls; not runtime high-water measurements.
+No production launch, build, deployment or source edit was performed for this verification.
+Full metadata and binary hashes: E:\codex\diagnostics\benhur-live-failure-20261026-1756\stack-verification-0f39d530.json

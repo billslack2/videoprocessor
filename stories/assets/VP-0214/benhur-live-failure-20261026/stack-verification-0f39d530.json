@@ -1,0 +1,64 @@
+{
+  "recorded_utc": "2026-10-26T22:46:32.8346117Z",
+  "source_commit": "0f39d53007fff8f88f4379dc98e93cd918b3b313",
+  "configuration": "x64 Release",
+  "measurement": "PE x64 unwind stack allocation plus saved nonvolatile registers, mapped to functions with installed DIA SDK and matching adjacent PDBs",
+  "thread_stack_reserve_bytes": 1048576,
+  "chain": [
+    "LibplaceboVideoRenderer::RenderLoop",
+    "LibplaceboVideoRenderer::Impl::RenderLocked",
+    "SubtitleBoxPresentation::Consume",
+    "SubtitleBoxPresentation::Reset"
+  ],
+  "chain_trigger": "Subtitle preview unavailable or script-hint change",
+  "variants": [
+    {
+      "variant": "installed",
+      "dll_path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "dll_sha256": "9D863C0FE67CF9D48B3A629E31ACA3FA469B221A950B7C00B30DBF9E8841E981",
+      "pdb_path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "pdb_sha256": "093755F5994547D328B84D15AA48F5155CC7CA8594041449602AEE8F6FB8CAB7",
+      "render_locked_rva": "000DBA70",
+      "render_locked_stack_bytes": 567016,
+      "render_loop_stack_bytes": 197016,
+      "subtitle_consume_stack_bytes": 83352,
+      "subtitle_reset_stack_bytes": 95992,
+      "known_nested_chain_stack_bytes": 943376,
+      "reserve_minus_known_chain_bytes": 105200
+    },
+    {
+      "variant": "rebuilt-standard",
+      "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "dll_sha256": "74187820127E35AFB3818B408C62DAFB2C2DE318034C993AE9E3870BF1DDD8F5",
+      "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "pdb_sha256": "8D8197F5CEE20ED21714A7850B5C4DC64C29781A532A0046705E0FE69B83115A",
+      "render_locked_rva": "000DDAA0",
+      "render_locked_stack_bytes": 348936,
+      "render_loop_stack_bytes": 200408,
+      "subtitle_consume_stack_bytes": 84888,
+      "subtitle_reset_stack_bytes": 97816,
+      "known_nested_chain_stack_bytes": 732048,
+      "reserve_minus_known_chain_bytes": 316528
+    },
+    {
+      "variant": "rebuilt-beta",
+      "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "dll_sha256": "6E63884B9EDC79726E561D7E430A110A6CEC41BE47BEADAA2A04ADDFE865A065",
+      "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "pdb_sha256": "CFF8B6ACE6A2E9997EA82493BD16EFB97CBB27DD493CE8A97DA6EF0E68FB4A87",
+      "render_locked_rva": "000DDAF0",
+      "render_locked_stack_bytes": 349096,
+      "render_loop_stack_bytes": 200408,
+      "subtitle_consume_stack_bytes": 84888,
+      "subtitle_reset_stack_bytes": 97816,
+      "known_nested_chain_stack_bytes": 732208,
+      "reserve_minus_known_chain_bytes": 316368
+    }
+  ],
+  "pre_heap_beta_render_locked_stack_bytes": 576776,
+  "rebuilt_beta_render_locked_reduction_bytes": 227680,
+  "preview_object_bytes": 56920,
+  "heap_workspace_preview_count": 4,
+  "limitations": "Known nested call-chain sum only; excludes return addresses, thread wrapper, called CRT/destructor frames, and any uninspected indirect calls. Remaining reserve is not a measured runtime low-water mark. No production process was launched or modified.",
+  "diagnostic_tools": "E:\\codex\\diagnostics\\benhur-stack-size-20261026"
+}

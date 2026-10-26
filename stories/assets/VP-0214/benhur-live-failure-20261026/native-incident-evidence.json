@@ -1,0 +1,139 @@
+{
+  "recordedAtUtc": "2026-10-26T22:24:21.758366+00:00",
+  "deployedSource": "0f807d43051036a6f25fc75ea4a7e43c36a909f3",
+  "liveAcceptance": "failed; subtitles flashed/disappeared; native input caption remains present",
+  "captures": [
+    {
+      "directory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-180214-59164-1",
+      "visibleCue": "BATTLE POSTS.",
+      "nativeFrameBytes": 33177600,
+      "sampleFrameSha256": {
+        "1": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b",
+        "2": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b",
+        "64": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b"
+      },
+      "sampledInputsIdentical": true,
+      "firstFrameMetadata": [
+        "3840 2160 7680 7680 4 6 8 386 1776 1 2",
+        "identity_v1 1 13162 14503 1469852461180 16737396327766010546 4 1 3440028774926749422 2 6 20 0 417083 0 0 0"
+      ],
+      "summary": {
+        "schemaVersion": 1,
+        "includeFrames": true,
+        "session": {
+          "acceptedRecords": 4308,
+          "recordsWritten": 4308,
+          "framesWritten": 64,
+          "frameBytesWritten": 2123366400
+        },
+        "lifetime": {
+          "droppedRecords": 951,
+          "droppedFrames": 416,
+          "historyOverwrites": 107162,
+          "writeFailures": 0
+        },
+        "limits": {
+          "preRollMs": 10000,
+          "captureMs": 20000,
+          "recordHistoryCapacity": 8192,
+          "maxCaptureRecords": 65536,
+          "maxFrameBytes": 134217728,
+          "maxCaptureFrameBytes": 2147483648,
+          "maxOutstandingFrames": 2
+        },
+        "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+      }
+    },
+    {
+      "directory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-180748-59164-2",
+      "visibleCue": "GO BACK BACK / TO YOUR OAR, 41.",
+      "nativeFrameBytes": 33177600,
+      "sampleFrameSha256": {
+        "1": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437",
+        "2": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437",
+        "64": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437"
+      },
+      "sampledInputsIdentical": true,
+      "firstFrameMetadata": [
+        "3840 2160 7680 7680 4 6 8 386 1776 1 2",
+        "identity_v1 1 21166 22507 1470186288760 16737396327766010546 6 1 3440028774926749422 2 8 20 0 417083 0 0 0"
+      ],
+      "summary": {
+        "schemaVersion": 1,
+        "includeFrames": true,
+        "session": {
+          "acceptedRecords": 12497,
+          "recordsWritten": 12497,
+          "framesWritten": 64,
+          "frameBytesWritten": 2123366400
+        },
+        "lifetime": {
+          "droppedRecords": 3808,
+          "droppedFrames": 831,
+          "historyOverwrites": 242878,
+          "writeFailures": 0
+        },
+        "limits": {
+          "preRollMs": 10000,
+          "captureMs": 20000,
+          "recordHistoryCapacity": 8192,
+          "maxCaptureRecords": 65536,
+          "maxFrameBytes": 134217728,
+          "maxCaptureFrameBytes": 2147483648,
+          "maxOutstandingFrames": 2
+        },
+        "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+      }
+    }
+  ],
+  "nativeReplay": {
+    "test": "NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority",
+    "trx": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\tests-native-probe\\paused-and-two-paths.trx",
+    "withoutHint": {
+      "analyzed": true,
+      "detected": false,
+      "picture": [
+        0,
+        2160
+      ],
+      "barReason": "no-current-flat-bar"
+    },
+    "withRetainedCoordinatesDiagnosticOnly": {
+      "analyzed": true,
+      "detected": true,
+      "lines": 2,
+      "picture": [
+        382,
+        1776
+      ],
+      "barReason": "current-pixel-nearby-subtitle-bar",
+      "boundarySupport": [
+        19,
+        88
+      ],
+      "blackFraction": [
+        1,
+        0.972374
+      ],
+      "maxIntrusion": [
+        0,
+        5
+      ],
+      "subtitleArProofAccepted": false
+    }
+  },
+  "baselineRegressions": {
+    "source": "0f807d43051036a6f25fc75ea4a7e43c36a909f3",
+    "trx": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\tests-deployed-baseline\\deployed-baseline-corrected-lip.trx",
+    "expectedBehaviorFailures": [
+      "NativeBarCueCurrentPositiveIgnoresMovingPictureButRejectsNewCaptionBarInk",
+      "NativeBarCuePipelineKeepsCachedGlyphGeometryAfterStrongOppositeEdgeJitter",
+      "NearbyCurrentBoundaryRevalidatesOnlyRememberedLipAfterLocalCueContinuation"
+    ]
+  },
+  "limits": [
+    "Static native captures prove caption presence in paused missing state, not the exact preceding moving-frame pixel that triggered each continuation veto.",
+    "Main recorded Scope/Reconstruction pass kept submitted picture crop stable; translation metadata alone is not an output AR change."
+  ],
+  "sourcePixelsCommitted": false
+}

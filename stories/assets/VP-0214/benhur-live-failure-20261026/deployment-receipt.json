@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "deployedAtUtc": "2026-10-26T22:56:14.4880271+00:00",
+  "deployedAtNewYork": "2026-10-26T18:56:14.4897288-04:00",
+  "status": "deployed-and-hash-verified",
+  "sourceCommit": "0f39d53007fff8f88f4379dc98e93cd918b3b313",
+  "sourceWorktree": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026",
+  "configuration": "Release",
+  "architecture": "x64",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/210",
+  "qualificationReceipt": "C:\\Users\\bslac\\vp\\story-tracker\\stories\\assets\\VP-0214\\benhur-live-failure-20261026\\validation.json",
+  "backupDirectory": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\VideoProcessor.exe",
+      "beforeSha256": "1364B6EE1D20882012985B1AAD53980C2B8C62AE6A57F6A755DDB2D967D2C79C",
+      "expectedSha256": "96D4544DA48986467F914608933F84DAFC920E826DD7AAA29DDE868A65ECB56A",
+      "installedSha256": "96D4544DA48986467F914608933F84DAFC920E826DD7AAA29DDE868A65ECB56A",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\VideoProcessor.exe.runtime.json",
+      "beforeSha256": "576333B348CD0784EE984231C858C7CC55B1EB94A5F341068206FC6F7EDAB8DB",
+      "expectedSha256": "8A788BB59FC966CB23F937A8A56AB3F006E53BCFF1EC022EE8CBA1322C749A71",
+      "installedSha256": "8A788BB59FC966CB23F937A8A56AB3F006E53BCFF1EC022EE8CBA1322C749A71",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\VideoProcessor-GUI.pdb",
+      "beforeSha256": "37F355B9ABD2CD8C853C47DB9BE70C3C60910D2B9E5D227732F4FF34C239A240",
+      "expectedSha256": "FEFC7E76DDDE15C74B91C95D8DDDE76C0C8848AB3882C74E2FCAABB29937D14E",
+      "installedSha256": "FEFC7E76DDDE15C74B91C95D8DDDE76C0C8848AB3882C74E2FCAABB29937D14E",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "beforeSha256": "9D863C0FE67CF9D48B3A629E31ACA3FA469B221A950B7C00B30DBF9E8841E981",
+      "expectedSha256": "74187820127E35AFB3818B408C62DAFB2C2DE318034C993AE9E3870BF1DDD8F5",
+      "installedSha256": "74187820127E35AFB3818B408C62DAFB2C2DE318034C993AE9E3870BF1DDD8F5",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "beforeSha256": "42E4E0CECCA7E7B5410185CCD29FB951584EC76E14BA09107B26859B3D4AD2C1",
+      "expectedSha256": "49EF040FCC68DCD39A4FAA029D7502CFD60D97AD4295FBC5831DF12CF6BB5F7F",
+      "installedSha256": "49EF040FCC68DCD39A4FAA029D7502CFD60D97AD4295FBC5831DF12CF6BB5F7F",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "beforeSha256": "093755F5994547D328B84D15AA48F5155CC7CA8594041449602AEE8F6FB8CAB7",
+      "expectedSha256": "8D8197F5CEE20ED21714A7850B5C4DC64C29781A532A0046705E0FE69B83115A",
+      "installedSha256": "8D8197F5CEE20ED21714A7850B5C4DC64C29781A532A0046705E0FE69B83115A",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "beforeSha256": "EC9E97FF46226B4D02FAFA9C2ED68CF4F5C993C44EC1889F644C1C7CDAE4377F",
+      "expectedSha256": "6E63884B9EDC79726E561D7E430A110A6CEC41BE47BEADAA2A04ADDFE865A065",
+      "installedSha256": "6E63884B9EDC79726E561D7E430A110A6CEC41BE47BEADAA2A04ADDFE865A065",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "beforeSha256": "7FAD0859C82C9905F978120F7C5F8A0FF92A93602788588C58EFA3D94D627D61",
+      "expectedSha256": "F3552F3710A4D37160EAABCB2025A5958886A54655927DA0A662E1DDD4431930",
+      "installedSha256": "F3552F3710A4D37160EAABCB2025A5958886A54655927DA0A662E1DDD4431930",
+      "matches": true
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "beforeSha256": "CB7B413F7B4079D93897C435C19CD84D4AA8CB01BB773D96809E1011A57EAC11",
+      "expectedSha256": "CFF8B6ACE6A2E9997EA82493BD16EFB97CBB27DD493CE8A97DA6EF0E68FB4A87",
+      "installedSha256": "CFF8B6ACE6A2E9997EA82493BD16EFB97CBB27DD493CE8A97DA6EF0E68FB4A87",
+      "matches": true
+    }
+  ],
+  "retainedDependencies": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-377.dll",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "retained": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "retained": true
+    }
+  ],
+  "configurationFiles": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\VideoProcessor.cfg",
+      "beforeSha256": "09103EEA49724A74EE0677C38A45ABDAFB2374F10C1DA6A1C338437141128AA8",
+      "afterSha256": "09103EEA49724A74EE0677C38A45ABDAFB2374F10C1DA6A1C338437141128AA8",
+      "unchanged": true,
+      "editedByDeployment": false,
+      "postRestartSha256": "09103EEA49724A74EE0677C38A45ABDAFB2374F10C1DA6A1C338437141128AA8",
+      "postRestartMatchesBefore": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-benhur-recovery-0f39d530-20261026-185612-659\\VideoProcessor.state",
+      "beforeSha256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "afterSha256": "50B90DD2D1AA7EA2433DD27DF4053C16C50A46CB7CEFA70E29392A76D2818DA1",
+      "unchanged": true,
+      "editedByDeployment": false,
+      "postRestartSha256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "postRestartMatchesBefore": false
+    }
+  ],
+  "configurationEdits": [],
+  "playerWasRunning": false,
+  "playerStarted": true,
+  "configEditorModified": false,
+  "existingDisplayObserversRetained": true,
+  "liveBenHurAcceptance": "pending replay after follow-up deployment",
+  "playerOriginallyRunning": true,
+  "playerStoppedForReplacementPid": 59164,
+  "playerPid": 81912,
+  "playerWorkingDirectory": "C:\\Videoprocessor\\vp",
+  "restartVerifiedAtUtc": "2026-10-26T22:59:17.526672+00:00",
+  "startupVerified": {
+    "hostCommit": "0f39d53007fff8f88f4379dc98e93cd918b3b313",
+    "rendererCommit": "0f39d53007fff8f88f4379dc98e93cd918b3b313",
+    "dirty": false,
+    "bothRendererModulesLoaded": true,
+    "activeCaptureAndOutput": true,
+    "visualAcceptance": "pending user replay; startup logging is not visual acceptance",
+    "initialSubtitleMode": "Reconstruction (mode 3)",
+    "latestLoggedSubtitleMode": "Classic (mode 0) since 18:56:42; select Reconstruction for acceptance replay"
+  },
+  "retryNote": "Initial replacement waited for the stopped executable mapping to release. No runtime files changed in the first attempt; bounded retry succeeded.",
+  "runtimeStateChangesAfterRestart": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "key": "profile.subtitles",
+      "before": "reconstruction",
+      "after": "classic",
+      "observation": "Written by the running session after startup; no deployment edit to this setting was issued."
+    }
+  ]
+}

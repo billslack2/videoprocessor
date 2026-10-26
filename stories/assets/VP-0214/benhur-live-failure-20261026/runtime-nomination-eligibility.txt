@@ -1,0 +1,37 @@
+Runtime subtitle inspection nomination eligibility audit
+Source: 0f39d53007fff8f88f4379dc98e93cd918b3b313
+Scope: read-only counterfactual evaluation of the new renderer nomination gate against the recorded paused capture2 context; no claim of post-deployment live execution.
+Result: No eligibility blocker found for the recorded Scope/Reconstruction paused case.
+
+Configuration:
+C:\Videoprocessor\vp\VideoProcessor.cfg
+SHA256 09103EEA49724A74EE0677C38A45ABDAFB2374F10C1DA6A1C338437141128AA8
+Matches the captured diagnostic configuration. Its Scope profile permits automatic cropping; the separate 16:9 profile has automatic_crop=false and intentionally does not qualify for this recovery route.
+
+Evidence:
+E:\codex\diagnostics\benhur-live-failure-20261026-1756\vp-paused-missing.log
+Capture2: C:\Videoprocessor\vp\logs\analysis-20261026-180748-59164-2
+Recorded current identity: generation=1, source format=16737396327766010546, domain=3440028774926749422, viewport=6, renderer=1, policy=2, continuity=8.
+Native retained base: 0,386-3840,1776, native generation=1, origin=0 (native), class=2 (BAR_CROP_TRUSTED).
+
+Gate evaluation:
+- Shared bounds unavailable: repeated continuation-state rows after source16060 (18:04:15) show shared_required=1, shared_current=0, shared=0,0-0,0. This enters the nomination branch.
+- subtitleMeasurementEnabled: Reconstruction style3 and current analyzed previews remain enabled during starvation.
+- automaticSourceCrop && configuredScreenActive: settings18:03:10 explicitly viewport_target=configured, screen_aspect=2.3500, automatic_crop=1; anamorphic layout18:07:37 still configured=1.
+- trustedNlsBarGeometry: native base remains available, cropped, native/current generation both1 and class2 in repeated state rows through the paused capture.
+- nlsRequested=false: scope-retention row16060 (18:04:15) explicitly nls_requested=0; layout18:07:37 nls=off.
+- fixedCropAspectConfigured=false: configured Scope automatic-crop profile has no fixed crop; runtime fixed_crop=0.
+- inspectionRecoveryBlocked=false / inwardCaptionProtected=false: source16060 reaches UpdateScopeSubtitleShift and logs provisional bar-authority hold release. The renderer skips that call under inwardCaptionProtected, and UpdateScopeSubtitleShift returns before that release when HasCurrentMovingPictureTransition is true. No subsequent moving active/onset/publication event occurs before the same paused capture; last moving-boundary reset18:03:27 had retained=0/prior_active=0.
+- currentFullRaster=false: crop-recovery row16060 logs full_authority=0 and observed_class=3. Paused source21197 (18:07:49) remains class3, measured/provisional, unpublished. Importantly, the recovery full_authority field is episodeInput.fullRasterAuthorityAvailable, assigned from the exact same fullRasterPresentationAuthorityAvailable && source-generation-match conjunct used by nomination; this rules out an unseen stale global full-raster latch in this recorded interval. The alternate nomination conjunct (latest class FULL_RASTER_TRUSTED) is also false.
+- nlsGeometrySourceFormatKey == AlphaSourceFormatKey(state): INFERENCE FROM A CODE INVARIANT, not a directly logged private value. At18:03:10 viewport_request=6 logs retained_source_geometry=1. That decision requires sourceFormatMatches, including equality of this stored native format key with AlphaSourceFormatKey(state), exact dimensions and source generation. Format/domain/current generation are unchanged afterward through capture2, with no new analysis contract transition. Retained native geometry stays available/current. No contrary evidence was found.
+
+Code correspondence (src\VideoProcessor-Lib\vprenderer):
+LibplaceboVideoRenderer.cpp around13620: empty-shared nomination, enable/block predicates.
+Around13450/13587: trusted native-bar geometry/current inward protection predicates.
+Around12675: profile-retention format-key equality invariant.
+Around16043 and17658: same current full-raster authority conjunct and logged full_authority.
+AlphaSourceCropPolicy.cpp1910: a current BAR_CROP_TRUSTED result clears full-raster authority; provisional observations do not create it.
+BufferedPictureExpansion.cpp604: moving transition is current only for exact generation/source sequence.
+
+Conclusion:
+Recorded paused Scope/Reconstruction input would nominate a coordinate-only inspection candidate under the new call-site conditions. Fresh native scans still have to earn glyph/backing output; nomination grants no shared crop, AR, cleanup or absence authority. Exact capture2 replay separately passed12 current glyph/composition/lip frames. Post-deployment bounded nomination-used telemetry remains the confirmation of the actual new runtime invocation.
