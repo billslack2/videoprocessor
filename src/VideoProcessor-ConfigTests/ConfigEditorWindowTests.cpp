@@ -5511,6 +5511,9 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
         "Leaving advanced focus overwrote a manual panel choice");
     require(advanced->text()=="Advanced tone mapping"&&toneCurves->isChecked()==previousCurves,"Basic toggle did not restore the previous tone-controls view");
     advanced->click(); events();
+    // Docking below needs a wide desktop, independently of the test platform's
+    // maximized size. The dedicated window-state test covers maximization.
+    window.showNormal(); window.resize(1920, 1080); events();
     requireControl<QAbstractButton>(window, "settingsRailExpand")->click(); events();
     require(workspace->isAdvancedFocus() && navigation->isPanelExpanded() && !workspace->isProfilesExpanded(),
         "Restore panels changed manual profile choice or hid advanced charts");
@@ -5611,8 +5614,8 @@ void testAdvancedToneMappingMaximizesAndRestoresWindow()
             "Basic did not restore the size and position from before this Advanced click");
         require(edit->text() == "Ctrl+Alt+F9", "Window restoration discarded an unsaved edit");
     }
-    const QRect normal = window.normalGeometry();
     window.showMaximized(); events();
+    const QRect normal = window.normalGeometry();
     advanced->click(); events();
     advanced->click(); events();
     require(window.isMaximized() && !window.isFullScreen() && window.normalGeometry() == normal,
