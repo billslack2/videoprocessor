@@ -4776,6 +4776,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsPreparationRevision = 0;
 	bool nlsPreparationNoCompute = false;
 	std::atomic<bool> nlsPreparationPending{false};
+    std::atomic<bool> nlsPreparationFailed{false};
     NlsPipelinePreparation subtitlePipelinePreparation;
     std::atomic<bool> subtitlePipelinePreparationPending{false};
     std::atomic<bool> subtitlePipelinePreparationFailed{false};
@@ -9398,8 +9399,9 @@ struct LibplaceboVideoRenderer::Impl
 			status = TEXT("Preparing shaders...");
 			return true;
 		}
-		if (subtitlePipelinePreparationFailed.load(std::memory_order_acquire)) {
-            status = TEXT("Shader preparation unavailable; original subtitles");
+		if (subtitlePipelinePreparationFailed.load(std::memory_order_acquire) ||
+            nlsPreparationFailed.load(std::memory_order_acquire)) {
+            status = TEXT("Shader preparation unavailable; video continues");
             return true;
         }
 		const ULONGLONG started = libplaceboRenderStartedTick.load(
@@ -9416,6 +9418,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		nlsPreparation.Invalidate();
 		nlsPreparationPending.store(false, std::memory_order_release);
+        nlsPreparationFailed.store(false, std::memory_order_release);
 		++nlsPreparationRevision;
 		renderLoadMeter.ResetForPipelineChange();
 		coreRenderLoadMeter.ResetForPipelineChange();
@@ -9686,7 +9689,9 @@ struct LibplaceboVideoRenderer::Impl
 				state = NlsPipelinePreparation::Status::Failed;
 			}
 		}
-		nlsPreparationPending.store(state == NlsPipelinePreparation::Status::Pending, std::memory_order_release);
+		nlsPreparationPending.store(state == NlsPipelinePreparation::Status::Pending ||
+            state == NlsPipelinePreparation::Status::Missing, std::memory_order_release);
+        nlsPreparationFailed.store(state == NlsPipelinePreparation::Status::Failed, std::memory_order_release);
 		return state == NlsPipelinePreparation::Status::Ready;
 	}
 
@@ -19152,6 +19157,7 @@ releaseDriftBaseRetention =
 			assembleOverlays();
 		} else if (!selectedNls) {
 			nlsPreparationPending.store(false, std::memory_order_release);
+        nlsPreparationFailed.store(false, std::memory_order_release);
 		}
 		const SteadyClock::time_point renderStart = SteadyClock::now();
         const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
