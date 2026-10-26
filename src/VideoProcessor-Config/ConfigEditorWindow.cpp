@@ -3957,8 +3957,33 @@ void ConfigEditorWindow::setRendererDiscoveryForTesting(
     rebuildConfigurationShell();
 }
 
+void ConfigEditorWindow::setAdvancedToneMappingWindow(bool active)
+{
+    if (active)
+    {
+        if (!basicWindowGeometry_.isValid())
+        {
+            basicWindowGeometry_ = normalGeometry();
+            basicWindowState_ = windowState();
+        }
+        showMaximized();
+    }
+    else if (basicWindowGeometry_.isValid())
+    {
+        const QRect geometry = basicWindowGeometry_;
+        basicWindowGeometry_ = {};
+        const bool visible = isVisible();
+        setWindowState(Qt::WindowNoState);
+        setGeometry(geometry);
+        setWindowState(basicWindowState_);
+        if (visible) show();
+    }
+}
+
 void ConfigEditorWindow::rebuildConfigurationShell()
 {
+    // A rebuilt editor starts in Basic (for example after Cancel or target switch).
+    setAdvancedToneMappingWindow(false);
     // Recreate the editor after a full document reload (for example Cancel).
     // Ordinary renderer-visibility changes are handled in place and never
     // enter this comparatively expensive path.
@@ -4455,9 +4480,10 @@ QWidget* ConfigEditorWindow::createShell()
         {
             auto previousSettingsScroll = std::make_shared<int>(0);
             auto previousToneSections = std::make_shared<std::vector<std::pair<QString, bool>>>();
-            workspace->advancedFocusChanged = [center, workspace, previousSettingsScroll, previousToneSections](bool active) {
+            workspace->advancedFocusChanged = [this, center, workspace, previousSettingsScroll, previousToneSections](bool active) {
                 auto* scroll = workspace->findChild<QScrollArea*>(QStringLiteral("workspaceSettingsViewport"));
                 if (active && scroll) *previousSettingsScroll = scroll->verticalScrollBar()->value();
+                if (active || !workspace->isAdvancedFocus()) setAdvancedToneMappingWindow(active);
                 center->setAdvancedFocus(active);
                 if (active)
                 {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QRect>
 #include <QList>
 #include <QMap>
 #include <QString>
@@ -148,6 +149,7 @@ private:
     void applyChanges();
 	bool saveChanges();
 	void rebuildConfigurationShell();
+    void setAdvancedToneMappingWindow(bool active);
     void applyRendererVisibilityFilter(bool hideLegacyRenderers);
     bool notifyVideoProcessor();
     void refreshShaderCacheStatus();
@@ -304,6 +306,8 @@ private:
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QWidget* configurationHost_ = nullptr;
+    QRect basicWindowGeometry_;
+    Qt::WindowStates basicWindowState_ = Qt::WindowNoState;
     QLabel* shaderCacheStatus_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
     QWidget* updatePanel_ = nullptr;
