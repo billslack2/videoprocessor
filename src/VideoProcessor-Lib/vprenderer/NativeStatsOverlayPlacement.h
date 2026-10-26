@@ -142,6 +142,7 @@ namespace NativeStatsOverlayPlacement
 		float scale = 0.0f;
 		bool insetClamped = false;
 		bool usedOutputFallback = false;
+        bool usedTopBar = false;
 	};
 
 	inline Rect Intersect(const Rect& first, const Rect& second)
@@ -260,4 +261,25 @@ namespace NativeStatsOverlayPlacement
 		result.panel.right = left + width;
 		return result;
 	}
+    // Profile and shader status share one banner. Prefer the empty output band
+    // above the final picture without changing the banner's typography/width.
+    // A missing or shallow bar keeps the established in-picture placement.
+    inline Result PlaceProfileTopLeft(const Rect& requestedPicture, const Rect& output,
+        float panelWidth, float panelHeight, float insetPixels = kProfileOverlayInsetPixels,
+        float leftInsetPixels = -1.0f, float maxScale = 1.0f,
+        float horizontalInsetPixels = -1.0f)
+    {
+        auto result = PlaceTopLeft(requestedPicture, output, panelWidth, panelHeight,
+            insetPixels, leftInsetPixels, maxScale, horizontalInsetPixels);
+        if (!result.panel.IsValid() || result.usedOutputFallback) return result;
+        const float height = result.panel.Height();
+        const float barHeight = result.visiblePicture.top - output.top;
+        const float clearance = std::max(2.0f, height * 0.08f);
+        if (barHeight < height + 2.0f * clearance) return result;
+        result.panel.top = output.top + (barHeight - height) * 0.5f;
+        result.panel.bottom = result.panel.top + height;
+        result.usedTopBar = true;
+        return result;
+    }
+
 }
