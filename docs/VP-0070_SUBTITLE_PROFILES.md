@@ -15,7 +15,7 @@ Stored type names and appearance key names remain compatible with existing subti
 
 ## Placement and Classic controls
 
-`offset_pixels` is the common inward placement setting (0–500 source pixels). Bottom subtitles move higher; top subtitles move lower. In Classic this is the original subtitle padding, so there is no duplicate padding control. Off ignores placement.
+`offset_pixels` reserves bar-edge padding (0-500 source pixels): below bottom subtitles or above top subtitles. Text is vertically centered in the remaining final owned subtitle background, including accepted original backing. Floating boxes keep this gap outside the box. The resulting glyph-to-edge clearance can be larger than the reserved strip. In Classic this is the original subtitle padding; Off ignores placement.
 
 Classic also exposes:
 
@@ -188,9 +188,9 @@ Both beta moved styles accept `rounded_corners: true` (default) and
 `background_edge: extend` (default) or `float`. The UI exposes these under
 Moved subtitle appearance. Classic and Off ignore them.
 
-Text is centered inside its padded cue box at every reduction. Offset positions
-the whole box away from the corresponding picture edge; the backing extension
-is excluded from the centering calculation. Symmetric padding honors the larger
+Text is vertically centered in the final owned background, at every reduction.
+Exclude the configured bar-edge pixel strip, then include accepted original backing
+before centering. Horizontal coverage preserves the anchor. Cue padding honors the larger
 top/bottom minimum when space permits, reducing only impossible margins.
 Float keeps all four corners visible; Extend squares the bar-facing corners.
 Verified source-picture overlap forces extension for the remainder of that cue.

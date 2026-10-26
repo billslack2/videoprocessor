@@ -6943,9 +6943,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         scriptHint->setToolTip(QStringLiteral(
             "Guides Alpha's pixel-based grouping of subtitle rows, marks, and spacing. "
             "This does not recognize text or select Windows OCR languages."));
-        auto* offset = addText(QStringLiteral("Inward offset / Classic padding"), QStringLiteral("offset_pixels"), QStringLiteral("source pixels"));
+        auto* offset = addText(QStringLiteral("Bar-edge padding / Classic padding"), QStringLiteral("offset_pixels"), QStringLiteral("source pixels"));
         offset->setValidator(new QIntValidator(0,500,offset));
-        offset->setToolTip(QStringLiteral("Offsets the whole moved subtitle box: bottom subtitles move higher and top subtitles move lower. Text stays centered within the box; extension to the black bar does not count toward centering. In Classic, this is the original subtitle padding."));
+        offset->setToolTip(QStringLiteral("Reserves this many source pixels at the bar-facing edge: below bottom subtitles or above top subtitles. Text is vertically centered in the remaining final subtitle background, including accepted original backing. Floating boxes keep this gap outside the box. In Classic, this is the original subtitle padding."));
         auto* offZoomHold = addText(QStringLiteral("Hold zoom for"), QStringLiteral("off_zoom_hold_seconds"), QStringLiteral("seconds"));
         auto* offZoomValidator = new QDoubleValidator(0,30,3,offZoomHold);
         offZoomValidator->setNotation(QDoubleValidator::StandardNotation);
