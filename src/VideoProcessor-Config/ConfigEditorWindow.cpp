@@ -7645,7 +7645,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         cleanupFill->setItemText(0,QStringLiteral("Mirror nearby picture"));
         cleanupFill->setItemText(1,QStringLiteral("Stretch clean picture"));
         cleanupFill->setItemText(2,QStringLiteral("Blend surrounding picture"));
-        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Blend surrounding picture follows nearby color contours, favors matching clean samples, and blends the removal border. Black bars and subtitle pixels are excluded; hidden detail is approximated."));
+        cleanupFill->setToolTip(QStringLiteral("Stretch fills only the old subtitle area inside the picture from a nearby clean strip. It needs at least half a clean picture height and falls back to mirror. Blend surrounding picture uses fixed clean samples and a soft border transition for consistent blending during motion. Black bars and subtitle pixels are excluded; hidden detail is approximated."));
         form = addCollapsibleSection(QStringLiteral("hdr_analysis"),
             QStringLiteral("HDR analysis"), QStringLiteral("Protect HDR analysis from subtitles in every processing style."), false);
 		pictureOnlyHdrAnalysis = addBoolean(
