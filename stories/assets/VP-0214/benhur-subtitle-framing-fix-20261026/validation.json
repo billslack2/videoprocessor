@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-26T21:34:35.848638+00:00",
+  "repository": "billslack2/videoprocessor",
+  "baseBranch": "v1.4.02-beta",
+  "baseCommit": "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+  "branch": "codex/benhur-subtitle-framing-fix-20261026",
+  "sourceCommit": "0f807d43051036a6f25fc75ea4a7e43c36a909f3",
+  "sourceTree": "72d19884a95df8cd642a2d9637f4b28d0b4a424f",
+  "worktree": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026",
+  "trackedWorktreeClean": true,
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/210",
+  "build": {
+    "status": "passed",
+    "configuration": "Release",
+    "architecture": "x64",
+    "log": "E:\\codex\\diagnostics\\benhur-subtitle-framing-fix-20261026\\build-verified.log",
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 2
+  },
+  "finalTests": {
+    "native": {
+      "trx": "E:\\codex\\diagnostics\\benhur-subtitle-framing-fix-20261026\\tests-verified-native\\native.trx",
+      "counts": {
+        "total": 3312,
+        "executed": 3312,
+        "passed": 3312,
+        "failed": 0,
+        "error": 0,
+        "timeout": 0,
+        "aborted": 0,
+        "inconclusive": 0,
+        "passedButRunAborted": 0,
+        "notRunnable": 0,
+        "notExecuted": 0,
+        "disconnected": 0,
+        "warning": 0,
+        "completed": 0,
+        "inProgress": 0,
+        "pending": 0
+      },
+      "filter": "FullyQualifiedName!~LibplaceboLutParserTests&FullyQualifiedName!~SubtitleCutPasteShaderTests"
+    },
+    "affectedGpu": {
+      "trx": "E:\\codex\\diagnostics\\benhur-subtitle-framing-fix-20261026\\tests-verified-gpu\\gpu.trx",
+      "counts": {
+        "total": 4,
+        "executed": 4,
+        "passed": 4,
+        "failed": 0,
+        "error": 0,
+        "timeout": 0,
+        "aborted": 0,
+        "inconclusive": 0,
+        "passedButRunAborted": 0,
+        "notRunnable": 0,
+        "notExecuted": 0,
+        "disconnected": 0,
+        "warning": 0,
+        "completed": 0,
+        "inProgress": 0,
+        "pending": 0
+      },
+      "filter": "FullyQualifiedName~FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer|FullyQualifiedName~PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint|FullyQualifiedName~ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars|FullyQualifiedName~OffsetSubtitleBackingReachesBothBarsWithoutMovingGlyphs"
+    },
+    "distinctPassingTests": 3316,
+    "countsDoNotIncludeEarlierOverlappingRuns": true,
+    "requiredIncidentRegressionsPassed": [
+      "NativeBarCueContinuityKeepsRawPositiveCueWhenOnlyOppositeEdgeIsUnknown",
+      "NativeBarCuePipelinePreservesPreparedPlacementThroughOppositeEdgeLoss",
+      "NativeBarCuePipelineReprovesBackingForHeldRawPositiveGlyphContinuity",
+      "NativeBarCueBackingBridgeRejectsMissingStaleOrUnprovedOwnership",
+      "NativeBarCueContinuityRejectsChangedGlyphsBackingAndNewInk",
+      "NativeBarCueContinuityRejectsGapsCutsEpochAndCueSideChanges",
+      "NativeBarCueCurrentPositiveProofOutlastsGraceWithoutRenewingNegativeLease",
+      "LocalGlyphContinuityNeverCertifiesPhysicalBarsOrPreparedErasure",
+      "BackingLipOverlapFromOneToSixteenPixelsPreservesRoundedLiveCorners",
+      "CurrentChromaEdgeBleedIsTrimmedAndStableAcrossRevalidation",
+      "EveryIdentityAndPhysicalMeasurementBindingIsExactCurrent",
+      "UnqualifiedRefinementCannotBypassTheUncertainFitPolicy",
+      "QualifiedRefinementSubmissionSurvivesFollowingUncertainFrames",
+      "LateQualifiedCaptionProofMustTravelWithFinalSelectedAdmission",
+      "ColdMaskedCaptionProposalRequiresCurrentProofAndKeepsFullCaption",
+      "ConfirmedReplacementAndTranslationKeepOwnership",
+      "ResolvedNewCropAndSubtitleTranslationKeepTheirOwners",
+      "IndependentPhysicalExpansionAndFullAuthorityKeepTheirOwnContract"
+    ]
+  },
+  "baselineGpuComparison": {
+    "sourceCommit": "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+    "trx": "E:\\codex\\diagnostics\\benhur-subtitle-gpu-baseline\\offset-baseline.trx",
+    "outcome": "Original outside-pixel assertion failed identically on clean beta.",
+    "explanation": "Probe was inside intentional six-pixel backing overhang; final test checks that overhang positively and checks unaffected pixels beyond it.",
+    "limitation": "Baseline test DLL compiled and executed; its post-link runtime-record helper failed to resolve Get-FileHash. It is diagnostic evidence, not a qualified deployable build."
+  },
+  "logEvidence": {
+    "submittedBounds": [
+      "376-2056",
+      "388-1776"
+    ],
+    "retainedNative": "388-1772",
+    "rawSubtitleMeasurement": "384-1776",
+    "nativeCaptureOfActualFailingTransitionsAvailable": false
+  },
+  "coverage": {
+    "nativeFormats": [
+      "P010",
+      "P210",
+      "DecodedDolbyVision422"
+    ],
+    "combinedPositiveSequenceSeconds": 1.25,
+    "backingDepths": "Both bars: 2-16 native pixels proved, one native row fails closed.",
+    "localGlyphProofGrantsPictureOrCleanupAuthority": false
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "bytes": 3127808,
+      "sha256": "1364B6EE1D20882012985B1AAD53980C2B8C62AE6A57F6A755DDB2D967D2C79C",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "1364B6EE1D20882012985B1AAD53980C2B8C62AE6A57F6A755DDB2D967D2C79C"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2667520,
+      "sha256": "9D863C0FE67CF9D48B3A629E31ACA3FA469B221A950B7C00B30DBF9E8841E981",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "9D863C0FE67CF9D48B3A629E31ACA3FA469B221A950B7C00B30DBF9E8841E981"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2666496,
+      "sha256": "EC9E97FF46226B4D02FAFA9C2ED68CF4F5C993C44EC1889F644C1C7CDAE4377F",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "EC9E97FF46226B4D02FAFA9C2ED68CF4F5C993C44EC1889F644C1C7CDAE4377F"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+      "bytes": 14004736,
+      "sha256": "4CD56F5571B79D70B56B5D07D2582BDB0D4968B9638EEAB4FDBADEF044A8F7C0",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "4CD56F5571B79D70B56B5D07D2582BDB0D4968B9638EEAB4FDBADEF044A8F7C0"
+      }
+    }
+  ],
+  "deploymentPerformed": false,
+  "activeConfigurationEdits": [],
+  "betaMergePerformed": false,
+  "liveBenHurAcceptance": "pending"
+}

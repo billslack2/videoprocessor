@@ -1,0 +1,80 @@
+Ben-Hur subtitle and framing regression fix (VP-0214 / VP-0207)
+Source: billslack2/videoprocessor
+Base: v1.4.02-beta, freshly fetched 53f7e234d7b4a607322e03295ce1cac8b9bbb6c4
+Feature: codex/benhur-subtitle-framing-fix-20261026
+Implementation commit: 42976e240ff5895122f193f80de22f76534cf95a
+Authority test correction: 7b81e6057e7cbac2b4736fc1d25bbd4d663a2308
+Final verified source: 0f807d43051036a6f25fc75ea4a7e43c36a909f3
+Draft PR: https://github.com/billslack2/videoprocessor/pull/210
+
+Evidence and limits
+The saved runtime logs show successful submitted source crops switching between
+376-2056 and 388-1776 while trusted native picture remains 388-1772. Raw subtitle
+sampling uses 384-1776. A positive bottom-bar cue can be rejected before pixel
+comparison when the unrelated top edge becomes unavailable. Backing cleanup has
+its own context rejection, so a retained glyph cue alone does not stabilize it.
+Existing native captures precede the affected transitions. No claim is made that
+the actual four-pixel source strip or the incident glyph pixels are unchanged.
+
+Implementation
+An exact current fit-ownership certificate travels separately from the native
+crop owner through recovery, admission, selected output and successful submit.
+Geometry, rather than the BAR_REFINEMENT/OUTWARD_FIT label, decides whether a new
+outward presentation needs confirmation. Only actual successfully submitted
+bounds can update the retained envelope; certificates cannot acquire native AR.
+
+The subtitle guard can recheck a current positive bar-only cue when the opposite
+edge disappears, including independently sampled/native edges that differ by
+four pixels. Native glyph/backing samples are compared against a fixed baseline;
+source identity, advancing source, format, grouping and epoch checks remain.
+Such evidence is local glyph ownership only. Healthy current positives can keep
+passing fresh verification beyond 250ms; detector misses retain the absolute
+non-renewing cap. Paused display repeats do not renew it.
+
+Backing cleanup requires the current cue-side raw bar plus current native body,
+flanks and finite closure. Opposite-edge loss cannot veto that independent proof.
+A held current-positive cue needs its exact bounded glyph certificate to satisfy
+only cue ownership. That certificate supplies no backing or AR authority. Cached
+outline coordinates survive only bounded uninspected context gaps, and current
+pixels must re-prove cleanup each time. Cleanup is the neutral black intersection;
+rounded live-picture corners and chroma-contaminated edge pixels are preserved.
+
+Diagnostics now distinguish context failures from pixel comparison, report the
+backing edge/context masks and candidate age, and show proposed versus resolved
+presentation plus actual post-submit envelope changes and certificate identity.
+
+Regression coverage
+Production policy chain: original unqualified refinement bypass, certified
+376-2056 submission followed by uncertainty, failed/replayed sources, selected
+proof/frame/epoch/actual-geometry mismatches, genuine native expansion controls,
+and real cold-caption builder through late qualification and successful commit.
+
+Native subtitle chain: actual P010, P210 and decoded Dolby Vision sampling and
+measurement, worker -> tracker -> padding/composition/fit/layout -> lip -> apply.
+The combined case keeps glyphs wholly in the bar, backing-only picture intrusion,
+and 384-1776 versus 388-1772 independent bounds. It runs over one second with the
+opposite edge unavailable, then rejects late changed glyphs and an expired
+negative cue before recovery. Controls cover missing/stale/nonlocal certificates,
+raw-negative and incomplete/cached/held worker data, epoch/source/gap changes,
+changed backing/glyphs, truncated ROI, cue-side tracking and lease expiry.
+Backing cases also cover both bars, 2-16-pixel proved overlap plus fail-closed
+one-row overlap, rounded corners, exact
+chroma-edge trimming, closure/shadow limits and work-budget failures.
+
+Baseline GPU test correction
+A separate pre-existing OffsetSubtitleBackingReachesBothBarsWithoutMovingGlyphs
+assertion failed identically on clean beta53f7e234. Its unchanged-pixel probe was
+inside the intentional six-pixel display overhang and two-pixel bar overlap. The
+corrected test checks the overhang positively and probes unchanged pixels beyond
+it. No shader or geometry behavior changes. The baseline DLL compiled and ran
+the filtered test; its post-link runtime-record helper separately failed to find
+Get-FileHash. That build is diagnostic evidence, not a deployment-qualified build.
+
+Validation and deployment
+Full x64 Release solution build passed at the final verified source.
+All 3312 native tests selected by the recorded filter and all 4 targeted GPU
+checks passed (3316 distinct tests; earlier overlapping runs are not added).
+Generated runtime records match the host, standard renderer, beta renderer and
+test DLL hashes. See validation.json for exact filters, reports and hashes.
+No active configuration edits, runtime deployment, merge or release publication.
+Live Ben-Hur replay with the affected frames remains the final acceptance step.
