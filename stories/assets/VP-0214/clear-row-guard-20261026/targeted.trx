@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="8fa32b30-b9d0-427b-ad6c-ebc2e1c065b2" name="bslac@DESKTOP-3G35SCJ 2026-10-26 08:08:00" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-26T08:08:00.4001871-04:00" queuing="2026-10-26T08:08:00.4001871-04:00" start="2026-10-26T08:07:59.2042579-04:00" finish="2026-10-26T08:08:00.4202126-04:00" />
+  <TestSettings name="default" id="c1284a61-477a-4a5f-a823-55be2345ca93">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-26_08_08_00" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="b740d277-3d76-4dea-bc05-88b1a05677b3" testId="84f1b8ad-8b74-5779-743f-98b9391d26dc" testName="CompleteNegativeWorkerRequestMeasuresBoundedClearance" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0055737" startTime="2026-10-26T08:08:00.3781687-04:00" endTime="2026-10-26T08:08:00.3837424-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b740d277-3d76-4dea-bc05-88b1a05677b3" />
+    <UnitTestResult executionId="263e9a36-3b00-4006-b2d3-c911238545be" testId="5d8550c7-de55-f17f-39e9-10b207a161a8" testName="AmbiguousStripScanNeverRunsForPendingHeldOrWorkLimitedEvidence" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000302" startTime="2026-10-26T08:08:00.3771642-04:00" endTime="2026-10-26T08:08:00.3771944-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="263e9a36-3b00-4006-b2d3-c911238545be" />
+    <UnitTestResult executionId="a41eef92-0444-4283-ba8b-0890940b1957" testId="572efa54-a789-a6d4-cb53-36599c109eec" testName="NegativeClearanceDemandIsPartOfWorkerCacheIdentity" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000880" startTime="2026-10-26T08:08:00.3711584-04:00" endTime="2026-10-26T08:08:00.3712464-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a41eef92-0444-4283-ba8b-0890940b1957" />
+    <UnitTestResult executionId="1873401d-20be-4218-8c8d-1a9023138aef" testId="2e2df3f6-399f-cc6e-433a-b82627c0eec8" testName="ClearRowsProtectHistoricalExpansionOnlyWithExactCurrentProof" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0024946" startTime="2026-10-26T08:08:00.3831696-04:00" endTime="2026-10-26T08:08:00.3856642-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1873401d-20be-4218-8c8d-1a9023138aef" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="NegativeClearanceDemandIsPartOfWorkerCacheIdentity" storage="e:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\release\videoprocessor-test.dll" id="572efa54-a789-a6d4-cb53-36599c109eec">
+      <Execution id="a41eef92-0444-4283-ba8b-0890940b1957" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::NegativeClearanceDemandIsPartOfWorkerCacheIdentity" />
+    </UnitTest>
+    <UnitTest name="AmbiguousStripScanNeverRunsForPendingHeldOrWorkLimitedEvidence" storage="e:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\release\videoprocessor-test.dll" id="5d8550c7-de55-f17f-39e9-10b207a161a8">
+      <Execution id="263e9a36-3b00-4006-b2d3-c911238545be" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.ActivePictureEvidenceTests" name="VideoProcessorTest::ActivePictureEvidenceTests::AmbiguousStripScanNeverRunsForPendingHeldOrWorkLimitedEvidence" />
+    </UnitTest>
+    <UnitTest name="CompleteNegativeWorkerRequestMeasuresBoundedClearance" storage="e:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\release\videoprocessor-test.dll" id="84f1b8ad-8b74-5779-743f-98b9391d26dc">
+      <Execution id="b740d277-3d76-4dea-bc05-88b1a05677b3" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.ActivePictureEvidenceTests" name="VideoProcessorTest::ActivePictureEvidenceTests::CompleteNegativeWorkerRequestMeasuresBoundedClearance" />
+    </UnitTest>
+    <UnitTest name="ClearRowsProtectHistoricalExpansionOnlyWithExactCurrentProof" storage="e:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\release\videoprocessor-test.dll" id="2e2df3f6-399f-cc6e-433a-b82627c0eec8">
+      <Execution id="1873401d-20be-4218-8c8d-1a9023138aef" />
+      <TestMethod codeBase="E:\codex\videoprocessor\subtitle-rewind-ar-20261025\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.ActivePictureEvidenceTests" name="VideoProcessorTest::ActivePictureEvidenceTests::ClearRowsProtectHistoricalExpansionOnlyWithExactCurrentProof" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="84f1b8ad-8b74-5779-743f-98b9391d26dc" executionId="b740d277-3d76-4dea-bc05-88b1a05677b3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5d8550c7-de55-f17f-39e9-10b207a161a8" executionId="263e9a36-3b00-4006-b2d3-c911238545be" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="572efa54-a789-a6d4-cb53-36599c109eec" executionId="a41eef92-0444-4283-ba8b-0890940b1957" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2e2df3f6-399f-cc6e-433a-b82627c0eec8" executionId="1873401d-20be-4218-8c8d-1a9023138aef" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="4" executed="4" passed="4" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

@@ -1,0 +1,29 @@
+VP-0214 narrow historical subtitle expansion guard, 2026-10-26
+Source commit: 714e35dfd88794ec49d3c456f65f99b45fc8f951
+Branch: codex/subtitle-rewind-ar-20261025, pushed to billslack2/videoprocessor.
+Base: freshly discovered/fetched current v1.4.02-beta81ac960f.
+Worktree: E:\codex\videoprocessor\subtitle-rewind-ar-20261025
+No beta merge or deployment. Broader VP-0214 remains In Progress.
+
+Implementation
+The final renderer recovery/admission path calls ProtectClearedSubtitleExpansion after both held detector-envelope and dense-FIT contributions have become the candidate geometry, and after uncertain-picture recovery. The veto only applies in Black/Reconstruction with a complete exact-source no-bright-ink result, current native BAR observation matching the prior submitted native base, no competing transition/full-raster/translation, and strict current full-row clearance covering every discarded row. The union also includes an already-submitted outward envelope. Identity, policy, continuity, raster and physical base must match. Any missing, stale, partial, colored or bright pixel proof declines protection.
+The accepted decision retains the native base with SUBMITTED_SCOPE_RETENTION and goes through the existing admission and optional-side-fill path. It neither clears persistent raw/dense history nor changes glyph/cleanup authority. The label-dependent global recovery policy and skipped-dense-analysis timeout are intentionally unchanged.
+
+Worker scope and cost
+Advanced-mode requests opt into bounded full-row clearance on complete no-bright-ink scans. The request participates in worker cache identity. Classic/Off retain prior negative-scan behavior. All scanning is on the existing worker, capped at128 rows per side, with no render-thread fallback. This is a per-source advanced-mode request, not a renderer-history-dependent worker gate. The larger history provenance redesign was not implemented.
+A standalone /O2 x64 P010 benchmark at3840x2160 measured100 warmed scans: average4.0578ms, p95 4.775ms, maximum5.615ms,983296 samples. This is local synthetic measurement, not a promise about other hardware/formats. Broader envelopes can exceed the cap and remain unprotected; log coverage shows why. Normal subtitle worker performance counters include this added work.
+
+Diagnostics
+New rate-limited line: Alpha subtitle expansion guard.
+Logs on decision-reason changes and at most every2s while an expansion is considered, including unknown/absent evidence. Fields: generation, sequence, viewport epoch, protected, reason, original owner/candidate, native base, required row interval, clearance availability and sequence, actual clear interval, inspected samples and elapsed wall milliseconds (the cpu_ms log field uses the existing scan elapsedMs measurement), current policy/continuity, scan reason, confirmed absence, analyzed/pending/work-limit, top/bottom completion, request flag and proof policy/continuity. Existing VP submitted geometry remains the final output receipt.
+Reasons distinguish missing current native observation, anchor mismatch, competing presentation, horizontal/non-expansion, submitted-envelope conflict, unavailable clearance, stale/mismatched context and uncovered rows. removed-rows-not-clear may mean a conflicting pixel or the bounded scan limit; sample count and interval distinguish coverage extent without claiming a complete black result.
+
+Validation
+Clean commit x64 Release solution Build succeeded (guard-build-714e35df.log).
+Targeted native tests4/4 passed (targeted.trx): exact-proof guard and final-side-fill stability, tiny bright/chroma pixel vetoes, incomplete budget/coverage, wrong context, full-raster/moving conflicts, old submitted envelope union; actual bounded negative-frame measurement; request-cache identity; conservative eligibility with pending/held/work-limited evidence.
+Broad subtitle/crop/recovery/GPU suite passed1174/1174 in10.2057 minutes (subtitle-guard-focused.trx). This run covered the implemented guard and final-fill test; the final four-test run additionally covered the two newly added worker measurement/cache tests. Two checks overlap, so these counts must not be summed as unique tests. Final production code differs from broad-run inputs only in diagnostic logging; it was compiled successfully at the clean committed source.
+Build notes: initial runtime-hash step failed due inherited PowerShell module resolution; corrected child PSModulePath to WindowsPowerShell modules. One premature retry overlapped the still-running first build and hit an object lock. Both exited; subsequent isolated builds passed with normal runtime sidecars. No build checks were bypassed.
+Host output: x64/Release/VideoProcessor-GUI.exe SHA256 CF1FDA1B765AAC9C35C2D6EF785F4025ECC25B0AFD1D15000205B2867A7E7D25
+Renderer: x64/Release/vprenderer/VideoProcessorVPRenderer.dll SHA256 4C7D6EF2D55C1B5D1E8A6A7D6FA3C49343950AF716CB17BCD79D48C24CC996E1
+Both runtime sidecars record Release x64 toolset14.29.30133 and matching hashes.
+No live replay of the user's original native video was available. The upstream reason subtitle proof disappeared remains unresolved; this patch guards the demonstrated framing consequence when current pixel evidence permits it.
