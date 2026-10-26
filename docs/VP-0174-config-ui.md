@@ -302,13 +302,14 @@ remains editable: no usable LUT means physical gamma, and an active LUT with inp
 display still depends on it. HDR Target nits, black and dynamic tone mapping remain
 active, because these LUTs calibrate the tone-mapped result.
 
-LUT file edits take effect only after an explicit Config Apply (or an OK that saves
-changes), or fresh renderer initialization. Apply remains available when the
-configuration itself is unchanged, so replacing a Cube at the same path does not
-require an unrelated setting edit. A clean OK only closes; Cancel never applies.
+LUT file edits take effect after applying pending configuration changes (Apply or
+an OK that saves), or fresh renderer initialization. Apply is disabled when no
+settings are pending and after a successful save, even if a Cube at the same path
+was replaced externally. A clean OK only closes; Cancel never applies.
 Playback does not poll or automatically reload LUT files. Routine profile changes
 reuse the already-loaded file snapshot, including rejected outcomes; a repaired
-file requires another Apply. A newly selected path is loaded on first use.
+file requires applying settings changes or restarting the renderer. A newly
+selected path is loaded on first use.
 
 LUT reload identity includes file path, gamut, input transfer and constrained base.
 For input display it also includes calibrated display gamma. Rejected same-contract
