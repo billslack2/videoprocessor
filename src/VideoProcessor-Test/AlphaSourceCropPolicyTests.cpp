@@ -15350,16 +15350,62 @@ input.currentNativeBounds = crop.geometry;
         TEST_METHOD(ResolvedNewCropAndSubtitleTranslationKeepTheirOwners)
         {
             auto input=Uncertain();
-            Decision resolved;
-            resolved.applyCrop=true;
-            resolved.sourceBounds=input.crop.geometry;
-            resolved.sourceBounds.top=100;
-            resolved.sourceBounds.bottom=2060;
-            resolved.owner=DecisionOwner::TRUSTED_CROP;
-            Assert::IsFalse(ResolveUncertainPicturePresentation(input,resolved).retained);
-            resolved.verticallyTranslated=true;
-            resolved.owner=DecisionOwner::VERTICAL_TRANSLATION;
-            Assert::IsFalse(ResolveUncertainPicturePresentation(input,resolved).retained);
+            Decision labelOnly;
+            labelOnly.applyCrop=true;
+            labelOnly.sourceBounds=input.crop.geometry;
+            labelOnly.sourceBounds.top=100;
+            labelOnly.sourceBounds.bottom=2060;
+            labelOnly.sourceBounds.aspectRatio=3840.0/1960.0;
+            labelOnly.owner=DecisionOwner::TRUSTED_CROP;
+            const auto unsupported=ResolveUncertainPicturePresentation(input,labelOnly);
+            Assert::IsTrue(unsupported.retained,
+                L"Relabeling an expanded rectangle cannot replace unchanged uncertain native evidence.");
+            Assert::AreEqual(280,unsupported.presentation.sourceBounds.top);
+            Assert::AreEqual(1880,unsupported.presentation.sourceBounds.bottom);
+
+            // A real current native replacement changes the geometry contract,
+            // not merely the proposed decision's owner and display rectangle.
+            input.crop.geometry=labelOnly.sourceBounds;
+            input.crop.framePresentationEpoch=input.presentationEpoch;
+            input.crop.latestObservationSupportsCrop=true;
+            input.crop.latestObservationIsProvisional=false;
+            input.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.crop.presentationFailOpen=false;
+            input.measurementCurrent=input.observationAvailable=true;
+            input.observation=input.crop.geometry;
+            input.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.candidate=Evaluate(input.crop);
+            Assert::IsTrue(input.candidate.owner==DecisionOwner::TRUSTED_CROP);
+            const auto physical=ResolveUncertainPicturePresentation(input,input.candidate);
+            Assert::IsFalse(physical.retained);
+            Assert::IsTrue(physical.presentation.owner==DecisionOwner::TRUSTED_CROP);
+            Assert::AreEqual(100,physical.presentation.sourceBounds.top);
+            Assert::AreEqual(2060,physical.presentation.sourceBounds.bottom);
+
+            // Exercise an actual same-height translated decision with the
+            // current confirmation contract used by the renderer.
+            input=Uncertain();
+            input.crop.presentationFailOpen=false;
+            input.crop.framePresentationEpoch=input.presentationEpoch;
+            input.crop.verticalTranslationActive=true;
+            input.crop.verticalTranslationPixels=96;
+            input.crop.verticalTranslationBase=input.crop.geometry;
+            input.crop.verticalTranslationSourceGeneration=input.crop.frameSourceGeneration;
+            input.measurementCurrent=input.retentionEvaluated=input.confirmedPresentationResolved=true;
+            input.retentionBounds=input.crop.geometry;
+            input.retentionSourceGeneration=input.crop.frameSourceGeneration;
+            input.retentionSourceSequence=input.crop.frameSourceSequence;
+            input.candidate=Evaluate(input.crop);
+            Assert::IsTrue(input.candidate.owner==DecisionOwner::VERTICAL_TRANSLATION &&
+                input.candidate.verticallyTranslated);
+            const auto translated=ResolveUncertainPicturePresentation(input,input.candidate);
+            Assert::IsFalse(translated.retained);
+            Assert::IsTrue(translated.presentation.owner==DecisionOwner::VERTICAL_TRANSLATION);
+            Assert::AreEqual(96,translated.presentation.verticalTranslationPixels);
+            Assert::AreEqual(376,translated.presentation.sourceBounds.top);
+            Assert::AreEqual(1976,translated.presentation.sourceBounds.bottom);
+            Assert::AreEqual(input.crop.geometry.bottom-input.crop.geometry.top,
+                translated.presentation.sourceBounds.bottom-translated.presentation.sourceBounds.top);
         }
         TEST_METHOD(RejectedNewCropFallsBackToPriorSubmittedPictureOnly)
         {
