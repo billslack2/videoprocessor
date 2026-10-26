@@ -1,0 +1,44 @@
+{
+  "source_commit": "b92e0cb6",
+  "dump": "C:\\Users\\bslac\\AppData\\Local\\CrashDumps\\vstest.console.exe.93620.dmp",
+  "fault_thread_id": 64968,
+  "exception": "0xC0000005 during exhausted-stack exception reporting",
+  "fault_rip": "0x7ffab735755d",
+  "fault_rsp": "0x7f78200fd0",
+  "teb_stack_base": "0x7f78300000",
+  "teb_stack_limit": "0x7f78201000",
+  "fault_rsp_bytes_below_limit": 48,
+  "matching_test_pdb": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.pdb",
+  "test": "Tests::SubtitleBackingLipTests::PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip",
+  "test_rva": "0x1e1780",
+  "active_acquire_return_address": {
+    "stack_address": "0x7f78253b78",
+    "test_dll_rva": "0x1e18e2"
+  },
+  "pe_unwind_stack_bytes": {
+    "PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip": 697416,
+    "Acquire": 256792,
+    "Frame::Measure": 10056,
+    "SubtitleBoxLookahead::Measure": 34104,
+    "SubtitleBoxDetector::Analyze": 4136,
+    "SubtitleBoxDetector::Detect": 31320,
+    "SubtitleBoxDetector::Reset": 6856
+  },
+  "known_call_chain_stack_bytes_without_returns_or_runner": 1040680,
+  "runner_stack_above_test_return_bytes": 8248,
+  "diagnosis": "Test fixture stack exhaustion. Native large-frame allocation and return-address slots bind the active fixture/acquisition chain; dbghelp/ntdll faults while reporting after stack guard exhaustion. No production defect inferred.",
+  "fix": "Heap-own acquired fixture, pending guard, tracker, and previews in this test; preserve every assertion.",
+  "other_large_test_frames_bytes": {
+    "LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph": 807496,
+    "UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine": 706952,
+    "VerticalSceneExtensionNeedsFullFixedPixelHorizon": 686968
+  },
+  "test_dll_sha256": "11de461076ed627b7fa4100fcb1ae1088edbe878a3a79a143b3fabfe6439c586",
+  "original_nested_exception": {
+    "stack_record_address": "0x7f78209130",
+    "code": "0xC00000FD STATUS_STACK_OVERFLOW",
+    "instruction_address": "0x7ff9ef1dba77",
+    "test_dll_rva": "0x76ba77",
+    "symbol": "__chkstk"
+  }
+}

@@ -1,0 +1,19 @@
+Layer-only alpha contract evidence
+
+Before fix: rounded contour GPU regression failed in Reconstruction (mode5), bottom Extend, pixel18,36 (fractional rounded corner of destination24,36-40,44).
+All=0.062866; CleanupOnly+Layer=0.081604; cleaned picture=0.128174; difference=0.018738 against unchanged0.008 tolerance.
+Direct raw layer readback: RGB=0.249756,0.249756,0.249756; alpha=0.609375. Expected straight signal backing is approximately0.152; the ratio quantitatively matches an extra unpremultiply.
+This pixel is outside the native lip (y42-48) and original glyphs (y50-58), excluding source-erasure overlap as the cause.
+
+Parent verified pinned libplacebo source: renderer.c1953 sets PREMULTIPLIED before PL_HOOK_RGB; custom_mpv.c854 maps MAIN to this stage and1557/1577 retains representation; renderer.c2186 converts back to INDEPENDENT after hook. MAIN hook output therefore needs premultiplied signal-space RGB.
+
+Fix: exactly the two LayerOnly returns now multiply signal-space straight RGB by opacity (normal panel) or alpha (transparent glyphs). Retained layer texture and external overlay metadata remain independent alpha. Full-opacity colors and glyphs are unchanged.
+
+After fix: test-project-only x64 Release rebuild passed; exact same rounded-contour GPU test passed all8 combinations (modes3/5, top/bottom, Float/Extend),35seconds. It verifies every current black body/shoulder pixel is repaired, every live rounded corner/unrelated picture pixel is preserved, All equals CleanupOnly+Layer under the original0.008 tolerance, and temporal donor blits cover exactly current mask rows under both native and retained-packet coordinates.
+
+This targeted result is not final solution validation or live acceptance. Root owns final source pin, full Release build, broader native/GPU validation and deployment.
+
+Before TRX: E:\codex\diagnostics\benhur-lip-followup-20261026-1911\tests-gpu-layer-diagnostic\gpu-layer-diagnostic.trx
+SHA256 6DD9B43CC5D6CB36AB2FE7220DC66E17ABBF6EBAEC3B745A505F6CD440D472C8
+After TRX: E:\codex\diagnostics\benhur-lip-followup-20261026-1911\tests-gpu-alpha-fix\gpu-alpha-fix.trx
+SHA256 9FBF6D4DEB4CD947A1D851EAE728EDC0499478016E955CB2E8D40F650AA8DCBF

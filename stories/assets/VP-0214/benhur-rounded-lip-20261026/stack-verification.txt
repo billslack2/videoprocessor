@@ -1,0 +1,37 @@
+Pinned source: 376e46a3c2d794745e6e04a525b73ca63248b370 (clean x64 Release)
+Actual GUI host: E:\codex\videoprocessor\benhur-subtitle-framing-fix-20261026\x64\Release\VideoProcessor-GUI.exe
+GUI host SHA256: FB2A71DC3EBE75D7D05A9DFC2B015B93A48C0AB56757EB231D647C9F364573DA
+GUI executable stack reserve: 1,048,576 bytes.
+Method: static PE x64 unwind allocations and saved nonvolatile registers, including chained records; adjacent PDB/DIA function mapping.
+
+standard:
+  LibplaceboVideoRenderer::Impl::RenderLocked: 377,800 bytes
+  LibplaceboVideoRenderer::RenderLoop: 200,408 bytes
+  SubtitleBoxPresentation::Reset: 97,816 bytes
+  SubtitleBoxPresentation::Consume: 84,888 bytes
+  ProveCurrentSubtitleBackingLip: 59,560 bytes
+  SubtitleBackingLipContinuity::Consume: 12,776 bytes
+  BindSubtitleCutPasteHook: 1,896 bytes
+  preview-unavailable-reset: known 760,912; reserve minus known 287,664 bytes
+  current-backing-proof: known 650,544; reserve minus known 398,032 bytes
+  apply-current-cleanup: known 578,208; reserve minus known 470,368 bytes (unresolved/inlined: ApplyCurrentSubtitleBackingLip)
+  bind-current-shader: known 580,104; reserve minus known 468,472 bytes
+
+beta:
+  LibplaceboVideoRenderer::Impl::RenderLocked: 377,976 bytes
+  LibplaceboVideoRenderer::RenderLoop: 200,408 bytes
+  SubtitleBoxPresentation::Reset: 97,816 bytes
+  SubtitleBoxPresentation::Consume: 84,888 bytes
+  ProveCurrentSubtitleBackingLip: 59,560 bytes
+  SubtitleBackingLipContinuity::Consume: 12,776 bytes
+  BindSubtitleCutPasteHook: 1,896 bytes
+  preview-unavailable-reset: known 761,088; reserve minus known 287,488 bytes
+  current-backing-proof: known 650,720; reserve minus known 397,856 bytes
+  apply-current-cleanup: known 578,384; reserve minus known 470,192 bytes (unresolved/inlined: ApplyCurrentSubtitleBackingLip)
+  bind-current-shader: known 580,280; reserve minus known 468,296 bytes
+
+Largest fully resolved inspected chain: beta RenderLoop -> RenderLocked -> SubtitleBoxPresentation::Consume -> Reset = 761,088 bytes; reserve minus known = 287,488 bytes.
+Both current backing-proof chains fully resolve. ApplyCurrentSubtitleBackingLip has no >=1KiB out-of-line unwind entry and is explicitly unresolved/inlined, not asserted to use zero stack.
+The measured frame sizes equal the archived b92e0cb6 audit; binary/PDB hashes now pin the final376e46a3 build.
+Limits: known static chain sums only, not runtime high-water measurements. Excludes return addresses, thread/CRT wrappers, smaller/uninspected callees/destructors and indirect paths. No production process was launched or changed; no build was run for this audit.
+Full binary/PDB/script hashes and raw DIA symbol evidence: stack-verification.json and standard/beta-stack-symbols.txt.

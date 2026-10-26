@@ -1,0 +1,233 @@
+{
+  "recorded_utc": "2026-10-26T23:46:45.502485+00:00",
+  "source_commit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+  "source_status": "",
+  "uncommitted_diff_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+  "configuration": "x64 Release",
+  "measurement": "Static x64 PE unwind allocation plus saved nonvolatile registers; chained unwind records included; DIA adjacent PDB function mapping",
+  "thread_stack_reserve_bytes": 1048576,
+  "host_exe_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+  "host_exe_sha256": "FB2A71DC3EBE75D7D05A9DFC2B015B93A48C0AB56757EB231D647C9F364573DA",
+  "variants": [
+    {
+      "variant": "standard",
+      "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "dll_sha256": "D12E36F7CB7AB9697F2C357B166C24F394CEB3F428A172922C64664D3869FCE9",
+      "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "pdb_sha256": "B8F42268F478968A9AEDE1093A262EC5A07FB976BAC448796E8C704795814DD2",
+      "pe_stack_reserve_bytes": 1048576,
+      "queried_unwind_frame_count": 558,
+      "functions": [
+        {
+          "function": "LibplaceboVideoRenderer::Impl::RenderLocked",
+          "rva": "000E1D20",
+          "stack_bytes": 377800
+        },
+        {
+          "function": "LibplaceboVideoRenderer::RenderLoop",
+          "rva": "00133A20",
+          "stack_bytes": 200408
+        },
+        {
+          "function": "SubtitleBoxPresentation::Reset",
+          "rva": "00022940",
+          "stack_bytes": 97816
+        },
+        {
+          "function": "SubtitleBoxPresentation::Consume",
+          "rva": "00028080",
+          "stack_bytes": 84888
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "00087790",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "00088BAA",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "000894BE",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "SubtitleBackingLipContinuity::Consume",
+          "rva": "0008BE90",
+          "stack_bytes": 12776
+        },
+        {
+          "function": "BindSubtitleCutPasteHook",
+          "rva": "0007E660",
+          "stack_bytes": 1896
+        }
+      ],
+      "chains": [
+        {
+          "name": "preview-unavailable-reset",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "SubtitleBoxPresentation::Consume",
+            "SubtitleBoxPresentation::Reset"
+          ],
+          "known_stack_bytes": 760912,
+          "reserve_minus_known_bytes": 287664,
+          "unresolved_or_inlined": []
+        },
+        {
+          "name": "current-backing-proof",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "SubtitleBackingLipContinuity::Consume",
+            "ProveCurrentSubtitleBackingLip"
+          ],
+          "known_stack_bytes": 650544,
+          "reserve_minus_known_bytes": 398032,
+          "unresolved_or_inlined": []
+        },
+        {
+          "name": "apply-current-cleanup",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "ApplyCurrentSubtitleBackingLip"
+          ],
+          "known_stack_bytes": 578208,
+          "reserve_minus_known_bytes": 470368,
+          "unresolved_or_inlined": [
+            "ApplyCurrentSubtitleBackingLip"
+          ]
+        },
+        {
+          "name": "bind-current-shader",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "BindSubtitleCutPasteHook"
+          ],
+          "known_stack_bytes": 580104,
+          "reserve_minus_known_bytes": 468472,
+          "unresolved_or_inlined": []
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "dll_sha256": "8EC97C3A726F0396328DE35301858E5FE64D31E268B39B8122933409CD6E357A",
+      "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "pdb_sha256": "FA6F06EEFAEC7C0E9A946C166EEB38C7687E016D80AB93B8A2D095B0BCF3506E",
+      "pe_stack_reserve_bytes": 1048576,
+      "queried_unwind_frame_count": 558,
+      "functions": [
+        {
+          "function": "LibplaceboVideoRenderer::Impl::RenderLocked",
+          "rva": "000E1D70",
+          "stack_bytes": 377976
+        },
+        {
+          "function": "LibplaceboVideoRenderer::RenderLoop",
+          "rva": "00133A30",
+          "stack_bytes": 200408
+        },
+        {
+          "function": "SubtitleBoxPresentation::Reset",
+          "rva": "000229B0",
+          "stack_bytes": 97816
+        },
+        {
+          "function": "SubtitleBoxPresentation::Consume",
+          "rva": "000280F0",
+          "stack_bytes": 84888
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "000877E0",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "00088BFA",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "ProveCurrentSubtitleBackingLip",
+          "rva": "0008950E",
+          "stack_bytes": 59560
+        },
+        {
+          "function": "SubtitleBackingLipContinuity::Consume",
+          "rva": "0008BEE0",
+          "stack_bytes": 12776
+        },
+        {
+          "function": "BindSubtitleCutPasteHook",
+          "rva": "0007E6B0",
+          "stack_bytes": 1896
+        }
+      ],
+      "chains": [
+        {
+          "name": "preview-unavailable-reset",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "SubtitleBoxPresentation::Consume",
+            "SubtitleBoxPresentation::Reset"
+          ],
+          "known_stack_bytes": 761088,
+          "reserve_minus_known_bytes": 287488,
+          "unresolved_or_inlined": []
+        },
+        {
+          "name": "current-backing-proof",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "SubtitleBackingLipContinuity::Consume",
+            "ProveCurrentSubtitleBackingLip"
+          ],
+          "known_stack_bytes": 650720,
+          "reserve_minus_known_bytes": 397856,
+          "unresolved_or_inlined": []
+        },
+        {
+          "name": "apply-current-cleanup",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "ApplyCurrentSubtitleBackingLip"
+          ],
+          "known_stack_bytes": 578384,
+          "reserve_minus_known_bytes": 470192,
+          "unresolved_or_inlined": [
+            "ApplyCurrentSubtitleBackingLip"
+          ]
+        },
+        {
+          "name": "bind-current-shader",
+          "functions": [
+            "LibplaceboVideoRenderer::RenderLoop",
+            "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "BindSubtitleCutPasteHook"
+          ],
+          "known_stack_bytes": 580280,
+          "reserve_minus_known_bytes": 468296,
+          "unresolved_or_inlined": []
+        }
+      ]
+    }
+  ],
+  "previous_receipt": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\stack-verification-0f39d530.json",
+  "limitations": "Known source call-chain sums only, not runtime high-water measurements. Excludes return addresses, thread/CRT wrappers, smaller unqueried frames, callees/destructors and uninspected indirect paths. Unresolved functions may be inlined or below1KiB; do not infer0 additional stack without disassembly. DLL PE reserves are not assumed to set the already-created renderer thread reserve; the host executable reserve is recorded separately. No production process changed or launched.",
+  "tools": {
+    "symbols_exe": "E:\\codex\\diagnostics\\benhur-stack-size-20261026\\symbols.exe",
+    "symbols_sha256": "9B1F0A66D2621B27009521D81314059943272CD11FCDA7AD525724E731671C40",
+    "audit_script": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\audit_release_stack.py",
+    "audit_script_sha256": "89E87AE6C7B45C6D89813354847403106A71C4359A106D906A3FF5C3D9BEDFF9"
+  }
+}

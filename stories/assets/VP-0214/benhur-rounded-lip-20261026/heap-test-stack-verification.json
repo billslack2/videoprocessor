@@ -1,0 +1,127 @@
+{
+  "recorded_utc": "2026-10-26T23:47:20.599489+00:00",
+  "source_commit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+  "configuration": "x64 Release",
+  "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+  "dll_sha256": "2f7a818c32a4c2746ef42197e0b50940f2dafc66b637b0c39fbd55251fb146f2",
+  "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.pdb",
+  "pdb_sha256": "536e8409fb7e3d3784bc1a323a80cc19f414ea28c9e1a74c9114da6bf8589224",
+  "measurement": "PE x64 unwind allocation plus saved nonvolatile registers, matched to the adjacent PDB through DIA",
+  "functions": [
+    {
+      "rva": "0x8f7a0",
+      "end_rva": "0x9101a",
+      "stack_bytes": 34104,
+      "symbol": "SubtitleBoxLookahead::Measure"
+    },
+    {
+      "rva": "0xbdc30",
+      "end_rva": "0xc1c6a",
+      "stack_bytes": 97832,
+      "symbol": "SubtitleBoxPresentation::Reset"
+    },
+    {
+      "rva": "0xc1c70",
+      "end_rva": "0xc7bef",
+      "stack_bytes": 84888,
+      "symbol": "SubtitleBoxPresentation::Consume"
+    },
+    {
+      "rva": "0x117c10",
+      "end_rva": "0x11903a",
+      "stack_bytes": 59544,
+      "symbol": "ProveCurrentSubtitleBackingLip"
+    },
+    {
+      "rva": "0x124aa0",
+      "end_rva": "0x124d26",
+      "stack_bytes": 57096,
+      "symbol": "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap"
+    },
+    {
+      "rva": "0x1617d0",
+      "end_rva": "0x1622ab",
+      "stack_bytes": 73768,
+      "symbol": "Tests::SubtitleBoxLookaheadTests::UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine",
+      "old_stack_bytes": 706952,
+      "reduction_bytes": 633184
+    },
+    {
+      "rva": "0x16ed70",
+      "end_rva": "0x170014",
+      "stack_bytes": 99208,
+      "symbol": "Tests::SubtitleBoxLookaheadTests::LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph",
+      "old_stack_bytes": 807496,
+      "reduction_bytes": 708288
+    },
+    {
+      "rva": "0x1c5970",
+      "end_rva": "0x1c5a42",
+      "stack_bytes": 57064,
+      "symbol": "Tests::SubtitleBackingLipTests::ResolveOnHeap"
+    },
+    {
+      "rva": "0x1c5a50",
+      "end_rva": "0x1c6292",
+      "stack_bytes": 21240,
+      "symbol": "Tests::SubtitleBackingLipTests::AcquireOnHeap"
+    },
+    {
+      "rva": "0x1e1420",
+      "end_rva": "0x1e2fe5",
+      "stack_bytes": 71160,
+      "symbol": "Tests::SubtitleBackingLipTests::PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip",
+      "old_stack_bytes": 697416,
+      "reduction_bytes": 626256
+    },
+    {
+      "rva": "0x708ad0",
+      "end_rva": "0x708e01",
+      "stack_bytes": 6856,
+      "symbol": "SubtitleBoxDetector::Reset"
+    },
+    {
+      "rva": "0x708e10",
+      "end_rva": "0x714878",
+      "stack_bytes": 31320,
+      "symbol": "SubtitleBoxDetector::Detect"
+    },
+    {
+      "rva": "0x7194a0",
+      "end_rva": "0x719554",
+      "stack_bytes": 4136,
+      "symbol": "SubtitleBoxDetector::Analyze"
+    }
+  ],
+  "limitations": "Static per-function allocation; excludes return addresses, runner wrappers and uninspected call paths. No runtime stack low-water mark claimed.",
+  "known_nested_chains": [
+    {
+      "functions": [
+        "Tests::SubtitleBoxLookaheadTests::LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph",
+        "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap",
+        "SubtitleBoxPresentation::Consume",
+        "SubtitleBoxPresentation::Reset"
+      ],
+      "stack_bytes_without_returns_or_runner": 339024
+    },
+    {
+      "functions": [
+        "Tests::SubtitleBoxLookaheadTests::UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine",
+        "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap",
+        "SubtitleBoxPresentation::Consume",
+        "SubtitleBoxPresentation::Reset"
+      ],
+      "stack_bytes_without_returns_or_runner": 313584
+    },
+    {
+      "functions": [
+        "Tests::SubtitleBackingLipTests::PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip",
+        "Tests::SubtitleBackingLipTests::AcquireOnHeap",
+        "SubtitleBoxPresentation::Consume",
+        "SubtitleBoxPresentation::Reset"
+      ],
+      "stack_bytes_without_returns_or_runner": 275120
+    }
+  ],
+  "thread_stack_reserve_bytes": 1048576
+}

@@ -1,0 +1,708 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-26T23:54:25.021159+00:00",
+  "repository": "billslack2/videoprocessor",
+  "baseBranch": "v1.4.02-beta",
+  "baseCommit": "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+  "branch": "codex/benhur-subtitle-framing-fix-20261026",
+  "sourceCommit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+  "sourceTree": "4272680d1c58d0e3a7071b498afc955b061e6580",
+  "worktree": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026",
+  "trackedWorktreeClean": true,
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/210",
+  "build": {
+    "status": "passed",
+    "configuration": "Release",
+    "architecture": "x64",
+    "log": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\build-final.log",
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 10
+  },
+  "finalTests": {
+    "native": {
+      "trx": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\tests-final-native\\native.trx",
+      "counts": {
+        "total": 3328,
+        "executed": 3328,
+        "passed": 3328,
+        "failed": 0,
+        "error": 0,
+        "timeout": 0,
+        "aborted": 0,
+        "inconclusive": 0,
+        "passedButRunAborted": 0,
+        "notRunnable": 0,
+        "notExecuted": 0,
+        "disconnected": 0,
+        "warning": 0,
+        "completed": 0,
+        "inProgress": 0,
+        "pending": 0
+      }
+    },
+    "affectedGpu": {
+      "suites": [
+        {
+          "trx": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\tests-final-gpu\\gpu.trx",
+          "counts": {
+            "total": 5,
+            "executed": 5,
+            "passed": 5,
+            "failed": 0,
+            "error": 0,
+            "timeout": 0,
+            "aborted": 0,
+            "inconclusive": 0,
+            "passedButRunAborted": 0,
+            "notRunnable": 0,
+            "notExecuted": 0,
+            "disconnected": 0,
+            "warning": 0,
+            "completed": 0,
+            "inProgress": 0,
+            "pending": 0
+          }
+        },
+        {
+          "trx": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\tests-final-alpha\\alpha.trx",
+          "counts": {
+            "total": 5,
+            "executed": 5,
+            "passed": 5,
+            "failed": 0,
+            "error": 0,
+            "timeout": 0,
+            "aborted": 0,
+            "inconclusive": 0,
+            "passedButRunAborted": 0,
+            "notRunnable": 0,
+            "notExecuted": 0,
+            "disconnected": 0,
+            "warning": 0,
+            "completed": 0,
+            "inProgress": 0,
+            "pending": 0
+          }
+        }
+      ],
+      "counts": {
+        "warning": 0,
+        "executed": 10,
+        "notRunnable": 0,
+        "inProgress": 0,
+        "timeout": 0,
+        "inconclusive": 0,
+        "passed": 10,
+        "disconnected": 0,
+        "error": 0,
+        "failed": 0,
+        "aborted": 0,
+        "completed": 0,
+        "pending": 0,
+        "total": 10,
+        "passedButRunAborted": 0,
+        "notExecuted": 0
+      }
+    },
+    "distinctPassingTests": 3338,
+    "countsDoNotIncludeEarlierOverlappingRuns": true,
+    "requiredIncidentRegressionsPassed": [
+      "NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority",
+      "NativeBarCuePipelineKeepsCachedGlyphGeometryAfterStrongOppositeEdgeJitter",
+      "NativeBarCueCurrentPositiveIgnoresMovingPictureButRejectsNewCaptionBarInk",
+      "NearbyCurrentBoundaryRevalidatesOnlyRememberedLipAfterLocalCueContinuation",
+      "FreshBoundaryProofColdAcquiresRoundedLipForSharedAndInspectionCandidates",
+      "InspectionNominationSurvivesPresentationHoldExpiryWithoutBecomingAuthority",
+      "InspectionNominationRejectsChangedContextAndCannotAliasEmptyHintCache",
+      "InspectionCandidateCannotQualifySemanticOrPreparedPictureEvidence",
+      "CurrentRowEndpointChangesTrimAndRegrowOnlyFreshProvedPixels",
+      "CurrentRowMaskRejectsDisconnectedUnsafePixelsInsideTheEdgeCollar",
+      "LipApplyRejectsMalformedPerRowAuthorityWithoutUsingItsBoundingBox",
+      "CurrentRowMaskDerivationSharesTheExactNativeRevalidationBudget",
+      "PreparedErasureChecksEachCleanupRowAgainstPhysicalBase",
+      "TemporalContourRestoresEveryShoulderAndPreservesLiveCornersInAnyRowOrder",
+      "TemporalContourValidatesTheEntireMaskBeforeAnyCallbackAndNeverFallsBack",
+      "TemporalCleanupKeepsLegacyRectangleAndCoalescesTheMaximumRowCount",
+      "TemporalDonorMatchExcludesFullMeasuredBackingButStillChecksSurroundingScene"
+    ],
+    "requiredGpuRegressionsPassed": [
+      "FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer",
+      "PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint",
+      "ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars",
+      "OffsetSubtitleBackingReachesBothBarsWithoutMovingGlyphs",
+      "RoundedNativeBackingContourCleansShouldersAndPreservesLiveCornersInFloatAndExtend",
+      "TransparentLayersPreservePictureAtEveryPanelEdge",
+      "BlackAndReconstructionLayersPreserveAlphaAndComposition",
+      "TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination",
+      "SurroundFillPreservesSplitCompositionAndTransferFunctions",
+      "AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar"
+    ],
+    "nativeReplayEnvironment": {
+      "VP_SUBTITLE_PAUSED_REPLAY_PATH": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-180748-59164-2\\frame-000001.bin"
+    }
+  },
+  "stackVerification": {
+    "recorded_utc": "2026-10-26T23:46:45.502485+00:00",
+    "source_commit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+    "source_status": "",
+    "uncommitted_diff_sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+    "configuration": "x64 Release",
+    "measurement": "Static x64 PE unwind allocation plus saved nonvolatile registers; chained unwind records included; DIA adjacent PDB function mapping",
+    "thread_stack_reserve_bytes": 1048576,
+    "host_exe_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+    "host_exe_sha256": "FB2A71DC3EBE75D7D05A9DFC2B015B93A48C0AB56757EB231D647C9F364573DA",
+    "variants": [
+      {
+        "variant": "standard",
+        "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "dll_sha256": "D12E36F7CB7AB9697F2C357B166C24F394CEB3F428A172922C64664D3869FCE9",
+        "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+        "pdb_sha256": "B8F42268F478968A9AEDE1093A262EC5A07FB976BAC448796E8C704795814DD2",
+        "pe_stack_reserve_bytes": 1048576,
+        "queried_unwind_frame_count": 558,
+        "functions": [
+          {
+            "function": "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "rva": "000E1D20",
+            "stack_bytes": 377800
+          },
+          {
+            "function": "LibplaceboVideoRenderer::RenderLoop",
+            "rva": "00133A20",
+            "stack_bytes": 200408
+          },
+          {
+            "function": "SubtitleBoxPresentation::Reset",
+            "rva": "00022940",
+            "stack_bytes": 97816
+          },
+          {
+            "function": "SubtitleBoxPresentation::Consume",
+            "rva": "00028080",
+            "stack_bytes": 84888
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "00087790",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "00088BAA",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "000894BE",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "SubtitleBackingLipContinuity::Consume",
+            "rva": "0008BE90",
+            "stack_bytes": 12776
+          },
+          {
+            "function": "BindSubtitleCutPasteHook",
+            "rva": "0007E660",
+            "stack_bytes": 1896
+          }
+        ],
+        "chains": [
+          {
+            "name": "preview-unavailable-reset",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "SubtitleBoxPresentation::Consume",
+              "SubtitleBoxPresentation::Reset"
+            ],
+            "known_stack_bytes": 760912,
+            "reserve_minus_known_bytes": 287664,
+            "unresolved_or_inlined": []
+          },
+          {
+            "name": "current-backing-proof",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "SubtitleBackingLipContinuity::Consume",
+              "ProveCurrentSubtitleBackingLip"
+            ],
+            "known_stack_bytes": 650544,
+            "reserve_minus_known_bytes": 398032,
+            "unresolved_or_inlined": []
+          },
+          {
+            "name": "apply-current-cleanup",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "ApplyCurrentSubtitleBackingLip"
+            ],
+            "known_stack_bytes": 578208,
+            "reserve_minus_known_bytes": 470368,
+            "unresolved_or_inlined": [
+              "ApplyCurrentSubtitleBackingLip"
+            ]
+          },
+          {
+            "name": "bind-current-shader",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "BindSubtitleCutPasteHook"
+            ],
+            "known_stack_bytes": 580104,
+            "reserve_minus_known_bytes": 468472,
+            "unresolved_or_inlined": []
+          }
+        ]
+      },
+      {
+        "variant": "beta",
+        "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "dll_sha256": "8EC97C3A726F0396328DE35301858E5FE64D31E268B39B8122933409CD6E357A",
+        "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+        "pdb_sha256": "FA6F06EEFAEC7C0E9A946C166EEB38C7687E016D80AB93B8A2D095B0BCF3506E",
+        "pe_stack_reserve_bytes": 1048576,
+        "queried_unwind_frame_count": 558,
+        "functions": [
+          {
+            "function": "LibplaceboVideoRenderer::Impl::RenderLocked",
+            "rva": "000E1D70",
+            "stack_bytes": 377976
+          },
+          {
+            "function": "LibplaceboVideoRenderer::RenderLoop",
+            "rva": "00133A30",
+            "stack_bytes": 200408
+          },
+          {
+            "function": "SubtitleBoxPresentation::Reset",
+            "rva": "000229B0",
+            "stack_bytes": 97816
+          },
+          {
+            "function": "SubtitleBoxPresentation::Consume",
+            "rva": "000280F0",
+            "stack_bytes": 84888
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "000877E0",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "00088BFA",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "ProveCurrentSubtitleBackingLip",
+            "rva": "0008950E",
+            "stack_bytes": 59560
+          },
+          {
+            "function": "SubtitleBackingLipContinuity::Consume",
+            "rva": "0008BEE0",
+            "stack_bytes": 12776
+          },
+          {
+            "function": "BindSubtitleCutPasteHook",
+            "rva": "0007E6B0",
+            "stack_bytes": 1896
+          }
+        ],
+        "chains": [
+          {
+            "name": "preview-unavailable-reset",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "SubtitleBoxPresentation::Consume",
+              "SubtitleBoxPresentation::Reset"
+            ],
+            "known_stack_bytes": 761088,
+            "reserve_minus_known_bytes": 287488,
+            "unresolved_or_inlined": []
+          },
+          {
+            "name": "current-backing-proof",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "SubtitleBackingLipContinuity::Consume",
+              "ProveCurrentSubtitleBackingLip"
+            ],
+            "known_stack_bytes": 650720,
+            "reserve_minus_known_bytes": 397856,
+            "unresolved_or_inlined": []
+          },
+          {
+            "name": "apply-current-cleanup",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "ApplyCurrentSubtitleBackingLip"
+            ],
+            "known_stack_bytes": 578384,
+            "reserve_minus_known_bytes": 470192,
+            "unresolved_or_inlined": [
+              "ApplyCurrentSubtitleBackingLip"
+            ]
+          },
+          {
+            "name": "bind-current-shader",
+            "functions": [
+              "LibplaceboVideoRenderer::RenderLoop",
+              "LibplaceboVideoRenderer::Impl::RenderLocked",
+              "BindSubtitleCutPasteHook"
+            ],
+            "known_stack_bytes": 580280,
+            "reserve_minus_known_bytes": 468296,
+            "unresolved_or_inlined": []
+          }
+        ]
+      }
+    ],
+    "previous_receipt": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\stack-verification-0f39d530.json",
+    "limitations": "Known source call-chain sums only, not runtime high-water measurements. Excludes return addresses, thread/CRT wrappers, smaller unqueried frames, callees/destructors and uninspected indirect paths. Unresolved functions may be inlined or below1KiB; do not infer0 additional stack without disassembly. DLL PE reserves are not assumed to set the already-created renderer thread reserve; the host executable reserve is recorded separately. No production process changed or launched.",
+    "tools": {
+      "symbols_exe": "E:\\codex\\diagnostics\\benhur-stack-size-20261026\\symbols.exe",
+      "symbols_sha256": "9B1F0A66D2621B27009521D81314059943272CD11FCDA7AD525724E731671C40",
+      "audit_script": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\audit_release_stack.py",
+      "audit_script_sha256": "89E87AE6C7B45C6D89813354847403106A71C4359A106D906A3FF5C3D9BEDFF9"
+    }
+  },
+  "nativeIncident": {
+    "recordedAtUtc": "2026-10-26T22:24:21.758366+00:00",
+    "deployedSource": "0f807d43051036a6f25fc75ea4a7e43c36a909f3",
+    "liveAcceptance": "failed; subtitles flashed/disappeared; native input caption remains present",
+    "captures": [
+      {
+        "directory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-180214-59164-1",
+        "visibleCue": "BATTLE POSTS.",
+        "nativeFrameBytes": 33177600,
+        "sampleFrameSha256": {
+          "1": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b",
+          "2": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b",
+          "64": "6b81a37d71021bc30fd634f0c60ad0b527955626ac950b29b668a5e003cc289b"
+        },
+        "sampledInputsIdentical": true,
+        "firstFrameMetadata": [
+          "3840 2160 7680 7680 4 6 8 386 1776 1 2",
+          "identity_v1 1 13162 14503 1469852461180 16737396327766010546 4 1 3440028774926749422 2 6 20 0 417083 0 0 0"
+        ],
+        "summary": {
+          "schemaVersion": 1,
+          "includeFrames": true,
+          "session": {
+            "acceptedRecords": 4308,
+            "recordsWritten": 4308,
+            "framesWritten": 64,
+            "frameBytesWritten": 2123366400
+          },
+          "lifetime": {
+            "droppedRecords": 951,
+            "droppedFrames": 416,
+            "historyOverwrites": 107162,
+            "writeFailures": 0
+          },
+          "limits": {
+            "preRollMs": 10000,
+            "captureMs": 20000,
+            "recordHistoryCapacity": 8192,
+            "maxCaptureRecords": 65536,
+            "maxFrameBytes": 134217728,
+            "maxCaptureFrameBytes": 2147483648,
+            "maxOutstandingFrames": 2
+          },
+          "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+        }
+      },
+      {
+        "directory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-180748-59164-2",
+        "visibleCue": "GO BACK BACK / TO YOUR OAR, 41.",
+        "nativeFrameBytes": 33177600,
+        "sampleFrameSha256": {
+          "1": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437",
+          "2": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437",
+          "64": "b8f0c486cf5f9fb99884bd9fd5308c6bc0c34c270d64eecb9d948a4ca7159437"
+        },
+        "sampledInputsIdentical": true,
+        "firstFrameMetadata": [
+          "3840 2160 7680 7680 4 6 8 386 1776 1 2",
+          "identity_v1 1 21166 22507 1470186288760 16737396327766010546 6 1 3440028774926749422 2 8 20 0 417083 0 0 0"
+        ],
+        "summary": {
+          "schemaVersion": 1,
+          "includeFrames": true,
+          "session": {
+            "acceptedRecords": 12497,
+            "recordsWritten": 12497,
+            "framesWritten": 64,
+            "frameBytesWritten": 2123366400
+          },
+          "lifetime": {
+            "droppedRecords": 3808,
+            "droppedFrames": 831,
+            "historyOverwrites": 242878,
+            "writeFailures": 0
+          },
+          "limits": {
+            "preRollMs": 10000,
+            "captureMs": 20000,
+            "recordHistoryCapacity": 8192,
+            "maxCaptureRecords": 65536,
+            "maxFrameBytes": 134217728,
+            "maxCaptureFrameBytes": 2147483648,
+            "maxOutstandingFrames": 2
+          },
+          "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+        }
+      }
+    ],
+    "nativeReplay": {
+      "test": "NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority",
+      "trx": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\tests-native-probe\\paused-and-two-paths.trx",
+      "withoutHint": {
+        "analyzed": true,
+        "detected": false,
+        "picture": [
+          0,
+          2160
+        ],
+        "barReason": "no-current-flat-bar"
+      },
+      "withRetainedCoordinatesDiagnosticOnly": {
+        "analyzed": true,
+        "detected": true,
+        "lines": 2,
+        "picture": [
+          382,
+          1776
+        ],
+        "barReason": "current-pixel-nearby-subtitle-bar",
+        "boundarySupport": [
+          19,
+          88
+        ],
+        "blackFraction": [
+          1,
+          0.972374
+        ],
+        "maxIntrusion": [
+          0,
+          5
+        ],
+        "subtitleArProofAccepted": false
+      }
+    },
+    "baselineRegressions": {
+      "source": "0f807d43051036a6f25fc75ea4a7e43c36a909f3",
+      "trx": "E:\\codex\\diagnostics\\benhur-live-failure-20261026-1756\\tests-deployed-baseline\\deployed-baseline-corrected-lip.trx",
+      "expectedBehaviorFailures": [
+        "NativeBarCueCurrentPositiveIgnoresMovingPictureButRejectsNewCaptionBarInk",
+        "NativeBarCuePipelineKeepsCachedGlyphGeometryAfterStrongOppositeEdgeJitter",
+        "NearbyCurrentBoundaryRevalidatesOnlyRememberedLipAfterLocalCueContinuation"
+      ]
+    },
+    "limits": [
+      "Static native captures prove caption presence in paused missing state, not the exact preceding moving-frame pixel that triggered each continuation veto.",
+      "Main recorded Scope/Reconstruction pass kept submitted picture crop stable; translation metadata alone is not an output AR change."
+    ],
+    "sourcePixelsCommitted": false
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "bytes": 3127808,
+      "sha256": "FB2A71DC3EBE75D7D05A9DFC2B015B93A48C0AB56757EB231D647C9F364573DA",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "FB2A71DC3EBE75D7D05A9DFC2B015B93A48C0AB56757EB231D647C9F364573DA"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "bytes": 2707456,
+      "sha256": "D12E36F7CB7AB9697F2C357B166C24F394CEB3F428A172922C64664D3869FCE9",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "D12E36F7CB7AB9697F2C357B166C24F394CEB3F428A172922C64664D3869FCE9"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "bytes": 2706432,
+      "sha256": "8EC97C3A726F0396328DE35301858E5FE64D31E268B39B8122933409CD6E357A",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "8EC97C3A726F0396328DE35301858E5FE64D31E268B39B8122933409CD6E357A"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+      "bytes": 14171648,
+      "sha256": "2F7A818C32A4C2746EF42197E0B50940F2DAFC66B637B0C39FBD55251FB146F2",
+      "generatedRuntimeRecord": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll.runtime.json",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "2F7A818C32A4C2746EF42197E0B50940F2DAFC66B637B0C39FBD55251FB146F2"
+      }
+    }
+  ],
+  "deploymentPerformed": true,
+  "activeConfigurationEdits": [],
+  "betaMergePerformed": false,
+  "liveBenHurAcceptance": "pending after follow-up deployment",
+  "testFixtureStackVerification": {
+    "recorded_utc": "2026-10-26T23:47:20.599489+00:00",
+    "source_commit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+    "configuration": "x64 Release",
+    "dll_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+    "dll_sha256": "2f7a818c32a4c2746ef42197e0b50940f2dafc66b637b0c39fbd55251fb146f2",
+    "pdb_path": "E:\\codex\\videoprocessor\\benhur-subtitle-framing-fix-20261026\\x64\\Release\\VideoProcessor-Test.pdb",
+    "pdb_sha256": "536e8409fb7e3d3784bc1a323a80cc19f414ea28c9e1a74c9114da6bf8589224",
+    "measurement": "PE x64 unwind allocation plus saved nonvolatile registers, matched to the adjacent PDB through DIA",
+    "functions": [
+      {
+        "rva": "0x8f7a0",
+        "end_rva": "0x9101a",
+        "stack_bytes": 34104,
+        "symbol": "SubtitleBoxLookahead::Measure"
+      },
+      {
+        "rva": "0xbdc30",
+        "end_rva": "0xc1c6a",
+        "stack_bytes": 97832,
+        "symbol": "SubtitleBoxPresentation::Reset"
+      },
+      {
+        "rva": "0xc1c70",
+        "end_rva": "0xc7bef",
+        "stack_bytes": 84888,
+        "symbol": "SubtitleBoxPresentation::Consume"
+      },
+      {
+        "rva": "0x117c10",
+        "end_rva": "0x11903a",
+        "stack_bytes": 59544,
+        "symbol": "ProveCurrentSubtitleBackingLip"
+      },
+      {
+        "rva": "0x124aa0",
+        "end_rva": "0x124d26",
+        "stack_bytes": 57096,
+        "symbol": "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap"
+      },
+      {
+        "rva": "0x1617d0",
+        "end_rva": "0x1622ab",
+        "stack_bytes": 73768,
+        "symbol": "Tests::SubtitleBoxLookaheadTests::UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine",
+        "old_stack_bytes": 706952,
+        "reduction_bytes": 633184
+      },
+      {
+        "rva": "0x16ed70",
+        "end_rva": "0x170014",
+        "stack_bytes": 99208,
+        "symbol": "Tests::SubtitleBoxLookaheadTests::LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph",
+        "old_stack_bytes": 807496,
+        "reduction_bytes": 708288
+      },
+      {
+        "rva": "0x1c5970",
+        "end_rva": "0x1c5a42",
+        "stack_bytes": 57064,
+        "symbol": "Tests::SubtitleBackingLipTests::ResolveOnHeap"
+      },
+      {
+        "rva": "0x1c5a50",
+        "end_rva": "0x1c6292",
+        "stack_bytes": 21240,
+        "symbol": "Tests::SubtitleBackingLipTests::AcquireOnHeap"
+      },
+      {
+        "rva": "0x1e1420",
+        "end_rva": "0x1e2fe5",
+        "stack_bytes": 71160,
+        "symbol": "Tests::SubtitleBackingLipTests::PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip",
+        "old_stack_bytes": 697416,
+        "reduction_bytes": 626256
+      },
+      {
+        "rva": "0x708ad0",
+        "end_rva": "0x708e01",
+        "stack_bytes": 6856,
+        "symbol": "SubtitleBoxDetector::Reset"
+      },
+      {
+        "rva": "0x708e10",
+        "end_rva": "0x714878",
+        "stack_bytes": 31320,
+        "symbol": "SubtitleBoxDetector::Detect"
+      },
+      {
+        "rva": "0x7194a0",
+        "end_rva": "0x719554",
+        "stack_bytes": 4136,
+        "symbol": "SubtitleBoxDetector::Analyze"
+      }
+    ],
+    "limitations": "Static per-function allocation; excludes return addresses, runner wrappers and uninspected call paths. No runtime stack low-water mark claimed.",
+    "known_nested_chains": [
+      {
+        "functions": [
+          "Tests::SubtitleBoxLookaheadTests::LaterExpansionInkIsTrackedAndCannotDisappearBehindTheFirstGlyph",
+          "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap",
+          "SubtitleBoxPresentation::Consume",
+          "SubtitleBoxPresentation::Reset"
+        ],
+        "stack_bytes_without_returns_or_runner": 339024
+      },
+      {
+        "functions": [
+          "Tests::SubtitleBoxLookaheadTests::UnchangedGroupingStillDiscoversAndTracksAnActualNewSecondLine",
+          "Tests::SubtitleBoxLookaheadTests::ConsumeOnHeap",
+          "SubtitleBoxPresentation::Consume",
+          "SubtitleBoxPresentation::Reset"
+        ],
+        "stack_bytes_without_returns_or_runner": 313584
+      },
+      {
+        "functions": [
+          "Tests::SubtitleBackingLipTests::PendingGuardRevalidatesCurrentGlyphClassesAndNeverCachesTheLip",
+          "Tests::SubtitleBackingLipTests::AcquireOnHeap",
+          "SubtitleBoxPresentation::Consume",
+          "SubtitleBoxPresentation::Reset"
+        ],
+        "stack_bytes_without_returns_or_runner": 275120
+      }
+    ],
+    "thread_stack_reserve_bytes": 1048576
+  },
+  "priorDeploymentPartialAcceptance": "User reports most subtitle and aspect-ratio behavior resolved; remaining rounded-shoulder coverage and intermittent cleanup withdrawal",
+  "lipIncidentReview": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\luna-lip-telemetry-review.md",
+  "deploymentReceipt": "E:\\codex\\diagnostics\\benhur-lip-followup-20261026-1911\\deployment-receipt.json",
+  "deploymentStatus": "deployed-and-hash-verified",
+  "playerState": "closed by user through normal keyboard shutdown before installation; left closed",
+  "lastReconciledUtc": "2026-10-26T23:55:16.777786+00:00"
+}
