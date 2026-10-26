@@ -433,3 +433,7 @@ bounded queue of submitted output; a second presentation thread or waitable-chai
 model was not needed for exposing the existing device cap. Present returns may
 queue early; conditional buffer count and unknown occupancy are logged honestly.
 Both backends' source contracts and the two-path smoke probe support this choice.
+
+## Deployed follow-up vsync fixes merged - 2026-10-26
+
+Requested three-branch integration PR #207 merged into v1.4.02-beta as 87f61f77d3d95ddbfc1eeae343501d763d49e80b. It includes vsync recovery 28b0e42a through subtitle/vsync head e8bc0638, the retained Config UI, and Apply behavior. All three original heads are beta ancestors, and beta's final tree equals successfully tested/deployed b3b36c1d exactly. [Merge receipt](../assets/VP-0216/three-branch-merge-20261026/merge-receipt.json). Existing focused timing/subtitle validation is retained; no new physical-display acceptance or deployment is claimed. Story remains Review.

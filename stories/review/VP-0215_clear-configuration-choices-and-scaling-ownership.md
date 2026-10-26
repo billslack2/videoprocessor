@@ -520,3 +520,7 @@ maximum root VP-0214, no duplicate/missing IDs, child gaps or registry conflicts
 Existing unrelated discrepancies: VP-0168 index casing, VP-0070 missing expected
 Status heading, and 209 historical non-exact status lines. Preserve/defer these
 to dedicated tracker maintenance rather than silently changing them in VP-0215.
+
+## Requested deployment branches merged - 2026-10-26
+
+The user authorized merging all three already-deployed branches. Atomic PR #207 merged into v1.4.02-beta as 87f61f77d3d95ddbfc1eeae343501d763d49e80b. This includes exact Config UI source bf44dbee, subtitle/vsync e8bc0638 and Apply fix 09f9f382. The merged beta tree equals deployed b3b36c1d exactly; existing build/test/deployment evidence applies without a behavior change. [Merge receipt](../assets/VP-0216/three-branch-merge-20261026/merge-receipt.json). VP-0215 remains Review for the previously documented docking/Advanced-focus and physical UI acceptance limits; the merge does not establish a new all-UI pass.

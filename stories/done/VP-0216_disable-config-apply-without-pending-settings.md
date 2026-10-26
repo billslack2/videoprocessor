@@ -1,7 +1,7 @@
 # VP-0216: Disable Config Apply when no settings are pending
 
 ## Status
-Review
+Done
 
 ## Request
 After Apply successfully saves settings, disable the button until settings change again. User explicitly prioritizes this conventional behavior over using clean Apply to reload externally edited calibration LUTs.
@@ -38,3 +38,11 @@ Full solution x64 Release build passed. All 979 selected native subtitle/GPU, di
 Deployed matching host, standard renderer, beta renderer, Config editor and discovery DLL with runtime records and host/renderer symbols: 13 installed files, all verified against Release artifacts. Twenty-three existing dependencies match and were retained. Backup: C:\Videoprocessor\vp\backup-before-combined-apply-b3b36c1d-20261026-092835-756. The Config editor was hidden in the tray, stopped for replacement and restored to the tray with the updated binary; PID 13936 remained responsive. Player stayed closed. Active VideoProcessor.cfg and VideoProcessor.state were backed up and remained byte-identical; configuration edits: none. The captured CFG hash reflects the user's most recent saved settings rather than an older deployment's settings.
 
 [Build/source/test identity](../assets/VP-0216/combined-deployment-20261026/build-identity-final.json), [deployment receipt and hashes](../assets/VP-0216/combined-deployment-20261026/deployment-receipt.json), [reviewed Config results including known failure](../assets/VP-0216/combined-deployment-20261026/config-results-reviewed.json). PR #206 is updated. Story remains Review pending user acceptance; no beta merge or public release.
+
+## Three-branch merge complete - 2026-10-26
+
+User explicitly authorized merging all three deployment inputs. [Atomic integration PR #207](https://github.com/billslack2/videoprocessor/pull/207) merged into current beta v1.4.02-beta as 87f61f77d3d95ddbfc1eeae343501d763d49e80b, from pinned base 81ac960f and clean integration head 644571d461061eca5c27a5e973244fc26afc2ca0. Both latest-beta/default discovery and PR mergeability/check-state verification passed; no CI checks were configured. The release skill's pinned Prepare/Merge workflow was used. No unrelated pending PR was merged.
+
+Verified all three exact branch heads are ancestors of beta: subtitle/vsync e8bc0638, retained Config/Scaling/Tone Mapping bf44dbee, and Apply 09f9f382. Original PRs #205 and #206 are now MERGED. The integration additionally records original Apply ancestry (the deployed branch had cherry-picked it), changing no files. Beta tree 90a850d37d63cf1160ba6e260361e7b092fbd876 equals the successfully built/tested/deployed b3b36c1d tree exactly. Existing validation remains 979 selected native passes, 22 Config passes including all 13 Apply cases, and one documented pre-existing docking/Advanced-focus failure reproduced with the prior binary. No source behavior changed during this merge, so those exact-tree results were reused.
+
+[Verified merge receipt](../assets/VP-0216/three-branch-merge-20261026/merge-receipt.json). Apply work is Done following the requested deployment and explicit merge authorization. Installed binaries remain the matching tested b3b36c1d build; no player restart, additional deployment or configuration edit was needed. The broader VP-0207 incident and existing VP-0215/VP-0211 validation limits remain tracked separately.

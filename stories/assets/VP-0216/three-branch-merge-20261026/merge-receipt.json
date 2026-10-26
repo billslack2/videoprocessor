@@ -1,0 +1,20 @@
+{
+  "betaBranch": "v1.4.02-beta",
+  "mergeCommit": "87f61f77d3d95ddbfc1eeae343501d763d49e80b",
+  "integrationCommit": "644571d461061eca5c27a5e973244fc26afc2ca0",
+  "deployedSource": "b3b36c1d69739c6f046092ae332f6e8914cdb2a1",
+  "tree": "90a850d37d63cf1160ba6e260361e7b092fbd876",
+  "treeMatchesDeployed": true,
+  "mergedBranchHeads": [
+    "e8bc0638224634e1946877df7fc7f1ca239ae47d",
+    "bf44dbeee536c4bbf949a4f79db513147a9f0f8f",
+    "09f9f38217af07dd4ac781be388bbe54aed76469"
+  ],
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/207",
+  "originalPullRequests": {
+    "206": "MERGED",
+    "205": "MERGED"
+  },
+  "configurationChanged": false,
+  "binariesRedeployed": false
+}
