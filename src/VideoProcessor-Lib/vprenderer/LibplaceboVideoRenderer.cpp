@@ -54,6 +54,8 @@
 #include <vprenderer/DisplayCadenceRecovery.h>
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/TemporalRenderer.h>
+#include <vprenderer/NlsPipelinePreparation.h>
+#include <vprenderer/SubtitlePipelinePreparation.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
@@ -4769,6 +4771,17 @@ struct LibplaceboVideoRenderer::Impl
 	NlsMappingDecision nlsDecision;
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
+	std::string nlsShaderSource;
+	NlsPipelinePreparation nlsPreparation;
+	uint64_t nlsPreparationRevision = 0;
+	bool nlsPreparationNoCompute = false;
+	std::atomic<bool> nlsPreparationPending{false};
+    NlsPipelinePreparation subtitlePipelinePreparation;
+    std::atomic<bool> subtitlePipelinePreparationPending{false};
+    std::atomic<bool> subtitlePipelinePreparationFailed{false};
+    std::string subtitlePipelinePreparationKey;
+    bool subtitlePreparationRequested = false;
+    bool subtitlePreparationFallback = false;
 	std::string rejectedNlsHookSignature;
 	std::string runtimeRejectedNlsHookSignature;
 	uint64_t runtimeRejectedNlsSignature = 0;
@@ -5512,6 +5525,8 @@ struct LibplaceboVideoRenderer::Impl
         InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
+            nlsPreparation.Stop();
+            subtitlePipelinePreparation.Stop();
             pictureProofWorker.Stop();
             lookaheadMeasurementWorker.Stop();
             outwardWindowWorker.Stop();
@@ -6212,6 +6227,7 @@ struct LibplaceboVideoRenderer::Impl
 	void ConfigureRenderParams(const RendererSettings& settings,
 		const char* lifecycle)
 	{
+		++nlsPreparationRevision;
 		LibplaceboRenderParameters::Settings parameterSettings;
 		parameterSettings.quality = settings.quality;
 		parameterSettings.toneMapping = settings.toneMapping;
@@ -8339,6 +8355,7 @@ struct LibplaceboVideoRenderer::Impl
 		deviceParams.min_feature_level = D3D_FEATURE_LEVEL_10_0;
 		deviceParams.max_frame_latency = settings.presentationQueueDepth;
 		deviceParams.no_compute = settings.diagnosticDisableCompute;
+		nlsPreparationNoCompute = deviceParams.no_compute;
 		d3d11 = pl_d3d11_create(log, &deviceParams);
 		if (!d3d11)
 			throw std::runtime_error("Failed to create libplacebo D3D11 device");
@@ -9376,6 +9393,15 @@ struct LibplaceboVideoRenderer::Impl
 	bool GetRenderStallStatus(CString& status) const
 	{
 		status.Empty();
+		if (nlsPreparationPending.load(std::memory_order_acquire) ||
+            subtitlePipelinePreparationPending.load(std::memory_order_acquire)) {
+			status = TEXT("Preparing shaders...");
+			return true;
+		}
+		if (subtitlePipelinePreparationFailed.load(std::memory_order_acquire)) {
+            status = TEXT("Shader preparation unavailable; original subtitles");
+            return true;
+        }
 		const ULONGLONG started = libplaceboRenderStartedTick.load(
 			std::memory_order_acquire);
 		if (started == 0 || GetTickCount64() - started < 500)
@@ -9388,6 +9414,9 @@ struct LibplaceboVideoRenderer::Impl
 		const std::vector<ConfiguredShaderRule>& selection,
 		uint64_t rendererGeneration)
 	{
+		nlsPreparation.Invalidate();
+		nlsPreparationPending.store(false, std::memory_order_release);
+		++nlsPreparationRevision;
 		renderLoadMeter.ResetForPipelineChange();
 		coreRenderLoadMeter.ResetForPipelineChange();
 		originalPrRenderLoadMeter.ResetForPipelineChange();
@@ -9503,7 +9532,162 @@ struct LibplaceboVideoRenderer::Impl
 			reason = "libplacebo could not parse shader";
 			return false;
 		}
+		nlsShaderSource = std::move(source);
 		return true;
+	}
+
+    SubtitlePreviewMode SelectPreparedSubtitleMode(SubtitlePreviewMode requested,
+        uint64_t generation, uint64_t sourceFormat, double sourceHz, double displayHz,
+        bool inputInterlaced, int inputOrder) {
+        const bool previouslyRequested = subtitlePreparationRequested;
+        subtitlePreparationRequested = SubtitlePreviewOverridesClassicHandling(requested);
+        subtitlePreparationFallback = false;
+        if (!subtitlePreparationRequested) {
+            subtitlePipelinePreparationPending.store(false, std::memory_order_release);
+            subtitlePipelinePreparationFailed.store(false, std::memory_order_release);
+            return requested;
+        }
+        // Decide once, before Begin, so all outputs from this capture use the
+        // same composition contract. Settings and source-format changes cannot
+        // reuse a completion for an older graph. Both background modes warm
+        // together, so switching between them needs no further preparation.
+        const auto& motion = activeSettings.motion;
+        const bool knownOrder = motion.fieldOrder != "auto" || inputOrder != 0;
+        const bool deinterlacing = std::isfinite(sourceHz) && sourceHz > 0.0 &&
+            motion.deinterlace != "off" && motion.algorithm != "weave" &&
+            knownOrder && (inputInterlaced || motion.deinterlace == "force");
+        const double nominalHz = sourceHz * (deinterlacing && motion.cadence == "field" ? 2.0 : 1.0);
+        const bool mixing = MotionConfig::Mix(motion, nominalHz, displayHz);
+        subtitlePipelinePreparationKey = std::to_string(generation) + "|" +
+            std::to_string(sourceFormat) + "|" + std::to_string(deinterlacing) + "|" +
+            std::to_string(mixing) + "|" + std::to_string(inputOrder) + "|" +
+            EffectiveSettingsFingerprint(activeSettings);
+        auto state = subtitlePipelinePreparation.Get(subtitlePipelinePreparationKey);
+        if (!previouslyRequested && state == NlsPipelinePreparation::Status::Failed) {
+            subtitlePipelinePreparation.Invalidate();
+            state = NlsPipelinePreparation::Status::Missing;
+        }
+        subtitlePreparationFallback = state != NlsPipelinePreparation::Status::Ready;
+        subtitlePipelinePreparationFailed.store(state == NlsPipelinePreparation::Status::Failed,
+            std::memory_order_release);
+        subtitlePipelinePreparationPending.store(state == NlsPipelinePreparation::Status::Missing ||
+            state == NlsPipelinePreparation::Status::Pending, std::memory_order_release);
+        return subtitlePreparationFallback ? SubtitlePreviewMode::None : requested;
+    }
+
+    void PrepareSubtitlePipeline(const pl_frame& source, const pl_frame& target) {
+        if (!subtitlePreparationRequested ||
+            subtitlePipelinePreparation.Get(subtitlePipelinePreparationKey) != NlsPipelinePreparation::Status::Missing)
+            return;
+        try {
+            auto params = renderParams;
+            // Preparation occurs while the batch still uses the raw-source
+            // contract. This describes the actual field/deinterlace settings.
+            const auto input = temporalRenderer.NlsPreparationInput(source, params);
+            auto request = std::make_shared<SubtitlePipelinePreparationRequest>(input, params,
+                temporalRenderer.Active(), activeSettings.subtitleGeneratedGray,
+                activeSettings.subtitleSpatialFill, &target);
+            CComPtr<IDXGIDevice> dxgi;
+            CComPtr<IDXGIAdapter> adapter;
+            DXGI_ADAPTER_DESC description{};
+            if (FAILED(d3d11->device->QueryInterface(IID_PPV_ARGS(&dxgi))) ||
+                FAILED(dxgi->GetAdapter(&adapter)) || FAILED(adapter->GetDesc(&description)))
+                throw std::runtime_error("subtitle preparation adapter unavailable");
+            request->adapter = description.AdapterLuid;
+            request->featureLevel = d3d11->device->GetFeatureLevel();
+            request->noCompute = nlsPreparationNoCompute;
+            const auto sharedCache = cache;
+            subtitlePipelinePreparation.Submit(subtitlePipelinePreparationKey,
+                [request, sharedCache] {
+                    const auto started = SteadyClock::now();
+                    const bool ready = request->Compile(sharedCache);
+                    DebugLog::Log("VP subtitle background preparation: ready=%d elapsed_ms=%.2f",
+                        ready ? 1 : 0, std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+                    return ready;
+                });
+        } catch (const std::exception& error) {
+            DebugLog::Log("Subtitle shader preparation rejected: %s", error.what());
+            subtitlePipelinePreparation.Submit(subtitlePipelinePreparationKey, [] { return false; });
+        }
+    }
+
+	bool PrepareNlsPipeline(const pl_frame& source, const pl_frame& target)
+	{
+		auto parameters = renderParams;
+		const pl_frame input = temporalRenderer.NlsPreparationInput(source, parameters);
+		if (!input.num_planes) {
+			nlsPreparationPending.store(true, std::memory_order_release);
+			return false;
+		}
+		const double mixDuration = temporalRenderer.NlsPreparationMixDuration();
+		std::ostringstream key;
+		key << nlsPreparationRevision << '|' << nlsHookSignature << '|'
+			<< (parameters.frame_mixer ? parameters.frame_mixer->name : "none") << '|'
+			<< (parameters.deinterlace_params ? int(parameters.deinterlace_params->algo) : -1) << '|'
+			<< (parameters.frame_mixer ? std::ceil(2.0 * std::max(1.0, double(pl_frame_mix_radius(&parameters))) * std::max(1.0, mixDuration)) : 0.0);
+		for (const pl_frame* frame : { &input, &target }) {
+			key << '|' << frame->num_planes << '|' << frame->repr.sys << '|'
+				<< frame->repr.levels << '|' << frame->repr.alpha << '|'
+				<< frame->repr.bits.sample_depth << ',' << frame->repr.bits.color_depth << ',' << frame->repr.bits.bit_shift
+				<< '|' << frame->color.primaries << '|' << frame->color.transfer << '|'
+				<< frame->rotation << '|' << frame->field << '|'
+				<< (frame->lut ? frame->lut->signature : 0) << '|' << frame->lut_type << '|'
+				<< frame->crop.x1 - frame->crop.x0 << ',' << frame->crop.y1 - frame->crop.y0 << '|'
+				<< frame->profile.signature << '|' << bool(frame->icc) << '|'
+				<< bool(frame->acquire) << '|' << bool(frame->release) << '|' << frame->film_grain.type;
+			if (frame->repr.dovi) for (const auto& component : frame->repr.dovi->comp) {
+				// Coefficients remain dynamic; reshape topology changes shader code.
+				key << '|' << int(component.num_pivots);
+				for (int segment = 0; segment < 8; ++segment)
+					key << ',' << int(component.method[segment]) << ':' << int(component.mmr_order[segment]);
+			}
+			for (int i = 0; i < frame->num_planes; ++i) {
+				const auto& plane = frame->planes[i];
+				const auto& p = frame->planes[i].texture->params;
+				key << '|' << p.w << 'x' << p.h << ':' << p.format->name << ':'
+					<< plane.components << ':' << plane.flipped << ':' << plane.shift_x << ':' << plane.shift_y;
+				for (int mapping : plane.component_mapping) key << ':' << mapping;
+			}
+		}
+		const std::string identity = key.str();
+		auto state = nlsPreparation.Get(identity);
+		if (state == NlsPipelinePreparation::Status::Missing) {
+			try {
+				auto request = std::make_shared<NlsPipelinePreparation::Request>(input, target, parameters, nlsShaderSource);
+				CComPtr<IDXGIDevice> dxgiDevice;
+				CComPtr<IDXGIAdapter> adapter;
+				DXGI_ADAPTER_DESC description{};
+				if (FAILED(d3d11->device->QueryInterface(IID_PPV_ARGS(&dxgiDevice))) ||
+					FAILED(dxgiDevice->GetAdapter(&adapter)) || FAILED(adapter->GetDesc(&description)))
+					throw std::runtime_error("preparation adapter unavailable");
+				request->adapter = description.AdapterLuid;
+				request->featureLevel = d3d11->device->GetFeatureLevel();
+				request->noCompute = nlsPreparationNoCompute;
+                request->processedSource = temporalRenderer.Active();
+                request->subtitleOverlay = temporalRenderer.PreparesComposedSources();
+				request->mixDuration = static_cast<float>(mixDuration);
+				const auto mapping = ReadNlsHookMapping(nlsHook);
+				request->stretch = mapping.stretchRatio;
+				request->axis = mapping.warpAxis;
+				const pl_cache sharedCache = cache;
+				if (nlsPreparation.Submit(identity, [request, sharedCache]() {
+					const auto start = SteadyClock::now();
+					const bool prepared = request->Compile(sharedCache);
+					DebugLog::Log("VP NLS background preparation: thread=%lu ready=%d elapsed_ms=%.2f",
+						GetCurrentThreadId(), prepared ? 1 : 0,
+						std::chrono::duration<double, std::milli>(SteadyClock::now() - start).count());
+					return prepared;
+				})) state = NlsPipelinePreparation::Status::Pending;
+			} catch (const std::exception& error) {
+				DebugLog::Log("VP NLS preparation rejected: %s", error.what());
+				// Keep failure local to this input contract. A different source or
+				// explicit reselection must be able to retry the same NLS shader.
+				nlsPreparation.Submit(identity, [] { return false; });
+				state = NlsPipelinePreparation::Status::Failed;
+			}
+		}
+		nlsPreparationPending.store(state == NlsPipelinePreparation::Status::Pending, std::memory_order_release);
+		return state == NlsPipelinePreparation::Status::Ready;
 	}
 
 	struct NlsHookMappingState
@@ -15107,7 +15291,7 @@ struct LibplaceboVideoRenderer::Impl
             temporalPolicyNearBlackEnvelopeMode = AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
             temporalPolicyNearBlackEnvelopeSourceSequence = 0;
             temporalPolicyNearBlackEnvelopeEpisodeStart = 0;
-			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode))
+			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode) || subtitlePreparationFallback)
             {
                 source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
                 renderParams.hooks=nullptr; renderParams.num_hooks=0;
@@ -18947,6 +19131,28 @@ releaseDriftBaseRetention =
             lastMotionStatus=temporalRenderer.status;
             DebugLog::Log("VP motion: %s delay_ms=%.3f source_hz=%.6f display_hz=%.6f",lastMotionStatus.c_str(),temporalRenderer.DelayMs(),captureRateHz,renderLoadDisplayRefreshHz.load());
         }
+        PrepareSubtitlePipeline(image, target);
+		const pl_hook* selectedNls = nullptr;
+		for (int i = 0; i < renderParams.num_hooks; ++i)
+			if (renderParams.hooks[i] == nlsHook) selectedNls = nlsHook;
+		if (selectedNls && !PrepareNlsPipeline(renderImage, target)) {
+			// Continue rendering the current source with the ordinary lens-aware
+			// fit. Do not submit a cold NLS graph or an unwarped full-screen stretch.
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			target.crop = linearFallbackCrop;
+			nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+			nlsDecision.stretchRatio = 1.0;
+			nlsDecision.reason = "NLS preparation pending or failed; lens-aware linear fallback";
+			MadVRShaderLoader::SetRuntimeNlsDecision(nlsDecision);
+			MadVRShaderLoader::SetRuntimeShaderSelection(requestedShaderSelector,
+				requestedShaderSelector, nlsDecision.mode);
+			SetShaderStatus(nlsPreparationPending.load(std::memory_order_acquire) ?
+				"NLS: Preparing (video continues)" : "NLS: Safe fit (preparation unavailable)");
+			assembleOverlays();
+		} else if (!selectedNls) {
+			nlsPreparationPending.store(false, std::memory_order_release);
+		}
 		const SteadyClock::time_point renderStart = SteadyClock::now();
         const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
 		const bool targetLutApplied =
@@ -25071,7 +25277,12 @@ void LibplaceboVideoRenderer::RenderLoop()
                     m_impl->activeSettings.presentEveryVsync,currentWillMix);
                 const double sourcePts=m_impl->displaySourceClock.Select(useRepeatCadence,
                     rawSourcePts,sourceSequence,captureRateHz,frameGeneration,frame.IsSourceDiscontinuity());
-                const auto sourceSubtitleMode=m_impl->CurrentSubtitlePreviewMode();
+                const auto sourceSubtitleMode=m_impl->SelectPreparedSubtitleMode(
+                    m_impl->CurrentSubtitlePreviewMode(), frameGeneration,
+                    activePictureIdentity.sourceFormatGeneration,captureRateHz,
+                    m_impl->renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
+                    state&&state->displayMode&&state->displayMode->IsInterlaced(),
+                    state&&state->displayMode?static_cast<int>(state->displayMode->FirstFieldOrder()):0);
                 const bool sourceSubtitleComposition=sourceSubtitleMode==SubtitlePreviewMode::BlackBackground ||
                     sourceSubtitleMode==SubtitlePreviewMode::GeneratedGrayBackground;
                 const uint64_t temporalCaptureEpoch=frameGeneration*1315423911ULL+

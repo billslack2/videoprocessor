@@ -239,7 +239,7 @@ public:
 	bool RenderProfileChangesBgra(
 		const std::vector<ProfileChangeOverlay::Item>& items,
 		uint8_t opacity, std::vector<uint8_t>& pixels,
-		int& width, int& height, int& stride);
+		int& width, int& height, int& stride, unsigned long long animationTick = 0);
 
 private:
 	bool Initialize();

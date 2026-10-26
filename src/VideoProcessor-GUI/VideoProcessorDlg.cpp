@@ -12439,8 +12439,8 @@ void CVideoProcessorDlg::PublishProfileChangeOverlay(
 
 void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
 {
-	if (m_profileChangeOverlayItems.empty() ||
-		now >= m_profileChangeOverlayFadeUntil)
+	if (m_profileShaderStatus.IsEmpty() && (m_profileChangeOverlayItems.empty() ||
+		now >= m_profileChangeOverlayFadeUntil))
 	{
 		ClearProfileChangeOverlay();
 		return;
@@ -12450,7 +12450,7 @@ void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
 		return;
 
 	uint8_t opacity = 255;
-	if (now > m_profileChangeOverlayHoldUntil)
+	if (m_profileShaderStatus.IsEmpty() && now > m_profileChangeOverlayHoldUntil)
 	{
 		const ULONGLONG fadeDuration = m_profileChangeOverlayFadeUntil -
 			m_profileChangeOverlayHoldUntil;
@@ -12462,8 +12462,11 @@ void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
 	int width = 0;
 	int height = 0;
 	int stride = 0;
+    const auto items = ProfileChangeOverlay::WithShaderStatus(m_profileChangeOverlayItems,
+        m_profileShaderStatus == TEXT("Preparing shaders..."), !m_profileShaderStatus.IsEmpty() &&
+        m_profileShaderStatus != TEXT("Preparing shaders..."));
 	if (m_statsOverlay->RenderProfileChangesBgra(
-		m_profileChangeOverlayItems, opacity, pixels, width, height, stride))
+		items, opacity, pixels, width, height, stride, now))
 	{
 		m_videoRenderer->SetNativeProfileOverlay(
 			pixels.data(), pixels.size(), width, height, stride);
@@ -12476,6 +12479,7 @@ void CVideoProcessorDlg::ClearProfileChangeOverlay()
 	if (m_videoRenderer)
 		m_videoRenderer->SetNativeProfileOverlay(nullptr, 0, 0, 0, 0);
 	m_profileChangeOverlayItems.clear();
+    m_profileShaderStatus.Empty();
 	m_profileChangeOverlayHoldUntil = 0;
 	m_profileChangeOverlayFadeUntil = 0;
 }
@@ -15086,34 +15090,26 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
-		// Use the existing top-level VP status popup while the renderer is
-		// compiling its internal GPU pipeline. A native renderer/profile OSD
-		// cannot paint until that pipeline is ready.
-		constexpr bool showRenderStallOverlay = true;
-		CString renderStallStatus;
-		const bool rendererCanReportStall =
-			m_rendererState == RendererState::RENDERSTATE_STARTING ||
-			m_rendererState == RendererState::RENDERSTATE_READY ||
-			m_rendererState == RendererState::RENDERSTATE_RENDERING;
-		const bool renderStalled =
-			showRenderStallOverlay && rendererCanReportStall &&
-			m_videoRenderer && !m_wantToRestartRenderer &&
-			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
-		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
-		{
-			const bool wasVisible = m_shaderLoadingWindow.IsVisible();
-			const bool shown = m_shaderLoadingWindow.Show(
-				m_rendererTargetHwnd, GetSafeHwnd(), renderStallStatus);
-			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
-				m_shaderLoadingPopupShownTick = GetTickCount64();
-		}
-		else if (m_shaderLoadingWindow.IsVisible() &&
-			(!rendererCanReportStall ||
-			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
-		{
-			m_shaderLoadingWindow.Hide();
-			m_shaderLoadingPopupShownTick = 0;
-		}
+        // Preparation is a column in the same profile banner, never a competing popup.
+        CString status;
+        const bool canReport = m_videoRenderer && !m_wantToRestartRenderer &&
+            (m_rendererState == RendererState::RENDERSTATE_STARTING ||
+             m_rendererState == RendererState::RENDERSTATE_READY ||
+             m_rendererState == RendererState::RENDERSTATE_RENDERING);
+        if (canReport) m_videoRenderer->GetRenderStallStatus(status);
+        if (status != m_profileShaderStatus) {
+            const bool finished = !m_profileShaderStatus.IsEmpty() && status.IsEmpty();
+            m_profileShaderStatus = status;
+            const auto now = GetTickCount64();
+            if (finished && !m_profileChangeOverlayItems.empty()) {
+                const auto timing = ProfileChangeOverlay::ResolveTiming(m_profileChangeDisplaySeconds);
+                m_profileChangeOverlayHoldUntil = now + timing.holdMilliseconds;
+                m_profileChangeOverlayFadeUntil = now + timing.totalMilliseconds;
+            }
+            if (!status.IsEmpty()) SetTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID, 50, nullptr);
+            UpdateProfileChangeOverlay(now);
+        }
+        m_shaderLoadingWindow.Hide();
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer && !m_wantToRestartRenderer)
