@@ -22,7 +22,7 @@ public:
         return std::isfinite(hz) && hz >= 10.0 && hz <= 360.0;
     }
     void BeginSource(double pts, int64_t nowNs, uint64_t epoch, double hz,
-        bool discontinuity)
+        bool discontinuity, double timestampQuantumSeconds = 0.0)
     {
         if (!std::isfinite(pts) || !ValidRate(hz)) { Reset(); return; }
         if (!Matches(epoch, hz) || discontinuity ||
@@ -35,6 +35,11 @@ public:
             periodNs = 1e9 / hz;
             tick = 0;
         }
+        // API timebase and device precision can differ. The captured DeckLink
+        // PTS in the incident used a 10us grid despite its 1MHz API timebase.
+        // Bound the uncertainty to 100us, far below a refresh interval.
+        sourceTolerance = std::isfinite(timestampQuantumSeconds) ?
+            (std::max)(1e-5, (std::min)(timestampQuantumSeconds, 1e-4)) : 1e-5;
         lastSourcePts = pts;
         SkipMissed(nowNs);
     }
@@ -51,11 +56,26 @@ public:
         return wallOriginNs + static_cast<int64_t>(std::llround(tick * periodNs));
     }
     double SourcePts() const { return sourceOrigin + tick / refreshHz; }
+    double DecisionBandSeconds() const
+    {
+        // Raw capture phase can move by milliseconds, even with precise ticks.
+        // Keep a bounded uncertainty band instead of toggling an entire refresh
+        // because a timestamp moved across a binary boundary. At high refresh
+        // rates the band remains at most one quarter of a display interval.
+        return Active() ? (std::max)(sourceTolerance,(std::min)(0.003,0.25/refreshHz)) : sourceTolerance;
+    }
     bool SourceDue(double pts) const
     {
-        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + 1e-7);
+        return !Active() || (std::isfinite(pts) && pts <= SourcePts() + DecisionBandSeconds());
+    }
+    bool CanRetireBefore(double nextPts) const
+    {
+        // A merely eligible successor is not evidence that its predecessor is
+        // stale. Require it to be unambiguously before the slot's other edge.
+        return Active() && std::isfinite(nextPts) && nextPts < SourcePts() - DecisionBandSeconds();
     }
     void Submitted() { if (Active()) ++tick; }
+    double SourceToleranceSeconds() const { return sourceTolerance; }
     bool HasFeedback() const { return feedback; }
     void InvalidateFeedback() { feedback=false; feedbackSamples=0; lastSyncNs=0; }
     // mpv's guarded estimate of the last queued flip's display time. DXGI
@@ -95,7 +115,7 @@ private:
     uint64_t generation = 0, tick = 0;
     int64_t wallOriginNs = 0;
     double sourceOrigin = 0.0, lastSourcePts = 0.0;
-    double refreshHz = 0.0, periodNs = 0.0;
+    double refreshHz = 0.0, periodNs = 0.0, sourceTolerance = 1e-5;
     bool feedback=false;
     unsigned feedbackSamples=0;
     int64_t lastSyncNs=0;
@@ -151,4 +171,21 @@ private:
     bool valid=false, synthetic=false;
     uint64_t generation=0, sequence=0;
     double rawPts=0, normalized=0;
+};
+
+// A profile transition can compile shaders or block in the driver. Retire its
+// timing estimate after one successful changed output, then anchor fresh on
+// the next source. Failed presents must not consume this recovery request.
+class DisplayCadenceTransition
+{
+public:
+    void OutputChanged() { pending=true; }
+    bool Presented(bool successful,bool timingActive) {
+        if (!successful) return false;
+        const bool restart=pending&&timingActive;
+        pending=false;
+        return restart;
+    }
+private:
+    bool pending=false;
 };

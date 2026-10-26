@@ -62,3 +62,34 @@ within the available queue lead; no finite depth covers arbitrary rendering stal
 and timestamp-fallback state. Successful Present and software slot cadence are
 not proof of HDMI scanout or source-to-display latency. See
 [the source comparison and qualification report](VP-0211_PRESENTATION_REVIEW.md).
+
+
+Source eligibility includes a small timestamp precision allowance: the larger
+of one capture-clock tick and 10 microseconds, capped at 100 microseconds.
+The 10-microsecond minimum covers the observed DeckLink hardware PTS grid even
+when its API timebase is 1 MHz. This prevents rounding at a refresh boundary
+from inserting a cached repeat followed by discarding the adjacent source.
+It preserves cadence phase and genuine rate drift; it is not a half-refresh
+advance or a video speed adjustment. The same allowance applies to source
+selection, stale-source retirement and nonmixing temporal output checks.
+Repeat diagnostics include `next_pts_lead_ms`, `pts_tolerance_us` and
+`queued_sources`. These CPU submission records do not prove HDMI scanout.
+
+
+Live profile-change testing showed that precision alone was insufficient: raw
+capture phase moved by up to about 1.14ms, causing an eligible successor to be
+used as evidence for dropping its predecessor. Source selection now uses two
+boundaries around the unchanged slot clock. A source is eligible up to 3ms after
+the nominal slot; its successor may justify retirement only when it is more than
+3ms before that slot. At high refresh rates this band is capped at one quarter
+of the refresh interval. The separate 10-100us timestamp precision value remains
+reported, while `decision_band_ms` reports the actual selection/retirement band.
+This permits at most the bounded band of early selection, preserves the 24-to-60
+3/2 phase, and leaves true long-run source/display drift visible.
+
+After an output profile change, one successful changed output pays shader/driver
+warmup, then VP resets its internal repeat clock and cache eligibility once.
+The following source anchors the replacement cadence. The log reports
+`VP display cadence restart ... hdmi_resync=0`; no display-mode change is requested.
+Failed presentation does not consume the pending restart. Subtitle packet data,
+source PTS, capture Queue/lookahead and NLS pixels remain unchanged.

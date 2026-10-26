@@ -4402,6 +4402,7 @@ struct LibplaceboVideoRenderer::Impl
     DisplaySourceClock displaySourceClock;
     UINT appliedPresentationDepth = PresentationConfig::DefaultDepth;
     int displayCadenceOwner = -1;
+    DisplayCadenceTransition displayCadenceTransition;
     DisplayFrameCache displayFrameCache;
     AlphaPresentationRecord displayRepeatRecord;
     bool displayRepeatValid = false;
@@ -9181,6 +9182,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings = settings;
         displayRepeatValid = false;
         displayVsyncClock.Reset();
+        displayCadenceTransition.OutputChanged();
         selectedSubtitleMode.store(settings.subtitleMode,std::memory_order_release);
         calibrationStatusAvailable = false;
 		sdrTargetNits = settings.sdrTargetNits;
@@ -19030,8 +19032,16 @@ releaseDriftBaseRetention =
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
-        if (rendered && submitted) displayVsyncClock.Submitted();
-        else { displayRepeatValid = false; displayVsyncClock.Reset(); }
+        const bool restartCadence=displayCadenceTransition.Presented(rendered&&submitted,displayVsyncClock.Active());
+        if (rendered && submitted) {
+            if (restartCadence) {
+                // Anchor the replacement cadence after the first changed output
+                // has paid shader/driver warmup, without a display-mode resync.
+                displayVsyncClock.Reset();
+                displayRepeatValid = false;
+                DebugLog::Log("VP display cadence restart: reason=output-change warmup_presented=1 hdmi_resync=0");
+            } else displayVsyncClock.Submitted();
+        } else { displayRepeatValid = false; displayVsyncClock.Reset(); }
 		if (!rendered || !submitted)
 		{
 			frameGpuTiming.Reject();
@@ -20077,7 +20087,7 @@ releaseDriftBaseRetention =
 
     // Copy final display-referred pixels, including overlays and dithering.
     // No source buffer, detector, subtitle lease, or temporal history is consumed.
-    bool PresentDisplayRepeat()
+    bool PresentDisplayRepeat(double nextSourcePts, size_t queuedSources)
     {
         if (!displayRepeatValid) return false;
         auto failed = [&]() {
@@ -20150,10 +20160,13 @@ releaseDriftBaseRetention =
         if (now >= nextDisplayRefreshLogTick)
         {
             nextDisplayRefreshLogTick = now + 2000;
-            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu feedback=%d pts_fallback=%d source_analysis=unchanged",
+            DebugLog::Log("VP display refresh: enabled=1 display_hz=%.6f cached_repeats=%llu retired_sources=%llu generation=%llu source=%llu feedback=%d pts_fallback=%d next_pts_lead_ms=%.6f pts_tolerance_us=%.3f decision_band_ms=%.3f queued_sources=%zu source_analysis=unchanged",
                 renderLoadDisplayRefreshHz.load(), displayRefreshRepeats,
                 displayRefreshDrops, record.generation, record.sourceSequence,
-                displayVsyncClock.HasFeedback()?1:0,displaySourceClock.Synthetic()?1:0);
+                displayVsyncClock.HasFeedback()?1:0,displaySourceClock.Synthetic()?1:0,
+                (nextSourcePts-record.outputPts)*1000.0,
+                displayVsyncClock.SourceToleranceSeconds()*1e6,
+                displayVsyncClock.DecisionBandSeconds()*1000.0,queuedSources);
         }
         return true;
     }
@@ -24140,7 +24153,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                         !m_frameQueue[0].cadenceRepeat && !m_frameQueue[1].cadenceRepeat &&
                         !m_frameQueue[1].frame.IsSourceDiscontinuity() &&
                         !queuedWillMix(m_frameQueue[1]) &&
-                        output.displayVsyncClock.SourceDue(pts(m_frameQueue[1])))
+                        output.displayVsyncClock.CanRetireBefore(pts(m_frameQueue[1])))
                     {
                         m_activePictureTimeline.MarkDiscarded(
                             m_frameQueue.front().activePictureIdentity,
@@ -24163,12 +24176,15 @@ void LibplaceboVideoRenderer::RenderLoop()
                         // Reset/stop and a newly ready source can arrive during
                         // pacing. Recheck before acquiring any backbuffer.
                         const bool repeat = currentOutput() && !sourceDue();
+                        const double nextSourcePts=m_frameQueue.empty()?NAN:pts(m_frameQueue.front());
+                        const size_t queuedSources=m_frameQueue.size();
                         queueGuard.unlock();
-                        if (repeat) refreshRepeated = output.PresentDisplayRepeat();
+                        if (repeat) refreshRepeated = output.PresentDisplayRepeat(nextSourcePts,queuedSources);
                     }
                 }
                 else
                 {
+                    if (pendingOutput()) output.displayCadenceTransition.OutputChanged();
                     output.displayRepeatValid = false;
                     output.displayVsyncClock.Reset();
                 }
@@ -24888,7 +24904,9 @@ void LibplaceboVideoRenderer::RenderLoop()
                         m_impl->temporalRenderer.Active() && !m_impl->temporalRenderer.outputs.empty() ?
                             m_impl->temporalRenderer.outputs.front() : sourcePts, SteadyClockNowNs(),
                         frameGeneration, m_impl->renderLoadDisplayRefreshHz.load(),
-                        frame.IsSourceDiscontinuity());
+                        frame.IsSourceDiscontinuity(),
+                        m_timingClock&&m_timingClock->TimingClockTicksPerSecond()>0?
+                            1.0/m_timingClock->TimingClockTicksPerSecond():0.0);
                 else
                 {
                     m_impl->displayVsyncClock.Reset();
@@ -24906,7 +24924,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                         // Retire obsolete temporal output slots after a stall,
                         // retaining the newest due one instead of catch-up draws.
                         if (motionDraw+1 < motionOutputs.size() &&
-                            m_impl->displayVsyncClock.SourceDue(motionOutputs[motionDraw+1])) continue;
+                            m_impl->displayVsyncClock.CanRetireBefore(motionOutputs[motionDraw+1])) continue;
                         while (m_impl->displayRepeatValid &&
                             !m_impl->displayVsyncClock.SourceDue(motionOutputs[motionDraw])) {
                             {
@@ -24915,7 +24933,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                                     staleGeneration=true; break;
                                 }
                             }
-                            if (!m_impl->PresentDisplayRepeat()) break;
+                            if (!m_impl->PresentDisplayRepeat(motionOutputs[motionDraw],0)) break;
                             m_impl->displayVsyncClock.SkipMissed(SteadyClockNowNs());
                         }
                         if (staleGeneration) break;

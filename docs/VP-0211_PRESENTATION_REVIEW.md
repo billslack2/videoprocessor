@@ -126,3 +126,63 @@ device presentation-depth cap stays independent. Current-frame WillMix shares
 Begin's field-rate classification, avoiding previous-frame state on transitions.
 Tests cover Auto engagement/bypass, field cadence, source-domain reset and mixed
 output parity with the checkbox-off path. Live playback revalidation is required.
+
+
+## NLS/every-refresh timestamp-boundary correction - 2026-10-25
+
+The user's live comparison is preserved in VP-0211: at 13:18:37 NLS enabled
+with every-refresh on; through 13:18:56 repeats increased 8 to 130 and retired
+sources 0 to 122. NLS off at 13:18:57 largely stopped the paired increments;
+every-refresh off at 13:20:02 followed by NLS on at 13:20:09 played correctly
+according to the user. Runtime Motion was off; the screenshot was not the
+runtime's Motion setting. Logged active/render CPU durations were below a
+refresh; GPU saturation is not established by these records.
+
+SourceDue previously allowed 0.1 microsecond, smaller than the actual capture
+precision. All 518 selected-PTS samples in the preserved incident lie on a
+10-microsecond grid (absolute and delta GCD after conversion to microseconds),
+although DeckLink exposes a 1 MHz clock. A deterministic matched-rate queue
+simulation with 10us PTS rounding reproduces 369 repeats and 368 retirements in
+1200 display slots without shader work or missed slots. The correction uses a
+10us minimum / one-source-tick allowance capped at 100us. A half-refresh
+selection window was rejected during review because it changes cadence phase
+and allows materially early sources. The original 24-to-60 3/2 phase is retained.
+Tests cover matched quantized source selection, variable sub-refresh work,
+bounded future eligibility, real long-run rate drift and generation changes.
+Existing Smooth Motion, subtitle packet, cache-pixel and reset tests remain
+required. Live NLS and subtitle revalidation remains necessary.
+
+
+## Persistent subtitle profile phase chatter - 2026-10-25
+
+The user narrowed the confirmed trigger to subtitle changes, including clear /
+yellow and 60fps YouTube TV; the earlier NLS association remains provisional.
+Yellow selection at 14:21:06 is followed by paired repeat/source-retirement
+increments with five queued frames and lead 0.02-1.14ms. Precision-only fc20e916
+is therefore insufficient. Example GPU query coverage reports about 5-6ms at
+24Hz and about 4ms at 60Hz; large RenderLocked CPU wall time includes pacing /
+driver backpressure and is not by itself GPU shader time.
+
+Use separate eligibility (+band) and retirement (-band) boundaries, with a 3ms
+band capped at one quarter-refresh. This is bounded decision hysteresis rather
+than widening timestamp precision or snapping/retiming source PTS. It addresses
+both the repeated frame and the adjacent drop. Actual clock drift crosses the
+fixed band eventually and still causes appropriate correction. Unlike raw
+nearest-slot rounding, the existing 24-to-60 3/2 tie phase is retained.
+
+A pending output-profile change also restarts the repeat timing epoch once,
+after the first successful changed output has paid warmup. This discards the
+transition timing estimate and cached eligibility without requesting an HDMI
+resync. Failed presents preserve the recovery request. Source settings, subtitle
+composition and NLS processing are not replaced or restarted independently.
+
+The primary mpv reference is player/video.c handle_display_sync_frame (integer
+vsync duration with a carried residual), calculate_frame_duration (duration
+averaging / timestamp jitter handling), and video/out/vo.c (repeat by assigned
+vsync count). VP uses the bounded-decision idea, not mpv's A/V speed correction:
+https://github.com/mpv-player/mpv/blob/master/player/video.c
+https://github.com/mpv-player/mpv/blob/master/video/out/vo.c
+Luna xhigh mpv and regression reviewers examined the cause and policy. Tests
+cover matched 24/59.94/60 with alternating +/-1.14ms phase, distinct retirement
+eligibility, 24-to-60 phase under jitter, real drift, and one-present recovery.
+Live repeated subtitle changes remain the acceptance gate.

@@ -31,6 +31,129 @@ namespace Tests
             Assert::AreEqual(3, counts[0]); Assert::AreEqual(2, counts[1]);
             Assert::AreEqual(3, counts[2]); Assert::AreEqual(2, counts[3]);
         }
+        TEST_METHOD(MatchedQuantizedCaptureDoesNotAlternateRepeatsAndRetirement)
+        {
+            for (const double hz : {50.0,59.94097,60.0}) for (const double quantum : {1e-6,1e-5}) {
+                DisplayVsyncClock clock;
+                const double origin=1366400.12345;
+                const int64_t started=1000000000;
+                clock.BeginSource(origin,started,1,hz,false,quantum);
+                clock.Submitted();
+                uint64_t next=1;
+                unsigned repeats=0,drops=0;
+                auto pts=[&](uint64_t n) {
+                    // Capture PTS has 1us or 10us precision; rounding must
+                    // not become a repeat/drop pair.
+                    return origin+std::round((n/hz)/quantum)*quantum;
+                };
+                for (uint64_t slot=1;slot<=2400;++slot) {
+                    // Available queue lead absorbs variable, sub-refresh work
+                    // such as enabling NLS. There is no actual missed slot.
+                    const int64_t now=started+static_cast<int64_t>(slot*1e9/hz)-10000000+
+                        static_cast<int64_t>((slot%8)*1000000);
+                    clock.SkipMissed(now);
+                    while (clock.SourceDue(pts(next+1))) { ++next; ++drops; }
+                    if (clock.SourceDue(pts(next))) {
+                        clock.BeginSource(pts(next),now,1,hz,false,quantum);
+                        Assert::AreEqual(slot,next);
+                        ++next;
+                    } else ++repeats;
+                    clock.Submitted();
+                }
+                Assert::AreEqual(0u,repeats);Assert::AreEqual(0u,drops);
+            }
+        }
+        TEST_METHOD(TimestampToleranceDoesNotConsumeAFutureOrHideRealCadenceDrift)
+        {
+            DisplayVsyncClock clock;
+            clock.BeginSource(0,1000000000,1,60,false);
+            Assert::IsTrue(clock.SourceDue(0.000009));
+            Assert::IsFalse(clock.SourceDue(0.004));
+            unsigned repeats=0,drops=0;uint64_t next=1;
+            clock.Submitted();
+            for (uint64_t slot=1;slot<=60000;++slot) {
+                while (clock.SourceDue((next+1)/59.94)) { ++next; ++drops; }
+                if (clock.SourceDue(next/59.94)) ++next;
+                else ++repeats;
+                clock.Submitted();
+            }
+            // The source is 60 frames slower over 1000 seconds. The window
+            // removes jitter only; it neither speeds up nor locks the source.
+            Assert::AreEqual(60u,repeats);Assert::AreEqual(0u,drops);
+        }
+        TEST_METHOD(TimestampQuantumIsBoundedAndReplacedAcrossGenerationChanges)
+        {
+            DisplayVsyncClock clock;
+            for (double quantum : {0.0,-1.0,static_cast<double>(NAN)}) {
+                clock.BeginSource(0,1000000000,1,60,true,quantum);
+                Assert::AreEqual(1e-5,clock.SourceToleranceSeconds(),1e-12);
+            }
+            clock.BeginSource(0,1000000000,1,60,true,1.0);
+            Assert::AreEqual(1e-4,clock.SourceToleranceSeconds(),1e-12);
+            Assert::IsFalse(clock.SourceDue(0.004));
+            clock.BeginSource(2,2000000000,2,60,false,1e-6);
+            Assert::AreEqual(1e-5,clock.SourceToleranceSeconds(),1e-12);
+            Assert::IsFalse(clock.SourceDue(2.004));
+        }
+        TEST_METHOD(PhaseJitterCannotCauseMatchedRateRepeatRetirePairs)
+        {
+            for (const double hz : {24.0,59.94097,60.0}) {
+                DisplayVsyncClock clock;
+                auto pts=[&](uint64_t n) { return 100.0+n/hz+(n%2?-.00114:.00114); };
+                clock.BeginSource(pts(0),1000000000,1,hz,false);
+                clock.Submitted();
+                uint64_t next=1;unsigned repeats=0,drops=0;
+                for (uint64_t slot=1;slot<=10000;++slot) {
+                    while (clock.CanRetireBefore(pts(next+1))) { ++next; ++drops; }
+                    if (clock.SourceDue(pts(next))) ++next; else ++repeats;
+                    clock.Submitted();
+                }
+                Assert::AreEqual(0u,repeats);Assert::AreEqual(0u,drops);
+            }
+        }
+        TEST_METHOD(EligibilityDoesNotMeanThePredecessorCanBeRetired)
+        {
+            DisplayVsyncClock clock;clock.BeginSource(0,1000000000,1,24,false);
+            Assert::IsTrue(clock.SourceDue(.00114));
+            Assert::IsFalse(clock.CanRetireBefore(.00114));
+            Assert::IsFalse(clock.CanRetireBefore(-.00114));
+            Assert::IsTrue(clock.CanRetireBefore(-.004));
+            Assert::IsFalse(clock.SourceDue(.004));
+            clock.BeginSource(0,1000000000,2,360,false);
+            Assert::IsTrue(clock.DecisionBandSeconds()<=.25/360);
+        }
+        TEST_METHOD(JitteredFilmCadenceKeepsThreeTwoPhaseAndRealDrift)
+        {
+            DisplayVsyncClock clock;clock.BeginSource(0,1000000000,1,60,false);
+            int holds[4]{};
+            for (int frame=0;frame<4;++frame)
+                while (!clock.SourceDue((frame+1)/24.0+(frame%2?.00114:-.00114))) {
+                    ++holds[frame];clock.Submitted();
+                }
+            Assert::AreEqual(3,holds[0]);Assert::AreEqual(2,holds[1]);
+            Assert::AreEqual(3,holds[2]);Assert::AreEqual(2,holds[3]);
+            // A genuinely faster independent input must still retire sources.
+            clock.Reset();clock.BeginSource(0,1000000000,1,60,false);clock.Submitted();
+            uint64_t next=1;unsigned drops=0;
+            for (unsigned slot=1;slot<=60000;++slot) {
+                while (clock.CanRetireBefore((next+1)/60.06)) { ++next; ++drops; }
+                if (clock.SourceDue(next/60.06)) ++next;
+                clock.Submitted();
+            }
+            Assert::IsTrue(drops>=59&&drops<=60);
+        }
+        TEST_METHOD(OutputChangeRecoveryWaitsForOneSuccessfulPresentAndCoalesces)
+        {
+            DisplayCadenceTransition transition;
+            Assert::IsFalse(transition.Presented(true,true));
+            transition.OutputChanged();transition.OutputChanged();
+            Assert::IsFalse(transition.Presented(false,true));
+            Assert::IsTrue(transition.Presented(true,true));
+            Assert::IsFalse(transition.Presented(true,true));
+            transition.OutputChanged();
+            Assert::IsFalse(transition.Presented(true,false));
+            Assert::IsFalse(transition.Presented(true,true));
+        }
         TEST_METHOD(DiscontinuityGenerationAndRateChangesReanchor)
         {
             DisplayVsyncClock clock;
