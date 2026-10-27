@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "72f1f741014b0893db4f3d3f5c55f3d319ddbeee",
+  "betaCommit": "37b8720a46f88181cc41c283a35f0a2bc18cfbe8",
+  "shaderGraceOriginalCommit": "3c74f1f9b70d6f9f4e203e8067d7f751d767eb02",
+  "shaderGracePortCommit": "61b08023",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "warnings": 10,
+  "errors": 0,
+  "tests": "skipped at explicit user request",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "751E6B200402A10EDA5470099F5693EF72B2F29D8D1135F996EBFFE2E8CA6FF7"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "394CC59D59FB06C0AF100D03AA596F8D942F9B5E214166A13F0789236BE119F1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "8E22936E1A6BDAE7F235C388C0E03A949A1B5A17F813FC758B1CA696705A336E"
+    }
+  ]
+}

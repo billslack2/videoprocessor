@@ -42,15 +42,30 @@ All 32 isolated matrix cases also pass. Matching host, standard/beta renderer,
 and test binary hashes are verified against generated Release sidecars.
 [Qualification receipt](../assets/VP-0211/render-freeze-20261026/validation.json).
 
-The user authorized enabling VSync and restarting with the tested fix.
-Backup of all nine runtime files plus cfg/state is verified at
+The user requested inclusion of the shader preparation grace change, a Release
+build with tests skipped, deployment, VSync enabled, and restart. The 750 ms
+grace from `3c74f1f9` was ported onto current beta `37b8720a`'s shared status
+banner as `61b08023`, preserving the accepted Ben-Hur changes. The Epson fix
+was rebased on top; combined clean head is
+`72f1f741014b0893db4f3d3f5c55f3d319ddbeee`, pushed to draft PR #211.
+The x64 Release solution build succeeded with zero errors and 10 warnings.
+Tests for this combined head were skipped at the user's explicit request;
+the historical test results above apply to the earlier Epson-only head.
+[Combined build receipt](../assets/VP-0211/render-freeze-20261026/combined-build.json).
+
+After the user's explicit force-close authorization, an elevated Windows
+`taskkill /F` successfully closed PID 4012. All nine runtime files were deployed
+and hash-verified; 18 matching dependency DLLs were retained. The existing
+runtime backup remains at
 `C:\Videoprocessor\vp\backup-before-epson-freeze-bc060dba-20261026-205927`.
-Windows denied stopping running player PID 4012, and the Windows UI helper
-failed to start (sandbox helper setup error). The user has been asked to close
-VP normally. A pinned deployment/single-setting-edit/restart script is ready;
-no runtime/configuration changes have occurred yet. The installed `376e46a3`
-build and user-selected VSync-off workaround remain in place until VP closes. Live Epson scanout validation with VSync on is still required;
-this draft is not merged and the story remains In Progress.
+The active configuration was separately backed up immediately before changing
+only `present_every_vsync: false` to `true`; state bytes were preserved.
+VP restarted as PID 13104 at 21:13:35 EDT. Logs identify both host and renderer
+as clean `72f1f741`, with requested/effective every-VSync both enabled.
+Presentation telemetry advances (source 899 / presented 896 at 21:13:58).
+This confirms runtime progress, not physical Epson scanout acceptance, which
+remains pending. The draft is not merged; this story remains In Progress.
+[Deployment receipt](../assets/VP-0211/render-freeze-20261026/deployment-receipt.json).
 
 Local raw incident logs and copied configuration are retained only under
 `E:\codex\diagnostics\render-freeze-20261026-2041`.
