@@ -78,6 +78,35 @@ were overwritten.
 [Combined validation](../assets/VP-0214/lip-dropout-20261027/deployment-validation.json),
 [deployment receipt](../assets/VP-0214/lip-dropout-20261027/deployment-receipt.json).
 
+### Advanced subtitles plus Smooth Motion follow-up — 2026-10-27
+
+After testing `837afc5c`, the user isolates the remaining small backing sliver
+flicker to advanced subtitles with Smooth Motion. AR is stable. Preserved log
+confirms mode 3, temporal=1, mixing=1 and a fixed source rectangle
+0,384–3840,1776 during advanced playback. Native lip samples include valid
+cleanup and separate no-attachment/context rejections; sampled logs cannot
+prove every blended output pixel. No blanket claim that native cleanup is
+always valid is warranted.
+
+History search found a concrete integration gap: complete-picture preparation
+`082a4aab` and source-event/transactional recovery `592d890b` are not ancestors
+of the deployed source. The relevant complete-preparation functions and
+ReconstructionMotionTests.cpp are also absent. Their earlier tested lineage
+remains in OPEN DRAFT PR #197. Current code uses separate cleanup/layer
+preparation, combines each packet before mixing, and retains that older source
+packet/cache contract. The prior rounded row-mask repair remains present.
+The 573-test deployment qualification did not include the absent dedicated
+ReconstructionMotion tests, so it does not qualify the missing historical fix.
+
+This is a verified source integration gap, not yet proof that importing PR197
+will fix the exact visible sliver. Next work needs a joined production-path
+regression with current row masks, 23.976-to-59.95 mixing, inserted outputs,
+same-source retries/late cues, fixed picture geometry and captured pixel checks;
+then review the earlier fixes against current AR and backing protections.
+Do not import the whole old draft blindly or change AR thresholds based on this
+symptom. No source change or additional deployment was performed in this audit.
+[Investigation evidence](../assets/VP-0214/lip-smooth-motion-20261027/investigation.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh

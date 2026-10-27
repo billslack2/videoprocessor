@@ -1,0 +1,24 @@
+{
+  "observedCommit": "837afc5c838f857478421b9d9825cdf27a079114",
+  "processId": 42528,
+  "userObservation": "Small backing sliver flickers with advanced subtitles plus Smooth Motion; AR remains stable",
+  "missingHistoricalFixes": [
+    {
+      "description": "Complete-picture progressive reconstruction preparation during mixing",
+      "commit": "082a4aab5146aeb2980a4ba9cae7c6adbb00c64e"
+    },
+    {
+      "description": "Source-event reuse and transactional same-source cue recovery",
+      "commit": "592d890ba45edc5aed955f3b276c1315b6a33df5"
+    }
+  ],
+  "historicalPR": "https://github.com/billslack2/videoprocessor/pull/197",
+  "historicalPRState": "OPEN DRAFT",
+  "dedicatedMotionRegressionFilePresent": false,
+  "roundedMaskFixPresent": true,
+  "actualMixingConfirmed": true,
+  "exactSliverCausality": "Not yet established; requires joined selected-source/mixed-output reproduction",
+  "priorQualificationLimit": "573 tests did not include ReconstructionMotionTests, absent from this source tree",
+  "newDeployment": false,
+  "localEvidence": "E:\\codex\\diagnostics\\lip-smooth-motion-20261027"
+}
