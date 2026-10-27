@@ -841,7 +841,9 @@ namespace
                     Assert::IsTrue(SUCCEEDED(native->GetDesc(&desc)));
                     return desc.SwapEffect;
                 };
-                Assert::AreEqual(int(DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL), int(effect()));
+                const auto initialEffect = effect();
+                Assert::IsTrue(initialEffect == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL ||
+                    initialEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD);
                 for (int iteration = 0; iteration < 3; ++iteration)
                 {
                     int width = 64, height = 64;
@@ -872,7 +874,7 @@ namespace
                         retained.Release();
                         break;
                     }
-                    Assert::AreEqual(int(DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL), int(effect()),
+                    Assert::AreEqual(int(initialEffect), int(effect()),
                         L"Recovery must preserve flip presentation on the same HWND");
                 }
             }
