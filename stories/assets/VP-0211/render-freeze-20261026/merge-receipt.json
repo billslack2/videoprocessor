@@ -1,0 +1,28 @@
+{
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/211",
+  "state": "MERGED",
+  "betaBranch": "v1.4.02-beta",
+  "baseCommit": "917ab360c2823a97a669246fdc0732a54e9fa2fb",
+  "sourceCommit": "8b0ba6ee650b3a2809725c41bdeba10537604e6b",
+  "mergeCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "mergeTreeMatchesBuiltHead": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "tests": "skipped at explicit user request",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "E29FC002C23AA88BE9B89184DC56A315893BA19445927F808A6B659906FAFE95"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "B913F7F1BDA320B7EE0526D1AD24211A9AF6772600CD01472AA728EFB6090024"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "16C6E1B6D2850C1B3E751F41E1284A1FAC7BDE28D39A7C76D05028299B535710"
+    }
+  ],
+  "deployedThisTurn": false
+}

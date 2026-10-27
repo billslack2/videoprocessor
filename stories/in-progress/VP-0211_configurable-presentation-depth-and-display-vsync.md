@@ -4,6 +4,20 @@
 
 In Progress
 
+2026-10-26 PR #211 merged at the user's explicit request into current beta
+`v1.4.02-beta` as `7394ba420999a8fa708718ee4ce4d87e7459369f`.
+Beta had advanced to `917ab360` through PR #212, already including the same
+750 ms shader grace plus a separate 250 ms profile-notice delay. The Epson
+fix was rebased onto that tip, dropping its duplicate grace commit. Reviewed
+feature head `8b0ba6ee650b3a2809725c41bdeba10537604e6b` has unchanged Epson
+renderer and regression-test source. Its x64 Release build succeeded with
+zero errors and 10 warnings; tests remained skipped at the user's explicit
+request. The merge tree exactly matches the built feature tree. Host and
+both renderer hashes match their generated Release/x64 sidecars. No new
+deployment or restart was performed for this merge request. Physical Epson
+acceptance remains outstanding, so this story remains In Progress.
+[Merge receipt](../assets/VP-0211/render-freeze-20261026/merge-receipt.json).
+
 2026-10-26 reopened after a critical live report: the Epson sometimes displays
 one frame and then freezes while the desktop monitor continues rendering.
 The user confirms `present_every_vsync: false` keeps Epson playback moving,
