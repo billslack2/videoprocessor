@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "configuration": "Release",
+  "architecture": "x64",
+  "exitCode": 0,
+  "completedUtc": "2026-10-27T01:09:58.4148502-04:00",
+  "buildRecord": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\release-build-result.json",
+  "buildRecordSha256": "D34D59AD23F00DBEDC5E4C4DD2D1D112E528F25428AF117B9DCDF9386DE6B361",
+  "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+  "testAssemblySha256": "19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F"
+}

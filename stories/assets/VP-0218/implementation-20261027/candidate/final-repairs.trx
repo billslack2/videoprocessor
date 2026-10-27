@@ -1,0 +1,80 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="09e1e44b-0abd-442a-ae56-5c5a2929ef61" name="bslac@DESKTOP-3G35SCJ 2026-10-27 01:10:13" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-27T01:10:13.0685903-04:00" queuing="2026-10-27T01:10:13.0685903-04:00" start="2026-10-27T01:10:11.4782106-04:00" finish="2026-10-27T01:10:45.1298688-04:00" />
+  <TestSettings name="default" id="eebf3602-ee32-40cb-a841-1472a6431866">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-27_01_10_13" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="cab9c3e1-6dd1-495b-a061-1bfa27934469" testId="3c6d2487-3c3b-02a3-ab28-0a6ee76454e8" testName="ShadowInspectionMatchesExistingPixelProofWithoutMutatingInputs" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0034858" startTime="2026-10-27T01:10:11.8035104-04:00" endTime="2026-10-27T01:10:11.8069962-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cab9c3e1-6dd1-495b-a061-1bfa27934469" />
+    <UnitTestResult executionId="dd03a670-9ac7-4a92-bd65-8d6b584ab506" testId="937ff08a-cffb-433b-43c9-a9ce397f5cca" testName="WeakBroadStripCanPassOnlyWithCompleteNativeDistributedSupport" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0047650" startTime="2026-10-27T01:10:11.7814904-04:00" endTime="2026-10-27T01:10:11.7862554-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="dd03a670-9ac7-4a92-bd65-8d6b584ab506" />
+    <UnitTestResult executionId="a4d2e74d-6ec8-49eb-96ba-390447262d07" testId="1f3c9295-aca6-209d-5104-189345209d45" testName="RecordedWeakUpperStripAndProvisionalSampleCannotPassShadowProof" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0053014" startTime="2026-10-27T01:10:11.7864951-04:00" endTime="2026-10-27T01:10:11.7917965-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a4d2e74d-6ec8-49eb-96ba-390447262d07" />
+    <UnitTestResult executionId="c606e22d-48e6-458d-86b3-872e4160fede" testId="404b5156-359b-2b84-5e57-c14a7f3c04d2" testName="SuccessfulShadowProofStillCannotPublishThroughCurrentFitOwner" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0039141" startTime="2026-10-27T01:10:11.7774867-04:00" endTime="2026-10-27T01:10:11.7814008-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c606e22d-48e6-458d-86b3-872e4160fede" />
+    <UnitTestResult executionId="5e9e4ff0-db6c-4686-b7e9-1ac66f25d8b2" testId="debb1964-3bbb-c9b0-3e86-a856de7a1d5a" testName="ShadowTraceCountsUniqueWindowsAndKeepsFirstPassingSequence" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000258" startTime="2026-10-27T01:10:11.7774867-04:00" endTime="2026-10-27T01:10:11.7775125-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5e9e4ff0-db6c-4686-b7e9-1ac66f25d8b2" />
+    <UnitTestResult executionId="3ff8d9b7-56fd-4394-a224-f95ee77cba9a" testId="b8a2a8be-2afb-69d9-f610-ef96710c5035" testName="ShadowTraceResetsOnContextBaseOrSequenceRollback" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001345" startTime="2026-10-27T01:10:11.7714813-04:00" endTime="2026-10-27T01:10:11.7716158-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3ff8d9b7-56fd-4394-a224-f95ee77cba9a" />
+    <UnitTestResult executionId="daa34729-d96e-4ef6-90c8-b223e3a97a90" testId="1825c48d-bd8b-96de-3213-9497011f7b0b" testName="ShadowInspectionReportsExactFailingSampleAndExistingVeto" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0073740" startTime="2026-10-27T01:10:11.7914994-04:00" endTime="2026-10-27T01:10:11.7988734-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="daa34729-d96e-4ef6-90c8-b223e3a97a90" />
+    <UnitTestResult executionId="81c94b64-fa5c-4bb5-a88d-3b2256cf10c8" testId="0c6892a4-185e-c637-cf5f-17361e1c4951" testName="ShadowInspectionExplainsBudgetAndFirstIdentityFailures" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0044574" startTime="2026-10-27T01:10:11.7985058-04:00" endTime="2026-10-27T01:10:11.8029632-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="81c94b64-fa5c-4bb5-a88d-3b2256cf10c8" />
+    <UnitTestResult executionId="038363b4-8bf6-45a3-8715-5a96d0684496" testId="c936bba7-821e-fdc3-53d9-c9f8b220d2ac" testName="MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding" computerName="DESKTOP-3G35SCJ" duration="00:00:20.0989860" startTime="2026-10-27T01:10:25.0174791-04:00" endTime="2026-10-27T01:10:45.1164651-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="038363b4-8bf6-45a3-8715-5a96d0684496" />
+    <UnitTestResult executionId="ec40faa0-15e6-4875-b583-a731a8214466" testId="50e18f6f-2c50-63a2-b1e0-f3c4f3603181" testName="BlackPanelCoversLastPictureRowWithSquareLowerCorners" computerName="DESKTOP-3G35SCJ" duration="00:00:13.2105308" startTime="2026-10-27T01:10:11.8075140-04:00" endTime="2026-10-27T01:10:25.0180448-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ec40faa0-15e6-4875-b583-a731a8214466" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SuccessfulShadowProofStillCannotPublishThroughCurrentFitOwner" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="404b5156-359b-2b84-5e57-c14a7f3c04d2">
+      <Execution id="c606e22d-48e6-458d-86b3-872e4160fede" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::SuccessfulShadowProofStillCannotPublishThroughCurrentFitOwner" />
+    </UnitTest>
+    <UnitTest name="ShadowTraceResetsOnContextBaseOrSequenceRollback" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="b8a2a8be-2afb-69d9-f610-ef96710c5035">
+      <Execution id="3ff8d9b7-56fd-4394-a224-f95ee77cba9a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::ShadowTraceResetsOnContextBaseOrSequenceRollback" />
+    </UnitTest>
+    <UnitTest name="ShadowInspectionMatchesExistingPixelProofWithoutMutatingInputs" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="3c6d2487-3c3b-02a3-ab28-0a6ee76454e8">
+      <Execution id="cab9c3e1-6dd1-495b-a061-1bfa27934469" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::ShadowInspectionMatchesExistingPixelProofWithoutMutatingInputs" />
+    </UnitTest>
+    <UnitTest name="RecordedWeakUpperStripAndProvisionalSampleCannotPassShadowProof" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="1f3c9295-aca6-209d-5104-189345209d45">
+      <Execution id="a4d2e74d-6ec8-49eb-96ba-390447262d07" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::RecordedWeakUpperStripAndProvisionalSampleCannotPassShadowProof" />
+    </UnitTest>
+    <UnitTest name="BlackPanelCoversLastPictureRowWithSquareLowerCorners" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="50e18f6f-2c50-63a2-b1e0-f3c4f3603181">
+      <Execution id="ec40faa0-15e6-4875-b583-a731a8214466" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.LibplaceboLutParserTests" name="VideoProcessorTest::LibplaceboLutParserTests::BlackPanelCoversLastPictureRowWithSquareLowerCorners" />
+    </UnitTest>
+    <UnitTest name="ShadowInspectionExplainsBudgetAndFirstIdentityFailures" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="0c6892a4-185e-c637-cf5f-17361e1c4951">
+      <Execution id="81c94b64-fa5c-4bb5-a88d-3b2256cf10c8" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::ShadowInspectionExplainsBudgetAndFirstIdentityFailures" />
+    </UnitTest>
+    <UnitTest name="MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="c936bba7-821e-fdc3-53d9-c9f8b220d2ac">
+      <Execution id="038363b4-8bf6-45a3-8715-5a96d0684496" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.LibplaceboLutParserTests" name="VideoProcessorTest::LibplaceboLutParserTests::MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding" />
+    </UnitTest>
+    <UnitTest name="ShadowInspectionReportsExactFailingSampleAndExistingVeto" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="1825c48d-bd8b-96de-3213-9497011f7b0b">
+      <Execution id="daa34729-d96e-4ef6-90c8-b223e3a97a90" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::ShadowInspectionReportsExactFailingSampleAndExistingVeto" />
+    </UnitTest>
+    <UnitTest name="WeakBroadStripCanPassOnlyWithCompleteNativeDistributedSupport" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="937ff08a-cffb-433b-43c9-a9ce397f5cca">
+      <Execution id="dd03a670-9ac7-4a92-bd65-8d6b584ab506" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::WeakBroadStripCanPassOnlyWithCompleteNativeDistributedSupport" />
+    </UnitTest>
+    <UnitTest name="ShadowTraceCountsUniqueWindowsAndKeepsFirstPassingSequence" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="debb1964-3bbb-c9b0-3e86-a856de7a1d5a">
+      <Execution id="5e9e4ff0-db6c-4686-b7e9-1ac66f25d8b2" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.FitLookaheadDiagnosticTests" name="Tests::FitLookaheadDiagnosticTests::ShadowTraceCountsUniqueWindowsAndKeepsFirstPassingSequence" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="3c6d2487-3c3b-02a3-ab28-0a6ee76454e8" executionId="cab9c3e1-6dd1-495b-a061-1bfa27934469" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="937ff08a-cffb-433b-43c9-a9ce397f5cca" executionId="dd03a670-9ac7-4a92-bd65-8d6b584ab506" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1f3c9295-aca6-209d-5104-189345209d45" executionId="a4d2e74d-6ec8-49eb-96ba-390447262d07" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="404b5156-359b-2b84-5e57-c14a7f3c04d2" executionId="c606e22d-48e6-458d-86b3-872e4160fede" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="debb1964-3bbb-c9b0-3e86-a856de7a1d5a" executionId="5e9e4ff0-db6c-4686-b7e9-1ac66f25d8b2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b8a2a8be-2afb-69d9-f610-ef96710c5035" executionId="3ff8d9b7-56fd-4394-a224-f95ee77cba9a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1825c48d-bd8b-96de-3213-9497011f7b0b" executionId="daa34729-d96e-4ef6-90c8-b223e3a97a90" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0c6892a4-185e-c637-cf5f-17361e1c4951" executionId="81c94b64-fa5c-4bb5-a88d-3b2256cf10c8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c936bba7-821e-fdc3-53d9-c9f8b220d2ac" executionId="038363b4-8bf6-45a3-8715-5a96d0684496" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="50e18f6f-2c50-63a2-b1e0-f3c4f3603181" executionId="ec40faa0-15e6-4875-b583-a731a8214466" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="10" executed="10" passed="10" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "e211bdb929219ea6e60d2e9390b0cf90cbabef8a",
+  "configuration": "Release",
+  "architecture": "x64",
+  "exitCode": 0,
+  "completedUtc": "2026-10-27T00:26:43.184374-04:00",
+  "buildRecord": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\initial-release-build-result.json",
+  "buildRecordSha256": "6942A8F1E857C35AC8AB112E8A803058C5366CC0BD3960523EB0B0A880CA5EC3",
+  "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+  "testAssemblySha256": "3C034ED5992069B0BA761D0DEEC6A2C64F74D10A2F2FDA89A56597020D578B06",
+  "assemblyHashRecordedUtc": "2026-10-27T04:58:52.8754669+00:00",
+  "hashObservation": "Recorded during broad GPU run; independent project build before/after hashes also confirm root test DLL unchanged."
+}

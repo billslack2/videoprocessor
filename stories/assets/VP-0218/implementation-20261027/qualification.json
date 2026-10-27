@@ -1,0 +1,249 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "broadTestSourceCommit": "e211bdb929219ea6e60d2e9390b0cf90cbabef8a",
+  "productionSourceUnchangedSinceBroadTests": true,
+  "testOnlyChangesAfterBroadTests": [
+    "src/VideoProcessor-Test/FitLookaheadDiagnosticTests.cpp",
+    "src/VideoProcessor-Test/LibplaceboLutParserTests.cpp"
+  ],
+  "baseline": {
+    "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\baseline\\baseline-full.trx",
+    "sha256": "6322e8413fffa3a1b147b836517dac1b0949d5165a01c64fbf9383e831b006f6",
+    "counters": {
+      "total": "3422",
+      "executed": "3422",
+      "passed": "3420",
+      "failed": "2",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "times": {
+      "creation": "2026-10-26T23:56:49.1180293-04:00",
+      "queuing": "2026-10-26T23:56:49.1180293-04:00",
+      "start": "2026-10-26T23:56:48.7066497-04:00",
+      "finish": "2026-10-27T00:46:01.4552096-04:00"
+    }
+  },
+  "baselineFailures": [
+    {
+      "name": "VideoProcessorTest::LibplaceboLutParserTests::MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding",
+      "outcome": "Failed",
+      "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\baseline\\baseline-full.trx",
+      "error": "Assert failed. restoration must stop exactly at the black-bar seam"
+    },
+    {
+      "name": "VideoProcessorTest::LibplaceboLutParserTests::BlackPanelCoversLastPictureRowWithSquareLowerCorners",
+      "outcome": "Failed",
+      "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\baseline\\baseline-full.trx",
+      "error": "Assert failed. the panel ends exactly at the picture/bar boundary"
+    }
+  ],
+  "runsInEffectiveOrder": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\core-full.trx",
+      "sha256": "9f7e2a463907d34c9f733a4aee3733c6266e1fd090fe574b3ce2d4075f3fe454",
+      "counters": {
+        "total": "3355",
+        "executed": "3355",
+        "passed": "3354",
+        "failed": "1",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "times": {
+        "creation": "2026-10-27T00:27:51.6183840-04:00",
+        "queuing": "2026-10-27T00:27:51.6183840-04:00",
+        "start": "2026-10-27T00:27:51.1769755-04:00",
+        "finish": "2026-10-27T00:49:15.0672406-04:00"
+      },
+      "inputProvenance": {
+        "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\core-full.trx.input.json",
+        "sha256": "93d2307338b209093fa5bdbd1e905efd9905ab0508d4db92c6527c322ca0f76c",
+        "sourceCommit": "e211bdb929219ea6e60d2e9390b0cf90cbabef8a",
+        "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+        "testAssemblySha256": "3C034ED5992069B0BA761D0DEEC6A2C64F74D10A2F2FDA89A56597020D578B06",
+        "buildEvidence": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\initial-build-test-evidence.json",
+        "buildEvidenceSha256": "BAF0CE5C6EF0A7AD8E450D757D41E7AA3E296D9FD6F114C7B56F1FA28AA9DFCA",
+        "recordedUtc": "2026-10-27T04:58:52.8954692+00:00"
+      }
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx",
+      "sha256": "6430f3c65d917002057aacc9425cd90ee040d4e73a04b19ab1de0c76aa89930d",
+      "counters": {
+        "total": "77",
+        "executed": "77",
+        "passed": "75",
+        "failed": "2",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "times": {
+        "creation": "2026-10-27T00:48:17.2173437-04:00",
+        "queuing": "2026-10-27T00:48:17.2173437-04:00",
+        "start": "2026-10-27T00:48:15.6125921-04:00",
+        "finish": "2026-10-27T01:07:54.4174339-04:00"
+      },
+      "inputProvenance": {
+        "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx.input.json",
+        "sha256": "2dfa688248d7dfdb51bed525a0708cd10625edd86f643889a8c8c4c4c066c820",
+        "sourceCommit": "e211bdb929219ea6e60d2e9390b0cf90cbabef8a",
+        "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+        "testAssemblySha256": "3C034ED5992069B0BA761D0DEEC6A2C64F74D10A2F2FDA89A56597020D578B06",
+        "buildEvidence": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\initial-build-test-evidence.json",
+        "buildEvidenceSha256": "BAF0CE5C6EF0A7AD8E450D757D41E7AA3E296D9FD6F114C7B56F1FA28AA9DFCA",
+        "recordedUtc": "2026-10-27T04:58:52.8972289+00:00"
+      }
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+      "sha256": "89fe5264cb97849ec8eb276f92f0b0327672f9da8655364cf7dc553ca503633f",
+      "counters": {
+        "total": "10",
+        "executed": "10",
+        "passed": "10",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "times": {
+        "creation": "2026-10-27T01:10:13.0685903-04:00",
+        "queuing": "2026-10-27T01:10:13.0685903-04:00",
+        "start": "2026-10-27T01:10:11.4782106-04:00",
+        "finish": "2026-10-27T01:10:45.1298688-04:00"
+      },
+      "executionReceipt": {
+        "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx.result.json",
+        "sha256": "f56d4d71a758300f9bd7bc35f3806b687c2693ed2b9fe55b4331b4c55ebbc329",
+        "runId": "a5fb05be-13ba-408e-86ff-af598abfe338",
+        "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+        "testAssemblySha256": "19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F",
+        "exitCode": 0,
+        "completedUtc": "2026-10-27T05:10:45.2352684+00:00"
+      },
+      "inputProvenance": {
+        "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx.input.json",
+        "sha256": "27d90747dce4e2207fed710edd9db0083811fd4498992e3eb2315a1ba37f012f",
+        "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+        "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+        "testAssemblySha256": "19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F",
+        "buildEvidence": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-build-test-evidence.json",
+        "buildEvidenceSha256": "09DA1F075C55C8C098D7F1AC32C6C13C48122614308FC2C0198D7AAAFD568688",
+        "preparedUtc": "2026-10-27T05:10:10.9668398+00:00",
+        "runId": "a5fb05be-13ba-408e-86ff-af598abfe338",
+        "executable": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+        "arguments": [
+          "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+          "/Platform:x64",
+          "/TestCaseFilter:FullyQualifiedName~FitLookaheadDiagnosticTests|FullyQualifiedName~BlackPanelCoversLastPictureRowWithSquareLowerCorners|FullyQualifiedName~MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding",
+          "/ResultsDirectory:E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate",
+          "/Logger:trx;LogFileName=final-repairs.trx"
+        ]
+      }
+    }
+  ],
+  "uniqueTests": 3433,
+  "expectedTotal": 3433,
+  "missingBaselineTests": [],
+  "newTests": [
+    "Tests::AlphaSourceCropPolicyTests::ChangedCandidateAtSameSequenceIsNotReportedAsRepeat",
+    "Tests::AlphaSourceCropPolicyTests::ContinuousNativeProofSurvivesAFrameThatAlsoHasBroadOccupancy",
+    "Tests::AlphaSourceCropPolicyTests::IndependentOutwardRoutesDoNotForgetPriorPresentationOwnership",
+    "Tests::AlphaSourceCropPolicyTests::StaleSourceSequenceCannotRewindOrBankOutwardProof",
+    "Tests::FitLookaheadDiagnosticTests::WeakBroadStripCanPassOnlyWithCompleteNativeDistributedSupport",
+    "Tests::LookaheadOutwardProofTests::BufferedNativeDistributedExpansionReachesFirstFrameFinalCrop",
+    "Tests::LookaheadOutwardProofTests::BufferedNativeDistributedExpansionUsesExactQueuedRouteAndRevalidatesCurrentFrame",
+    "Tests::LookaheadOutwardProofTests::ProgressiveNativeDistributedWindowStillSuppressesIntermediatePublication",
+    "VideoProcessorTest::ActivePictureBlackReferenceTests::UniformFullMattesCoverNominationAndQualificationDiscontinuities",
+    "VideoProcessorTest::ActivePictureBlackReferenceTests::UniformMatteRangeMatrixPreservesLimitedAndUnknownInterpretation",
+    "VideoProcessorTest::ActivePictureBlackReferenceTests::UpperEnvelopeQualificationPreservesGradientAndMismatchRejection"
+  ],
+  "passed": 3433,
+  "failures": [],
+  "originalFailedResultsPreserved": [
+    {
+      "name": "Tests::FitLookaheadDiagnosticTests::RecordedWeakUpperStripAndProvisionalSampleCannotPassShadowProof",
+      "original": {
+        "outcome": "Failed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\core-full.trx",
+        "error": "Assert failed. Expected:<0> Actual:<1>"
+      },
+      "retest": {
+        "outcome": "Passed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+        "error": null
+      }
+    },
+    {
+      "name": "VideoProcessorTest::LibplaceboLutParserTests::MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding",
+      "original": {
+        "outcome": "Failed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx",
+        "error": "Assert failed. restoration must stop exactly at the black-bar seam"
+      },
+      "retest": {
+        "outcome": "Passed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+        "error": null
+      }
+    },
+    {
+      "name": "VideoProcessorTest::LibplaceboLutParserTests::BlackPanelCoversLastPictureRowWithSquareLowerCorners",
+      "original": {
+        "outcome": "Failed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx",
+        "error": "Assert failed. the panel ends exactly at the picture/bar boundary"
+      },
+      "retest": {
+        "outcome": "Passed",
+        "sourceRun": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+        "error": null
+      }
+    }
+  ],
+  "status": "passed",
+  "limitations": [
+    "Optional recorded-input test bodies may return without exercising unavailable captures; a Passed result does not establish physical playback acceptance.",
+    "Concurrent GPU timings are not isolated performance measurements."
+  ]
+}

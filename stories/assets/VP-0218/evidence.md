@@ -1,4 +1,4 @@
-# VP-0218 review evidence
+# VP-0218 review and implementation evidence
 
 ## Executed unchanged-beta characterization
 
@@ -54,6 +54,48 @@ Pre-existing state discrepancies were reported and deliberately left unchanged: 
 
 The dedicated tracker already had an unrelated edit in `stories/assets/VP-0207/team-design-20261023/design.txt`. It is preserved. The new design is committed from a clean main-based tracker checkout under E:\codex and synchronized to origin/main; synchronization must preserve that pre-existing edit rather than claim the dedicated worktree is clean.
 
-## Remaining verification
+## Design review limits on 2026-10-26
 
 The earlier design review resolved the queued-consumer, raw-to-qualified provenance and shared-owner findings. The later native capture added a distinct variable-exterior problem, exact-edge uncertainty and absolute-visibility reconciliation requirements; these are now explicit qualification work, not solved behavior. Final independent review confirmed the six new safeguards, then requested two wording/coverage corrections: forbid fitting specifically to pass this image, and distinguish qualifying raw provisional axes from challenging a magnitude-derived full-raster measurement. Both corrections are incorporated in the design. No production fix, full VP build, native/GPU regression run, live acceptance or deployment occurred in this design review. Required next evidence is specified in the design: annotated native positives including actual moving transitions, independent adversarial negatives, complete authority/retention integration, source-frame latency through actual submission and bounded analysis cost.
+
+## 2026-10-27 implementation and deployment
+
+Source and review: [PR #213](https://github.com/billslack2/videoprocessor/pull/213), final clean commit `ddf5d666803c29e0bdf7af310963b2695e382bc2`, current beta base `7394ba420999a8fa708718ee4ce4d87e7459369f`. The production implementation was committed as `e211bdb929219ea6e60d2e9390b0cf90cbabef8a`; only two test files changed afterward. The whole previously deployed source tree `326012fd1c2f0f038815b98d526da83897972d20` and beta have identical tree `9262299fab9b24dd336b0e3be330ebbb18dd2ab0`, preserving the prior deployment's profile/render fixes. Source worktree: `E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027`. No merge or installer/public release was performed.
+
+Implemented behavior:
+
+- Full-range uniform bars at codes 25–31 enter the existing strict opposing-matte proof; reference qualification extends through the existing code-104 sample envelope. Cutoff 104, neutral-chroma/dispersion/continuity/whole-band retention checks and Limited/Unknown interpretation remain unchanged. The same 39 synthetic cases improve from 24 to 29 correct crops: exactly Full-range Y25,31,81,90,104 improve. Ten misses remain. This is not a test of 39 actual ads.
+- Broad and native distributed live predicates retain separate anchored contiguous runs and common episode/owner provenance. One complete route is required; incomplete routes cannot pool votes, repeats cannot add votes and stale identities cannot rewind state. A native→both→native sequence changes from beta's 1/1/1 to 1/2/3 confirmations. Shared episode age cannot be reset by choosing another route.
+- Queued native proof uses the same exact source/context and current-frame checks as broad proof. The three-frame native window reaches the first effective source frame in policy/final-crop fixtures. Progressive suppression rechecks the selected route; subtitle-TRANSLATE retirement stays broad-only. There is no new queue wait/growth or new pixel-scan path for route continuity. Physical source-to-display latency was not measured on a moving movie capture.
+
+[Numeric comparison](implementation-20261027/evidence-summary.json), [uniform results](implementation-20261027/uniform-probe/results.csv), and [common-API route probe](implementation-20261027/route-comparison/README.md) preserve before/after results. The route probe uses synthetic metadata. The final-crop native fixture combines synthetic strict-retention evidence with real bright-pixel retention and does not establish behavior on a captured dark movie transition.
+
+All 97 saved V210/Limited ad frames remain provisional. Detector, edges, identities and strict-profile CSVs are byte-identical to beta; the actual ad is not fixed by this patch. The separate frozen [profile experiment](implementation-20261027/profile-experiment/README.md) independently nominated transitions at 300 and 1856 and retained an eight-row uncertainty fringe, but the upper profile failed held-out residual/connected-component limits. A matched low-slope authored ceiling also passes the synthetic model, so it does not qualify safe variable-profile authority. No such route shipped, no boundary was inferred from opposing-bar symmetry, and no thresholds were tuned to force this image to pass.
+
+### Executed test evidence
+
+| Run | Result | Interpretation |
+| --- | --- | --- |
+| Unchanged beta full native suite | 3,420/3,422 | Two subtitle GPU assertions failed and reproduced individually. |
+| Candidate broad core run | 3,354/3,355 | One diagnostic fixture retained native-support masks from unrelated bright synthetic pixels. |
+| Candidate full renderer class | 75/77 | Same two unchanged-beta subtitle failures; no additional failure. |
+| Corrected focused AR/diagnostics | 395/395 | Includes strict raised mattes, route identity/owner/geometry, queued consumers and the paired weak-edge positive/negative. |
+| Corrected subtitle cases, project-local build | 2/2 | Independent pixel-contract repair before final build. |
+| Final clean Release retest | 10/10 | All corrected Fit diagnostics and both subtitle methods, exact final root test DLL. |
+| Effective full native inventory | 3,433/3,433 | All beta case names covered, 11 added methods, zero remaining failures after explicit targeted repairs. |
+
+Original failures were not discarded or waived. `RecordedWeakUpperStripAndProvisionalSampleCannotPassShadowProof` now clears the synthetic top native-support masks while retaining the original weak broad metrics and expected rejection. Its new positive explicitly supplies distributed support and verifies the native route. The diagnostic fingerprint now includes those masks.
+
+`BlackPanelCoversLastPictureRowWithSquareLowerCorners` previously expected no effect on the first bar row although the existing shader intentionally overlaps attached backing by two pixels. The corrected fixture retains real-black-bar last-picture-row corner checks and adds gray sentinels: y56–57 are black, y58–60 stay RGB230 at both corner probes. `MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding` now explicitly disables attached extension for its strict seam-restoration contract. All original pixel tolerances are preserved; no subtitle production/header/shader code changed.
+
+[Qualification](implementation-20261027/qualification.json) retains full original run hashes, baseline failure names/errors and final exact-build retest provenance. [Verifier](implementation-20261027/assemble-qualification.py) rejects missing baseline methods, non-Passed effective results, stale/baseline overlays, unbound test assemblies and any production-source change after the broad runs. Final source/configuration/build identity and test-DLL hashes are tied to a prepared invocation and successful completion record. The first preflight timestamp parser rejected .NET's seven-digit precision; support was corrected before the successful preflight and deployment. No deployment happened on that failed preflight.
+
+Optional recorded-capture test bodies without their local environment inputs are not physical playback coverage. GPU timing overlapped between some runs, so those durations are not isolated performance measurements. The final x64 Release solution build passed. The 3,433 inventory refers to the native C++ test DLL, not installer lifecycle or interactive Config-editor tests.
+
+### Deployment and remaining acceptance
+
+At 01:13 EDT the verified x64 Release host and both renderer variants were deployed with matching runtime records/PDBs (nine files). All 18 retained renderer dependency DLLs match the final build. Final executable/renderer source identity is `v1.4.02-beta-ddf5d66`, clean commit `ddf5d666803c29e0bdf7af310963b2695e382bc2`. [Artifact hashes](implementation-20261027/build-artifacts.json) and [deployment receipt](implementation-20261027/deployment-receipt.json) record all identities and before/after/backup checks.
+
+Backup: `C:\Videoprocessor\vp\deployment-backup-vp0218-20261027-011307-ddf5d666`. `VideoProcessor.cfg` and `VideoProcessor.state` were backed up and remained byte-identical; configuration edits: none. VP had closed normally before deployment and no player was started. Runtime initialization and physical playback acceptance therefore remain pending for the user's next launch; deployed/backup file hashes are independently verified.
+
+Three Luna agents reviewed implementation and test conflicts, the native ad/profile evidence, and deployment/rollback handling. The deployment review was a script-logic review before final build; the later successful preflight/receipt records actual readiness and deployment. Historical review notes: [transition review](implementation-20261027/transition-review-final.txt), [deployment review](implementation-20261027/deployment-review-final.txt). The story stays In Progress for the captured variable-profile ad, dark-owner/full-raster work and physical playback acceptance.

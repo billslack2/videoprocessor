@@ -2,3 +2,4 @@ bar-probe/* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eo
 native-replay/* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # Keep the hashed diagnostic script byte-identical, including its original trailing blank lines.
 native-replay/run-replay.ps1 -text whitespace=blank-at-eol,-blank-at-eof,space-before-tab,cr-at-eol
+implementation-20261027/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

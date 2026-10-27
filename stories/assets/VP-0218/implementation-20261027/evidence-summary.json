@@ -1,0 +1,94 @@
+{
+  "sourceCommit": "e211bdb929219ea6e60d2e9390b0cf90cbabef8a",
+  "baselineCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "uniform": {
+    "cases": 39,
+    "baselineCorrect": 24,
+    "candidateCorrect": 29,
+    "changedCases": [
+      {
+        "range": "Full",
+        "barY": 25,
+        "before": "PROVISIONAL",
+        "after": "BAR_CROP_TRUSTED",
+        "trustedTop": 48,
+        "trustedBottom": 312,
+        "cutoff": 49
+      },
+      {
+        "range": "Full",
+        "barY": 31,
+        "before": "PROVISIONAL",
+        "after": "BAR_CROP_TRUSTED",
+        "trustedTop": 48,
+        "trustedBottom": 312,
+        "cutoff": 55
+      },
+      {
+        "range": "Full",
+        "barY": 81,
+        "before": "FULL_RASTER_TRUSTED",
+        "after": "BAR_CROP_TRUSTED",
+        "trustedTop": 48,
+        "trustedBottom": 312,
+        "cutoff": 104
+      },
+      {
+        "range": "Full",
+        "barY": 90,
+        "before": "FULL_RASTER_TRUSTED",
+        "after": "BAR_CROP_TRUSTED",
+        "trustedTop": 48,
+        "trustedBottom": 312,
+        "cutoff": 104
+      },
+      {
+        "range": "Full",
+        "barY": 104,
+        "before": "FULL_RASTER_TRUSTED",
+        "after": "BAR_CROP_TRUSTED",
+        "trustedTop": 48,
+        "trustedBottom": 312,
+        "cutoff": 104
+      }
+    ],
+    "limitedAndUnknownUnchanged": true,
+    "maximumCutoff": 104
+  },
+  "nativeReplay": [
+    {
+      "file": "detector.csv",
+      "rows": 97,
+      "differentRows": 0,
+      "baselineSha256": "f1ead71cfd57545ad6ca9ca1a566b3dfcef31c90caf48959033e590c9e215731",
+      "candidateSha256": "f1ead71cfd57545ad6ca9ca1a566b3dfcef31c90caf48959033e590c9e215731"
+    },
+    {
+      "file": "edges.csv",
+      "rows": 388,
+      "differentRows": 0,
+      "baselineSha256": "8b1eea993998fa730f04966074d3a93cacde8880b6f8130f752813fd7c4393c5",
+      "candidateSha256": "8b1eea993998fa730f04966074d3a93cacde8880b6f8130f752813fd7c4393c5"
+    },
+    {
+      "file": "identities.csv",
+      "rows": 97,
+      "differentRows": 0,
+      "baselineSha256": "91dca76139a050c6b9dc51d05f375e98b68e78153183035d0f7318ec476fe987",
+      "candidateSha256": "91dca76139a050c6b9dc51d05f375e98b68e78153183035d0f7318ec476fe987"
+    },
+    {
+      "file": "strict-profiles.csv",
+      "rows": 194,
+      "differentRows": 0,
+      "baselineSha256": "96fe2c5e075cf230f5253e444852289a4fc97acb14cbf782028b180cbe6bb2a9",
+      "candidateSha256": "96fe2c5e075cf230f5253e444852289a4fc97acb14cbf782028b180cbe6bb2a9"
+    }
+  ],
+  "limitations": [
+    "Uniform sweep is synthetic, not 39 actual ads.",
+    "97 saved frames are one paused native V210 Limited-range ad.",
+    "The captured variable upper band remains provisional; no variable-profile authority is enabled.",
+    "Raw native pixels remain local."
+  ]
+}

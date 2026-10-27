@@ -4,7 +4,9 @@
 
 In Progress
 
-Implementation authorized: implement carefully with Luna subagent conflict/regression reviews, then deploy when checks pass. GitHub default/latest beta rediscovered as `v1.4.02-beta`, fetched at `7394ba420999a8fa708718ee4ce4d87e7459369f`. Active branch `codex/vp-0218-adaptive-ar-20261027`, isolated worktree `E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027`. Production source work is underway; no candidate has yet passed or been deployed. Preserve experimental profile qualification gates and record actual achieved scope.
+Contained implementation deployed on 2026-10-27 at 01:13 EDT from clean x64 Release commit `ddf5d666803c29e0bdf7af310963b2695e382bc2`, based on current GitHub beta `v1.4.02-beta` at `7394ba420999a8fa708718ee4ce4d87e7459369f`. [PR #213](https://github.com/billslack2/videoprocessor/pull/213) is open and pushed. Three Luna agents reviewed implementation, conflicts/regressions and deployment handling. Effective native-test coverage is 3,433 passing cases after explicit fixture corrections and exact-build retests; original failed runs are preserved. Host and both renderer variants, their backups and unchanged configuration/state hashes were independently verified. VP had been closed and was left closed; physical playback acceptance is pending.
+
+The story remains In Progress because the captured variable-gradient YouTube TV ad is unchanged, and dark-owner/full-raster extensions remain unqualified. The shipped scope is bounded uniform raised-matte qualification, independent live proof continuity and native queued-proof parity. See [executed implementation and deployment evidence](../assets/VP-0218/evidence.md#2026-10-27-implementation-and-deployment).
 
 2026-10-26 review record: Three-reviewer source/design investigation completed against current remote beta `v1.4.02-beta` at `7394ba420999a8fa708718ee4ce4d87e7459369f`. Implementation had not started at that review. No production logic, configuration or deployed binary changed. The user reports slow scope-to-IMAX/16:9 transitions and frequent bright YouTube TV ads with clear borders that never acquire. The user then captured a paused ad: all 97 native payloads reproduce provisional acquisition, with a raised/nonuniform upper exterior and trusted near-black lower bar. This Limited-range failure requires a separate variable-profile investigation; the initial uniform, matching-matte proposal does not fix it. See [native capture findings](../assets/VP-0218/native-capture-20261026.md).
 
@@ -47,9 +49,9 @@ As a viewer of mixed-aspect movies and YouTube TV, I want VP to use clear curren
 
 ## Readiness and next action
 
-Proceed first with reproducible evidence and the two contained proof-parity changes. Uniform-matte and variable-profile measurement begin as separate shadow routes until their exact thresholds, candidate-search bounds, whole-band inspection cost and final retention semantics are qualified. Dark-owner/full-raster extensions require additional labeled native positives and counterexamples before activation.
+The contained implementation is deployed and ready for the next normal player launch. Verify actual moving scope-to-taller transitions and final composition during playback before closing the shipped portion. The completed tests preserve stale/repeated identity rejection, independently complete proof routes, bounded owner age, anchored detector-step tolerance, progressive motion and subtitle ownership guards.
 
-At implementation start, rediscover/fetch the latest remote beta, create a clean source worktree under `E:\codex\videoprocessor`, record its identity, and move this story and index to In Progress atomically. Use the user's standing current-beta baseline instruction. Do not deploy as part of this review/design task.
+Continue variable-profile work separately. The frozen profile experiment failed on the captured upper exterior and accepted a matched low-slope authored ceiling; no variable-profile crop authority was enabled. Additional independently labeled native boundaries/counterexamples and exact visibility-witness reconciliation are required. Dark-owner and full-raster endpoints likewise require native positives and adversarial validation before activation. Do not treat the uniform synthetic sweep or unchanged ad replay as physical playback acceptance.
 
 ## Related work
 

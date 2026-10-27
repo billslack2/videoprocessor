@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "baseCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "beta": "v1.4.02-beta",
+  "configuration": "Release",
+  "architecture": "x64",
+  "exitCode": 0,
+  "startedUtc": "2026-10-27T05:08:54.4369809+00:00",
+  "completedUtc": "2026-10-27T05:09:58.4148502+00:00",
+  "testAssemblySha256": "19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F"
+}

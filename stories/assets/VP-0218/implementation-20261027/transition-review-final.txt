@@ -1,0 +1,10 @@
+VP-0218 transition conflict/regression review
+Final commit: e211bdb929219ea6e60d2e9390b0cf90cbabef8a
+
+Review: The committed producer and consumer keep broad-occupancy and native-distributed evidence as independent complete routes. A queued window must satisfy one route on all required consecutive source identities; evidence from incomplete routes is not pooled. Route runs retain their own first-candidate anchors, and detector-step bridging stays bounded to one step from that anchor. Stale lower source sequences in the same generation/base contract grant no current proof and preserve prior route runs, episode age, and ownership. Broad and native routes share the episode owner state without resetting it when route selection changes.
+
+Queued native proof is revalidated against the exact current identity and route evidence before adoption. Progressive native edge motion continues to defer intermediate publication while current evidence is valid. Subtitle TRANSLATE retirement is gated to a complete broad-occupancy proof with matching generation/base and only occurs after adoption; native proof cannot retire that owner. Tests also cover candidate-anchor restart diagnostics and stale-sequence admission deferral.
+
+Validation recorded for this commit: x64 Release focused AlphaSourceCropPolicyTests + LookaheadOutwardProofTests, 369/369 passed. TRX: E:\codex\diagnostics\vp-0218-implementation-20261027\stale-review\TransitionFocusedTests.trx. This review was read-only; no build or test was run for this record.
+
+Limits: The native first-frame final-crop path is covered with a synthetic replay fixture. There is no physical dark-scene or movie-capture replay demonstrating native-distributed evidence from real source pixels. Static review found no unresolved material conflict or regression flaw; that capture-level behavior remains unverified.

@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "testAssembly": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+  "testAssemblySha256": "19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F",
+  "buildEvidence": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-build-test-evidence.json",
+  "buildEvidenceSha256": "09DA1F075C55C8C098D7F1AC32C6C13C48122614308FC2C0198D7AAAFD568688",
+  "preparedUtc": "2026-10-27T05:10:10.9668398+00:00",
+  "runId": "a5fb05be-13ba-408e-86ff-af598abfe338",
+  "executable": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+  "arguments": [
+    "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+    "/Platform:x64",
+    "/TestCaseFilter:FullyQualifiedName~FitLookaheadDiagnosticTests|FullyQualifiedName~BlackPanelCoversLastPictureRowWithSquareLowerCorners|FullyQualifiedName~MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding",
+    "/ResultsDirectory:E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate",
+    "/Logger:trx;LogFileName=final-repairs.trx"
+  ]
+}

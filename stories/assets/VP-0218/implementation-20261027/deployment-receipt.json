@@ -1,0 +1,144 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "configuration": "Release",
+  "architecture": "x64",
+  "status": "deployed-hashes-verified",
+  "timeUtc": "2026-10-27T01:13:08.3145085-04:00",
+  "backupDirectory": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/213",
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\VideoProcessor.exe",
+      "existed": true,
+      "beforeSha256": "5C69E293E242276CF7B3FB44C55AA1760A87CADE9E9C84CAD79FDCFDB8F95D0F",
+      "expectedSha256": "8163CBDEAC674A9EBC04A0B8882C75C12BE15F3F6B78FE0FC771C6D1A3130530"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\VideoProcessor.exe.runtime.json",
+      "existed": true,
+      "beforeSha256": "046CBB27E4DC841F67F7D969B36CF16FDB5FDBE1E4635C0F3D06EC2E795C72E2",
+      "expectedSha256": "E411008CFA31ABDFB1C5C7720FAEA729864FC30D2B985474499AB79A3DBB59CE"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\VideoProcessor-GUI.pdb",
+      "existed": true,
+      "beforeSha256": "C559552592A38389D9E2DEFB0A6493E4CBB7F5C2BC05906B2005AD6010592170",
+      "expectedSha256": "8E2F188D2E3C6DCB4DF61CD7D3C1818BC3FF5E96551F0A449E8EBAE912B2A671"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "existed": true,
+      "beforeSha256": "F30C362727F356057A403A3945554F0BD23CC13C74E990B57B3CD8D8F649595E",
+      "expectedSha256": "2E404D14B9104BE3EC2E0925207E067DFEF739FF0C57DEA96A4F8754F603AD08"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "existed": true,
+      "beforeSha256": "A24B1D1758C806BA250C956C7482894DA1D03F911AED22A16AE229C99ABEB0D4",
+      "expectedSha256": "A1581E0618B27101365D2C886989F2854654CB95215F52200C57F952061DA766"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "existed": true,
+      "beforeSha256": "68B67DDED7363B9A679B544C18948E640B116E3A4B6836A69EF0A7A63D12EFF1",
+      "expectedSha256": "C0B6542FBAA5E76A1109C9ACF19DBD96E4912262D1485BFED229C947425BDB11"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "existed": true,
+      "beforeSha256": "9FE5D7A1F7A357218A8AC7B65B76FD035B440A5B4024C9EFDF13FA4A26695DC8",
+      "expectedSha256": "FEF85DF41A475A2A159537A6B5BC4B160B81490DE7B9F75372CFE305CD8F91E8"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "existed": true,
+      "beforeSha256": "9A331219C9301D9858AF949760BC779EC195AF3AA4F3E8C27AC99CB01C7345DF",
+      "expectedSha256": "9564201FC4D695CC0C2380A8697ED8C0CB8DC24BEAC5E8D50C7152EE587F6270"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "existed": true,
+      "beforeSha256": "C41165AE0F55FF3D755B5E5E5071FB1266AA67143B2B5466D327C8514EF14088",
+      "expectedSha256": "DC7B49826103885F04591990D42203E4A3BAD16BCF4BFEC58FBD848E8F6FDE22"
+    }
+  ],
+  "qualification": {
+    "status": "passed",
+    "uniquePassed": 3433,
+    "uniqueTotal": 3433,
+    "file": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\qualification.json",
+    "sha256": "7A7996DDE5CCD7EA82E18A6645C4107B592323F98467353C80497E6C393E191C",
+    "originalFailuresPreserved": true,
+    "productionSourceUnchangedSinceBroadTests": true
+  },
+  "tests": [
+    {
+      "file": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\core-full.trx",
+      "passed": 3354,
+      "failed": 1,
+      "total": 3355,
+      "sha256": "9f7e2a463907d34c9f733a4aee3733c6266e1fd090fe574b3ce2d4075f3fe454"
+    },
+    {
+      "file": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx",
+      "passed": 75,
+      "failed": 2,
+      "total": 77,
+      "sha256": "6430f3c65d917002057aacc9425cd90ee040d4e73a04b19ab1de0c76aa89930d"
+    },
+    {
+      "file": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "sha256": "89fe5264cb97849ec8eb276f92f0b0327672f9da8655364cf7dc553ca503633f"
+    }
+  ],
+  "configurationFiles": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\VideoProcessor.cfg",
+      "beforeSha256": "8608D6FE82794CE762BFB5FD9FE94F46188C72338A51053FB0EBBC4EF3417A44",
+      "afterCopySha256": "8608D6FE82794CE762BFB5FD9FE94F46188C72338A51053FB0EBBC4EF3417A44",
+      "unchangedBeforeRestart": true,
+      "editedByDeployment": false
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "backup": "C:\\Videoprocessor\\vp\\deployment-backup-vp0218-20261027-011307-ddf5d666\\VideoProcessor.state",
+      "beforeSha256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "afterCopySha256": "CA450782659111119D036EA15D1F97D9B4F0450C999CF5819837FFD101642470",
+      "unchangedBeforeRestart": true,
+      "editedByDeployment": false
+    }
+  ],
+  "configurationEdits": [],
+  "playerWasRunning": false,
+  "startedProcessId": null,
+  "runtimeVerification": "not-started-player-was-closed; deployed and backup hashes verified; physical playback pending",
+  "finalVerification": {
+    "completedUtc": "2026-10-27T05:13:39.6728714+00:00",
+    "deployedFilesVerified": 9,
+    "backupFilesVerified": 9,
+    "configurationFilesUnchanged": 2,
+    "playerClosed": true
+  }
+}

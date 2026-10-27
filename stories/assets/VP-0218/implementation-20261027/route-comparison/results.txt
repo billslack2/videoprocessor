@@ -1,0 +1,16 @@
+=== BASELINE ===
+live frame=100 broad=0 native=1 votes=1 authoritative=0
+live frame=101 broad=1 native=0 votes=1 authoritative=0
+live repeated-frame=101 votes=1 authoritative=0
+live frame=102 broad=0 native=1 votes=1 authoritative=0
+live repeated-frame=102 votes=1 authoritative=0
+queue-native valid=0 first=0
+queue-alternating valid=0 first=0
+=== CANDIDATE ===
+live frame=100 broad=0 native=1 votes=1 authoritative=0
+live frame=101 broad=1 native=1 votes=2 authoritative=0
+live repeated-frame=101 votes=2 authoritative=0
+live frame=102 broad=0 native=1 votes=3 authoritative=1
+live repeated-frame=102 votes=3 authoritative=1
+queue-native valid=1 first=100
+queue-alternating valid=0 first=0

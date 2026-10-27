@@ -1,0 +1,111 @@
+{
+  "sourceCommit": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+  "baseCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildLog": "candidate/release-build.log",
+  "artifacts": [
+    {
+      "relative": "VideoProcessor-GUI.exe",
+      "path": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "8163CBDEAC674A9EBC04A0B8882C75C12BE15F3F6B78FE0FC771C6D1A3130530",
+      "runtimeRecord": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "toolset": "14.29.30133",
+      "machine": "x64"
+    },
+    {
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "path": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2E404D14B9104BE3EC2E0925207E067DFEF739FF0C57DEA96A4F8754F603AD08",
+      "runtimeRecord": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "toolset": "14.29.30133",
+      "machine": "x64"
+    },
+    {
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "path": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "FEF85DF41A475A2A159537A6B5BC4B160B81490DE7B9F75372CFE305CD8F91E8",
+      "runtimeRecord": "E:\\codex\\videoprocessor\\vp-0218-adaptive-ar-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "toolset": "14.29.30133",
+      "machine": "x64"
+    }
+  ],
+  "retainedDependencies": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-377.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll",
+      "matchesBuild": true
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll",
+      "matchesBuild": true
+    }
+  ],
+  "dependencyCount": 18,
+  "configurationEdits": [],
+  "deployed": true,
+  "deploymentReceipt": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\deployment-receipt.json"
+}

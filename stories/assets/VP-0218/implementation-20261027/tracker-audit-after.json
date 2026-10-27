@@ -1,0 +1,15 @@
+{
+  "CanonicalFiles": 237,
+  "IndexRows": 237,
+  "RegistryCount": 237,
+  "MaximumRoot": 218.0,
+  "RegistryLast": 218,
+  "RegistryNext": 219,
+  "Issues": [
+    "VP-0088 status begins 'In progress (2026-08-31). The VP Renderer already collected presenter-tied' expected 'In Progress'",
+    "VP-0168 index state 'In progress' differs from 'In Progress'",
+    "VP-0168 status begins 'In progress (2026-09-30). Implementation started from the current' expected 'In Progress'",
+    "VP-0211 index state 'Review' differs from 'In Progress'",
+    "VP-0070 status begins '' expected 'Blocked'"
+  ]
+}
