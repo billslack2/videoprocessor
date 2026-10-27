@@ -758,6 +758,7 @@ protected:
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	ShaderLoadingWindow m_shaderLoadingWindow;
+	ULONGLONG m_shaderLoadingPendingTick = 0;
 	ULONGLONG m_shaderLoadingPopupShownTick = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
@@ -922,6 +923,7 @@ protected:
     CString m_profileShaderStatus;
 	unsigned int m_profileChangeDisplaySeconds =
 		ProfileChangeOverlay::DefaultDisplaySeconds;
+	ULONGLONG m_profileChangeOverlayShowAfter = 0;
 	ULONGLONG m_profileChangeOverlayHoldUntil = 0;
 	ULONGLONG m_profileChangeOverlayFadeUntil = 0;
 
