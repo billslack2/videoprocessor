@@ -6275,6 +6275,7 @@ namespace Tests
                         auto crop = TrustedScopeCrop();
                         crop.geometry.top = 384; crop.geometry.bottom = 1776;
                         crop.geometry.aspectRatio = 3840.0 / 1392.0;
+                        crop.verticalTranslationBase = crop.geometry;
                         crop.verticalTranslationActive = true;
                         crop.verticalTranslationPixels = static_cast<int>(result.effective.translationPixels);
                         crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
