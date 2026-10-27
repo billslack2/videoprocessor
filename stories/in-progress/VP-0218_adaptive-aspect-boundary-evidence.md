@@ -59,7 +59,7 @@ The 2.35:1 CIH scope screen is confirmed display context. Scope viewport/zoom, a
 
 ## Readiness and next action
 
-The contained implementation is deployed and ready for the next normal player launch. Verify actual moving scope-to-taller transitions and final composition during playback before closing the shipped portion. The completed tests preserve stale/repeated identity rejection, independently complete proof routes, bounded owner age, anchored detector-step tolerance, progressive motion and subtitle ownership guards.
+The earlier contained implementation and its deployment are recorded above. Verify actual moving scope-to-taller transitions and final composition during playback before closing the shipped portion. The completed tests preserve stale/repeated identity rejection, independently complete proof routes, bounded owner age, anchored detector-step tolerance, progressive motion and subtitle ownership guards.
 
 Continue variable-profile work as an additive route using the [latest support design](../assets/VP-0218/support-20261027/README.md). First emit separate measured-boundary, validated-reference and protected-foreground diagnostics. The fixed spatial reference now explains the ad under existing summary tolerances; it is not yet crop authority. The relaxed component-area rule and sparse relative visibility are insufficient: they can newly admit tiny/faint glyphs, stars and logos that beta preserves. A foreground-preservation stage must pass these cases without undoing the demonstrated background fit.
 
