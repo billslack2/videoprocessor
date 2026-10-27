@@ -8150,7 +8150,7 @@ void testConcreteVideoChoicesAndCanonicalScaling()
     window.selectPage(21);QApplication::processEvents();
     auto* profiles=requireControl<QListWidget>(window,"config.vprenderer.motion.profiles");profiles->setCurrentRow(1);
     auto* mixer=requireControl<QComboBox>(window,"config.vprenderer.motion.frame_mixer");
-    require(mixer->currentData()=="oversample"&&mixer->currentText()=="Oversample","Inherited default is not the actual mixer selection");
+    require(mixer->currentData()=="oversample"&&mixer->currentText()=="Oversample (default)","Inherited default is not the actual mixer selection");
     require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace_algorithm")->currentText()=="BWDIF","Inherited algorithm is not correctly named");
     require(requireControl<QComboBox>(window,"config.vprenderer.motion.deinterlace")->currentText()=="Interlaced input only","Automatic deinterlacing policy was lost");
     require(mixer->findText("Linear")>=0&&mixer->findText("Cubic")<0&&mixer->findData("mitchell_clamp")>=0,"Mixer labels or Clamped Mitchell are missing");

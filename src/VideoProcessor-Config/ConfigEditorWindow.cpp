@@ -7468,7 +7468,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form=addMotionSection(QStringLiteral("smoothMotion"),QStringLiteral("Smooth motion"),
             QStringLiteral("Blends frames to reduce cadence judder; adds buffering."));
         auto* smoothMotion=addChoice(QStringLiteral("Mode"),QStringLiteral("smooth_motion"),{QStringLiteral("off"),QStringLiteral("auto"),QStringLiteral("always")});
-        auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),{QStringLiteral("mitchell_clamp"),QStringLiteral("hermite"),QStringLiteral("linear"),QStringLiteral("oversample")});
+        auto* frameMixer=addChoice(QStringLiteral("Mixing filter"),QStringLiteral("frame_mixer"),
+            {QStringLiteral("oversample"),QStringLiteral("linear"),QStringLiteral("hermite"),QStringLiteral("mitchell_clamp")});
+        frameMixer->setItemText(frameMixer->findData(QStringLiteral("oversample")),
+            QStringLiteral("Oversample (default)"));
         form=addMotionSection(QStringLiteral("deinterlacing"),QStringLiteral("Deinterlacing"),
             QStringLiteral("Converts interlaced video to progressive frames. Auto detects input."));
         auto* deinterlacing=addChoice(QStringLiteral("Mode"),QStringLiteral("deinterlace"),{QStringLiteral("auto"),QStringLiteral("off"),QStringLiteral("force")});
