@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "52C1F23010FB4390BCF0F9A20DA6263A3AD6FFCC9402EFE3AD110B69C19BD74F",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 203
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "9DE6A916C1D63937374EBF9E9CB5B80FCD368F7A48BCA2F2E38DB538E86CEED2",
+      "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+      "passed": 203
+    }
+  ],
+  "finished": "2026-10-27T18:10:23.8581021-04:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

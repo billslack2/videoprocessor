@@ -156,6 +156,39 @@ into beta by this deployment.
 [validation](../assets/VP-0214/lip-smooth-motion-port-20261027/deployment-validation.json),
 [deployment receipt](../assets/VP-0214/lip-smooth-motion-port-20261027/deployment-receipt.json).
 
+### Subtitle-only merge into beta — 2026-10-27 18:11 EDT
+
+User authorized merging the remaining subtitle fixes. Created a clean worktree
+from freshly discovered/fetched official beta `e263fda5`, then selectively
+integrated the lip repair and qualified Smooth Motion changes from the test
+build. All 32 changed subtitle-related files are blob-identical to deployed
+`53bb0f58`; independent adaptive-AR commits and their fixtures are excluded.
+Production AR files remain at current beta. The newer Config mixer-order change
+already on beta is retained. No old broad AR/upload normalization or additional
+diagnostic-counter work from draft PR197 is imported.
+
+Fresh clean feature `ec54b685c157cd6f10cf860b6c7ea8e0368628f4` passed the full x64
+Release solution build. Both required full GPU/cue suites passed 203/203 each;
+native/HDR tests passed 735/735, and the mixer-selection Config check passed.
+This is 1,141 native/GPU/HDR cases plus one Config check on the focused
+integration, with no assertion failures or missing selected classes. The
+native count differs from the earlier combined deployment because independent
+AR changes and their extra tests were intentionally excluded. Source/assembly,
+TRX hashes, selected dependencies and Release artifact hashes are recorded.
+Physical Ben-Hur acceptance remains separate from these controlled tests.
+
+Merged [PR #219](https://github.com/billslack2/videoprocessor/pull/219) into
+`v1.4.02-beta` as `52f625c113191511f2890775fe9bdd8e511a7049`. The fetched official
+beta contains that commit; its tree exactly matches the qualified feature tree
+`19c3a6fbbb873735cf22f9cbbe6de94dfccb6d4f`. Closed superseded PR216 after verifying
+its full focused lip repair is included. Broader draft PR197 remains separate.
+No new deployment, player restart or active configuration/state edit was made
+for this merge. The broader VP0214 investigation remains In Progress.
+
+[Merge receipt](../assets/VP-0214/subtitle-motion-merge-20261027/merge-receipt.json),
+[qualification](../assets/VP-0214/subtitle-motion-merge-20261027/merge-validation.json),
+[scope comparison](../assets/VP-0214/subtitle-motion-merge-20261027/scope-comparison.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh

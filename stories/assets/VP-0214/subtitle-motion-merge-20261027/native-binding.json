@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "assembly": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+  "sha256": "7C097338E33B555D9CEA10574B7C2CD52FC1AC17F15523356B102E3BB469A2A2",
+  "assemblyLastWriteUtc": "2026-10-27T21:19:43.5637495Z",
+  "testStart": "2026-10-27T17:20:39.3429300-04:00",
+  "trxSha256": "281CC2F991DC1B7041941B5C33D632D35EFFA793D55477A1FAEF211A44771DDA",
+  "passed": 735,
+  "configChoiceTestPassed": 1,
+  "configChoiceLog": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\config-motion.log"
+}

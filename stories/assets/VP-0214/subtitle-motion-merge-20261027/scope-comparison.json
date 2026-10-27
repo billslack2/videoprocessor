@@ -1,0 +1,139 @@
+{
+  "sourceCommit": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "deployedCommit": "53bb0f58bf200db5ab70c9233412f8e079a84895",
+  "subtitleFiles": [
+    {
+      "path": "AGENTS.md",
+      "blob": "e56da417983ee5b9ba5cb9f46c3a7f27c2d3b03f"
+    },
+    {
+      "path": "docs/VP-0207_SUBTITLE_MOTION_REGRESSIONS.md",
+      "blob": "edb4073297c3f3a7852afacc8e30607a651eaf8e"
+    },
+    {
+      "path": "src/VideoProcessor-GUI/StatsOverlayWindow.cpp",
+      "blob": "9699f94973a7797d45f8b4318959199ba25176dc"
+    },
+    {
+      "path": "src/VideoProcessor-GUI/StatsOverlayWindow.h",
+      "blob": "eb1c3bfc00f371153edb543ca0d2bd36558fdf74"
+    },
+    {
+      "path": "src/VideoProcessor-GUI/VideoProcessorDlg.cpp",
+      "blob": "688691cfc68d5bb2cb7fb6bbf4ce95ed9db22885"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/HdrOsdFormatting.h",
+      "blob": "1a27a60b2e19215f11c9e96b374d865a22c7b2c6"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/IRenderer.h",
+      "blob": "78387a0e3b90bc0a3ba6e3ab149d00f2fe16cc29"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/RendererLiveness.h",
+      "blob": "91c305cd0eee67f6d1f5a418d59fbec1bc6511ef"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/SubtitleBackingLip.h",
+      "blob": "d426b2af988a751967fcea1ed3a2d705278e9d0b"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/SubtitleCurrentCue.h",
+      "blob": "89d1d7448eef7ecd33bbef8f5ce736085604d286"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/SubtitleCutPasteShader.h",
+      "blob": "2d5a63c9c8b51effb6923e7de7659b7a78bac136"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/FrameHdrStatus.h",
+      "blob": "47fb86e04c2fca90bdf8248e544a47d642d2660c"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/LibplaceboRendererPluginApi.h",
+      "blob": "40ff66ed1dc76cf87577e3d73c57b8650ad3db87"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+      "blob": "172bd8c6238d751175c7660da21139ba4f3fc794"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/ProcessingPerformanceWindow.h",
+      "blob": "0e550a228439d2e07c4a5489047a82d71f7c0f31"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/SourcePreparationReceipt.h",
+      "blob": "27926fb20a39e4f0a962fd46d308afedffabf52d"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/TemporalPresentationLedger.h",
+      "blob": "882e050b159a6e114e4b03f24c27bdb7932fdec1"
+    },
+    {
+      "path": "src/VideoProcessor-Lib/vprenderer/TemporalRenderer.h",
+      "blob": "7053afc440a7cf65f00cf6f4da3a42b47d6b8939"
+    },
+    {
+      "path": "src/VideoProcessor-Test/ConfigFileTests.cpp",
+      "blob": "c0e1fa5d5bf84ff8218040330583964cd0332533"
+    },
+    {
+      "path": "src/VideoProcessor-Test/HdrStatusTests.cpp",
+      "blob": "465b817e4479cfe6aa668248fe6f566f9fb4484b"
+    },
+    {
+      "path": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "blob": "365dbc582da93c961ddc98a3f80fd6ca07529e2e"
+    },
+    {
+      "path": "src/VideoProcessor-Test/ProcessingPerformanceWindowTests.cpp",
+      "blob": "57ddf1239009d3201001758bb9cc8b24269f2f69"
+    },
+    {
+      "path": "src/VideoProcessor-Test/ReconstructionMotionTests.cpp",
+      "blob": "7d3e447dcff34e0981957d77e84f147389ffbcf7"
+    },
+    {
+      "path": "src/VideoProcessor-Test/RendererDependencyTests.cpp",
+      "blob": "82382a5044d9f816b331a7c9039a7d74e70f3876"
+    },
+    {
+      "path": "src/VideoProcessor-Test/StartupPresentationReadinessTests.cpp",
+      "blob": "54317184289e3ba0752828120114abaef0131bd8"
+    },
+    {
+      "path": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp",
+      "blob": "346bce241464cd06aa4b1a962d7f49b1817cd291"
+    },
+    {
+      "path": "src/VideoProcessor-Test/SubtitleBackingLipTests.cpp",
+      "blob": "819a34475ec6a79817bc0026997e515fad83a5c4"
+    },
+    {
+      "path": "src/VideoProcessor-Test/SubtitleCutPasteTests.cpp",
+      "blob": "e13dcd7d3aa6a2f08053f3449ebefac508d98edd"
+    },
+    {
+      "path": "src/VideoProcessor-Test/TemporalPresentationLedgerTests.cpp",
+      "blob": "754eb2abed3ef8a39d83b23423b786096d4a6de6"
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj",
+      "blob": "9f29bfabb2f09b6afa02568d980e644821b76b4d"
+    },
+    {
+      "path": "src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj.filters",
+      "blob": "bec16100bb75095523ff62d682e33c9c64ffdf26"
+    },
+    {
+      "path": "tools/test_subtitle_motion_renderers.ps1",
+      "blob": "2a7df6c5a3b01d69f207a302e987220cbf96bd80"
+    }
+  ],
+  "excludedARCommits": [
+    "a26db7e3",
+    "89b90659"
+  ],
+  "base": "e263fda592d953cf1a7723b3e44326e170a79916"
+}

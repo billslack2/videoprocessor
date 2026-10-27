@@ -1,0 +1,18 @@
+{
+  "baseRefName": "v1.4.02-beta",
+  "headRefOid": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "mergeCommit": {
+    "oid": "52f625c113191511f2890775fe9bdd8e511a7049"
+  },
+  "mergedAt": "2026-10-27T22:11:18Z",
+  "number": 219,
+  "state": "MERGED",
+  "url": "https://github.com/billslack2/videoprocessor/pull/219",
+  "verifiedMergeTree": "19c3a6fbbb873735cf22f9cbbe6de94dfccb6d4f",
+  "matchesQualifiedFeatureTree": true,
+  "supersededPullRequest": {
+    "number": 216,
+    "state": "CLOSED",
+    "reason": "Complete lip repair included in merged PR219"
+  }
+}

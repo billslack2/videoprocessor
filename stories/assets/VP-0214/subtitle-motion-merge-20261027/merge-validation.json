@@ -1,0 +1,51 @@
+{
+  "sourceCommit": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "baseCommit": "e263fda592d953cf1a7723b3e44326e170a79916",
+  "sourceBranch": "codex/subtitle-motion-merge-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLog": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\build.log",
+  "tests": [
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\dual\\standard.trx",
+      "sha256": "AED75945A6285E41EF6652EF35724C2DB2AEDB3E9B057EB4B2DDBDC70274C4E2",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\dual\\beta.trx",
+      "sha256": "81985595014749D9ACB145F58F5420899CC7950804F6DC83A6E1EB8952CC05BF",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\native\\native.trx",
+      "sha256": "281CC2F991DC1B7041941B5C33D632D35EFFA793D55477A1FAEF211A44771DDA",
+      "passed": 735,
+      "failed": 0
+    }
+  ],
+  "passed": 1141.0,
+  "failed": 0,
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "8631F7845B30C80F611F3856D962C220BBCA3ECF96B1DFA2E7A77E8F8A366E08"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "F7D74ADA05D8E148D6B942B6F8119DF2B44A8295F7C102A310A24E8BCCD8BCC2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-motion-merge-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "95ACF0B01031DB6445425826BA8E406232B21B8BDA5E26D4DF618832CC2869DD"
+    }
+  ],
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/219",
+  "scope": "Subtitle-only integration. Production AR matches current beta; subtitle implementation and regression source match deployed 53bb0f58.",
+  "priorDeployment": "53bb0f58bf200db5ab70c9233412f8e079a84895",
+  "excluded": "Independent AR changes in PR213 and older broad AR/upload normalization from PR197",
+  "liveAcceptance": "Pending physical Ben-Hur replay; merge does not redeploy or change settings",
+  "validatedAtUtc": "2026-10-27T22:11:11.4279078+00:00"
+}
