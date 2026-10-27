@@ -72,8 +72,13 @@ namespace Tests
                     <<','<<r.expansionStripsAvailable<<','<<r.excludedBandsPixelSafe<<','<<r.reason<<';';
                 WriteBounds(out,r.expansionBase); WriteBounds(out,r.expansionCandidate);
                 for (const auto* edge : {&r.expandingLeft,&r.expandingTop,&r.expandingRight,&r.expandingBottom})
+                {
                     out<<edge->barPixels<<','<<edge->blackFraction<<','<<edge->lumaP90<<','<<edge->texture
-                        <<','<<edge->continuity<<','<<edge->trusted<<';';
+                        <<','<<edge->continuity<<','<<edge->trusted;
+                    for (const uint8_t support : edge->distributedSupportDepthRowsByQuartile)
+                        out<<','<<static_cast<unsigned>(support);
+                    out<<';';
+                }
             }
             return out.str();
         }
@@ -170,15 +175,34 @@ namespace Tests
             auto weak=pixels.Samples();
             // Recorded sequence3661: adequate bottom content, but upper strip
             // falls below both existing broad-picture brightness/texture gates.
+            // Synthetic bright pixels leave native masks populated; clear them so
+            // this fixture isolates the recorded weak broad evidence.
             auto& top=weak[0].retention.expandingTop;
             top.barPixels=208; top.blackFraction=0.7083; top.lumaP90=106;
             top.texture=10.6; top.continuity=0.1667;
+            top.distributedSupportDepthRowsByQuartile.fill(0);
             CheckParity(weak,"sample-evidence",0);
             auto provisional=pixels.Samples();
             provisional[2].observation.classification=ActivePictureClassification::PROVISIONAL;
             CheckParity(provisional,"sample-evidence",2);
         }
 
+        TEST_METHOD(WeakBroadStripCanPassOnlyWithCompleteNativeDistributedSupport)
+        {
+            const ShadowPixels pixels;
+            auto samples=pixels.Samples();
+            for(auto& sample:samples)
+            {
+                auto& top=sample.retention.expandingTop;
+                top.barPixels=208; top.blackFraction=0.7083; top.lumaP90=106;
+                top.texture=10.6; top.continuity=0.1667;
+                top.distributedSupportDepthRowsByQuartile.fill(0x3f);
+            }
+            CheckParity(samples,"proof-ready",-1,true);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),samples.size(),ShadowScope(),5,4,19,23);
+            Assert::AreEqual(static_cast<int>(OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT),
+                static_cast<int>(proof.proofRoute));
+        }
         TEST_METHOD(SuccessfulShadowProofStillCannotPublishThroughCurrentFitOwner)
         {
             const ShadowPixels pixels;
