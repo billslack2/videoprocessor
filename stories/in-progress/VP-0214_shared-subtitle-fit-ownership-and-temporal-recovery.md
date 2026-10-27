@@ -46,6 +46,38 @@ conditions, not replay of the exact incident pixels. Not deployed or merged;
 live Ben-Hur acceptance remains pending. Story remains In Progress.
 [Validation](../assets/VP-0214/lip-dropout-20261027/validation.json).
 
+### Authorized test deployment — 2026-10-27 13:30 EDT
+
+Deployed clean x64 Release integration `837afc5c838f857478421b9d9825cdf27a079114`
+from pushed branch `codex/lip-ar-test-integration-20261027`. It combines the
+PR #216 fix with the previously installed AR commits `daad7eb0` / `f4219a7a`
+on current beta `60df2bf6`. AR implementation files match the prior runtime;
+the current beta's VSync scheduler fix is also retained. The first incremental
+build failed with LNK1103 debug-information corruption; a full solution Rebuild
+succeeded. Completed isolated validation passed 573/573 cleanup, composition,
+AR, lookahead and VSync tests. An extra broad GPU run was intentionally stopped,
+and one focused runner exited without a final result or Windows crash record;
+neither incomplete run is counted as qualification.
+
+The user's worse-playback report occurred before deployment. At inspection,
+PID 40968 was running older clean `376e46a3` from
+`C:\Videoprocessor\vp-test-20261026-1954`; its logs were preserved separately.
+It was stopped for this deployment. All nine host/renderer/runtime-record/PDB
+files were backed up and replaced; 18 matching dependency DLLs were retained.
+Backup: `C:\Videoprocessor\vp\backup-before-lip-fix-20261027-133003`.
+Configuration and state were unchanged by deployment. An initial pre-replacement
+state guard caught a changed user selection and stopped before copying runtime;
+the proposed selection edit was removed. Latest saved Clear/Yellow selection
+was preserved, then subsequent live selection changed to Classic after startup.
+
+Main installation restarted as PID 42528 at 13:30:04. Startup logs confirm both
+host and renderer at `837afc5c`, clean, with effective VSync enabled. The user
+is now testing the new fix. Physical acceptance remains pending; PR #216 is
+still draft/unmerged. No settings or binaries in the alternate test directory
+were overwritten.
+[Combined validation](../assets/VP-0214/lip-dropout-20261027/deployment-validation.json),
+[deployment receipt](../assets/VP-0214/lip-dropout-20261027/deployment-receipt.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh

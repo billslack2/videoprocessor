@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "837afc5c838f857478421b9d9825cdf27a079114",
+  "featureCommit": "18c66791443b7787851a8dd5798781f0b345e6f5",
+  "betaCommit": "60df2bf6f3123b582e8e1e68b635f72553fa5871",
+  "preservedARCommits": [
+    "daad7eb0",
+    "f4219a7a"
+  ],
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildRecovery": "Initial incremental link failed LNK1103; full solution Rebuild succeeded",
+  "passed": 573,
+  "failed": 0,
+  "testNotes": [
+    "Extra broad GPU run intentionally stopped; not counted",
+    "First focused runner terminated without final result or Windows crash evidence; not counted",
+    "Completed isolated focused run passed 573/573"
+  ],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "942A977B1E39968156817F1E9F4E7DF2D2ADB869E4D2E8F5CC3EB91ADDA6A08C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "3B205A475F85C29A5BA685FB3E1AA7AF6F279A53314FDB1217FB5CB52AD7D7D3"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "B8228E188A30BB35400652AAC3106CDE2209ABAF0DE92B2F2C22057380D84493"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "3D290A25E0446383DD30172AEEFDFCC73E9D21C46DD27486F071105E6B3E0326"
+    }
+  ],
+  "liveAcceptance": "pending"
+}
