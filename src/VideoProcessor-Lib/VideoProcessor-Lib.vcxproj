@@ -267,6 +267,7 @@
     <ClInclude Include="AnalysisDiagnosticHooks.h" />
     <ClInclude Include="SubtitleBoxDetector.h" />
     <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
+    <ClInclude Include="SubtitleBackgroundGuard.h" />
     <ClInclude Include="SubtitleBoxLookahead.h" />
     <ClInclude Include="SubtitleCueContinuation.h" />
     <ClInclude Include="SubtitleCueContinuationProof.h" />

@@ -960,6 +960,7 @@ namespace
         int subtitleTextReductionPercent = 0;
         bool subtitleRoundedCorners = true;
         bool subtitleFloatBackground = false;
+        SubtitleBackgroundGuardPolicy subtitleBackgroundGuard;
         bool subtitleTemporalFill = false;
         int subtitleSpatialFill = 0; // 0 mirror, 1 stretch, 2 original surround, 3 stable surround
         SubtitlePreviewMode subtitleMode = SubtitlePreviewMode::None;
@@ -1109,6 +1110,7 @@ namespace
             << settings.subtitlePaddingPolicy.bottomPercent << '|'
             << static_cast<int>(settings.subtitleMode) << '|' << settings.subtitleMoveInset << '|'
             << settings.subtitleTextReductionPercent << '|'
+            << settings.subtitleBackgroundGuard.enabled << '|'
             << settings.subtitleRoundedCorners << '|' << settings.subtitleFloatBackground << '|'
             << settings.subtitleTemporalFill << '|' << settings.subtitleSpatialFill << '|'
             << settings.subtitleDetectionOptimization << '|' << static_cast<int>(settings.subtitleScriptHint) << '|'
@@ -2743,6 +2745,7 @@ namespace
         settings.subtitleTextReductionPercent=subtitleDefaults.subtitleTextReductionPercent;
         settings.subtitleRoundedCorners=subtitleDefaults.subtitleRoundedCorners;
         settings.subtitleFloatBackground=subtitleDefaults.subtitleFloatBackground;
+        settings.subtitleBackgroundGuard=subtitleDefaults.subtitleBackgroundGuard;
         settings.subtitleHoldMs=subtitleDefaults.subtitleHoldMs;
         settings.subtitleNearBarDistance=subtitleDefaults.subtitleNearBarDistance;
         settings.subtitleDetectionOptimization=subtitleDefaults.subtitleDetectionOptimization;
@@ -2790,6 +2793,7 @@ namespace
                     if (!settings.scopeSubtitleFit)
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::ResolveOffZoomHoldMs(values);
                     int n=0;
+                    RendererProfileConfig::ParseBoolean(get("background_sanity_guard"),settings.subtitleBackgroundGuard.enabled);
                     if(settings.scopeSubtitleFit) {
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_HOLD_MS;
                         settings.scopeSubtitleEngageDriftMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS;
@@ -8921,6 +8925,7 @@ struct LibplaceboVideoRenderer::Impl
         changed(current.subtitleTextReductionPercent != next.subtitleTextReductionPercent, "text_reduction_percent");
         changed(current.subtitleRoundedCorners != next.subtitleRoundedCorners, "rounded_corners");
         changed(current.subtitleFloatBackground != next.subtitleFloatBackground, "background_edge");
+        changed(!(current.subtitleBackgroundGuard == next.subtitleBackgroundGuard), "background_sanity_guard");
         changed(current.subtitleTemporalFill != next.subtitleTemporalFill, "cleanup_fill");
         changed(current.subtitleSpatialFill != next.subtitleSpatialFill, "cleanup_fill");
         changed(current.subtitleMode != next.subtitleMode, "subtitle_type");
@@ -14342,6 +14347,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (subtitleCutPasteTest)
             {
                 const auto displayBounds=subtitlePaddingGuard.DisplayBounds();
+                subtitleCutPastePresentation.SetBackgroundGuard(activeSettings.subtitleBackgroundGuard);
                 const auto detectedMove = subtitleCutPastePresentation.Consume(subtitleBoxResult, *subtitlePreview,
                     safeSubtitlePadding, activeSettings.subtitleMoveInset,
                     activeSettings.subtitlePaddingPolicy.glyphRelative?&displayBounds:nullptr,cueContinuation);

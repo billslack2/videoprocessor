@@ -595,7 +595,9 @@ namespace RendererProfileConfig
             if (key == "hdr_peak_analysis_picture_only" || key == "hdr_peak_analysis_motion_compensation") return IsBoolean(value);
             if (key == "hdr_peak_analysis_height_percent") { int n=0; return ParseInteger(value,MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,n); }
             if (key == "hdr_peak_analysis_position") return IsChoice(value,{"top","center","bottom"});
-            if (key == "rounded_corners" || key == "temporal_fill") return IsBoolean(value);
+            // Retired trial settings remain readable for compatibility; runtime ignores them.
+            if (key == "background_fallback_top_pixels" || key == "background_fallback_side_pixels") { int n=0; return ParseInteger(value,0,200,n); }
+            if (key == "background_sanity_guard" || key == "rounded_corners" || key == "temporal_fill") return IsBoolean(value);
             if (key == "cleanup_fill") return IsChoice(value, { "mirror", "stretch", "temporal", "surround", "stable_surround" });
             if (key == "background_edge") return IsChoice(value, { "extend", "float" });
             if (key == "text_reduction_percent") { int n=0; return ParseInteger(value,0,75,n); }
