@@ -1,0 +1,50 @@
+[
+  {
+    "name": "city-lights",
+    "format_path": "p210-decoded-dv422",
+    "input_sha256": "03a59e63601bca2b73406686ce6301056e2b3d015bb87ac9ff821901f0cc69f2",
+    "width": 3840,
+    "height": 2160,
+    "rowBytes": 7680,
+    "chromaRowBytes": 7680,
+    "format_enum": 4,
+    "encoding_enum": 6,
+    "colorspace_enum": 8,
+    "sidecar_fields": 10,
+    "range": "Unknown (no sidecar range field)",
+    "compared_pixels_per_plane": 8294400,
+    "Y_U_V_exact_match_to_VP_AnalysisLumaSource_Sample": true
+  },
+  {
+    "name": "thai-top-card",
+    "format_path": "v210",
+    "input_sha256": "197421063f22b301cfb4379cafa4197f40469a8f16948b34ad81ac397c47d779",
+    "width": 3840,
+    "height": 2160,
+    "rowBytes": 10240,
+    "chromaRowBytes": 0,
+    "format_enum": 3,
+    "encoding_enum": 3,
+    "colorspace_enum": 8,
+    "sidecar_fields": 10,
+    "range": "Unknown (no sidecar range field)",
+    "compared_pixels_per_plane": 8294400,
+    "Y_U_V_exact_match_to_VP_AnalysisLumaSource_Sample": true
+  },
+  {
+    "name": "latin-three-lines",
+    "format_path": "v210",
+    "input_sha256": "3fc787bcc47349e370586a913102db46b1b944381dcba77a89a7d1a2b66f43e3",
+    "width": 3840,
+    "height": 2160,
+    "rowBytes": 10240,
+    "chromaRowBytes": 0,
+    "format_enum": 3,
+    "encoding_enum": 3,
+    "colorspace_enum": 8,
+    "sidecar_fields": 10,
+    "range": "Unknown (no sidecar range field)",
+    "compared_pixels_per_plane": 8294400,
+    "Y_U_V_exact_match_to_VP_AnalysisLumaSource_Sample": true
+  }
+]

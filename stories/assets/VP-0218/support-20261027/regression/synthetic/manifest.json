@@ -1,0 +1,96 @@
+{
+  "width": 3840,
+  "height": 2160,
+  "y_active_rows": [
+    301,
+    1857
+  ],
+  "guarded_crop": [
+    293,
+    1865
+  ],
+  "P210_layout": "full Y plane followed by interleaved UV plane; high 10 bits in little-endian 16-bit lanes",
+  "P210_python_roundtrip_all_Y_U_V": true,
+  "controls": [
+    {
+      "name": "neutral_gradient",
+      "p210_sha256": "4808d272b8db0de34523b33940d1385fa62369b811f42fc81dbeed8383506e4d",
+      "expected_sha256": "81f6509c42cb0002ef47bb4d01f965bb1bdd6a0b89be4f712b20a30e75c3a262",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "p210_sha256": "9917d557fbd3f39b3a623354e45ccb6960c03d23893fd26ef3f67ad9acf0ad56",
+      "expected_sha256": "030dc170b1432f1fbae5af52f05594a691a30b45514011e91befeeae0a1cd29c",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "p210_sha256": "4237f3361aee7a88af394b78886d44274d216e24c0c97958856f394cb4c90ae3",
+      "expected_sha256": "8e437beed1ba08584b6d3cca3b34d166877469d093709c6bc34cd159cf403f75",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "faint_glyph_caption",
+      "p210_sha256": "77712751f91493a10cc18ef67a90892123c74ab76bc60bce37c67c98ea18ab79",
+      "expected_sha256": "11830a453aefdb99774572bad5beb266bc84394ce9e037d5bb17ca816c330d82",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "sparse_stars",
+      "p210_sha256": "cb42fe0a307b942ea5727df0ef8b530e6b85761de33fceca43c7efe48eb34667",
+      "expected_sha256": "10f8bfbba0626f8e8a609bf20d014e8a9973d45ef97a63f11fa112e34743ba83",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "compact_logo",
+      "p210_sha256": "1de5756ddbcc878af008278ff37d30a046ef868450a1cafeccfc103b9716da59",
+      "expected_sha256": "4db273eb8d53ce48ce5e5a82daafdd0e057783f66012f7e4cf141385142c3d60",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": 72
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "p210_sha256": "ee6fac29efab5b9dba304326d756e2b32eea524d98e499534032a93967b96cc7",
+      "expected_sha256": "a9aaddbf55c88e5cc572c991c23a76b73588fcd0e1e7df0c411a2ed9b36f7115",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "p210_sha256": "d7b5e5f79d43922d300cbfaf941c7b6cee38ca086a2d749c7bbe65421c8fe5e7",
+      "expected_sha256": "9a574d23a2c4e15d5bab6224debd0571edac369647cf8eef2ce22d1bdbc0cb24",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "p210_sha256": "a2d76483fa0b6242d4eb2413e63ce9fd5f4880aab8e17a2057e00deb2477d13e",
+      "expected_sha256": "afe10a7914482fa1bf003578374e7479f493ef10b2522c2ef4f213588573ef09",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    },
+    {
+      "name": "boundary_subtitle",
+      "p210_sha256": "16d7815fd0c436ea28a6a129ae0f36e03481fed178ea1726c7aac4bb9eaf57ce",
+      "expected_sha256": "fc9b6ec1cb89c15a8aa45e67456aaa68b1aece964b5d7acdfde90a3913fef7a0",
+      "p210_bytes": 33177600,
+      "python_all_plane_roundtrip": "pass",
+      "feature_count": null
+    }
+  ]
+}

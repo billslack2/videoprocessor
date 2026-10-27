@@ -1,0 +1,22 @@
+Held-out morphology/reference challenge controls — frozen before evaluation
+
+Purpose: measure false rejection of smooth/neutral exterior examples and false acceptance of small/structured scene/caption examples under the already frozen boundary-profile and morphology rules; separately compare the unchanged 7394-beta extractor and retention predicates. These are engineered calibration controls, not real-scene ground truth, and they are not tuned to the captured ad. The complete case definitions and seed are in generate_controls.py and are hashed before evaluation.
+
+Frame/layout for every control: 3840x2160 P210 limited-range code values, Y plane then interleaved UV; exact 10-bit codes occupy the high bits of little-endian 16-bit lanes. Picture is constant saturated red Y/U/V=260/460/760 on half-open rows [301,1857); top and bottom exterior are neutral U=V=512. Top exterior Y is `round(64 + 8*x/3840 + 0.12*y)`; bottom Y=64. This produces independently strong top transition 300→301 and bottom transition 1856→1857; the frozen guarded crop should be top=293,bottom-exclusive=1865. No aspect/screen/standard ratio is consulted.
+
+Frozen controls (all top-exterior features; no per-case threshold adaptation):
+1. neutral_gradient: positive smooth gradient.
+2. neutral_gradient_grain_sigma1: same plus seeded Gaussian grain, sigma=1, seed=218; positive texture tolerance control.
+3. subpixel_glyph_caption: repeated 5x7 glyph-like patterns across a text line, +8 Y codes (25% coverage of a 32-code nominal glyph); small antialias-like strokes are below the component threshold.
+4. faint_glyph_caption: same repeated pattern line, +16 Y codes; sparse small glyph components below area/box threshold.
+5. sparse_stars: 24 isolated bright single-pixel points spaced across the top band; no temporal motion is synthesized.
+6. compact_logo: one connected neutral 10x15 mark with 72 changed pixels at +64 Y codes (below 200-area and 8%-tile limits).
+7. broad_smooth_object_plus8: neutral +8 Gaussian bump centered x=1920,y=180 with radii 540x165.
+8. structured_ceiling_panel: neutral panel rectangle x=[900,2940), y=[80,250), +40 Y, with narrow seams; visually distinguishable low-frequency scene structure.
+9. internal_letterbox_lookalike: full-width black stripe inside the red picture at rows [700,780); tests that internal bars do not nominate outer bounds.
+10. boundary_subtitle: repeated 5x7 glyph-like patterns, scale=2, +160 Y, y=286; partly in the upper excluded band and partly inside the retained fringe. The outside portion tests the raw visibility veto without treating subtitle bounds as active-picture geometry.
+
+Before classifier evaluation, verify P210 plane serialization by Python full Y/U/V roundtrip and verify all 8,294,400 pixel coordinates per frame through unchanged `AnalysisLumaSource::Sample`. Preserve expected arrays and hashes. Candidate morphology rule stays exactly as frozen in profile/protocol.txt (SHA BF2566AA3EF12CABF79030F033AEFAF929047E6FD686F1D6C70067DA0955B5D4). Production-shaped summary/reference/visibility formulas stay exactly as frozen in reference/protocol.txt (SHA recorded there). No threshold changes after evaluation.
+
+Reporting distinction: profile/edge evidence, summary/reference test, candidate morphology veto, raw-visible samples, beta raw crop authority, and beta retention are separate columns. A text/logo visibility witness is not active aspect proof. Retention expansion is a bounded content envelope, not a physical crop/aspect label. Any result is a synthetic test observation, not real-video qualification.
+

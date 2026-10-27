@@ -1,0 +1,2240 @@
+{
+  "heldout_generator_protocol_sha256": "b09f0c4ffaf752aaa2143de1049e4aaede1f36c377ef54e25b5ac43be70965a9",
+  "generator_sha256": "7744e0d21c329d6d48effa550488247f6f9e79e1e1e460d8e1fa363aa4114df5",
+  "frozen_morphology_protocol_sha256": "bf2566aa3ef12cabf79030f033aefaf929047e6fd686f1d6c70067da0955b5d4",
+  "fixed_spline_protocol_sha256": "fa6ff6adbedcf21afac2ffd052fb7eea4bdfdee1172e40ceaface4b8b018562f",
+  "spline_implementation_sha256": "dcae909dbbce804e40831d777634c17f855114aa0b286878bf11100692ea758e",
+  "cases": [
+    {
+      "name": "neutral_gradient",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6678348064422608,
+          "95": 1.7772669255733493,
+          "99": 1.992842843532563,
+          "100": 3.1420297622680664
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7116098940372467,
+          "50": 1.1950687766075134,
+          "90": 1.667755389213562
+        },
+        "signed_p90_minus_p10": 0.9561454951763152,
+        "fraction_abs_le4": 1.0,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": true,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.46869184970855715,
+          0.49407679438591
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          0.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6571775674819949,
+              "95": 1.772608196735382,
+              "99": 2.0372431516647356,
+              "100": 3.1420297622680664
+            },
+            "signed_p90_minus_p10": 0.9518357276916504,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6780162811279298,
+              "95": 1.780867975950241,
+              "99": 1.9614028882980348,
+              "100": 2.405484199523926
+            },
+            "signed_p90_minus_p10": 0.9588716447353364,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "neutral_gradient",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            2.0,
+            3.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            5.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          62.12559095148788,
+          108.51059367202255
+        ],
+        "abs_residual_percentiles": {
+          "90": 2.7070770263671875,
+          "95": 3.112577259540558,
+          "99": 3.8401015996933,
+          "100": 6.484985828399658
+        },
+        "signed_residual_percentiles": {
+          "10": -0.09413525387644756,
+          "50": 1.3096806406974792,
+          "90": 2.7056112766265867
+        },
+        "signed_p90_minus_p10": 2.7997465305030342,
+        "fraction_abs_le4": 0.9935944610352674,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          2.1636962890625,
+          2.7148082256317134
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          2.0,
+          3.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              62.53923574463817,
+              105.99092126232624
+            ],
+            "abs_residual_percentiles": {
+              "90": 2.6904431819915775,
+              "95": 3.099056017398834,
+              "99": 3.820595560073854,
+              "100": 6.02426815032959
+            },
+            "signed_p90_minus_p10": 2.7941927403211593,
+            "fraction_abs_le4": 0.9939028725824801,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              62.12559095148788,
+              108.51059367202255
+            ],
+            "abs_residual_percentiles": {
+              "90": 2.7241340637207045,
+              "95": 3.1265231490135164,
+              "99": 3.857964825630188,
+              "100": 6.484985828399658
+            },
+            "signed_p90_minus_p10": 2.803553956747055,
+            "fraction_abs_le4": 0.9932860494880547,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "neutral_gradient_grain_sigma1",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "140",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "183",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            1.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01735217863393,
+          107.07151245313668
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6707420349121094,
+          "95": 1.7860850512981417,
+          "99": 2.087197434902192,
+          "100": 10.305524826049805
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7087516903877258,
+          "50": 1.1930857300758362,
+          "90": 1.6706655144691467
+        },
+        "signed_p90_minus_p10": 0.9619138240814209,
+        "fraction_abs_le4": 0.9951000782138794,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.4695478305220604,
+          0.49435955345630644
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          1.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01735217863393,
+              107.07151245313668
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6562636733055116,
+              "95": 1.777672928571701,
+              "99": 2.16317153215409,
+              "100": 10.305524826049805
+            },
+            "signed_p90_minus_p10": 0.9546606540679932,
+            "fraction_abs_le4": 0.9950938566552902,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.372903391060575,
+              106.4199098760654
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6847095489501955,
+              "95": 1.7925425827503205,
+              "99": 2.0239019632339477,
+              "100": 10.151166915893555
+            },
+            "signed_p90_minus_p10": 0.966776102781296,
+            "fraction_abs_le4": 0.9951062997724687,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "subpixel_glyph_caption",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "faint_glyph_caption",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            1.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 380,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6762258768081664,
+          "95": 1.7921789109706878,
+          "99": 2.0906536102294933,
+          "100": 18.151443481445312
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7124250531196594,
+          "50": 1.1979117393493652,
+          "90": 1.6761576533317566
+        },
+        "signed_p90_minus_p10": 0.9637326002120972,
+        "fraction_abs_le4": 0.9951000782138794,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.47433604300022125,
+          0.4994525334239006
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          1.0
+        ],
+        "heldout_abs12_component_count": 476,
+        "heldout_abs12_component_largest": 18,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6655577540397644,
+              "95": 1.7893606901168821,
+              "99": 2.16531739473343,
+              "100": 18.151443481445312
+            },
+            "signed_p90_minus_p10": 0.9593165218830109,
+            "fraction_abs_le4": 0.9951489618885097,
+            "components_area_ge4_at_abs12": 236,
+            "largest_component": 18
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6866009831428528,
+              "95": 1.7942386567592619,
+              "99": 2.025434014797211,
+              "100": 17.853410720825195
+            },
+            "signed_p90_minus_p10": 0.9667909204959869,
+            "fraction_abs_le4": 0.9950511945392492,
+            "components_area_ge4_at_abs12": 240,
+            "largest_component": 18
+          }
+        ]
+      },
+      "beta": {
+        "kind": "faint_glyph_caption",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "164",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "sparse_stars",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 24,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6678686141967773,
+          "95": 1.7773432791233064,
+          "99": 1.9932315230369575,
+          "100": 301.7538757324219
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7116098940372467,
+          "50": 1.1950771808624268,
+          "90": 1.6677836537361146
+        },
+        "signed_p90_minus_p10": 0.9561737596988679,
+        "fraction_abs_le4": 0.9999786689419795,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.4687209874391556,
+          0.4940971618890762
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          0.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.657206666469574,
+              "95": 1.7726693272590635,
+              "99": 2.0374423384666462,
+              "100": 301.6142883300781
+            },
+            "signed_p90_minus_p10": 0.9518502831459047,
+            "fraction_abs_le4": 0.9999840017064846,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.678065836429596,
+              "95": 1.7809642791748046,
+              "99": 1.9616756725311282,
+              "100": 301.7538757324219
+            },
+            "signed_p90_minus_p10": 0.9589212000370025,
+            "fraction_abs_le4": 0.9999733361774744,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "sparse_stars",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "compact_logo",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 1,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6679191708564758,
+          "95": 1.7774359285831454,
+          "99": 1.9937448298931124,
+          "100": 65.8646011352539
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7116098940372467,
+          "50": 1.1950836181640625,
+          "90": 1.6678415179252624
+        },
+        "signed_p90_minus_p10": 0.9562316238880156,
+        "fraction_abs_le4": 0.9999360068259385,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.46869184970855715,
+          0.49407679438591
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          0.0
+        ],
+        "heldout_abs12_component_count": 4,
+        "heldout_abs12_component_largest": 24,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6572673559188842,
+              "95": 1.7728007853031158,
+              "99": 2.0381809258461,
+              "100": 65.83876037597656
+            },
+            "signed_p90_minus_p10": 0.95190007686615,
+            "fraction_abs_le4": 0.9999360068259385,
+            "components_area_ge4_at_abs12": 2,
+            "largest_component": 24
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6781062722206117,
+              "95": 1.7810420215129852,
+              "99": 1.9620794177055372,
+              "100": 65.8646011352539
+            },
+            "signed_p90_minus_p10": 0.9589616358280183,
+            "fraction_abs_le4": 0.9999360068259385,
+            "components_area_ge4_at_abs12": 2,
+            "largest_component": 24
+          }
+        ]
+      },
+      "beta": {
+        "kind": "compact_logo",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 153.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            1.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            5.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          62.70948322479469,
+          109.28281826013631
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.8323344707489013,
+          "95": 2.0046590685844423,
+          "99": 2.3409362602233896,
+          "100": 3.5944063663482666
+        },
+        "signed_residual_percentiles": {
+          "10": 0.5891817808151245,
+          "50": 1.2126467823982239,
+          "90": 1.8323191046714782
+        },
+        "signed_p90_minus_p10": 1.2431373238563537,
+        "fraction_abs_le4": 1.0,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": true,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.48456764221191406,
+          0.7021147286891937
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          1.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              62.9182137039561,
+              109.28202655619826
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.8388368606567382,
+              "95": 2.018733274936676,
+              "99": 2.383657147884369,
+              "100": 3.5944063663482666
+            },
+            "signed_p90_minus_p10": 1.2599348306655886,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              62.70948322479469,
+              109.28281826013631
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.8260142207145695,
+              "95": 1.99062738418579,
+              "99": 2.2919051122665417,
+              "100": 3.183778762817383
+            },
+            "signed_p90_minus_p10": 1.2251897454261784,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "broad_smooth_object_plus8",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "114",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "155",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            1.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            24.0,
+            44.0
+          ],
+          "component_count_8conn": 6,
+          "morph_large_components": [
+            {
+              "area": 1020,
+              "width": 6,
+              "height": 170
+            },
+            {
+              "area": 1064,
+              "width": 22,
+              "height": 170
+            }
+          ],
+          "bin_vetoes": [
+            {
+              "x": 1344,
+              "y0": 96,
+              "y1": 128,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1344,
+              "y0": 128,
+              "y1": 160,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1344,
+              "y0": 160,
+              "y1": 192,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1344,
+              "y0": 192,
+              "y1": 224,
+              "occupancy": 0.09375
+            }
+          ],
+          "base_admission_pass": false,
+          "morphology_veto": true,
+          "route_profile_pass_this_edge": false
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          59.89210908374414,
+          138.77798626428478
+        ],
+        "abs_residual_percentiles": {
+          "90": 26.707468986511227,
+          "95": 33.45308475494387,
+          "99": 39.78274703979493,
+          "100": 64.94807434082031
+        },
+        "signed_residual_percentiles": {
+          "10": -0.4495117098093033,
+          "50": 1.4933385252952576,
+          "90": 26.707468986511227
+        },
+        "signed_p90_minus_p10": 27.15698069632053,
+        "fraction_abs_le4": 0.6730224331626848,
+        "p90_le24": false,
+        "spread_le24": false,
+        "constant_p95_le4": false,
+        "constant_p99_le12": false,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.9637026369571683,
+          3.1171340346336356
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          1.0
+        ],
+        "heldout_abs12_component_count": 187,
+        "heldout_abs12_component_largest": 2048,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              61.39553598342021,
+              138.77798626428478
+            ],
+            "abs_residual_percentiles": {
+              "90": 26.602774429321293,
+              "95": 33.235822105407706,
+              "99": 39.68322986602784,
+              "100": 64.94807434082031
+            },
+            "signed_p90_minus_p10": 27.165082794427875,
+            "fraction_abs_le4": 0.6688459897610921,
+            "components_area_ge4_at_abs12": 92,
+            "largest_component": 2048
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              59.89210908374414,
+              137.11206677146902
+            ],
+            "abs_residual_percentiles": {
+              "90": 26.836157226562506,
+              "95": 33.70856342315672,
+              "99": 39.90150283813477,
+              "100": 54.45573043823242
+            },
+            "signed_p90_minus_p10": 27.167871424555784,
+            "fraction_abs_le4": 0.6771988765642776,
+            "components_area_ge4_at_abs12": 95,
+            "largest_component": 2048
+          }
+        ]
+      },
+      "beta": {
+        "kind": "structured_ceiling_panel",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "80",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "64",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.6678348064422608,
+          "95": 1.7772669255733493,
+          "99": 1.992842843532563,
+          "100": 3.1420297622680664
+        },
+        "signed_residual_percentiles": {
+          "10": 0.7116098940372467,
+          "50": 1.1950687766075134,
+          "90": 1.667755389213562
+        },
+        "signed_p90_minus_p10": 0.9561454951763152,
+        "fraction_abs_le4": 1.0,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": true,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.46869184970855715,
+          0.49407679438591
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          0.0
+        ],
+        "heldout_abs12_component_count": 0,
+        "heldout_abs12_component_largest": 0,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6571775674819949,
+              "95": 1.772608196735382,
+              "99": 2.0372431516647356,
+              "100": 3.1420297622680664
+            },
+            "signed_p90_minus_p10": 0.9518357276916504,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6780162811279298,
+              "95": 1.780867975950241,
+              "99": 1.9614028882980348,
+              "100": 2.405484199523926
+            },
+            "signed_p90_minus_p10": 0.9588716447353364,
+            "fraction_abs_le4": 1.0,
+            "components_area_ge4_at_abs12": 0,
+            "largest_component": 0
+          }
+        ]
+      },
+      "beta": {
+        "kind": "internal_letterbox_lookalike",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    },
+    {
+      "name": "boundary_subtitle",
+      "edge_evidence": {
+        "top": {
+          "outside_row": 300,
+          "inside_row": 301,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 156.0,
+          "median_dUV": 248.0
+        },
+        "bottom": {
+          "outside_row": 1857,
+          "inside_row": 1856,
+          "quartile_support": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "full_column_support": 1.0,
+          "full_column_error_p95": 0.0,
+          "line_pass": true,
+          "median_dY": 196.0,
+          "median_dUV": 248.0,
+          "row_label_correction": "Original probe labeled active row 1856 as outside; verified transition is inside 1856 to outside 1857."
+        }
+      },
+      "frozen_profile_morphology": {
+        "top": {
+          "band": [
+            0,
+            293
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            1.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            4.0,
+            4.0
+          ],
+          "component_count_8conn": 214,
+          "morph_large_components": [],
+          "bin_vetoes": [
+            {
+              "x": 64,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 128,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 192,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 256,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 320,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 384,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 448,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 512,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 576,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 640,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 704,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 768,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 832,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 896,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 960,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 1024,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 1088,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 1152,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 1216,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1280,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 1344,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 1408,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 1472,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 1536,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1600,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 1664,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 1728,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 1792,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 1856,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 1920,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 1984,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 2048,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 2112,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 2176,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 2240,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 2304,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 2368,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 2432,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 2496,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 2560,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 2624,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 2688,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 2752,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 2816,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 2880,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 2944,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 3008,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 3072,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 3136,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 3200,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 3264,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 3328,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 3392,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 3456,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            },
+            {
+              "x": 3520,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.15625
+            },
+            {
+              "x": 3584,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.16875
+            },
+            {
+              "x": 3648,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.1125
+            },
+            {
+              "x": 3712,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.18125
+            },
+            {
+              "x": 3776,
+              "y0": 288,
+              "y1": 293,
+              "occupancy": 0.09375
+            }
+          ],
+          "base_admission_pass": true,
+          "morphology_veto": true,
+          "route_profile_pass_this_edge": false
+        },
+        "bottom": {
+          "band": [
+            1865,
+            2160
+          ],
+          "neutral_fraction": 1.0,
+          "residual_y_p95_p99": [
+            0.0,
+            0.0
+          ],
+          "residual_chroma_p99": 0.0,
+          "tile_step_p95_max": [
+            0.0,
+            0.0
+          ],
+          "component_count_8conn": 0,
+          "morph_large_components": [],
+          "bin_vetoes": [],
+          "base_admission_pass": true,
+          "morphology_veto": false,
+          "route_profile_pass_this_edge": true
+        }
+      },
+      "spline_model_heldout": {
+        "surface_range_union": [
+          63.01722958541582,
+          107.07151462894005
+        ],
+        "abs_residual_percentiles": {
+          "90": 1.676726794242859,
+          "95": 1.792600679397583,
+          "99": 2.0954529476165775,
+          "100": 161.5077667236328
+        },
+        "signed_residual_percentiles": {
+          "10": 0.718698275089264,
+          "50": 1.2002931237220764,
+          "90": 1.6766466617584228
+        },
+        "signed_p90_minus_p10": 0.9579483866691588,
+        "fraction_abs_le4": 0.9949676478953356,
+        "p90_le24": true,
+        "spread_le24": true,
+        "constant_p95_le4": true,
+        "constant_p99_le12": true,
+        "all_pm4": false,
+        "heldout_local_texture_abs17_p95_p99": [
+          0.4688661128282547,
+          0.4941716915369034
+        ],
+        "heldout_texture_le8": [
+          true,
+          true
+        ],
+        "raw_texture_abs17_p95_p99": [
+          0.0,
+          0.0
+        ],
+        "heldout_abs12_component_count": 488,
+        "heldout_abs12_component_largest": 20,
+        "folds": [
+          {
+            "validation_parity": 1,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.01722958541582,
+              107.07151462894005
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.6661131143569947,
+              "95": 1.790152686834335,
+              "99": 2.171460812091829,
+              "100": 161.37344360351562
+            },
+            "signed_p90_minus_p10": 0.9540702044963837,
+            "fraction_abs_le4": 0.994969425483504,
+            "components_area_ge4_at_abs12": 244,
+            "largest_component": 20
+          },
+          {
+            "validation_parity": 0,
+            "train_tiles": 300,
+            "validation_tiles": 300,
+            "surface_range": [
+              63.37292373402515,
+              106.41367072289287
+            ],
+            "abs_residual_percentiles": {
+              "90": 1.687044358253479,
+              "95": 1.7944292783737181,
+              "99": 2.0269237780570983,
+              "100": 161.5077667236328
+            },
+            "signed_p90_minus_p10": 0.9609227061271668,
+            "fraction_abs_le4": 0.9949658703071672,
+            "components_area_ge4_at_abs12": 244,
+            "largest_component": 20
+          }
+        ]
+      },
+      "beta": {
+        "kind": "boundary_subtitle",
+        "sampler_all_pixels_exact": "1",
+        "checked_pixels": "8294400",
+        "available": "1",
+        "class": "PROVISIONAL",
+        "proposed_top": "144",
+        "proposed_bottom": "1858",
+        "trusted_top": "0",
+        "trusted_bottom": "2160",
+        "trusted_axes": "0",
+        "reason": "candidate lacks coherent opposing black-bar evidence",
+        "global_nearblack": "0",
+        "global_cutoff": "96",
+        "ar_distributed_dark": "0",
+        "retention_analysis_valid": "1",
+        "retention_presentation_valid": "1",
+        "retention_pixel_safe": "0",
+        "retention_can_retain": "0",
+        "retention_outward_visible": "1",
+        "retention_outward_top": "192",
+        "retention_outward_bottom": "1865",
+        "retention_reason": "bounded visible excluded-band content requires outward fit"
+      }
+    }
+  ]
+}

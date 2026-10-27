@@ -1,0 +1,5 @@
+Implementation note for frozen protocol BF2566AA...B5D4
+
+No decision thresholds or classifier rules changed. Exact 17x17 two-dimensional reflected median matches the previously frozen component test. Larger scales 65,129,257 are separable reflected medians (horizontal then vertical 1-D median passes), an explicitly approximate multiscale diagnostic used to avoid 2-D large-footprint cost. Large-scale results are reference-sensitivity descriptors only; do not interpret them as exact square-neighborhood medians or production evidence. The native run finished in 19.34 seconds.
+
+The first run was native-only. The `components17` compact console field accidentally indexed threshold24/4-connectivity; use native-multiscale-results.json's full `components` list and the component followup output for all correct threshold/connectivity combinations. The candidate morphology predicate itself used residual17>=12 and 8-connectivity as specified. This indexing/display issue does not affect residuals, component arrays, classifier candidate result, or any data.

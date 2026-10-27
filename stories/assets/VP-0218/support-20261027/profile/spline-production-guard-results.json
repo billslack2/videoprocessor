@@ -1,0 +1,315 @@
+{
+  "protocol_sha256": "fa6ff6adbedcf21afac2ffd052fb7eea4bdfdee1172e40ceaface4b8b018562f",
+  "guard_formula_source_sha256": "7bbc10b997e94c93d497868fb450371aaa46f63f9f43bb8672ba97ad95a3058c",
+  "method": "Exact same 6x48 summary and 64x256 visible-witness coordinates/formulas as compare_reference.py; only top local reference residual uses checkerboard-heldout spline. Raw source metrics remain unchanged; bottom shown with original local17 residual only as a control, not spline-fit.",
+  "records": [
+    {
+      "file": "frame-000001.bin",
+      "sha256": "F9912A359ADD4494F8F7CF06AEC2D7D4097E3140BFA0D321F65BA8ED7C72C214",
+      "top": {
+        "original_summary": {
+          "black_fraction": 0.5,
+          "p90": 184.0,
+          "dispersion": 112.0,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 0.0,
+          "summary_thresholds_pass": false
+        },
+        "spline_residual_summary": {
+          "black_fraction": 0.9895833333333334,
+          "p90": 12.90288273312143,
+          "dispersion": 13.47123139718343,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 6426,
+          "depth_rows_ge2": 64,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 109
+        },
+        "spline_relative_visible": {
+          "visible_samples": 27,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 12
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "bottom_uniform_reference": {
+        "original_summary": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.1276595744680851,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "spline_residual_summary": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.1276595744680851,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "spline_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "raw_top_residual17_abs_max": 160.0,
+      "raw_top_residual17_abs_p99": 4.0,
+      "retained_raw_top_source_not_modified": true
+    },
+    {
+      "file": "frame-000002.bin",
+      "sha256": "86D67601B279EFA1108DB3B3D33E2A96E4BEEACCAEAF4EAAAB0E7A693E50C5C5",
+      "top": {
+        "original_summary": {
+          "black_fraction": 0.5,
+          "p90": 184.0,
+          "dispersion": 112.0,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 0.0,
+          "summary_thresholds_pass": false
+        },
+        "spline_residual_summary": {
+          "black_fraction": 0.9895833333333334,
+          "p90": 12.90288273312143,
+          "dispersion": 13.47123139718343,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 6426,
+          "depth_rows_ge2": 64,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 109
+        },
+        "spline_relative_visible": {
+          "visible_samples": 27,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 12
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "bottom_uniform_reference": {
+        "original_summary": {
+          "black_fraction": 1.0,
+          "p90": 68.0,
+          "dispersion": 4.0,
+          "raw_texture": 0.5106382978723404,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "spline_residual_summary": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.5106382978723404,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "spline_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "raw_top_residual17_abs_max": 156.0,
+      "raw_top_residual17_abs_p99": 4.0,
+      "retained_raw_top_source_not_modified": true
+    },
+    {
+      "file": "frame-000003.bin",
+      "sha256": "CD3F88ED4FC6630743685049123B7FB10E9F2A2838E23732B2EF56B42C8F10B1",
+      "top": {
+        "original_summary": {
+          "black_fraction": 0.5,
+          "p90": 184.0,
+          "dispersion": 112.0,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 0.0,
+          "summary_thresholds_pass": false
+        },
+        "spline_residual_summary": {
+          "black_fraction": 0.9895833333333334,
+          "p90": 12.90288273312143,
+          "dispersion": 13.47123139718343,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 6426,
+          "depth_rows_ge2": 64,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 109
+        },
+        "spline_relative_visible": {
+          "visible_samples": 27,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 12
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "bottom_uniform_reference": {
+        "original_summary": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.2695035460992908,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "spline_residual_summary": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.2695035460992908,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "spline_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "raw_top_residual17_abs_max": 156.0,
+      "raw_top_residual17_abs_p99": 4.0,
+      "retained_raw_top_source_not_modified": true
+    },
+    {
+      "file": "frame-000004.bin",
+      "sha256": "FF5A9B6A6F03513EE64DD0B5BD80DCEA0086764068B304D13D5BD1BC228B9EC2",
+      "top": {
+        "original_summary": {
+          "black_fraction": 0.5,
+          "p90": 184.0,
+          "dispersion": 112.0,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 0.0,
+          "summary_thresholds_pass": false
+        },
+        "spline_residual_summary": {
+          "black_fraction": 0.9895833333333334,
+          "p90": 12.90288273312143,
+          "dispersion": 13.47123139718343,
+          "raw_texture": 6.950354609929078,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 6426,
+          "depth_rows_ge2": 64,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 109
+        },
+        "spline_relative_visible": {
+          "visible_samples": 27,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 12
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "bottom_uniform_reference": {
+        "original_summary": {
+          "black_fraction": 1.0,
+          "p90": 68.0,
+          "dispersion": 4.0,
+          "raw_texture": 0.5673758865248227,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "spline_residual_summary": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion": 0.0,
+          "raw_texture": 0.5673758865248227,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "spline_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "sample_count": 288,
+        "visibility_sample_count": 16384,
+        "color_raw_witness_samples": 0
+      },
+      "raw_top_residual17_abs_max": 160.0,
+      "raw_top_residual17_abs_p99": 4.0,
+      "retained_raw_top_source_not_modified": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+VP-0218 fixed 2-D background model protocol (native-only, frozen before evaluation)
+
+Purpose: test whether a low-complexity, independently validated 2-D background surface can explain the captured ad's uneven top band without using a local median that tracks each detail. This is model-fit evidence only; no source pixels are changed and no crop authority follows.
+
+Inputs: the four unique captured V210 payloads; independently nominated top exterior y=[0,293), from the frozen boundary-led scan. No standard aspect/screen, edge symmetry, image normalization, or prior control outputs influence the model.
+
+Fixed model: partition y=[0,293), x=[0,3840) into raster-origin 32-row by 64-column tiles. From each training tile, take the 25th percentile of raw Y. Fit a total-degree-3 bivariate Chebyshev polynomial (10 coefficients: i+j<=3, normalized x,y in [-1,1]) to these tile quantiles by tau=0.25 quantile regression (pinball loss). No ridge/knots/degree tuning. Evaluate surface over held-out tiles only. This fixed smooth model has global support and cannot use a local 17x17 neighborhood to absorb individual structures.
+
+Cross-validation: two spatially interleaved folds. Tile (tile_x+tile_y)%2==0 is training in fold A and validation in fold B; parity reverses for fold B. Thus each pixel is evaluated only in a fold whose fit did not use its tile. Fit independently for each of the four payloads. Combine only held-out residuals for acceptance metrics.
+
+Report signed held-out Y residual percentiles, absolute residual p95/p99/max, p90-p10, fraction within ±4, fraction raw Y>88 (Limited floor64+24) retained, residual component support at abs>=12, and tile-wise validation summaries. Compare unchanged exterior residual limits p95<=4 and p99<=12 and exact ±4 test; keep raw luma/chroma/detail witnesses as separate outputs. Also report the fitted surface range/roughness. No threshold or basis changes after native evaluation.
+
+Held-out synthetic controls must be created independently by regression review after this protocol is frozen. Include smooth/gradient ceilings, sparse glyphs/stars/logos, connected objects and broad/low contrast features; test whether their details remain in validation residuals. Four payloads are one clip, not independent scenes. No production edits/deploy.

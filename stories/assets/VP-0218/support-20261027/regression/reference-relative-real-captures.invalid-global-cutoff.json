@@ -1,0 +1,653 @@
+{
+  "protocol": "Production-shaped 288-sample edge summary plus 64x256 visibility sampling, matching frozen reference/protocol.txt formulas. Per-capture absolute threshold and global visibility cutoff come from unchanged beta extraction CSV; exterior median17 residual is diagnostic. Both nominal beta excluded band and 8-row-guarded band are reported because the latter changes sample phase. Raw source planes remain unchanged. This is not physical-aspect proof or crop authority.",
+  "records": [
+    {
+      "capture": "city-lights",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        66,
+        2092
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          66
+        ],
+        "raw_black_threshold": 24,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 101.95833333333333,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 101.95833333333333,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "city-lights",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        66,
+        2092
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          2092,
+          2160
+        ],
+        "raw_black_threshold": 24,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.07092198581560284,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 30.54861111111111,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.07092198581560284,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 30.54861111111111,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "city-lights",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        66,
+        2092
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          58
+        ],
+        "raw_black_threshold": 24,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 14848,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "city-lights",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        66,
+        2092
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          2100,
+          2160
+        ],
+        "raw_black_threshold": 24,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 15360,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.010638297872340425,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.4201388888888889,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.010638297872340425,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.4201388888888889,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "thai-top-card",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          274
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 82.41666666666666,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 82.41666666666666,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 10,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 5
+        },
+        "reference_relative_visible": {
+          "visible_samples": 8,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 3
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "thai-top-card",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          1884,
+          2160
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 268.5625,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 268.5625,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "thai-top-card",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          266
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 3,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 1
+        },
+        "reference_relative_visible": {
+          "visible_samples": 3,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 1
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "thai-top-card",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          1892,
+          2160
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.0,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "latin-three-lines",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          274
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 218.1875,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 218.1875,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "latin-three-lines",
+      "band_mode": "beta_nominal_excluded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          1884,
+          2160
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 0.9965277777777778,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 3.595744680851064,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 154.36458333333331,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 3.595744680851064,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 154.36458333333331,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 30,
+          "depth_rows_ge2": 6,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 6
+        },
+        "reference_relative_visible": {
+          "visible_samples": 12,
+          "depth_rows_ge2": 3,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 5
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "latin-three-lines",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "top",
+        "band": [
+          0,
+          266
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.041666666666671404,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 0.0,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": 0.041666666666671404,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "reference_relative_visible": {
+          "visible_samples": 0,
+          "depth_rows_ge2": 0,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 0
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    },
+    {
+      "capture": "latin-three-lines",
+      "band_mode": "8row_guarded",
+      "beta_measured_bounds": [
+        274,
+        1884
+      ],
+      "source_range": "Unknown (range field absent)",
+      "raw_black_reference_mode": "legacy",
+      "side": {
+        "side": "bottom",
+        "band": [
+          1892,
+          2160
+        ],
+        "raw_black_threshold": 88,
+        "visibility_threshold": 96,
+        "summary_sample_count": 288,
+        "visibility_sample_count": 16384,
+        "original_absolute": {
+          "black_fraction": 0.9965277777777778,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 3.4113475177304964,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": -1.6701388888888857,
+          "summary_thresholds_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 0.9965277777777778,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "raw_texture": 3.4113475177304964,
+          "raw_neutral_fraction": 1.0,
+          "continuity": 1.0,
+          "raw_boundary_contrast_at_guard": -1.6701388888888857,
+          "summary_thresholds_pass": true
+        },
+        "raw_visible": {
+          "visible_samples": 18,
+          "depth_rows_ge2": 3,
+          "adjacent_occupied_depth_rows": true,
+          "peak_count_per_depth": 6
+        },
+        "reference_relative_visible": {
+          "visible_samples": 8,
+          "depth_rows_ge2": 2,
+          "adjacent_occupied_depth_rows": false,
+          "peak_count_per_depth": 5
+        },
+        "notes": "288-point summary and 64x256 visibility samples use frozen formulas. Coordinates are sampled relative to the selected band; guarded-band rows change sampling phase. Self-fitted residual is diagnostic only and never overrides raw visibility."
+      }
+    }
+  ]
+}

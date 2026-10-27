@@ -1,0 +1,15 @@
+VP-0218 multi-scale texture/profile diagnostic protocol (frozen before held-out controls)
+
+Scope: diagnostic only. Source is the captured 4 unique native V210 payloads (from 97 identities); no production changes. Analyze the independently nominated top exclusion y=[0,293), leaving the already reserved 8-row fringe untouched. Bottom is a separately passing uniform band and is not used to infer top. No screen aspect, symmetry or standard ratio.
+
+Question: can the existing 17x17 local-median component veto distinguish sparse texture from preserved content, and does scale/topology/spatial layout add a principled signal?
+
+Frozen measurements, no threshold fitting:
+1) Decode exact V210 ten-bit Y and co-sited expanded U/V using prior decoder. Use unique payload hashes from capture-frame-hashes.csv; keep repeated identities out of independent-scene counts.
+2) On y=[0,293), compute signed and absolute residuals against reflected median filters of sizes 17, 65, 129, 257. Report residual percentiles, thresholded component geometry at abs residual >=12, 24, 48, using both 4- and 8-connectivity; report area, bounding box, aspect, fill ratio, perimeter, skeleton endpoints/branches where available.
+3) Describe persistence by IoU / nearest-center matches of connected structures across scales and all four unique frames. Describe spatial clustering using fixed 64x32 bins (origin at raster x=0,y=0), counts/energy, nearest-neighbor distances, and 2D component centroid covariance. Do not label components as stars, grain, logos, or text based only on numbers.
+4) Compare raw measurements to local baselines, not a fitted production model. Report profile band medians and tile medians at 32,64,128. Preserve the separate model-fit, content-veto, and raw-witness questions.
+
+Frozen provisional morphology candidate (to be challenged, not tuned): let profile/background admission use the already frozen neutral/low-frequency/residual tests from the prior protocol. For the content veto on abs(Y - median17)>=12, reject if any 8-connected component has area >=200 OR bbox width >=24 AND height >=12; also reject if a 64x32 bin has >=8% thresholded pixels. This permits small, scattered, compact texture while vetoing large connected caption-like strokes or localized dense marks. It does not assert semantic safety; small stars/logos and sparse captions may pass, and candidate is invalidated if independent controls show protected content passing. No raw residual peaks are discarded: retain peak, connected support, chroma and multi-scale diagnostics as separate evidence. Frozen constants are not changed after seeing ad/control outcomes.
+
+Evaluation order: freeze this file and SHA-256; analyze native payloads and publish metrics; only then evaluate separately authored regression-agent controls held out from protocol design. The ad is calibration evidence only, not a negative/positive label for individual residual components. Positive and negative visual classes require independent labeled examples.

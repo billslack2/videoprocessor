@@ -1,0 +1,89 @@
+{
+  "reference_formula_source_sha256": "7bbc10b997e94c93d497868fb450371aaa46f63f9f43bb8672ba97ad95a3058c",
+  "height_candidates": [
+    293,
+    1865
+  ],
+  "records": [
+    {
+      "file": "frame-000001.bin",
+      "sha256": "F9912A359ADD4494F8F7CF06AEC2D7D4097E3140BFA0D321F65BA8ED7C72C214",
+      "edges": [
+        {
+          "side": "top",
+          "sampled_band_mean": 106.26388888888889,
+          "inside_guard_row": 295,
+          "inside_guard_sampled_mean": 108.0,
+          "raw_boundary_contrast_at_guard": 1.7361111111111143
+        },
+        {
+          "side": "bottom",
+          "sampled_band_mean": 64.08333333333333,
+          "inside_guard_row": 1862,
+          "inside_guard_sampled_mean": 71.5,
+          "raw_boundary_contrast_at_guard": 7.416666666666671
+        }
+      ]
+    },
+    {
+      "file": "frame-000002.bin",
+      "sha256": "86D67601B279EFA1108DB3B3D33E2A96E4BEEACCAEAF4EAAAB0E7A693E50C5C5",
+      "edges": [
+        {
+          "side": "top",
+          "sampled_band_mean": 106.26388888888889,
+          "inside_guard_row": 295,
+          "inside_guard_sampled_mean": 108.0,
+          "raw_boundary_contrast_at_guard": 1.7361111111111143
+        },
+        {
+          "side": "bottom",
+          "sampled_band_mean": 64.47222222222223,
+          "inside_guard_row": 1862,
+          "inside_guard_sampled_mean": 71.5,
+          "raw_boundary_contrast_at_guard": 7.0277777777777715
+        }
+      ]
+    },
+    {
+      "file": "frame-000003.bin",
+      "sha256": "CD3F88ED4FC6630743685049123B7FB10E9F2A2838E23732B2EF56B42C8F10B1",
+      "edges": [
+        {
+          "side": "top",
+          "sampled_band_mean": 106.26388888888889,
+          "inside_guard_row": 295,
+          "inside_guard_sampled_mean": 108.0,
+          "raw_boundary_contrast_at_guard": 1.7361111111111143
+        },
+        {
+          "side": "bottom",
+          "sampled_band_mean": 64.18055555555556,
+          "inside_guard_row": 1862,
+          "inside_guard_sampled_mean": 71.5,
+          "raw_boundary_contrast_at_guard": 7.319444444444443
+        }
+      ]
+    },
+    {
+      "file": "frame-000004.bin",
+      "sha256": "FF5A9B6A6F03513EE64DD0B5BD80DCEA0086764068B304D13D5BD1BC228B9EC2",
+      "edges": [
+        {
+          "side": "top",
+          "sampled_band_mean": 106.26388888888889,
+          "inside_guard_row": 295,
+          "inside_guard_sampled_mean": 108.0,
+          "raw_boundary_contrast_at_guard": 1.7361111111111143
+        },
+        {
+          "side": "bottom",
+          "sampled_band_mean": 64.5,
+          "inside_guard_row": 1862,
+          "inside_guard_sampled_mean": 71.66666666666667,
+          "raw_boundary_contrast_at_guard": 7.166666666666671
+        }
+      ]
+    }
+  ]
+}

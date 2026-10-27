@@ -1,0 +1,2045 @@
+{
+  "protocol": "Exact production-shaped formulas copied from frozen reference/compare_reference.py, applied to these full-resolution P210 controls. IsCrediblyVisible uses measured beta raw black threshold+8; global_cutoff is recorded separately as global nearblack cutoff metadata and is not the credibility threshold. Separate nominal fixture outer bands and guarded candidate [0,293)/[1865,2160); sampling phase differs. Median17 residual is diagnostic only; raw samples remain unchanged. No crop authority.",
+  "records": [
+    {
+      "name": "neutral_gradient",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3428,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3075,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5798611111111112,
+          "p90": 100.0,
+          "dispersion_p90_p10": 29.0,
+          "texture": 1.177304964539007,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.00694444444446,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 1.0,
+          "dispersion_p90_p10": 2.0,
+          "texture": 1.177304964539007,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.00694444444446,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3435,
+          "rows_ge2": 24,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5902777777777778,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 1.2695035460992907,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.67708333333333,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 1.0,
+          "dispersion_p90_p10": 2.0,
+          "texture": 1.2695035460992907,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.67708333333333,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3051,
+          "rows_ge2": 21,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "neutral_gradient_grain_sigma1",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3496,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3195,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "subpixel_glyph_caption",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "faint_glyph_caption",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3524,
+          "rows_ge2": 22,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "faint_glyph_caption",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "faint_glyph_caption",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3219,
+          "rows_ge2": 21,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "faint_glyph_caption",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "sparse_stars",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3428,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "sparse_stars",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "sparse_stars",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3075,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "sparse_stars",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "compact_logo",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3428,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "compact_logo",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "compact_logo",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3075,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "compact_logo",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5034722222222222,
+          "p90": 104.0,
+          "dispersion_p90_p10": 30.0,
+          "texture": 0.4326241134751773,
+          "neutral": 1.0,
+          "continuity": 0.3333333333333333,
+          "edge_contrast": 171.57638888888889,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.4326241134751773,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 171.57638888888889,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 4686,
+          "rows_ge2": 28,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5069444444444444,
+          "p90": 103.0,
+          "dispersion_p90_p10": 29.0,
+          "texture": 0.425531914893617,
+          "neutral": 1.0,
+          "continuity": 0.3333333333333333,
+          "edge_contrast": 17.506944444444443,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.425531914893617,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.506944444444443,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 4365,
+          "rows_ge2": 27,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "broad_smooth_object_plus8",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.4479166666666667,
+          "p90": 131.0,
+          "dispersion_p90_p10": 59.0,
+          "texture": 1.5319148936170213,
+          "neutral": 1.0,
+          "continuity": 0.3333333333333333,
+          "edge_contrast": 162.91666666666669,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 1.5319148936170213,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 162.91666666666669,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 7982,
+          "rows_ge2": 47,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.4479166666666667,
+          "p90": 130.0,
+          "dispersion_p90_p10": 58.0,
+          "texture": 1.5177304964539007,
+          "neutral": 1.0,
+          "continuity": 0.3333333333333333,
+          "edge_contrast": 6.722222222222214,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 1.5177304964539007,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 6.722222222222214,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 7827,
+          "rows_ge2": 47,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 4,
+          "rows_ge2": 2,
+          "adjacent_rows": false,
+          "peak_per_row": 2
+        }
+      }
+    },
+    {
+      "name": "structured_ceiling_panel",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3428,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3075,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "internal_letterbox_lookalike",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "boundary_subtitle",
+      "band_mode": "nominal_fixture_edges",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          301
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5729166666666666,
+          "p90": 100.0,
+          "dispersion_p90_p10": 28.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 174.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3428,
+          "rows_ge2": 20,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 141,
+          "rows_ge2": 2,
+          "adjacent_rows": true,
+          "peak_per_row": 94
+        }
+      }
+    },
+    {
+      "name": "boundary_subtitle",
+      "band_mode": "nominal_fixture_edges",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1857,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 196.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    },
+    {
+      "name": "boundary_subtitle",
+      "band_mode": "guarded_candidate",
+      "side": "top",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          0,
+          293
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 0.5868055555555556,
+          "p90": 99.0,
+          "dispersion_p90_p10": 27.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 0.5,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": false
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.1702127659574468,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 17.805555555555557,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 3075,
+          "rows_ge2": 19,
+          "adjacent_rows": true,
+          "peak_per_row": 256
+        },
+        "reference_relative_visible": {
+          "samples": 95,
+          "rows_ge2": 1,
+          "adjacent_rows": false,
+          "peak_per_row": 95
+        }
+      }
+    },
+    {
+      "name": "boundary_subtitle",
+      "band_mode": "guarded_candidate",
+      "side": "bottom",
+      "beta_black_threshold": 88,
+      "beta_global_nearblack_cutoff": 96,
+      "beta_credibility_visible_threshold": 96,
+      "measurement": {
+        "band": [
+          1865,
+          2160
+        ],
+        "sample_count": 288,
+        "visibility_grid": [
+          64,
+          256
+        ],
+        "absolute": {
+          "black_fraction": 1.0,
+          "p90": 64.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "reference_residual": {
+          "black_fraction": 1.0,
+          "p90": 0.0,
+          "dispersion_p90_p10": 0.0,
+          "texture": 0.0,
+          "neutral": 1.0,
+          "continuity": 1.0,
+          "edge_contrast": 0.0,
+          "existing_summary_pass": true
+        },
+        "raw_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        },
+        "reference_relative_visible": {
+          "samples": 0,
+          "rows_ge2": 0,
+          "adjacent_rows": false,
+          "peak_per_row": 0
+        }
+      }
+    }
+  ]
+}

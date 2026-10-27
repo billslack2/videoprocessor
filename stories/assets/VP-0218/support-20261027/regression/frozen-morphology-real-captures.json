@@ -1,0 +1,315 @@
+{
+  "protocol": "Frozen morphology predicate only: abs(Y-median17)>=12; reject if any 8-connected component area>=200 OR bbox width>=24 AND height>=12 OR any raster-origin 64x32 bin occupancy>=8%. Beta bounds are used as candidate edges with an 8-row outward fringe; no sidecar bounds used. This is a diagnostic on existing pixels, not full profile admission/crop authority.",
+  "cases": [
+    {
+      "name": "city-lights",
+      "beta_candidate_edges": [
+        66,
+        2092
+      ],
+      "sides": [
+        {
+          "side": "top",
+          "band_y": [
+            0,
+            58
+          ],
+          "pixels": 222720,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mask_pixels": 0,
+          "component_count_8conn": 0,
+          "large_component_vetoes": [],
+          "bin_occupancy_vetoes": [],
+          "morphology_reject": false,
+          "largest_components": []
+        },
+        {
+          "side": "bottom",
+          "band_y": [
+            2100,
+            2160
+          ],
+          "pixels": 230400,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            1.0,
+            3.0
+          ],
+          "mask_pixels": 0,
+          "component_count_8conn": 0,
+          "large_component_vetoes": [],
+          "bin_occupancy_vetoes": [],
+          "morphology_reject": false,
+          "largest_components": []
+        }
+      ]
+    },
+    {
+      "name": "thai-top-card",
+      "beta_candidate_edges": [
+        274,
+        1884
+      ],
+      "sides": [
+        {
+          "side": "top",
+          "band_y": [
+            0,
+            266
+          ],
+          "pixels": 1021440,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            0.0,
+            507.0
+          ],
+          "mask_pixels": 339,
+          "component_count_8conn": 2,
+          "large_component_vetoes": [
+            {
+              "area": 338,
+              "bbox": [
+                2195,
+                252,
+                2227,
+                266
+              ],
+              "width": 32,
+              "height": 14
+            }
+          ],
+          "bin_occupancy_vetoes": [
+            {
+              "bin_occ_veto": true,
+              "bin": [
+                2176,
+                256,
+                2240,
+                266
+              ],
+              "occupancy": 0.4359375
+            }
+          ],
+          "morphology_reject": true,
+          "largest_components": [
+            {
+              "area": 338,
+              "bbox": [
+                2195,
+                252,
+                2227,
+                266
+              ],
+              "width": 32,
+              "height": 14
+            },
+            {
+              "area": 1,
+              "bbox": [
+                2566,
+                265,
+                2567,
+                266
+              ],
+              "width": 1,
+              "height": 1
+            }
+          ]
+        },
+        {
+          "side": "bottom",
+          "band_y": [
+            1892,
+            2160
+          ],
+          "pixels": 1029120,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mask_pixels": 0,
+          "component_count_8conn": 0,
+          "large_component_vetoes": [],
+          "bin_occupancy_vetoes": [],
+          "morphology_reject": false,
+          "largest_components": []
+        }
+      ]
+    },
+    {
+      "name": "latin-three-lines",
+      "beta_candidate_edges": [
+        274,
+        1884
+      ],
+      "sides": [
+        {
+          "side": "top",
+          "band_y": [
+            0,
+            266
+          ],
+          "pixels": 1021440,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "mask_pixels": 0,
+          "component_count_8conn": 0,
+          "large_component_vetoes": [],
+          "bin_occupancy_vetoes": [],
+          "morphology_reject": false,
+          "largest_components": []
+        },
+        {
+          "side": "bottom",
+          "band_y": [
+            1892,
+            2160
+          ],
+          "pixels": 1029120,
+          "neutral_fraction": 1.0,
+          "residual_percentiles": [
+            0.0,
+            0.0,
+            0.0,
+            507.0
+          ],
+          "mask_pixels": 675,
+          "component_count_8conn": 7,
+          "large_component_vetoes": [
+            {
+              "area": 238,
+              "bbox": [
+                1938,
+                1892,
+                1967,
+                1923
+              ],
+              "width": 29,
+              "height": 31
+            }
+          ],
+          "bin_occupancy_vetoes": [
+            {
+              "bin_occ_veto": true,
+              "bin": [
+                1856,
+                1892,
+                1920,
+                1920
+              ],
+              "occupancy": 0.13504464285714285
+            },
+            {
+              "bin_occ_veto": true,
+              "bin": [
+                1920,
+                1892,
+                1984,
+                1920
+              ],
+              "occupancy": 0.13113839285714285
+            }
+          ],
+          "morphology_reject": true,
+          "largest_components": [
+            {
+              "area": 238,
+              "bbox": [
+                1938,
+                1892,
+                1967,
+                1923
+              ],
+              "width": 29,
+              "height": 31
+            },
+            {
+              "area": 149,
+              "bbox": [
+                1888,
+                1892,
+                1923,
+                1902
+              ],
+              "width": 35,
+              "height": 10
+            },
+            {
+              "area": 86,
+              "bbox": [
+                1859,
+                1892,
+                1872,
+                1901
+              ],
+              "width": 13,
+              "height": 9
+            },
+            {
+              "area": 82,
+              "bbox": [
+                1994,
+                1892,
+                2010,
+                1902
+              ],
+              "width": 16,
+              "height": 10
+            },
+            {
+              "area": 81,
+              "bbox": [
+                1816,
+                1892,
+                1829,
+                1901
+              ],
+              "width": 13,
+              "height": 9
+            },
+            {
+              "area": 27,
+              "bbox": [
+                1902,
+                1892,
+                1918,
+                1894
+              ],
+              "width": 16,
+              "height": 2
+            },
+            {
+              "area": 12,
+              "bbox": [
+                1969,
+                1892,
+                1973,
+                1899
+              ],
+              "width": 4,
+              "height": 7
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

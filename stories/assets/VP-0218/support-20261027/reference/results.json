@@ -1,0 +1,366 @@
+{
+  "protocol_sha256": "6d816dce1bcb50275a41a9bd4ebf1334609ad2b3139c060122f10cc336b7efb6",
+  "method": "reference-residual diagnostic on original sample coordinates; not a production classifier",
+  "records": [
+    {
+      "file": "frame-000001.bin",
+      "sha256": "F9912A359ADD4494F8F7CF06AEC2D7D4097E3140BFA0D321F65BA8ED7C72C214",
+      "edges": [
+        {
+          "side": "top",
+          "band": [
+            0,
+            293
+          ],
+          "original": {
+            "black_fraction": 0.5,
+            "p90": 184.0,
+            "dispersion": 112.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 0.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": false
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 6426,
+            "depth_rows_ge2": 64,
+            "adjacent_occupied_depth_rows": true,
+            "peak_count_per_depth": 109
+          },
+          "reference_relative_visible": {
+            "visible_samples": 3,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 1
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        },
+        {
+          "side": "bottom",
+          "band": [
+            1865,
+            2160
+          ],
+          "original": {
+            "black_fraction": 1.0,
+            "p90": 64.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.1276595744680851,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.416666666666671,
+            "summary_thresholds_pass": true
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.1276595744680851,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.416666666666671,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "reference_relative_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        }
+      ]
+    },
+    {
+      "file": "frame-000002.bin",
+      "sha256": "86D67601B279EFA1108DB3B3D33E2A96E4BEEACCAEAF4EAAAB0E7A693E50C5C5",
+      "edges": [
+        {
+          "side": "top",
+          "band": [
+            0,
+            293
+          ],
+          "original": {
+            "black_fraction": 0.5,
+            "p90": 184.0,
+            "dispersion": 112.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 0.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": false
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 6426,
+            "depth_rows_ge2": 64,
+            "adjacent_occupied_depth_rows": true,
+            "peak_count_per_depth": 109
+          },
+          "reference_relative_visible": {
+            "visible_samples": 3,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 1
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        },
+        {
+          "side": "bottom",
+          "band": [
+            1865,
+            2160
+          ],
+          "original": {
+            "black_fraction": 1.0,
+            "p90": 68.0,
+            "dispersion": 4.0,
+            "raw_texture": 0.5106382978723404,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.0277777777777715,
+            "summary_thresholds_pass": true
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.5106382978723404,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.0277777777777715,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "reference_relative_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        }
+      ]
+    },
+    {
+      "file": "frame-000003.bin",
+      "sha256": "CD3F88ED4FC6630743685049123B7FB10E9F2A2838E23732B2EF56B42C8F10B1",
+      "edges": [
+        {
+          "side": "top",
+          "band": [
+            0,
+            293
+          ],
+          "original": {
+            "black_fraction": 0.5,
+            "p90": 184.0,
+            "dispersion": 112.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 0.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": false
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 6426,
+            "depth_rows_ge2": 64,
+            "adjacent_occupied_depth_rows": true,
+            "peak_count_per_depth": 109
+          },
+          "reference_relative_visible": {
+            "visible_samples": 3,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 1
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        },
+        {
+          "side": "bottom",
+          "band": [
+            1865,
+            2160
+          ],
+          "original": {
+            "black_fraction": 1.0,
+            "p90": 64.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.2695035460992908,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.319444444444443,
+            "summary_thresholds_pass": true
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.2695035460992908,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.319444444444443,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "reference_relative_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        }
+      ]
+    },
+    {
+      "file": "frame-000004.bin",
+      "sha256": "FF5A9B6A6F03513EE64DD0B5BD80DCEA0086764068B304D13D5BD1BC228B9EC2",
+      "edges": [
+        {
+          "side": "top",
+          "band": [
+            0,
+            293
+          ],
+          "original": {
+            "black_fraction": 0.5,
+            "p90": 184.0,
+            "dispersion": 112.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 0.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": false
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 6.950354609929078,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 1.7361111111111143,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 6426,
+            "depth_rows_ge2": 64,
+            "adjacent_occupied_depth_rows": true,
+            "peak_count_per_depth": 109
+          },
+          "reference_relative_visible": {
+            "visible_samples": 3,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 1
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        },
+        {
+          "side": "bottom",
+          "band": [
+            1865,
+            2160
+          ],
+          "original": {
+            "black_fraction": 1.0,
+            "p90": 68.0,
+            "dispersion": 4.0,
+            "raw_texture": 0.5673758865248227,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.166666666666671,
+            "summary_thresholds_pass": true
+          },
+          "reference_residual": {
+            "black_fraction": 1.0,
+            "p90": 0.0,
+            "dispersion": 0.0,
+            "raw_texture": 0.5673758865248227,
+            "raw_neutral_fraction": 1.0,
+            "continuity": 1.0,
+            "raw_boundary_contrast_at_guard": 7.166666666666671,
+            "summary_thresholds_pass": true
+          },
+          "raw_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "reference_relative_visible": {
+            "visible_samples": 0,
+            "depth_rows_ge2": 0,
+            "adjacent_occupied_depth_rows": false,
+            "peak_count_per_depth": 0
+          },
+          "sample_count": 288,
+          "visibility_sample_count": 16384,
+          "notes": "Contrast is at retained guard coordinate, not nominal edge; unchanged acquisition contrast requirement may fail inside the fringe. Residual model is self-fitted and not a certificate."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+Local per-edge profile measurement protocol (native-only, frozen before run)
+
+Goal: measure fit of a data-derived local depth reference without changing existing beta thresholds or claiming that above-floor pixels are expendable. This is a model-fit diagnostic, not an acquisition/crop rule.
+
+Input: same four unique 3840x2160 native V210 payloads; top exterior candidate is y=[0,293), independently found transition and 8-row fringe come from prior boundary-led measurements. Do not use bottom, screen aspect, symmetry or normalized pixel copies to fit the top model.
+
+Reference model: for each raster x, take the median Y value over all 293 candidate-exterior rows; smooth that 1-D profile with a reflected median window of 129 columns. This fixed method yields a per-edge depth reference that varies across x but not y. It is not allowed to adapt to control results. Compare against a scalar global median reference as descriptive baseline.
+
+Measurements on signed source-minus-reference residual: p10/p50/p90/p95/p99/p99.9/max, p90-p10, fraction of all pixels within ±4 codes, exact ±4 all-sample pass/fail, and binned residual summaries by fixed 64x32 raster-origin tiles. Also report raw Y absolute percentiles, count/fraction above existing floor+24=88 code point, and residual components/boxes at threshold12; never subtract these witnesses from the source or reinterpret them as expendable. Report whether unchanged reference limits neutrality>=.90, p90-p10<=4 and every tested sample within ±4 would pass the candidate profile, separately from acquisition predicates.
+
+Controls will remain withheld until the native-only result and implementation are saved. Four frames from one clip are not independent scenes. No thresholds or window sizes are changed after measurement.

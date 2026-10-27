@@ -1,0 +1,11 @@
+VP-0218 fixed tensor-spline reference protocol (single predeclared model-development extension)
+
+Purpose: determine whether a bounded 2-D spatial model can represent the native upper-band profile while leaving held-out detail as residual. The earlier global cubic polynomial results remain archived and unchanged; they are a failed simpler model. This extension is model-development evidence, not independent validation or crop authority.
+
+Inputs and validation partition: exactly the four unique native payloads and top y=[0,293) candidate band. Same 64x32 raster-origin tiles, p25 raw-Y training target per tile, alternating checkerboard parity folds, and tau=.25 pinball regression as the earlier frozen surface-fit protocol. No image normalization, aspect/symmetry, or controls used in fitting.
+
+Fixed spline basis: tensor product of open-uniform cubic B-splines (degree 3), 12 basis functions across x and 6 across y (72 coefficients). Coordinates map to [0,1] over x=[0,3839], y=[0,292]. Each axis uses clamped endpoint knots repeated four times, with evenly spaced internal knots: eight x knots at i/9, i=1..8; two y knots at i/3, i=1..2. Coefficients are fit by unconstrained linear programming with tau=.25 pinball loss; no smoothing penalty, degree, knot, tile, quantile, or edge parameter search.
+
+Report per-fold surface range, checkerboard-held-out residual p90/p95/p99/max and p90-p10, fraction within ±4; compare unchanged spatial residual limits p90<=24 and spread<=24, plus constant-reference p95<=4/p99<=12/±4. Report local 17x17 highpass texture statistics and original raw chroma/neutrality/above-floor counts separately. Keep peak residuals and connected supports as witnesses. No recoding/normalization.
+
+This is one bounded development fit on one ad; the same prior controls are not newly held out if reused. Independent regressions may challenge it, but cannot turn fit on this clip into independent validation. If the numerical fit fails under these fixed settings, report failure without retuning.
