@@ -10040,6 +10040,7 @@ void CVideoProcessorDlg::RenderRemove()
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
 	m_shaderLoadingWindow.Hide();
+	m_shaderLoadingPendingTick = 0;
 	m_shaderLoadingPopupShownTick = 0;
 	m_freshRendererProfileConstruction = false;
 	m_freshRendererProfileRendererGeneration = 0;
@@ -15097,10 +15098,22 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
              m_rendererState == RendererState::RENDERSTATE_READY ||
              m_rendererState == RendererState::RENDERSTATE_RENDERING);
         if (canReport) m_videoRenderer->GetRenderStallStatus(status);
+        // Delay the shared status notice, never shader preparation itself.
+        // Keep timing across preparation phases, and reset when work finishes.
+        constexpr ULONGLONG preparationNoticeDelayMs = 750;
+        const ULONGLONG now = GetTickCount64();
+        if (status.IsEmpty())
+            m_shaderLoadingPendingTick = 0;
+        else {
+            if (m_shaderLoadingPendingTick == 0)
+                m_shaderLoadingPendingTick = now;
+            if (now - m_shaderLoadingPendingTick < preparationNoticeDelayMs)
+                status.Empty();
+        }
         if (status != m_profileShaderStatus) {
             const bool finished = !m_profileShaderStatus.IsEmpty() && status.IsEmpty();
             m_profileShaderStatus = status;
-            const auto now = GetTickCount64();
+
             if (finished && !m_profileChangeOverlayItems.empty()) {
                 const auto timing = ProfileChangeOverlay::ResolveTiming(m_profileChangeDisplaySeconds);
                 m_profileChangeOverlayHoldUntil = now + timing.holdMilliseconds;
@@ -15110,6 +15123,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
             UpdateProfileChangeOverlay(now);
         }
         m_shaderLoadingWindow.Hide();
+
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer && !m_wantToRestartRenderer)
