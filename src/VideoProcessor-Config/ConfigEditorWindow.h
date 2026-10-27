@@ -115,6 +115,8 @@ private:
     QWidget* createShortcutsSetupPage();
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();
+    QWidget* createPlayerPage();
+    void offerPlayerRestart();
     QWidget* createProfilePage(const QString& title, const QString& description,
         const QString& sectionPrefix);
     QWidget* createCard(const QString& title, const QString& description, QWidget* content);

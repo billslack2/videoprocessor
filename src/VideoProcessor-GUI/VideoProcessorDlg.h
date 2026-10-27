@@ -983,6 +983,8 @@ protected:
 
 	afx_msg void OnSelectCaptureDevice(UINT nID); // Handler for ON_COMMAND_RANGE
 	afx_msg void OnCommandCapturePlayer();
+	afx_msg void OnCommandPlayerTransport(UINT nID);
+	void UpdateSourcePluginPlayerKeys();
 
 	void SelectCaptureDevice(int n); // Function to process capture selection
 	void SelectCaptureDevice(CString& captureDeviceName);
