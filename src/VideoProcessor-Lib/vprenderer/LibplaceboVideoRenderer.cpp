@@ -50,6 +50,7 @@
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
 #include <vprenderer/DisplayVsyncClock.h>
+#include <vprenderer/SwapchainOutputProbe.h>
 #include <vprenderer/DisplayCadenceHealth.h>
 #include <vprenderer/DisplayCadenceRecovery.h>
 #include <vprenderer/DisplayFrameCache.h>
@@ -7941,14 +7942,10 @@ struct LibplaceboVideoRenderer::Impl
         if (!displayCadenceRecovery.Pending()) return;
         // Verify the current containing output before acting on the negotiated
         // target. DXGI statistics alone may describe the wrong monitor.
-        CComPtr<IDXGISwapChain> native;
-        if (vpOwnedSwapchain) native = vpOwnedSwapchain;
-        else if (swapchain) native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
-        CComPtr<IDXGIOutput> containingOutput;
-        DXGI_OUTPUT_DESC description{};
-        if (!native || FAILED(native->GetContainingOutput(&containingOutput)) ||
-            !containingOutput || FAILED(containingOutput->GetDesc(&description)) ||
-            !negotiatedMonitor || description.Monitor != negotiatedMonitor)
+        // End the output probe's COM lifetime before replacing this HWND's
+        // flip swapchain. Keeping the unwrapped chain here across recreation
+        // leaves the old chain alive and forces libplacebo's bitblt fallback.
+        if (!SwapchainOutputProbe::Matches(swapchain, vpOwnedSwapchain, negotiatedMonitor))
         {
             displayCadenceRecovery.ClearWorkahead();
             DebugLog::Log("VP display timing recovery deferred: reason=output-unverified cached_repeats_suppressed=1");
@@ -7964,13 +7961,16 @@ struct LibplaceboVideoRenderer::Impl
         SyncDisplayWorkaheadScope(displayCadenceSourceGeneration);
         if (!displayCadenceRecovery.TakeRequest(SteadyClockNowNs())) return;
         const auto health = displayCadenceHealth.Get();
+        const auto previousPresentation = actualOutput.presentationModel;
         startupReadinessRevision.fetch_add(1, std::memory_order_acq_rel);
         InvalidateHdrStatus();
         const bool recreated = RecreateSwapchain(swapchainBlit,
             suppressLimitedNegotiation, "display cadence mismatch");
-        DebugLog::Log("VP display timing recovery: attempt=%u expected_hz=%.6f observed_hz=%.6f window_ms=%.1f recreated=%d workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+        DebugLog::Log("VP display timing recovery: attempt=%u expected_hz=%.6f observed_hz=%.6f window_ms=%.1f recreated=%d workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0 presentation_before=%s presentation_after=%s",
             displayCadenceRecovery.Attempts(), health.expectedHz, health.observedHz,
-            health.windowMs, recreated ? 1 : 0);
+            health.windowMs, recreated ? 1 : 0,
+            LibplaceboOutput::ToString(previousPresentation),
+            LibplaceboOutput::ToString(actualOutput.presentationModel));
     }
 
 	bool RecreateSwapchain(

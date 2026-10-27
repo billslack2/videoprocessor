@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/SwapchainOutputProbe.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
@@ -335,7 +336,7 @@ namespace
 				pl_log_destroy(&m_log);
 		}
 
-		bool Create()
+		bool Create(bool forceSoftware = true)
 		{
 			pl_log_params logParams{};
 			logParams.log_level = PL_LOG_NONE;
@@ -344,8 +345,9 @@ namespace
 				return false;
 
 			pl_d3d11_params deviceParams{};
-			deviceParams.force_software = true;
-			deviceParams.allow_software = true;
+			m_forceSoftware = forceSoftware;
+			deviceParams.force_software = forceSoftware;
+			deviceParams.allow_software = forceSoftware;
 			m_d3d11 = pl_d3d11_create(m_log, &deviceParams);
 			if (!m_d3d11)
 				return false;
@@ -810,6 +812,72 @@ namespace
 			return result;
 		}
 
+        void CheckRecoverySwapchain(bool retainOldProbe)
+        {
+            std::vector<HMONITOR> monitors;
+            EnumDisplayMonitors(nullptr, nullptr,
+                [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+                    reinterpret_cast<std::vector<HMONITOR>*>(data)->push_back(monitor);
+                    return TRUE;
+                }, reinterpret_cast<LPARAM>(&monitors));
+            Assert::IsFalse(monitors.empty());
+            for (HMONITOR monitor : monitors)
+            {
+                MONITORINFO info{sizeof(info)};
+                Assert::IsTrue(GetMonitorInfoW(monitor, &info) != FALSE);
+                HWND window = CreateWindowExW(0, L"STATIC", L"VP cadence recovery test", WS_POPUP,
+                    info.rcMonitor.left + 32, info.rcMonitor.top + 32, 64, 64,
+                    nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+                Assert::IsNotNull(window);
+                struct WindowCleanup { HWND hwnd; ~WindowCleanup() { DestroyWindow(hwnd); } } windowCleanup{window};
+                pl_d3d11_swapchain_params params{}; params.window = window;
+                pl_swapchain sw = pl_d3d11_create_swapchain(m_d3d11, &params);
+                struct ChainCleanup { pl_swapchain& chain; ~ChainCleanup() { pl_swapchain_destroy(&chain); } } chainCleanup{sw};
+                Assert::IsNotNull(sw);
+                auto effect = [&]() {
+                    CComPtr<IDXGISwapChain> native;
+                    native.Attach(pl_d3d11_swapchain_unwrap(sw));
+                    DXGI_SWAP_CHAIN_DESC desc{};
+                    Assert::IsTrue(SUCCEEDED(native->GetDesc(&desc)));
+                    return desc.SwapEffect;
+                };
+                Assert::AreEqual(int(DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL), int(effect()));
+                for (int iteration = 0; iteration < 3; ++iteration)
+                {
+                    int width = 64, height = 64;
+                    Assert::IsTrue(pl_swapchain_resize(sw, &width, &height));
+                    pl_swapchain_frame frame{};
+                    Assert::IsTrue(pl_swapchain_start_frame(sw, &frame));
+                    const float color[4] = {iteration / 3.0f, 0.25f, 0.5f, 1.0f};
+                    pl_tex_clear(m_d3d11->gpu, frame.fbo, color);
+                    Assert::IsTrue(pl_swapchain_submit_frame(sw));
+                    pl_swapchain_swap_buffers(sw);
+                    // Exercise both ownership branches of the production probe.
+                    // WARP cannot report a physical containing output; hardware must.
+                    Assert::AreEqual(!m_forceSoftware, SwapchainOutputProbe::Matches(sw, nullptr, monitor));
+                    Assert::IsFalse(SwapchainOutputProbe::Matches(sw, nullptr, nullptr));
+                    for (HMONITOR other : monitors) if (other != monitor)
+                        Assert::IsFalse(SwapchainOutputProbe::Matches(sw, nullptr, other));
+                    CComPtr<IDXGISwapChain> retained;
+                    retained.Attach(pl_d3d11_swapchain_unwrap(sw));
+                    Assert::AreEqual(!m_forceSoftware, SwapchainOutputProbe::Matches(nullptr, retained, monitor));
+                    if (!retainOldProbe) retained.Release();
+                    pl_swapchain_destroy(&sw);
+                    sw = pl_d3d11_create_swapchain(m_d3d11, &params);
+                    Assert::IsNotNull(sw);
+                    if (retainOldProbe)
+                    {
+                        Assert::AreEqual(int(DXGI_SWAP_EFFECT_DISCARD), int(effect()),
+                            L"The old recovery lifetime reproduces silent bitblt fallback");
+                        retained.Release();
+                        break;
+                    }
+                    Assert::AreEqual(int(DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL), int(effect()),
+                        L"Recovery must preserve flip presentation on the same HWND");
+                }
+            }
+        }
+
 		void CheckSdrSwapchain(float nits, bool force8bit)
 		{
 			HWND window = CreateWindowExW(0, L"STATIC", L"VP-0173 test", WS_POPUP,
@@ -866,6 +934,7 @@ namespace
 			return frame;
 		}
 
+		bool m_forceSoftware = true;
 		pl_log m_log = nullptr;
 		pl_d3d11 m_d3d11 = nullptr;
 		pl_renderer m_renderer = nullptr;
@@ -1306,6 +1375,25 @@ namespace VideoProcessorTest
 				Assert::AreEqual(0, std::memcmp(original.data(), pixels.data(), pixels.size() * sizeof(RgbaPixel)));
 			}
 		}
+
+        TEST_METHOD(CadenceRecoveryOutputProbeReleasesOldSwapchainBeforeRecreation)
+        {
+            for (bool software : {true, false})
+            {
+                TargetLutGpuFixture fixture;
+                Assert::IsTrue(fixture.Create(software));
+                fixture.CheckRecoverySwapchain(false);
+            }
+        }
+        TEST_METHOD(RetainedCadenceRecoveryProbeReproducesBitbltFallback)
+        {
+            for (bool software : {true, false})
+            {
+                TargetLutGpuFixture fixture;
+                Assert::IsTrue(fixture.Create(software));
+                fixture.CheckRecoverySwapchain(true);
+            }
+        }
 
 		TEST_METHOD(SdrLuminanceD3D11HintKeepsSdrAndForced8BitTransport)
 		{
