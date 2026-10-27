@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-27T00:09:03.193446+00:00",
+  "repository": "billslack2/videoprocessor",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/210",
+  "userAcceptance": "better. merge this.",
+  "acceptedTestedCommit": "376e46a3c2d794745e6e04a525b73ca63248b370",
+  "integrationBranch": "v1.4.02-beta",
+  "expectedBaseCommit": "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+  "actualMergeCommit": "37b8720a46f88181cc41c283a35f0a2bc18cfbe8",
+  "actualMergeParents": [
+    "53f7e234d7b4a607322e03295ce1cac8b9bbb6c4",
+    "376e46a3c2d794745e6e04a525b73ca63248b370"
+  ],
+  "mergedAtUtc": "2026-10-27T00:07:53Z",
+  "testedTree": "4272680d1c58d0e3a7071b498afc955b061e6580",
+  "mergedTree": "4272680d1c58d0e3a7071b498afc955b061e6580",
+  "treesIdentical": true,
+  "sourceWorktreeClean": true,
+  "mergeMethod": "merge commit using vp-release/scripts/merge-vp.ps1 with exact head/base pins",
+  "remoteChecksAtMerge": [],
+  "qualification": {
+    "build": "x64 Release passed",
+    "nativePassed": 3328,
+    "affectedGpuPassed": 10,
+    "distinctPassingTests": 3338,
+    "receipt": "validation.json"
+  },
+  "priorDeploymentReceipt": "deployment-receipt.json",
+  "runtimeChangedByThisMerge": false,
+  "configurationChangedByThisMerge": false,
+  "releasePublished": false,
+  "scope": "User accepted improvement and authorized integration of PR210; wider ownership story remains In Progress."
+}
