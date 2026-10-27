@@ -121,12 +121,14 @@ namespace Tests
 			void Step(const BufferedPixelSample& frame,
 				const BufferedPixelSample* future1=nullptr,const BufferedPixelSample* future2=nullptr,
                 uint8_t configuredLookahead=2,uint8_t availableLookahead=2,
-                const ActivePictureFrameDecision* inwardProof=nullptr)
+                const ActivePictureFrameDecision* inwardProof=nullptr,
+                const ActivePicturePresentationRetentionEvidence* retentionOverride=nullptr)
 			{
 				auto current=BufferedLiveInput(frame);
 				current.sourceSequence=sequence;
 				current.trustedGeometry=current.presentationBeforeObservation=geometry;
-				current.retention=EvaluateActivePicturePresentationRetention(frame.Source(),geometry);
+				current.retention=retentionOverride ? *retentionOverride :
+                    EvaluateActivePicturePresentationRetention(frame.Source(),geometry);
 				current.previousOutward=outward;
 				current.presentation=densePresentation;
                 current.translationDriftActive=translationDrift.IsActive();
@@ -156,7 +158,8 @@ namespace Tests
 					{
 						samples[index].identity=BufferedIdentity(sequence+index);
 						samples[index].observation=MakeActivePictureObservation(pixels[index]->evidence,sequence+index,24);
-						samples[index].retention=EvaluateActivePicturePresentationRetention(pixels[index]->Source(),geometry);
+						samples[index].retention=retentionOverride ? *retentionOverride :
+                        EvaluateActivePicturePresentationRetention(pixels[index]->Source(),geometry);
 						samples[index].nearBlackEvaluated=true;
 					}
 					const auto proof=BuildBufferedPictureExpansion(samples.data(),3,geometry,configuredLookahead,availableLookahead,19,23);
@@ -281,6 +284,102 @@ namespace Tests
                 true,samples[0].relativeContrast,BufferedScope(),2));
         }
 
+        TEST_METHOD(BufferedNativeDistributedExpansionUsesExactQueuedRouteAndRevalidatesCurrentFrame)
+        {
+            std::array<BufferedPixelSample,3> frames;
+            for (auto& frame : frames)
+            {
+                for (auto* edge : {&frame.retention.expandingTop,&frame.retention.expandingBottom})
+                {
+                    edge->blackFraction=.04; edge->continuity=0; edge->lumaP90=36; edge->texture=7.1;
+                    edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+                }
+                frame.retention.activePicture=frame.evidence;
+            }
+            auto samples=BufferedSamples(frames);
+            const auto liveProof=ConfirmOutwardPictureTransition({},BufferedScope(),samples[0].observation.bounds,
+                samples[0].retention,7,100);
+            Assert::IsTrue(liveProof.nativeDistributedPicture,L"Fixture must satisfy the unchanged live native predicate.");
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),samples.size(),BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid,L"Three exact native-distributed frames should qualify without broad occupancy.");
+            Assert::IsFalse(proof.relativeContrast);
+            Assert::AreEqual(static_cast<int>(OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT),
+                static_cast<int>(proof.proofRoute));
+
+            auto current=BufferedLiveInput(frames[0]);
+            Assert::IsTrue(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true),
+                L"The consumer must recheck the same distributed route on the exact current source frame.");
+            for (auto* edge : {&current.retention.expandingTop,&current.retention.expandingBottom})
+                edge->distributedSupportDepthRowsByQuartile.fill(0);
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true),
+                L"A queued certificate cannot survive loss of current distributed support.");
+
+            current=BufferedLiveInput(frames[0]);
+            current.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            Assert::IsFalse(ValidateBufferedTranslatedPictureExpansion(proof,BufferedIdentity(100),current,true,BufferedScope()),
+                L"Native-distributed queued evidence must not retire a subtitle TRANSLATE owner.");
+
+            auto bothRouteSamples=samples;
+            for (auto* edge : {&bothRouteSamples[1].retention.expandingTop,&bothRouteSamples[1].retention.expandingBottom})
+            {
+                edge->lumaP90=160; edge->texture=20; edge->blackFraction=.1; edge->continuity=.2;
+            }
+            const auto bothRouteWindow=BuildBufferedPictureExpansion(bothRouteSamples.data(),bothRouteSamples.size(),BufferedScope(),2,2,19,23);
+            Assert::IsTrue(bothRouteWindow.valid,L"The complete distributed route survives a middle sample that also qualifies broad occupancy.");
+            Assert::AreEqual(static_cast<int>(OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT),
+                static_cast<int>(bothRouteWindow.proofRoute));
+
+            auto mixed=samples;
+            for (auto* edge : {&mixed[1].retention.expandingTop,&mixed[1].retention.expandingBottom})
+            {
+                edge->lumaP90=160; edge->texture=20; edge->blackFraction=.1; edge->continuity=.2;
+                edge->distributedSupportDepthRowsByQuartile.fill(0);
+            }
+            Assert::IsFalse(BuildBufferedPictureExpansion(mixed.data(),mixed.size(),BufferedScope(),2,2,19,23).valid,
+                L"One broad-only middle sample cannot be pooled into a native-distributed run.");
+        }
+        TEST_METHOD(ProgressiveNativeDistributedWindowStillSuppressesIntermediatePublication)
+        {
+            std::array<BufferedPixelSample,3> frames;
+            const int tops[]={160,158,156}, bottoms[]={2000,2002,2004};
+            for(size_t i=0;i<frames.size();++i)
+            {
+                auto& frame=frames[i];
+                for(int y=0;y<2160;++y)
+                    std::fill(frame.pixels.begin()+size_t(y)*3840,
+                        frame.pixels.begin()+size_t(y+1)*3840,
+                        static_cast<uint16_t>((y<tops[i] || y>=bottoms[i] ? 64 : 512)<<6));
+                const auto source=frame.Source();
+                frame.evidence=ExtractActivePictureEvidence(source);
+                frame.retention=EvaluateActivePicturePresentationRetention(source,BufferedScope());
+                for(auto* edge : {&frame.retention.expandingTop,&frame.retention.expandingBottom})
+                {
+                    edge->blackFraction=.04; edge->continuity=0; edge->lumaP90=36; edge->texture=7.1;
+                    edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+                }
+                frame.retention.activePicture=frame.evidence;
+            }
+            const auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),samples.size(),BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            Assert::AreEqual(static_cast<int>(OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT),
+                static_cast<int>(proof.proofRoute));
+            Assert::IsTrue(proof.progressiveNativeEdges,
+                L"The three exact native positions move both edges monotonically by one scan step.");
+
+            auto current=BufferedLiveInput(frames[0]);
+            auto admission=EvaluateTransitionAdmission(current);
+            Assert::IsTrue(ConstrainBufferedMovingPictureOnset(proof,BufferedIdentity(100),current,admission));
+            Assert::IsTrue(admission.deferOutward && admission.observation.transitionDeferred);
+            Assert::AreEqual(static_cast<int>(ActivePictureClassification::PROVISIONAL),
+                static_cast<int>(admission.observation.classification));
+
+            for(auto* edge : {&current.retention.expandingTop,&current.retention.expandingBottom})
+                edge->distributedSupportDepthRowsByQuartile.fill(0);
+            admission=EvaluateTransitionAdmission(current);
+            Assert::IsFalse(ConstrainBufferedMovingPictureOnset(proof,BufferedIdentity(100),current,admission),
+                L"Loss of the exact current distributed evidence invalidates onset suppression.");
+        }
         TEST_METHOD(RelativeBufferedProofRejectsMissingOrConflictingFutureEvidence)
         {
             const std::array<BufferedPixelSample,3> frames;
@@ -294,6 +393,8 @@ namespace Tests
                 sample.relativeContrast.target=sample.observation.bounds;
                 sample.relativeContrast.sourceGeneration=7;
                 sample.qualifiedAspectPair=true;
+                // This test isolates the relative route; native alternatives are exercised above.
+                sample.retention.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
             }
             for (int defect=0;defect<15;++defect)
             {
@@ -317,7 +418,8 @@ namespace Tests
                 case 13: future.identity.captureTimestamp=original[0].identity.captureTimestamp; break;
                 case 14: future.retention.expansionStripsAvailable=false; break;
                 }
-                Assert::IsFalse(BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23).valid);
+                const auto defectProof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+                Assert::IsFalse(defectProof.valid,std::to_wstring(defect).c_str());
             }
         }
 
@@ -400,6 +502,30 @@ namespace Tests
             Assert::IsTrue(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,true,pixels,BufferedScope()));
         }
 
+        TEST_METHOD(BufferedNativeDistributedExpansionReachesFirstFrameFinalCrop)
+        {
+            const BufferedPixelSample target;
+            auto native=target.retention;
+            native.expansionStripsAvailable=true;
+            native.expansionBase=BufferedScope();
+            native.expansionCandidate=BufferedTaller();
+            native.activePicture=target.evidence;
+            for(auto* edge : {&native.expandingTop,&native.expandingBottom})
+            {
+                edge->blackFraction=.04; edge->continuity=0; edge->lumaP90=36; edge->texture=7.1;
+                edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+            }
+            BufferedMotionSequence replay;
+            replay.Step(target,&target,&target,2,2,nullptr,&native);
+            Assert::IsTrue(replay.published,
+                L"A complete native-distributed queued window must publish on its first source frame.");
+            Assert::IsTrue(replay.presented.applyCrop);
+            Assert::AreEqual(68,replay.finalBounds.top);
+            Assert::AreEqual(2092,replay.finalBounds.bottom);
+            Assert::AreEqual(0,replay.finalBounds.left);
+            Assert::AreEqual(3840,replay.finalBounds.right);
+            Assert::IsFalse(replay.recovery.active);
+        }
         TEST_METHOD(BufferedBroadExpansionRetiresTranslationOnFirstFrameAndKeepsFinalCrop)
         {
             const BufferedPixelSample taller;

@@ -5135,10 +5135,10 @@ namespace Tests
             Assert::AreEqual("proof-pending",two.diagnosticReason);
             Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,13).diagnosticReason);
             Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,3,12).diagnosticReason);
-            Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).diagnosticReason);
+            Assert::AreEqual("stale-source-sequence",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).diagnosticReason);
 			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,13).state.confirmations);
 			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,3,12).state.confirmations);
-			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).state.confirmations);
+			Assert::AreEqual(2u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).state.confirmations);
 			evidence.analysisValid = false;
 			Assert::IsFalse(ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,12).authoritative);
 			evidence.analysisValid = true; evidence.presentationValid = false;
@@ -8740,6 +8740,10 @@ namespace Tests
 			broad.expandingTop.blackFraction = broad.expandingBottom.blackFraction = 0.30;
 			broad.expandingTop.continuity = broad.expandingBottom.continuity = 0.40;
 			broad.expandingTop.lumaP90 = broad.expandingBottom.lumaP90 = 200.0;
+			// This negative is broad-only: continuously valid native support is
+			// deliberately tested separately rather than hidden by route priority.
+			broad.expandingTop.distributedSupportDepthRowsByQuartile.fill(0);
+			broad.expandingBottom.distributedSupportDepthRowsByQuartile.fill(0);
 			auto switched = ConfirmOutwardPictureTransition(decision.state, scope, candidate,
 				broad, 7, 101);
 			Assert::IsTrue(switched.broadOpposingPicture);
@@ -8749,6 +8753,97 @@ namespace Tests
 			Assert::IsTrue(decision.nativeDistributedPicture);
 			Assert::AreEqual(1U, decision.state.confirmations);
 			Assert::IsFalse(decision.authoritative);
+		}
+
+		TEST_METHOD(ContinuousNativeProofSurvivesAFrameThatAlsoHasBroadOccupancy)
+		{
+			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds target{0,68,3840,2092,3840,2160,3840.0/2024,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			ActivePicturePresentationRetentionEvidence dark;
+			dark.analysisValid=dark.presentationValid=dark.expansionStripsAvailable=true;
+			dark.expansionBase=scope; dark.expansionCandidate=target;
+			dark.expandingTop.barPixels=208; dark.expandingTop.blackFraction=.04;
+			dark.expandingTop.continuity=0; dark.expandingTop.lumaP90=36; dark.expandingTop.texture=7;
+			dark.expandingTop.distributedSupportDepthRowsByQuartile.fill(0x3f);
+			dark.expandingBottom=dark.expandingTop;
+			dark.activePicture.available=true;
+			dark.activePicture.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+			dark.activePicture.trustedBounds=target;
+			dark.activePicture.top.trusted=dark.activePicture.bottom.trusted=true;
+			dark.activePicture.axisEvidence.vertical.scanComplete=true;
+			dark.activePicture.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+			auto bright=dark;
+			bright.expandingTop.lumaP90=bright.expandingBottom.lumaP90=200;
+			auto first=ConfirmOutwardPictureTransition({},scope,target,dark,7,100);
+			first.state.verticalPresentationSeen=true;
+			auto middle=ConfirmOutwardPictureTransition(first.state,scope,target,bright,7,101);
+			Assert::IsTrue(middle.broadOpposingPicture && middle.nativeDistributedPicture);
+			Assert::AreEqual(2U,middle.state.confirmations);
+			Assert::AreEqual(1U,middle.state.broadRun.confirmations);
+			Assert::IsFalse(middle.authoritative);
+			const auto last=ConfirmOutwardPictureTransition(middle.state,scope,target,dark,7,102);
+			Assert::IsTrue(last.authoritative);
+			Assert::AreEqual(3U,last.state.nativeDistributedRun.confirmations);
+			Assert::AreEqual(0U,last.state.broadRun.confirmations);
+			Assert::AreEqual(uint64_t(100),last.state.firstPictureSourceSequence);
+			Assert::IsTrue(last.state.verticalPresentationSeen);
+			const auto repeat=ConfirmOutwardPictureTransition(last.state,scope,target,bright,7,102);
+			Assert::AreEqual(1U,repeat.state.broadRun.confirmations);
+			Assert::AreEqual(3U,repeat.state.nativeDistributedRun.confirmations);
+			const auto gap=ConfirmOutwardPictureTransition(repeat.state,scope,target,bright,7,104);
+			Assert::IsFalse(gap.authoritative);
+			Assert::AreEqual(1U,gap.state.broadRun.confirmations);
+			Assert::AreEqual(1U,gap.state.nativeDistributedRun.confirmations);
+		}
+
+		TEST_METHOD(IndependentOutwardRoutesDoNotForgetPriorPresentationOwnership)
+		{
+			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds target{0,68,3840,2092,3840,2160,3840.0/2024,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			for (int owner=0;owner<3;++owner)
+			{
+				TransitionAdmissionInput input;
+				input.trustedGeometry=input.presentationBeforeObservation=scope;
+				input.trustedGeometryAvailable=input.compatiblePresentation=true;
+				input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=7;
+				input.outwardCandidate=target; input.framesPerSecond=24;
+				input.evidence.available=true;
+				input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.evidence.proposedBounds=input.evidence.trustedBounds=target;
+				input.evidence.top.trusted=input.evidence.bottom.trusted=true;
+				input.evidence.axisEvidence.vertical.scanComplete=true;
+				input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+				input.retention.analysisValid=input.retention.presentationValid=true;
+				input.retention.expansionStripsAvailable=true;
+				input.retention.expansionBase=scope; input.retention.expansionCandidate=target;
+				input.retention.activePicture=input.evidence;
+				auto& strip=input.retention.expandingTop;
+				strip.barPixels=208; strip.blackFraction=.04; strip.continuity=0;
+				strip.texture=7; strip.distributedSupportDepthRowsByQuartile.fill(0x3f);
+				for (uint64_t sequence=100;sequence<=102;++sequence)
+				{
+					input.sourceSequence=sequence;
+					strip.lumaP90=sequence==101?200:36;
+					input.retention.expandingBottom=strip;
+					input.presentation.action=sequence!=100?VerticalBarPresentationAction::NONE:
+						(owner==0?VerticalBarPresentationAction::TRANSLATE:
+						 owner==1?VerticalBarPresentationAction::FIT:VerticalBarPresentationAction::NONE);
+					input.translationDriftActive=sequence==100 && owner==2;
+					const auto admission=EvaluateTransitionAdmission(input);
+					Assert::AreEqual(uint64_t(100),admission.outward.state.firstPictureSourceSequence);
+					Assert::IsTrue(admission.outward.state.verticalPresentationSeen);
+					Assert::AreEqual(sequence==102,admission.outward.authoritative);
+					ActivePictureTransitionDecision pending;
+					pending.stable=true; pending.stableBounds=scope; pending.bounds=target;
+					pending.state=ActivePictureTransitionState::CANDIDATE_TRANSITION;
+					Assert::IsFalse(MakePictureTransitionHandoff(input,admission,pending,true,9).active);
+					input.previousOutward=admission.outward.state;
+				}
+			}
 		}
 
 		TEST_METHOD(CadenceRepeatCannotAdvanceOutwardPictureConfirmation)
@@ -8798,6 +8893,95 @@ namespace Tests
 			Assert::IsTrue(decision.authoritative);
 		}
 
+		TEST_METHOD(StaleSourceSequenceCannotRewindOrBankOutwardProof)
+		{
+			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds full{0,0,3840,2160,3840,2160,16.0/9,
+				ActivePictureBounds::BarAxes::NONE};
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid=evidence.presentationValid=true;
+			evidence.excludedTop.barPixels=276;
+			evidence.excludedTop.blackFraction=.30;
+			evidence.excludedTop.continuity=.40;
+			evidence.excludedTop.lumaP90=500;
+			evidence.excludedBottom=evidence.excludedTop;
+
+			auto d=ConfirmOutwardPictureTransition({},scope,full,evidence,7,100);
+			d=ConfirmOutwardPictureTransition(d.state,scope,full,evidence,7,101);
+			Assert::AreEqual(2U,d.state.broadRun.confirmations);
+			d.state.verticalPresentationSeen=true;
+			const auto stale=ConfirmOutwardPictureTransition(d.state,scope,full,evidence,7,99);
+			Assert::IsTrue(stale.outwardTransition);
+			Assert::IsFalse(stale.broadOpposingPicture);
+			Assert::IsFalse(stale.nativeDistributedPicture);
+			Assert::IsFalse(stale.authoritative);
+			Assert::AreEqual("stale-source-sequence",stale.diagnosticReason);
+			Assert::AreEqual(uint64_t(101),stale.state.lastObservedSourceSequence);
+			Assert::AreEqual(uint64_t(100),stale.state.firstPictureSourceSequence);
+			Assert::AreEqual(2U,stale.state.confirmations);
+			Assert::AreEqual(2U,stale.state.broadRun.confirmations);
+			Assert::IsTrue(stale.state.verticalPresentationSeen);            TransitionAdmissionInput input;
+            input.trustedGeometry=input.presentationBeforeObservation=scope;
+            input.trustedGeometryAvailable=input.compatiblePresentation=true;
+            input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=7;
+            input.sourceSequence=99; input.outwardCandidate=full; input.retention=evidence;
+            input.evidence.available=true;
+            input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.evidence.proposedBounds=input.evidence.trustedBounds=full;
+            input.evidence.top.trusted=input.evidence.bottom.trusted=true;
+            input.evidence.axisEvidence.vertical.scanComplete=true;
+            input.evidence.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            input.previousOutward=stale.state;
+            const auto staleAdmission=EvaluateTransitionAdmission(input);
+            Assert::IsTrue(staleAdmission.deferOutward);
+            Assert::IsTrue(staleAdmission.observation.transitionDeferred);
+
+			auto replay=ConfirmOutwardPictureTransition(stale.state,scope,full,evidence,7,100);
+			Assert::AreEqual(2U,replay.state.confirmations);
+			Assert::AreEqual("stale-source-sequence",replay.diagnosticReason);
+            Assert::AreEqual(2U,replay.state.confirmations);
+            Assert::IsFalse(replay.authoritative);
+            replay=ConfirmOutwardPictureTransition(replay.state,scope,full,evidence,7,101);
+            Assert::AreEqual("repeated-source",replay.diagnosticReason);
+            Assert::AreEqual(2U,replay.state.confirmations);
+			replay=ConfirmOutwardPictureTransition(replay.state,scope,full,evidence,7,101);
+			Assert::AreEqual(2U,replay.state.confirmations);
+			replay=ConfirmOutwardPictureTransition(replay.state,scope,full,evidence,7,102);
+			Assert::AreEqual(3U,replay.state.confirmations);
+			Assert::IsTrue(replay.authoritative);
+
+			const auto generationReset=ConfirmOutwardPictureTransition(
+				replay.state,scope,full,evidence,8,99);
+			Assert::AreEqual(1U,generationReset.state.confirmations);
+			Assert::AreEqual(uint64_t(99),generationReset.state.firstPictureSourceSequence);
+			auto changedBase=scope; changedBase.top=274; changedBase.bottom=1886;
+			const auto baseReset=ConfirmOutwardPictureTransition(
+				replay.state,changedBase,full,evidence,7,99);
+			Assert::AreEqual(1U,baseReset.state.confirmations);
+			Assert::AreEqual(uint64_t(99),baseReset.state.firstPictureSourceSequence);
+		}
+
+		TEST_METHOD(ChangedCandidateAtSameSequenceIsNotReportedAsRepeat)
+		{
+			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds full{0,0,3840,2160,3840,2160,16.0/9,
+				ActivePictureBounds::BarAxes::NONE};
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid=evidence.presentationValid=true;
+			evidence.excludedTop.barPixels=276;
+			evidence.excludedTop.blackFraction=.30;
+			evidence.excludedTop.continuity=.40;
+			evidence.excludedTop.lumaP90=500;
+			evidence.excludedBottom=evidence.excludedTop;
+			const auto first=ConfirmOutwardPictureTransition({},scope,full,evidence,7,100);
+			auto changed=full; changed.bottom=2158;
+			const auto restarted=ConfirmOutwardPictureTransition(first.state,scope,changed,evidence,7,100);
+			Assert::AreEqual(1U,restarted.state.confirmations);
+			Assert::AreEqual("proof-restarted",restarted.diagnosticReason);
+			Assert::AreEqual(2158,restarted.state.broadRun.referenceCandidate.bottom);
+		}
 		TEST_METHOD(FreshOneEdgeOverlayKeepsHeldFitUntilItsBoundedRelease)
 		{
 			VerticalBarPresentationUpdateInput update;
