@@ -12379,7 +12379,7 @@ void CVideoProcessorDlg::ShowProfileOverlayItems(
 		m_profileChangeDisplaySeconds);
 	// Profile changes have their own settling delay, independent of shader
 	// preparation. Explicitly requesting the current profiles stays immediate.
-	constexpr ULONGLONG profileChangeNoticeDelayMs = 750;
+	constexpr ULONGLONG profileChangeNoticeDelayMs = 250;
 	m_profileChangeOverlayShowAfter = now +
 		(replaceExisting ? 0 : profileChangeNoticeDelayMs);
 	m_profileChangeOverlayHoldUntil = m_profileChangeOverlayShowAfter + timing.holdMilliseconds;
