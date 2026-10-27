@@ -187,11 +187,39 @@ inline bool ConfirmedSubtitleAbsentForPresentation(
     const ActivePictureFrameIdentity& selectedIdentity)
 {
     return SameAnalysisFrameIdentity(current.identity,selectedIdentity) &&
-        current.barAuthority && !SubtitleAbsenceIsUnknown(current) &&
+        !current.inspectionCandidateUsed && current.barAuthority && !SubtitleAbsenceIsUnknown(current) &&
         !current.text.detected &&
         current.text.diagnosticReason &&
         std::strcmp(current.text.diagnosticReason,"no-bright-ink")==0 &&
         !accepted.detected && !accepted.held;
+}
+// This is the renderer's current-caption gate, shared with pipeline regressions.
+// Inspection nominees may recover glyph display and separately proved cleanup,
+// but cannot originate a CURRENT_CAPTION presentation/FIT owner.
+inline ActivePictureBounds MeasureCurrentCaptionForPresentation(
+    const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
+    const ActivePictureFrameIdentity& identity,bool barAuthority,int width,int height)
+{
+    const auto& text=current.text;
+    if(!barAuthority || current.inspectionCandidateUsed || current.glyphLocalTop || current.glyphLocalBottom ||
+        !SameAnalysisFrameIdentity(current.identity,identity) || !current.analyzed || current.pendingRefresh ||
+        !text.detected || text.workLimit || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
+        !accepted.detected || accepted.held || accepted.confirmationPending || accepted.observations<1 ||
+        !accepted.bounds.Valid() || !text.bounds.Valid())return {};
+    SubtitleBoxRect caption=accepted.bounds;
+    caption.left=(std::min)(caption.left,text.bounds.left);
+    caption.top=(std::min)(caption.top,text.bounds.top);
+    caption.right=(std::max)(caption.right,text.bounds.right);
+    caption.bottom=(std::max)(caption.bottom,text.bounds.bottom);
+    if(text.provenSourcePanel.Valid()) {
+        caption.left=(std::min)(caption.left,text.provenSourcePanel.left);
+        caption.top=(std::min)(caption.top,text.provenSourcePanel.top);
+        caption.right=(std::max)(caption.right,text.provenSourcePanel.right);
+        caption.bottom=(std::max)(caption.bottom,text.provenSourcePanel.bottom);
+    }
+    return {caption.left,caption.top,caption.right,caption.bottom,width,height,
+        static_cast<double>(caption.right-caption.left)/(std::max)(1,caption.bottom-caption.top),
+        ActivePictureBounds::BarAxes::NONE};
 }
 // Frame-local presentation evidence only. Raw detector evidence is never modified.
 enum class QualifiedSubtitlePresentationStatus { NotApplicable, Unknown, Qualified, Conflict };
@@ -260,6 +288,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(!input.sourcePrepared || !input.observation || !input.accepted || !input.composition)
         return reject("source-not-prepared");
     const auto& observation=*input.observation;
+    // Retained coordinates can nominate a fresh subtitle scan after the
+    // presentation lease expires. That scan cannot certify crop or retention.
+    if(observation.inspectionCandidateUsed)
+        return reject("inspection-candidate-is-not-picture-proof");
     const bool glyphLocal=observation.glyphLocalTop || observation.glyphLocalBottom;
     if(glyphLocal && !preparedErasureOnly)
         return reject("glyph-local-evidence-is-not-ar-proof");
@@ -272,6 +304,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(continuation && !continuation->Matches(input.currentIdentity,input.policyGeneration,
         input.continuityGeneration,accepted,base))
         return reject("continuation-context-mismatch");
+    // Fixed-plane glyph continuity may bridge an unavailable unrelated edge,
+    // but cannot certify physical bars, source erasure or a new crop owner.
+    if(continuation && continuation->localGlyphsOnly)
+        return reject("local-glyph-continuation-is-not-picture-proof");
     if((continuation || preparedErasureOnly) &&
         CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
         return reject("independent-picture-expansion",QualifiedSubtitlePresentationStatus::Conflict);
@@ -357,6 +393,19 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         // picture, so neither can overwrite the certified black source bars.
         if(move.generatedCleanup.Valid() && !contains(baseRect,move.generatedCleanup))
             return reject("prepared-cleanup-outside-picture");
+        // Row masks are the actual erase spans for rounded backing lips. The
+        // legacy common rectangle can be contained even when an individual
+        // row crosses a cropped horizontal picture edge, so validate every
+        // active row independently. A zero count keeps the legacy rectangle
+        // path unchanged.
+        if(move.generatedCleanupRowCount>move.generatedCleanupRows.size())
+            return reject("prepared-cleanup-rows-invalid");
+        for(unsigned rowIndex=0;rowIndex<move.generatedCleanupRowCount;++rowIndex) {
+            const auto& row=move.generatedCleanupRows[rowIndex];
+            if(!row.Valid() || row.top<baseRect.top || row.bottom>baseRect.bottom ||
+                row.left<baseRect.left || row.right>baseRect.right)
+                return reject("prepared-cleanup-row-outside-picture");
+        }
         const bool displayPicture=move.displayPictureRight>move.displayPictureLeft &&
             move.displayPictureBottom>move.displayPictureTop;
         if(move.extendToBar && displayPicture &&

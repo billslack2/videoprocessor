@@ -1,6 +1,7 @@
 #pragma once
 #include <AnalysisLumaSource.h>
 #include <SubtitleBoxDetector.h>
+#include <SubtitleCutPaste.h>
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -12,6 +13,54 @@ inline unsigned AdvanceCleanRun(unsigned count,bool enabled,bool repeated,bool c
  if(!enabled)return 0;
  if(repeated)return count;
  return confirmedClean?(std::min)(count,7u)+1u:0u;
+}
+// Enumerate exactly the current cleanup mask for donor restoration. The
+// conservative exclusion envelope never becomes an erase rectangle. Complete
+// validation precedes every callback so a malformed late row cannot partially
+// modify a render target or fall back to a larger rectangle.
+template<class Callback>
+inline bool ForEachCleanupRect(const SubtitleCutPasteGeometry& geometry,Callback&& callback) {
+ const auto& common=geometry.generatedCleanup;
+ const auto& exclusion=geometry.generatedCleanupExclusion.Valid()?
+  geometry.generatedCleanupExclusion:common;
+ const auto contains=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+  return a.Valid() && b.Valid() && b.left>=a.left && b.top>=a.top &&
+   b.right<=a.right && b.bottom<=a.bottom;
+ };
+ const auto inPicture=[&](const SubtitleBoxRect& r) {
+  return r.Valid() && r.left>=0 && r.right<=65536 &&
+   r.top>=geometry.pictureTop && r.bottom<=geometry.pictureBottom;
+ };
+ if(!geometry.valid || geometry.pictureTop<0 || geometry.pictureBottom>65536 ||
+  geometry.pictureTop>=geometry.pictureBottom || !inPicture(common) ||
+  !inPicture(exclusion) || !contains(exclusion,common) ||
+  geometry.generatedCleanupRowCount>geometry.generatedCleanupRows.size())return false;
+ const unsigned count=geometry.generatedCleanupRowCount;
+ if(!count) {callback(common);return true;}
+ int top=65536,bottom=0;
+ for(unsigned i=0;i<count;++i) {
+  const auto& row=geometry.generatedCleanupRows[i];
+  if(!inPicture(row) || row.bottom!=row.top+1 || !contains(exclusion,row) ||
+   row.left>common.left || row.right<common.right)return false;
+  top=(std::min)(top,row.top);bottom=(std::max)(bottom,row.bottom);
+ }
+ if(bottom-top!=int(count) || common.top!=top || common.bottom!=bottom)return false;
+ std::array<SubtitleBoxRect,128> rows{};
+ for(unsigned i=0;i<count;++i) {
+  const auto& row=geometry.generatedCleanupRows[i];
+  auto& slot=rows[unsigned(row.top-top)];
+  if(slot.Valid())return false;
+  slot=row;
+ }
+ // Unique rows spanning exactly count native y positions are contiguous.
+ // Coalescing changes only command count; it never fills a rounded corner.
+ auto merged=rows[0];
+ for(unsigned i=1;i<count;++i) {
+  const auto& row=rows[i];
+  if(row.left==merged.left && row.right==merged.right)merged.bottom=row.bottom;
+  else {callback(merged);merged=row;}
+ }
+ callback(merged);return true;
 }
 inline bool Capture(const AnalysisLumaSource& source,Signature& out) {
  if(!source.IsValid())return false;
@@ -43,5 +92,16 @@ inline bool Matches(const AnalysisLumaSource& source,const Signature& donor,
   difference+=delta;++count;
  }
  return count>=8 && difference<=static_cast<unsigned long long>(count)*32;
+}
+// Matching excludes the full measured source backing, including its rounded
+// shoulders and uncertain fringe, while restoration still uses only row spans.
+inline bool Matches(const AnalysisLumaSource& source,const Signature& donor,
+ const SubtitleCutPasteGeometry& geometry) {
+ if(!source.IsValid() || !ForEachCleanupRect(geometry,[](const SubtitleBoxRect&){}))return false;
+ const auto& exclusion=geometry.generatedCleanupExclusion.Valid()?
+  geometry.generatedCleanupExclusion:geometry.generatedCleanup;
+ if(exclusion.right>source.width || exclusion.bottom>source.height ||
+  geometry.pictureBottom>source.height)return false;
+ return Matches(source,donor,exclusion,geometry.pictureTop,geometry.pictureBottom);
 }
 }

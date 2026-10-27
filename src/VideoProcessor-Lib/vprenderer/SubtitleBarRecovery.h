@@ -1,6 +1,7 @@
 #pragma once
 #include <SubtitleBarEvidence.h>
 #include <ActivePictureEvidence.h>
+#include <SubtitleBoxLookahead.h>
 
 // Inspection only. Remembered geometry must be re-proved by BOTH physical
 // edges in this frame; it is not permission to crop or reuse old subtitle ink.
@@ -99,4 +100,29 @@ inline ActivePictureBounds RecoverSubtitleInspectionBarsFromWorkerProof(
             return {};
     }
     return trusted;
+}
+
+// A source-context-bound nomination may survive a presentation lease expiry.
+// The worker still has to prove physical edges and glyphs from every new frame.
+inline SubtitleInspectionCandidate NominateSubtitleInspectionCandidate(
+    const AnalysisLumaSource& source,const ActivePictureBounds& native,
+    uint64_t nativeSourceGeneration,uint64_t nativeSourceFormat,
+    ActivePictureAuthorityOrigin origin,ActivePictureClassification classification,
+    uint64_t nativeGeometryRevision,const ActivePictureFrameIdentity& identity,
+    uint64_t policy,uint64_t continuity,bool enabled,bool blocked)
+{
+    SubtitleInspectionCandidate result;
+    if(!enabled || blocked || !source.IsValid() || source.generation!=identity.transportGeneration ||
+        nativeSourceGeneration!=identity.transportGeneration || nativeSourceFormat!=identity.sourceFormatGeneration ||
+        origin!=ActivePictureAuthorityOrigin::NATIVE || classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+        native.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        native.rasterWidth!=source.width || native.rasterHeight!=source.height ||
+        native.left!=0 || native.right!=source.width || native.top<=0 || native.bottom>=source.height ||
+        native.top>=native.bottom)return result;
+    result.valid=true;result.bounds=native;
+    result.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;result.bounds.aspectRatio=0.0;
+    result.originIdentity=identity;result.policyGeneration=policy;result.continuityGeneration=continuity;
+    result.nativeGeometryRevision=nativeGeometryRevision;
+    if(!result.AvailableFor(identity,source.width,source.height,policy,continuity))return {};
+    return result;
 }

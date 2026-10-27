@@ -1721,6 +1721,9 @@ namespace VideoProcessorTest
             };
             Assert::IsTrue(confirms());
             Assert::IsFalse(SubtitleAbsenceIsUnknown(current));
+            current.inspectionCandidateUsed=true;
+            Assert::IsFalse(confirms(),L"An inspection-only scan cannot release the caption presentation envelope.");
+            current.inspectionCandidateUsed=false;Assert::IsTrue(confirms());
             current.text.bottomSearchComplete=false;
             Assert::IsFalse(confirms(),L"An unsearched bottom region cannot prove a blank subtitle.");
             Assert::IsTrue(SubtitleAbsenceIsUnknown(current));
@@ -2012,6 +2015,59 @@ namespace VideoProcessorTest
                 Assert::IsFalse(prepared.renewsHold);
                 Assert::AreEqual(raw.excludedBandsPixelSafe,prepared.retention.excludedBandsPixelSafe);
                 Assert::AreEqual(raw.outwardVisibleBounds.bottom,prepared.retention.outwardVisibleBounds.bottom);
+            }
+        }
+        TEST_METHOD(InspectionCandidateCannotQualifySemanticOrPreparedPictureEvidence)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                Assert::IsTrue(EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input()).qualified);
+                Assert::IsTrue(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input()).qualified);
+                f.accepted.observations=2;
+                Assert::AreEqual(3840,MeasureCurrentCaptionForPresentation(f.observation,f.accepted,
+                    f.observation.identity,true,3840,2160).rasterWidth);
+                f.observation.inspectionCandidateUsed=true;
+                Assert::AreEqual(0,MeasureCurrentCaptionForPresentation(f.observation,f.accepted,
+                    f.observation.identity,true,3840,2160).rasterWidth);
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                Assert::IsFalse(semantic.qualified);Assert::IsFalse(prepared.qualified);
+                Assert::AreEqual("inspection-candidate-is-not-picture-proof",semantic.reason);
+                Assert::AreEqual("inspection-candidate-is-not-picture-proof",prepared.reason);
+                Assert::IsFalse(semantic.renewsHold);Assert::IsFalse(prepared.renewsHold);
+            }
+        }
+        TEST_METHOD(PreparedErasureChecksEachCleanupRowAgainstPhysicalBase)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                auto input=f.Input();
+
+                const auto legacy=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(legacy.qualified,L"Legacy cleanup rectangles remain supported when no row mask is present.");
+                Assert::AreEqual(0u,f.composition.generatedCleanupRowCount);
+
+                f.composition.generatedCleanupRowCount=1;
+                f.composition.generatedCleanupRows[0]={1362,1743,f.base.right,1744};
+                const auto contained=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsTrue(contained.qualified,L"A row mask fully inside the base keeps prepared erasure eligible.");
+                Assert::IsTrue(f.base.left<=f.composition.generatedCleanup.left &&
+                    f.base.top<=f.composition.generatedCleanup.top &&
+                    f.composition.generatedCleanup.right<=f.base.right &&
+                    f.composition.generatedCleanup.bottom<=f.base.bottom,
+                    L"The legacy common cleanup rectangle remains contained in this regression.");
+
+                // Keep the common rectangle unchanged and contained, but let a
+                // single actual erase row cross the physical base right edge.
+                f.composition.generatedCleanupRows[0].right=f.base.right+1;
+                Assert::IsTrue(f.composition.generatedCleanup.right<=f.base.right,
+                    L"The common cleanup rectangle remains contained after the row overhang.");
+                const auto overhanging=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(overhanging.qualified);
+                Assert::AreEqual("prepared-cleanup-row-outside-picture",overhanging.reason);
+                Assert::IsFalse(overhanging.renewsHold);
             }
         }
         TEST_METHOD(PreparedErasureDoesNotRenewAnEarlierSemanticCaptionLease)
@@ -2320,6 +2376,30 @@ namespace VideoProcessorTest
                 Assert::AreEqual(scenario<=2,CurrentPictureRejectsSubtitleContinuation(picture,base));
             }
         }
+        TEST_METHOD(LocalGlyphContinuityNeverCertifiesPhysicalBarsOrPreparedErasure)
+        {
+            for(bool p210:{false,true})for(bool preparedOnly:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                auto input=f.Input();
+                SubtitleCueContinuation local;
+                local.valid=true;local.localGlyphsOnly=true;
+                local.identity=f.observation.identity;
+                local.policyGeneration=input.policyGeneration;local.continuityGeneration=input.continuityGeneration;
+                local.physicalBase=f.base;local.accepted=f.accepted;local.ink=f.ink;
+                local.pictureTop=f.observation.pictureTop;local.pictureBottom=f.observation.pictureBottom;
+                local.sampledBounds={0,0,3840,2160};
+                input.continuation=&local;
+                const auto proof=preparedOnly?
+                    EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input):
+                    EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(proof.qualified,L"Fresh local glyphs never grant native picture/cleanup authority.");
+                Assert::AreEqual(size_t(0),proof.ownershipSamples);
+                Assert::IsTrue(std::strcmp(proof.reason,"local-glyph-continuation-is-not-picture-proof")==0);
+                Assert::AreEqual(274,f.base.top);Assert::AreEqual(1884,f.base.bottom);
+            }
+        }
+
         TEST_METHOD(CurrentContinuedCueRetainsPreparedOwnershipWithoutPromotingMissingRawEdge)
         {
             for(bool p210:{false,true})for(int invalid=0;invalid<8;++invalid) {

@@ -69,7 +69,7 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
-        if (result.independentBarAnalysis && result.text.detected && !result.text.held &&
+        if (!result.inspectionCandidateUsed && result.independentBarAnalysis && result.text.detected && !result.text.held &&
             !result.text.workLimit) {
             const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
             // Prepared queued pixels use a format generation for cache ownership;
@@ -212,8 +212,13 @@ public:
         r.nearBarDistance=key.nearBarDistance;r.optimizationMode=key.optimizationMode;r.scriptHint=static_cast<uint32_t>(key.scriptHint);
         r.sourceWidth=key.width;r.sourceHeight=key.height;r.discontinuity=key.discontinuity;
         r.flags=(key.analyzed?1u:0u)|(key.text.detected?2u:0u)|(key.sharedPicture.required?4u:0u)|
-            (key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?8u:0u)|(key.pictureAuthorityUnavailableForMeasurement?16u:0u);
+            (key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?8u:0u)|(key.pictureAuthorityUnavailableForMeasurement?16u:0u)|
+            (key.sharedPicture.inspectionCandidate.AvailableFor(key.identity,key.width,key.height,key.policyGeneration,key.continuityGeneration)?32u:0u)|
+            (key.inspectionCandidateUsed?64u:0u);
         r.counters[0]=mismatch;r.counters[1]=key.sharedPicture.identity.acceptedSequence;
+        r.counters[2]=key.sharedPicture.inspectionCandidate.originIdentity.acceptedSequence;
+        r.counters[3]=key.sharedPicture.inspectionCandidate.nativeGeometryRevision;
+        AnalysisTraceRect(r.candidate,key.sharedPicture.inspectionCandidate.bounds);
         r.resultCode=key.text.lineCount;AnalysisTraceRect(r.subtitle,key.text.bounds);
         r.metrics[0]=key.analysisMs;r.metrics[1]=key.pictureTop;r.metrics[2]=key.pictureBottom;
         AnalysisDiagnosticTrace::Emit(r);
@@ -221,12 +226,18 @@ public:
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+        if((a.sharedPicture.inspectionCandidate.valid &&
+                !a.sharedPicture.inspectionCandidate.AvailableFor(a.identity,a.width,a.height,a.policyGeneration,a.continuityGeneration)) ||
+            (b.sharedPicture.inspectionCandidate.valid &&
+                !b.sharedPicture.inspectionCandidate.AvailableFor(b.identity,b.width,b.height,b.policyGeneration,b.continuityGeneration)))
+            return false;
         const bool samePicture=a.sharedPicture.Matches(b.sharedPicture);
         // A worker request with no usable shared snapshot follows the same
         // exact-frame raw-bar path regardless of which unavailable snapshot
         // was published. This lets active/pending work coalesce safely; a
         // newly available authority still requires a separate scan.
         const bool sameUnavailablePictureScan=
+            !a.sharedPicture.inspectionCandidate.valid && !b.sharedPicture.inspectionCandidate.valid &&
             a.pictureAuthorityUnavailableForMeasurement &&
             b.pictureAuthorityUnavailableForMeasurement &&
             a.sharedPicture.required && b.sharedPicture.required &&
