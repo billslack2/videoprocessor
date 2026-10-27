@@ -1,0 +1,61 @@
+{
+  "payloadChecks": [
+    {
+      "file": "VideoProcessor.exe",
+      "unchanged": true
+    },
+    {
+      "file": "VideoProcessor.exe.runtime.json",
+      "unchanged": true
+    },
+    {
+      "file": "VideoProcessor-GUI.pdb",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "unchanged": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "unchanged": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.exe",
+      "unchanged": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.exe.runtime.json",
+      "unchanged": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.pdb",
+      "unchanged": true
+    },
+    {
+      "file": "config\\VideoProcessorConfigDiscovery.dll",
+      "unchanged": true
+    },
+    {
+      "file": "config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "unchanged": true
+    }
+  ],
+  "explanation": "PowerShell 5 converted a null backup filename passed to File.Replace to an invalid path. First replacement failed; caught rollback succeeded. Every payload still matches its pre-deployment hash."
+}

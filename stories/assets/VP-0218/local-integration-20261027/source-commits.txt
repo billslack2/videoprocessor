@@ -1,0 +1,23 @@
+commit f4219a7aa679c57f1f6d637cb08406b9c2b4b97b
+Author:     billslack2 <bslack@gmail.com>
+AuthorDate: Tue Oct 27 01:06:09 2026 -0400
+Commit:     billslack2 <bslack@gmail.com>
+CommitDate: Tue Oct 27 11:56:01 2026 -0400
+
+    Correct native-support and attached-backing test fixtures
+
+commit daad7eb01c642eec698cae9cba731df5b8d137a5
+Author:     billslack2 <bslack@gmail.com>
+AuthorDate: Tue Oct 27 00:21:38 2026 -0400
+Commit:     billslack2 <bslack@gmail.com>
+CommitDate: Tue Oct 27 11:56:01 2026 -0400
+
+    Preserve independent aspect proofs and qualify bounded raised mattes
+
+commit f22e22c4f0dcd9be87c26189fc18a83a798c9a26
+Author:     billslack2 <bslack@gmail.com>
+AuthorDate: Tue Oct 27 11:31:36 2026 -0400
+Commit:     billslack2 <bslack@gmail.com>
+CommitDate: Tue Oct 27 11:31:36 2026 -0400
+
+    Use internal text-relative subtitle background guard padding

@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "sourceCommit": "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+  "localBase": "f22e22c4f0dcd9be87c26189fc18a83a798c9a26",
+  "total": 3439,
+  "passed": 3439,
+  "counters": {
+    "total": "3439",
+    "executed": "3439",
+    "passed": "3439",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "trxSha256": "589131B68430E2DA1DB8CAF2A731912AA9DB71796ACFCC0AA91350E7E58D23FF",
+  "testAssemblySha256": "2E075DA88B1C44FC05ACBD0D1C5E089DA2F26ADE5C12CB46441A52EB368F5B00",
+  "priorUniqueTests": 3433,
+  "missingPriorTests": [],
+  "newTests": [
+    "Tests::SubtitleCutPasteTests::BackgroundGuardAcceptsNormalOffCenterAndMultilineCards",
+    "Tests::SubtitleCutPasteTests::BackgroundGuardCapsDarkSceneAndPreservesText",
+    "Tests::SubtitleCutPasteTests::BackgroundGuardConfigValidation",
+    "Tests::SubtitleCutPasteTests::BackgroundGuardPaddingFollowsTextRatherThanRasterResolution",
+    "Tests::SubtitleCutPasteTests::BackgroundGuardRejectsUnevenMarginsAndRetainsCueFallback",
+    "Tests::SubtitleCutPasteTests::BackgroundGuardScalesAndMirrorsAtTopBar"
+  ],
+  "priorRuns": [
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\core-full.trx",
+      "sha256": "9F7E2A463907D34C9F733A4AEE3733C6266E1FD090FE574B3CE2D4075F3FE454"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\gpu-full.trx",
+      "sha256": "6430F3C65D917002057AACC9425CD90EE040D4E73A04B19AB1DE0C76AA89930D"
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\vp-0218-implementation-20261027\\candidate\\final-repairs.trx",
+      "sha256": "89FE5264CB97849EC8EB276F92F0B0327672F9DA8655364CF7DC553CA503633F"
+    }
+  ],
+  "build": {
+    "sourceCommit": "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+    "configuration": "Release",
+    "architecture": "x64",
+    "exitCode": 0,
+    "startedUtc": "2026-10-27T15:57:25.7546010+00:00",
+    "completedUtc": "2026-10-27T16:00:50.6781839+00:00"
+  },
+  "configTest": {
+    "sourceCommit": "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+    "testExecutableSha256": "17FE973A0A09DB2FE8D6B25DC3E2169F1FF8A034D8A7D6F5733C26935CCB05EF",
+    "test": "subtitle background shape round trip and visibility",
+    "exitCode": 0,
+    "completedUtc": "2026-10-27T16:02:37.8531612+00:00"
+  },
+  "limitations": [
+    "Recorded-input test bodies without configured inputs do not establish native capture replay.",
+    "Functional tests are not isolated performance measurements or moving-scene visual acceptance."
+  ]
+}

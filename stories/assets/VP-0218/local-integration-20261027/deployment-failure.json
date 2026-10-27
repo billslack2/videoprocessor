@@ -1,0 +1,8 @@
+﻿{
+    "status":  "deployment-failed",
+    "error":  "Exception calling \"Replace\" with \"3\" argument(s): \"The path is not of a legal form.\"",
+    "backupDirectory":  "C:\\Videoprocessor\\vp\\backups\\ar-local-f4219a7a-20261027-124154",
+    "rollbackErrors":  [
+
+                       ]
+}

@@ -1,0 +1,7 @@
+﻿{
+    "sourceCommit":  "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+    "testExecutableSha256":  "17FE973A0A09DB2FE8D6B25DC3E2169F1FF8A034D8A7D6F5733C26935CCB05EF",
+    "test":  "subtitle background shape round trip and visibility",
+    "exitCode":  0,
+    "completedUtc":  "2026-10-27T16:02:37.8531612+00:00"
+}

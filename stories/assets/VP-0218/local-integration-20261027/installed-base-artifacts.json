@@ -1,0 +1,22 @@
+[
+  {
+    "relative": "VideoProcessor.exe",
+    "expectedSha256": "4E03F76B591E6D75671AD959E2ABDF123E48CEE390B049F092049C31A0B546BD"
+  },
+  {
+    "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+    "expectedSha256": "32BF6F03EF33F9D6367E4A28F0601CB7595DB0B428864A74643E079EBE61EC55"
+  },
+  {
+    "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "expectedSha256": "1C476FF5F4862C157A9831A134C86E50AAFB206E6FBA24D84820FFFC294EF051"
+  },
+  {
+    "relative": "config\\VideoProcessorConfig.exe",
+    "expectedSha256": "7449C32D12D4133AFB5F09ABEA1E96144F3E6D26CE499D0FF71116D508064B26"
+  },
+  {
+    "relative": "config\\VideoProcessorConfigDiscovery.dll",
+    "expectedSha256": "CB2CCDEAD4962F6FD6287E38F790E7D6BADEDFC09E32E60BEA6BF462047C8BAA"
+  }
+]

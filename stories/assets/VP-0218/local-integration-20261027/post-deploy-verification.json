@@ -1,0 +1,90 @@
+{
+  "sourceCommit": "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+  "verifiedUtc": "2026-10-27T16:43:22.1931172+00:00",
+  "files": [
+    {
+      "file": "VideoProcessor.exe",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "VideoProcessor.exe.runtime.json",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "VideoProcessor-GUI.pdb",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.exe",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.exe.runtime.json",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "config\\VideoProcessorConfig.pdb",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "config\\VideoProcessorConfigDiscovery.dll",
+      "deployedMatches": true,
+      "backupMatches": true
+    },
+    {
+      "file": "config\\VideoProcessorConfigDiscovery.dll.runtime.json",
+      "deployedMatches": true,
+      "backupMatches": true
+    }
+  ],
+  "configuration": [
+    {
+      "file": "VideoProcessor.cfg",
+      "unchanged": true,
+      "backupMatches": true
+    },
+    {
+      "file": "VideoProcessor.state",
+      "unchanged": true,
+      "backupMatches": true
+    }
+  ],
+  "runningApplications": [],
+  "applicationStartedByDeployment": false
+}
