@@ -24685,7 +24685,11 @@ void LibplaceboVideoRenderer::RenderLoop()
                         queueGuard.lock();
                         // Reset/stop and a newly ready source can arrive during
                         // pacing. Recheck before acquiring any backbuffer.
-                        const bool repeat = currentOutput() && !sourceDue();
+                        const bool repeat = currentOutput() &&
+                            ShouldPresentDisplayRepeat(output.displayVsyncClock,
+                                !m_frameQueue.empty(),
+                                !m_frameQueue.empty() && m_frameQueue.front().cadenceRepeat,
+                                m_frameQueue.empty() ? NAN : pts(m_frameQueue.front()));
                         const double nextSourcePts=m_frameQueue.empty()?NAN:pts(m_frameQueue.front());
                         const size_t queuedSources=m_frameQueue.size();
                         queueGuard.unlock();

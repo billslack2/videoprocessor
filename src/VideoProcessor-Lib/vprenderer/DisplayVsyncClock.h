@@ -159,6 +159,17 @@ private:
     uint32_t lastSyncRefresh=0;
 };
 
+// Cached display repeats follow source timing, independently of queue readiness.
+// A due head stays in the queue until dequeue-ready; the display keeps its last
+// submitted image without an extra Present. Invalid timing cannot imply future.
+inline bool ShouldPresentDisplayRepeat(const DisplayVsyncClock& clock,
+    bool hasQueuedSource, bool headCadenceRepeat, double headSourcePts)
+{
+    return !hasQueuedSource ||
+        (std::isfinite(headSourcePts) && !headCadenceRepeat &&
+         !clock.SourceDue(headSourcePts));
+}
+
 // Shared by queue peeking and source acceptance. Once a timestamp domain is
 // broken, keep a sequence/rate fallback anchored to the previous accepted PTS
 // until the transport generation changes. Do not compare raw and fallback PTS.

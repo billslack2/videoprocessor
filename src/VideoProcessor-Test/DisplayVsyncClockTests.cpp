@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/DisplayVsyncClock.h>
+#include <deque>
 #include <limits>
 #include <utility>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -260,6 +262,171 @@ namespace Tests
                     nowNs += intervalNs;
                 }
             }
+        }
+        TEST_METHOD(MatchedNear60HzLowWaterDoesNotCreateRepeatsOrRetirements)
+        {
+            struct SimulationResult
+            {
+                unsigned sourcePresents = 0;
+                unsigned cachedRepeats = 0;
+                unsigned retiredSources = 0;
+            };
+
+            auto simulate = [](double sourceHz, double displayHz,
+                unsigned sourcePresentsToRun)
+            {
+                constexpr int64_t baseNs = 1'000'000'000LL;
+                constexpr size_t desiredDepth = 3;
+                constexpr unsigned presentDepth = 2;
+                constexpr double timestampQuantum = 1e-5;
+                constexpr int64_t workNs = 300'000;
+                constexpr int64_t callbackJitterNs[] = {
+                    100'000, 900'000, 200'000, 1'200'000,
+                    400'000, 1'500'000, 300'000, 1'000'000 };
+
+                DisplayVsyncClock clock;
+                clock.BeginSource(0.0, baseNs, 7, displayHz, false,
+                    timestampQuantum);
+                auto sourcePts = [&](uint64_t sequence)
+                {
+                    const double raw = static_cast<double>(sequence) / sourceHz;
+                    return std::round(raw / timestampQuantum) * timestampQuantum;
+                };
+                auto arrivalNs = [&](uint64_t sequence)
+                {
+                    const int64_t sourcePeriodNs = static_cast<int64_t>(
+                        std::llround(1e9 / sourceHz));
+                    const int64_t periodsAfterPrefill =
+                        static_cast<int64_t>(sequence) - 2;
+                    const int64_t jitter = callbackJitterNs[
+                        sequence % (sizeof(callbackJitterNs) / sizeof(callbackJitterNs[0]))];
+                    return baseNs + periodsAfterPrefill * sourcePeriodNs + jitter;
+                };
+
+                std::deque<double> queue;
+                for (uint64_t sequence = 0; sequence < desiredDepth; ++sequence)
+                    queue.push_back(sourcePts(sequence));
+                uint64_t nextCapture = desiredDepth;
+                int64_t nowNs = baseNs;
+                SimulationResult result;
+
+                auto publishArrivalsThrough = [&](int64_t throughNs)
+                {
+                    while (nextCapture < sourcePresentsToRun + 32 &&
+                        arrivalNs(nextCapture) <= throughNs)
+                    {
+                        queue.push_back(sourcePts(nextCapture));
+                        ++nextCapture;
+                    }
+                };
+
+                for (unsigned iteration = 0;
+                    result.sourcePresents < sourcePresentsToRun &&
+                        iteration < sourcePresentsToRun * 8 + 64;
+                    ++iteration)
+                {
+                    // Model bounded Present(1) backpressure. Capture callbacks
+                    // can fill the queue while the render thread waits.
+                    clock.SkipMissed(nowNs);
+                    const int64_t waitNs = clock.SubmissionWaitNs(
+                        nowNs, presentDepth);
+                    if (waitNs > 0)
+                    {
+                        nowNs += waitNs;
+                        publishArrivalsThrough(nowNs);
+                    }
+                    publishArrivalsThrough(nowNs);
+
+                    auto canDequeue = [&]()
+                    {
+                        return AlphaQueuePolicy::CanDequeuePrepared(
+                            queue.size(), desiredDepth, false,
+                            false, false, false);
+                    };
+
+                    // Match the renderer's stale-head retirement rule.
+                    while (queue.size() > desiredDepth && queue.size() >= 2 &&
+                        canDequeue() && clock.CanRetireBefore(queue[1]))
+                    {
+                        queue.pop_front();
+                        ++result.retiredSources;
+                    }
+
+                    if (canDequeue() && !queue.empty() &&
+                        clock.SourceDue(queue.front()))
+                    {
+                        queue.pop_front();
+                        ++result.sourcePresents;
+                        clock.Submitted();
+                        nowNs += workNs;
+                        continue;
+                    }
+
+                    const bool repeat = ShouldPresentDisplayRepeat(clock,
+                        !queue.empty(), false,
+                        queue.empty() ? NAN : queue.front());
+                    if (repeat)
+                    {
+                        ++result.cachedRepeats;
+                        clock.Submitted();
+                        nowNs += workNs;
+                        continue;
+                    }
+
+                    // A due head below healthy low-water waits for capture to
+                    // restore dequeue eligibility instead of presenting a copy.
+                    if (nextCapture >= sourcePresentsToRun + 32)
+                        break;
+                    nowNs = arrivalNs(nextCapture);
+                    publishArrivalsThrough(nowNs);
+                }
+                return result;
+            };
+
+            const double displayHz = 60000.0 / 1001.0;
+            const auto matched = simulate(59.94097, displayHz, 600);
+            Assert::AreEqual(600u, matched.sourcePresents);
+            Assert::AreEqual(0u, matched.retiredSources);
+            Assert::AreEqual(0u, matched.cachedRepeats);
+
+            DisplayVsyncClock policy;
+            const int64_t policyBaseNs = 1'000'000'000LL;
+            policy.BeginSource(0.0, policyBaseNs, 9, displayHz, false);
+            policy.Submitted();
+            const double dueHeadPts = 1.0 / displayHz;
+            Assert::IsTrue(policy.SourceDue(dueHeadPts));
+            Assert::IsFalse(ShouldPresentDisplayRepeat(policy,
+                true, false, dueHeadPts));
+            Assert::IsTrue(ShouldPresentDisplayRepeat(policy,
+                true, false, 2.0 / displayHz));
+            Assert::IsFalse(ShouldPresentDisplayRepeat(policy,
+                true, true, dueHeadPts));
+            Assert::IsTrue(ShouldPresentDisplayRepeat(policy,
+                false, false, NAN));
+            Assert::IsFalse(ShouldPresentDisplayRepeat(policy,
+                true, false, NAN));
+
+            // Delayed DXGI feedback cannot rephase the current slot estimate.
+            const int64_t priorDeadlineNs = policy.DeadlineNs();
+            Assert::IsFalse(policy.ObserveQueueTail(10, 9, 90, 90,
+                policyBaseNs - 300'000'000LL, policyBaseNs,
+                policyBaseNs, 2));
+            Assert::AreEqual(priorDeadlineNs, policy.DeadlineNs());
+
+            // A new output/source epoch starts a fresh clock domain.
+            policy.BeginSource(0.0, policyBaseNs + 100'000'000LL,
+                10, 60.0, false);
+            Assert::IsFalse(policy.Matches(9, 60.0));
+            Assert::IsTrue(policy.Matches(10, 60.0));
+            Assert::AreEqual(0.0, policy.SourcePts(), 1e-9);
+            // Preserve repeats when the source is genuinely ahead of its slot,
+            // and when no source is queued.
+            DisplayVsyncClock film;
+            film.BeginSource(0.0, 1'000'000'000LL, 8, 60.0, false);
+            Assert::IsTrue(ShouldPresentDisplayRepeat(film,
+                true, false, 1.0 / 24.0));
+            Assert::IsTrue(ShouldPresentDisplayRepeat(film,
+                false, false, NAN));
         }
         TEST_METHOD(SubmissionWaitClampsDepthAndBoundsPostStallWorkAhead)
         {
