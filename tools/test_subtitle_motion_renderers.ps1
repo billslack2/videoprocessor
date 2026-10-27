@@ -17,8 +17,10 @@ New-Item -ItemType Directory -Force -Path $vpOutput | Out-Null
 $vpCommit=(& git -C $vpRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0){throw 'Cannot identify test source'}
 $vpDirty=@(& git -C $vpRoot status --porcelain).Count -ne 0
+# The upstream retained-envelope GPU class belongs to its broader AR port.
+# Current beta coverage here is the seven actually compiled GPU/cue classes.
 $vpClasses=@('MotionRendererTests','SourceUploadBatchTests','TemporalCleanPacketGpuTests',
-    'RetainedEnvelopeSelectionGpuTests','ReconstructionMotionTests','SubtitleCutPasteTests','SubtitleCutPasteShaderTests','RendererDependencyTests')
+    'ReconstructionMotionTests','SubtitleCutPasteTests','SubtitleCutPasteShaderTests','RendererDependencyTests')
 $vpFilter=($vpClasses | ForEach-Object {"FullyQualifiedName~$_"}) -join '|'
 $vpRuns=@()
 try {
