@@ -215,6 +215,48 @@ playback acceptance remains separate. Deployment evidence is synchronized here.
 [Validation](../assets/VP-0214/deploy-subtitle-merge-20261027/deployment-validation.json),
 [deployment receipt](../assets/VP-0214/deploy-subtitle-merge-20261027/deployment-receipt.json).
 
+### Separate fullscreen-exit presentation failure — 2026-10-27
+
+After merged-beta deployment, the user reported Failed renderer on fullscreen
+exit while capture continued. Preserved telemetry establishes fullscreen exit
+at 19:23:34, a zero-area windowed preview (swapchain clamped to 1x1), repeated
+DXGI_STATUS_OCCLUDED with removed_hr=0, and fatal 300-visible-failure escalation
+at 19:23:57. ModernOperatorLayout can produce a zero-area preview when the
+window is narrow. IsWindowVisible alone does not prove a drawable target.
+The checked-Present path and counter conflict already exist in the earlier
+VSync commit 727467e7; subtitle reconstruction is not implicated by this trace.
+
+Clean repair `7059c944c7e75e63c3e7d098e83772d94ecd4711`, based on current beta
+52f625c1, distinguishes hidden/minimized/zero-area or rendered-but-occluded
+presentation pauses from genuine failures. GPU failures retain priority;
+visible draw failures retain their existing threshold. Per-attempt occlusion
+resets prevent stale state from concealing shader/acquisition errors. Expected
+pauses reset the streak and do not inflate failure drops. Repeated unavailable
+Present logs are throttled. No subtitle preparation, packet lifetime or AR
+logic changed. Draft [PR #220](https://github.com/billslack2/videoprocessor/pull/220)
+is pushed and unmerged.
+
+Full x64 Release build and 111 focused presentation-health/layout/readiness/
+VSync regressions pass, including four new cases for the Modern narrow preview,
+visible occlusion, GPU-failure precedence and current-attempt ownership.
+Test-deployed host and both renderer libraries match the qualified artifacts.
+Backup: `C:\Videoprocessor\vp\backup-before-windowed-health-20261027-193401`.
+PID 39560 restarted at 19:34:02; configuration and state hashes are unchanged.
+
+Live keyboard verification completed two fullscreen-to-windowed cycles. A
+minimized 0x0 target reported presentation deferred/failure_streak=0 through
+about 50 seconds of DXGI occlusion, then resumed successful submissions after
+restoration without rebuilding the renderer. A second fullscreen/windowed
+cycle also submitted successfully. No fatal renderer event occurred. VP was
+left windowed. Screenshot capture timed out; evidence is the observed keyboard
+actions and matching runtime logs. Exact narrow-dashboard geometry is covered
+by the native layout regression, not a claimed live resized-window test.
+
+[Incident](../assets/VP-0214/fullscreen-windowed-failure-20261027/incident-summary.txt),
+[validation](../assets/VP-0214/fullscreen-windowed-failure-20261027/deployment-validation.json),
+[live verification](../assets/VP-0214/fullscreen-windowed-failure-20261027/live-verification.json),
+[deployment](../assets/VP-0214/fullscreen-windowed-failure-20261027/deployment-receipt.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh

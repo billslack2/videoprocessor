@@ -1,0 +1,8 @@
+2026-10-27 19:23:34 | Fullscreen session toggle: configured=1 requested_before=1 active=1 transition=none action=exit requested_after=0
+2026-10-27 19:23:34 | libplacebo post-mode geometry: client=0x0 swapchain=1x1
+2026-10-27 19:23:34 | VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1
+2026-10-27 19:23:34 | VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1
+2026-10-27 19:23:34 | VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1
+2026-10-27 19:23:34 | VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1
+2026-10-27 19:23:34 | VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1
+2026-10-27 19:23:57 | libplacebo renderer failed 300 consecutive visible frames with a healthy GPU; marking renderer failed for swapchain reconstruction

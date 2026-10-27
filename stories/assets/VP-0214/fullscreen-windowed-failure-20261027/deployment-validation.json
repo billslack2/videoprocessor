@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "7059c944c7e75e63c3e7d098e83772d94ecd4711",
+  "baseCommit": "52f625c113191511f2890775fe9bdd8e511a7049",
+  "sourceBranch": "codex/fullscreen-windowed-failure-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLog": "E:\\codex\\diagnostics\\fullscreen-windowed-failure-20261027\\build.log",
+  "passed": 111,
+  "failed": 0,
+  "testPath": "E:\\codex\\diagnostics\\fullscreen-windowed-failure-20261027\\tests\\transition.trx",
+  "testSha256": "B682ACE622275B3BCC651C52E642C14A986061C7FAFCAE2505ED16DBAE247116",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\fullscreen-windowed-failure-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "D5252D0664C95DC7B0F91EF7EDF794478CA2295EEE18ABBCDE5DECE9016E0D9F"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\fullscreen-windowed-failure-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "18D0E9BAF2BCEDA4818C1F3B663D25159420C571855A770BCB4812A5CE2DBD4C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\fullscreen-windowed-failure-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "B1F1D5059899A3E9D57AFEF9BF5F931380580528CB973EFA4490BECF4073A962"
+    }
+  ],
+  "scope": "Presentation-health classification only; subtitle preparation, temporal packet lifetime and picture analysis unchanged.",
+  "validatedAtUtc": "2026-10-27T23:34:01.5141481+00:00"
+}
