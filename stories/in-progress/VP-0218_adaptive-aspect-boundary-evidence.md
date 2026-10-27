@@ -2,9 +2,11 @@
 
 ## Status
 
-Backlog
+In Progress
 
-2026-10-26: Three-reviewer source/design investigation completed against current remote beta `v1.4.02-beta` at `7394ba420999a8fa708718ee4ce4d87e7459369f`. Implementation has not started. No production logic, configuration or deployed binary changed. The user reports slow scope-to-IMAX/16:9 transitions and frequent bright YouTube TV ads with clear borders that never acquire. The user then captured a paused ad: all 97 native payloads reproduce provisional acquisition, with a raised/nonuniform upper exterior and trusted near-black lower bar. This Limited-range failure requires a separate variable-profile investigation; the initial uniform, matching-matte proposal does not fix it. See [native capture findings](../assets/VP-0218/native-capture-20261026.md).
+Implementation authorized: implement carefully with Luna subagent conflict/regression reviews, then deploy when checks pass. GitHub default/latest beta rediscovered as `v1.4.02-beta`, fetched at `7394ba420999a8fa708718ee4ce4d87e7459369f`. Active branch `codex/vp-0218-adaptive-ar-20261027`, isolated worktree `E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027`. Production source work is underway; no candidate has yet passed or been deployed. Preserve experimental profile qualification gates and record actual achieved scope.
+
+2026-10-26 review record: Three-reviewer source/design investigation completed against current remote beta `v1.4.02-beta` at `7394ba420999a8fa708718ee4ce4d87e7459369f`. Implementation had not started at that review. No production logic, configuration or deployed binary changed. The user reports slow scope-to-IMAX/16:9 transitions and frequent bright YouTube TV ads with clear borders that never acquire. The user then captured a paused ad: all 97 native payloads reproduce provisional acquisition, with a raised/nonuniform upper exterior and trusted near-black lower bar. This Limited-range failure requires a separate variable-profile investigation; the initial uniform, matching-matte proposal does not fix it. See [native capture findings](../assets/VP-0218/native-capture-20261026.md).
 
 The design and validation contract are in [adaptive-evidence-design.md](../assets/VP-0218/adaptive-evidence-design.md); [evidence.md](../assets/VP-0218/evidence.md) records executed characterization and capture status. The source review uses `E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026`. Review checkout of the tracker is a clean `main` clone under `E:\codex\story-tracker\ar-dynamic-evidence-review-20261026`; the unrelated existing edit in the dedicated tracker is preserved.
 

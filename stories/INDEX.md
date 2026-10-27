@@ -279,7 +279,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0216 | Done | Disable Config Apply when no settings are pending |
 | VP-0217 | Done | Stable reconstructed subtitle background and soft boundary blending |
-| VP-0218 | Backlog | Improve aspect transitions with current relative boundary evidence |
+| VP-0218 | In Progress | Improve aspect transitions with current relative boundary evidence |
 
 ## Codex story workflow
 
