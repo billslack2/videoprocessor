@@ -1,0 +1,136 @@
+{
+  "sourceCommit": "52f625c113191511f2890775fe9bdd8e511a7049",
+  "sourceBranch": "codex/deploy-subtitle-merge-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backupDirectory": "C:\\Videoprocessor\\vp\\backup-before-merged-subtitles-20261027-191144",
+  "configurationEdits": [],
+  "stateEdits": [],
+  "configSha256": "20F670C4D406833A72DCD131FF9C16CD02DEDE327672B848FDCD9F05256B1CA4",
+  "stateBeforeSha256": "DFA2930A5E57AA929DCAC892882D2591BA87A565823AB6760BDFA344151A0575",
+  "stateSha256BeforeRestart": "DFA2930A5E57AA929DCAC892882D2591BA87A565823AB6760BDFA344151A0575",
+  "mergedPullRequest": 219,
+  "previousRuntimeCommit": "e263fda592d953cf1a7723b3e44326e170a79916",
+  "files": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "632E95C30D0FA7AB8E219EB6C7918019EF3F770DAA359253F055F8D00AF98458"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "sha256": "4F9690F1943E22CE30D1DA95B0433B2FFDBCBCE703ADF85D4BC09643A1A6BA0B"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "sha256": "43B2EEA16638B7E5019FEE7727C76A0D731DC7B31CA2060C5944F58AB0D5054C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "B009C49BE18D453AA374E86836CF6E8A75190AD0A87A83E1E713A47C99A90B6C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "BFF112CD2C04CF72ECC69CB167899B4AEE409B2F99A789185727B3AC139F2B8A"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "5FB032FA5D359A84B455A0271449A2B6D3B8281C57C37FB1A02BBD3115127172"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "07A2C5483A96EC02AC6781E506F6EDC50D293F77E87316D42ADB7F028AF124A4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "BB04FB8AEDBF278F5FBAA835DEF755FA3419D063CA14042B042506D0D72B6020"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "8D5DCFEE7D916827F95ED8EF355F4D14994FB97EEAF13352E71AA9888A20F7C6"
+    }
+  ],
+  "retainedDependencies": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-377.dll",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "playerStarted": true,
+  "deployedAtUtc": "2026-10-27T19:11:45.6146738-04:00",
+  "playerProcessId": 39792,
+  "startupIdentityLines": [
+    "2026-10-27 19:11:45 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/52f625c113191511f2890775fe9bdd8e511a7049 branch=codex/deploy-subtitle-merge-20261027 dirty=0 build=v1.4.02-beta-52f625c",
+    "2026-10-27 19:11:53 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/52f625c113191511f2890775fe9bdd8e511a7049 branch=codex/deploy-subtitle-merge-20261027 dirty=0 build=v1.4.02-beta-52f625c"
+  ],
+  "runtimeVerifiedAtUtc": "2026-10-27T23:12:25.3216361+00:00",
+  "configurationUnchangedAfterRestart": true,
+  "stateUnchangedAfterRestart": true
+}

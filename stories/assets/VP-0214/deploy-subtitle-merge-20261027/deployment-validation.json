@@ -1,0 +1,48 @@
+{
+  "sourceCommit": "52f625c113191511f2890775fe9bdd8e511a7049",
+  "sourceBranch": "codex/deploy-subtitle-merge-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLog": "E:\\codex\\diagnostics\\deploy-subtitle-merge-20261027\\build.log",
+  "qualifiedCommit": "ec54b685c157cd6f10cf860b6c7ea8e0368628f4",
+  "identicalSourceTree": "19c3a6fbbb873735cf22f9cbbe6de94dfccb6d4f",
+  "testEvidenceReuse": "Entire merged source tree is identical to the qualified PR head. Fresh x64 Release build supplies merged commit identity. Both GPU suites and native/HDR results are reused without rerun.",
+  "passed": 1141.0,
+  "failed": 0,
+  "tests": [
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\dual\\standard.trx",
+      "sha256": "AED75945A6285E41EF6652EF35724C2DB2AEDB3E9B057EB4B2DDBDC70274C4E2",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\dual\\beta.trx",
+      "sha256": "81985595014749D9ACB145F58F5420899CC7950804F6DC83A6E1EB8952CC05BF",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\subtitle-motion-merge-20261027\\native\\native.trx",
+      "sha256": "281CC2F991DC1B7041941B5C33D632D35EFFA793D55477A1FAEF211A44771DDA",
+      "passed": 735,
+      "failed": 0
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-subtitle-merge-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "632E95C30D0FA7AB8E219EB6C7918019EF3F770DAA359253F055F8D00AF98458"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-subtitle-merge-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "B009C49BE18D453AA374E86836CF6E8A75190AD0A87A83E1E713A47C99A90B6C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\deploy-subtitle-merge-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "07A2C5483A96EC02AC6781E506F6EDC50D293F77E87316D42ADB7F028AF124A4"
+    }
+  ],
+  "validatedAtUtc": "2026-10-27T23:11:43.1155309+00:00"
+}

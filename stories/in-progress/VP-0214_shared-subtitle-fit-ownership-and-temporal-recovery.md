@@ -189,6 +189,32 @@ for this merge. The broader VP0214 investigation remains In Progress.
 [qualification](../assets/VP-0214/subtitle-motion-merge-20261027/merge-validation.json),
 [scope comparison](../assets/VP-0214/subtitle-motion-merge-20261027/scope-comparison.json).
 
+### Merged-beta deployment — 2026-10-27 19:11 EDT
+
+User requested deployment after merge. Freshly discovered/fetched official beta
+remains `52f625c113191511f2890775fe9bdd8e511a7049`. A new clean worktree at that
+commit passed the full x64 Release solution build. The entire source tree is
+identical to qualified PR head `ec54b685`; the 1,141 native/GPU/HDR results are
+reused with their recorded TRX hashes, rather than rerunning unchanged suites.
+Fresh binaries identify the actual merged commit; prior binaries were not
+relabeled. Config/discovery code is unchanged from installed beta and its open
+sessions were preserved.
+
+Replaced nine host/standard-renderer/beta-renderer/sidecar/PDB files together;
+18 identical dependency DLLs were retained. Prior running host/renderer were
+`e263fda5`. Backup:
+`C:\Videoprocessor\vp\backup-before-merged-subtitles-20261027-191144`.
+No configuration or state edits were made; both file hashes also matched after
+restart. Saved Classic selection and VSync setting were preserved.
+
+Restarted the main installation as PID 39792 at 19:11:45. Startup logs verify
+clean matching host and renderer `52f625c1`, both renderer plugins load API 30,
+and all installed runtime hashes match the successful Release build. Physical
+playback acceptance remains separate. Deployment evidence is synchronized here.
+
+[Validation](../assets/VP-0214/deploy-subtitle-merge-20261027/deployment-validation.json),
+[deployment receipt](../assets/VP-0214/deploy-subtitle-merge-20261027/deployment-receipt.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh
