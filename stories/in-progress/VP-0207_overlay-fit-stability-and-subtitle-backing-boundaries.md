@@ -653,3 +653,9 @@ Host SHA-256: `7A03106C673797E7EE63712DB5987FA7080B2F182DB4FA9D067F8FE76D44F363`
 User requested removal of both end-user padding fields and the 1080p reference, retaining the default-on checkbox. Implemented and pushed `f22e22c4f0dcd9be87c26189fc18a83a798c9a26` to PR #215. Padding now follows text-line height internally (one fifth above, one third each side); it is independent of source raster resolution and shares the subtitle's display transform. Former saved padding keys are accepted but ignored for compatibility. Checkbox remains enabled by default.
 
 Validation: x64 Release build and committed-identity refresh both succeeded. All 115 relevant subtitle geometry/renderer-policy tests passed, including same text on different raster sizes and different text sizes on one raster. Config test passed with no padding controls and a persisted checkbox disable. Deployment preflight safely stopped because Config did not close after the normal close request; no installed files changed and VP remained running. Awaiting the user's Config closure before completing the authorized redeployment.
+
+### Internal-padding deployment completed — 2026-10-27 11:37 EDT
+
+After the user closed Config, deployed committed x64 Release `f22e22c4f0dcd9be87c26189fc18a83a798c9a26`: host, stable/beta renderer DLLs, Config app, and Config discovery DLL. Every deployed binary matched its verified Release artifact SHA-256. Backup: `C:\Videoprocessor\vp\backups\subtitle-guard-f22e22c4-20261027-113751`. Active configuration is byte-identical; no config edits. VP restarted as PID 28420.
+
+Host SHA-256: `4E03F76B591E6D75671AD959E2ABDF123E48CEE390B049F092049C31A0B546BD`. Stable renderer SHA-256: `32BF6F03EF33F9D6367E4A28F0601CB7595DB0B428864A74643E079EBE61EC55`. Default-on checkbox is the sole UI control; internal padding follows subtitle text size. PR #215 remains draft/unmerged; exact scene visual acceptance remains outstanding.
