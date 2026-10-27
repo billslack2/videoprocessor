@@ -5971,9 +5971,8 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
 				static_cast<int>(SelectVerticalBarContentEdge(0.0f, 116.0f)));
 
-			// A receiver/menu item can leave weaker noise on the other bar. Only
-			// the edge that actually determines the fit may acquire a hold timer.
-			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
+			// Bottom wins even when the top requires a larger reveal.
+			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
 				static_cast<int>(SelectVerticalBarContentEdge(170.0f, 116.0f)));
 			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
 				static_cast<int>(SelectVerticalBarContentEdge(42.0f, 116.0f)));
@@ -6037,7 +6036,7 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
-		TEST_METHOD(VerticalBarPolicyChoosesDominantTwoEdgeOverlay)
+		TEST_METHOD(VerticalBarPolicyAlwaysPrefersBottomOverlay)
 		{
 			VerticalBarContentInput input;
 			input.upperContent = true;
@@ -6062,14 +6061,13 @@ namespace Tests
 				static_cast<int>(decision.action));
 			Assert::AreEqual(199.0f, decision.translationPixels, 0.001f);
 
-			// Direction selection is based on required visibility, not on a fixed
-			// preference for subtitles at the bottom.
+			// A larger top intrusion must not reverse bottom priority.
 			input.upperRequiredShift = 205.0f;
 			decision = EvaluateVerticalBarContent(input);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
-			Assert::AreEqual(-205.0f, decision.translationPixels, 0.001f);
+			Assert::AreEqual(199.0f, decision.translationPixels, 0.001f);
 
 			// Once the lower subtitle owns presentation, the top overlay cannot
 			// reverse it even if the top would otherwise request a larger shift.
@@ -6079,6 +6077,33 @@ namespace Tests
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
 			Assert::AreEqual(199.0f, decision.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(VerticalBarPolicyBottomOverridesTopFirstHold)
+		{
+			VerticalBarContentInput input;
+			input.upperContent = true;
+			input.upperOccupiedDepth = 42;
+			input.upperPeakSamples = 220;
+			input.upperBarPixels = input.lowerBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 170.0f;
+			Assert::AreEqual(-170.0f,
+				EvaluateVerticalBarContent(input).translationPixels, 0.001f);
+			input.topTranslationHeld = true;
+			input.lowerContent = true;
+			input.lowerOccupiedDepth = 42;
+			input.lowerPeakSamples = 220;
+			input.lowerRequiredShift = 75.0f;
+			for (bool upperStillPresent : {true, false})
+			{
+				input.upperContent = upperStillPresent;
+				input.upperRequiredShift = upperStillPresent ? 170.0f : 0.0f;
+				const auto decision = EvaluateVerticalBarContent(input);
+				Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE),
+					static_cast<int>(decision.action));
+				Assert::AreEqual(75.0f, decision.translationPixels, 0.001f);
+			}
 		}
 
 		TEST_METHOD(VerticalBarPolicyFitsTwoEdgePictureEvidence)

@@ -347,11 +347,12 @@ namespace AlphaSourceCrop
 	BarContentEdge SelectVerticalBarContentEdge(
 		float upperRequiredShift, float lowerRequiredShift)
 	{
-		if (upperRequiredShift > lowerRequiredShift &&
-			upperRequiredShift > 0.5f)
-			return BarContentEdge::TOP;
+		// Bottom captions win conflicts: moving the source window down shifts
+		// the displayed picture up, regardless of relative intrusion depth.
 		if (lowerRequiredShift > 0.5f)
 			return BarContentEdge::BOTTOM;
+		if (upperRequiredShift > 0.5f)
+			return BarContentEdge::TOP;
 		return BarContentEdge::NONE;
 	}
 
@@ -393,16 +394,13 @@ namespace AlphaSourceCrop
 		const bool overlayOnlyOpposesHeldTranslation =
 			(input.upperContent && !input.lowerContent &&
 				input.bottomTranslationHeld &&
-				decision.upperOverlayLike) ||
-			(input.lowerContent && !input.upperContent &&
-				input.topTranslationHeld &&
-				decision.lowerOverlayLike);
+				decision.upperOverlayLike);
 		// Content on both bars is not, by itself, an aspect-ratio change. A
 		// bottom subtitle can coexist with a top volume/menu overlay, and sparse
 		// details near both edges can occur in the same frame. Only picture-like
 		// (broad and deep) evidence may turn a two-edge observation into Fit.
-		// When both edges are overlay-like, select the edge needing the larger
-		// reveal below while preserving any active translation hold.
+		// When both edges are overlay-like, always reveal the bottom caption,
+		// including when a top overlay acquired the previous translation hold.
 		const bool bothEdgesContainPicture =
 			input.upperContent && input.lowerContent &&
 			(!decision.upperOverlayLike || !decision.lowerOverlayLike);
@@ -429,15 +427,10 @@ namespace AlphaSourceCrop
 			? input.upperRequiredShift : 0.0f;
 		float lowerCandidate = decision.lowerOverlayLike
 			? input.lowerRequiredShift : 0.0f;
-		// When the held edge is still present, a simultaneous overlay on the
-		// opposite edge must not reverse the picture translation. Continue to
-		// follow the held edge, including an immediately larger reveal requested
-		// by a new subtitle line. If the held edge has disappeared, the bounded
-		// hold above suppresses the isolated opposite-edge pulse instead.
+		// Retain bottom priority across gaps in the lower cue. A top hold must
+		// never suppress a newly detected bottom caption.
 		if (input.bottomTranslationHeld && decision.lowerOverlayLike)
 			upperCandidate = 0.0f;
-		else if (input.topTranslationHeld && decision.upperOverlayLike)
-			lowerCandidate = 0.0f;
 
 		switch (SelectVerticalBarContentEdge(upperCandidate, lowerCandidate))
 		{
