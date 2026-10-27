@@ -635,3 +635,9 @@ The actual merge has those two parents and its source tree is identical to the c
 ## Oversized background-box guard — 2026-10-27
 
 Implementation started on `codex/subtitle-box-sanity-20261027`, based on current remote `v1.4.02-beta` at `7394ba42`. User supplied a paused dark scene where the subtitle background measurement merges into picture content, leaving excessive top/left margins. Add an opt-in presentation guard with configurable fallback padding, evaluating all detected text lines and side-margin imbalance. Preserve glyphs and independent source aspect detection; validate normal, oversized, asymmetric, multiline, top/bottom, resolution, and repeated-cue cases. No deployment requested.
+
+### Oversized background guard implementation and validation
+
+Implemented in `fdc2ca66855ec489f1684d294adb9018bc884ac7`, draft PR https://github.com/billslack2/videoprocessor/pull/215 against `v1.4.02-beta`. Per user correction, enabled by default; a Config checkbox disables it. Fallback top/side padding defaults to 12/20 pixels at 1080 lines and scales with source height. Excessive margins or strong left/right imbalance cap measured coverage around all detected rows. Same-cue retention and final-layout invalidation prevent a rejected oversized box from returning. Glyph fringe and independent aspect detection are preserved.
+
+Validation: final x64 Release solution build succeeded; 258/258 selected subtitle geometry/detection/refinement and renderer policy tests passed; Config background-shape round-trip/visibility passed with default enable, persisted disable, and saved padding. Native replay/live visual acceptance of the user's paused scene remains outstanding. Not deployed or merged; parent VP-0207 remains In Progress. Existing unrelated asset edits were preserved.
