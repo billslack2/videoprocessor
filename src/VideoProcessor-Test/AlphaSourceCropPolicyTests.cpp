@@ -6232,6 +6232,71 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
+        TEST_METHOD(ClassicRevealsBroadBarCardsWithoutGlyphOrOverlayShapeProof)
+        {
+            // Ben-Hur live trace: picture 384..1776; the bottom information
+            // card occupies 1778..2158, peak 1693/1800 samples, depth 380.
+            VerticalBarContentInput content;
+            content.lowerContent = true;
+            content.lowerOccupiedDepth = 380;
+            content.lowerOccupiedRows = 358;
+            content.lowerPeakSamples = 1693;
+            content.lowerBarPixels = content.upperBarPixels = 384;
+            content.sampledColumns = 1800;
+            content.lowerRequiredShift = 384.0f; // padded extent clamps to raster
+            const auto raw = EvaluateVerticalBarContent(content);
+            Assert::IsFalse(raw.lowerOverlayLike);
+            Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(raw.action));
+            Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),
+                static_cast<int>(SelectVerticalBarContentPresentation(raw, true, &content).action));
+            Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT),
+                static_cast<int>(SelectVerticalBarContentPresentation(raw, false, &content, true).action));
+            for (bool topFirst : {false, true}) {
+                content.upperContent = topFirst;
+                content.upperOccupiedDepth = topFirst ? 380 : 0;
+                content.upperPeakSamples = topFirst ? 1693 : 0;
+                content.upperRequiredShift = topFirst ? 384.0f : 0.0f;
+                content.topTranslationHeld = topFirst;
+                auto decision = SelectVerticalBarContentPresentation(
+                    EvaluateVerticalBarContent(content), true, &content, true);
+                Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE), static_cast<int>(decision.action));
+                Assert::AreEqual(384.0f, decision.translationPixels, 0.001f);
+                VerticalTranslationConfirmationState previous;
+                for (uint64_t sequence = 1; sequence <= 3; ++sequence) {
+                    VerticalTranslationConfirmationInput confirmation;
+                    confirmation.previous = previous;
+                    confirmation.observed = decision;
+                    confirmation.sourceSequence = sequence;
+                    confirmation.maximumTranslationMagnitudePixels = 384.0f;
+                    auto result = ConfirmVerticalTranslation(confirmation);
+                    previous = result.state;
+                    Assert::AreEqual(sequence < 3, result.pending);
+                    if (sequence == 3) {
+                        auto crop = TrustedScopeCrop();
+                        crop.geometry.top = 384; crop.geometry.bottom = 1776;
+                        crop.geometry.aspectRatio = 3840.0 / 1392.0;
+                        crop.verticalTranslationActive = true;
+                        crop.verticalTranslationPixels = static_cast<int>(result.effective.translationPixels);
+                        crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+                        const auto presented = Evaluate(crop);
+                        Assert::IsTrue(presented.applyCrop && presented.verticallyTranslated);
+                        Assert::AreEqual(768, presented.sourceBounds.top);
+                        Assert::AreEqual(2160, presented.sourceBounds.bottom);
+                        Assert::AreEqual(1392, presented.sourceBounds.bottom - presented.sourceBounds.top);
+                    }
+                }
+            }
+            content.lowerContent = false; content.lowerRequiredShift = 0;
+            auto top = SelectVerticalBarContentPresentation(EvaluateVerticalBarContent(content), true, &content, true);
+            Assert::AreEqual(-384.0f, top.translationPixels, 0.001f);
+            content.bottomTranslationHeld = true;
+            Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::NONE), static_cast<int>(
+                SelectVerticalBarContentPresentation(EvaluateVerticalBarContent(content), true, &content, true).action));
+            content.upperPeakSamples = 0;
+            Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FAIL_OPEN), static_cast<int>(
+                SelectVerticalBarContentPresentation(EvaluateVerticalBarContent(content), true, &content, true).action));
+        }
+
         TEST_METHOD(OffFitsChangingOverlayExtentsWithoutWaitingForClassicMotionTarget)
         {
             VerticalFitConfirmationState fitState;

@@ -6865,10 +6865,9 @@ struct LibplaceboVideoRenderer::Impl
 						trustedPicture.bottom)
 					: 0.0f;
 
-				// Translation is reserved for one overlay-like vertical edge. A shallow
-				// full-width receiver OSD is still overlay-like. Content broad in both
-				// dimensions, two current edges, or evidence opposite a held translation
-				// is one FIT decision, never a competing translate-and-fit pair.
+				// Classify shape for shared/advanced presentation, then let Classic
+				// reveal measured bar occupancy regardless of glyphs or card size.
+				// This presentation choice never establishes native picture bounds.
 				const bool previousOwnsCurrentAnalysis =
 					scopeSubtitleEvidenceSourceGeneration == source->generation &&
 					scopeVerticalBarPresentation.action !=
@@ -6907,7 +6906,8 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaSourceCrop::VerticalBarContentDecision verticalDecision =
 					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
                 verticalDecision = AlphaSourceCrop::SelectVerticalBarContentPresentation(
-                    verticalDecision, scopeSubtitleFit, &verticalInput);
+                    verticalDecision, scopeSubtitleFit, &verticalInput,
+                    CurrentSubtitlePreviewMode() == SubtitlePreviewMode::None);
 				if (analysisCompleted)
 					*analysisCompleted = true;
                 scopeCurrentVerticalContent=verticalInput;
