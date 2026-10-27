@@ -42,9 +42,14 @@ All 32 isolated matrix cases also pass. Matching host, standard/beta renderer,
 and test binary hashes are verified against generated Release sidecars.
 [Qualification receipt](../assets/VP-0211/render-freeze-20261026/validation.json).
 
-Deployment was offered after qualification and awaits the user's answer.
-The installed `376e46a3` build and user-selected VSync-off workaround remain
-in place. Live Epson scanout validation with VSync on is still required;
+The user authorized enabling VSync and restarting with the tested fix.
+Backup of all nine runtime files plus cfg/state is verified at
+`C:\Videoprocessor\vp\backup-before-epson-freeze-bc060dba-20261026-205927`.
+Windows denied stopping running player PID 4012, and the Windows UI helper
+failed to start (sandbox helper setup error). The user has been asked to close
+VP normally. A pinned deployment/single-setting-edit/restart script is ready;
+no runtime/configuration changes have occurred yet. The installed `376e46a3`
+build and user-selected VSync-off workaround remain in place until VP closes. Live Epson scanout validation with VSync on is still required;
 this draft is not merged and the story remains In Progress.
 
 Local raw incident logs and copied configuration are retained only under
