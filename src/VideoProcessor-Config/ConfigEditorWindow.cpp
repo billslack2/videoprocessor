@@ -7571,6 +7571,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             form->addRow(new InlineColorPicker(field,label));
             return field;
         };
+        auto* backgroundGuard = addBoolean(QStringLiteral("Guard oversized subtitle backgrounds"), QStringLiteral("background_sanity_guard"));
+        backgroundGuard->setToolTip(QStringLiteral("Use bounded padding when a detected background has excessive or strongly uneven margins around the text. Keeps all detected lines. Applies to moved subtitles."));
+        for(const auto& entry : {std::make_pair(QStringLiteral("Fallback top padding"),QStringLiteral("background_fallback_top_pixels")),
+            std::make_pair(QStringLiteral("Fallback side padding"),QStringLiteral("background_fallback_side_pixels"))}) {
+            auto* field=addText(entry.first,entry.second,QStringLiteral("pixels at 1080p"));
+            field->setValidator(new QIntValidator(0,200,field));
+            field->setToolTip(QStringLiteral("Scaled to the source height. Used only when the background sanity guard rejects a measured box."));
+        }
         auto* rounded = addBoolean(QStringLiteral("Rounded corners"), QStringLiteral("rounded_corners"));
         rounded->setToolTip(QStringLiteral("Round the subtitle box corners. Floating boxes round all four corners."));
         auto* edge = addChoice(QStringLiteral("Background edge"), QStringLiteral("background_edge"),
@@ -8113,6 +8121,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if(key == QStringLiteral("text_reduction_percent")) return QStringLiteral("0");
                 if(key == QStringLiteral("rounded_corners")) return QStringLiteral("true");
                 if(key == QStringLiteral("background_edge")) return QStringLiteral("extend");
+                if(key == QStringLiteral("background_sanity_guard")) return QStringLiteral("true");
+                if(key == QStringLiteral("background_fallback_top_pixels")) return QStringLiteral("12");
+                if(key == QStringLiteral("background_fallback_side_pixels")) return QStringLiteral("20");
                 if(key == QStringLiteral("subtitle_generated_gray_border_color")) return QStringLiteral("000000");
                 if(key == QStringLiteral("subtitle_generated_gray_border_opacity")) return QStringLiteral("0.65");
                 if(key == QStringLiteral("subtitle_generated_gray_border_width")) return QStringLiteral("0");

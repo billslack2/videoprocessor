@@ -25,6 +25,82 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests {
 TEST_CLASS(SubtitleCutPasteTests) {
+    TEST_METHOD(BackgroundGuardCapsDarkSceneAndPreservesText) {
+        SubtitleBoxResult text;text.detected=true;text.lineCount=1;
+        text.bounds=text.lineBounds[0]={200,308,440,328};
+        SubtitleBoxRect panel{70,200,455,315};
+        auto original=panel;
+        Assert::IsFalse(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,{false}));
+        Assert::AreEqual(original.left,panel.left);
+        SubtitleBackgroundGuardPolicy policy;policy.enabled=true;
+        Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,policy));
+        Assert::AreEqual(193,panel.left);Assert::AreEqual(447,panel.right);
+        Assert::AreEqual(304,panel.top);Assert::AreEqual(315,panel.bottom);
+        Assert::AreEqual(200,text.lineBounds[0].left);
+        Assert::AreEqual(328,text.lineBounds[0].bottom);
+    }
+    TEST_METHOD(BackgroundGuardAcceptsNormalOffCenterAndMultilineCards) {
+        SubtitleBackgroundGuardPolicy policy;policy.enabled=true;
+        SubtitleBoxResult text;text.lineCount=2;
+        text.bounds={75,275,285,325};
+        text.lineBounds[0]={75,275,285,295};text.lineBounds[1]={100,305,260,325};
+        SubtitleBoxRect panel{67,270,293,315};
+        Assert::IsFalse(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,policy));
+        panel={0,190,320,315};
+        Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,policy));
+        Assert::IsTrue(panel.left<=75 && panel.right>=285 && panel.top<=275);
+        text.lineBounds[0]={75,100,285,120};text.lineBounds[1]={100,130,260,150};
+        text.bounds={75,100,285,150};panel={0,45,320,315};
+        Assert::IsFalse(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,policy));
+    }
+    TEST_METHOD(BackgroundGuardScalesAndMirrorsAtTopBar) {
+        SubtitleBackgroundGuardPolicy policy;policy.enabled=true;
+        for(int scale:{1,2}) {
+            SubtitleBoxResult text;text.lineCount=1;
+            text.bounds=text.lineBounds[0]={600*scale,924*scale,1320*scale,984*scale};
+            SubtitleBoxRect panel{210*scale,600*scale,1365*scale,945*scale};
+            Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,1920*scale,1080*scale,135*scale,945*scale,60*scale,policy));
+            Assert::AreEqual(580*scale,panel.left);Assert::AreEqual(912*scale,panel.top);
+            text.bounds=text.lineBounds[0]={600*scale,96*scale,1320*scale,156*scale};
+            panel={210*scale,135*scale,1365*scale,480*scale};
+            Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,1920*scale,1080*scale,135*scale,945*scale,60*scale,policy));
+            Assert::AreEqual(135*scale,panel.top);Assert::AreEqual(168*scale,panel.bottom);
+        }
+    }
+    TEST_METHOD(BackgroundGuardRejectsUnevenMarginsAndRetainsCueFallback) {
+        SubtitleBackgroundGuardPolicy policy;policy.enabled=true;
+        SubtitleBoxResult text;text.detected=true;text.cue=99;text.lineCount=1;
+        text.bounds=text.lineBounds[0]={200,308,440,328};
+        text.sourcePanel=text.capturePanel=text.provenSourcePanel={165,302,445,315};
+        text.capturePanelMeasured=true;
+        auto panel=text.sourcePanel;
+        Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,640,360,45,315,20,policy));
+        auto p=Preview();p.current.text=text;
+        SubtitleCutPastePresentation presentation;presentation.SetBackgroundGuard(policy);
+        auto first=presentation.Consume(text,p,{0,0,0});
+        Assert::IsTrue(first.valid);Assert::AreEqual(193,first.generatedCleanup.left);
+        text.sourcePanel=text.capturePanel=text.provenSourcePanel={70,200,455,315};
+        p.current.text=text;++p.current.identity.acceptedSequence;
+        auto second=presentation.Consume(text,p,{0,0,0});
+        Assert::IsTrue(second.valid);Assert::AreEqual(193,second.generatedCleanup.left);
+        Assert::AreEqual(304,second.generatedCleanup.top);
+        Assert::AreEqual(198,second.glyphLines[0].left);
+        presentation.SetBackgroundGuard({false});
+        auto disabled=presentation.Consume(text,p,{0,0,0});
+        Assert::IsTrue(disabled.valid);Assert::AreEqual(70,disabled.generatedCleanup.left);
+    }
+    TEST_METHOD(BackgroundGuardConfigValidation) {
+        std::string reason;
+        Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","background_sanity_guard","true",reason));
+        Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","background_sanity_guard","maybe",reason));
+        for(const char* key:{"background_fallback_top_pixels","background_fallback_side_pixels"}) {
+            Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles",key,"0",reason));
+            Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles",key,"200",reason));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles",key,"201",reason));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles",key,"-1",reason));
+        }
+    }
+
     static SubtitleBoxPreview Preview() {
         SubtitleBoxPreview p;p.available=true;p.policyGeneration=7;p.continuityGeneration=8;
         p.current.analyzed=p.current.barAuthority=true;

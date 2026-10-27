@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleBackgroundGuard.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -298,6 +299,7 @@ struct SubtitleCutPasteGeometry
     SubtitleBoxRect placementLimits, layoutContent, layoutCoverage;
     SubtitleBoxRect cleanupLimit; // Fresh local proof, when backing edges are hidden.
     bool centeredGlyphMapping=false, roundedCorners=true, extendToBar=true, pictureIntrusion=false;
+    bool backgroundGuarded=false;
     int pictureTop = 0, pictureBottom = 0;
     // Display-only attachment edges. They grant no source glyph or cleanup ownership.
     int displayPictureLeft = 0, displayPictureTop = 0, displayPictureRight = 0, displayPictureBottom = 0;
@@ -599,7 +601,8 @@ public:
             m_geometry.displayPictureRight==g.displayPictureRight &&
             m_geometry.displayPictureBottom==g.displayPictureBottom &&
             m_geometry.glyphScale==g.glyphScale && m_padding==padding && m_offset==offset &&
-            m_geometry.roundedCorners==g.roundedCorners && m_float==floatBackground;
+            m_geometry.roundedCorners==g.roundedCorners && m_float==floatBackground &&
+            m_geometry.backgroundGuarded==g.backgroundGuarded;
         const bool visualMatch=SameFreshSubtitleGlyphs(m_text,text);
         const bool same=sameIdentity && (m_cue==text.cue || visualMatch);
         if(same) {
@@ -673,7 +676,10 @@ inline SubtitleCutPasteSample MapSubtitleCutPastePixel(
 class SubtitleCutPastePresentation
 {
 public:
-    void Reset() { m_geometry={};m_reference={};m_cue=0;m_policy=m_continuity=0;m_sourcePanel={};m_stablePanel={};m_stableText={};m_stableReference={};m_stablePolicy=m_stableContinuity=0;m_stableFromTop=false;m_relativeDisplay=false;m_backingReason="reset";m_backingHeld=0; }
+    void Reset() { m_geometry={};m_reference={};m_cue=0;m_policy=m_continuity=0;m_sourcePanel={};m_stablePanel={};m_stableText={};m_stableReference={};m_stablePolicy=m_stableContinuity=0;m_stableFromTop=false;m_relativeDisplay=false;m_backingReason="reset";m_backingHeld=0;m_guardedCue=false; }
+    void SetBackgroundGuard(SubtitleBackgroundGuardPolicy policy) {
+        if(!(m_backgroundGuard==policy)) {Reset();m_backgroundGuard=policy;}
+    }
     const char* BackingDecisionReason() const { return m_backingReason; }
     uint64_t HeldBackingMeasurements() const { return m_backingHeld; }
     SubtitleCutPasteGeometry Consume(const SubtitleBoxResult& text,
@@ -695,6 +701,7 @@ public:
             auto currentText=current.text;currentText.cue=text.cue;
             currentText.confirmationPending=false;
             SubtitleCutPastePresentation fresh;
+            fresh.SetBackgroundGuard(m_backgroundGuard);
             auto next=fresh.Consume(currentText,preview,padding,gap,nullptr,nullptr);
             const bool sameSlot=m_geometry.valid && next.valid && m_cue==text.cue &&
                 m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
@@ -762,7 +769,7 @@ public:
             // A certificate cannot authorize new padding, backing or placement.
             Reset();return {};
         }
-        const bool sameDisplayCue=!glyphLocal && !m_reference.glyphLocalTop && !m_reference.glyphLocalBottom && m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
+        bool sameDisplayCue=!glyphLocal && !m_reference.glyphLocalTop && !m_reference.glyphLocalBottom && m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
             m_padding==padding && m_gap==gap && SubtitleBoxLookahead::SameContext(m_reference,current);
         auto panel=glyphLocal?current.glyphLocalVerifiedBounds:text.sourcePanel;
@@ -866,6 +873,15 @@ public:
                 panel=m_sourcePanel;
             }
         } else m_backingHeld=0;
+        const bool guarded=!glyphLocal && GuardSubtitleBackgroundPanel(panel,text,
+            current.width,current.height,current.pictureTop,current.pictureBottom,
+            current.nearBarDistance,m_backgroundGuard,sameDisplayCue && m_guardedCue);
+        m_guardedCue=guarded;
+        if(guarded) {
+            // A rejected remembered envelope must not grow the fallback again.
+            sameDisplayCue=false;
+            m_backingReason="background-sanity-padding-fallback";
+        }
         const auto& display=displayBounds && displayBounds->Valid()?*displayBounds:text.bounds;
         const auto padded=ExpandSubtitleBox(display,current.width,current.height,padding);
         const auto content=SubtitleGlyphCaptureBounds(text,current.width,current.height);
@@ -877,12 +893,19 @@ public:
             (std::min)(current.width,capture.right),
             (std::min)(text.capturePanelMeasured?current.height:current.pictureBottom,capture.bottom)};
         if(!captureInPicture.Valid())captureInPicture={};
-        if(cappedRecoveredPanel && captureInPicture.Valid()) {
+        if((cappedRecoveredPanel || guarded) && captureInPicture.Valid()) {
+            auto captureLimit=panel;
+            // Preserve all current glyph fringe, including native proof across
+            // a slightly different physical boundary. Still intersect the
+            // measured capture below; padding never creates capture authority.
+            if(guarded && content.Valid())captureLimit={
+                (std::min)(captureLimit.left,content.left),(std::min)(captureLimit.top,content.top),
+                (std::max)(captureLimit.right,content.right),(std::max)(captureLimit.bottom,content.bottom)};
             captureInPicture={
-                (std::max)(captureInPicture.left,panel.left),
-                (std::max)(captureInPicture.top,panel.top),
-                (std::min)(captureInPicture.right,panel.right),
-                (std::min)(captureInPicture.bottom,panel.bottom)};
+                (std::max)(captureInPicture.left,captureLimit.left),
+                (std::max)(captureInPicture.top,captureLimit.top),
+                (std::min)(captureInPicture.right,captureLimit.right),
+                (std::min)(captureInPicture.bottom,captureLimit.bottom)};
             if(!captureInPicture.Valid())captureInPicture={};
         }
         const bool sameCapture=(!captureInPicture.Valid() && !m_geometry.pictureCapture.Valid()) ||
@@ -965,6 +988,7 @@ public:
             LimitSubtitleCleanupToLocalProof(next);
             m_backingReason="current-local-glyph-support";
         }
+        next.backgroundGuarded=guarded;
         m_cachedText=text;m_cachedDisplay=display;
         m_geometry=next;
         m_geometry.content=content;m_geometry.glyphLines=glyphLines;
@@ -980,6 +1004,8 @@ public:
         return m_geometry;
     }
 private:
+    SubtitleBackgroundGuardPolicy m_backgroundGuard{false};
+    bool m_guardedCue=false;
     SubtitleBoxResult m_cachedText;
     SubtitleBoxRect m_cachedDisplay;
     SubtitleCutPasteGeometry m_geometry;
