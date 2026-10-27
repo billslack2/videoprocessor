@@ -1,0 +1,2843 @@
+{
+  "capture": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-232451-35800-1",
+  "source_baseline": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "limitations": [
+    "Paused source example; no source aspect transition onset appears in this capture.",
+    "ar-decision.published is transition.bounds even when publish flag is false; presentation.published/displayed determines effective geometry.",
+    "ar-edges all-zero values are unavailable retention measurements, not measured black bands.",
+    "Metadata record gaps and native-frame gaps are recording coverage gaps; lifetime dropped counters are not session capture drops."
+  ],
+  "capture_summary": {
+    "schemaVersion": 1,
+    "includeFrames": true,
+    "session": {
+      "acceptedRecords": 31976,
+      "recordsWritten": 30063,
+      "framesWritten": 97,
+      "frameBytesWritten": 2145484800
+    },
+    "lifetime": {
+      "droppedRecords": 30271,
+      "droppedFrames": 1101,
+      "historyOverwrites": 3511337,
+      "writeFailures": 0
+    },
+    "limits": {
+      "preRollMs": 10000,
+      "captureMs": 20000,
+      "recordHistoryCapacity": 8192,
+      "maxCaptureRecords": 65536,
+      "maxFrameBytes": 134217728,
+      "maxCaptureFrameBytes": 2147483648,
+      "maxOutstandingFrames": 2
+    },
+    "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture."
+  },
+  "records_written": 30063,
+  "record_timestamp_span_seconds": 25.2916836,
+  "native_frames": {
+    "count": 97,
+    "first_accepted": 108881,
+    "last_accepted": 108992,
+    "first_source": 250414,
+    "last_source": 250525,
+    "accepted_step_counts": {
+      "1": 93,
+      "13": 1,
+      "3": 1,
+      "2": 1
+    },
+    "raw_bytes": 2145484800
+  },
+  "stages": {
+    "worker-miss": {
+      "count": 12065,
+      "distinct_accepted": 1519,
+      "accepted_min": 108468,
+      "accepted_max": 109988
+    },
+    "worker-read": {
+      "count": 4410,
+      "distinct_accepted": 760,
+      "accepted_min": 108469,
+      "accepted_max": 109987
+    },
+    "lookahead": {
+      "count": 1506,
+      "distinct_accepted": 1506,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 3,
+          "count": 1506
+        }
+      ],
+      "flags": [
+        {
+          "value": 12,
+          "count": 1506
+        }
+      ],
+      "reason": [
+        {
+          "value": "no-trusted-base",
+          "count": 1506
+        }
+      ],
+      "detail": [
+        {
+          "value": "not-evaluated",
+          "count": 1506
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            2160
+          ],
+          "count": 1506
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1506
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1506
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1506
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1506
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            5,
+            4,
+            5,
+            0,
+            0,
+            6,
+            2,
+            0
+          ],
+          "count": 1505
+        },
+        {
+          "value": [
+            5,
+            5,
+            6,
+            0,
+            0,
+            6,
+            2,
+            0
+          ],
+          "count": 1
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 108470,
+          "next": 108472,
+          "missing": 1
+        },
+        {
+          "after": 108524,
+          "next": 108526,
+          "missing": 1
+        },
+        {
+          "after": 108608,
+          "next": 108610,
+          "missing": 1
+        },
+        {
+          "after": 108634,
+          "next": 108636,
+          "missing": 1
+        },
+        {
+          "after": 108706,
+          "next": 108708,
+          "missing": 1
+        },
+        {
+          "after": 108721,
+          "next": 108723,
+          "missing": 1
+        },
+        {
+          "after": 108806,
+          "next": 108808,
+          "missing": 1
+        },
+        {
+          "after": 108862,
+          "next": 108864,
+          "missing": 1
+        },
+        {
+          "after": 109057,
+          "next": 109059,
+          "missing": 1
+        },
+        {
+          "after": 109870,
+          "next": 109872,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474346,
+        "timestampNs": 11554331537800,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          5,
+          4,
+          5,
+          0,
+          0,
+          6,
+          2,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 12,
+        "resultCode": 3,
+        "stage": "lookahead",
+        "detail": "not-evaluated",
+        "reason": "no-trusted-base"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504385,
+        "timestampNs": 11579606573400,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          5,
+          4,
+          5,
+          0,
+          0,
+          6,
+          2,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 12,
+        "resultCode": 3,
+        "stage": "lookahead",
+        "detail": "not-evaluated",
+        "reason": "no-trusted-base"
+      }
+    },
+    "analysis-input": {
+      "count": 1514,
+      "distinct_accepted": 1514,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 0,
+          "count": 1514
+        }
+      ],
+      "flags": [
+        {
+          "value": 0,
+          "count": 1514
+        }
+      ],
+      "reason": [
+        {
+          "value": "source-ready",
+          "count": 1514
+        }
+      ],
+      "detail": [
+        {
+          "value": "",
+          "count": 1514
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            3,
+            4,
+            1,
+            2,
+            10,
+            0,
+            0,
+            0
+          ],
+          "count": 1514
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 109139,
+          "next": 109141,
+          "missing": 1
+        },
+        {
+          "after": 109621,
+          "next": 109623,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474347,
+        "timestampNs": 11554331577500,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 3,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 20,
+        "optimizationMode": 0,
+        "frameDuration100ns": 166833,
+        "scriptHint": 1,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 3840,
+        "analysisHeight": 2160,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          3,
+          4,
+          1,
+          2,
+          10,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "analysis-input",
+        "detail": "",
+        "reason": "source-ready"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504386,
+        "timestampNs": 11579606638800,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 3,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 20,
+        "optimizationMode": 0,
+        "frameDuration100ns": 166833,
+        "scriptHint": 1,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 3840,
+        "analysisHeight": 2160,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          3,
+          4,
+          1,
+          2,
+          10,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "analysis-input",
+        "detail": "",
+        "reason": "source-ready"
+      }
+    },
+    "ar-decision": {
+      "count": 1510,
+      "distinct_accepted": 1510,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 3,
+          "count": 1510
+        }
+      ],
+      "flags": [
+        {
+          "value": 0,
+          "count": 1510
+        }
+      ],
+      "reason": [
+        {
+          "value": "provisional geometry lacks affirmative crop authority",
+          "count": 1510
+        }
+      ],
+      "detail": [
+        {
+          "value": "candidate lacks coherent opposing black-bar evidence",
+          "count": 1510
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1510
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1510
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1510
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1510
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1510
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            255,
+            0,
+            2,
+            0,
+            0,
+            3,
+            6,
+            2
+          ],
+          "count": 1510
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 109151,
+          "next": 109153,
+          "missing": 1
+        },
+        {
+          "after": 109266,
+          "next": 109268,
+          "missing": 1
+        },
+        {
+          "after": 109327,
+          "next": 109329,
+          "missing": 1
+        },
+        {
+          "after": 109849,
+          "next": 109851,
+          "missing": 1
+        },
+        {
+          "after": 109902,
+          "next": 109904,
+          "missing": 1
+        },
+        {
+          "after": 109911,
+          "next": 109913,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474348,
+        "timestampNs": 11554331691900,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "published": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          255,
+          0,
+          2,
+          0,
+          0,
+          3,
+          6,
+          2
+        ],
+        "metrics": [
+          268,
+          2000,
+          500,
+          2000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 3,
+        "stage": "ar-decision",
+        "detail": "candidate lacks coherent opposing black-bar evidence",
+        "reason": "provisional geometry lacks affirmative crop authority"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504388,
+        "timestampNs": 11579606819000,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "published": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          255,
+          0,
+          2,
+          0,
+          0,
+          3,
+          6,
+          2
+        ],
+        "metrics": [
+          268,
+          2000,
+          500,
+          2000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 3,
+        "stage": "ar-decision",
+        "detail": "candidate lacks coherent opposing black-bar evidence",
+        "reason": "provisional geometry lacks affirmative crop authority"
+      }
+    },
+    "ar-black-reference": {
+      "count": 1505,
+      "distinct_accepted": 1505,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 3,
+          "count": 1505
+        }
+      ],
+      "flags": [
+        {
+          "value": 1,
+          "count": 1505
+        }
+      ],
+      "reason": [
+        {
+          "value": "legacy",
+          "count": 1505
+        }
+      ],
+      "detail": [
+        {
+          "value": "flags=evaluated1,nominal_reclassified2,publish4,queued_applied8 counters=qualified_edges,unresolved_edges,qualified_axes,nominal_axes,range,model_votes,outward_votes units=luma10bit",
+          "count": 1505
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1505
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1505
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            2160
+          ],
+          "count": 1505
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1505
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1505
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            255,
+            0,
+            0
+          ],
+          "count": 1505
+        }
+      ],
+      "metrics": [
+        {
+          "value": [
+            64,
+            88,
+            64,
+            88,
+            4784,
+            544,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1505
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 108525,
+          "next": 108527,
+          "missing": 1
+        },
+        {
+          "after": 108766,
+          "next": 108768,
+          "missing": 1
+        },
+        {
+          "after": 108917,
+          "next": 108919,
+          "missing": 1
+        },
+        {
+          "after": 109125,
+          "next": 109127,
+          "missing": 1
+        },
+        {
+          "after": 109141,
+          "next": 109143,
+          "missing": 1
+        },
+        {
+          "after": 109271,
+          "next": 109273,
+          "missing": 1
+        },
+        {
+          "after": 109708,
+          "next": 109710,
+          "missing": 1
+        },
+        {
+          "after": 109726,
+          "next": 109728,
+          "missing": 1
+        },
+        {
+          "after": 109730,
+          "next": 109732,
+          "missing": 1
+        },
+        {
+          "after": 109739,
+          "next": 109741,
+          "missing": 1
+        },
+        {
+          "after": 109977,
+          "next": 109979,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474349,
+        "timestampNs": 11554331694200,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          255,
+          0,
+          0
+        ],
+        "metrics": [
+          64,
+          88,
+          64,
+          88,
+          4784,
+          544,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 1,
+        "resultCode": 3,
+        "stage": "ar-black-reference",
+        "detail": "flags=evaluated1,nominal_reclassified2,publish4,queued_applied8 counters=qualified_edges,unresolved_edges,qualified_axes,nominal_axes,range,model_votes,outward_votes units=luma10bit",
+        "reason": "legacy"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504389,
+        "timestampNs": 11579606819800,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 3,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 3840,
+        "sourceHeight": 2160,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          255,
+          0,
+          0
+        ],
+        "metrics": [
+          64,
+          88,
+          64,
+          88,
+          4784,
+          544,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 1,
+        "resultCode": 3,
+        "stage": "ar-black-reference",
+        "detail": "flags=evaluated1,nominal_reclassified2,publish4,queued_applied8 counters=qualified_edges,unresolved_edges,qualified_axes,nominal_axes,range,model_votes,outward_votes units=luma10bit",
+        "reason": "legacy"
+      }
+    },
+    "ar-edges": {
+      "count": 1502,
+      "distinct_accepted": 1502,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 0,
+          "count": 1502
+        }
+      ],
+      "flags": [
+        {
+          "value": 0,
+          "count": 1502
+        }
+      ],
+      "reason": [
+        {
+          "value": "excluded-bands",
+          "count": 1502
+        }
+      ],
+      "detail": [
+        {
+          "value": "",
+          "count": 1502
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1502
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 108525,
+          "next": 108527,
+          "missing": 1
+        },
+        {
+          "after": 108566,
+          "next": 108568,
+          "missing": 1
+        },
+        {
+          "after": 108688,
+          "next": 108690,
+          "missing": 1
+        },
+        {
+          "after": 108707,
+          "next": 108709,
+          "missing": 1
+        },
+        {
+          "after": 108782,
+          "next": 108784,
+          "missing": 1
+        },
+        {
+          "after": 108789,
+          "next": 108791,
+          "missing": 1
+        },
+        {
+          "after": 108795,
+          "next": 108797,
+          "missing": 1
+        },
+        {
+          "after": 108929,
+          "next": 108931,
+          "missing": 1
+        },
+        {
+          "after": 109154,
+          "next": 109156,
+          "missing": 1
+        },
+        {
+          "after": 109238,
+          "next": 109240,
+          "missing": 1
+        },
+        {
+          "after": 109331,
+          "next": 109333,
+          "missing": 1
+        },
+        {
+          "after": 109366,
+          "next": 109368,
+          "missing": 1
+        },
+        {
+          "after": 109396,
+          "next": 109398,
+          "missing": 1
+        },
+        {
+          "after": 109530,
+          "next": 109532,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474350,
+        "timestampNs": 11554331694600,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 0,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 0,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "ar-edges",
+        "detail": "",
+        "reason": "excluded-bands"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504390,
+        "timestampNs": 11579606820300,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 0,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 0,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "ar-edges",
+        "detail": "",
+        "reason": "excluded-bands"
+      }
+    },
+    "subtitle-output": {
+      "count": 1513,
+      "distinct_accepted": 1513,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 0,
+          "count": 1513
+        }
+      ],
+      "flags": [
+        {
+          "value": 24,
+          "count": 758
+        },
+        {
+          "value": 0,
+          "count": 755
+        }
+      ],
+      "reason": [
+        {
+          "value": "no-bright-ink",
+          "count": 758
+        },
+        {
+          "value": "input-cadence-not-analyzed",
+          "count": 755
+        }
+      ],
+      "detail": [
+        {
+          "value": "glyph-proof-lost-or-changed",
+          "count": 758
+        },
+        {
+          "value": "preview-unavailable",
+          "count": 755
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1513
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1513
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1513
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1513
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1513
+        }
+      ],
+      "sequence_gaps": [
+        {
+          "after": 109743,
+          "next": 109745,
+          "missing": 1
+        },
+        {
+          "after": 109769,
+          "next": 109771,
+          "missing": 1
+        },
+        {
+          "after": 109783,
+          "next": 109785,
+          "missing": 1
+        }
+      ],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474351,
+        "timestampNs": 11554335174800,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 20,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 1,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          108467,
+          4768279117495752782,
+          0,
+          0,
+          0,
+          0,
+          6783,
+          39
+        ],
+        "metrics": [
+          -1,
+          6.1189,
+          0,
+          1858,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 24,
+        "resultCode": 0,
+        "stage": "subtitle-output",
+        "detail": "glyph-proof-lost-or-changed",
+        "reason": "no-bright-ink"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504392,
+        "timestampNs": 11579612290400,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 10,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 2,
+        "nearBarDistance": 20,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 1,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "previous": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "measured": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "displayed": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          109982,
+          4768279117495752782,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          -1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "subtitle-output",
+        "detail": "preview-unavailable",
+        "reason": "input-cadence-not-analyzed"
+      }
+    },
+    "presentation": {
+      "count": 1516,
+      "distinct_accepted": 1516,
+      "accepted_min": 108467,
+      "accepted_max": 109982,
+      "resultCode": [
+        {
+          "value": 0,
+          "count": 1516
+        }
+      ],
+      "flags": [
+        {
+          "value": 0,
+          "count": 1516
+        }
+      ],
+      "reason": [
+        {
+          "value": "generation-current full-raster presentation authority accepted",
+          "count": 1516
+        }
+      ],
+      "detail": [
+        {
+          "value": "",
+          "count": 1516
+        }
+      ],
+      "previous": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            2160
+          ],
+          "count": 1516
+        }
+      ],
+      "measured": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            1858
+          ],
+          "count": 1516
+        }
+      ],
+      "candidate": [
+        {
+          "value": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1516
+        }
+      ],
+      "published": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            2160
+          ],
+          "count": 1516
+        }
+      ],
+      "displayed": [
+        {
+          "value": [
+            0,
+            0,
+            3840,
+            2160
+          ],
+          "count": 1516
+        }
+      ],
+      "counters": [
+        {
+          "value": [
+            0,
+            16,
+            0,
+            16,
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1516
+        }
+      ],
+      "metrics": [
+        {
+          "value": [
+            268,
+            2.35,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 1137
+        },
+        {
+          "value": [
+            272,
+            2.35,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "count": 379
+        }
+      ],
+      "sequence_gaps": [],
+      "first_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3474352,
+        "timestampNs": 11554335394000,
+        "frameIdentity": 108467,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 108467,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 250000,
+        "captureTimestamp": 11554194020,
+        "continuityGeneration": 0,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 0,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "displayed": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          16,
+          0,
+          16,
+          0,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          268,
+          2.35,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "presentation",
+        "detail": "",
+        "reason": "generation-current full-raster presentation authority accepted"
+      },
+      "last_record": {
+        "schema": 1,
+        "kind": 1,
+        "sequence": 3504393,
+        "timestampNs": 11579612509200,
+        "frameIdentity": 109982,
+        "rendererInstanceKey": 1740747075648,
+        "acceptedSequence": 109982,
+        "transportGeneration": 1,
+        "sourceFrameNumber": 251515,
+        "captureTimestamp": 11579468870,
+        "continuityGeneration": 0,
+        "analysisDomainKey": 4768279117495752782,
+        "sourceFormat": 0,
+        "sourceFormatGeneration": 11776433609676649204,
+        "analysisFormat": 0,
+        "viewportGeneration": 8,
+        "rendererGeneration": 1,
+        "policyGeneration": 0,
+        "nearBarDistance": 0,
+        "optimizationMode": 0,
+        "frameDuration100ns": 0,
+        "scriptHint": 0,
+        "discontinuity": 0,
+        "cadenceRepeat": 0,
+        "rgbBitAlignment": 0,
+        "sourceWidth": 0,
+        "sourceHeight": 0,
+        "analysisWidth": 0,
+        "analysisHeight": 0,
+        "viewport": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "previous": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "measured": [
+          0,
+          0,
+          3840,
+          1858
+        ],
+        "candidate": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "published": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "displayed": [
+          0,
+          0,
+          3840,
+          2160
+        ],
+        "subtitle": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "counters": [
+          0,
+          16,
+          0,
+          16,
+          0,
+          0,
+          0,
+          0
+        ],
+        "metrics": [
+          268,
+          2.35,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "fullScans": 0,
+        "requestMisses": 0,
+        "pendingFrames": 0,
+        "acceptedSeeds": 0,
+        "flags": 0,
+        "resultCode": 0,
+        "stage": "presentation",
+        "detail": "",
+        "reason": "generation-current full-raster presentation authority accepted"
+      }
+    },
+    "worker-submit": {
+      "count": 758,
+      "distinct_accepted": 758,
+      "accepted_min": 108473,
+      "accepted_max": 109987
+    },
+    "worker-start": {
+      "count": 757,
+      "distinct_accepted": 757,
+      "accepted_min": 108473,
+      "accepted_max": 109987
+    },
+    "worker-dedup": {
+      "count": 748,
+      "distinct_accepted": 748,
+      "accepted_min": 108473,
+      "accepted_max": 109987
+    },
+    "worker-complete": {
+      "count": 758,
+      "distinct_accepted": 758,
+      "accepted_min": 108473,
+      "accepted_max": 109987
+    },
+    "renderer-lifecycle": {
+      "count": 1,
+      "distinct_accepted": 1,
+      "accepted_min": 0,
+      "accepted_max": 0
+    }
+  },
+  "presented_source_continuity": {
+    "frames": 1516,
+    "source_sequence_range": [
+      250000,
+      251515
+    ],
+    "accepted_gap_count": 0,
+    "source_gap_count": 0,
+    "capture_timestamp_span_seconds": 25.27485,
+    "capture_delta_microseconds_counts": {
+      "16680": 1028,
+      "16690": 473,
+      "16670": 12,
+      "16700": 2
+    },
+    "cadence_repeat_counts": {
+      "0": 1516
+    }
+  },
+  "latest_runtime_layout_before_capture": {
+    "Alpha source crop:": {
+      "line": 95668,
+      "text": "2026-10-26 23:00:28 | Alpha source crop: sequence=21199 enabled=1 applied=0 expanded=0 translated=0 vertical_action=none shift_request=0 shift_applied=0 latest_trusted=0 scene_hold=0 ambiguity_hold=0 retention_safe=0 latest_evidence=3 detector_envelope=0 bar_wait=0 inspection_wait=0 translation_wait=0 fit_wait=0 engage_base=0 release_settle=0 envelope_state=inactive selected_edges=---- fit_evidence_rect=0,0-3840,2160 rect=0,0-3840,2160 fill_rect=0,0-3840,2160 content_aspect=1.77778 fill_reference_aspect=1.77778 screen_aspect=2.35000 narrower_fill=1 narrower_limit=2.32000 wider_fill=1 wider_limit=2.42000 fill_applied=0 fill_retained=0 classification=1 geometry_generation=1 frame_generation=1 owner=full-raster cut=0 scene_event=0 retention_eval=0 sampling_retained=0 sampling_strip_conflict=0 sampling_equivalent=0 partial_sampling_checked=0 partial_sampling_reaffirmed=0 refinement_outward_fit=0 generic_fit_held=0 contained_inspection_resolved=0 vertical_fail_open=0 invalid_expansion=0 sampling_strip_peak_y=0 sampling_strip_peak_uv_delta=0 near_black_eval=1 near_black=0 near_black_p90=504.0 near_black_episode=inactive near_black_start=0 refinement_horizontal=0 inspection_candidate=0 inspection_request=0 inspection_fit_resolved=0 inspection_consumed=0 inspection_dense=0 inspection_phase=none inspection_first=0 inspection_retained=0 coarse_edges=---- coarse_current=0 observation_rect=0,0-3840,1866 coarse_rect=0,0-0,0 dense_base=0 dense_generation=0 dense_scan=skipped dense_evaluated=0 authority=none translation_confirm=0/3 fit_confirm=0/2 reason=\"generation-current full-raster presentation authority accepted; held envelope base no longer matches geometry; no compatible retained presentation; trusted content reference does not permit this aspect-limit fill\""
+    },
+    "Alpha final layout:": {
+      "line": 95606,
+      "text": "2026-10-26 23:00:27 | Alpha final layout: sequence=21131 generation=1 crop_event=9 epoch=8 measurement=21131 cadence_repeat=0 raster=3840x2160 trusted=0,0-3840,2160 envelope=0,0-3840,2160 presentation=0,0-3840,2160 screen_aspect=2.35000 screen=0.0,263.0-3840.0,1897.0 picture=467.5,263.0-3372.5,1897.0 unused_axis=horizontal mapping=linear vertical_alignment=center screen_edge_padding_requested=0 screen_edge_padding_effective=0 subtitle_shift_source_pixels=0 anamorphic=1.00000 crop_reason=\"generation-current full-raster presentation authority accepted\""
+    },
+    "VP anamorphic layout:": {
+      "line": 95597,
+      "text": "2026-10-26 23:00:27 | VP anamorphic layout: schema=1 sequence=21128 generation=1 viewport=8 configured=1 raster=3840x2160 output=3840x2160 source=0.00,0.00-3840.00,2160.00 content_aspect=1.777778 physical_screen=2.350000 raster_screen=2.350000 lens=1.000000 screen=0.00,262.98-3840.00,1897.02 picture=467.52,262.98-3372.48,1897.02 output_margins=467.52,262.98,467.52,262.98 screen_margins=467.52,0.00,467.52,0.00 nls=off hook_active=0 hook_latched=0 retry=0 rendered=1 alignment=center padding=0/0 overlays=1 suppressed=0 reason=\"ordinary lens-aware fit\""
+    },
+    "VP submitted geometry:": {
+      "line": 95598,
+      "text": "2026-10-26 23:00:27 | VP submitted geometry: schema=1 generation=1 viewport=8 source=21128 selected=21128 source_pts=10097.109580 output_pts=10097.109580 actual_source=0.00,0.00-3840.00,2160.00 actual_target=467.52,262.98-3372.48,1897.02 packet_crop=0.00,0.00-3840.00,2160.00 pose_eligible=0 pose_delta_y=0.00 routed_translation=0 mode=0 owner=0 composed=0 cleaned=0 cue_source=0 temporal=0 mixing=0 nls=off hooks=0 retry=0"
+    }
+  },
+  "capture_time_log_excerpts": [
+    {
+      "line": 147272,
+      "text": "2026-10-26 23:24:51 | Analysis diagnostic capture request: include_frames=1 result=0 recording=1 producer=1 frame_capture_supported=1 records=0 frames=0 output=C:\\Videoprocessor\\vp\\logs\\analysis-20261026-232451-35800-1"
+    },
+    {
+      "line": 147281,
+      "text": "2026-10-26 23:24:51 | Alpha picture preview status: schema=1 instance={C62DB27B-45C5-4DC9-9FB6-82C61B3AA1BD} generation=1 sequence=108891 epoch=8 format_generation=11776433609676649204 policy_generation=2 stage=no-trusted-base coalesced=0 configured=5 available_future=4 effective_future=4 selected_frames=6 analyzed_frames=5 proof_samples=0 built=0 valid=0 owner=0 owner_eligible=1 base=0,0-3840,2160 candidate_class=3 candidate=0,0-3840,1858 axis_h=no-full-extent-support axis_v=bar-edge-rejected inspection_ms=0.000 shadow_fit=0 shadow_built=0 shadow_pass=0 shadow_reason=not-evaluated shadow_failed_sample=-1 shadow_first_pass=0 shadow_windows=0 shadow_passes=0"
+    },
+    {
+      "line": 147284,
+      "text": "2026-10-26 23:24:51 | Alpha guarded remembered eligibility: instance={C62DB27B-45C5-4DC9-9FB6-82C61B3AA1BD} sequence=108897 scene=395 owner=1 owner_blocks=0 reference=1 enabled=1 history_entries=0 qualified=0 overflow_pending=0 max_scenes=0 nomination=0 selected=5 configured=5 available=4 base=0,0-3840,2160 observed=0,0-3840,1858 trusted_edges=0,1 shader_generation=10 queue_generation=1 reason=no-unique-qualified-native-return"
+    }
+  ]
+}

@@ -36,13 +36,19 @@ Local diagnostic snapshots: `E:\codex\diagnostics\ar-dynamic-evidence-review-202
 
 ## Paused example capture
 
-The user reported an example paused during review. The Windows computer-use Node helper exited unexpectedly on both attempts, before a screenshot could be obtained. A contemporaneous log snapshot was saved. The user was directed to VP's system-menu **Capture analysis diagnostics with input frames...**, which records current native inputs without restarting or resetting history. As of the last check during this review, no new native capture directory or start event had appeared. Do not label the existing evening subtitle captures as this example.
+The user completed **Capture analysis diagnostics with input frames...** at 2026-10-26 23:24:51. Capture `C:\Videoprocessor\vp\logs\analysis-20261026-232451-35800-1` contains 97 native V210/Limited payloads plus structured decisions and presentation records. The recording is complete; the example need not remain paused. See [native capture analysis](native-capture-20261026.md) for exact measurements, evidence limits, artifacts and design corrections.
 
-A native capture is still needed to measure the actual bars, range/domain and boundary profile. A static paused capture establishes spatial evidence; it cannot by itself validate an entire moving transition, queue scheduling or the original history. Preserve any later capture locally with its real sidecars and session summary, then add range/level and fresh-versus-retained replay results to this record.
+All 97 payloads replay as `PROVISIONAL` through unchanged beta production evidence code: only the lower bar is trusted. The upper band contains a gray gradient and texture that fail discovery and excluded-band safety despite strong local Y/U/V change. The recorded model already has 255 confirmations, and all 1,516 presentation records retain the full raster; no near-black or timer gate explains this example. The initial uniform, equal-matte proposal is insufficient and has been explicitly revised with a separate, unqualified variable-profile experiment.
+
+A diagnostic 302-to-1858 crop was used only to interrogate existing safety checks; it was never established geometry. Row299 already contains red chroma, so it is not a clean exterior sample and the 299-to-304 boundary contrast does not identify a safe final crop row. Preserve transition uncertainty and independently annotate the desired crop before qualifying a new route.
+
+Native payloads span approximately 1.852 seconds with 15 unsaved source positions after reaching the 2 GiB frame budget; metadata covers a longer interval. Native recording gaps are not playback drops. The paused capture proves persistent spatial rejection, not the original transition onset or improved switching latency. Original frames, decoded planes, preview and full runtime logs remain local. The archived artifact set contains probe source, numeric results, provenance/hashes and structured summaries only.
 
 ## Tracker audit and preservation
 
 The pre-assignment audit found 236 canonical records and 236 indexed entries, maximum/root registry217 and next218; no duplicate/missing/orphan/noncontiguous IDs or registry count conflict. [Audit details](tracker-audit-before.json).
+
+The [native-capture update audit](tracker-audit-native-capture.json) again finds 237 canonical/indexed records, last root218 and next219, with no new registry or state issue.
 
 Pre-existing state discrepancies were reported and deliberately left unchanged: VP-0088 status capitalization; VP-0168 index/status capitalization; VP-0211 in-progress folder/status versus Review index; and VP-0070 lacking the standard Status heading. This review does not silently repair or renumber unrelated stories.
 
@@ -50,4 +56,4 @@ The dedicated tracker already had an unrelated edit in `stories/assets/VP-0207/t
 
 ## Remaining verification
 
-The independent design reviewer confirmed that the queued-consumer, raw-to-qualified provenance and shared-owner revisions addressed all three review findings, with no remaining design-review blocker. No production fix, full VP build, native/GPU regression run, live acceptance or deployment occurred in this design review. Required next evidence is specified in the design: native reported content, unchanged-baseline failures, independent adversarial negatives, complete authority/retention integration, source-frame latency through actual submission and bounded analysis cost.
+The earlier design review resolved the queued-consumer, raw-to-qualified provenance and shared-owner findings. The later native capture added a distinct variable-exterior problem, exact-edge uncertainty and absolute-visibility reconciliation requirements; these are now explicit qualification work, not solved behavior. Final independent review confirmed the six new safeguards, then requested two wording/coverage corrections: forbid fitting specifically to pass this image, and distinguish qualifying raw provisional axes from challenging a magnitude-derived full-raster measurement. Both corrections are incorporated in the design. No production fix, full VP build, native/GPU regression run, live acceptance or deployment occurred in this design review. Required next evidence is specified in the design: annotated native positives including actual moving transitions, independent adversarial negatives, complete authority/retention integration, source-frame latency through actual submission and bounded analysis cost.

@@ -1,0 +1,131 @@
+{
+  "Utc": "2026-10-27T03:33:33.6714479Z",
+  "SourceCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "SourceCheckout": "E:\\codex\\videoprocessor\\ar-dynamic-evidence-review-20261026",
+  "SourceEdits": false,
+  "Capture": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-232451-35800-1",
+  "FrameCount": 97,
+  "NativePayloadBytes": 2145484800.0,
+  "FirstAcceptedSequence": "108881",
+  "LastAcceptedSequence": "108992",
+  "MissingSourceSlots": 15.0,
+  "Duration100ns": "166833",
+  "ElapsedCaptureTimestampRaw": 1851820,
+  "RecordedContextTop": 0,
+  "RecordedContextBottom": 2160,
+  "Range": "Limited=1",
+  "Format": "NativeYuv422=3 / V210=3",
+  "Compiler": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\cl.exe",
+  "CompilerVersion": "19.29.30152.0 built by: cloudtest",
+  "CompilerSHA256": "335A3B431B01681656FCC1AD110424EB0A2890D8BCCC6051B19A3BDD221921B8",
+  "Optimization": "x64 /O2 /MD /DNDEBUG",
+  "MainCommand": "& E:\\codex\\diagnostics\\ar-dynamic-evidence-review-20261026\\native-ad-replay\\run-replay.ps1",
+  "BoundaryCommand": "& E:\\codex\\diagnostics\\ar-dynamic-evidence-review-20261026\\native-ad-replay\\run-boundary.ps1",
+  "All97Measurements": "Unchanged ExtractActivePictureEvidence, global/AR darkness, retention against recorded full-height context, relative-contrast route against recorded full-height context, original raw edge/axis/profile diagnostics and original identities",
+  "FirstMidLastMeasurements": "Frames1,49,97: existing symmetric recovery, existing retention against diagnostic-only bottom-mirrored302..1858 hypothesis, original48-column native row support, paired local Y/U/V boundary sampling",
+  "NoAssumedHistory": true,
+  "NoGapBridging": true,
+  "NoSourcePixelsModified": true,
+  "NoPlayerInteraction": true,
+  "Limitations": "Component measurements only, no full renderer scheduling/presentation/subtitle replay.20sec capture metadata is not20sec native coverage; native payloads cover source sequences108881..108992, with15missing slots. Hypothetical302..1858 measurement grants no authority.",
+  "SourceHashes": [
+    {
+      "File": "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+      "SHA256": "1F40319F6A3A03A975B791DF5353978F816D8472C0C94AB2642325C1994A9196"
+    },
+    {
+      "File": "src/VideoProcessor-Lib/AnalysisLumaSource.cpp",
+      "SHA256": "4BAF6B96DE85D5D1CD0A873E6AD535B402B342DF2FDD11FE8C519B3B4ADCC90E"
+    },
+    {
+      "File": "src/VideoProcessor-Lib/ActivePictureDecisionTimeline.cpp",
+      "SHA256": "D78F362755AAF2B9F470428CCE787BAD5AE0BB89CD19FBC84B9503DE94425655"
+    },
+    {
+      "File": "src/VideoProcessor-Lib/ActivePictureTransitionModel.cpp",
+      "SHA256": "07346FB7FF1F92FF9677DAC62F790B25203515210BE45F317216D83A7E2C1C40"
+    },
+    {
+      "File": "src/VideoProcessor-Lib/SubtitleBoxDetector.cpp",
+      "SHA256": "1CA9E2695B1095B03D9161BF7F679E4BC118E2195E26075DC31E974CD1383E73"
+    }
+  ],
+  "ArtifactHashes": [
+    {
+      "File": "native-ad-replay.cpp",
+      "SHA256": "E1949740970835D77EA2ABBB9326E931C38C5CC2A7AEB75391D6D42FFBDDD8DE"
+    },
+    {
+      "File": "native-ad-replay.exe",
+      "SHA256": "33500D03808F05F6E89C4F50C5CAA1633BC30774B1A816F639061A396EDE65B9"
+    },
+    {
+      "File": "run-replay.ps1",
+      "SHA256": "66CA77FF4568185CA3E842DAAEF3E16FCA6AC1D33C9A7092FF4ED6335C137FB3"
+    },
+    {
+      "File": "build.log",
+      "SHA256": "D0DE1D92C2FF746FA6556F33709018466FF10FF24E8157F56A5E13598B350657"
+    },
+    {
+      "File": "run.log",
+      "SHA256": "1E1C548089FFEC2AD0DF57BA777786BD99CB652E5A780A127F4B9D1F32919001"
+    },
+    {
+      "File": "detector.csv",
+      "SHA256": "F1EAD71CFD57545AD6CA9CA1A566B3DFCEF31C90CAF48959033E590C9E215731"
+    },
+    {
+      "File": "edges.csv",
+      "SHA256": "8B1EEA993998FA730F04966074D3A93CACDE8880B6F8130F752813FD7C4393C5"
+    },
+    {
+      "File": "strict-profiles.csv",
+      "SHA256": "96FE2C5E075CF230F5253E444852289A4FC97ACB14CBF782028B180CBE6BB2A9"
+    },
+    {
+      "File": "identities.csv",
+      "SHA256": "91DCA76139A050C6B9DC51D05F375E98B68E78153183035D0F7318EC476FE987"
+    },
+    {
+      "File": "boundary-probe.cpp",
+      "SHA256": "DC816C26C66F31FFD5F18FD4F19FFCE2F13109A561D09FBDE06C8AD989F8B6EE"
+    },
+    {
+      "File": "boundary-probe.exe",
+      "SHA256": "49F7CD084B356EC4F48BD2EE684B7BA079BE0E99E09D74CB56483552BD8633AD"
+    },
+    {
+      "File": "run-boundary.ps1",
+      "SHA256": "1E41C0FED407A322635458E31CC8AB19004EB26542655EA6189B86EA16A51108"
+    },
+    {
+      "File": "boundary-build.log",
+      "SHA256": "CB2DEFBC990D848EBB418408299AE6A532FAD1391B69825C0602F430A64EA76A"
+    },
+    {
+      "File": "boundary-run.log",
+      "SHA256": "0ABC01913BA609B5F76C1772B8248F2DCEC7222F86ED1CD66678A7F5064BBC62"
+    },
+    {
+      "File": "candidate-diagnostics.csv",
+      "SHA256": "144706D085DE50220AC3A5241D25D759DD33E751FEC000CF429A3270B0148851"
+    },
+    {
+      "File": "hypothetical-retention-edges.csv",
+      "SHA256": "F33710614CBBC1E246D283A56A0DA9CD403B0A047BEB6717D57894DA18937AF2"
+    },
+    {
+      "File": "native-row-support.csv",
+      "SHA256": "EEDB8577E2BBEC112BBAFFDF3C11224B5125571FB5D838AB1FC6BEBBD2178D91"
+    },
+    {
+      "File": "native-boundary-pairs.csv",
+      "SHA256": "1B17C3124EF69180E3BE2A2AD2DA9ECA7A71A0ED2346D50524315E3FAFF1FCB4"
+    },
+    {
+      "File": "capture-frame-hashes.csv",
+      "SHA256": "296C592D31EDC04775D2200DDA2543BC801341652053976167F7768952134E57"
+    }
+  ]
+}

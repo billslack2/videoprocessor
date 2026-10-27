@@ -1,0 +1,286 @@
+{
+  "source_file": "C:\\Videoprocessor\\vp\\logs\\analysis-20261026-232451-35800-1\\frame-000001.bin",
+  "source_sha256": "f9912a359add4494f8f7cf06aec2d7d4097e3140bfa0d321f65ba8ed7c72c214",
+  "metadata": [
+    3840,
+    2160,
+    10240,
+    0,
+    3,
+    3,
+    4,
+    0,
+    2160,
+    1,
+    1
+  ],
+  "preview": "Analytical Rec709 limited signal RGB; not a screen capture or calibrated output.",
+  "rows": [
+    {
+      "row": 0,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        92.0,
+        192.0,
+        208.0,
+        244.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 0.6682291666666667
+    },
+    {
+      "row": 2,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        92.0,
+        192.0,
+        208.0,
+        244.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 0.6682291666666667
+    },
+    {
+      "row": 16,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        92.0,
+        192.0,
+        208.0,
+        244.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 0.6684895833333333
+    },
+    {
+      "row": 64,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        88.0,
+        188.0,
+        200.0,
+        204.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 0.6833333333333333
+    },
+    {
+      "row": 128,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        88.0,
+        184.0,
+        196.0,
+        200.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 0.6994791666666667
+    },
+    {
+      "row": 256,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        88.0,
+        176.0,
+        192.0,
+        200.0
+      ],
+      "u_median": 508.0,
+      "v_median": 508.0,
+      "fraction_le104": 0.72421875
+    },
+    {
+      "row": 300,
+      "y_percentiles": [
+        96.0,
+        100.0,
+        108.0,
+        168.0,
+        188.0,
+        192.0
+      ],
+      "u_median": 488.0,
+      "v_median": 612.0,
+      "fraction_le104": 0.49114583333333334
+    },
+    {
+      "row": 302,
+      "y_percentiles": [
+        176.0,
+        180.0,
+        196.0,
+        268.0,
+        284.0,
+        288.0
+      ],
+      "u_median": 472.0,
+      "v_median": 710.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 304,
+      "y_percentiles": [
+        268.0,
+        276.0,
+        288.0,
+        352.0,
+        364.0,
+        364.0
+      ],
+      "u_median": 456.0,
+      "v_median": 798.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 320,
+      "y_percentiles": [
+        248.0,
+        256.0,
+        264.0,
+        332.0,
+        344.0,
+        344.0
+      ],
+      "u_median": 452.0,
+      "v_median": 778.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 540,
+      "y_percentiles": [
+        244.0,
+        244.0,
+        256.0,
+        316.0,
+        328.0,
+        356.0
+      ],
+      "u_median": 456.0,
+      "v_median": 766.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 1080,
+      "y_percentiles": [
+        116.0,
+        136.0,
+        228.0,
+        853.5999999999985,
+        940.0,
+        940.0
+      ],
+      "u_median": 475.0,
+      "v_median": 687.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 1800,
+      "y_percentiles": [
+        192.0,
+        196.0,
+        204.0,
+        244.0,
+        248.0,
+        248.0
+      ],
+      "u_median": 476.0,
+      "v_median": 670.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 1856,
+      "y_percentiles": [
+        140.0,
+        144.0,
+        152.0,
+        168.0,
+        172.0,
+        172.0
+      ],
+      "u_median": 492.0,
+      "v_median": 578.0,
+      "fraction_le104": 0.0
+    },
+    {
+      "row": 1858,
+      "y_percentiles": [
+        68.0,
+        72.0,
+        76.0,
+        76.0,
+        80.0,
+        80.0
+      ],
+      "u_median": 504.0,
+      "v_median": 538.0,
+      "fraction_le104": 1.0
+    },
+    {
+      "row": 1860,
+      "y_percentiles": [
+        64.0,
+        64.0,
+        68.0,
+        68.0,
+        72.0,
+        72.0
+      ],
+      "u_median": 510.0,
+      "v_median": 514.0,
+      "fraction_le104": 1.0
+    },
+    {
+      "row": 1900,
+      "y_percentiles": [
+        64.0,
+        64.0,
+        64.0,
+        68.0,
+        68.0,
+        68.0
+      ],
+      "u_median": 512.0,
+      "v_median": 510.0,
+      "fraction_le104": 1.0
+    },
+    {
+      "row": 2000,
+      "y_percentiles": [
+        64.0,
+        64.0,
+        64.0,
+        64.0,
+        68.0,
+        68.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 1.0
+    },
+    {
+      "row": 2159,
+      "y_percentiles": [
+        64.0,
+        64.0,
+        64.0,
+        68.0,
+        68.0,
+        68.0
+      ],
+      "u_median": 512.0,
+      "v_median": 512.0,
+      "fraction_le104": 1.0
+    }
+  ]
+}

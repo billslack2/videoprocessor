@@ -1,0 +1,22 @@
+native-ad-replay.cpp
+ActivePictureEvidence.cpp
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\pch.h(13): warning C4005: 'NOMINMAX': macro redefinition
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\ActivePictureEvidence.cpp: note: see previous definition of 'NOMINMAX'
+_WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+AnalysisLumaSource.cpp
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\pch.h(13): warning C4005: 'NOMINMAX': macro redefinition
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\AnalysisLumaSource.cpp: note: see previous definition of 'NOMINMAX'
+_WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+ActivePictureDecisionTimeline.cpp
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\pch.h(13): warning C4005: 'NOMINMAX': macro redefinition
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\ActivePictureDecisionTimeline.cpp: note: see previous definition of 'NOMINMAX'
+_WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+ActivePictureTransitionModel.cpp
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\pch.h(13): warning C4005: 'NOMINMAX': macro redefinition
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\ActivePictureTransitionModel.cpp: note: see previous definition of 'NOMINMAX'
+_WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+SubtitleBoxDetector.cpp
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\pch.h(13): warning C4005: 'NOMINMAX': macro redefinition
+E:\codex\videoprocessor\ar-dynamic-evidence-review-20261026\src\VideoProcessor-Lib\SubtitleBoxDetector.cpp: note: see previous definition of 'NOMINMAX'
+_WIN32_WINNT not defined. Defaulting to _WIN32_WINNT_MAXVER (see WinSDKVer.h)
+Generating Code...

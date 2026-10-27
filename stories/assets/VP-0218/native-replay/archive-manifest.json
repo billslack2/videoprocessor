@@ -1,0 +1,117 @@
+{
+  "SourceCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "NativePixelsArchived": false,
+  "ByteIdenticalCopies": true,
+  "Artifacts": [
+    {
+      "File": "native-ad-replay.cpp",
+      "Bytes": 10514,
+      "SHA256": "e1949740970835d77ea2abbb9326e931c38c5cc2a7aeb75391d6d42ffbddd8de"
+    },
+    {
+      "File": "run-replay.ps1",
+      "Bytes": 1445,
+      "SHA256": "66ca77ff4568185ca3e842daaef3e16fca6ac1d33c9a7092ff4ed6335c137fb3"
+    },
+    {
+      "File": "build.log",
+      "Bytes": 2072,
+      "SHA256": "d0de1d92c2ff746fa6556f33709018466ff10ff24e8157f56a5e13598b350657"
+    },
+    {
+      "File": "run.log",
+      "Bytes": 534,
+      "SHA256": "1e1c548089ffec2ad0df57ba777786bd99cb652e5a780a127f4b9d1f32919001"
+    },
+    {
+      "File": "detector.csv",
+      "Bytes": 32751,
+      "SHA256": "f1ead71cfd57545ad6ca9ca1a566b3dfcef31c90caf48959033e590c9e215731"
+    },
+    {
+      "File": "edges.csv",
+      "Bytes": 26214,
+      "SHA256": "8b1eea993998fa730f04966074d3a93cacde8880b6f8130f752813fd7c4393c5"
+    },
+    {
+      "File": "strict-profiles.csv",
+      "Bytes": 12780,
+      "SHA256": "96fe2c5e075cf230f5253e444852289a4fc97acb14cbf782028b180cbe6bb2a9"
+    },
+    {
+      "File": "identities.csv",
+      "Bytes": 15210,
+      "SHA256": "91dca76139a050c6b9dc51d05f375e98b68e78153183035d0f7318ec476fe987"
+    },
+    {
+      "File": "boundary-probe.cpp",
+      "Bytes": 4985,
+      "SHA256": "dc816c26c66f31ffd5f18fd4f19ffce2f13109a561d09fbde06c8ad989f8b6ee"
+    },
+    {
+      "File": "run-boundary.ps1",
+      "Bytes": 1111,
+      "SHA256": "1e41c0fed407a322635458e31cc8ab19004eb26542655ea6189b86ea16a51108"
+    },
+    {
+      "File": "boundary-build.log",
+      "Bytes": 20,
+      "SHA256": "cb2defbc990d848ebb418408299ae6a532fad1391b69825c0602f430a64ea76a"
+    },
+    {
+      "File": "boundary-run.log",
+      "Bytes": 102,
+      "SHA256": "0abc01913ba609b5f76c1772b8248f2dcec7222f86ed1cd66678a7f5064bbc62"
+    },
+    {
+      "File": "candidate-diagnostics.csv",
+      "Bytes": 536,
+      "SHA256": "144706d085de50220ac3a5241d25d759dd33e751fec000cf429a3270b0148851"
+    },
+    {
+      "File": "hypothetical-retention-edges.csv",
+      "Bytes": 964,
+      "SHA256": "f33710614cbbc1e246d283a56a0da9cd403b0a047beb6717d57894da18937af2"
+    },
+    {
+      "File": "native-row-support.csv",
+      "Bytes": 3302,
+      "SHA256": "eedb8577e2bbec112bbaffdf3c11224b5125571fb5d838ab1fc6bebbd2178d91"
+    },
+    {
+      "File": "native-boundary-pairs.csv",
+      "Bytes": 6811,
+      "SHA256": "1b17c3124ef69180e3be2a2ad2da9eca7a71a0ed2346d50524315e3faff1fcb4"
+    },
+    {
+      "File": "native-run-record.json",
+      "Bytes": 5624,
+      "SHA256": "dbf0d5bb7c1133629984bd17ee38d9fd37e46ded045fae1ba33a16ea8eee90dc"
+    },
+    {
+      "File": "capture-frame-hashes.csv",
+      "Bytes": 16046,
+      "SHA256": "296c592d31edc04775d2200dda2543bc801341652053976167f7768952134e57"
+    },
+    {
+      "File": "transition-summary.json",
+      "Bytes": 62165,
+      "SHA256": "bb1c4d6d251ec34f5130fe9588c3fac92cb9239ead4600a1f61525e113deb71a"
+    },
+    {
+      "File": "transition-presentation.csv",
+      "Bytes": 251784,
+      "SHA256": "93a646228ac8158d3bce2964552fdbc5c10d13d16877e1b2a7d85229ca408265"
+    },
+    {
+      "File": "first-frame-profile-summary.json",
+      "Bytes": 5169,
+      "SHA256": "bcb917a9c39adada16e6b0e952c372b0a4a133721a128804f5f9ecae0a82052d"
+    },
+    {
+      "File": "inspect-native.py",
+      "Bytes": 2439,
+      "SHA256": "28755fba02d4ceb1b957c1f9f9084eece4c01e9e23b32e49d78e55c4b8f7e8ca"
+    }
+  ]
+}
