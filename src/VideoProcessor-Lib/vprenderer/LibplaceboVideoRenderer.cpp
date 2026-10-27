@@ -12610,6 +12610,8 @@ struct LibplaceboVideoRenderer::Impl
         SourceUploadBatch& sourceUploadBatch,
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
+        presentationAttempt.Begin();
+        lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
 		// the next frame instead of mixing box and cut/paste modes in one render.
@@ -20541,6 +20543,7 @@ releaseDriftBaseRetention =
 			lastRenderedEotf = state.eotf;
 			lastRenderedColorspace = state.colorspace;
 		}
+        lastRenderPresentationPaused=presentationAttempt.Deferred(rendered,submitted);
 		return rendered && submitted;
 	}
 
@@ -20669,16 +20672,27 @@ releaseDriftBaseRetention =
         return sample;
     }
 
+    // Render-thread attempt state, reset before every source render. An old
+    // occluded Present must never excuse a later shader/acquisition failure.
+    RendererPresentationAttempt presentationAttempt;
+    bool lastRenderPresentationPaused=false;
+    HRESULT lastUnavailablePresentResult=S_OK;
+    uint64_t lastUnavailablePresentLogTick=0;
     bool PresentNativeChecked(IDXGISwapChain* chain)
     {
         const HRESULT result = chain ? chain->Present(1, 0) : E_POINTER;
+        presentationAttempt.Presented(result == DXGI_STATUS_OCCLUDED);
         if (result == S_OK) return true;
         displayRepeatValid = false;
         displayVsyncClock.Reset();
-        DebugLog::Log("VP presentation unavailable: present_hr=0x%08X removed_hr=0x%08X occluded=%d",
-            static_cast<unsigned>(result),
-            static_cast<unsigned>(d3d11->device->GetDeviceRemovedReason()),
-            result == DXGI_STATUS_OCCLUDED ? 1 : 0);
+        const auto now=GetTickCount64();
+        if(result!=lastUnavailablePresentResult || now-lastUnavailablePresentLogTick>=2000) {
+            lastUnavailablePresentResult=result;lastUnavailablePresentLogTick=now;
+            DebugLog::Log("VP presentation unavailable: present_hr=0x%08X removed_hr=0x%08X occluded=%d",
+                static_cast<unsigned>(result),
+                static_cast<unsigned>(d3d11->device->GetDeviceRemovedReason()),
+                presentationAttempt.occluded ? 1 : 0);
+        }
         return false;
     }
     bool SubmitLibplaceboFrameChecked()
@@ -24697,6 +24711,7 @@ bool LibplaceboVideoRenderer::WaitForDisplaySlot(
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
+    bool presentationPauseLogged=false;
 	try
 	{
 		{
@@ -25346,6 +25361,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		}
 
 		bool rendered = false;
+        bool presentationPaused=false;
         bool actuallySubmitted=false;
         bool subtitleBacklogRetirementOnly=false;
         ActivePictureFrameIdentity backlogTemplateIdentity{};
@@ -25692,6 +25708,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					presentationTargetLeadMs,sourceSubtitleMode,renderedMotionDraws>0,
                     subtitleBacklogRetirementOnly,backlogTemplateIdentity,
                     sourceUploadBatch, pixelMeasurements);
+                    presentationPaused=state && m_impl->lastRenderPresentationPaused;
                     ++renderedMotionDraws;
                     actuallySubmitted=actuallySubmitted || m_impl->renderLoadSubmissionSerial>beforeSubmission;
                     if(!rendered)break;
@@ -26019,15 +26036,32 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (staleGeneration)
 				continue;
 
+            const bool gpuFailed=m_impl->IsGpuFailed();
+            const bool windowVisible=IsWindowVisible(m_videoHwnd);
+            const HWND rootWindow=GetAncestor(m_videoHwnd,GA_ROOT);
+            const bool windowIconic=IsIconic(m_videoHwnd) ||
+                (rootWindow && IsIconic(rootWindow));
+            RECT client{};
+            const bool clientKnown=GetClientRect(m_videoHwnd,&client)!=FALSE;
+            const int clientWidth=clientKnown?client.right-client.left:1;
+            const int clientHeight=clientKnown?client.bottom-client.top:1;
+            if(IsExpectedRendererPresentationPause(gpuFailed,windowVisible,
+                windowIconic,clientWidth,clientHeight,presentationPaused)) {
+                consecutiveFailures=0;
+                if(!presentationPauseLogged)
+                    DebugLog::Log("VP presentation deferred: visible=%d iconic=%d client=%dx%d rendered_but_occluded=%d failure_streak=0",
+                        windowVisible?1:0,windowIconic?1:0,clientWidth,clientHeight,presentationPaused?1:0);
+                presentationPauseLogged=true;
+                continue;
+            }
+            presentationPauseLogged=false;
 			const uint64_t droppedTotal =
 				m_droppedFrames.fetch_add(
 					1, std::memory_order_relaxed) + 1;
 			const uint64_t reasonTotal =
 				m_renderFailureDrops.fetch_add(
 					1, std::memory_order_relaxed) + 1;
-			const bool gpuFailed = m_impl->IsGpuFailed();
-			const bool windowVisible = IsWindowVisible(m_videoHwnd);
-			const bool windowIconic = IsIconic(m_videoHwnd);
+
 			// First occurrence and powers of two make a persistent failure
 			// obvious while keeping a per-frame failure from flooding the log.
 			if ((reasonTotal & (reasonTotal - 1)) == 0)
@@ -26055,14 +26089,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 				break;
 			}
 
-			// Swapchain acquisition may be unavailable by design while the render
-			// window is hidden or minimized. Do not turn that presentation pause
-			// into a device failure or carry it into a later visible failure streak.
-			if (!windowVisible || windowIconic)
-			{
-				consecutiveFailures = 0;
-				continue;
-			}
 
 			if (++consecutiveFailures == 1)
 				DebugLog::Log("libplacebo failed to render a visible frame; retrying");
@@ -26080,6 +26106,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			continue;
 		}
 		consecutiveFailures = 0;
+        presentationPauseLogged=false;
 		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
 
 		if (correctionDecision.action == AlphaCadenceAction::Drop)
