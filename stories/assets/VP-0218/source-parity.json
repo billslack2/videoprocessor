@@ -1,0 +1,50 @@
+[
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+    "RunningSourceBlob": "0012c9e98e9aeb8e86eac3c143729831180c9c88",
+    "BetaSourceBlob": "0012c9e98e9aeb8e86eac3c143729831180c9c88",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureEvidence.h",
+    "RunningSourceBlob": "1484d90a85829d20a6bb474d850981669918c24d",
+    "BetaSourceBlob": "1484d90a85829d20a6bb474d850981669918c24d",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureTransitionModel.cpp",
+    "RunningSourceBlob": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+    "BetaSourceBlob": "3d8d30bd38f5723b5de63cb61aca565694cab8cf",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureDecisionTimeline.cpp",
+    "RunningSourceBlob": "ef2ab2bdaeabb9922482498e9723a8f6d40280a1",
+    "BetaSourceBlob": "ef2ab2bdaeabb9922482498e9723a8f6d40280a1",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp",
+    "RunningSourceBlob": "98f918374ceca8551bc83ea04dc4e9d9cf41058b",
+    "BetaSourceBlob": "98f918374ceca8551bc83ea04dc4e9d9cf41058b",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h",
+    "RunningSourceBlob": "b80a9a470ec73cadb14c6dff5dfae74e9feb4771",
+    "BetaSourceBlob": "b80a9a470ec73cadb14c6dff5dfae74e9feb4771",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/vprenderer/BufferedPictureExpansion.cpp",
+    "RunningSourceBlob": "d14929d7444dff865451b79429543c5f1350460b",
+    "BetaSourceBlob": "d14929d7444dff865451b79429543c5f1350460b",
+    "Equal": true
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+    "RunningSourceBlob": "d50df57f5073addbb43e3233d532effb8d189fed",
+    "BetaSourceBlob": "d50df57f5073addbb43e3233d532effb8d189fed",
+    "Equal": true
+  }
+]

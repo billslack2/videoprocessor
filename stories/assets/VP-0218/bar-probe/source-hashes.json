@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureEvidence.cpp",
+    "SHA256": "1F40319F6A3A03A975B791DF5353978F816D8472C0C94AB2642325C1994A9196"
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/AnalysisLumaSource.cpp",
+    "SHA256": "4BAF6B96DE85D5D1CD0A873E6AD535B402B342DF2FDD11FE8C519B3B4ADCC90E"
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureDecisionTimeline.cpp",
+    "SHA256": "D78F362755AAF2B9F470428CCE787BAD5AE0BB89CD19FBC84B9503DE94425655"
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/ActivePictureTransitionModel.cpp",
+    "SHA256": "07346FB7FF1F92FF9677DAC62F790B25203515210BE45F317216D83A7E2C1C40"
+  },
+  {
+    "Path": "src/VideoProcessor-Lib/SubtitleBoxDetector.cpp",
+    "SHA256": "1CA9E2695B1095B03D9161BF7F679E4BC118E2195E26075DC31E974CD1383E73"
+  }
+]

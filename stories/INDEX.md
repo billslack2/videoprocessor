@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0217`
-- Next root story number: `VP-0218`
-- Total indexed items: 236
+- Last assigned root story: `VP-0218`
+- Next root story number: `VP-0219`
+- Total indexed items: 237
 
 ## Story locations
 
@@ -279,6 +279,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0216 | Done | Disable Config Apply when no settings are pending |
 | VP-0217 | Done | Stable reconstructed subtitle background and soft boundary blending |
+| VP-0218 | Backlog | Improve aspect transitions with current relative boundary evidence |
 
 ## Codex story workflow
 

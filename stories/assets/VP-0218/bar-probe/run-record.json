@@ -1,0 +1,46 @@
+{
+  "SourceCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "SourceCheckout": "E:\\codex\\videoprocessor\\ar-dynamic-evidence-review-20261026",
+  "SourceStatus": "git status --short was empty after build",
+  "Utc": "2026-10-27T03:05:02.3832884Z",
+  "Compiler": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\cl.exe",
+  "Build": "Standalone x64 optimized /O2 /MD /DNDEBUG; unchanged production source files, no stubs",
+  "RunCommand": "& 'E:\\codex\\diagnostics\\ar-dynamic-evidence-review-20261026\\bar-probe\\run-probe.ps1'",
+  "CompileSources": [
+    "bar-probe.cpp",
+    "ActivePictureEvidence.cpp",
+    "AnalysisLumaSource.cpp",
+    "ActivePictureDecisionTimeline.cpp",
+    "ActivePictureTransitionModel.cpp",
+    "SubtitleBoxDetector.cpp"
+  ],
+  "Cases": 39,
+  "Fixture": "640x360 P210, top/bottom 48px uniform bars at swept 10-bit luma, uniform Y300 interior, UV512, Full/Limited/Unknown ranges",
+  "ProductionEdits": false,
+  "PlayerInteraction": false,
+  "Caveat": "Synthetic detector-only characterization; not actual ad replay, metadata validation, or end-to-end presentation test",
+  "Hashes": [
+    {
+      "File": "bar-probe.cpp",
+      "SHA256": "CA3106C819596E460A452DB70BBB4FA0C468E6D6F29D384CC15B04AAF43CB335"
+    },
+    {
+      "File": "bar-probe.exe",
+      "SHA256": "19EB9B94921C1A57635A7D1CFA7A69727999130EC6DBE8BE92DA0C43E9D1807B"
+    },
+    {
+      "File": "run-probe.ps1",
+      "SHA256": "102854AA6AD2CC72C4B6AD25B39402796634A4D8EAE1D2C996EF0FAB5918CE84"
+    },
+    {
+      "File": "results.csv",
+      "SHA256": "0F56458F3165B7643A0FCCF7252411453289E93DC49F06488E608D08F516FB94"
+    },
+    {
+      "File": "build.log",
+      "SHA256": "17D979AE2C0E0DACB8784C5DCAB1C096BBDDB9D22BCD52AEA8BF9D33C6FA53C1"
+    }
+  ],
+  "ArchiveNote": "Hashes above describe the original diagnostic-run files. The archived run-probe.ps1 has trailing blank lines removed; its command body is unchanged. Original scratch artifacts remain preserved.",
+  "ArchivedRunScriptSHA256": "E4AF5240B59A363FC5F344A35EFBAEB095D819D89CF5FB7D38D0B100BC3F3DA3"
+}
