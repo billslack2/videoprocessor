@@ -12377,8 +12377,13 @@ void CVideoProcessorDlg::ShowProfileOverlayItems(
 	const ULONGLONG now = GetTickCount64();
 	const auto timing = ProfileChangeOverlay::ResolveTiming(
 		m_profileChangeDisplaySeconds);
-	m_profileChangeOverlayHoldUntil = now + timing.holdMilliseconds;
-	m_profileChangeOverlayFadeUntil = now + timing.totalMilliseconds;
+	// Profile changes have their own settling delay, independent of shader
+	// preparation. Explicitly requesting the current profiles stays immediate.
+	constexpr ULONGLONG profileChangeNoticeDelayMs = 750;
+	m_profileChangeOverlayShowAfter = now +
+		(replaceExisting ? 0 : profileChangeNoticeDelayMs);
+	m_profileChangeOverlayHoldUntil = m_profileChangeOverlayShowAfter + timing.holdMilliseconds;
+	m_profileChangeOverlayFadeUntil = m_profileChangeOverlayShowAfter + timing.totalMilliseconds;
 	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
 	SetTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID, 50, nullptr);
 	UpdateProfileChangeOverlay(now);
@@ -12389,8 +12394,8 @@ void CVideoProcessorDlg::ShowProfileOverlayItems(
 		summary << items[index].label << '=' << items[index].value;
 	}
 	DebugLog::Log(
-		"Profile overlay shown: reason=%s duration_ms=%llu hold_ms=%llu fade_ms=%llu selections=%s",
-		reason ? reason : "unknown", timing.totalMilliseconds,
+		"Profile overlay scheduled: reason=%s delay_ms=%llu duration_ms=%llu hold_ms=%llu fade_ms=%llu selections=%s",
+		reason ? reason : "unknown", m_profileChangeOverlayShowAfter - now, timing.totalMilliseconds,
 		timing.holdMilliseconds, timing.fadeMilliseconds,
 		summary.str().c_str());
 }
@@ -12463,9 +12468,19 @@ void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
 	int width = 0;
 	int height = 0;
 	int stride = 0;
-    const auto items = ProfileChangeOverlay::WithShaderStatus(m_profileChangeOverlayItems,
+	// Hide pending profile rows, but let the independently timed shader status
+	// render normally in the shared banner.
+	const std::vector<ProfileChangeOverlay::Item> noProfiles;
+	const auto& visibleProfiles = now < m_profileChangeOverlayShowAfter ?
+		noProfiles : m_profileChangeOverlayItems;
+    const auto items = ProfileChangeOverlay::WithShaderStatus(visibleProfiles,
         m_profileShaderStatus == TEXT("Preparing shaders..."), !m_profileShaderStatus.IsEmpty() &&
         m_profileShaderStatus != TEXT("Preparing shaders..."));
+	if (items.empty())
+	{
+		m_videoRenderer->SetNativeProfileOverlay(nullptr, 0, 0, 0, 0);
+		return;
+	}
 	if (m_statsOverlay->RenderProfileChangesBgra(
 		items, opacity, pixels, width, height, stride, now))
 	{
@@ -12481,6 +12496,7 @@ void CVideoProcessorDlg::ClearProfileChangeOverlay()
 		m_videoRenderer->SetNativeProfileOverlay(nullptr, 0, 0, 0, 0);
 	m_profileChangeOverlayItems.clear();
     m_profileShaderStatus.Empty();
+	m_profileChangeOverlayShowAfter = 0;
 	m_profileChangeOverlayHoldUntil = 0;
 	m_profileChangeOverlayFadeUntil = 0;
 }
@@ -15116,8 +15132,9 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
             if (finished && !m_profileChangeOverlayItems.empty()) {
                 const auto timing = ProfileChangeOverlay::ResolveTiming(m_profileChangeDisplaySeconds);
-                m_profileChangeOverlayHoldUntil = now + timing.holdMilliseconds;
-                m_profileChangeOverlayFadeUntil = now + timing.totalMilliseconds;
+                const ULONGLONG visibleFrom = std::max(now, m_profileChangeOverlayShowAfter);
+                m_profileChangeOverlayHoldUntil = visibleFrom + timing.holdMilliseconds;
+                m_profileChangeOverlayFadeUntil = visibleFrom + timing.totalMilliseconds;
             }
             if (!status.IsEmpty()) SetTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID, 50, nullptr);
             UpdateProfileChangeOverlay(now);

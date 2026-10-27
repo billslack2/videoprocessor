@@ -923,6 +923,7 @@ protected:
     CString m_profileShaderStatus;
 	unsigned int m_profileChangeDisplaySeconds =
 		ProfileChangeOverlay::DefaultDisplaySeconds;
+	ULONGLONG m_profileChangeOverlayShowAfter = 0;
 	ULONGLONG m_profileChangeOverlayHoldUntil = 0;
 	ULONGLONG m_profileChangeOverlayFadeUntil = 0;
 
