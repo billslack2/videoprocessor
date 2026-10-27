@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "18c66791443b7787851a8dd5798781f0b345e6f5",
+  "betaCommit": "60df2bf6f3123b582e8e1e68b635f72553fa5871",
+  "observedRuntimeCommit": "f4219a7aa679c57f1f6d637cb08406b9c2b4b97b",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "passed": 150,
+  "failed": 0,
+  "baselineRegression": "new same-cue endpoint regression fails on original code with lip-outline-body-changed",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "08E5242015EE5A70A0DBD0095B37EEEAE2C54E50492F9C28BB95BB8B4D172E15"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "1F2666D8CEE41642DB206C9B5C03AFE3F2F73E94B725E39360D142EC7FB18BE2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "E2B99144C06B552F055C94B24919EA13DA59BD3C207EE9EE5C55ADCF89521FA9"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-lip-dropout-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "6A75D677A5D06F1DBD6A382099FD5F50BD7B76A33E0627F805F21E9F100CF396"
+    }
+  ],
+  "deployed": false,
+  "liveAcceptance": "pending",
+  "nativeRecordingReplay": "not performed; regressions synthesize the measured failure conditions"
+}

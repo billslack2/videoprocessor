@@ -8,6 +8,44 @@ In Progress
 for VP-0213. Investigation/implementation of shared subtitle behavior is not
 part of VP-0213; no Classic/reconstruction policy change is made by that repair.
 
+## Focused backing-sliver dropout — 2026-10-27
+
+User clarifies that AR and reconstructed subtitles remain stable; only the small
+black lip under the blurred replacement flickers. Earlier 12:52–12:53 crop
+movement examples are unrelated to this report. The correct reconstruction
+interval is 12:50, on runtime `f4219a7a`.
+
+At 12:50:46, cue 11 frames 1046/1047/1048 record cleanup on/off/on. A rounded
+right endpoint contracts three native pixels: YUV 6/511/508 at (2562,1746)
+exceeds dark limit 4 inside the old two-pixel collar. Revalidation rejects the
+whole lip; the next frame reacquires a narrower outline. At 12:50:27, cue 3
+frame 600 cold-acquires after a four-row native-boundary shift despite the same
+composed edge, then rejects closure with one dark sample out of 1079.
+The lip header is identical between observed runtime and current beta; recent
+AR changes causing this symptom are not established by these logs.
+[Focused telemetry](../assets/VP-0214/lip-dropout-20261027/focused-incident.txt).
+
+Draft [PR #216](https://github.com/billslack2/videoprocessor/pull/216), clean
+`18c66791443b7787851a8dd5798781f0b345e6f5`, starts from freshly fetched beta
+`60df2bf6`. It excludes a contiguous faint luma fringe from cleanup within a
+six-pixel edge bound while keeping the original dark/neutral threshold for
+every erased pixel. Interior holes, brighter/wider intrusion, ambiguous
+boundaries and incomplete work still fail. It revalidates a finite outline
+through one native sampling step only with current boundary proof and the
+exact same composed edge; metadata alone supplies no authority. Existing
+telemetry adds `luma_fringe_pixels`. Detector AR and subtitle placement logic
+are unchanged.
+
+The new same-cue endpoint regression fails on original code with the logged
+reason. Final x64 Release build succeeds; 150 backing-lip and CPU/GPU composition
+tests pass. Coverage includes P010/P210/decoded DV/RGB, both bars and endpoints,
+full/limited black, repeated trim/restore, current nearby-boundary proof and
+missing-proof controls, live interior rejection, budget limits, and float/extend
+GPU coverage. These are synthetic native-frame reproductions of measured
+conditions, not replay of the exact incident pixels. Not deployed or merged;
+live Ben-Hur acceptance remains pending. Story remains In Progress.
+[Validation](../assets/VP-0214/lip-dropout-20261027/validation.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh
