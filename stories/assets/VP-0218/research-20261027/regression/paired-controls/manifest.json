@@ -1,0 +1,1023 @@
+{
+  "width": 1280,
+  "height": 720,
+  "rowBytes": 2560,
+  "chromaRowBytes": 2560,
+  "layout": "P210 Y plane then interleaved UV plane, high 10 bits in 16-bit lanes",
+  "controls": [
+    {
+      "kind": "gradient_matte",
+      "file": "gradient_matte.p210",
+      "sha256": "70b7257cadc4b4cbf73940d8e6b9b336aded4438738a23dd3fa8294a5d4885db",
+      "bytes": 3686400,
+      "expected_file": "gradient_matte.expected",
+      "expected_sha256": "6271799619ebe625a8dd715716b4f39d227e84703ea31a0c651d6bf794489a2d",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": true,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 176.5,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          75.0,
+          82.0,
+          83.0,
+          85.0,
+          87.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          1.0,
+          1.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          4.0,
+          4.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    },
+    {
+      "kind": "authored_ceiling_identical_pixels",
+      "file": "authored_ceiling_identical_pixels.p210",
+      "sha256": "70b7257cadc4b4cbf73940d8e6b9b336aded4438738a23dd3fa8294a5d4885db",
+      "bytes": 3686400,
+      "expected_file": "authored_ceiling_identical_pixels.expected",
+      "expected_sha256": "6271799619ebe625a8dd715716b4f39d227e84703ea31a0c651d6bf794489a2d",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": true,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 176.5,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          75.0,
+          82.0,
+          83.0,
+          85.0,
+          87.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          1.0,
+          1.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          4.0,
+          4.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    },
+    {
+      "kind": "fine_caption",
+      "file": "fine_caption.p210",
+      "sha256": "8480ab91a91ccd11a238de308c803d0f1c7c6b313a75831d44ee800ea3b62232",
+      "bytes": 3686400,
+      "expected_file": "fine_caption.expected",
+      "expected_sha256": "e80940e1d7560f0e46e3a2a5b155d18d5eed5230c22bce6d73a3b846cd0737eb",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": false,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 176.5,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          75.0,
+          82.0,
+          84.0,
+          820.0,
+          820.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          742.0,
+          745.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 2,
+        "largest_y_residual_component": 2425,
+        "tile_median_step_p95_max": [
+          4.0,
+          5.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": false,
+        "pass_components": false,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": false
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    },
+    {
+      "kind": "colored_object",
+      "file": "colored_object.p210",
+      "sha256": "60c23f92edfbd9e3f0088d4edc74df661b8ad05cb54ea734b319d20fe38727bf",
+      "bytes": 3686400,
+      "expected_file": "colored_object.expected",
+      "expected_sha256": "7cc7a03f86aeed6b41cbae6fa579759e87a8e7a4484eeafd52a0541d8925bd73",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": false,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 176.5,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          75.0,
+          84.0,
+          300.0,
+          300.0,
+          300.0
+        ],
+        "neutral_fraction": 0.9334016393442623,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          1.0,
+          226.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 4,
+        "largest_y_residual_component": 30,
+        "tile_median_step_p95_max": [
+          219.0,
+          227.0
+        ],
+        "pass_neutral": false,
+        "pass_y_residual": true,
+        "pass_components": false,
+        "pass_tile_slope": false,
+        "pass_chroma_residual": true,
+        "pass": false
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    },
+    {
+      "kind": "broad_low_contrast",
+      "file": "broad_low_contrast.p210",
+      "sha256": "d05edd1107a32ba953f403457716fcd6490b941676e3f36e1788278787de6db7",
+      "bytes": 3686400,
+      "expected_file": "broad_low_contrast.expected",
+      "expected_sha256": "f4beb6258e96b2ec27322419ae94d93b918cd809f39dfe1cdc74d67b24c3a5bd",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": true,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 173.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          78.0,
+          85.0,
+          86.0,
+          88.0,
+          88.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          1.0,
+          1.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          5.0,
+          7.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    },
+    {
+      "kind": "gradient_noise",
+      "file": "gradient_noise.p210",
+      "sha256": "ec5be2fcaa4aeb33dcc2b578696a1d6efc7b2fa8246079985b0a3e9274817bef",
+      "bytes": 3686400,
+      "expected_file": "gradient_noise.expected",
+      "expected_sha256": "a04df1b91cb0c496248488be08ca0cd13289db3437b6f9a5d4ad09e42ab10684",
+      "python_roundtrip": "all Y/U/V samples exact",
+      "profile_edge_pass": true,
+      "profile_route_pass": false,
+      "profile_top": {
+        "transition_outside_row": 129,
+        "inside_row": 130,
+        "crop_coordinate_with_fringe": 122,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 175.5,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_bottom": {
+        "transition_outside_row": 589,
+        "inside_row": 589,
+        "crop_coordinate_with_fringe": 598,
+        "support_by_quartile": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "sample_dy_median": 196.0,
+        "sample_chroma_delta_median": 248.0,
+        "full_column_support": 1.0,
+        "full_column_error_p95": 0.0,
+        "full_column_line_pass": true,
+        "full_column_quartiles": [
+          {
+            "quartile": 0,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 1,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 2,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          },
+          {
+            "quartile": 3,
+            "sample_support": 1.0,
+            "column_support": 1.0,
+            "line_error_p95": 0.0
+          }
+        ]
+      },
+      "profile_top_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          51.0,
+          75.0,
+          83.0,
+          86.0,
+          89.0,
+          100.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          8.0,
+          10.0,
+          21.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 2,
+        "tile_median_step_p95_max": [
+          4.0,
+          5.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": false,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": false
+      },
+      "profile_bottom_exterior": {
+        "available": true,
+        "dimensions": [
+          122,
+          1280
+        ],
+        "y_percentiles": [
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0,
+          64.0
+        ],
+        "neutral_fraction": 1.0,
+        "y_highpass_residual_p95_p99_max": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chroma_highpass_residual_p99_max": [
+          0.0,
+          0.0
+        ],
+        "connected_y_residual_components_ge16": 0,
+        "largest_y_residual_component": 0,
+        "tile_median_step_p95_max": [
+          0.0,
+          0.0
+        ],
+        "pass_neutral": true,
+        "pass_y_residual": true,
+        "pass_components": true,
+        "pass_tile_slope": true,
+        "pass_chroma_residual": true,
+        "pass": true
+      }
+    }
+  ]
+}

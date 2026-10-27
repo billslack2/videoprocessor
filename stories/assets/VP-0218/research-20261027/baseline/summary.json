@@ -1,0 +1,99 @@
+{
+  "frames": 97,
+  "uniqueValues": {
+    "raw_class": [
+      "PROVISIONAL"
+    ],
+    "raw_top": [
+      "0"
+    ],
+    "raw_bottom": [
+      "1858"
+    ],
+    "raw_trusted_top": [
+      "0"
+    ],
+    "raw_trusted_bottom": [
+      "2160"
+    ],
+    "raw_y_samples": [
+      "4784"
+    ],
+    "raw_uv_samples": [
+      "544"
+    ],
+    "grid_available": [
+      "1"
+    ],
+    "grid_candidate": [
+      "1"
+    ],
+    "grid_top": [
+      "0"
+    ],
+    "grid_bottom": [
+      "1855"
+    ],
+    "grid_columns": [
+      "128"
+    ],
+    "grid_rows": [
+      "270"
+    ],
+    "grid_samples": [
+      "34560"
+    ],
+    "grid_clean": [
+      "0"
+    ],
+    "top_violations": [
+      "0"
+    ],
+    "bottom_violations": [
+      "0"
+    ],
+    "top_support": [
+      "70"
+    ],
+    "bottom_support": [
+      "128"
+    ],
+    "top_continuity": [
+      "1"
+    ],
+    "bottom_continuity": [
+      "1"
+    ],
+    "top_max_dy": [
+      "0"
+    ],
+    "bottom_max_dy": [
+      "180",
+      "184"
+    ],
+    "top_max_duv": [
+      "0"
+    ],
+    "bottom_max_duv": [
+      "116"
+    ]
+  },
+  "timingCaveat": "Concurrent exploratory component timings, not an isolated performance test or a production cost claim.",
+  "extract_us": {
+    "median": 168.1,
+    "p95": 215.2,
+    "max": 324.8
+  },
+  "grid_us": {
+    "median": 1039.4,
+    "p95": 1179.0,
+    "max": 1287.4
+  },
+  "artifactSha256": {
+    "boundary-baseline.exe": "f15c1f34d8d6e7bd9129403a6ad4265054d42a48bcdfe1a7aa305548947a5795",
+    "boundary-baseline.cpp": "a24fb4bbf78099985d481c95caa97ebca7a996722d84f21a0c9f110304674d39",
+    "boundary-baseline.csv": "3061d9a3f0877789b709ce0048775227f90215dc6ef24ba536e5943c4b5ec463",
+    "native-ad-replay.cpp": "e1949740970835d77ea2abbb9326e931c38c5cc2a7aeb75391d6d42ffbddd8de",
+    "run-baseline.ps1": "f1a32e155e245f52eedcf6388f20ad8daf934034551910454da37e48734fd154"
+  }
+}

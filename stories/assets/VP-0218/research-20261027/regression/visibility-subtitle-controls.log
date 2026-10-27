@@ -1,0 +1,26 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed SubtitleReferencePlaneRejectsSmoothSlopeAndClusteredBoundaryPatch [1 ms]
+  Passed SubtitleBarsRejectConnectedPictureOnOnlyTheAffectedEdge [1 ms]
+  Passed SubtitleBarsDoNotInventBoundaryFromCenteredPanelWithoutSideBars [1 ms]
+  Passed SubtitleBarsProveAsymmetricAndSingleEdgesIndependently [1 ms]
+  Passed DistributedBarsRequireSeparateOpposingEvidenceAndRejectIntrusion [2 ms]
+  Passed DistributedBarsRecoverDarkFlanksWithoutMirroring [2 ms]
+  Passed SharedPictureAuthorityKeepsCaptionAcrossAmbiguousBarPixels [98 ms]
+  Passed NarrowTopOverlayProducesMinimalOutwardVisibleEnvelope [< 1 ms]
+  Passed PersistentFullWidthTopOverlayCannotBecomeProgramAspect [< 1 ms]
+  Passed LogoRetentionStillRejectsRealExpansionAndInvalidPixels [20 ms]
+  Passed ColoredOrVisibleExcludedBandsRejectRetention [< 1 ms]
+  Passed BrightLogoWithoutAcquisitionGeometryKeepsEstablishedCrop [26 ms]
+  Passed UnavailableLogoGeometryCannotHideVisibleMarginContent [24 ms]
+  Passed InternalDividerDoesNotBecomeAnOuterCropEdge [13 ms]
+  Passed SparseFullHeightStarsCannotAcquireAnInsetCropAtStartup [26 ms]
+  Passed SubtitleAndSparseStarsCannotCertifyAnExpandedPictureStrip [50 ms]
+Results File: E:\codex\diagnostics\vp-0218-boundary-research-20261027\regression\visibility-subtitle-controls.trx
+
+Test Run Successful.
+Total tests: 16
+     Passed: 16
+ Total time: 0.6611 Seconds

@@ -1,0 +1,1 @@
+PASS: C++ AnalysisLumaSource::Sample matched expected Y/U/V values at every pixel for all six P210 controls (921,600 pixels per control). Beta acquisition and retention results written to beta-results.csv.

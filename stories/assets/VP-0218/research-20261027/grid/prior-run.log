@@ -1,0 +1,2 @@
+paused-1649 raw=BAR_CROP_TRUSTED proposed=0,274-3840,1884 trusted=0,274-3840,1884 aspect=2.38509 topEdgeTrusted=1 bottomEdgeTrusted=1 globalDark=1 p90=80 distributedDark=1 texture=15/4 gridTop=1[272,280] nominal=276 gridBottom=1[1886,1878] nominal=1882 range=0 bytes=33177600
+continuous-subtitle-ar-20261013 raw=BAR_CROP_TRUSTED proposed=0,272-3840,1886 trusted=0,272-3840,1886 aspect=2.37918 topEdgeTrusted=1 bottomEdgeTrusted=1 globalDark=0 p90=405 distributedDark=0 texture=0/0 gridTop=1[272,280] nominal=276 gridBottom=0[-1,-1] nominal=-1 range=0 bytes=33177600

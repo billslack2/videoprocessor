@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="3610ea92-8890-49c8-9c5a-d2ddb1d00c7f" name="bslac@DESKTOP-3G35SCJ 2026-10-27 10:08:18" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-27T10:08:18.0792938-04:00" queuing="2026-10-27T10:08:18.0792938-04:00" start="2026-10-27T10:08:16.9989384-04:00" finish="2026-10-27T10:08:18.0953167-04:00" />
+  <TestSettings name="default" id="352090c7-12fc-497b-ab83-199baf71c99d">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-10-27_10_08_18" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="bf0b2f30-20f3-4d82-83e3-b65c6826212b" testId="3bc16f93-1659-96ae-1a02-9afeb75d83e8" testName="OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0263672" startTime="2026-10-27T10:08:17.9262206-04:00" endTime="2026-10-27T10:08:17.9525878-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bf0b2f30-20f3-4d82-83e3-b65c6826212b" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture" storage="e:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\release\videoprocessor-test.dll" id="3bc16f93-1659-96ae-1a02-9afeb75d83e8">
+      <Execution id="bf0b2f30-20f3-4d82-83e3-b65c6826212b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.ActivePictureEvidenceTests" name="VideoProcessorTest::ActivePictureEvidenceTests::OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="3bc16f93-1659-96ae-1a02-9afeb75d83e8" executionId="bf0b2f30-20f3-4d82-83e3-b65c6826212b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="1" executed="1" passed="1" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

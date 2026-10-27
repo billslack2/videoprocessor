@@ -1,0 +1,206 @@
+VSTest version 18.7.0 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed ActualFourPixelPictureGrowthIsNotMislabelledCleanBarJitter [12 ms]
+  Passed BufferedNativeDistributedExpansionUsesExactQueuedRouteAndRevalidatesCurrentFrame [11 ms]
+  Passed CutsStaleContextsUnknownPixelsAndStationaryEdgesNeverBorrowMotion [14 ms]
+  Passed SceneCandidateResetPreservesStableButCannotBridgeConfirmation [< 1 ms]
+  Passed BootstrapResetCannotAcquireFromPausedFrameDuplicates [< 1 ms]
+  Passed DeadbandCannotBeRaisedBeyondFivePercent [< 1 ms]
+  Passed MinorTrustedGeometryChangeStaysWithinTwoPercentDeadband [< 1 ms]
+  Passed TrustedGeometryBeyondAspectDeadbandStillTransitions [< 1 ms]
+  Passed TwoThirtyFiveAndOneNinetyCanTransitionInBothDirections [< 1 ms]
+  Passed TwoTwentyAndTwoThirtyFiveTransitionBothWaysAtFivePercent [< 1 ms]
+  Passed AspectDeadbandPreservesMaterialImaxAndFullRasterTransitions [< 1 ms]
+  Passed TwoTwentyAndOneFortyThreeCanTransitionInBothDirections [< 1 ms]
+  Passed RememberedWindowboxCannotBypassCompositionHold [2 ms]
+  Passed FailedReplayAllSidedInsetNeverReplacesTrustedMovieFrame [< 1 ms]
+  Passed RecentHistoryCannotBypassEstablishedAspectDeadband [< 1 ms]
+  Passed AllSidedInsetRetainsFramingButExpansionAndTranslationProceed [< 1 ms]
+  Passed AspectDeadbandUsesAcceptedPixelsWithoutRollingDrift [< 1 ms]
+  Passed WomenInBlueThreePercentSameAxisChangeRetainsEstablishedFormat [< 1 ms]
+  Passed QueuedInitialAndAxisReferencesCannotBeInvented [< 1 ms]
+  Passed QueuedPublicationCannotBypassEitherLiveDeadband [< 1 ms]
+  Passed GeometryTransitionInquiryDoesNotAdvanceProofInEitherDirection [< 1 ms]
+  Passed QueuedPublicationRequiresTheExactLiveStableReference [< 1 ms]
+  Passed OutwardReferenceEquivalenceStillHonorsLiveGeometryDeadband [< 1 ms]
+  Passed GeometryTransitionInquiryPreservesDeadbandsAndAuthority [< 1 ms]
+  Passed OutwardReferenceToleranceCannotHideDifferentHistoryOrInwardCrop [< 1 ms]
+  Passed OutwardReferenceEquivalencePreservesAdmissionVetoes [< 1 ms]
+  Passed FixedImaxAndFourByThreeControlsRemainStableWithNoise [< 1 ms]
+  Passed LoggedOutwardPublicationAcceptsOneScanStepReferenceDifference [< 1 ms]
+  Passed RecordedFalseCandidateSequenceCannotContractFullRaster [< 1 ms]
+  Passed OscillatingClearCandidatesPreserveStableGeometry [< 1 ms]
+  Passed FullRasterTransitionRetainsStableCropUntilConfirmed [< 1 ms]
+  Passed AsymmetricCandidateCannotCropEitherSide [< 1 ms]
+  Passed ResetClearsAnAtomicCurrentGenerationPublication [< 1 ms]
+  Passed FullRasterIsImmediateSafeStartupAuthority [< 1 ms]
+  Passed WorkerRestartResetRepublishesUnchangedTrustedGeometry [< 1 ms]
+  Passed ResetBetweenAnalysisAndPublicationRejectsOldGeneration [< 1 ms]
+  Passed RecentTrustedGeometryExpiresAfterThreeNewModes [< 1 ms]
+  Passed ResetDiscardsPreviouslyTrustedGeometry [< 1 ms]
+  Passed PreviouslyTrustedGeometryReacquiresOnAdjacentFrames [< 1 ms]
+  Passed RecentTrustedGeometryRecursAcrossThreeAspectModes [< 1 ms]
+  Passed DarkCenterCreditsAndUnavailableFramesDoNotChangeMode [< 1 ms]
+  Passed AmbiguousSustainedTransitionNeverAcquiresCropAuthority [< 1 ms]
+  Passed SubtitleLogoAndEdgeIntrusionsDoNotChangeMode [< 1 ms]
+  Passed PersistentLocalizedOverlayNeverBecomesProgramAspect [< 1 ms]
+  Passed ProvisionalRecentWindowboxCannotOverrideEstablishedScope [1 ms]
+  Passed BriefBlackFadePreservesLastStableMapping [< 1 ms]
+  Passed ThreeSecondNestedWindowboxBlipRetainsScopeAtEveryFrameRate [1 ms]
+  Passed PersistentAllSidedWindowboxRetainsEstablishedScope [4 ms]
+  Passed InitialGeometryRequiresFourConsistentObservations [< 1 ms]
+  Passed ClearScopeImaxCutsRequireTwoTrustedObservations [< 1 ms]
+  Passed RecentTrustedCommitUsesCurrentAuthorityButPreservesProvisionalCanonicalBounds [< 1 ms]
+  Passed CurrentHistoryCoordinateSubstitutionPreservesLiveDeadbandVeto [< 1 ms]
+  Passed InitialGeometryConfirmationPublishesCurrentPixelCertificate [< 1 ms]
+  Passed CurrentCommitCoordinatesDoNotWalkUnconfirmedCandidateAnchor [< 1 ms]
+  Passed AnalysisCadenceRejectsRepeatedOrOutOfOrderSourceSequence [< 1 ms]
+  Passed ConfirmedGeometryPublishesCurrentTrustedCoordinatesOnlyAtCommit [< 1 ms]
+  Passed LookaheadCannotInjectProvisionalGeometry [< 1 ms]
+  Passed AnalysisCadenceIsNormalizedAcrossFrameRateFamilies [< 1 ms]
+  Passed NovelCandidateCannotInheritRecentGeometryAuthority [< 1 ms]
+  Passed LookaheadPublicationBecomesTheLiveStableGeometry [< 1 ms]
+  Passed ContainedInsetStaysHeldAcrossMissingEvidenceAndSceneReset [< 1 ms]
+  Passed InitiallyAcquiredWindowboxRejectsSmallAlternatingEdgeNoise [< 1 ms]
+  Passed MaterialMovingAllSidedInsetRetainsEstablishedFraming [< 1 ms]
+  Passed MovingInsetReturningWithinAspectBandDoesNotPublishAtOldTimer [< 1 ms]
+  Passed WomenInBlueFourPixelNoiseDoesNotPublishAnAspectChange [4 ms]
+  Passed FullBlackFadeAndSparseTitlesNeverAcquireFullRaster [4 ms]
+  Passed ModeNamesRemainStableForTelemetry [< 1 ms]
+  Passed LimitedAndUnknownKeepExistingAdaptiveInterpretation [1 ms]
+  Passed RaisedMatteRetentionDoesNotUseNominalZero [2 ms]
+  Passed BudgetedMeasurementsPreserveRaisedMatteAuthorityAndRetentionReference [16 ms]
+  Passed RejectedAdaptiveCropCannotLeakIntoFullRasterCoordinates [1 ms]
+  Passed RetentionReusesRejectedReferenceRatherThanRestoringPerimeterFloor [< 1 ms]
+  Passed OneSidedAndMismatchedMattesCannotNominateFullRaster [1 ms]
+  Passed UnresolvedMattePreservesIndependentFullExtentAxis [< 1 ms]
+  Passed CentralCaptionDoesNotDestroyRaisedMatteReference [10 ms]
+  Passed WholeOpposingEdgeControlLeavesOneMatteUnresolved [1 ms]
+  Passed UpperEnvelopeQualificationPreservesGradientAndMismatchRejection [16 ms]
+  Passed RaisedMatteNoiseCannotTurnIntoFullRaster [20 ms]
+  Passed UniformFullMattesCoverNominationAndQualificationDiscontinuities [142 ms]
+  Passed UniformMatteRangeMatrixPreservesLimitedAndUnknownInterpretation [50 ms]
+  Passed GradientInsideSupportedMatteNoiseEnvelopeStaysUncertain [< 1 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed TrueZeroFortyAndSixtyFourBarsKeepBothOrientationsAndFormats [30 ms]
+  Passed VariableDarkSideIsPictureInEveryNativeFormat [9 ms]
+  Passed TemporalAcquisitionNativeRecoveryThenAmbiguousRetentionNeedsNoRestart [107 ms]
+  Passed TemporalAcquisitionLogicalButNeverPresentedStillNeedsFreshAuthority [119 ms]
+  Passed MovingArtworkCounterexampleRemainsAnExplicitAcquisitionLimitation [4 ms]
+  Passed StartupAdmissionClosesOncePerRealSourceGenerationAcrossUnrelatedResets [< 1 ms]
+  Passed TemporalAcquisitionWithoutLogicalGeometryCannotPromoteMovingArtwork [77 ms]
+  Passed CaptionOnWouldBePublicationFrameCannotCompleteStaleExperimentalProof [5 ms]
+  Passed QueuedAdoptionRejectsExperimentalTargetButAcceptsNativeOutwardAuthority [< 1 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed DefaultNativeOriginMatchesExplicitNativeAndExactNativeProofCanUpgradeExperiment [< 1 ms]
+  Passed MixedNativeAndExperimentalFramesCannotShareInitialConfirmationVotes [< 1 ms]
+  Passed NearBlackStartupEpisodeReopensBeforeFreshOrdinaryCropConfirmation [19 ms]
+  Passed CaptionAfterAcquisitionUsesOutwardPresentationWithoutChangingLogicalAspect [5 ms]
+  Passed FullRasterExpansionWithdrawsExperimentalCropUsingExistingPolicy [5 ms]
+  Passed ExperimentalGeometryCannotEnterRecentTrustedHistoryOrReacquireAsNative [5 ms]
+  Passed EquivalentPlanarAndPackedSourcesProduceTheSameGuardedCandidate [15 ms]
+  Passed PausedInteriorNoiseAndDriftingAsymmetricTitlesNeverAcquire [21 ms]
+  Passed NearBlackTitleArtworkCannotPublishThroughOrdinaryAcquisitionConstraint [14 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+  Passed AdmittedCropUsesCurrentNativeRetentionWithoutDiagnosticExpiryBounce [109 ms]
+  Passed NativeAuthorityAlwaysWinsAndCannotBeRelabeledExperimental [8 ms]
+  Passed FrozenExteriorCutoffCannotRiseWithCurrentBackgroundFloor [4 ms]
+  Passed CurrentExteriorLumaAndChromaIntrusionsRejectMaturePendingReference [8 ms]
+  Passed ShrinkingOrMissingFreshProposalKeepsPendingReferenceWhileOldExteriorIsSafe [6 ms]
+  Passed OutwardRoundingIncludesUnmeasuredBoundaryStripsAtFourK [73 ms]
+  Passed EveryIdentityChangeCutAndSequenceDiscontinuityDiscardsPendingProof [50 ms]
+  Passed MatureCandidateRequiresFreshValidationBetweenDiscoveryTicks [4 ms]
+  Passed InvalidPrecisionAndMismatchedSourceIdentityCannotAcquire [5 ms]
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-startup-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed DisableOrLossOfStartupEligibilityCannotRetainOrResurrectPendingCrop [10 ms]
+  Passed ActualSparseSourceNeedsTemporalEvidenceAndOrdinaryPublicationConfirmation [5 ms]
+  Passed DefaultOffPreservesRawPixelsEvidenceAndNativeTransitionDecisions [4 ms]
+  Passed RepeatedSequenceAndCadenceRepeatCannotSupplyTemporalVotes [6 ms]
+  Passed CandidatePreservesRawAxisMeasurementsAndReportsItsExperimentalOrigin [4 ms]
+  Passed PendingTransitionCannotReclassifyOldFullRasterButExactCommittedScopeCanReaffirm [9 ms]
+  Passed FullRasterAuthoritySurvivesPendingExperimentAndClearsOnlyOnActualPublication [5 ms]
+  Passed ExperimentalTransitionCannotBeQueuedOrReacquiredFromNativeHistory [5 ms]
+  Passed DarkFadeCannotAcquireButAdmittedScopeRetainsWithoutReferenceExpiryBounce [114 ms]
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed ActiveCaptionAndMovingPresentationOwnersCannotBeBypassed [4 ms]
+  Passed NativeToExperimentalToNativeCycleCanRepeatWithoutRememberingExperimentalScope [12 ms]
+  Passed NativeEvidenceWinsAndReverseTransitionsKeepExistingConfirmationTiming [13 ms]
+  Passed CurrentHorizontalAxisConflictCannotBeLaunderedByAValidVerticalProof [4 ms]
+  Passed ExperimentalOrAllSidedEstablishedBasesCannotAuthorizeNewTransitions [4 ms]
+  Passed CaptionOnPublicationFrameVetoesCurrentCandidateAndPreservesTheOldSafeCrop [4 ms]
+  Passed GraduallyMovingBoundaryCannotAccumulateAStationaryAcquisitionWindow [7 ms]
+  Passed RepeatsAndInteriorNoiseCannotSupplyMissingTransitionEvidence [16 ms]
+  Passed RestoringAnOldBaseCannotResurrectItsPreviousReference [5 ms]
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+current-experimental-inward-candidate
+  Passed FourPixelAndFivePercentAspectDeadbandsStillRetainTheOldFormat [18 ms]
+  Passed TypedProofBindsCurrentSourceExactOldBaseAndGuardedRectangle [6 ms]
+  Passed DefaultDisabledAndStartupOnlyModesCannotReplaceExistingAuthority [12 ms]
+  Passed ContextCutAndOldBaseChangesInvalidateTheEntireDiscoveryWindow [57 ms]
+  Passed ChangedReferenceRestartsVotesAndNativeVotesCannotMixWithTransitionVotes [4 ms]
+  Passed RealFullAndImaxSourcesTransitionInwardOnlyAfterCurrentProofAndOrdinaryConfirmation [10 ms]
+Results File: E:\codex\diagnostics\vp-0218-boundary-research-20261027\regression\focused-boundary-regressions.trx
+
+Test Run Successful.
+Total tests: 132
+     Passed: 132
+ Total time: 1.7388 Seconds

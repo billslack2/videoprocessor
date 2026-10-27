@@ -1,0 +1,11 @@
+VP-0218 normalized-exterior ablation protocol (diagnostic-only)
+
+Question: Do the existing beta detector/retention predicates reject the captured ad's upper band because of its low-frequency gray level/gradient, or does sparse local detail still fail after that baseline is normalized away?
+
+Input set: one payload per unique SHA-256 from all 97 saved native capture entries (four unique payloads, mapped in the parent experiment JSON). Use the already frozen independently scanned/fringed candidate rectangle top=293, bottom-exclusive=1865. Do not re-run edge selection or alter crop coordinates.
+
+Counterfactual operation on copied Y only: separately for each excluded top/bottom exterior, compute the 17x17 reflected local median on that exterior region alone. Form signed residual `r = originalY - localMedian`; set `Ycf = clip(64 + r, 0, 1023)`. Do not change UV, the eight-row boundary fringe, or interior Y. Record clipped-sample count and residual/normalized statistics. This intentionally erases low-frequency exterior level/profile; it is not a native frame and does not establish that those pixels are expendable.
+
+Serialization and verification: P210 at 3840x2160, full Y plane followed by full interleaved UV plane, 10-bit samples in the high bits of little-endian 16-bit lanes. Before extraction, the unchanged 7394-beta `AnalysisLumaSource::Sample` must match expected Y/U/V for every coordinate in every counterfactual payload. A failure aborts the run.
+
+Measurements: unchanged 7394-beta `ExtractActivePictureEvidence`, global-near-black, AR darkness, and `EvaluateActivePicturePresentationRetention` on the exact guarded candidate rectangle. No production source edits, no threshold changes, no deployment. Interpret acceptance/rejection only as diagnostic evidence about these transformed copies.

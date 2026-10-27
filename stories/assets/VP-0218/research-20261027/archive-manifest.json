@@ -1,0 +1,347 @@
+[
+  {
+    "File": "README.md",
+    "Bytes": 11913,
+    "SHA256": "38BA044E5DFEC9221CCA1787F2D97BAB1B5411B2CD0B0783CED8FD0128BED439"
+  },
+  {
+    "File": "baseline/boundary-baseline.cpp",
+    "Bytes": 2354,
+    "SHA256": "A24FB4BBF78099985D481C95CAA97EBCA7A996722D84F21A0C9F110304674D39"
+  },
+  {
+    "File": "baseline/boundary-baseline.csv",
+    "Bytes": 11276,
+    "SHA256": "3061D9A3F0877789B709CE0048775227F90215DC6EF24BA536E5943C4B5EC463"
+  },
+  {
+    "File": "baseline/build.log",
+    "Bytes": 2873,
+    "SHA256": "BAF26298354EF92D961C6A59A046FA95B684ED4D526C68617C894AC6C1F9E9CB"
+  },
+  {
+    "File": "baseline/inputs.json",
+    "Bytes": 1041,
+    "SHA256": "B48D4D3D554D7D51DA7D7F9AA4EB0829926D3529FE9CF8D15CFD588B7A6F8E2D"
+  },
+  {
+    "File": "baseline/native-ad-replay.cpp",
+    "Bytes": 10514,
+    "SHA256": "E1949740970835D77EA2ABBB9326E931C38C5CC2A7AEB75391D6D42FFBDDD8DE"
+  },
+  {
+    "File": "baseline/run-baseline.ps1",
+    "Bytes": 1397,
+    "SHA256": "F1A32E155E245F52EEDCF6388F20AD8DAF934034551910454DA37E48734FD154"
+  },
+  {
+    "File": "baseline/run.log",
+    "Bytes": 91,
+    "SHA256": "BEE81134A0E5123386CC04B7080EF4307F47AC39FB76FE4AFA37A2AD63ECBB21"
+  },
+  {
+    "File": "baseline/summary.json",
+    "Bytes": 1965,
+    "SHA256": "E3AADD6316E2F3F3C9AEBB7FAF1E6CE0902EF1A2C82A17333CEBDD603772E607"
+  },
+  {
+    "File": "grid/boundary-grid.cpp",
+    "Bytes": 7931,
+    "SHA256": "335EF7648D7DD2839D3D96161416448A286E95B738A4F9A43438F302AE9C2A9D"
+  },
+  {
+    "File": "grid/build.log",
+    "Bytes": 19,
+    "SHA256": "49643AD975F1BA2841FD4F6F2C62E6AFDB1F2DDC6259BC9F939D172167ACA111"
+  },
+  {
+    "File": "grid/candidate.csv",
+    "Bytes": 13400,
+    "SHA256": "4A5070C5A12463FDC8865CB429924825697E258C6FEEC7981C5CA59C267B0702"
+  },
+  {
+    "File": "grid/paused-1649-ddf5d666-dark-ar.log",
+    "Bytes": 506,
+    "SHA256": "FB1EA61648FA8606002ABB200ABFC00ECA3697BC348E0114445B52DCDE29C0DE"
+  },
+  {
+    "File": "grid/paused-1649-ddf5d666-dark-ar.trx",
+    "Bytes": 2594,
+    "SHA256": "F9616E1A7C9EE32AC1DF4089C3219D0C5A088F07307AEAB44BDEAC9B00C7AE56"
+  },
+  {
+    "File": "grid/prior-build.log",
+    "Bytes": 19,
+    "SHA256": "BAD17D0E21C971988B538BE43617D2794A581518A0AED81967A77E28FAAB5A16"
+  },
+  {
+    "File": "grid/prior-capture.cpp",
+    "Bytes": 8832,
+    "SHA256": "7F4E70899EADFE5AA6768BB930B3DBF3857972505FA30B9CADB034110AD2FF19"
+  },
+  {
+    "File": "grid/prior-captures.csv",
+    "Bytes": 1235,
+    "SHA256": "88E42C2E7E38750E67C410FF914683AAA55156B74F76C921B949821D871C7E8D"
+  },
+  {
+    "File": "grid/prior-captures.md",
+    "Bytes": 3070,
+    "SHA256": "8E5D26DB260B4649F3DE3AFB72C993B56D3EF1F7E4F725974719116E0C36CA38"
+  },
+  {
+    "File": "grid/prior-run.log",
+    "Bytes": 568,
+    "SHA256": "4E0E02BC408ABE867BA6A840489E58D7AF77CE48541965EA4DBF41D078182FE1"
+  },
+  {
+    "File": "grid/README.md",
+    "Bytes": 4756,
+    "SHA256": "DD325B042795C0050EBFC684AF0BACA959A19B75D3384FAA60B15F968E1CE3ED"
+  },
+  {
+    "File": "grid/run.log",
+    "Bytes": 184,
+    "SHA256": "B5A08D31E89FA78469A2F2185F45BB326D1F77BB21B6F9FB52BED029B9510F87"
+  },
+  {
+    "File": "grid/synthetic.csv",
+    "Bytes": 1496,
+    "SHA256": "D0B269AF6C7BE4ABE1E3AF1F9499462BF5DB31A3963D7BF74B96C454107DC653"
+  },
+  {
+    "File": "profile/boundary_profile_experiment.py",
+    "Bytes": 10675,
+    "SHA256": "FBD352CC33D24181F25C320FCB77FD44EC88A46A364F191983E2CF54C379EB3F"
+  },
+  {
+    "File": "profile/boundary-profile-results.json",
+    "Bytes": 49261,
+    "SHA256": "105BE2AFD06F66B62FB681A1D522842263A70AEC6E74843A93581989DC4182A1"
+  },
+  {
+    "File": "profile/component_shape_analysis.py",
+    "Bytes": 4783,
+    "SHA256": "D19C0039F1132CE68BE544C771F9CADED5A983CBA01107FB04976642E3A09704"
+  },
+  {
+    "File": "profile/component-shape-analysis.json",
+    "Bytes": 34172,
+    "SHA256": "12F23136115C6FBDF8A246BD6BA33291BDD0F4092CFCCC8C48EA10D2E7A5A03B"
+  },
+  {
+    "File": "profile/errata.md",
+    "Bytes": 806,
+    "SHA256": "6C6BC11C84E30EE215EB2A3CB7D685984E948F314F8C6081701272B21058DAEC"
+  },
+  {
+    "File": "profile/protocol.txt",
+    "Bytes": 2337,
+    "SHA256": "96DA53342943DA3B7B05B1AC408459D95AE338A4685167858AC09E51BB1FB8B4"
+  },
+  {
+    "File": "profile/README.md",
+    "Bytes": 6215,
+    "SHA256": "BED631D842D45A56F1F40BF1A70CF096C7FDA1A17B05075AF79DC2D906C2737C"
+  },
+  {
+    "File": "profile/normalized-ablation/beta-results.csv",
+    "Bytes": 1211,
+    "SHA256": "5FC12CD630EED85AF37BBAB2D523E9BCFC9378A6B25D7C494F6AD685E1B53D5E"
+  },
+  {
+    "File": "profile/normalized-ablation/build-run.ps1",
+    "Bytes": 1407,
+    "SHA256": "13F691D19C50BBA768280CE5455B6383680E2E808844144271B89646939AB5F9"
+  },
+  {
+    "File": "profile/normalized-ablation/build.log",
+    "Bytes": 2881,
+    "SHA256": "EDBBAD8FB3A116C27BD9809441BF5A8BEB8732A95263A8F7A07BBED549F735B0"
+  },
+  {
+    "File": "profile/normalized-ablation/make_normalized_ablation.py",
+    "Bytes": 3993,
+    "SHA256": "5844FB6E2776B1818E385BD32F94C9D2D0C6BBB3FAE3A28ACD1B656257254623"
+  },
+  {
+    "File": "profile/normalized-ablation/manifest.json",
+    "Bytes": 7486,
+    "SHA256": "C0FDB90CD2392CDB6AD91B3BD6447EA4680D016CD741BF93FF648F90448C1952"
+  },
+  {
+    "File": "profile/normalized-ablation/normalized-ablation-probe.cpp",
+    "Bytes": 3763,
+    "SHA256": "0257F30AD61E01F50B2F38835894B999CC58DD9C4EC11DA9D185BDF901EBC0EE"
+  },
+  {
+    "File": "profile/normalized-ablation/protocol.txt",
+    "Bytes": 1817,
+    "SHA256": "1986226754BA10C1E2AA6231380ED8FB241C3F603CB9F84A1D6C61774129F845"
+  },
+  {
+    "File": "regression/7394-harness-artifact-hashes.csv",
+    "Bytes": 867,
+    "SHA256": "5539A765CF2EF8448C35F2F68A6F4AADD14CE9BBC32D385C79E040431A478C78"
+  },
+  {
+    "File": "regression/ddf5-test-dll-sha256.txt",
+    "Bytes": 314,
+    "SHA256": "ABBF39493D3A512FF959BFC66BA5F7C74547D7199DABA65E37BF18B7A7470725"
+  },
+  {
+    "File": "regression/focused-boundary-regressions.log",
+    "Bytes": 13065,
+    "SHA256": "7CDB59C96E6BB47489944CEE049AEC3FDC3268C37187283ADC6D085BA01B5CF5"
+  },
+  {
+    "File": "regression/focused-boundary-regressions.trx",
+    "Bytes": 187380,
+    "SHA256": "0D442E7B256E1BD5B48B47A41DEB041AA72EEB94EA4098A82CCFFFA1C125B7B0"
+  },
+  {
+    "File": "regression/regression-summary-20261027-01.txt",
+    "Bytes": 6523,
+    "SHA256": "A88C00D6520654C8F6ECC8232FF875A911AE69C5F69B609FDE03FBFF20A3B8E4"
+  },
+  {
+    "File": "regression/visibility-subtitle-controls.log",
+    "Bytes": 1506,
+    "SHA256": "6B547149A78AC8339D5D79D06A7D0175A24BE446A70B40C2732C819C61FDC986"
+  },
+  {
+    "File": "regression/visibility-subtitle-controls.trx",
+    "Bytes": 22216,
+    "SHA256": "B5C109E25C7C818B2BB5FBB989928EB6771939209E3B1DB1E7E9E0C125DFA864"
+  },
+  {
+    "File": "regression/boundary-probe/candidate-diagnostics.csv",
+    "Bytes": 536,
+    "SHA256": "144706D085DE50220AC3A5241D25D759DD33E751FEC000CF429A3270B0148851"
+  },
+  {
+    "File": "regression/boundary-probe/hypothetical-retention-edges.csv",
+    "Bytes": 964,
+    "SHA256": "F33710614CBBC1E246D283A56A0DA9CD403B0A047BEB6717D57894DA18937AF2"
+  },
+  {
+    "File": "regression/boundary-probe/native-boundary-pairs.csv",
+    "Bytes": 6811,
+    "SHA256": "1B17C3124EF69180E3BE2A2AD2DA9ECA7A71A0ED2346D50524315E3FAFF1FCB4"
+  },
+  {
+    "File": "regression/boundary-probe/native-row-support.csv",
+    "Bytes": 3302,
+    "SHA256": "EEDB8577E2BBEC112BBAFFDF3C11224B5125571FB5D838AB1FC6BEBBD2178D91"
+  },
+  {
+    "File": "regression/boundary-probe/rerun.log",
+    "Bytes": 102,
+    "SHA256": "0ABC01913BA609B5F76C1772B8248F2DCEC7222F86ED1CD66678A7F5064BBC62"
+  },
+  {
+    "File": "regression/capture-replay/detector.csv",
+    "Bytes": 32751,
+    "SHA256": "F1EAD71CFD57545AD6CA9CA1A566B3DFCEF31C90CAF48959033E590C9E215731"
+  },
+  {
+    "File": "regression/capture-replay/edges.csv",
+    "Bytes": 26214,
+    "SHA256": "8B1EEA993998FA730F04966074D3A93CACDE8880B6F8130F752813FD7C4393C5"
+  },
+  {
+    "File": "regression/capture-replay/identities.csv",
+    "Bytes": 15210,
+    "SHA256": "91DCA76139A050C6B9DC51D05F375E98B68E78153183035D0F7318EC476FE987"
+  },
+  {
+    "File": "regression/capture-replay/rerun.log",
+    "Bytes": 534,
+    "SHA256": "1E1C548089FFEC2AD0DF57BA777786BD99CB652E5A780A127F4B9D1F32919001"
+  },
+  {
+    "File": "regression/capture-replay/strict-profiles.csv",
+    "Bytes": 12780,
+    "SHA256": "96FE2C5E075CF230F5253E444852289A4FC97ACB14CBF782028B180CBE6BB2A9"
+  },
+  {
+    "File": "regression/paired-controls/beta-object-hashes.csv",
+    "Bytes": 1582,
+    "SHA256": "C1F845DE3AEFCEAA3FD95CB7BCBBB605B2D1093BFE9A3D83A46CCACEC200B947"
+  },
+  {
+    "File": "regression/paired-controls/beta-results.csv",
+    "Bytes": 1588,
+    "SHA256": "418E91328E91F28B49437CA836B2365BE408FF641E37B528CE04A5543BE7873B"
+  },
+  {
+    "File": "regression/paired-controls/build.log",
+    "Bytes": 26,
+    "SHA256": "F54BAF5AD4D2BC87E51EC615D1CC5CE4D5962CCA2E709D00C7CF52363B4FE213"
+  },
+  {
+    "File": "regression/paired-controls/generate_paired_controls.py",
+    "Bytes": 2559,
+    "SHA256": "DD46C560C873773E0B461253F74293F5868C8DB2A16A06487CCCD2E0A501D76A"
+  },
+  {
+    "File": "regression/paired-controls/manifest.json",
+    "Bytes": 27480,
+    "SHA256": "19D2710BEA0E81B9798900C2B82EBADE34685EFC4E606D703B25BF19E05B1A41"
+  },
+  {
+    "File": "regression/paired-controls/paired-control-probe.cpp",
+    "Bytes": 3836,
+    "SHA256": "7A17EE2A9A183933AD1991D5AF4653E565D739D24B9472DC5349D65CF57C6EFF"
+  },
+  {
+    "File": "regression/paired-controls/paired-control-results-20261027-01.txt",
+    "Bytes": 4616,
+    "SHA256": "8E32D294E83186248D72FC60599C5AFFC9E3A3781F71553B2697273B70491598"
+  },
+  {
+    "File": "regression/paired-controls/run.log",
+    "Bytes": 207,
+    "SHA256": "16F6D396040572AFF78C7404B85681281A9BA92E57193BC82F7D5739BE13B759"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/beta-object-hashes.csv",
+    "Bytes": 1582,
+    "SHA256": "C292E743A310F2AB4EA4E05CC351EBCAE3B0D67AD0CBD56AA6DD3DC19A2EAAC0"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/beta-results.csv",
+    "Bytes": 1522,
+    "SHA256": "EF879328D719273C13B8E5EA54E5CD1834805208587C8CA478943850469E4302"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/build.log",
+    "Bytes": 26,
+    "SHA256": "F54BAF5AD4D2BC87E51EC615D1CC5CE4D5962CCA2E709D00C7CF52363B4FE213"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/generate_paired_controls.py",
+    "Bytes": 1712,
+    "SHA256": "5B689B8DB2B741F6219C9580575DF054D698B330AB41BA5C608246921C27F4CE"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/manifest.json",
+    "Bytes": 26265,
+    "SHA256": "87A19B7087F2BB5A3D553DB8960F71498D324CFF000D903FFE9BE6051D2802C0"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/paired-control-probe.cpp",
+    "Bytes": 2718,
+    "SHA256": "75BB2815918AF49A0D8A4794893AA520E2BC5DF92A8C52ACDE20BCC87DAB5BE5"
+  },
+  {
+    "File": "regression/paired-controls-invalid-interleaved-20261027/paired-control-results-20261027-01.txt",
+    "Bytes": 4261,
+    "SHA256": "E6EB96B2C67F59ADCF5EB22A9E1C19A1DEFBA5F9C45E63E1897EFDFBD0CA3E40"
+  },
+  {
+    "File": "subtitle/subtitle-boundary-contract.txt",
+    "Bytes": 7277,
+    "SHA256": "E9C52BBA76A2D205AF069C61906C160682A54BCC2DCE3A390028FB8B6F2EA6B7"
+  }
+]

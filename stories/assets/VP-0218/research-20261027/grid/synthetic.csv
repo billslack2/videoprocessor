@@ -1,0 +1,9 @@
+case,top_found,top_outer,top_inner,top_nominal_y,top_fringe_min,top_fringe_max,top_q0,top_q1,top_q2,top_q3,top_uv0,top_uv1,top_uv2,top_uv3,top_persist,bottom_found,bottom_outer,bottom_inner,bottom_nominal_y,bottom_fringe_min,bottom_fringe_max,bottom_q0,bottom_q1,bottom_q2,bottom_q3,bottom_uv0,bottom_uv1,bottom_uv2,bottom_uv3,bottom_persist,paired_comparisons,grid_samples,grid_rows,grid_cols,crop_candidate_top,crop_candidate_bottom
+gradient_exterior_real_aperture,1,296,304,300,288,312,1,1,1,1,0,0,0,0,3,1,1862,1854,1858,1846,1870,1,1,1,1,0,0,0,0,3,9728,34560,270,128,300,1858
+flat_full_raster,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,34304,34560,270,128,-1,-1
+near_black_low_contrast_picture,1,296,304,300,288,312,1,1,1,1,0,0,0,0,3,1,1862,1854,1858,1846,1870,1,1,1,1,0,0,0,0,3,9728,34560,270,128,300,1858
+thin_bright_line,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,34304,34560,270,128,-1,-1
+internal_divider_only,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,34304,34560,270,128,-1,-1
+gradient_with_subtitle_in_bars,1,296,304,300,288,312,1,1,1,1,0,0,0,0,3,1,1862,1854,1858,1846,1870,1,1,1,1,0,0,0,0,3,9728,34560,270,128,300,1858
+uniform_full_raster,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,34304,34560,270,128,-1,-1
+authored_full_raster_scene_bands_pixel_alias,1,296,304,300,288,312,1,1,1,1,0,0,0,0,3,1,1862,1854,1858,1846,1870,1,1,1,1,0,0,0,0,3,9728,34560,270,128,300,1858

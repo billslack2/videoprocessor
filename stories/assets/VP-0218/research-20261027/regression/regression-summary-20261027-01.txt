@@ -1,0 +1,34 @@
+VP-0218 boundary regression research — 2026-10-27
+
+Scope and provenance
+- Fresh source checkout E:\codex\videoprocessor\vp-0218-boundary-research-20261027 remained at 7394ba42 and clean. No source, tests, runtime configuration, process, or deployment state was changed.
+- Targeted test runs used the existing Release x64 test DLL from E:\codex\videoprocessor\vp-0218-adaptive-ar-20261027\x64\Release\VideoProcessor-Test.dll. SHA256 19F5640B2C1A88BCD2755A5D106AF7B878428D48002CDFC49A059B82F9D1AB0F; recorded candidate provenance is ddf5d666803c29e0bdf7af310963b2695e382bc2 (see ddf5-test-dll-sha256.txt). No solution build was done.
+
+Tested results
+- Focused black-reference, transition, sparse-boundary experiment, lookahead and selected retention/caption controls: 132/132 passed in 1.7388 s. Full log/TRX: focused-boundary-regressions.log and .trx.
+- Visibility, overlays, picture-retention, caption/subtitle separation and subtitle-edge controls: 16/16 passed in 0.6611 s. Full log/TRX: visibility-subtitle-controls.log and .trx.
+- Combined targeted coverage: 148/148 passed. This was intentionally targeted; it is not a full-suite result.
+- OptionalNativeBlackReferenceCaptureReleasesSubmittedScope was not run: it requires a Full-range Decoded DolbyVision422 capture, while the available capture is Limited-range native V210. Running without a capture fixture would silently skip.
+
+Native capture replay
+- Capture: C:\Videoprocessor\vp\logs\analysis-20261026-232451-35800-1; original payloads are native V210. There are 97 distinct accepted-source identities but only four unique pixel payloads (occurring 24,24,24,25 times). The identical payloads do not establish duplicate/cadence-repeat identities (metadata cadenceRepeat is 0); the 97 identities may still be valid temporal observations subject to source-gap and identity rules. They are not 97 independent pixel scenes. Replay/probe output is under capture-replay and boundary-probe.
+- Existing detector replay classified all 97 observations PROVISIONAL, with full-raster trusted fallback (0,0)-(3840,2160); no coherent opposing matte evidence was established. The bounded visible-band retention probe preserved the full raster. This is consistent with current production authority gates and does not validate an inset crop.
+- An experimental independent edge-profile probe found the same spatial edges on all four distinct payloads: top 300/301 and bottom 1856/1857, each with 96-sample quartile support and full-column line verification (top P95 line error 2 px; bottom 0). Its 8-row uncertainty guard yields y=293..1865. A separate frozen local exterior safety test passes the bottom band but rejects the top band: 22 connected residual components of >=16 pixels, largest 136. Therefore the upper exterior fails the frozen safety contract despite a strong edge. A panel geometry around (0,302)-(3840,1858) has aspect about 2.468; this is only a measured spatial proposal, not a semantic decision that the raster should be cropped.
+- Corrected paired beta/profile control comparison: the profile route and unchanged beta both accept the broad smooth +8 Y synthetic control; beta classifies it BAR_CROP_TRUSTED and existing retention marks supplied (0,130)-(1280,590) safe. This is an existing synthetic-control false-positive in beta, not a new regression attributable to the exploratory profile. Fine-caption, colored-object, and noise cases remain PROVISIONAL and are rejected for retaining the supplied inset bounds. The neutral gradient and “authored ceiling” controls are pixel-identical. Full corrected results: E:\codex\diagnostics\vp-0218-boundary-research-20261027\regression\paired-controls\paired-control-results-20261027-01.txt. The first comparison used invalid row-interleaved P210 serialization and is quarantined under paired-controls-invalid-interleaved-20261027; do not use it. Corrected Python and C++ checks establish exact Y/U/V equality for every sample before detector evaluation. Original profile protocol remains under E:\codex\diagnostics\vp-0218-boundary-research-20261027\profile.
+
+Regression contracts and hazards for any new boundary route
+- Keep the established negatives: sparse full-height moving stars cannot acquire an inset crop; internal dividers are not outer crop edges; persistent full-width overlays do not change program aspect; bright logos without acquisition geometry do not establish crop authority; captions plus sparse features cannot certify picture expansion; gradients/mismatched opposing mattes remain uncertain; visible/colored excluded-band content vetoes retention; exact queued lookahead must revalidate the current frame and must not borrow motion across cuts, gaps, stale context, or stationary edges. These tests passed in the targeted runs above.
+- Subtitle-edge evidence is separate from picture geometry. Existing tests intentionally allow independent/asymmetric subtitle edge evidence while requiring the shared picture authority to preserve captions through ambiguous bars. Do not let a boundary route inherit subtitle ownership or translate subtitle evidence into crop authority.
+- Relevant live historical risks are documented in VP-0136 (transient same-axis inward publication; blanket dwell caused delayed genuine changes and was reverted) and VP-0164 (exact-identity candidate-buffer path for genuine transitions). Preserve both behaviors when evaluating a route.
+- The four unique capture payloads, moving artwork, text/objects, smooth low-contrast objects, gradient/noise, internal bars, captions and semantic-label-identical pixels are useful calibration and held-out controls; generated synthetic fixtures are not held-out real-world data. A positive edge nomination should remain non-authoritative until exact-frame support, current discarded-band visibility checks, identity/gap rules and existing typed crop-admission authority all pass. The real capture currently fails the proposed top-band safety test and must not be used as a positive crop-authority example.
+
+Artifacts
+- Replay and boundary probe: E:\codex\diagnostics\vp-0218-boundary-research-20261027\regression\capture-replay\ and boundary-probe\
+- Tests: focused-boundary-regressions.log/.trx; visibility-subtitle-controls.log/.trx
+- Existing harness hashes: 7394-harness-artifact-hashes.csv
+- Existing DLL provenance: ddf5-test-dll-sha256.txt
+
+
+- Paired synthetic beta/profile controls: paired-controls\paired-control-results-20261027-01.txt, paired-controls\beta-results.csv, paired-controls\manifest.json.
+
+

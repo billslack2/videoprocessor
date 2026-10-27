@@ -1,0 +1,4 @@
+frame,sequence,hypothesis_top,hypothesis_bottom,symmetric_class,symmetric_top,symmetric_bottom,hypothetical_safe,hypothetical_retainable,outward_visible,outward_top,outward_bottom,retention_reason
+1,108881,302,1858,PROVISIONAL,0,2160,0,0,1,0,1858,"bounded visible excluded-band content requires outward fit"
+49,108941,302,1858,PROVISIONAL,0,2160,0,0,1,0,1858,"bounded visible excluded-band content requires outward fit"
+97,108992,302,1858,PROVISIONAL,0,2160,0,0,1,0,1858,"bounded visible excluded-band content requires outward fit"

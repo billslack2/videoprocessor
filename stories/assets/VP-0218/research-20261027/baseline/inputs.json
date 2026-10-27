@@ -1,0 +1,14 @@
+{
+  "sourceCommit": "7394ba420999a8fa708718ee4ce4d87e7459369f",
+  "purpose": "Unmodified beta component baseline. Local grid is diagnostic and cannot authorize crop. Timing is concurrent exploratory, not runtime benchmark.",
+  "sourceFiles": {
+    "ActivePictureEvidence": "1f40319f6a3a03a975b791df5353978f816d8472c0c94ab2642325c1994a9196",
+    "AnalysisLumaSource": "4baf6b96de85d5d1cd0a873e6ad535b402b342df2fdd11fe8c519b3b4adcc90e",
+    "ActivePictureDecisionTimeline": "d78f362755aaf2b9f470428cce787bad5ae0bb89cd19fbc84b9503de94425655",
+    "ActivePictureTransitionModel": "07346fb7ff1f92ff9677dac62f790b25203515210be45f317216d83a7e2c1c40",
+    "SubtitleBoxDetector": "1ca9e2695b1095b03d9161bf7f679e4bc118e2195e26075dc31e974cd1383e73",
+    "LocalBoundaryDiagnostics": "9b17031718fd0c4feb9dc5a768bde779ddfd1b5a1d5c08a16f69bc365ac9aa5c",
+    "LocalBoundaryRefinement": "d34b9b4d3a51d09ce9fb21f9544a6410048f880de66ceef8bd119acf40e4a8c8"
+  },
+  "loaderSha256": "e1949740970835d77ea2abbb9326e931c38c5cc2a7aeb75391d6d42ffbddd8de"
+}

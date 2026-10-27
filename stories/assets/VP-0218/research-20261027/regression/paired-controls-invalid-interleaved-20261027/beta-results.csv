@@ -1,0 +1,7 @@
+kind,available,class,proposed_left,proposed_top,proposed_right,proposed_bottom,proposed_ar,trusted_axes,reason,global_nearblack,global_cutoff,ar_distributed_dark,retention_analysis_valid,retention_presentation_valid,retention_pixel_safe,retention_can_retain,retention_outward_visible,retention_outward_top,retention_outward_bottom,retention_reason
+"gradient_matte",1,3,0,258,1280,720,2.77056277056,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"
+"authored_ceiling_identical_pixels",1,3,0,258,1280,720,2.77056277056,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"
+"fine_caption",1,3,0,154,1280,720,2.26148409894,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"
+"colored_object",1,3,0,108,1280,720,2.09150326797,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"
+"broad_low_contrast",1,3,0,258,1280,720,2.77056277056,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"
+"gradient_noise",1,3,0,258,1280,720,2.77056277056,0,"candidate lacks coherent opposing black-bar evidence",0,96,0,1,1,0,0,1,0,720,"bounded visible excluded-band content requires outward fit"

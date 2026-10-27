@@ -1,0 +1,280 @@
+{
+  "source_capture_payload_count": 97,
+  "unique_payload_count": 4,
+  "candidate_bounds": {
+    "top": 293,
+    "bottom_exclusive": 1865
+  },
+  "operation": "Exterior-only 17x17 median residual +64, clipped [0,1023]; interior/8-row fringe/chroma preserved. Copies are counterfactual, not crop authority.",
+  "dimensions": [
+    3840,
+    2160
+  ],
+  "p210": "full Y plane then interleaved UV; high 10 bits in little-endian lanes",
+  "records": [
+    {
+      "source_file": "frame-000001.bin",
+      "source_sha256": "F9912A359ADD4494F8F7CF06AEC2D7D4097E3140BFA0D321F65BA8ED7C72C214",
+      "counterfactual_file": "native_frame-000001.p210",
+      "counterfactual_sha256": "6315e01dc4d282c71d4ddb032c6236b38e882df8b0575d74572ddfc7c885e84f",
+      "expected_file": "native_frame-000001.expected",
+      "expected_sha256": "3315821a204858126197c58eb251d8a28125a81fb589feb0bb83ce6224693324",
+      "uv_sha256_before_after_identical": "dfa85b79b8847f4cbc77c17c62114bf361be3b0e653537f23008bfb3dcd33fe4",
+      "clipped_low_count": 0,
+      "clipped_high_count": 0,
+      "profiles": [
+        {
+          "side": "top",
+          "shape": [
+            293,
+            3840
+          ],
+          "residual_percentiles": [
+            -20.0,
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            160.0
+          ],
+          "normalized_y_percentiles": [
+            44.0,
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            224.0
+          ]
+        },
+        {
+          "side": "bottom",
+          "shape": [
+            295,
+            3840
+          ],
+          "residual_percentiles": [
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            4.0,
+            8.0
+          ],
+          "normalized_y_percentiles": [
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            68.0,
+            72.0
+          ]
+        }
+      ],
+      "python_p210_roundtrip": "all Y/U/V exact",
+      "changed_y_pixels": 1169305,
+      "changed_uv_samples": 0
+    },
+    {
+      "source_file": "frame-000002.bin",
+      "source_sha256": "86D67601B279EFA1108DB3B3D33E2A96E4BEEACCAEAF4EAAAB0E7A693E50C5C5",
+      "counterfactual_file": "native_frame-000002.p210",
+      "counterfactual_sha256": "be4476e77d24424ab48f9317b9590e452f14f6e1a45439d93be7159f4fc82194",
+      "expected_file": "native_frame-000002.expected",
+      "expected_sha256": "36856927e433cb3e22b174abaff88900a36a423700e9c23c3ae28b038a2c81d5",
+      "uv_sha256_before_after_identical": "10d41a1658244084077f8fd71505abd2bb15922cfbabd26b2919699b17290ac4",
+      "clipped_low_count": 0,
+      "clipped_high_count": 0,
+      "profiles": [
+        {
+          "side": "top",
+          "shape": [
+            293,
+            3840
+          ],
+          "residual_percentiles": [
+            -20.0,
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            156.0
+          ],
+          "normalized_y_percentiles": [
+            44.0,
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            220.0
+          ]
+        },
+        {
+          "side": "bottom",
+          "shape": [
+            295,
+            3840
+          ],
+          "residual_percentiles": [
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            4.0,
+            8.0
+          ],
+          "normalized_y_percentiles": [
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            68.0,
+            72.0
+          ]
+        }
+      ],
+      "python_p210_roundtrip": "all Y/U/V exact",
+      "changed_y_pixels": 1169896,
+      "changed_uv_samples": 0
+    },
+    {
+      "source_file": "frame-000003.bin",
+      "source_sha256": "CD3F88ED4FC6630743685049123B7FB10E9F2A2838E23732B2EF56B42C8F10B1",
+      "counterfactual_file": "native_frame-000003.p210",
+      "counterfactual_sha256": "5ba4742db5f7c065a88d0595a31f8c4b54c69cd359fd5d5a13622bfcb00aa93f",
+      "expected_file": "native_frame-000003.expected",
+      "expected_sha256": "1ba2ae4b2137a3b582ced9fd5c7b7208300ce67ec16072390f445b7e61346d35",
+      "uv_sha256_before_after_identical": "2a0238d04da53d755bb272c263385d75c8bb1cd5d5e10d847b0ed58304099f96",
+      "clipped_low_count": 0,
+      "clipped_high_count": 0,
+      "profiles": [
+        {
+          "side": "top",
+          "shape": [
+            293,
+            3840
+          ],
+          "residual_percentiles": [
+            -20.0,
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            156.0
+          ],
+          "normalized_y_percentiles": [
+            44.0,
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            220.0
+          ]
+        },
+        {
+          "side": "bottom",
+          "shape": [
+            295,
+            3840
+          ],
+          "residual_percentiles": [
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            4.0,
+            8.0
+          ],
+          "normalized_y_percentiles": [
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            68.0,
+            72.0
+          ]
+        }
+      ],
+      "python_p210_roundtrip": "all Y/U/V exact",
+      "changed_y_pixels": 1170005,
+      "changed_uv_samples": 0
+    },
+    {
+      "source_file": "frame-000004.bin",
+      "source_sha256": "FF5A9B6A6F03513EE64DD0B5BD80DCEA0086764068B304D13D5BD1BC228B9EC2",
+      "counterfactual_file": "native_frame-000004.p210",
+      "counterfactual_sha256": "517300957a4b6b1e47df1be104c6ff1e7649c2d7298494237c39a4e1e9a637f5",
+      "expected_file": "native_frame-000004.expected",
+      "expected_sha256": "15b10c41728389247576945a98407922b500b0434b48821dc1f7cc7cb29a09d4",
+      "uv_sha256_before_after_identical": "0b287897f766f8ff5c27befef2004f0c1ed8544ec5a91221ec907db71c858e39",
+      "clipped_low_count": 0,
+      "clipped_high_count": 0,
+      "profiles": [
+        {
+          "side": "top",
+          "shape": [
+            293,
+            3840
+          ],
+          "residual_percentiles": [
+            -20.0,
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            160.0
+          ],
+          "normalized_y_percentiles": [
+            44.0,
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            224.0
+          ]
+        },
+        {
+          "side": "bottom",
+          "shape": [
+            295,
+            3840
+          ],
+          "residual_percentiles": [
+            -4.0,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            4.0,
+            8.0
+          ],
+          "normalized_y_percentiles": [
+            60.0,
+            64.0,
+            64.0,
+            64.0,
+            68.0,
+            68.0,
+            72.0
+          ]
+        }
+      ],
+      "python_p210_roundtrip": "all Y/U/V exact",
+      "changed_y_pixels": 1169554,
+      "changed_uv_samples": 0
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+VP-0218 boundary-led profile experiment protocol
+
+Question: Can a fixed boundary-and-exterior test use the captured ad's independently visible rectangle even though the prior coarse piecewise-linear depth fit rejects its upper band?
+
+Inputs: original first four native capture payloads, reducing duplicate SHA-256 payloads to one spatial example each; deterministic synthetic 1280x720 controls. No active-raster/screen aspect or opposing-edge symmetry is used. Each edge is scanned independently from its physical raster edge toward the center over its half-frame.
+
+Frozen edge nomination: 96 equally spaced x samples. At each adjacent-row pair, require positive inside-minus-outside Y >=20 ten-bit codes and max(|dU|,|dV|)>=16 at >=70% of samples in each of four x quartiles. First qualifying pair from each physical edge wins. Full-column line verification searches only +/-4 rows around that nominated pair; require >=95% of columns' strongest supported edge within +/-2 rows of the pair. Preserve an 8-row uncertainty fringe on each side.
+
+Frozen exterior test after removing the 8-row fringe from the proposed excluded band: neutral chroma fraction >=0.98 where |U-512|<=16 and |V-512|<=16; 17x17 median-background Y residual p95<=4, p99<=12 ten-bit codes; no 4-connected component with residual>=12 and area>=16 pixels; 32x32 tile-median nearest-neighbor Y step p95<=8 and max<=24. Chroma residual to 17x17 median: p99<=8. These are experimental cutoffs set before loading pixels, not production values.
+
+Control generation frozen before evaluation: neutral gradient matte; identical pixel copy named authored ceiling (semantic labels differ only); fine bright caption bars in exterior; colored exterior rectangle; broad smooth low-contrast neutral bump (+8 codes); and neutral gradient plus Gaussian pixel noise sigma=4 (fixed PRNG seed). Synthetic central picture has a saturated red rectangle and independent top/bottom boundary.
+
+Reporting: keep edge nomination, line certainty, every component/statistic, route result, and all failures. Do not relax limits if the ad fails. A pass means only this fixed prototype accepted the measured pixels; it is not crop authority or real-world validation. The 97 native metadata identities reduce to unique-payload count and repeat counts; repeats are not counted as independent scenes.

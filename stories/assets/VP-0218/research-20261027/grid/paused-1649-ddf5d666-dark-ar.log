@@ -1,0 +1,12 @@
+Microsoft (R) Test Execution Command Line Tool Version 16.11.0
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Passed OptionalCapturedDarkArFrameKeepsRawNearBlackAndFindsDistributedPicture [26 ms]
+Results File: E:\codex\diagnostics\vp-0218-boundary-research-20261027\grid\paused-1649-ddf5d666-dark-ar.trx
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.0528 Seconds

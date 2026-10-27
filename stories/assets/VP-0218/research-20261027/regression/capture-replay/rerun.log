@@ -1,0 +1,4 @@
+1 seq=108881 class=PROVISIONAL proposed=0,0-3840,1858 trusted=0,0-3840,2160 floor=64 cutoff=88 reason=candidate lacks coherent opposing black-bar evidence
+49 seq=108941 class=PROVISIONAL proposed=0,0-3840,1858 trusted=0,0-3840,2160 floor=64 cutoff=88 reason=candidate lacks coherent opposing black-bar evidence
+97 seq=108992 class=PROVISIONAL proposed=0,0-3840,1858 trusted=0,0-3840,2160 floor=64 cutoff=88 reason=candidate lacks coherent opposing black-bar evidence
+Frames measured=97; no transition model or history synthesized

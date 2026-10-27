@@ -1,0 +1,7 @@
+frame,sequence,edge,measured,bar_pixels,trusted,black_fraction,floor,p90,dispersion,texture,neutral_fraction,inner_contrast,continuity,confidence,matte_state,matte_y,matte_u,matte_v,support_q0,support_q1,support_q2,support_q3
+1,108881,hypothetical_excluded_top,1,302,0,0.503472222222,64,180,108,6.89361702128,1,190.805555556,0,0.651041666667,0,0,512,512,63,63,7,0
+1,108881,hypothetical_excluded_bottom,1,302,1,1,64,64,0,0.326241134752,1,128,1,1,0,0,512,512,0,0,0,0
+49,108941,hypothetical_excluded_top,1,302,0,0.503472222222,64,180,108,6.89361702128,1,190.805555556,0,0.651041666667,0,0,512,512,63,63,7,0
+49,108941,hypothetical_excluded_bottom,1,302,1,1,64,64,0,0.326241134752,1,128,1,1,0,0,512,512,0,0,0,0
+97,108992,hypothetical_excluded_top,1,302,0,0.503472222222,64,180,108,6.89361702128,1,194.805555556,0,0.651041666667,0,0,512,512,63,63,7,0
+97,108992,hypothetical_excluded_bottom,1,302,1,1,64,64,0,0.297872340426,1,128.097222222,1,1,0,0,512,512,0,0,0,0
