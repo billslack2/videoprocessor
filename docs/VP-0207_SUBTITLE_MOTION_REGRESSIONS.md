@@ -1,0 +1,226 @@
+# Current-beta integration, 27 October 2026
+
+This test build ports complete progressive composition (082a4aab), transactional
+same-source cue recovery (592d890b), and the necessary capture/recovery/fallback
+contracts. It retains the deployed rounded row masks, current detector and AR
+analysis scheduling. The broader AR/upload normalization from 25f14e2c and the
+older native cue inspector are intentionally not included.
+
+SourcePreparationReceipt gates subtitle preparation only in this port. Late
+replacement requires a complete current worker observation with matching glyph
+and panel geometry. Current beta glyph-only continuation cannot replace a packet.
+ReconstructionMotionTests uses current native detector/admission APIs and adds a
+rounded UHD lip pixel test with the actual Mitchell-clamp mixer, 23.976-to-59.951
+cadence, repeated outputs, fixed crop, float and extended backgrounds. Its negative
+control renders the same unremoved lip before checking repaired output pixels.
+
+The historical qualification notes below describe the upstream work; references
+to SourceOutputNormalizationTests and the older complete native inspector do not
+claim those broader changes are present in this port.
+
+# Subtitle and Smooth Motion regression checks
+
+Run both shipped libplacebo dependencies after changing temporal packet lifetime,
+subtitle preparation, or source processing. The normal native test target uses
+libplacebo 360; it does not exercise the deployed beta renderer's 377 code.
+
+From PowerShell:
+
+```powershell
+.\tools\test_subtitle_motion_renderers.ps1 `
+  -MagewellSdkRoot 'E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3' `
+  -OutputDirectory 'E:\codex\diagnostics\new-motion-regression-run'
+```
+
+The script builds x64 Release tests, runs the motion/subtitle GPU classes serially
+against standard and beta, and writes build logs, TRX and binary/dependency hashes.
+Beta uses distinct objects and output files under `x64/Release/tests-beta`.
+`RendererDependencyTests` verifies the loaded library matches the chosen headers.
+Native CPU/fixture and host-stack qualification are additional checks; this script
+is not a deployment or playback-acceptance command.
+
+## Recovery contract
+
+A forward source gap or explicit backlog recovery must discard every queued
+picture, subtitle layer, processed result, callback and selected-source receipt.
+It must also flush HDR peak/mixing evidence and clear published HDR status.
+Compiled programs may survive on the same GPU. Full teardown, GPU replacement,
+policy changes, nonmonotonic timestamps and explicit discontinuity still release
+the processing renderer.
+
+Destroying the processing renderer on every backlog recovery caused repeated
+HDR program compilation: the resulting stalls triggered more drops and another
+renderer destruction. Structural GPU tests assert renderer creation counts,
+fresh peak state, current-source pixels, repeat reuse and hard-reset behavior.
+They avoid machine-specific timing thresholds. Live `VP source/output processing`
+records include renderer creation and history-flush counts to diagnose recurrence.
+
+Same-call provisional subtitle detection may be reused only after unchanged
+current-pixel plane proof and when final scan coordinates exactly match. It must
+preserve all glyph/card masks and configured companion coverage. The optional
+native fixture regression compares the reused result with an independent full
+scan and checks exhaustion and changed glyph pixels. Fixture pixels stay local.
+
+Cleanup padding can contain ordinary picture pixels outside the measured card.
+A change there is not by itself proof that the caption disappeared. Only the
+full current inspection may defer that preliminary mismatch; it must then prove
+complete configured coverage and exactly unchanged current glyph, measured-card,
+per-line and cleanup geometry. Partial inspection and changes inside the card
+remain strict. No old cleanup lease is renewed by incomplete work.
+
+Controlled GPU tests do not establish physical 23.976-to-59.95 Hz playback or HDR
+display acceptance. Qualify both uninterrupted playback and recovery from drops,
+including Reconstruction, transparent glyphs, source cue changes and no-cue
+frames, before marking the live regression resolved.
+
+## Bounded subtitle reuse during Smooth Motion
+
+When a source packet briefly lacks a prepared subtitle, active Smooth Motion may
+select one earlier, successfully processed presentation packet for at most two
+source intervals. Its cleaned picture, subtitle layer, replacement background,
+geometry and HDR state remain together. The fallback does not apply old cleanup
+to new source pixels and does not run an additional subtitle scan.
+
+This is an intentional visual tradeoff: a brief picture/subtitle repeat or delayed
+cue disappearance is preferable to an isolated subtitle flash. The age limit is
+anchored to the original source sequence and timestamp; inserted output frames
+cannot renew it. A new prepared cue wins immediately. Incompatible processing,
+viewport or geometry, discontinuities, source gaps and renderer resets prevent
+reuse. Smooth Motion Off and automatic passthrough retain their existing behavior.
+
+GPU regressions must cover both missing source frames and many inserted outputs,
+expiry on the third missing source, immediate new-cue selection, cue-end expiry,
+immutable background/layer pairing, reset/context rejection and ordinary mode.
+Live diagnostics must distinguish these intentional presentation repeats from
+fresh subtitle acquisition or current cleanup authority.
+## Source preparation and output reuse
+
+Each immutable source has one preparation receipt shared by upload, early picture
+analysis and subtitle preparation. Repeated output draws may reuse its prepared
+pixels and decisions only while source ownership, timestamps, format, policy,
+viewport, output and GPU identity still match. New sources and failed attempts
+invalidate the receipt before mutable state or textures are prepared.
+
+Inserted Smooth Motion outputs may reuse a completed attempt, including an
+inconclusive result, without treating it as fresh proof. A queued repeat of the
+same source may skip picture and subtitle analysis only when both were complete;
+otherwise an exact late worker result can still recover the source. An AR-only
+retry preserves an already conclusive progressive subtitle packet and its frozen
+source mapping, without another preparation pass. Incomplete subtitle results
+remain retryable. Upload reuse is independent. Reuse preserves the original
+completeness and source time.
+Results that depend on an older source's timed hold remain retryable; expiration
+forces the existing current bar inspection, without renewing the old detection.
+Scene and ambiguity holds also remain eligible for their normal expiry checks.
+
+Bar-content inspection advances every third eligible source identity, not every
+third display draw. Forced inspection still handles current changed bar content.
+Output acquisition, presentation pose, OSD, HDR publication and submission remain
+per-output. This does not change libplacebo tone mapping or the existing bounded
+subtitle packet fallback.
+
+`SourceOutputNormalizationTests` exercises actual native AR/subtitle detection,
+current-cue preparation, placement and backing cleanup through the shared receipt
+at controlled 24/48/60/120 Hz output schedules. It also checks late incomplete
+recovery, failed preparation, source/context changes and navigation content.
+These CPU cadence checks complement the dual-library GPU tests above; neither is
+physical mismatched-refresh playback acceptance.
+
+## Transfer and chroma controls
+
+Exercise opaque HLG preparation separately from transparent subtitle layers.
+Every full-raster output pixel must be finite, and opaque video must not inherit
+stored texture alpha. Real source alpha retains its normal composition policy.
+Keep explicit phase/transfer diagnostics on shader failures; optimized release
+line mappings can point at the assertion after the failing render call.
+
+A direct P010 reference and the prepared/temporal paths must use the same chroma
+scalers. A null plane scaler inherits the main scaler; fast and default rendering
+presets therefore do not express the same policy. Check explicit bilinear and
+Lanczos policies through all three paths, both field orders and each deinterlacer,
+without widening pixel tolerances to accommodate a mismatched reference.
+
+
+## Complete reconstructed pictures during progressive Smooth Motion
+
+Progressive Smooth Motion reconstructs one complete source picture with the same
+All composition used without Smooth Motion, then passes the owned pictures to
+libplacebo's frame mixer. Reconstructed glyphs and their replacement background
+can blend with the picture. This is an accepted visual tradeoff; it avoids a
+separate full-raster subtitle-layer pass and VP's extra processed-picture mixing
+and encoding stages. Source tone mapping, HDR peak detection and dithering retain
+the configured parameters. The measured HDR detector state belongs to the render
+pass, which can include a blend; it is not proof of a new source measurement.
+
+The progressive complete-picture path uses the configured spatial replacement.
+It skips the later temporal-donor copy and unused donor capture: copying a donor
+onto an already reconstructed picture could erase the relocated glyphs. Native
+interlaced composition retains its separate field preparation and layer path.
+Smooth Motion Off retains its existing processing.
+
+Completed-picture receipt, source ownership, presentation context and successful
+render are required for bounded subtitle fallback. A failed capture, failed render
+or repeated output cannot create or renew that receipt. No-caption sources do not
+claim a subtitle. The existing two-source-interval limit, new-cue selection,
+geometry/context rejection and source-gap invalidation still apply. Reusing a
+complete presentation never grants cleanup authority over new source pixels.
+
+Qualification must include actual UHD native detection, placement and GPU
+preparation through the production helper before temporal capture and rendering.
+Exercise Reconstruction with surround fill, blur, HDR, a glyph-free backing lip,
+cue changes, empty cues, repeated outputs, source gaps and context changes on both
+shipped graphics dependencies. A small already-prepared texture is insufficient
+coverage for this path. Controlled paced timings must compare the alternatives
+under the same running-process and GPU conditions. Record cold compilation
+separately from warm work, and do not present CPU wall time as shader execution.
+
+## OSD processing costs
+
+The statistics OSD separates actual subtitle-preparation calls from new-source and
+reused-output render calls. Each row shows average/maximum milliseconds and its
+own sample count in a completed two-second window. These are CPU submission and
+driver/GPU wait times, excluding Present/VSync; they are not GPU timestamps. New
+and reused draw costs include their active analysis, upload and preparation work.
+Subtitle preparation is a subset of that work, so it must not be added again. A
+reused output must not dilute the mean preparation cost. No calls and unavailable
+measurements are shown explicitly. Mode/context changes invalidate prior figures,
+and old publications expire.
+
+The GPU frame row retains its independent ten-second asynchronous measurement
+window and shows matched sample count versus submitted output count. Sampling
+can miss subtitle-preparation outputs; low coverage or no samples cannot establish
+that preparation is free. Never sum CPU/wait rows with GPU frame time. Telemetry
+must not introduce a GPU finish, blocking query or render-mutex wait on the UI.
+
+## Source events, inserted outputs and late recovery
+
+An inserted display output is not a new source observation. Native AR, bar-content
+inspection, scene detection and subtitle acquisition use the original owned
+source. Extra display outputs consume prepared pictures and their frozen source
+geometry. Output pose, target validation, OSD and render/HDR publication remain
+per-output because they describe the actual displayed result.
+
+A discontinuity is an event on one identified source. Its first preparation must
+invalidate preceding source state; once that preparation succeeds, the exact
+same owned source can be reused even though its immutable discontinuity flag is
+still set. A changed identity, reset epoch, backing owner or processing contract
+must still invalidate reuse. A failed attempt cannot publish a reusable receipt.
+
+An incomplete source may receive late exact native evidence on a genuine queued
+repeat. Recovery is complete only when the owned GPU picture, subtitle/background
+pixels and presentation metadata agree. A successful duplicate capture that
+retains the old no-cue picture is not a successful recovery. Ordinary inserted
+outputs must not attempt this revision or reconsider subtitle absence.
+
+The whole-picture fallback means briefly repeating a previously completed source
+picture, with its subtitle and replacement background together. It does not mean
+full-raster geometry or zooming out. Its original two-source-interval bound and
+context checks remain; inserted outputs cannot renew it or authorize old cleanup
+on new pixels. Physical mismatched-refresh playback remains a separate acceptance
+step after controlled CPU and GPU regressions.
+
+The late same-source recovery regression is a transactional consistency test.
+Ordinary active Smooth Motion does not normally enqueue the host's true cadence
+correction repeats, so reproducing that supported retry contract does not prove
+it caused steady-playback subtitle flashing. Discontinuity-source inserted-output
+reuse is tested independently. Retain this distinction in deployment receipts.

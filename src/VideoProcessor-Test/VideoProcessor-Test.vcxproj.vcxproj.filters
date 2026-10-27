@@ -201,4 +201,6 @@
   <ItemGroup>
     <ClCompile Include="PreparedOutwardWindowTests.cpp" />
   </ItemGroup>
+  <ItemGroup><ClCompile Include="ReconstructionMotionTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup><ClCompile Include="ProcessingPerformanceWindowTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
 </Project>

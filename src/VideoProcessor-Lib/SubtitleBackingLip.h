@@ -122,7 +122,7 @@ struct CurrentSubtitleBackingLipProof
     int width=0,height=0,pictureTop=0,pictureBottom=0;
     bool fromTopBar=false;
     SubtitleBoxRect measured,cleanup,blackInterior;
-    size_t samples=0,cornerPixels=0;
+    size_t samples=0,cornerPixels=0,lumaFringePixels=0;
     unsigned closureSamples=0,closureDark=0,closureLongestDarkRun=0;
     bool attachmentSeamClipped=false;
     bool compositionEdgeClipped=false;
@@ -295,16 +295,29 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         current.pictureBottom<source.height && current.barEvidence.bottom==current.pictureBottom &&
             !cueSideGlyphLocal && !current.barEvidence.captionBackedBottom && !current.barEvidence.bottomRevalidatedAtReference &&
             !current.barEvidence.bottomRevalidatedNearby);
+    const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
+        current,allTop,source,policy,continuity);
+    // A current independently measured edge can vary by one native analysis
+    // step while composition clips to the exact same remembered edge. Keep
+    // revalidating that finite outline instead of cold-acquiring it each frame.
+    // Caption metadata without current boundary proof retains the three-row limit.
+    const int64_t candidateEdgeDelta=boundedOutline?(allTop?
+        std::abs(int64_t(current.pictureTop)-candidate->pictureTop):
+        std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)):0;
+    const bool stableCompositionEdge=boundedOutline && (cueSideCurrent || currentCueSideBoundary) && composition &&
+        composition->valid && composition->fromTopBar==allTop &&
+        composition->pictureTop>=0 && composition->pictureBottom<=source.height &&
+        composition->pictureTop<composition->pictureBottom &&
+        candidateEdgeDelta<=(std::max)(3,edgeStep) && (allTop?
+            (std::max)(current.pictureTop,composition->pictureTop)==candidate->pictureTop:
+            (std::min)(current.pictureBottom,composition->pictureBottom)==candidate->pictureBottom);
     const bool candidateCueSideWithinTolerance=boundedOutline && candidate->fromTopBar==allTop &&
-        (allTop?std::abs(int64_t(current.pictureTop)-candidate->pictureTop)<=3:
-            std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)<=3);
+        (candidateEdgeDelta<=3 || stableCompositionEdge);
     // A caption-backed cue-side edge can revalidate an existing contour only
     // when it moved outward by at most three rows. It can never acquire a lip.
     const bool captionEdgeOutward=candidateCueSideWithinTolerance && !cueSideGlyphLocal && (allTop?
         current.barEvidence.captionBackedTop && current.pictureTop<candidate->pictureTop:
         current.barEvidence.captionBackedBottom && current.pictureBottom>candidate->pictureBottom);
-    const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
-        current,allTop,source,policy,continuity);
     // A current cue-side boundary scan can justify a fresh strict contour scan
     // in either shared or inspection-only context, but cold acquisition needs a
     // fresh strong cue. Held local-glyph continuity can only revalidate a
@@ -433,9 +446,12 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(candidate->bodyRowCount!=unsigned(candidate->measured.bottom-candidate->measured.top))
             return reject("lip-outline-invalid");
         // Native card antialiasing changes with the scene immediately outside
-        // its rounded edge. Permit only a two-pixel collar INSIDE the already
-        // measured mask; the interior stays exhaustively black/neutral.
+        // its rounded edge. Bright content retains the two-pixel limit. A faint
+        // luma fringe may extend to the existing six-pixel chroma collar, but
+        // only contiguous unsafe endpoints are trimmed below. No fringe pixel
+        // is erased, and disconnected/interior changes still invalidate proof.
         const int collar=(std::min)(2,(std::max)(1,glyphHeight/8));
+        constexpr int faintFringeWidth=6, faintFringeLuma=4;
         for(unsigned row=0;row<candidate->bodyRowCount;++row) {
             const auto& r=candidate->bodyRows[row];
             if(!inRaster(r) || r.bottom!=r.top+1 || r.left<3 || r.right>source.width-3 ||
@@ -453,8 +469,12 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
                 if(!sample(x,r.top,value))return reject(exhausted?"lip-work-budget":"lip-native-sample-unavailable");
                 if(value.luma>darkLimit) {
                     if(x>=r.left+collar && x<r.right-collar) {
-                        mismatch("outline-interior-luma",x,r.top,value,r,expectedCore);
-                        return reject("lip-outline-body-changed");
+                        if(value.luma>darkLimit+faintFringeLuma ||
+                            (x>=r.left+faintFringeWidth && x<r.right-faintFringeWidth)) {
+                            mismatch("outline-interior-luma",x,r.top,value,r,expectedCore);
+                            return reject("lip-outline-body-changed");
+                        }
+                        ++result.lumaFringePixels;
                     }
                     ++edgePixels;
                 }

@@ -98,6 +98,19 @@ struct RendererRenderLoadStat
 };
 
 
+// A completed two-second CPU submission/wait window. Counts are independent:
+// subtitle preparation calls, new-source draws, and inserted/cadence-repeat draws.
+// Draws include active analysis/upload/preparation/render submission and driver
+// waiting. Preparation is a subset of draw cost, not an additional cost to sum.
+// None of these CPU wall times is a GPU timestamp or a Present/VSync duration.
+struct RendererProcessingPerformance
+{
+    bool available = false;
+    uint64_t windowMilliseconds = 0;
+    uint64_t preparationCalls = 0, sourceDraws = 0, reusedDraws = 0;
+    RendererRenderLoadStat preparationCpu, sourceDrawCpu, reusedDrawCpu;
+};
+
 // How much of each submitted source-frame period the renderer is consuming.
 //
 // The three costs are NOT interchangeable and must never be summed:
@@ -122,6 +135,7 @@ struct RendererRenderLoad
 	RendererRenderLoadStat gpu;
 	RendererRenderLoadStat render;
 	RendererRenderLoadStat swap;
+    RendererProcessingPerformance processing;
 	bool gpuValid = false;      // false until GPU timer queries resolve
 	size_t gpuFrames = 0;       // exact matched GPU samples in the window
 	// GPU timestamps resolve asynchronously. These fields prove which source

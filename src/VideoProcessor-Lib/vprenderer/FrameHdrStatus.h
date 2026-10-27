@@ -7,8 +7,10 @@
 #include <algorithm>
 
 // Source metadata and detector values are captured together at the source pass.
-// Temporal output passes must reuse this value, never query the shared renderer
-// after a later filter neighbour has overwritten its detector history.
+// Split temporal output reuses that per-source value instead of attributing a
+// later neighbour's detector history to it. Ordinary complete-frame mixing may
+// capture its output detector after rendering, explicitly tagged detectedFromMix;
+// authored metadata and source identity still belong to the selected packet.
 namespace FrameHdrStatus
 {
     inline bool FiniteNits(double value) { return std::isfinite(value) && value >= 0.0; }
@@ -61,6 +63,7 @@ namespace FrameHdrStatus
     {
         source.peakDetectionEnabled = source.hdr && enabled;
         source.detectedValid = false;
+        source.detectedFromMix = false;
         source.detectedPeakNits = source.detectedAvgNits = 0.0;
         source.detectedLinearAvgNits = source.detectedSceneMaxNits = 0.0;
         if (source.peakDetectionEnabled && detected &&

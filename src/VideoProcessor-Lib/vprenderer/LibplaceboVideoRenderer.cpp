@@ -4,6 +4,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
+#include "ProcessingPerformanceWindow.h"
 #include "LookaheadPerformanceWindow.h"
 #include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
@@ -64,7 +65,8 @@
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/ActivePictureMeasurementCache.h>
 #include <SubtitleBoxDetector.h>
-#include <SubtitleCueContinuation.h>
+#include <SubtitleCurrentCue.h>
+#include <vprenderer/SourcePreparationReceipt.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
@@ -4487,6 +4489,7 @@ struct LibplaceboVideoRenderer::Impl
     PresentationAnalysisBudget analysisWorkBudget;
     uint64_t nextOutputCorrelationLogTick=0;
     AnalysisPerformanceWindow analysisPerformance;
+    ProcessingPerformanceWindow processingPerformance;
     QueuedFrame::LookaheadWorker::Metrics previousWorkerMetrics;
     uint64_t lastLookaheadAbortTick=0;
     std::string lastLookaheadAbortStage;
@@ -4518,8 +4521,11 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleBoxRect bounds;
         ~SubtitlePacketDonor(){if(gpu)pl_tex_destroy(gpu,&texture);}
     };
+    SourcePreparationReceipt sourcePreparationReceipt;
+    uint64_t subtitlePacketReuses=0,subtitlePacketRevisions=0,subtitlePacketCaptures=0;
     struct SubtitleSourcePreparation {
         bool valid=false,composed=false,captionConfirmed=false,captionMeasured=false,noCaptionConfirmed=false;
+        bool completeForRepeat=false,completePacket=false;
         uint64_t generation=0,sequence=0,viewportEpoch=0;
         SubtitlePreviewMode mode=SubtitlePreviewMode::None;
         pl_frame image{};
@@ -5462,7 +5468,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
         displayRepeatValid = false;
         displayVsyncClock.Reset();
-		temporalRenderer.Clear();
+		temporalRenderer.ResetHistoryAfterSourceGap();
         cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
 		renderLoadMeter.DiscardPendingSamples();
@@ -5488,6 +5494,7 @@ struct LibplaceboVideoRenderer::Impl
 	RendererRenderLoad RenderLoadSnapshot() const
 	{
 		RendererRenderLoad load = renderLoadMeter.Snapshot();
+        load.processing=processingPerformance.Snapshot(GetTickCount64());
 		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
 			gpuFrameTimer.Snapshot();
 		load.supported = timing.supported;
@@ -14031,16 +14038,74 @@ struct LibplaceboVideoRenderer::Impl
 		if (!nativeRgbUpload)
 			pl_frame_set_chroma_location(&image, PL_CHROMA_LEFT);
 
+        bool capturedSubtitlePacketNew=false;
         const bool temporalSubtitleComposition=temporalRenderer.Active() && subtitleCutPasteTest;
         const bool nativeSubtitleComposition=temporalSubtitleComposition &&
             temporalRenderer.NativeCompositionRequired();
+        const bool completeSubtitleComposition=temporalSubtitleComposition &&
+            temporalRenderer.Mixing() && !nativeSubtitleComposition;
         // Chroma reconstruction and debanding must run before RGB normalization.
         // Keep a value snapshot so delayed native fields never read later settings.
         const auto subtitleSourceProcessing=CaptureSubtitleSourceProcessingOptions(renderParams);
         const auto* subtitleSourceProcessingOptions=temporalSubtitleComposition?
             &subtitleSourceProcessing:nullptr;
+        const auto measureSubtitlePreparation=[&](auto&& prepare) {
+            const auto before=subtitlePreparationRenderer.RenderCallCount();
+            const auto started=SteadyClock::now();
+            const bool result=prepare();
+            // Each helper below issues at most one actual pl_render_image call.
+            // Binding failures and cached output draws are not preparation calls.
+            if(subtitlePreparationRenderer.RenderCallCount()!=before)
+                processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
+                    static_cast<uint64_t>(sourceSubtitleMode) |
+                    (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
+                    (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},
+                    GetTickCount64(),std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+            return result;
+        };
+        // This receipt gates subtitle preparation only. Native AR analysis and
+        // upload scheduling retain the current beta behavior.
+        SourcePreparationContext sourcePreparationContext;
+        sourcePreparationContext.identity=activePictureIdentity;
+        sourcePreparationContext.identity.analysisDomainKey=queuedAnalysisDomainKey;
+        sourcePreparationContext.identity.transportGeneration=frameGeneration;
+        sourcePreparationContext.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
+        sourcePreparationContext.identity.viewportGeneration=viewportRequestSerial;
+        sourcePreparationContext.identity.rendererGeneration=frameGeneration;
+        sourcePreparationContext.source=analysisSource;
+        sourcePreparationContext.queuedSource=preparedQueued.source;
+        sourcePreparationContext.gpu=d3d11->gpu;
+        sourcePreparationContext.processingEpoch=pictureProcessingEpoch;
+        sourcePreparationContext.policyGeneration=localBoundaryPolicyGeneration;
+        sourcePreparationContext.continuityGeneration=localBoundaryContinuityGeneration;
+        sourcePreparationContext.resetEpoch=consumedPresentationResetEpoch;
+        sourcePreparationContext.viewportEpoch=viewportRequestSerial;
+        sourcePreparationContext.sceneGeneration=sceneDetectorGeneration;
+        sourcePreparationContext.outputContract=vpOwnedSwapchainGeneration ^ (nlsRendererGeneration<<1);
+        sourcePreparationContext.subtitleMode=static_cast<int>(subtitlePreviewMode);
+        sourcePreparationContext.configuredScreen=configuredScreenActive;
+        sourcePreparationContext.discontinuity=videoFrame.IsSourceDiscontinuity();
+        const auto sourceRepeat=repeatedTemporalOutput?SourceRepeatKind::InsertedOutput:
+            cadenceRepeat?SourceRepeatKind::CadenceRepeat:SourceRepeatKind::NewSource;
+        const auto sourceReuse=sourcePreparationReceipt.Begin(sourcePreparationContext,sourceRepeat);
+        // Inserted outputs keep their first packet. Real source retries may
+        // retain a conclusive progressive packet or recover an incomplete one.
+        const bool reuseSourceSubtitle=repeatedTemporalOutput && sourceReuse.subtitle;
+        bool currentSubtitleWorkIncomplete=false;
+        bool revisedSubtitlePacket=false;
+        const auto retireSubtitleRevision=[this,frameGeneration,sourceSequence] {
+            sourcePreparationReceipt.Reset();subtitleSourcePreparation.valid=false;
+            temporalSourceEvidence.TombstoneSucceeded({frameGeneration,sourceSequence});
+            temporalPresentations.InvalidateSuccessfulSource(frameGeneration,sourceSequence);
+            auto& packet=subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()];
+            packet.composed=false;packet.generation=packet.sequence=0;
+            temporalRenderer.Clear();
+        };
+        TemporalRevisionRollback<decltype(retireSubtitleRevision)> subtitleRevisionRollback(retireSubtitleRevision);
         const auto failSubtitleMotion=[&](const char* reason) {
             const std::string failure=reason;
+            subtitleRevisionRollback.Abort();
+            sourcePreparationReceipt.Reset();subtitleSourcePreparation.valid=false;
             temporalRenderer.Clear();
             temporalRenderer.status=failure;
             if(lastMotionStatus!=failure) {
@@ -14081,12 +14146,24 @@ struct LibplaceboVideoRenderer::Impl
             captionAnchorScreenAspect == configuredScreenAspect &&
             captionAnchorAnamorphic == anamorphicScale;
         SubtitleBoxPadding safeSubtitlePadding = activeSettings.subtitleBoxPadding;
-        const bool reuseSubtitlePreparation=repeatedTemporalOutput &&
-            subtitleSourcePreparation.valid && subtitleSourcePreparation.generation==frameGeneration &&
+        const bool subtitleSourceCacheMatches=subtitleSourcePreparation.valid &&
+            subtitleSourcePreparation.generation==frameGeneration &&
             subtitleSourcePreparation.sequence==sourceSequence &&
             subtitleSourcePreparation.viewportEpoch==viewportRequestSerial &&
             subtitleSourcePreparation.mode==subtitlePreviewMode;
+        const bool reuseConclusiveSubtitle=sourceRepeat==SourceRepeatKind::CadenceRepeat &&
+            !reuseSourceSubtitle && ReuseConclusiveSubtitlePacketForSourceRetry(sourceReuse,
+            sourceRepeat,subtitleSourceCacheMatches,subtitleSourcePreparation.completeForRepeat,
+            subtitleSourcePreparation.completePacket,
+            temporalRenderer.HasCurrentCompleteComposition(sourceSequence),
+            temporalSourceEvidence.Find({frameGeneration,sourceSequence})!=nullptr);
+        const bool reuseSubtitlePreparation=subtitleSourceCacheMatches &&
+            (reuseSourceSubtitle||reuseConclusiveSubtitle);
+        const bool incompleteSubtitleSourceRetry=sourceReuse.upload && cadenceRepeat &&
+            !repeatedTemporalOutput && subtitleSourceCacheMatches &&
+            !subtitleSourcePreparation.completeForRepeat;
         if(reuseSubtitlePreparation) {
+            ++subtitlePacketReuses;
             subtitleComposedImage=subtitleSourcePreparation.image;
             relocatedSubtitle=subtitleSourcePreparation.geometry;
             subtitleCompositionSucceeded=subtitleSourcePreparation.composed;
@@ -14289,7 +14366,7 @@ struct LibplaceboVideoRenderer::Impl
             // A measured cue may protect an already displayed superset.
             // Acquiring a new crop still requires the original two observations.
             currentConfirmedCaptionAvailable=currentMeasuredCaptionAvailable && subtitleBoxResult.observations>=2;
-            const bool temporalCaptureEnabled=subtitleCutPasteTest && activeSettings.subtitleTemporalFill &&
+            const bool temporalCaptureEnabled=subtitleCutPasteTest && !completeSubtitleComposition && activeSettings.subtitleTemporalFill &&
                 subtitleCutPasteBackground==5 && !subtitleBoxResult.detected && !videoFrame.IsSourceDiscontinuity();
             bool temporalSourceClean=analysisSource.IsValid() && subtitlePreview->available && currentNoCaptionConfirmed;
             if(temporalCaptureEnabled && temporalSourceClean) {
@@ -14380,6 +14457,9 @@ struct LibplaceboVideoRenderer::Impl
                     const auto lip=subtitleBackingLipContinuity.Consume(lipSource,*subtitlePreview,
                         subtitleBoxResult,subtitleIdentity,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,65536,&move,cueContinuation);
+                    currentSubtitleWorkIncomplete = !lip.valid &&
+                        (std::strcmp(lip.reason,"lip-work-budget")==0 ||
+                         std::strstr(lip.reason,"unavailable")!=nullptr);
                     const char* lipApplicationReason=nullptr;
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,&lipApplicationReason);
@@ -14399,7 +14479,7 @@ struct LibplaceboVideoRenderer::Impl
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_age_frames=%llu cleanup_rows=%u cleanup_pixels=%zu mismatch_phase=%s mismatch_xy=%d,%d mismatch_yuv=%d,%d,%d mismatch_floor=%d mismatch_dark_limit=%d expected_row=%d,%d-%d,%d expected_core=%d,%d-%d,%d",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_age_frames=%llu cleanup_rows=%u cleanup_pixels=%zu luma_fringe_pixels=%zu mismatch_phase=%s mismatch_xy=%d,%d mismatch_yuv=%d,%d,%d mismatch_floor=%d mismatch_dark_limit=%d expected_row=%d,%d-%d,%d expected_core=%d,%d-%d,%d",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
@@ -14413,7 +14493,7 @@ struct LibplaceboVideoRenderer::Impl
                             subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0,
                             lip.contextMismatchMask,lip.edgeEvidenceMask,lip.pixelInspectionPerformed?1:0,
                             lip.candidateRetained?1:0,lip.candidateAgeFrames,
-                            move.generatedCleanupRowCount,cleanupPixels,lip.mismatchPhase,
+                            move.generatedCleanupRowCount,cleanupPixels,lip.lumaFringePixels,lip.mismatchPhase,
                             lip.mismatchX,lip.mismatchY,lip.mismatchLuma,lip.mismatchU,lip.mismatchV,
                             lip.mismatchFloor,lip.mismatchDarkLimit,
                             lip.mismatchExpectedRow.left,lip.mismatchExpectedRow.top,
@@ -14487,29 +14567,34 @@ struct LibplaceboVideoRenderer::Impl
                         relocatedSubtitle=move;
                         subtitleCompositionSucceeded=true;
                     }
-                    else if (subtitleCutPasteHook && BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
+                    else if (subtitleCutPasteHook && (completeSubtitleComposition || BindSubtitleCutPasteHook(subtitleCutPasteHook, move,
 						subtitleCutPasteBackground, image.color.transfer,
                         activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
-                        temporalSubtitleComposition?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All))
+                        temporalSubtitleComposition?SubtitleCompositionPhase::CleanupOnly:SubtitleCompositionPhase::All)))
                     {
                         pl_frame composed{};
                         const int perfMode=subtitleCutPasteBackground==5?1:0;
                         const auto compositionStart=SteadyClock::now();
                         frameGpuTiming.BeginStage(perfMode?AlphaD3D11FrameGpuTimer::Stage::SubtitleGenerated:AlphaD3D11FrameGpuTimer::Stage::SubtitleBlack);
-                        subtitleHookBound=RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,
-                            image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
-                            temporalSubtitleComposition,
-                            activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5,
-                            false,nullptr,subtitleSourceProcessingOptions);
-                        if(subtitleHookBound && temporalSubtitleComposition) {
+                        subtitleHookBound=measureSubtitlePreparation([&] { return completeSubtitleComposition?
+                            PrepareCompleteSubtitleSourcePacket(subtitlePreparationRenderer,d3d11->gpu,
+                                image,subtitleCutPasteHook,move,subtitleCutPasteBackground,
+                                activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
+                                &subtitleCompositionTexture,composed,subtitleSourceProcessingOptions):
+                            RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,
+                                image,subtitleCutPasteHook,&subtitleCompositionTexture,composed,
+                                temporalSubtitleComposition,
+                                activeSettings.subtitleTemporalFill && subtitleCutPasteBackground==5,
+                                false,nullptr,subtitleSourceProcessingOptions); });
+                        if(subtitleHookBound && temporalSubtitleComposition && !completeSubtitleComposition) {
                             pl_frame layer{};
-                            subtitleHookBound=BindSubtitleCutPasteHook(subtitleCutPasteHook,move,
+                            subtitleHookBound=measureSubtitlePreparation([&] { return BindSubtitleCutPasteHook(subtitleCutPasteHook,move,
                                 subtitleCutPasteBackground,image.color.transfer,
                                 activeSettings.subtitleGeneratedGray,activeSettings.subtitleSpatialFill,
                                 SubtitleCompositionPhase::LayerOnly) &&
                                 ComposeSubtitleLayerBeforeCrop(subtitlePreparationRenderer,d3d11->gpu,image,
                                     subtitleCutPasteHook,&subtitleMotionLayerTexture,layer,
-                                    nullptr,subtitleSourceProcessingOptions);
+                                    nullptr,subtitleSourceProcessingOptions); });
                             // Never retain a repaired picture without its matching subtitle.
                             if(!subtitleHookBound)return failSubtitleMotion("Motion: subtitle layer preparation failed");
                         }
@@ -14518,7 +14603,7 @@ struct LibplaceboVideoRenderer::Impl
                         subtitlePerf.composeCpu[perfMode]+=std::chrono::duration<double,std::milli>(SteadyClock::now()-compositionStart).count();
                         if(subtitleHookBound) {
                             const auto tick=GetTickCount64();
-                            const bool donorReady=activeSettings.subtitleTemporalFill &&
+                            const bool donorReady=!completeSubtitleComposition && activeSettings.subtitleTemporalFill &&
                                 subtitleCutPasteBackground==5 && subtitleTemporalValid &&
                                 subtitleTemporalTexture && subtitleCompositionTexture &&
                                 subtitleTemporalTexture->params.blit_src &&
@@ -14719,12 +14804,13 @@ struct LibplaceboVideoRenderer::Impl
             if(temporalSubtitleComposition) {
                 if(!subtitleCompositionSucceeded && !nativeSubtitleComposition) {
                     PipelinePreparationScope preparing(libplaceboRenderStartedTick);
-                    if(!RenderSubtitleFullRaster(subtitlePreparationRenderer,d3d11->gpu,image,nullptr,
+                    if(!measureSubtitlePreparation([&] { return RenderSubtitleFullRaster(
+                        subtitlePreparationRenderer,d3d11->gpu,image,nullptr,
                         &subtitleCompositionTexture,subtitleComposedImage,true,false,false,
-                        nullptr,subtitleSourceProcessingOptions))return failSubtitleMotion("Motion: subtitle normalization failed");
+                        nullptr,subtitleSourceProcessingOptions); }))return failSubtitleMotion("Motion: subtitle normalization failed");
                 }
                 pl_rect2d layerBounds{};
-                if(subtitleCompositionSucceeded)
+                if(subtitleCompositionSucceeded && !completeSubtitleComposition)
                     layerBounds=ComputeSubtitleLayerBounds(relocatedSubtitle,width,height);
                 subtitleSourcePreparation.layerBounds=layerBounds;
                 if(nativeSubtitleComposition) {
@@ -14811,9 +14897,27 @@ struct LibplaceboVideoRenderer::Impl
                         return true;
                     };
                     if(!temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                        subtitleSourcePreparation.nativePrepare,hasCue))return failSubtitleMotion(temporalRenderer.status.c_str());
+                        subtitleSourcePreparation.nativePrepare,hasCue,&capturedSubtitlePacketNew))return failSubtitleMotion(temporalRenderer.status.c_str());
+                } else if(completeSubtitleComposition) {
+                    const bool currentRecovery=CanRecoverCurrentSubtitlePacket(
+                        incompleteSubtitleSourceRetry,true,subtitleCompositionSucceeded,
+                        currentSubtitleWorkIncomplete,false,subtitleBoxResult,
+                        currentSubtitlePreview,currentCueContinuation,subtitleIdentity,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    if(currentRecovery && temporalSourceEvidence.CanReviseSucceeded({frameGeneration,sourceSequence})) {
+                        // The temporal packet itself decides whether it still owns
+                        // no-cue pixels. Private retry state is not that authority.
+                        temporalRenderer.ReviseCompleteComposition(d3d11->gpu,subtitleComposedImage,
+                            sourceSequence,&revisedSubtitlePacket);
+                    }
+                    if(revisedSubtitlePacket) {
+                        subtitleRevisionRollback.Arm();capturedSubtitlePacketNew=true;
+                    }
+                    else if(!temporalRenderer.CaptureCompleteComposition(d3d11->gpu,subtitleComposedImage,
+                        sourceSequence,subtitleCompositionSucceeded,&capturedSubtitlePacketNew))
+                        return failSubtitleMotion(temporalRenderer.status.c_str());
                 } else if(!temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
-                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds))
+                    subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds,&capturedSubtitlePacketNew))
                     return failSubtitleMotion(temporalRenderer.status.c_str());
             }
             subtitleSourcePreparation.valid=true;
@@ -14824,6 +14928,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.image=subtitleComposedImage;
             subtitleSourcePreparation.geometry=relocatedSubtitle;
             subtitleSourcePreparation.composed=subtitleCompositionSucceeded;
+            subtitleSourcePreparation.completePacket=completeSubtitleComposition;
             subtitleSourcePreparation.ownershipObservation=currentSubtitlePreview.current;
             subtitleSourcePreparation.continuation=currentCueContinuation;
             subtitleSourcePreparation.ownershipAccepted=subtitleBoxResult;
@@ -14839,21 +14944,46 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.barStripClearance=currentSubtitleBarStripClearance;
             subtitleSourcePreparation.scanReason=currentSubtitleScanReason;
             subtitleSourcePreparation.padding=safeSubtitlePadding;
-            if(temporalSubtitleComposition)
-                subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
-                    subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         }
         // Recovery can clear history during a repeated output. Recapture this
         // already prepared packet without consuming cue state again.
         if(reuseSubtitlePreparation && temporalSubtitleComposition && !temporalRenderer.HasCurrentFrame(sourceSequence)) {
             const bool captured=nativeSubtitleComposition?
                 temporalRenderer.CaptureNativeComposition(d3d11->gpu,image,sourceSequence,
-                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded):
+                    subtitleSourcePreparation.nativePrepare,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
+                subtitleSourcePreparation.completePacket?
+                temporalRenderer.CaptureCompleteComposition(d3d11->gpu,subtitleComposedImage,
+                    sourceSequence,subtitleCompositionSucceeded,&capturedSubtitlePacketNew):
                 temporalRenderer.CaptureComposition(d3d11->gpu,subtitleComposedImage,
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,
-                    subtitleSourcePreparation.layerBounds);
+                    subtitleSourcePreparation.layerBounds,&capturedSubtitlePacketNew);
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
+        if(!reuseSubtitlePreparation) {
+            const bool currentSubtitleComplete=!subtitleMeasurementEnabled || currentNoCaptionConfirmed ||
+                ((!subtitleCutPasteTest || subtitleCompositionSucceeded) &&
+                 !currentSubtitleWorkIncomplete &&
+                 subtitleBoxResult.detected && !subtitleBoxResult.held &&
+                 !subtitleBoxResult.confirmationPending && !subtitleBoxResult.workLimit &&
+                 (currentMeasuredCaptionAvailable && currentSubtitlePreview.available &&
+                   currentSubtitlePreview.current.analyzed && currentSubtitlePreview.current.text.detected &&
+                   !currentSubtitlePreview.current.text.held && !currentSubtitlePreview.current.text.workLimit &&
+                   !currentSubtitlePreview.current.pendingRefresh && !currentSubtitlePreview.current.analysisRefresh &&
+                   SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity)));
+            // A duplicate owns the original pixels, not this later attempt.
+            // Only an actual new/revised packet can seal the new conclusion.
+            subtitleSourcePreparation.completeForRepeat=currentSubtitleComplete &&
+                (!temporalSubtitleComposition || capturedSubtitlePacketNew);
+        }
+        sourcePreparationReceipt.Commit(sourcePreparationContext,true,
+            subtitleSourcePreparation.completeForRepeat);
+        // Match metadata to the immutable GPU packet, not a later preparation
+        // result for the same source. A real recovery capture replaces both.
+        if(capturedSubtitlePacketNew)++subtitlePacketCaptures;
+        if(revisedSubtitlePacket)++subtitlePacketRevisions;
+        if(capturedSubtitlePacketNew)
+            subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
+                subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         // Capture metadata even while buffering; the selected output may be an
         // older packet by the time a source pass is finally rendered.
         temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
@@ -15303,6 +15433,11 @@ struct LibplaceboVideoRenderer::Impl
             localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
         const ActivePictureBounds currentCaptionFitWorkerBase=currentCaptionFitWorkerProof
             ? captionFitWorkerProof.candidate : ActivePictureBounds{};
+        // A stronger result for the same source changes its caption fact, not
+        // its capture age or the start of any source-owned presentation lease.
+        const auto* priorRevisionSnapshot=revisedSubtitlePacket?
+            temporalSourceEvidence.Find({frameGeneration,sourceSequence}):nullptr;
+        const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
 		auto configureViewport =
 			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
@@ -18550,8 +18685,7 @@ releaseDriftBaseRetention =
         };
         if (temporalRenderer.Active()) {
             bool newlyEvaluated=false;
-            const bool sourceReady=temporalSourceEvidence.Ensure(
-                sourcePresentationKey,[&](TemporalPresentationSnapshot& sourceSnapshot) {
+            const auto buildSourcePresentation=[&](TemporalPresentationSnapshot& sourceSnapshot) {
                     configureViewport(renderImage,target,configuredScreenActive,
                         subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
                     sourceSnapshot.viewportEpoch=viewportRequestSerial;
@@ -18565,7 +18699,7 @@ releaseDriftBaseRetention =
                     sourceSnapshot.captionOwnershipContinuity=localBoundaryContinuityGeneration;
                     sourceSnapshot.captureClockFrequency=captureClockFrequency;
                     sourceSnapshot.captionConfirmedAbsent=currentNoCaptionConfirmed;
-                    sourceSnapshot.sourceTick=temporalPolicySourceTick;
+                    sourceSnapshot.sourceTick=revisedSourcePolicyTick?revisedSourcePolicyTick:temporalPolicySourceTick;
                     sourceSnapshot.sourcePts=temporalRenderer.currentPts;
                     sourceSnapshot.drift=temporalPolicyDrift;
                     sourceSnapshot.verticalInput=temporalPolicyVerticalInput;
@@ -18600,6 +18734,7 @@ releaseDriftBaseRetention =
                         static_cast<int>(std::lround(renderImage.crop.x1)),
                         static_cast<int>(std::lround(renderImage.crop.y1))};
                     sourceSnapshot.presentation.viewportEpoch=viewportRequestSerial;
+                    sourceSnapshot.presentation.outputContract=temporalOutputContract;
                     sourceSnapshot.presentation.cleaned=TemporalRenderer::HasCleanPresentation(
                         temporalSubtitleComposition,subtitleCompositionSucceeded,currentNoCaptionConfirmed);
                     if (!sourceSnapshot.presentation.valid) {
@@ -18654,7 +18789,17 @@ releaseDriftBaseRetention =
                     sourceSnapshot.nlsTargetAspect=temporalRuntimeNlsTargetAspect;
                     newlyEvaluated=true;
                     return true;
-                });
+                };
+            const bool sourceReady=revisedSubtitlePacket?
+                temporalSourceEvidence.ReviseSucceeded(sourcePresentationKey,buildSourcePresentation):
+                temporalSourceEvidence.Ensure(sourcePresentationKey,buildSourcePresentation);
+            if(revisedSubtitlePacket && !sourceReady) {
+                sourcePreparationReceipt.Reset();subtitleSourcePreparation.valid=false;
+                frameGpuTiming.EndRender();
+                return failSubtitleMotion("Motion: recovered subtitle presentation revision failed");
+            }
+            if(revisedSubtitlePacket)
+                temporalPresentations.InvalidateSuccessfulSource(frameGeneration,sourceSequence);
             if (sourceReady && temporalRenderer.HasCurrentFrame(sourceSequence)) {
                 const auto* annotated=temporalSourceEvidence.Find(sourcePresentationKey);
                 if (annotated) temporalRenderer.AnnotatePresentation(
@@ -18662,12 +18807,20 @@ releaseDriftBaseRetention =
             }
             if (newlyEvaluated) {
                 const auto* sourceSnapshot=temporalSourceEvidence.Find(sourcePresentationKey);
-                if (sourceSnapshot)
-                    temporalPresentations.Ensure(currentPresentationKey,
+                if (sourceSnapshot) {
+                    const bool mappingReady=temporalPresentations.Ensure(currentPresentationKey,
                         [&](TemporalPresentationSnapshot& saved) {
                             saved=*sourceSnapshot;
                             return true;
                         });
+                    if(revisedSubtitlePacket) {
+                        if(!mappingReady) {
+                            frameGpuTiming.EndRender();
+                            return failSubtitleMotion("Motion: recovered subtitle mapping revision failed");
+                        }
+                        subtitleRevisionRollback.Commit();
+                    }
+                }
             }            if (!sourceReady) {
                 frameGpuTiming.EndRender();
                 return true;
@@ -18676,7 +18829,13 @@ releaseDriftBaseRetention =
                 frameGpuTiming.EndRender();
                 return true;
             }
+            // Missing reconstructed cues may repeat an immutable complete
+            // processed packet for two source intervals. Select before binding
+            // geometry/HDR so every part of the output names the same source.
+            temporalRenderer.SelectSubtitleFallback(pictureProcessingEpoch,viewportRequestSerial,
+                renderImage,target,renderParams,temporalOutputWidth,temporalOutputHeight,temporalOutputContract);
             const uint64_t selected=temporalRenderer.SelectedPacketSequence();
+            ensureFrozenPresentation(selected);
             const TemporalPresentationSnapshot* selectedSnapshot=
                 temporalPresentations.Find({frameGeneration,selected,
                     viewportRequestSerial,temporalOutputContract});
@@ -19847,6 +20006,12 @@ releaseDriftBaseRetention =
             // Charge preview only once when this source produces multiple outputs.
             const double livePreparationMs=std::chrono::duration<double,std::milli>(renderStart-renderWorkStarted).count();
             const double beforeRenderMs=repeatedTemporalOutput?0:preRenderTimings.activeMs+preRenderTimings.renderLockWaitMs;
+            // Total active CPU submission/wait work, including the preparation
+            // row as a subset. Present/VSync waiting is reported separately.
+            processingPerformance.RecordDraw({frameGeneration,pictureProcessingEpoch,
+                static_cast<uint64_t>(sourceSubtitleMode) | (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
+                (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},correlationNow,
+                repeatedTemporalOutput || cadenceRepeat,beforeRenderMs+livePreparationMs+renderMs);
             analysisWorkBudget.Observe(frameGeneration*1315423911ULL+viewportRequestSerial,sample.syncQpc,swapEndQpc,
                 sample.qpcFrequency,sample.expectedDisplayHz,
                 sample.available && !sample.disjoint && presentationSnapshot.evidence==AlphaPresentationEvidence::Stable,
@@ -19858,10 +20023,16 @@ releaseDriftBaseRetention =
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
                 const auto& oldProcessing=lastPictureProcessingStatistics;
-                DebugLog::Log("VP source/output processing: source_renders=%llu source_reuses=%llu output_renders=%llu input_analysis_stride=%d expensive_processing=before_blend subtitles=source_packet",
+                DebugLog::Log("VP source/output processing: manual_source_renders=%llu manual_source_reuses=%llu output_renders=%llu input_analysis_stride=%d processing_path=%s complete_library_outputs=%llu subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s subtitle_packet_captures_total=%llu subtitle_packet_reuses_total=%llu subtitle_packet_revisions_total=%llu",
                     processed.sourceRenders-oldProcessing.sourceRenders,
                     processed.sourceReuses-oldProcessing.sourceReuses,
-                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride);
+                    processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride,
+                    temporalRenderer.ProcessingPath(),processed.completeOutputRenders-oldProcessing.completeOutputRenders,
+                    processed.sourceRendererCreations-oldProcessing.sourceRendererCreations,
+                    processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes,
+                    processed.subtitleFallbackOutputs-oldProcessing.subtitleFallbackOutputs,
+                    temporalRenderer.SubtitleFallbackReason(),
+                    subtitlePacketCaptures,subtitlePacketReuses,subtitlePacketRevisions);
                 lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;

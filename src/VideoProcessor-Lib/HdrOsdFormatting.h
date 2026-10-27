@@ -52,7 +52,8 @@ namespace HdrOsdFormatting
         CString detected = status.peakDetectionEnabled ? _T("---") : _T("off");
         if (status.peakDetectionEnabled && status.detectedValid)
         {
-            detected.Format(_T("peak %s"), Nits(status.detectedPeakNits, 3).GetString());
+            detected.Format(status.detectedFromMix ? _T("mixed peak %s") : _T("peak %s"),
+                Nits(status.detectedPeakNits, 3).GetString());
             // Stable libplacebo does not expose the maxRGB linear average;
             // zero is its documented unavailable sentinel for that field.
             if (Known(status.detectedLinearAvgNits, false))

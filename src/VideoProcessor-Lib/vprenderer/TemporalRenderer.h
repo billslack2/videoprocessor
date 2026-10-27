@@ -25,6 +25,7 @@ public:
         uint64_t viewportEpoch=0;
         int owner=0;
         bool valid=false,visibleSafe=false,emptyBandsSafe=false,cleaned=false;
+        uint64_t outputContract=0;
     };
     // Mode selection is not proof that this source picture was cleaned. A
     // rejected/pending cue keeps raw pixels and cannot blend into a repaired
@@ -63,22 +64,28 @@ private:
             pl_deinterlace_algorithm algorithm=PL_DEINTERLACE_BOB;
             bool valid=false;
         };
-        struct Processed {
-            pl_frame frame{};
-            RendererHdrStatus hdrStatus{};
-            pl_tex texture=nullptr;
+        struct OutputContract {
             pl_rect2df sourceCrop{},targetCrop{},peakCrop{};
             pl_color_space targetColor{};
             pl_color_repr targetRepr{};
             pl_rotation sourceRotation=PL_ROTATION_0,targetRotation=PL_ROTATION_0;
             const pl_custom_lut* targetLut=nullptr;
             pl_icc_object targetIcc=nullptr;
-            uint64_t epoch=0,inputSignature=0,signature=0,profileSignature=0;
-            uint64_t prevSignature=0,nextSignature=0;
+            uint64_t epoch=0,profileSignature=0;
             std::vector<uint64_t> hooks;
             int width=0,height=0;
             bool valid=false;
         };
+        struct Processed : OutputContract {
+            pl_frame frame{};
+            RendererHdrStatus hdrStatus{};
+            pl_tex texture=nullptr;
+            uint64_t inputSignature=0,signature=0,prevSignature=0,nextSignature=0;
+        };
+        // Records an actual successful output of this complete packet. It is
+        // not a processed texture or a claim about libplacebo's internal cache.
+        OutputContract completeOutput;
+        bool completeComposition=false;
         std::array<Prepared,2> prepared{};
         std::array<Processed,2> processed{};
         NativePrepare nativePrepare;
@@ -110,12 +117,16 @@ private:
     pl_gpu gpu=nullptr;
     pl_renderer sourceRenderer=nullptr;
     uint64_t sourceRendererEpoch=0;
+    bool sourceRendererCompleteMode=false;
     pl_tex compositionSurface=nullptr;
     uint64_t generation=0,lastSequence=0,nextSignature=1;
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
     double submittedOutputPts=0;
     bool submittedOutputAvailable=false;
+    uint64_t subtitleFallbackSequence=0;
+    const char* subtitleFallbackReason="not-selected";
     bool initialized=false,interlaced=false,topFirst=true,mixing=false,composition=false,nativeMode=false;
+    bool lastSourceDiscontinuity=false;
     int delay=0;
     MotionConfig::Settings settings;
     const pl_filter_config* mixer=nullptr;
@@ -123,12 +134,30 @@ private:
 public:
     struct ProcessingStatistics {
         uint64_t sourceRenders=0,sourceReuses=0,outputRenders=0;
+        uint64_t sourceRendererCreations=0,sourceRendererHistoryFlushes=0;
+        uint64_t subtitleFallbackOutputs=0;
+        uint64_t completeOutputRenders=0;
     };
     const ProcessingStatistics& ProcessingSnapshot() const { return processingStatistics; }
 private:
     ProcessingStatistics processingStatistics;
     RendererHdrStatus lastHdrStatus{};
     bool lastHdrStatusAvailable=false;
+    void ResetHistory(bool keepProcessingRenderer) {
+        lastHdrStatusAvailable=false;lastHdrStatus={};
+        submittedOutputAvailable=false;subtitleFallbackSequence=0;subtitleFallbackReason="history-reset";history.clear();
+        if(keepProcessingRenderer && sourceRenderer) {
+            // Discard all temporal/peak evidence, retaining only the renderer's
+            // reusable GPU programs. A queue gap grants no old-pixel authority.
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+        } else {
+            pl_renderer_destroy(&sourceRenderer);sourceRendererEpoch=0;sourceRendererCompleteMode=false;
+        }
+        if(gpu)pl_tex_destroy(gpu,&compositionSurface);
+        nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;lastSourceDiscontinuity=false;outputs.clear();
+    }
 public:
     std::vector<double> outputs;
     double currentPts=0,outputPts=0;
@@ -156,12 +185,15 @@ public:
     }
     uint64_t LastSubtitleSequence() const { return lastSubtitleSequence; }
     uint64_t SelectedPacketSequence() const {
+        if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=packet->sequence;
         return selected;
     }
     double SelectedPacketPts() const {
+        if(subtitleFallbackSequence)for(const auto& packet:history)
+            if(packet->sequence==subtitleFallbackSequence)return packet->pts;
         double selected=0.0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=packet->pts;
@@ -169,22 +201,84 @@ public:
     }
     double SourceDurationSeconds() const { return sourceDuration; }
     uint64_t SelectedSubtitleSequence() const {
+        if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
             if(packet->pts<=outputPts+1e-8)selected=(packet->subtitle||packet->hasSubtitle)?packet->sequence:0;
         return selected;
     }
     bool HasCurrentFrame(uint64_t sequence) const { return !history.empty() && history.back()->sequence==sequence; }
+    bool HasCurrentCompleteComposition(uint64_t sequence) const {
+        return mixing&&composition&&!interlaced&&!history.empty()&&
+            history.back()->sequence==sequence&&history.back()->pts==currentPts&&
+            history.back()->completeComposition;
+    }
     bool AnnotatePresentation(uint64_t sequence,const PresentationGeometry& geometry) {
         if(history.empty()||history.back()->sequence!=sequence)return false;
         history.back()->presentation=geometry;
         return true;
     }
+    bool SubtitleFallbackActive() const { return subtitleFallbackSequence!=0; }
+    const char* SubtitleFallbackReason() const { return subtitleFallbackReason; }
+    bool CompleteCompositionSelected() const {
+        if(!mixing||!composition||interlaced)return false;
+        const auto selected=SelectedPacketSequence();
+        for(const auto& packet:history)
+            if(packet->sequence==selected)return packet->completeComposition;
+        return false;
+    }
+    const char* ProcessingPath() const {
+        return CompleteCompositionSelected()?"complete_packet_library_mix":"source_before_blend";
+    }
+    // A failed source cue may repeat one complete processed picture. It never
+    // applies an old layer/cleanup to current pixels or renews source evidence.
+    // Two missing selected source intervals are allowed; output repeats do not
+    // advance this bound, and the next valid source cue always wins.
+    bool SelectSubtitleFallback(uint64_t epoch,uint64_t viewportEpoch,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        int outputWidth,int outputHeight,uint64_t outputContract=0) {
+        subtitleFallbackSequence=0;subtitleFallbackReason="not-eligible";
+        if(!mixing||!composition||interlaced||history.empty())return false;
+        const Stored* selected=nullptr;
+        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
+        if(!selected)return false;
+        if(selected->subtitle||selected->hasSubtitle) {
+            subtitleFallbackReason="current-cue";return false;
+        }
+        if(!selected->presentation.valid||selected->presentation.viewportEpoch!=viewportEpoch||
+            (outputContract&&selected->presentation.outputContract!=outputContract))
+            return false;
+        subtitleFallbackReason="no-complete-packet";
+        for(auto it=history.rbegin();it!=history.rend();++it) {
+            const auto& packet=**it;
+            if(packet.sequence>=selected->sequence||!(packet.subtitle||packet.hasSubtitle))continue;
+            if(!WithinSubtitleFallbackWindow(packet,*selected)) {
+                subtitleFallbackReason="source-window-expired";return false;
+            }
+            const auto& a=packet.presentation;const auto& b=selected->presentation;
+            if(!a.valid||!a.cleaned||a.viewportEpoch!=viewportEpoch||
+                (outputContract&&a.outputContract!=outputContract)||
+                !SameRect(a.familyBase,b.familyBase)||!SameRect(a.sourceCrop,b.sourceCrop)||
+                packet.completeComposition!=selected->completeComposition ||
+                !MatchesProcessedOutput(packet.completeComposition?packet.completeOutput:
+                    static_cast<const Stored::OutputContract&>(packet.processed[0]),
+                    source,target,params,epoch,outputWidth,outputHeight,outputContract!=0)) {
+                subtitleFallbackReason="context-or-cache-mismatch";return false;
+            }
+            subtitleFallbackSequence=packet.sequence;
+            subtitleFallbackReason="complete-packet-repeat";return true;
+        }
+        return false;
+    }
     const pl_deinterlace_params& DeinterlaceParameters() const { return deinterlace; }
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
     void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
-    void Clear(){lastHdrStatusAvailable=false;lastHdrStatus={};submittedOutputAvailable=false;history.clear();pl_renderer_destroy(&sourceRenderer);if(gpu)pl_tex_destroy(gpu,&compositionSurface);nativeMode=false;initialized=false;lastSequence=0;lastSubtitleSequence=0;outputs.clear();}
+    // Full resource release remains mandatory for renderer/device teardown.
+    void Clear(){ResetHistory(false);}
+    // Same-device queue recovery drops every packet and HDR/mix observation.
+    // Keeping compiled programs prevents recovery from recompiling each frame.
+    void ResetHistoryAfterSourceGap(){ResetHistory(true);}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
     bool Mixing() const{return mixing;}
@@ -241,7 +335,7 @@ public:
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
         bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
         bool sourceSubtitleComposition=false,bool cadenceRepeat=false) {
-        outputs.clear();skipOutput=false;currentPts=pts;
+        outputs.clear();skipOutput=false;currentPts=pts;subtitleFallbackSequence=0;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
         }
@@ -255,7 +349,7 @@ public:
             interlaced!=newInterlaced||mixing!=newMix||composition!=sourceSubtitleComposition||(newInterlaced&&topFirst!=newTopFirst)||
             (sourceDuration>0&&std::abs(1.0/sourceDuration-sourceHz)>(std::max)(0.05,sourceHz*0.001))||
             (std::abs(measuredDisplayHz-displayHz)>(std::max)(0.1,displayHz*0.001));
-        if(cadenceRepeat && initialized && !changed && !discontinuity &&
+        if(cadenceRepeat && initialized && !changed && discontinuity==lastSourceDiscontinuity &&
             sequence==lastSequence && pts==previousPts && Active()) {
             if(submittedOutputAvailable && !history.empty()) {
                 outputPts=submittedOutputPts;
@@ -263,7 +357,12 @@ public:
             } else skipOutput=true;
             return; // No new source fact, cadence tick, or history reset.
         }
-        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz)))Clear();
+        if(changed||discontinuity||(initialized&&(sequence!=lastSequence+1||pts<=previousPts||pts-previousPts>2.5/sourceHz))) {
+            const bool forwardGap=!changed && !discontinuity && initialized &&
+                sequence>lastSequence && sequence-lastSequence>1 && pts>previousPts;
+            if(forwardGap)ResetHistoryAfterSourceGap();
+            else Clear();
+        }
         settings=requested;generation=epoch;interlaced=newInterlaced;mixing=newMix;composition=sourceSubtitleComposition;
         topFirst=newTopFirst;measuredDisplayHz=displayHz;
         sourceDuration=1.0/sourceHz;
@@ -278,7 +377,7 @@ public:
             status=requested.smoothMotion!="off"&&displayHz<=0?"Motion: display cadence unavailable":
                 requested.deinterlace!="off"&&inputInterlaced&&!knownOrder?"Deinterlacing: field order unavailable (select Top/Bottom first)":"Motion: bypassed";
             if(requested.smoothMotion=="off"&&!inputInterlaced)status="Motion: Off";
-            previousPts=pts;lastSequence=sequence;return;
+            previousPts=pts;lastSequence=sequence;lastSourceDiscontinuity=discontinuity;return;
         }
         // Without a measured display rate, deinterlacing uses its own nominal
         // field/frame clock. Mixing never guesses the display cadence.
@@ -296,9 +395,13 @@ public:
             (interlaced?"; deinterlacing: "+requested.algorithm+(topFirst?" TFF":" BFF"):"; progressive")+
             "; buffer "+std::to_string(delay)+" frame(s)"+
             (composition?"; subtitles synchronized":"");
-        previousPts=pts;lastSequence=sequence;
+        previousPts=pts;lastSequence=sequence;lastSourceDiscontinuity=discontinuity;
     }
-    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={}) {
+    bool Capture(pl_gpu device,const pl_frame& source,uint64_t sequence,pl_tex subtitleLayer=nullptr,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        // A successful duplicate keeps its first immutable GPU packet. The
+        // host must bind presentation metadata only when this receipt is true.
+        if(capturedNew)*capturedNew=false;
+        if(gpu && gpu!=device)Clear(); // Release resources with their original GPU owner.
         gpu=device;if(!Active())return true;
         auto fail=[&](const char* reason) {
             if(composition)Clear(); // Never mix around a partially captured packet.
@@ -314,6 +417,7 @@ public:
         else stored=std::make_unique<Stored>();
         stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
         stored->nativePrepare={};stored->hasSubtitle=false;stored->hdrSourceAvailable=false;
+        stored->completeComposition=false;stored->completeOutput.valid=false;
         for(auto& field:stored->prepared)field.valid=false;
         for(auto& field:stored->processed)field.valid=false;
         stored->subtitleBounds={};
@@ -374,10 +478,12 @@ public:
         } else pl_tex_destroy(device,&stored->subtitle);
         history.push_back(std::move(stored));
         while(history.size()>8)history.pop_front();
+        if(capturedNew)*capturedNew=true;
         return true;
     }
     bool CaptureComposition(pl_gpu device,const pl_frame& cleanRgbFullRaster,
-        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={}) {
+        pl_tex subtitleRgbaFullRaster,uint64_t sequence,pl_rect2d layerBounds={},bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!composition||NativeCompositionRequired())return false;
         if(nativeMode){Clear();nativeMode=false;}
         const bool normalized=cleanRgbFullRaster.num_planes==1 &&
@@ -410,13 +516,90 @@ public:
                 Clear();status="Motion: subtitle picture format changed";return false;
             }
         }
-        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds);
+        return Capture(device,cleanRgbFullRaster,sequence,subtitleRgbaFullRaster,layerBounds,capturedNew);
+    }
+    // This explicit packet kind also applies to normalized no-caption sources.
+    // The first capture owns its immutable pixels and marker; a duplicate may
+    // not relabel them with a later preparation result for the same PTS.
+    bool CaptureCompleteComposition(pl_gpu device,const pl_frame& completeRgb,
+        uint64_t sequence,bool hasSubtitle,bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
+        if(!mixing||!composition||interlaced)return false;
+        if(gpu&&gpu!=device)Clear();
+        if(!history.empty()&&history.back()->pts==currentPts) {
+            if(history.back()->sequence==sequence&&history.back()->completeComposition)return true;
+            status="Motion: complete packet duplicate identity or kind changed";return false;
+        }
+        bool added=false;
+        if(!CaptureComposition(device,completeRgb,nullptr,sequence,{},&added))return false;
+        if(added) {
+            history.back()->completeComposition=true;
+            history.back()->hasSubtitle=hasSubtitle;
+        }
+        if(capturedNew)*capturedNew=added;
+        return true;
+    }
+    // Explicit late-current completion, not an ordinary duplicate capture. The
+    // caller must bind a newly complete current cue to the same immutable source
+    // and preparation context. Only the latest no-cue packet can be upgraded.
+    // Build a private replacement first so allocation/validation failure leaves
+    // the original pixels, metadata, history and output clock intact.
+    bool ReviseCompleteComposition(pl_gpu device,const pl_frame& completeRgb,
+        uint64_t sequence,bool* revised=nullptr) {
+        if(revised)*revised=false;
+        if(!mixing||!composition||interlaced||gpu!=device||history.empty())return false;
+        const auto& prior=*history.back();
+        if(prior.sequence!=sequence||prior.pts!=currentPts||!prior.completeComposition||
+            prior.hasSubtitle||prior.subtitle||completeRgb.num_planes!=1||
+            !completeRgb.planes[0].texture||completeRgb.planes[0].components<3||
+            completeRgb.repr.sys!=PL_COLOR_SYSTEM_RGB||completeRgb.repr.levels!=PL_COLOR_LEVELS_FULL||
+            completeRgb.repr.alpha!=PL_ALPHA_NONE||completeRgb.repr.dovi||completeRgb.lut||
+            completeRgb.icc||completeRgb.profile.data||completeRgb.acquire||completeRgb.release||
+            completeRgb.overlays||completeRgb.num_overlays||
+            completeRgb.planes[0].texture->params.user_data)return false;
+        const auto& before=prior.frame.planes[0];const auto& after=completeRgb.planes[0];
+        const auto input=after.texture;
+        if(!before.texture||!input->params.blit_src||
+            input->params.w!=before.texture->params.w||input->params.h!=before.texture->params.h||
+            input->params.format!=before.texture->params.format||
+            !pl_color_space_equal(&prior.frame.color,&completeRgb.color)||
+            !pl_color_repr_equal(&prior.frame.repr,&completeRgb.repr)||
+            prior.frame.rotation!=completeRgb.rotation||
+            after.components!=before.components||after.shift_x!=before.shift_x||
+            after.shift_y!=before.shift_y||after.flipped!=before.flipped||
+            after.address_mode!=before.address_mode||
+            std::abs(completeRgb.crop.x0)>0.001f||std::abs(completeRgb.crop.y0)>0.001f||
+            std::abs(completeRgb.crop.x1-input->params.w)>0.001f||
+            std::abs(completeRgb.crop.y1-input->params.h)>0.001f)return false;
+        for(int c=0;c<after.components;++c)
+            if(after.component_mapping[c]!=before.component_mapping[c])return false;
+        std::unique_ptr<Stored> replacement;
+        try { replacement=std::make_unique<Stored>(); }
+        catch(...) { return false; }
+        replacement->gpu=device;replacement->pts=prior.pts;replacement->sequence=prior.sequence;
+        replacement->frame=completeRgb;
+        replacement->frame.planes[0].texture=nullptr;
+        replacement->frame.prev=nullptr;replacement->frame.next=nullptr;
+        auto storage=input->params;storage.initial_data=nullptr;storage.user_data=nullptr;
+        storage.import_handle=static_cast<pl_handle_type>(0);storage.export_handle=static_cast<pl_handle_type>(0);
+        storage.blit_src=true;storage.blit_dst=true;storage.sampleable=true;
+        if(!pl_tex_recreate(device,&replacement->textures[0],&storage))return false;
+        replacement->frame.planes[0].texture=replacement->textures[0];
+        pl_tex_blit_params copy{};copy.src=input;copy.dst=replacement->textures[0];
+        pl_tex_blit(device,&copy);
+        replacement->completeComposition=true;replacement->hasSubtitle=true;
+        replacement->signature=nextSignature++;
+        history.back()=std::move(replacement);
+        subtitleFallbackSequence=0;subtitleFallbackReason="current-cue-recovered";
+        if(revised)*revised=true;
+        return true;
     }
     // The callback owns its shader inputs and may use scratch textures only for
     // the duration of a call. Capture immediately copies raw planes; prepared
     // field pictures and layers are copied when the output field is rendered.
     bool CaptureNativeComposition(pl_gpu device,const pl_frame& raw,
-        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false) {
+        uint64_t sequence,NativePrepare prepare,bool hasSubtitle=false,bool* capturedNew=nullptr) {
+        if(capturedNew)*capturedNew=false;
         if(!NativeCompositionRequired()||!prepare)return false;
         if(!history.empty()&&history.back()->pts==currentPts) {
             if(history.back()->sequence==sequence)return true;
@@ -454,11 +637,13 @@ public:
             }
             if(!compatible){Clear();status="Motion: native subtitle picture format changed";return false;}
         }
-        if(!Capture(device,raw,sequence))return false;
+        bool added=false;
+        if(!Capture(device,raw,sequence,nullptr,{},&added))return false;
         auto& packet=*history.back();
         packet.nativePrepare=std::move(prepare);packet.hasSubtitle=hasSubtitle;
         if(raw.repr.dovi){packet.dovi=*raw.repr.dovi;packet.frame.repr.dovi=&packet.dovi;}
         else packet.frame.repr.dovi=nullptr;
+        if(capturedNew)*capturedNew=added;
         return true;
     }
     bool PrepareNativeField(size_t index,int fieldIndex) {
@@ -631,11 +816,46 @@ public:
     // output passes (which deliberately have peak detection disabled).
     pl_renderer ProcessingRenderer(pl_renderer fallback) {
         if(!Active()||!gpu||history.empty())return fallback;
-        if(!sourceRenderer)sourceRenderer=pl_renderer_create(nullptr,gpu);
+        if(!sourceRenderer) {
+            sourceRenderer=pl_renderer_create(nullptr,gpu);
+            if(sourceRenderer)++processingStatistics.sourceRendererCreations;
+        }
         return sourceRenderer?sourceRenderer:fallback;
     }
     static bool SameCrop(const pl_rect2df& a,const pl_rect2df& b) {
         return a.x0==b.x0&&a.y0==b.y0&&a.x1==b.x1&&a.y1==b.y1;
+    }
+    static bool WithinSubtitleFallbackWindow(const Stored& prior,const Stored& selected,
+        double duration) {
+        return prior.sequence<selected.sequence && selected.sequence-prior.sequence<=2 &&
+            std::isfinite(duration)&&duration>0 && std::isfinite(prior.pts)&&
+            std::isfinite(selected.pts)&&selected.pts>prior.pts &&
+            selected.pts-prior.pts<=2.0*duration+1e-6;
+    }
+    bool WithinSubtitleFallbackWindow(const Stored& prior,const Stored& selected) const {
+        return WithinSubtitleFallbackWindow(prior,selected,sourceDuration);
+    }
+    static bool MatchesProcessedOutput(const Stored::OutputContract& cached,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        uint64_t epoch,int width,int height,bool frozenOutputContract=false,
+        bool ignoreSourceAnalysis=false) {
+        const auto peak=params.peak_detect_params?params.peak_detect_params->analysis_crop:pl_rect2df{};
+        if(!cached.valid||cached.epoch!=epoch||cached.width!=width||cached.height!=height||
+            cached.sourceRotation!=source.rotation||cached.targetRotation!=target.rotation||
+            !SameCrop(cached.sourceCrop,source.crop)||!SameCrop(cached.targetCrop,target.crop))return false;
+        // The host defers acquiring the swapchain until packet selection. Its
+        // immutable output-contract annotation plus processing epoch binds all
+        // target/profile settings even though this provisional target has no
+        // color/representation metadata yet. Standalone callers use full keys.
+        if(frozenOutputContract)return true;
+        if((!ignoreSourceAnalysis&&!SameCrop(cached.peakCrop,peak))||
+            cached.hooks.size()!=size_t(params.num_hooks)||
+            !pl_color_space_equal(&cached.targetColor,&target.color)||
+            !pl_color_repr_equal(&cached.targetRepr,&target.repr)||cached.targetLut!=target.lut||
+            cached.targetIcc!=target.icc||cached.profileSignature!=target.profile.signature)return false;
+        for(int h=0;h<params.num_hooks;++h)
+            if(cached.hooks[h]!=params.hooks[h]->signature)return false;
+        return true;
     }
     bool ProcessSource(pl_renderer renderer,size_t index,int fieldIndex,
         const pl_frame& source,const pl_frame& target,pl_render_params& params,
@@ -710,6 +930,12 @@ public:
         // Float storage defers only output-depth dithering to presentation.
         ProcessingRenderer(renderer);
         if(!sourceRenderer)return false;
+        if(sourceRendererCompleteMode) {
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+            sourceRendererCompleteMode=false;
+        }
         if(sourceRendererEpoch!=epoch) {
             pl_renderer_reset_errors(sourceRenderer,nullptr);
             sourceRendererEpoch=epoch;
@@ -744,13 +970,99 @@ public:
         cached.hooks=std::move(hookSignatures);cached.signature=this->nextSignature++;
         cached.valid=true;++processingStatistics.sourceRenders;result=&cached;return true;
     }
+    static void RecordOutputContract(Stored::OutputContract& receipt,
+        const pl_frame& source,const pl_frame& target,const pl_render_params& params,
+        uint64_t epoch,int width,int height) {
+        receipt.sourceCrop=source.crop;receipt.targetCrop=target.crop;
+        receipt.peakCrop=params.peak_detect_params?params.peak_detect_params->analysis_crop:pl_rect2df{};
+        receipt.sourceRotation=source.rotation;receipt.targetRotation=target.rotation;
+        receipt.targetColor=target.color;receipt.targetRepr=target.repr;
+        receipt.targetLut=target.lut;receipt.targetIcc=target.icc;
+        receipt.profileSignature=target.profile.signature;receipt.epoch=epoch;
+        receipt.width=width;receipt.height=height;
+        receipt.hooks.clear();
+        for(int h=0;h<params.num_hooks;++h)receipt.hooks.push_back(params.hooks[h]->signature);
+        receipt.valid=true;
+    }
+    bool RenderCompleteComposition(const pl_frame& source,const pl_frame& target,
+        pl_render_params& params,uint64_t epoch,
+        const PresentationGeometry* selectedOutputGeometry=nullptr) {
+        const auto selectedSequence=SelectedPacketSequence();
+        size_t selectedIndex=history.size();
+        for(size_t i=0;i<history.size();++i)
+            if(history[i]->sequence==selectedSequence)selectedIndex=i;
+        const pl_tex output=target.num_planes==1?target.planes[0].texture:nullptr;
+        if(selectedIndex==history.size()||!output)return false;
+        auto& selected=*history[selectedIndex];
+        if(!selected.completeComposition)return false;
+        const bool held=subtitleFallbackSequence!=0;
+        const auto entries=held?std::vector<NativeEntry>{{selectedIndex,0,0.0}}:NativeEntriesForOutput();
+        std::vector<pl_frame> owned;
+        std::vector<const pl_frame*> frames;
+        std::vector<uint64_t> signatures;
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        std::vector<Timestamp> timestamps;
+        owned.reserve(entries.size());
+        for(const auto& entry:entries) {
+            const auto& packet=*history[entry.index];
+            if(!packet.completeComposition)continue;
+            if(entry.index!=selectedIndex&&!CompatiblePresentationGeometry(
+                selectedOutputGeometry?*selectedOutputGeometry:selected.presentation,
+                packet.presentation,source.crop))continue;
+            auto frame=packet.frame;frame.crop=source.crop;frame.rotation=source.rotation;
+            owned.push_back(frame);signatures.push_back(packet.signature);
+            timestamps.push_back(static_cast<Timestamp>(entry.offset));
+        }
+        for(const auto& frame:owned)frames.push_back(&frame);
+        if(frames.empty())return false;
+        ProcessingRenderer(nullptr);
+        if(!sourceRenderer)return false;
+        // The existing processing renderer owns the library cache and remains
+        // the target of host hook-error recovery. Hard mode/epoch changes and
+        // source gaps discard peak/mix history. Ordinary crop/target changes
+        // are checked by the library's frame cache, without resetting peaks.
+        if(!sourceRendererCompleteMode || sourceRendererEpoch!=epoch) {
+            pl_renderer_flush_cache(sourceRenderer);
+            pl_renderer_reset_errors(sourceRenderer,nullptr);
+            ++processingStatistics.sourceRendererHistoryFlushes;
+        }
+        sourceRendererCompleteMode=true;sourceRendererEpoch=epoch;
+        auto rendering=params;
+        rendering.frame_mixer=mixer;
+        rendering.deband_params=nullptr; // Native source preparation already did this.
+        pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
+        mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
+        mix.vsync_duration=static_cast<float>(displayDuration/sourceDuration);
+        // Tone mapping and blending deliberately use the normal library path,
+        // including the reconstructed text, matching non-motion preparation.
+        // A late target change simply renders this same owned complete packet.
+        if(!pl_render_image_mix(sourceRenderer,&mix,&target,&rendering))return false;
+        RecordOutputContract(selected.completeOutput,source,target,params,epoch,
+            output->params.w,output->params.h);
+        ++processingStatistics.outputRenders;++processingStatistics.completeOutputRenders;
+        if(held)++processingStatistics.subtitleFallbackOutputs;
+        lastSubtitleSequence=SelectedSubtitleSequence();
+        const auto authored=selected.hdrSourceAvailable?selected.hdrSource:
+            FrameHdrStatus::Source(selected.frame,selected.sequence);
+        // Keep the authored selected-source identity, but label detector state
+        // as belonging to the library render/mix rather than that source alone.
+        lastHdrStatus=FrameHdrStatus::Capture(authored,sourceRenderer,params.peak_detect_params!=nullptr);
+        lastHdrStatus.detectedFromMix=true;
+        lastHdrStatusAvailable=true;
+        return true;
+    }
     bool RenderProcessed(pl_renderer renderer,const pl_frame& source,
         const pl_frame& target,pl_render_params& params,uint64_t epoch) {
         lastHdrStatusAvailable=false;lastHdrStatus={};
         if(composition&&!PreflightCompositionOutput())return false;
         const Stored* selected=nullptr;
-        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)selected=packet.get();
-        const auto entries=NativeEntriesForOutput();
+        const auto selectedSequence=SelectedPacketSequence();
+        size_t selectedIndex=history.size();
+        for(size_t i=0;i<history.size();++i)if(history[i]->sequence==selectedSequence) {
+            selected=history[i].get();selectedIndex=i;break;
+        }
+        const bool held=subtitleFallbackSequence && selectedIndex<history.size();
+        const auto entries=held?std::vector<NativeEntry>{{selectedIndex,0,0.0}}:NativeEntriesForOutput();
         std::vector<const pl_frame*> frames;
         std::vector<uint64_t> signatures;
         std::vector<RendererHdrStatus> hdrStatuses;
@@ -761,7 +1073,22 @@ public:
             if(selected&&history[entry.index].get()!=selected&&
                 !CompatiblePresentation(*selected,*history[entry.index],source.crop))continue;
             Stored::Processed* processed=nullptr;
-            if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
+            if(held) {
+                // The host selected before acquiring the target. Recheck actual
+                // output metadata/mapping here; a changed contract reprocesses
+                // this same owned clean picture and matching layer, never the
+                // current raw picture. Rejecting only the cache would otherwise
+                // send the host through its acquired-frame black-clear path.
+                processed=&history[entry.index]->processed[0];
+                const pl_tex output=target.num_planes==1?target.planes[0].texture:nullptr;
+                if(output&&MatchesProcessedOutput(*processed,source,target,params,epoch,
+                    output->params.w,output->params.h,false,true)) {
+                    ++processingStatistics.sourceReuses;
+                } else {
+                    if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
+                    subtitleFallbackReason="complete-packet-remapped";
+                }
+            } else if(!ProcessSource(renderer,entry.index,entry.field,source,target,params,epoch,processed))return false;
             used[entry.index][entry.field]=true;
             frames.push_back(&processed->frame);signatures.push_back(processed->signature);
             hdrStatuses.push_back(processed->hdrStatus);
@@ -786,7 +1113,7 @@ public:
         presentation.dynamic_constants=true;
         presentation.info_callback=params.info_callback;presentation.info_priv=params.info_priv;
         bool rendered=false;
-        if(mixing) {
+        if(mixing&&!held) {
             presentation.frame_mixer=mixer;
             pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
             mix.frames=frames.data();mix.signatures=signatures.data();mix.timestamps=timestamps.data();
@@ -821,6 +1148,7 @@ public:
         }
         if(rendered) {
             ++processingStatistics.outputRenders;
+            if(held)++processingStatistics.subtitleFallbackOutputs;
             // The output cue is the latest included source at/before the output
             // timestamp, exactly as in the non-mixing presentation selection.
             // Its snapshot survives later neighbour renders and cache reuse.
@@ -829,7 +1157,19 @@ public:
         }
         // Keep only the active filter support. Raw history remains available
         // for deinterlacing and geometry guards; float output caches are bounded.
-        for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]) {
+        // Keep at most one already processed caption anchor for the bounded
+        // missing-source fallback. No new texture or source proof is produced.
+        const Stored* normalSelected=nullptr;size_t anchorIndex=history.size();
+        for(const auto& packet:history)if(packet->pts<=outputPts+1e-8)normalSelected=packet.get();
+        if(mixing&&composition&&!interlaced&&normalSelected)
+            for(size_t i=0;i<history.size();++i) {
+                const auto& packet=*history[i];
+                if(packet.sequence<=normalSelected->sequence && (packet.subtitle||packet.hasSubtitle) &&
+                    packet.processed[0].valid && packet.presentation.valid && packet.presentation.cleaned &&
+                    (packet.sequence==normalSelected->sequence || WithinSubtitleFallbackWindow(packet,*normalSelected)))
+                    anchorIndex=i;
+            }
+        for(size_t i=0;i<history.size();++i)for(int f=0;f<2;++f)if(!used[i][f]&&!(i==anchorIndex&&f==0)) {
             auto& processed=history[i]->processed[f];
             pl_tex_destroy(gpu,&processed.texture);processed.valid=false;
             if(nativeMode) {
@@ -848,6 +1188,7 @@ public:
         pl_render_params& params,uint64_t epoch=0) {
         lastSubmittedField=PL_FIELD_NONE;
         lastHdrStatusAvailable=false;lastHdrStatus={};
+        if(CompleteCompositionSelected())return RenderCompleteComposition(source,target,params,epoch);
         if(composition&&Active())return RenderProcessed(renderer,source,target,params,epoch);
         if(!Active()||history.empty())return pl_render_image(renderer,&source,&target,&params);
         return RenderProcessed(renderer,source,target,params,epoch);
