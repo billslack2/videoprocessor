@@ -10,6 +10,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <vector>
+
+#include <dxgi1_6.h>
+#include <atlbase.h>
 
 #include <DebugLog.h>
 
@@ -283,6 +287,104 @@ namespace
 		// The owner assigns this to a CComPtr, which takes the first reference.
 		std::atomic<ULONG> m_refCount{0};
 	};
+
+	// GUI thread only.
+	std::string& PlayerKeysLine()
+	{
+		static std::string line;
+		return line;
+	}
+
+	std::atomic<HMONITOR>& FullscreenMonitorHandle()
+	{
+		static std::atomic<HMONITOR> monitor{ nullptr };
+		return monitor;
+	}
+
+	// The active path's refresh rate as a rational (e.g. 24000/1001), which
+	// EnumDisplaySettings' integer dmDisplayFrequency cannot give.
+	bool TargetRefreshRate(const wchar_t* gdiDeviceName, UINT32& numerator, UINT32& denominator)
+	{
+		UINT32 pathCount = 0;
+		UINT32 modeCount = 0;
+		if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS ||
+			pathCount == 0)
+			return false;
+		std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+		std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+		if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(),
+			&modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
+			return false;
+		for (UINT32 i = 0; i < pathCount; ++i)
+		{
+			DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+			source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+			source.header.size = sizeof(source);
+			source.header.adapterId = paths[i].sourceInfo.adapterId;
+			source.header.id = paths[i].sourceInfo.id;
+			if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS ||
+				wcscmp(source.viewGdiDeviceName, gdiDeviceName) != 0)
+				continue;
+			numerator = paths[i].targetInfo.refreshRate.Numerator;
+			denominator = paths[i].targetInfo.refreshRate.Denominator;
+			return numerator > 0 && denominator > 0;
+		}
+		return false;
+	}
+
+	// Windows HDR is on for the display when DXGI reports its output in PQ.
+	bool OutputIsPq(HMONITOR monitor, bool& pq)
+	{
+		CComPtr<IDXGIFactory1> factory;
+		if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+			return false;
+		for (UINT a = 0; a < 64; ++a)
+		{
+			CComPtr<IDXGIAdapter1> adapter;
+			if (FAILED(factory->EnumAdapters1(a, &adapter)))
+				break;
+			for (UINT o = 0; o < 64; ++o)
+			{
+				CComPtr<IDXGIOutput> output;
+				if (FAILED(adapter->EnumOutputs(o, &output)))
+					break;
+				DXGI_OUTPUT_DESC desc = {};
+				if (FAILED(output->GetDesc(&desc)) || desc.Monitor != monitor)
+					continue;
+				CComQIPtr<IDXGIOutput6> output6(output);
+				DXGI_OUTPUT_DESC1 desc1 = {};
+				if (!output6 || FAILED(output6->GetDesc1(&desc1)))
+					return false;
+				pq = desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// The chord as VP's shortcut parser spells it (Ctrl, Alt, Shift, key);
+	// empty for a cleared key. Covers the keys that parser accepts.
+	std::string ChordText(const ACCEL& accelerator)
+	{
+		const WORD key = accelerator.key;
+		std::string keyText;
+		if ((key >= 'A' && key <= 'Z') || (key >= '0' && key <= '9'))
+			keyText = std::string(1, static_cast<char>(key));
+		else if (key >= VK_F1 && key <= VK_F24)
+			keyText = "F" + std::to_string(key - VK_F1 + 1);
+		else if (key == VK_ESCAPE)
+			keyText = "Esc";
+		else if (key == VK_RETURN)
+			keyText = "Enter";
+		else
+			return {};
+
+		std::string chord;
+		if (accelerator.fVirt & FCONTROL) chord += "Ctrl+";
+		if (accelerator.fVirt & FALT) chord += "Alt+";
+		if (accelerator.fVirt & FSHIFT) chord += "Shift+";
+		return chord + keyText;
+	}
 }
 
 
@@ -296,6 +398,76 @@ namespace SourcePluginBackend
 	bool IsSourcePluginDevice(ACaptureDevice* device)
 	{
 		return dynamic_cast<SourcePluginCaptureDevice*>(device) != nullptr;
+	}
+
+	bool SendSourcePluginCommand(ACaptureDevice* device, const char* commandUtf8)
+	{
+		SourcePluginCaptureDevice* plugin = dynamic_cast<SourcePluginCaptureDevice*>(device);
+		if (!plugin)
+			return false;
+
+		plugin->SendCommand(commandUtf8);
+		return true;
+	}
+
+	void SetPlayerKeys(const std::vector<PlayerKey>& keys, ACaptureDevice* activeDevice)
+	{
+		std::string line = "keys ";
+		for (size_t i = 0; i < keys.size(); ++i)
+		{
+			if (i)
+				line += ';';
+			line += keys[i].name + '=' + ChordText(keys[i].accelerator);
+		}
+		PlayerKeysLine() = line;
+		SendSourcePluginCommand(activeDevice, line.c_str());
+	}
+
+	const std::string& PlayerKeysCommand()
+	{
+		return PlayerKeysLine();
+	}
+
+	void SetFullscreenMonitor(HMONITOR monitor)
+	{
+		FullscreenMonitorHandle().store(monitor);
+	}
+
+	std::string DesktopModeFormat(std::string& why)
+	{
+		const HMONITOR monitor = FullscreenMonitorHandle().load();
+		MONITORINFOEXW info = {};
+		info.cbSize = sizeof(info);
+		if (!monitor || !GetMonitorInfoW(monitor, &info))
+		{
+			why = "no fullscreen display";
+			return std::string();
+		}
+		DEVMODEW mode = {};
+		mode.dmSize = sizeof(mode);
+		if (!EnumDisplaySettingsExW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode, 0) ||
+			!mode.dmPelsWidth || !mode.dmPelsHeight)
+		{
+			why = "desktop mode unavailable";
+			return std::string();
+		}
+		UINT32 numerator = 0;
+		UINT32 denominator = 0;
+		if (!TargetRefreshRate(info.szDevice, numerator, denominator))
+		{
+			why = "refresh rate unavailable";
+			return std::string();
+		}
+		bool pq = false;
+		if (!OutputIsPq(monitor, pq))
+		{
+			why = "DXGI colour space unavailable";
+			return std::string();
+		}
+		char format[64];
+		sprintf_s(format, "%lux%lu@%u/%u %s", mode.dmPelsWidth, mode.dmPelsHeight,
+			numerator, denominator, pq ? "pq" : "sdr");
+		return format;
 	}
 
 	void AppendDeviceNames(std::vector<std::wstring>& names)

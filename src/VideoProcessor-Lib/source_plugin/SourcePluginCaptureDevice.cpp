@@ -11,10 +11,13 @@
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 
+#include <ConfigFile.h>
 #include <DebugLog.h>
 #include <CaptureCallbackBoundary.h>
 
+#include "SourcePluginBackend.h"
 #include "SourcePluginCaptureDevice.h"
 
 
@@ -103,6 +106,105 @@ namespace
 		case VP_SOURCE_LOG_DEBUG:   return "debug";
 		}
 		return "?";
+	}
+
+	constexpr char SETTINGS_SEPARATOR = '\x1f';
+	constexpr const char* PLAYER_SECTION = "player";
+
+	// VP's Config writes cfg values in the ANSI code page (toLocal8Bit); the
+	// plugin reads UTF-8.
+	std::string AnsiToUtf8(const std::string& ansi)
+	{
+		if (ansi.empty())
+			return ansi;
+		const int wideLength = MultiByteToWideChar(CP_ACP, 0, ansi.data(), (int)ansi.size(), nullptr, 0);
+		if (wideLength <= 0)
+			return ansi;
+		std::wstring wide(wideLength, L'\0');
+		MultiByteToWideChar(CP_ACP, 0, ansi.data(), (int)ansi.size(), &wide[0], wideLength);
+		const int utf8Length = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, nullptr, 0, nullptr, nullptr);
+		if (utf8Length <= 0)
+			return ansi;
+		std::string utf8(utf8Length, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, &utf8[0], utf8Length, nullptr, nullptr);
+		return utf8;
+	}
+
+	void AppendSetting(std::string& line, const std::string& key, const std::string& value)
+	{
+		line += key;
+		line += '=';
+		for (const char c : AnsiToUtf8(value))
+			if (c != SETTINGS_SEPARATOR)
+				line += c;
+		line += SETTINGS_SEPARATOR;
+	}
+
+	// VP's [player] section, re-read at each start, as the plugin's
+	// "settings ..." line: "key=value" entries split by 0x1f. Indexed keys
+	// (folder.1, folder.2, ...) go as one repeated key in index order, since
+	// VP's parser keeps only the last of a repeated key. log_dir is VP's logs
+	// folder, log_retention VP's [logging] count and idle_format the
+	// fullscreen display's desktop mode, never [player] settings. idle receives idle_format, or why it was left out.
+	std::string PlayerSettingsCommand(size_t& entries, std::string& idle)
+	{
+		entries = 0;
+		std::string line = "settings ";
+
+		ConfigFile config;
+		const std::map<std::string, std::string>* values =
+			config.Load() ? config.GetSectionValues(PLAYER_SECTION) : nullptr;
+		if (values)
+		{
+			std::map<std::pair<std::string, unsigned int>, std::string> indexed;
+			for (const auto& setting : *values)
+			{
+				const std::string& key = setting.first;
+				const std::string& value = setting.second;
+				const size_t dot = key.rfind('.');
+				unsigned int index = 0;
+				if (dot != std::string::npos &&
+					ConfigFile::TryParseIndexedKey(key, key.substr(0, dot), index))
+					indexed[{ key.substr(0, dot), index }] = value;
+				else if (key != "log_dir" && key != "log_retention" && key != "idle_format")
+				{
+					AppendSetting(line, key, value);
+					++entries;
+				}
+			}
+			for (const auto& setting : indexed)
+			{
+				AppendSetting(line, setting.first.first, setting.second);
+				++entries;
+			}
+		}
+
+		char logDir[MAX_PATH] = "";
+		const std::string logPath = DebugLog::GetLogFilePath();
+		char* fileName = nullptr;
+		if (GetFullPathNameA(logPath.c_str(), MAX_PATH, logDir, &fileName) > 0 && fileName)
+			*fileName = 0;
+		std::string dir(logDir);
+		while (dir.size() > 3 && (dir.back() == '\\' || dir.back() == '/'))
+			dir.pop_back();
+		if (!dir.empty())
+			AppendSetting(line, "log_dir", dir);
+
+		// VP's own log retention, so the plugin keeps its logs as deep.
+		std::string retention;
+		const bool hasRetention = config.TryGetString("logging", "debug_log_retention", retention);
+		AppendSetting(line, "log_retention", std::to_string(DebugLogRetention::ResolveSetting(
+			hasRetention ? &retention : nullptr, false, false).count));
+
+		std::string why;
+		const std::string format = SourcePluginBackend::DesktopModeFormat(why);
+		if (!format.empty())
+			AppendSetting(line, "idle_format", format);
+		idle = format.empty() ? "none (" + why + ")" : format;
+
+		if (line.back() == SETTINGS_SEPARATOR)
+			line.pop_back();
+		return line;
 	}
 }
 
@@ -228,6 +330,15 @@ SourcePluginCaptureDevice::~SourcePluginCaptureDevice()
 }
 
 
+void SourcePluginCaptureDevice::SendCommand(const char* commandUtf8)
+{
+	const int32_t result = m_api->send_command(m_instance, commandUtf8);
+	if (result != VP_SOURCE_OK)
+		DEBUGLOG("Source plugin command rejected: name=%s command=\"%s\" result=%d",
+			m_nameUtf8.c_str(), commandUtf8, result);
+}
+
+
 //
 // ACaptureDevice
 //
@@ -266,6 +377,15 @@ void SourcePluginCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 	m_captureRunToken.store(captureRunToken, std::memory_order_release);
 	m_outputCaptureData.store(true, std::memory_order_release);
 
+	// Before start: the plugin reads its settings as it starts. The line
+	// may carry the remote page's PIN, so never the line itself is logged.
+	size_t settingEntries = 0;
+	std::string idleFormat;
+	const int32_t settingsResult = m_api->send_command(
+		m_instance, PlayerSettingsCommand(settingEntries, idleFormat).c_str());
+	DEBUGLOG("Source plugin settings sent: name=%s [player] entries=%zu idle_format=%s result=%d",
+		m_nameUtf8.c_str(), settingEntries, idleFormat.c_str(), settingsResult);
+
 	const int32_t started = m_api->start(m_instance);
 	if (started != VP_SOURCE_OK)
 	{
@@ -281,6 +401,11 @@ void SourcePluginCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 			m_callback->OnCaptureDeviceState(CaptureDeviceState::CAPTUREDEVICESTATE_READY);
 		return;
 	}
+
+	// VP's Player shortcuts for the plugin's remote page.
+	const std::string& keys = SourcePluginBackend::PlayerKeysCommand();
+	if (!keys.empty())
+		SendCommand(keys.c_str());
 
 	m_readerThread = std::thread(&SourcePluginCaptureDevice::ReaderLoop, this);
 
