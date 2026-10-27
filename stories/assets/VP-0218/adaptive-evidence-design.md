@@ -10,11 +10,13 @@ Use strong current evidence more consistently, with separate proofs for each kin
 
 The objective is correct, stable framing: promptly follow real aspect changes, preserve actual picture and captions, stay steady through ambiguous scenes, and avoid added queue delay. A strong border is a useful observation; it is not by itself permission to discard everything outside it.
 
-## Configured presentation goal
+## Detection objective and downstream presentation
 
-The 2026-10-27 user clarification confirms a 2.35:1 scope screen with constant image height. Read the active deployment configuration and selected state before interpreting AR diagnostics. Detect the actual picture inside the input container, then apply the configured CIH mapping and aspect-fill limits. Full-raster retention is a conservative detector outcome, not a successful presentation criterion: a scope picture letterboxed inside a 16:9 input can remain undersized with borders on all four sides when the whole raster is fitted to screen height. Tests must measure the final displayed active picture, including expected screen-width scope presentation and screen-height 16:9 presentation, with the current 2.32/2.42 fill limits respected.
+The user explicitly reaffirmed that the objective is high-reliability, accurate black-bar and active-aspect detection without regressions, independent of any particular screen size or fitting behavior. Infer the actual active-picture boundaries from current source pixels and derive their aspect ratio. The input container, active picture and physical screen are separate concepts. Screen aspect, CIH, fill limits, zoom and NLS must not supply bar evidence, force a standard target ratio, or define whether detection succeeded.
 
-The [capture interpretation](native-capture-20261026.md#cih-interpretation-corrected-on-2026-10-27) records the configuration evidence. Boundary straightness and distributed local contrast remain useful evidence despite the failure of one coarse smooth-profile experiment. That failed experiment does not establish that the visible boundary itself is ambiguous. Continue qualifying each edge and protecting actual picture/caption detail; do not require the user to redefine the purpose of automatic AR detection.
+Primary validation covers boundary and aspect accuracy, missed bars, false crops, picture/caption preservation, transition responsiveness and stability. Existing final-consumer/rendering checks remain useful to ensure detector changes survive integration safely; they are not a replacement for correct detection. The configured 2.35:1 CIH screen and 2.32/2.42 fill limits are downstream context only. Preserving a 16:9 input container can still leave encoded bars undetected.
+
+Distributed straightness and local contrast remain useful detector evidence despite failure of one coarse smooth-profile experiment. That failure does not establish that the visible boundary itself is ambiguous. Continue independent per-edge qualification and protection of actual picture/caption detail. The [capture interpretation](native-capture-20261026.md#cih-interpretation-corrected-on-2026-10-27) records the display consequence without making fitting the detector's task.
 
 ## What is already implemented
 
