@@ -106,7 +106,8 @@ namespace AlphaSourceCrop
                 a.rendererGeneration == b.rendererGeneration;
         }
 
-        bool CurrentBroadEvidence(const ActivePictureBounds& base,
+        OutwardPictureConfirmationDecision CurrentOutwardEvidence(
+            const ActivePictureBounds& base,
             const ActivePictureObservation& observation,
             const ActivePicturePresentationRetentionEvidence& retention,
             uint64_t generation, uint64_t sequence)
@@ -119,10 +120,32 @@ namespace AlphaSourceCrop
                 retention.EffectiveArNearBlack() || !retention.expansionStripsAvailable ||
                 !SameBounds(retention.expansionBase, base) ||
                 !SameBounds(retention.expansionCandidate, observation.bounds))
-                return false;
+                return {};
             return ConfirmOutwardPictureTransition({}, base, observation.bounds,
-                retention, generation, sequence).broadOpposingPicture;
+                retention, generation, sequence);
         }
+
+        bool CurrentBroadEvidence(const ActivePictureBounds& base,
+            const ActivePictureObservation& observation,
+            const ActivePicturePresentationRetentionEvidence& retention,
+            uint64_t generation, uint64_t sequence)
+        {
+            return CurrentOutwardEvidence(base, observation, retention, generation, sequence).broadOpposingPicture;
+        }
+
+        bool CurrentRouteEvidence(OutwardPictureProofRoute route,
+            const ActivePictureBounds& base, const ActivePictureObservation& observation,
+            const ActivePicturePresentationRetentionEvidence& retention,
+            uint64_t generation, uint64_t sequence)
+        {
+            const auto proof = CurrentOutwardEvidence(base, observation, retention,
+                generation, sequence);
+            return route == OutwardPictureProofRoute::BROAD_OCCUPANCY
+                ? proof.broadOpposingPicture
+                : route == OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT &&
+                    proof.nativeDistributedPicture;
+        }
+
         bool CurrentRelativeEvidence(const ActivePictureBounds& base,
             const ActivePictureObservation& observation,
             const RelativeBarContrastEvidence& pixels, bool qualifiedAspectPair,
@@ -665,6 +688,7 @@ namespace AlphaSourceCrop
                     sample.qualifiedAspectPair, first.identity.transportGeneration);
         }
         OutwardPictureConfirmationState confirmation;
+        bool allBroad = true, allNativeDistributed = true;
         for (uint8_t i = 0; i < required; ++i)
         {
             const auto& sample = samples[i];
@@ -672,10 +696,16 @@ namespace AlphaSourceCrop
                 sample.identity.acceptedSequence != first.identity.acceptedSequence + i ||
                 sample.observation.frameNumber != sample.identity.acceptedSequence)
                 return rejected("sample-identity", i);
-            if (!relativeReady && (!sample.nearBlackEvaluated ||
-                !CurrentBroadEvidence(base, sample.observation, sample.retention,
-                    first.identity.transportGeneration, sample.identity.acceptedSequence)))
-                return rejected("sample-evidence", i);
+            if (!relativeReady)
+            {
+                if (!sample.nearBlackEvaluated) return rejected("sample-evidence", i);
+                const auto currentProof = CurrentOutwardEvidence(base, sample.observation, sample.retention,
+                    first.identity.transportGeneration, sample.identity.acceptedSequence);
+                allBroad = allBroad && currentProof.broadOpposingPicture;
+                allNativeDistributed = allNativeDistributed && currentProof.nativeDistributedPicture;
+                if (!currentProof.broadOpposingPicture && !currentProof.nativeDistributedPicture)
+                    return rejected("sample-evidence", i);
+            }
             // Accepted sequence continuity is mandatory. Where capture metadata
             // is supplied, repeated or missing source frames cannot count.
             if (i != 0 &&
@@ -693,11 +723,21 @@ namespace AlphaSourceCrop
                     sample.observation.bounds, sample.retention,
                     first.identity.transportGeneration, sample.identity.acceptedSequence);
                 confirmation = result.state;
-                // A restart means geometry wandered beyond the anchored scan step.
-                if (!result.broadOpposingPicture || confirmation.confirmations != i + 1)
+                // At least one route must still advance contiguously; the final certificate intersects route support across every frame.
+                if (confirmation.broadRun.confirmations != i + 1 &&
+                    confirmation.nativeDistributedRun.confirmations != i + 1)
                     return rejected("geometry-continuity", i);
             }
         }
+
+        const bool broadReady = allBroad && confirmation.broadRun.confirmations >= required;
+        const bool nativeDistributedReady = allNativeDistributed &&
+            confirmation.nativeDistributedRun.confirmations >= required;
+        const auto proofRoute = broadReady ? OutwardPictureProofRoute::BROAD_OCCUPANCY :
+            nativeDistributedReady ? OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT :
+                OutwardPictureProofRoute::NONE;
+        if (!relativeReady && proofRoute == OutwardPictureProofRoute::NONE)
+            return rejected("route-incomplete");
 
         details.passes = true;
         details.reason = relativeReady ? "relative-proof-ready" : "proof-ready";
@@ -705,6 +745,7 @@ namespace AlphaSourceCrop
         proof.valid = true;
         proof.relativeContrast = relativeReady;
         proof.progressiveNativeEdges = !relativeReady && ProgressiveNativeWindow(samples, required, base);
+        proof.proofRoute = relativeReady ? OutwardPictureProofRoute::NONE : proofRoute;
         auto& decision = proof.decision;
         decision.observationIdentity = samples[required - 1].identity;
         decision.effectiveIdentity = first.identity;
@@ -732,7 +773,9 @@ namespace AlphaSourceCrop
         transition.decisionLatencyFrames = lead;
         transition.reason = relativeReady ?
             "buffered known-aspect relative bar contrast confirmed on current and future frames" :
-            "buffered broad picture expansion confirmed on current and future frames";
+            proofRoute == OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT
+                ? "buffered native distributed expansion confirmed on current and future frames"
+                : "buffered broad picture expansion confirmed on current and future frames";
         return proof;
     }
 
@@ -896,7 +939,7 @@ namespace AlphaSourceCrop
             return false;
         const auto observation = MakeActivePictureObservation(current.evidence,
             current.sourceSequence, current.framesPerSecond);
-        if (!CurrentBroadEvidence(decision.transition.stableBounds, observation,
+        if (!CurrentRouteEvidence(proof.proofRoute, decision.transition.stableBounds, observation,
             current.retention, current.sourceGeneration, current.sourceSequence))
             return false;
         // Preserve the composition veto. Only temporal outward deferral is
@@ -920,7 +963,7 @@ namespace AlphaSourceCrop
         sample.observation=MakeActivePictureObservation(current.evidence,current.sourceSequence,current.framesPerSecond);
         sample.retention=current.retention;
         if(!ExactNativeWindowPosition(sample) ||
-            !CurrentBroadEvidence(current.trustedGeometry,sample.observation,current.retention,
+            !CurrentRouteEvidence(proof.proofRoute,current.trustedGeometry,sample.observation,current.retention,
                 current.sourceGeneration,current.sourceSequence) ||
             EvaluateTransitionAdmission(current).deferPartialComposition)
             return false;
@@ -935,7 +978,8 @@ namespace AlphaSourceCrop
         const TransitionAdmissionInput& current, bool modelWouldAdmit,
         const ActivePictureBounds& subtitleBase)
     {
-        if (current.presentation.action != VerticalBarPresentationAction::TRANSLATE ||
+        if (proof.proofRoute != OutwardPictureProofRoute::BROAD_OCCUPANCY ||
+            current.presentation.action != VerticalBarPresentationAction::TRANSLATE ||
             current.sourceGeneration == 0 ||
             current.presentationEvidenceGeneration != current.sourceGeneration ||
             !SameBounds(subtitleBase, current.trustedGeometry))

@@ -165,7 +165,10 @@ ActivePictureMatteReference InspectRaisedMatteReference(
     result.y = ys[(ys.size() - 1) / 2];
     result.u = us[(us.size() - 1) / 2];
     result.v = vs[(vs.size() - 1) / 2];
-    if (result.y <= 24 || result.y > 80 ||
+    // Reference qualification may use the entire existing black-sample envelope.
+    // The ordinary cutoff remains <=104; every spatial/chroma/continuity veto
+    // and the independent retention cap remain unchanged.
+    if (result.y <= 24 || result.y > 104 ||
         std::abs(result.u - 512) > 32 || std::abs(result.v - 512) > 32)
         return result;
     bool qualified = true;
@@ -1072,7 +1075,12 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	}
 	const int observedLow = static_cast<int>(Percentile(perimeter, 0.10));
 	const bool fullRange = source.range == AnalysisLumaRange::Full;
-    const int blackFloor = observedLow < 32 ? 0 :
+    // Full-range 25..31 is already inside the raised-matte qualifier's domain.
+    // Let it nominate the same strict opposing-reference proof as 32..80,
+    // instead of stranding it above nominal24 but below the old floor switch.
+    // Limited/Unknown interpretation and the maximum black cutoff are unchanged.
+    const int nominalFloorLimit = fullRange ? 24 : 31;
+    const int blackFloor = observedLow <= nominalFloorLimit ? 0 :
         fullRange ? std::min(observedLow, 80) : Bounded(observedLow, 48, 80);
     const int blackThreshold = std::min(104, blackFloor + 24);
     auto& reference = result.blackReference;
