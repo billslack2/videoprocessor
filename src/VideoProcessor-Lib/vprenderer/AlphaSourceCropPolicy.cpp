@@ -450,8 +450,33 @@ namespace AlphaSourceCrop
 
     VerticalBarContentDecision SelectVerticalBarContentPresentation(
         VerticalBarContentDecision observed, bool translationEnabled,
-        const VerticalBarContentInput* current)
+        const VerticalBarContentInput* current, bool classicBarContent)
     {
+        if (translationEnabled && classicBarContent && current)
+        {
+            // Classic moves the native picture window to reveal occupied bar
+            // pixels. Wide/deep UI cards are valid content too: neither glyph
+            // recognition nor overlay shape is permission for this movement.
+            // Native picture/aspect authority is established separately.
+            observed = EvaluateVerticalBarContent(*current);
+            if (observed.action == VerticalBarPresentationAction::FAIL_OPEN)
+                return observed;
+            const float lower = current->lowerContent ? current->lowerRequiredShift : 0.0f;
+            const float upper = current->upperContent ? current->upperRequiredShift : 0.0f;
+            observed.action = VerticalBarPresentationAction::NONE;
+            observed.translationPixels = 0.0f;
+            if (lower > 0.5f)
+            {
+                observed.action = VerticalBarPresentationAction::TRANSLATE;
+                observed.translationPixels = lower;
+            }
+            else if (upper > 0.5f && !current->bottomTranslationHeld)
+            {
+                observed.action = VerticalBarPresentationAction::TRANSLATE;
+                observed.translationPixels = -upper;
+            }
+            return observed;
+        }
         if (!translationEnabled && current)
         {
             // Off reveals measured content regardless of its shape or glyphs.
