@@ -789,6 +789,115 @@ public:
                 L"Weak flank evidence cannot enlarge cleanup into a previously live rounded corner.");
         }
     }
+    TEST_METHOD(NearBlackRoundedEndpointChangesKeepCleanupOnForTheSameCue) {
+        // Live Ben-Hur: a rounded endpoint contracted by three pixels, with
+        // luma 6 against floor 0 / dark limit 4. Cleanup went on/off/on.
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv,Format::Rgb})
+        for(bool top:{false,true})for(bool right:{false,true})for(int floor:{0,64}) {
+            Frame frame(2,format,top,floor);frame.Lip(16,true);auto cue=AcquireOnHeap(frame);
+            SubtitleBackingLipContinuity state;
+            const auto first=state.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+            AssertCurrentCleanupRows(first,frame);
+            const auto edge=first.bodyRows[first.bodyRowCount-1];
+            const int y=top?frame.height-1-edge.top:edge.top;
+            const auto geometry=Geometry(*cue);
+            uint64_t sequence=2;
+            for(int depth:{3,0,6,2,3,0}) {
+                frame.Fill({edge.left,y,edge.right,y+1},floor);
+                const int left=right?edge.right-depth:edge.left;
+                const int end=right?edge.right:edge.left+depth;
+                frame.Fill({left,y,end,y+1},floor+(format==Format::Rgb?8:6));
+                auto observation=frame.Measure(++sequence);
+                auto preview=ResolveOnHeap(&observation,1);auto text=cue->tracker.Consume(*preview);
+                Assert::AreEqual(cue->accepted.cue,text.cue);
+                const auto proof=state.Consume(frame.Source(),*preview,text,Identity(sequence),7,8);
+                LogProof(proof,frame,"near-black-endpoint-no-dropout");
+                AssertCurrentCleanupRows(proof,frame);
+                Assert::IsTrue(proof.revalidatedOutline && proof.samples<=65536);
+                Assert::AreEqual(size_t((std::max)(0,depth-2)),proof.lumaFringePixels);
+                Assert::AreEqual(CleanupArea(first)-size_t(depth),CleanupArea(proof));
+                for(int x=left;x<end;++x)Assert::IsFalse(InCleanupRows(proof,x,edge.top));
+                const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(sequence),7,8);
+                Assert::IsTrue(applied.generatedCleanup.Valid(),L"The lip must not blink off on an endpoint-only change.");
+                AssertGeometryExceptCleanup(geometry,applied);
+            }
+        }
+    }
+    TEST_METHOD(StableCompositionEdgeKeepsCurrentOutlineAcrossOneUhdAnalysisStep) {
+        for(bool top:{false,true})for(bool nearby:{false,true})for(int fault=0;fault<5;++fault) {
+            Frame frame(6,Format::P210,top,0);frame.SingleLineAtGap(10);frame.Lip(30,true);
+            auto cue=AcquireOnHeap(frame,20);auto geometry=Geometry(*cue);
+            SubtitleBackingLipContinuity state;
+            const auto first=state.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8,65536,&geometry);
+            Assert::IsTrue(first.valid);
+            const auto last=first.bodyRows[first.bodyRowCount-1];
+            const int closureY=top?last.bottom:last.top-1;
+            frame.Pixel(last.left+6,top?frame.height-1-closureY:closureY,0);
+            auto observation=frame.Measure(3,20);auto preview=ResolveOnHeap(&observation,1);
+            const auto text=cue->tracker.Consume(*preview);
+            const int delta=fault==1?5:4;
+            auto& current=preview->current;
+            if(top) {current.pictureTop-=delta;current.barEvidence.top=current.pictureTop;}
+            else {current.pictureBottom+=delta;current.barEvidence.bottom=current.pictureBottom;}
+            if(nearby) {
+                auto& authority=current.sharedPicture;authority.required=true;authority.identity=current.identity;
+                authority.bounds.left=0;authority.bounds.right=frame.width;
+                authority.bounds.top=frame.pictureTop;authority.bounds.bottom=frame.pictureBottom;
+                authority.bounds.rasterWidth=frame.width;authority.bounds.rasterHeight=frame.height;
+                auto& bars=current.barEvidence;bars.nearbyProbes=1;
+                if(top) {
+                    bars.topRevalidatedNearby=true;bars.referenceTop=frame.pictureTop;
+                    bars.topReferenceDelta=-delta;bars.topReferenceBoundarySupport=fault==3?0:16;
+                    bars.topReferenceBlackFraction=0.95;bars.topReferenceMaxIntrusion=1;
+                } else {
+                    bars.bottomRevalidatedNearby=true;bars.referenceBottom=frame.pictureBottom;
+                    bars.bottomReferenceDelta=delta;bars.bottomReferenceBoundarySupport=fault==3?0:16;
+                    bars.bottomReferenceBlackFraction=0.95;bars.bottomReferenceMaxIntrusion=1;
+                }
+            }
+            if(fault==2) {if(top)--geometry.pictureTop;else ++geometry.pictureBottom;}
+            if(fault==3) {
+                if(top)current.barEvidence.captionBackedTop=true;
+                else current.barEvidence.captionBackedBottom=true;
+            }
+            const auto proof=state.Consume(frame.Source(),*preview,text,Identity(3),7,8,65536,
+                fault==4?nullptr:&geometry);
+            LogProof(proof,frame,"stable-composed-edge-current-proof");
+            if(fault)Assert::IsFalse(proof.valid,L"Only an independent edge within one step and exact composed edge qualifies.");
+            else {
+                AssertCurrentCleanupRows(proof,frame);
+                Assert::IsTrue(proof.revalidatedOutline && proof.outlineBaseAnchored);
+                Assert::IsTrue(Same(first.cleanup,proof.cleanup));
+                const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(3),7,8);
+                Assert::IsTrue(applied.generatedCleanup.Valid());AssertGeometryExceptCleanup(geometry,applied);
+                // The remembered edge still cannot authorize erasure of changed body pixels.
+                frame.Pixel((last.left+last.right)/2,top?frame.height-1-last.top:last.top,300);
+                current.identity=Identity(4);current.sharedPicture.identity=current.identity;
+                const auto unsafe=state.Consume(frame.Source(),*preview,text,Identity(4),7,8,65536,&geometry);
+                Assert::IsFalse(unsafe.valid);
+            }
+        }
+    }
+    TEST_METHOD(NearBlackEndpointAllowanceRejectsHolesWideChangesAndBudgetFailure) {
+        for(bool top:{false,true})for(int fault=0;fault<4;++fault) {
+            Frame frame(2,Format::P210,top,0);frame.Lip(16,true);auto cue=AcquireOnHeap(frame);
+            SubtitleBackingLipContinuity state;
+            const auto first=state.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid);
+            const auto edge=first.bodyRows[first.bodyRowCount-1];
+            const int y=top?frame.height-1-edge.top:edge.top;
+            if(fault==0)frame.Pixel(edge.right-3,y,6); // disconnected hole, even though nearly black
+            if(fault==1)frame.Fill({edge.right-7,y,edge.right,y+1},6); // beyond bounded fringe
+            if(fault==2)frame.Fill({edge.right-3,y,edge.right,y+1},9); // meaningful brighter content
+            if(fault==3)frame.Fill({edge.right-3,y,edge.right,y+1},6);
+            auto observation=frame.Measure(3);auto preview=ResolveOnHeap(&observation,1);
+            const auto text=cue->tracker.Consume(*preview);
+            const auto proof=state.Consume(frame.Source(),*preview,text,Identity(3),7,8,fault==3?16:65536);
+            Assert::IsFalse(proof.valid);
+            Assert::IsFalse(ApplyCurrentSubtitleBackingLip(Geometry(*cue),proof,Identity(3),7,8).generatedCleanup.Valid());
+            Assert::IsTrue(proof.samples<=size_t(fault==3?16:65536));
+        }
+    }
     TEST_METHOD(CurrentRowMaskRejectsDisconnectedUnsafePixelsInsideTheEdgeCollar) {
         for(bool top:{false,true})for(bool colored:{false,true}) {
             Frame frame(2,Format::P210,top);frame.Lip(16,false);auto cue=AcquireOnHeap(frame);
