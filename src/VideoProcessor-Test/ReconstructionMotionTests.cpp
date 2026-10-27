@@ -104,7 +104,7 @@ struct MeasuredReconstructionCue {
         geometry=compositor.Consume(decision.accepted,preview,safe,24,nullptr,proof);
         geometry=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(geometry,
             {0,PictureTop,NativeWidth,PictureBottom},24),30,safe,true,false);
-        geometry=anchor.Consume(geometry,decision.accepted,preview,safe,24,false,proof);
+        geometry=anchor.Consume(geometry,decision.accepted,preview,safe,24,false);
         Assert::IsTrue(geometry.valid,L"Measured UHD cue did not produce current reconstruction geometry");
         if(!geometry.generatedCleanup.Valid()) {
             const auto cap=backing.Consume(current,preview,decision.accepted,ReconstructionIdentity(sequence),7,8,
@@ -231,6 +231,102 @@ struct ReconstructionMotionGpu {
 
 namespace Tests {
 TEST_CLASS(ReconstructionMotionTests) { public:
+    TEST_METHOD(SubtitlePacketReuseRejectsChangedPixelsEpochsAndFailedAttempts) {
+        auto pixels=std::make_shared<NativeReconstructionPixels>();
+        SourcePreparationContext c;c.identity=ReconstructionIdentity(2);
+        c.source=pixels->Source();c.source.backingOwner=pixels;c.queuedSource=c.source;
+        c.gpu=pixels.get();c.processingEpoch=4;c.policyGeneration=7;c.continuityGeneration=8;
+        c.viewportEpoch=9;c.resetEpoch=10;c.sceneGeneration=11;c.outputContract=12;c.subtitleMode=3;
+        SourcePreparationReceipt receipt;
+        for(bool discontinuity:{false,true}) {
+            c.discontinuity=discontinuity;receipt.Commit(c,true,true);
+            Assert::IsTrue(receipt.ReuseSubtitle(c,SourceRepeatKind::InsertedOutput));
+            Assert::IsTrue(receipt.ReuseSubtitle(c,SourceRepeatKind::CadenceRepeat));
+            Assert::IsFalse(receipt.ReuseSubtitle(c,SourceRepeatKind::NewSource));
+            for(int fault=0;fault<17;++fault) {
+                auto changed=c;
+                switch(fault) {
+                case 0:++changed.identity.acceptedSequence;break;
+                case 1:++changed.identity.captureTimestamp;break;
+                case 2:++changed.identity.analysisDomainKey;break;
+                case 3:changed.source.backingOwner.reset();break;
+                case 4:++changed.source.data;break;
+                case 5:++changed.source.rowBytes;break;
+                case 6:changed.queuedSource.backingOwner.reset();break;
+                case 7:changed.gpu=nullptr;break;
+                case 8:++changed.processingEpoch;break;case 9:++changed.policyGeneration;break;
+                case 10:++changed.continuityGeneration;break;case 11:++changed.viewportEpoch;break;
+                case 12:++changed.resetEpoch;break;case 13:++changed.sceneGeneration;break;
+                case 14:++changed.outputContract;break;case 15:++changed.subtitleMode;break;
+                case 16:changed.discontinuity=!changed.discontinuity;break;
+                }
+                Assert::IsFalse(receipt.ReuseSubtitle(changed,SourceRepeatKind::InsertedOutput));
+                Assert::IsFalse(receipt.ReuseSubtitle(changed,SourceRepeatKind::CadenceRepeat));
+            }
+            const auto begun=receipt.Begin(c,SourceRepeatKind::InsertedOutput);
+            Assert::IsTrue(begun.subtitle);
+            Assert::IsFalse(receipt.ReuseSubtitle(c,SourceRepeatKind::InsertedOutput),
+                L"A failed preparation cannot leave a reusable receipt");
+            receipt.Commit(c,true,false);
+            Assert::IsTrue(receipt.ReuseSubtitle(c,SourceRepeatKind::InsertedOutput));
+            Assert::IsFalse(receipt.ReuseSubtitle(c,SourceRepeatKind::CadenceRepeat),
+                L"An incomplete source must remain eligible for a late current worker result");
+        }
+    }
+    TEST_METHOD(RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs) {
+        for(bool floating:{false,true}) {
+            NativeReconstructionPixels pixels;
+            constexpr int left=1371,right=2469,top=PictureBottom-24;
+            // A glyph-free rounded backing intrudes only 24 native UHD rows.
+            for(int row=0;row<6;++row) {
+                const int inset=(6-row)*4;
+                for(int x=left;x<right;++x)if(x<left+inset||x>=right-inset) {
+                    const auto value=uint8_t(45+(x/80+(top+row)/60)%45);
+                    pixels.Fill(x,top+row,x+1,top+row+1,value);
+                }
+            }
+            auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(pixels,2);
+            Assert::IsTrue(cue->geometry.generatedCleanupRowCount>1,
+                L"The regression must use native measured rounded row masks");
+            auto geometry=cue->geometry;geometry.extendToBar=!floating;
+            auto g=std::make_unique<ReconstructionMotionGpu>();g->settings.mixer="mitchell_clamp";
+            const auto blackLipSamples=[&]() {
+                std::vector<uint8_t> rgb(size_t(2000)*1125*4);pl_tex_transfer_params read{};
+                read.tex=g->outputTexture;read.ptr=rgb.data();
+                Assert::IsTrue(pl_tex_download(g->device->gpu,&read));
+                size_t black=0;
+                for(int y=top+8;y<PictureBottom-3;y+=3)for(int x:{left+12,right-13}) {
+                    const int ox=int((x+.5)*2000/NativeWidth);
+                    const int oy=int((y-PictureTop+.5)*1125/(PictureBottom-PictureTop));
+                    const auto i=(size_t(oy)*2000+ox)*4;
+                    if(rgb[i]+rgb[i+1]+rgb[i+2]<=3)++black;
+                }
+                return black;
+            };
+            // Negative control: the same input without reconstruction visibly
+            // contains the lip at the exact sampled output coordinates.
+            g->Capture(pixels,2);g->Draw();
+            Assert::IsTrue(blackLipSamples()>0,L"The pixel oracle must detect an unremoved black lip");
+            g->temporal.Clear();
+            size_t draws=0;
+            for(uint64_t sequence=2;sequence<=7;++sequence) {
+                if(sequence>2){cue->Advance(pixels,sequence);geometry=cue->geometry;geometry.extendToBar=!floating;}
+                g->Capture(pixels,sequence,&geometry);
+                for(double pts:g->temporal.outputs) {
+                    g->temporal.outputPts=pts;if(!g->temporal.CompositionOutputReady())continue;
+                    const auto crop=g->mapped.crop;g->Draw();++draws;
+                    Assert::AreEqual(size_t(0),blackLipSamples(),
+                        L"Rounded backing endpoints must stay repaired in mixed and inserted outputs");
+                    Assert::IsTrue(g->mapped.crop.y0==crop.y0&&g->mapped.crop.y1==crop.y1);
+                    const auto calls=g->preparation.RenderCallCount();g->Draw();
+                    Assert::AreEqual(calls,g->preparation.RenderCallCount());
+                    Assert::AreEqual(size_t(0),blackLipSamples());
+                }
+            }
+            Assert::IsTrue(draws>=8);
+            Assert::IsTrue(g->temporal.ProcessingSnapshot().completeOutputRenders>=draws);
+        }
+    }
     TEST_METHOD(UhdNativeCueUsesOneCompletePreparationAcrossInsertedOutputs) {
         NativeReconstructionPixels pixels;auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(pixels,2);
         auto g=std::make_unique<ReconstructionMotionGpu>();const auto start=std::chrono::steady_clock::now();
@@ -371,9 +467,9 @@ TEST_CLASS(ReconstructionMotionTests) { public:
         auto cue=std::make_unique<MeasuredReconstructionCue>();cue->Acquire(*pixels,2);
         auto current=std::make_unique<SubtitleBoxPreview>(cue->preview);
         SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
-        current->current.text=detector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3,true);
+        current->current.text=detector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3);
         current->current.ink=detector.InkSnapshot();
-        Assert::IsTrue(current->current.text.detected&&current->current.text.configuredSearchComplete);
+        Assert::IsTrue(current->current.text.detected&&current->current.text.topSearchComplete&&current->current.text.bottomSearchComplete);
         Assert::IsTrue(current->current.ink&&current->current.ink->rawEvidenceComplete);
         const auto accepted=cue->tracker.Consume(*current);
         Assert::IsTrue(accepted.detected&&!accepted.held&&!accepted.confirmationPending);
@@ -387,7 +483,7 @@ TEST_CLASS(ReconstructionMotionTests) { public:
             case 0:retry=false;break;case 1:prior=false;break;case 2:composed=false;break;
             case 3:incomplete=true;break;case 4:exhausted=true;break;
             case 5:text.held=true;break;case 6:text.confirmationPending=true;break;
-            case 7:bad->current.text.configuredSearchComplete=false;break;
+            case 7:bad->current.text.bottomSearchComplete=false;break;
             case 8:bad->current.pendingRefresh=true;break;case 9:bad->current.analysisRefresh=true;break;
             case 10:++bad->current.identity.acceptedSequence;break;
             case 11:++bad->policyGeneration;break;case 12:++bad->current.continuityGeneration;break;
@@ -446,7 +542,7 @@ TEST_CLASS(ReconstructionMotionTests) { public:
         // A late complete worker result, rather than a retained glyph proof,
         // is the authority available in the current beta detector.
         auto late=cue->preview;SubtitleBoxDetector lateDetector;lateDetector.SetNearBarDistance(20);
-        late.current.text=lateDetector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3,true);
+        late.current.text=lateDetector.Analyze(pixels->Source(),PictureTop,PictureBottom,2,3);
         late.current.ink=lateDetector.InkSnapshot();
         const auto lateAccepted=cue->tracker.Consume(late);
         Assert::IsTrue(CanRecoverCurrentSubtitlePacket(true,true,true,false,false,

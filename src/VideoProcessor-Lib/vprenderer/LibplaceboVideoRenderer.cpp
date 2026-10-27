@@ -4522,6 +4522,7 @@ struct LibplaceboVideoRenderer::Impl
         ~SubtitlePacketDonor(){if(gpu)pl_tex_destroy(gpu,&texture);}
     };
     SourcePreparationReceipt sourcePreparationReceipt;
+    uint64_t subtitlePacketReuses=0,subtitlePacketRevisions=0,subtitlePacketCaptures=0;
     struct SubtitleSourcePreparation {
         bool valid=false,composed=false,captionConfirmed=false,captionMeasured=false,noCaptionConfirmed=false;
         bool completeForRepeat=false,completePacket=false;
@@ -14162,6 +14163,7 @@ struct LibplaceboVideoRenderer::Impl
             !repeatedTemporalOutput && subtitleSourceCacheMatches &&
             !subtitleSourcePreparation.completeForRepeat;
         if(reuseSubtitlePreparation) {
+            ++subtitlePacketReuses;
             subtitleComposedImage=subtitleSourcePreparation.image;
             relocatedSubtitle=subtitleSourcePreparation.geometry;
             subtitleCompositionSucceeded=subtitleSourcePreparation.composed;
@@ -14963,7 +14965,7 @@ struct LibplaceboVideoRenderer::Impl
                  !currentSubtitleWorkIncomplete &&
                  subtitleBoxResult.detected && !subtitleBoxResult.held &&
                  !subtitleBoxResult.confirmationPending && !subtitleBoxResult.workLimit &&
-                 ((currentMeasuredCaptionAvailable && currentSubtitlePreview.available &&
+                 (currentMeasuredCaptionAvailable && currentSubtitlePreview.available &&
                    currentSubtitlePreview.current.analyzed && currentSubtitlePreview.current.text.detected &&
                    !currentSubtitlePreview.current.text.held && !currentSubtitlePreview.current.text.workLimit &&
                    !currentSubtitlePreview.current.pendingRefresh && !currentSubtitlePreview.current.analysisRefresh &&
@@ -14977,6 +14979,8 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.completeForRepeat);
         // Match metadata to the immutable GPU packet, not a later preparation
         // result for the same source. A real recovery capture replaces both.
+        if(capturedSubtitlePacketNew)++subtitlePacketCaptures;
+        if(revisedSubtitlePacket)++subtitlePacketRevisions;
         if(capturedSubtitlePacketNew)
             subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
                 subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
@@ -20019,7 +20023,7 @@ releaseDriftBaseRetention =
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
                 const auto& oldProcessing=lastPictureProcessingStatistics;
-                DebugLog::Log("VP source/output processing: manual_source_renders=%llu manual_source_reuses=%llu output_renders=%llu input_analysis_stride=%d processing_path=%s complete_library_outputs=%llu subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s",
+                DebugLog::Log("VP source/output processing: manual_source_renders=%llu manual_source_reuses=%llu output_renders=%llu input_analysis_stride=%d processing_path=%s complete_library_outputs=%llu subtitles=source_packet renderer_creations=%llu history_flushes=%llu subtitle_fallback_outputs=%llu subtitle_fallback_reason=%s subtitle_packet_captures_total=%llu subtitle_packet_reuses_total=%llu subtitle_packet_revisions_total=%llu",
                     processed.sourceRenders-oldProcessing.sourceRenders,
                     processed.sourceReuses-oldProcessing.sourceReuses,
                     processed.outputRenders-oldProcessing.outputRenders,subtitleAnalysisStride,
@@ -20027,7 +20031,8 @@ releaseDriftBaseRetention =
                     processed.sourceRendererCreations-oldProcessing.sourceRendererCreations,
                     processed.sourceRendererHistoryFlushes-oldProcessing.sourceRendererHistoryFlushes,
                     processed.subtitleFallbackOutputs-oldProcessing.subtitleFallbackOutputs,
-                    temporalRenderer.SubtitleFallbackReason());
+                    temporalRenderer.SubtitleFallbackReason(),
+                    subtitlePacketCaptures,subtitlePacketReuses,subtitlePacketRevisions);
                 lastPictureProcessingStatistics=processed;
                 const auto worker=lookaheadMeasurementWorker.Snapshot();
                 const auto& old=previousWorkerMetrics;

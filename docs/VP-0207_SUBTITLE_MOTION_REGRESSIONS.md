@@ -1,3 +1,23 @@
+# Current-beta integration, 27 October 2026
+
+This test build ports complete progressive composition (082a4aab), transactional
+same-source cue recovery (592d890b), and the necessary capture/recovery/fallback
+contracts. It retains the deployed rounded row masks, current detector and AR
+analysis scheduling. The broader AR/upload normalization from 25f14e2c and the
+older native cue inspector are intentionally not included.
+
+SourcePreparationReceipt gates subtitle preparation only in this port. Late
+replacement requires a complete current worker observation with matching glyph
+and panel geometry. Current beta glyph-only continuation cannot replace a packet.
+ReconstructionMotionTests uses current native detector/admission APIs and adds a
+rounded UHD lip pixel test with the actual Mitchell-clamp mixer, 23.976-to-59.951
+cadence, repeated outputs, fixed crop, float and extended backgrounds. Its negative
+control renders the same unremoved lip before checking repaired output pixels.
+
+The historical qualification notes below describe the upstream work; references
+to SourceOutputNormalizationTests and the older complete native inspector do not
+claim those broader changes are present in this port.
+
 # Subtitle and Smooth Motion regression checks
 
 Run both shipped libplacebo dependencies after changing temporal packet lifetime,

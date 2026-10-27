@@ -21,7 +21,9 @@ inline bool CanRecoverCurrentSubtitlePacket(bool exactSourceRetry,bool priorInco
         current.pendingRefresh||current.analysisRefresh||current.cadenceSkipped||
         current.barTrackingAuthority||current.currentAnchorUsesTrackedEdge||
         !text.detected||text.held||text.confirmationPending||text.workLimit||
-        !text.configuredSearchComplete||(!text.topSearchComplete&&!text.bottomSearchComplete)||
+        (current.pictureTop>0&&!text.topSearchComplete)||
+        (current.pictureBottom<current.height&&!text.bottomSearchComplete)||
+        (!text.topSearchComplete&&!text.bottomSearchComplete)||
         !current.ink||!current.ink->paletteValid||!current.ink->rawEvidenceComplete||
         accepted.lineCount<1||accepted.lineCount>3||accepted.lineCount!=text.lineCount||
         !SubtitleCueContinuation::SameRect(accepted.bounds,text.bounds)||
