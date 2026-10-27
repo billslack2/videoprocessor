@@ -1,0 +1,59 @@
+{
+  "sourceCommit": "53bb0f58bf200db5ab70c9233412f8e079a84895",
+  "sourceBranch": "codex/lip-smooth-motion-test-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLog": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\build-pinned.log",
+  "passed": 1152.0,
+  "failed": 0,
+  "tests": [
+    {
+      "path": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\dual-final\\standard.trx",
+      "sha256": "7C1B0D2233AAA1A655E4B19777B4DDB834B029CCD148F0630D8AA9CAD50BA48D",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\beta-final\\beta.trx",
+      "sha256": "E1B8CD388EA489D89201400FA298DEC5C5E490B2F104A74769988079C2A1CE0B",
+      "passed": 203,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\native-cpu\\native-cpu.trx",
+      "sha256": "7D64DBF41A1C12E0B7C3E498369CF1E3C050FC08DE689B25DD9FECD0CF88C0F8",
+      "passed": 725,
+      "failed": 0
+    },
+    {
+      "path": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\hdr-final\\hdr.trx",
+      "sha256": "CAE8A17CA18F72862C313A8F9197DCDA4C267373E5B7BC069C5DFFB2E88C4C70",
+      "passed": 21,
+      "failed": 0
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\lip-smooth-motion-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "835A34E11ED524C6D05E84E01F1CA0AB7BF05BCFE7CD5370A8FB6B4BD650A254"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\lip-smooth-motion-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "161902380719796D228353026201B63540DA4734F751864C0AAE4958A6AA7E35"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\lip-smooth-motion-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "5F622880A71A2480ED6F301C8DB6CC605B8ADE388D0C3E4981D42E2BD40F41A4"
+    }
+  ],
+  "standardValidatedSource": "1ef9e0e62b38b41e0846dcea6de0a5f4252ca4a1",
+  "sourceTree": "377a98b52bb6277632b46fa7a49ddff86f6daf12",
+  "dependencyTree": "9b7da292b4c127e0b15e580002fea00f1370764f",
+  "standardReuseEvidence": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\standard-validation-reuse.json",
+  "standardClassCoverage": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\standard-class-coverage.json",
+  "betaQualification": "E:\\codex\\diagnostics\\lip-smooth-motion-port-20261027\\beta-final\\motion-renderer-tests.json",
+  "initialManifestCorrection": "Initial standard runner rejected absent upstream-only RetainedEnvelopeSelectionGpuTests after all 203 executed tests passed; only the runner class list changed and all seven compiled classes were independently verified.",
+  "liveAcceptance": "Pending user Ben-Hur replay",
+  "validatedAtUtc": "2026-10-27T18:45:35.8256535+00:00"
+}

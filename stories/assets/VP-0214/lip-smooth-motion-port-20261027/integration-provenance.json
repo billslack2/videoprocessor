@@ -1,0 +1,21 @@
+{
+  "sourceCommit": "53bb0f58bf200db5ab70c9233412f8e079a84895",
+  "sourceBranch": "codex/lip-smooth-motion-test-20261027",
+  "officialBetaCommit": "df33935f278655ba620935c26e3222d117f36ee7",
+  "initialBetaCommit": "60df2bf6f3123b582e8e1e68b635f72553fa5871",
+  "priorLipTestCommit": "837afc5c838f857478421b9d9825cdf27a079114",
+  "observedConcurrentClassicDeployment": "cc20c64ef4d83b050f4fb30352fc8a09e3697ada",
+  "historicalRepairs": [
+    "082a4aab5146aeb2980a4ba9cae7c6adbb00c64e",
+    "592d890ba45edc5aed955f3b276c1315b6a33df5"
+  ],
+  "scope": "Complete progressive reconstruction/mixing, immutable packet reuse, transactional late current-worker recovery, bounded complete-packet fallback and GPU-program preservation on source gaps.",
+  "excludedHistoricalScope": "AR/upload scheduling normalization and the older native current-cue inspector",
+  "preserved": "Current native detector, rounded row masks, recent lip jitter fix, native AR proofs, Classic changes, VSync scheduler and shader preparation grace.",
+  "buildExitCode": 0,
+  "configuration": "Release",
+  "architecture": "x64",
+  "liveAcceptance": "Pending Ben-Hur replay; controlled tests do not establish the exact live flicker cause.",
+  "standardValidatedSourceCommit": "1ef9e0e62b38b41e0846dcea6de0a5f4252ca4a1",
+  "runnerCorrection": "Removed a nonexistent upstream-only AR test class. Standard run executed all seven compiled classes: 203 passed. Production, dependency, and test source trees are unchanged."
+}

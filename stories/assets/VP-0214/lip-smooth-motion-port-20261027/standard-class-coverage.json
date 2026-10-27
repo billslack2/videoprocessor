@@ -1,0 +1,30 @@
+[
+  {
+    "class": "MotionRendererTests",
+    "passed": 78
+  },
+  {
+    "class": "SourceUploadBatchTests",
+    "passed": 5
+  },
+  {
+    "class": "TemporalCleanPacketGpuTests",
+    "passed": 1
+  },
+  {
+    "class": "ReconstructionMotionTests",
+    "passed": 9
+  },
+  {
+    "class": "SubtitleCutPasteTests",
+    "passed": 89
+  },
+  {
+    "class": "SubtitleCutPasteShaderTests",
+    "passed": 20
+  },
+  {
+    "class": "RendererDependencyTests",
+    "passed": 1
+  }
+]

@@ -107,6 +107,55 @@ Do not import the whole old draft blindly or change AR thresholds based on this
 symptom. No source change or additional deployment was performed in this audit.
 [Investigation evidence](../assets/VP-0214/lip-smooth-motion-20261027/investigation.json).
 
+### Combined Smooth Motion test deployment — 2026-10-27 14:45 EDT
+
+User authorized incorporating the historical repair into the test build. Clean
+x64 Release `53bb0f58bf200db5ab70c9233412f8e079a84895` is pushed on
+`codex/lip-smooth-motion-test-20261027`. The clean worktree started at remote
+beta `60df2bf6`; current official beta `df33935f` (Classic PR217) was subsequently
+merged, with no additional file changes because the same Classic work was
+already preserved. The concurrently installed Classic test `cc20c64e` was
+included alongside the prior AR and focused backing-lip changes.
+
+The narrow port includes historical `082a4aab` / `592d890b` and required
+prerequisites: complete progressive reconstruction before library mixing,
+exact-source packet reuse, transactional late current-worker recovery, bounded
+complete-packet fallback, and GPU-program preservation across source gaps.
+Current native detection, AR proofs/scheduling, rounded row masks, focused lip
+repair, Classic behavior, VSync scheduler and shader-preparation grace remain.
+The old broad AR/upload normalization and older native current-cue inspector
+were deliberately excluded. Host and both renderer DLLs use ABI 30 together.
+
+Validation passed 1,152 checks: standard GPU/cue 203, beta GPU/cue 203, native
+CPU 725, and HDR 21. Native UHD reconstruction regressions cover rounded backing
+intrusions with glyphs wholly in the bar, float/extend placement, mixed and
+repeated 23.976-to-59.951 outputs, cue changes/end, late current-cue recovery,
+context invalidation, bounded holds and failed preparation/rollback. A raw-lip
+negative control proves the pixel oracle detects unrepaired output.
+
+The first standard runner reported a manifest error after all 203 executed
+tests passed: it named an upstream-only test class absent from this focused
+port. The final commit removes only that nonexistent class from the runner;
+all seven compiled classes passed. Standard/native/HDR results at `1ef9e0e6`
+are retained with identical production, test and dependency trees at final
+`53bb0f58`; the final full Release build and beta suite ran at that exact HEAD.
+Initial evidence is retained; no failing assertion was waived.
+
+Deployed nine verified runtime/sidecar/PDB files; 18 matching dependency DLLs
+were retained. Backup:
+`C:\Videoprocessor\vp\backup-before-smooth-motion-port-20261027-144554`.
+No configuration or state edits were made. Restarted PID 8500 at 14:45:55;
+startup logs confirm both host and renderer at clean `53bb0f58`, and installed
+hashes match the qualified build. Current saved Classic selection is preserved;
+advanced-subtitles plus Smooth Motion live replay remains pending. Controlled
+regressions do not establish the exact live incident cause or acceptance.
+Story remains In Progress. Neither PR197, PR216 nor this test branch was merged
+into beta by this deployment.
+
+[Integration provenance](../assets/VP-0214/lip-smooth-motion-port-20261027/integration-provenance.json),
+[validation](../assets/VP-0214/lip-smooth-motion-port-20261027/deployment-validation.json),
+[deployment receipt](../assets/VP-0214/lip-smooth-motion-port-20261027/deployment-receipt.json).
+
 ## Problem
 
 Classic and reconstructed subtitle modes share a boundary between exact fresh

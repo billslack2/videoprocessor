@@ -1,0 +1,142 @@
+{
+  "sourceCommit": "53bb0f58bf200db5ab70c9233412f8e079a84895",
+  "sourceBranch": "codex/lip-smooth-motion-test-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backupDirectory": "C:\\Videoprocessor\\vp\\backup-before-smooth-motion-port-20261027-144554",
+  "configurationEdits": [],
+  "stateEdits": [],
+  "configSha256": "1E4AE519570F8020147299715747FFBE4C042B2F2AA2293D839D0D50803AEA81",
+  "stateBeforeSha256": "DFA2930A5E57AA929DCAC892882D2591BA87A565823AB6760BDFA344151A0575",
+  "stateSha256BeforeRestart": "DFA2930A5E57AA929DCAC892882D2591BA87A565823AB6760BDFA344151A0575",
+  "preservedARCommits": [
+    "daad7eb0",
+    "f4219a7a"
+  ],
+  "preservedClassicCommits": [
+    "4a56b7f3",
+    "1f0102fb",
+    "cc20c64e"
+  ],
+  "preservedLipCommit": "18c66791",
+  "files": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "835A34E11ED524C6D05E84E01F1CA0AB7BF05BCFE7CD5370A8FB6B4BD650A254"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "sha256": "70C4DF9E8CFFB4A0EFA1466193B1ABC810AF4973B6A95BE0B082F4687CE70938"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "sha256": "685BFEEB9EB25B6651A84F67E59772175FBE49DF506881CD5F545FCDC6C5C736"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "161902380719796D228353026201B63540DA4734F751864C0AAE4958A6AA7E35"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "E9EBC55CE2CAB0DE8DC1E9AB03AE9619BC96773455AFA81CA3E78B1612949CAC"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "F952843CB56ABDF18F45E33735B226B83B06B9312867E46C624F3206E96393A6"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "5F622880A71A2480ED6F301C8DB6CC605B8ADE388D0C3E4981D42E2BD40F41A4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "F5CAA050ECCD580A381A4BB02AA220378C2F6FFCD64D2BAC935072AD2DD258B2"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "63723425FEE29EBED2D34464E6252143B235BE4C2C02F2699CA29A44984DDBDF"
+    }
+  ],
+  "retainedDependencies": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-377.dll",
+      "sha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "playerStarted": true,
+  "deployedAtUtc": "2026-10-27T14:45:55.8402662-04:00",
+  "playerProcessId": 8500,
+  "startupIdentityLines": [
+    "2026-10-27 14:45:55 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/53bb0f58bf200db5ab70c9233412f8e079a84895 branch=codex/lip-smooth-motion-test-20261027 dirty=0 build=v1.4.02-beta-53bb0f5",
+    "2026-10-27 14:46:03 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/53bb0f58bf200db5ab70c9233412f8e079a84895 branch=codex/lip-smooth-motion-test-20261027 dirty=0 build=v1.4.02-beta-53bb0f5"
+  ],
+  "runtimeVerifiedAtUtc": "2026-10-27T18:46:40.7187973+00:00"
+}
