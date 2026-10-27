@@ -1110,7 +1110,7 @@ namespace
             << settings.subtitlePaddingPolicy.bottomPercent << '|'
             << static_cast<int>(settings.subtitleMode) << '|' << settings.subtitleMoveInset << '|'
             << settings.subtitleTextReductionPercent << '|'
-            << settings.subtitleBackgroundGuard.enabled << '|' << settings.subtitleBackgroundGuard.top << '|' << settings.subtitleBackgroundGuard.sides << '|'
+            << settings.subtitleBackgroundGuard.enabled << '|'
             << settings.subtitleRoundedCorners << '|' << settings.subtitleFloatBackground << '|'
             << settings.subtitleTemporalFill << '|' << settings.subtitleSpatialFill << '|'
             << settings.subtitleDetectionOptimization << '|' << static_cast<int>(settings.subtitleScriptHint) << '|'
@@ -2794,8 +2794,6 @@ namespace
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::ResolveOffZoomHoldMs(values);
                     int n=0;
                     RendererProfileConfig::ParseBoolean(get("background_sanity_guard"),settings.subtitleBackgroundGuard.enabled);
-                    if(RendererProfileConfig::ParseInteger(get("background_fallback_top_pixels"),0,200,n)) settings.subtitleBackgroundGuard.top=n;
-                    if(RendererProfileConfig::ParseInteger(get("background_fallback_side_pixels"),0,200,n)) settings.subtitleBackgroundGuard.sides=n;
                     if(settings.scopeSubtitleFit) {
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_HOLD_MS;
                         settings.scopeSubtitleEngageDriftMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS;

@@ -89,6 +89,22 @@ TEST_CLASS(SubtitleCutPasteTests) {
         auto disabled=presentation.Consume(text,p,{0,0,0});
         Assert::IsTrue(disabled.valid);Assert::AreEqual(70,disabled.generatedCleanup.left);
     }
+    TEST_METHOD(BackgroundGuardPaddingFollowsTextRatherThanRasterResolution) {
+        // Same source text on differently sized rasters has identical padding.
+        for(int rasterHeight:{1080,2160}) {
+            SubtitleBoxResult text;text.lineCount=1;
+            text.bounds=text.lineBounds[0]={600,924,1320,984};
+            SubtitleBoxRect panel{210,600,1365,945};
+            Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,1920,rasterHeight,135,945,60,{}));
+            Assert::AreEqual(580,panel.left);Assert::AreEqual(912,panel.top);
+        }
+        // Larger text on the SAME raster receives proportionately larger padding.
+        SubtitleBoxResult text;text.lineCount=1;
+        text.bounds=text.lineBounds[0]={600,924,1320,1044};
+        SubtitleBoxRect panel{210,600,1400,945};
+        Assert::IsTrue(GuardSubtitleBackgroundPanel(panel,text,1920,1080,135,945,60,{}));
+        Assert::AreEqual(560,panel.left);Assert::AreEqual(900,panel.top);
+    }
     TEST_METHOD(BackgroundGuardConfigValidation) {
         std::string reason;
         Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","background_sanity_guard","true",reason));

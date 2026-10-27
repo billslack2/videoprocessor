@@ -6,8 +6,8 @@ background footprint. Classic and Off do not use this relocation guard.
 
 The guard compares the measured background against the union of every detected
 text line. It falls back when the picture-facing margin exceeds the larger of
-two line heights or four fallback top margins, when a side exceeds the larger
-of two line heights or four fallback side margins, or when left/right margins
+two line heights or four internal top margins, when a side exceeds the larger
+of two line heights or four internal side margins, or when left/right margins
 differ by more than a line height and the larger exceeds twice the smaller plus
 the fallback side margin. These initial thresholds need live scene qualification.
 Screen centering is not required. Legitimate off-center and multiline captions
@@ -17,15 +17,17 @@ Named `[vprenderer.subtitles.NAME]` profiles support:
 
 ```ini
 background_sanity_guard: true
-background_fallback_top_pixels: 12
-background_fallback_side_pixels: 20
 ```
 
-Padding values accept integers 0–200, expressed at 1080 source lines and scaled
-to source height (24/40 at 2160 lines). The top margin is mirrored below text
-for a top-bar subtitle. The bar-facing edge uses the independently detected
-physical bar; only captions intersecting it or within the existing near-bar
-distance are eligible. All detected glyphs and sampling fringe are preserved.
+Padding is internal, not user-configurable: one fifth of a measured text-line
+height above the text and one third at each side, rounded up to source pixels.
+It follows subtitle size through the display transform, independent of a fixed
+source-resolution reference. The top margin is mirrored below text for a
+top-bar subtitle. The bar-facing edge uses the independently detected physical
+bar; only captions intersecting it or within the existing near-bar distance are
+eligible. All detected glyphs and sampling fringe are preserved. The two padding
+keys from the initial trial remain readable but are ignored, so existing saved
+configuration is preserved without retaining user-adjustable padding.
 
 The fallback caps existing measured cleanup coverage. It cannot grant new
 picture removal or glyph extraction authority. The existing near-bar cleanup

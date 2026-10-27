@@ -6,9 +6,8 @@
 // Presentation-only estimate. Never replaces detector evidence or glyph bounds.
 struct SubtitleBackgroundGuardPolicy {
     bool enabled = true;
-    int top = 12, sides = 20; // Pixels at 1080 lines; scaled to source height.
     bool operator==(const SubtitleBackgroundGuardPolicy& other) const {
-        return enabled==other.enabled && top==other.top && sides==other.sides;
+        return enabled==other.enabled;
     }
 };
 
@@ -32,8 +31,11 @@ inline bool GuardSubtitleBackgroundPanel(SubtitleBoxRect& panel,
     const bool bottom=pictureBottom<height && ink.bottom>=pictureBottom-(std::max)(0,nearBarDistance);
     const bool top=pictureTop>0 && ink.top<=pictureTop+(std::max)(0,nearBarDistance);
     if(top==bottom)return false; // Require one known adjacent physical bar.
-    const int sidePad=int((int64_t((std::max)(0,(std::min)(200,policy.sides)))*height+540)/1080);
-    const int topPad=int((int64_t((std::max)(0,(std::min)(200,policy.top)))*height+540)/1080);
+    // Internal visual proportions: one third of a text line at either side,
+    // one fifth above it. Text and padding share the display transform, so
+    // their visual proportions follow the displayed subtitle, not raster size.
+    const int sidePad=(lineHeight+2)/3;
+    const int topPad=(lineHeight+4)/5;
     const int left=(std::max)(0,ink.left-panel.left),right=(std::max)(0,panel.right-ink.right);
     const int above=bottom?(std::max)(0,ink.top-panel.top):(std::max)(0,panel.bottom-ink.bottom);
     const int sideLimit=(std::max)(2*lineHeight,4*sidePad);

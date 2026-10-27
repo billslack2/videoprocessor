@@ -8000,27 +8000,27 @@ void testSubtitleBackgroundShapeRoundTripAndVisibility()
     auto* edge=requireControl<QComboBox>(window,"config.vprenderer.subtitles.background_edge");
     require(rounded->isChecked() && edge->currentData().toString()=="extend","Shape defaults changed existing rounded extended behavior");
     auto* guard=requireControl<QCheckBox>(window,"config.vprenderer.subtitles.background_sanity_guard");
-    auto* guardTop=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.background_fallback_top_pixels");
-    auto* guardSides=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.background_fallback_side_pixels");
-    require(guard->isChecked() && guardTop->text()=="12" && guardSides->text()=="20","Background guard defaults changed");
+    require(guard->isChecked(),"Background guard must default on");
+    require(!window.findChild<QLineEdit*>("config.vprenderer.subtitles.background_fallback_top_pixels") &&
+        !window.findChild<QLineEdit*>("config.vprenderer.subtitles.background_fallback_side_pixels"),"Internal fallback padding must not expose user controls");
     require(!hasPendingConfigurationChanges(window),(QStringLiteral("Loading shape defaults dirtied configuration: summary=%1; status=%2")
         .arg(requireControl<QLabel>(window,"configurationEffectSummary")->text(),
             requireControl<QLabel>(window,"configurationStatus")->text()).toStdString()).c_str());
     rounded->setChecked(false);selectData(edge,"float");
-    guard->setChecked(false);guardTop->setText("18");guardSides->setText("28");
+    guard->setChecked(false);
     for(const auto& style:{"black","classic","off","generated_gray"}) {
         selectData(type,style);QApplication::processEvents();
         const bool moved=QString(style)=="black" || QString(style)=="generated_gray";
         require(rounded->isVisible()==moved && edge->isVisible()==moved,"Shape controls must only show for moved styles");
-        require(guard->isVisible()==moved && guardTop->isVisible()==moved && guardSides->isVisible()==moved,"Background guard must only show for moved styles");
+        require(guard->isVisible()==moved,"Background guard must only show for moved styles");
         require(!rounded->isChecked() && edge->currentData().toString()=="float","Style switch lost shape selection");
     }
     selectData(type,"black");save(window);
     ConfigEditorWindow reopened(path,0,true);
     require(!requireControl<QCheckBox>(reopened,"config.vprenderer.subtitles.rounded_corners")->isChecked(),"Square corners did not persist");
     require(!requireControl<QCheckBox>(reopened,"config.vprenderer.subtitles.background_sanity_guard")->isChecked(),"Background guard did not persist");
-    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.background_fallback_top_pixels")->text()=="18" &&
-        requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.background_fallback_side_pixels")->text()=="28","Fallback padding did not persist");
+    require(!reopened.findChild<QLineEdit*>("config.vprenderer.subtitles.background_fallback_top_pixels") &&
+        !reopened.findChild<QLineEdit*>("config.vprenderer.subtitles.background_fallback_side_pixels"),"Reopening exposed internal padding controls");
     require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.background_edge")->currentData().toString()=="float","Float did not persist");
     requireControl<QCheckBox>(reopened,"config.vprenderer.subtitles.rounded_corners")->setChecked(true);
     selectData(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.background_edge"),"extend");save(reopened);
