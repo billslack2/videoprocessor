@@ -2,7 +2,54 @@
 
 ## Status
 
-Review
+In Progress
+
+2026-10-26 reopened after a critical live report: the Epson sometimes displays
+one frame and then freezes while the desktop monitor continues rendering.
+The user confirms `present_every_vsync: false` keeps Epson playback moving,
+including with Config open. Configuration-window causality remains unconfirmed. Deployed host and renderer identify clean
+`376e46a3`, including the accepted Ben-Hur subtitle correction.
+
+Four preserved recovery events (20:27:22, 20:28:22, 20:36:42, 20:37:51 EDT)
+show the Epson expected near 23.976 Hz, DXGI feedback near 59.95 Hz, and a
+cadence recovery immediately changing FLIP to BITBLT. Source analysis and
+GPU submission continue afterward. These logs do not themselves prove
+physical display refresh or a deadlock.
+
+The recovery's local `CComPtr<IDXGISwapChain>` survives across
+`RecreateSwapchain`, keeping the old HWND's flip chain alive. The bundled
+library silently falls back to bitblt when creation of another flip chain
+fails. A scoped production output probe now releases all temporary COM
+references before recreation, retaining the existing output-identity and
+bounded-recovery checks. Recovery telemetry records the presentation model
+before and after the rebuild. Subtitle and aspect-ratio logic are unchanged.
+
+A hidden-window reproduction passed 32 matrix cases across bundled APIs
+360/377, WARP/hardware, both attached monitors, and borrowed/owned query
+routes: the old lifetime reproduces bitblt fallback; the corrected lifetime
+preserves flip presentation through repeated recreation. WARP correctly
+rejects unavailable physical-output verification. The initial native fixture
+assumed FLIP_SEQUENTIAL; vstest legitimately selected FLIP_DISCARD, so its
+final assertion accepts either initial flip mode and requires exact mode
+preservation. Final clean source `bc060dba1266e7664c30f846fcbc0e0bf967e895` is pushed in
+[draft PR #211](https://github.com/billslack2/videoprocessor/pull/211), based
+on current beta `37b8720a`. Full x64 Release solution build succeeds. Final
+cadence/lifecycle suite passes 123/123; qualification covers 190 distinct
+passing checks including motion/cache and accepted rounded-subtitle GPU
+coverage. The earlier broader run passed 188/190; its only two failures were
+the corrected new fixture assertions, with only test code changed afterward.
+All 32 isolated matrix cases also pass. Matching host, standard/beta renderer,
+and test binary hashes are verified against generated Release sidecars.
+[Qualification receipt](../assets/VP-0211/render-freeze-20261026/validation.json).
+
+Deployment was offered after qualification and awaits the user's answer.
+The installed `376e46a3` build and user-selected VSync-off workaround remain
+in place. Live Epson scanout validation with VSync on is still required;
+this draft is not merged and the story remains In Progress.
+
+Local raw incident logs and copied configuration are retained only under
+`E:\codex\diagnostics\render-freeze-20261026-2041`.
+[Compact incident timeline](../assets/VP-0211/render-freeze-20261026/incident.json).
 
 2026-10-25 PR #204 merged at the user's explicit request into current beta
 `v1.4.02-beta` as `81ac960fbd62619374fba1c16630b8feac364d59`.

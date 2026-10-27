@@ -1,0 +1,53 @@
+{
+  "deployedSource": "376e46a3c2d794745e6e04a525b73ca63248b370",
+  "integrationBase": "37b8720a46f88181cc41c283a35f0a2bc18cfbe8",
+  "userReport": "Picture stops on Epson; desktop display moves; user is testing present_every_vsync off.",
+  "recoveryEvents": [
+    {
+      "log": "vp.log.1",
+      "line": 19557,
+      "recovery": "2026-10-26 20:27:22 | VP display timing recovery: attempt=1 expected_hz=23.976000 observed_hz=59.926769 window_ms=250.2 recreated=1 workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+      "precedingEvidence": [
+        "2026-10-26 20:27:22 | VP display timing state: state=mismatch expected_hz=23.976000 observed_hz=59.926769 intervals=5 window_ms=250.2 cached_repeats_suppressed=1 recovery_pending=1 workahead_corroborated=1 attempts=0 epoch=3 stats_hr=0x00000000",
+        "2026-10-26 20:27:22 | libplacebo [info]: Using bitblt-model presentation",
+        "2026-10-26 20:27:22 | Alpha presentation target: trigger=display cadence mismatch hwnd=000000000006099A parent=00000000000E0262 root=000000000006099A owner=00000000000E0262 style=0x94000000 exstyle=0x0000009C is_child=0 visible=1 iconic=0 cloaked=0 cloak_result=0x00000000 client=0,0-3840,2160 screen=2560,0-6400,2160 monitor=0000000000020001 monitor_rect=2560,0-6400,2160 requested=DIRECT/FULL/2.4/Rec.709 effective=DIRECT/FULL/2.4/Rec.709 fallback=none",
+        "2026-10-26 20:27:22 | libplacebo DXGI swapchain: trigger=display cadence mismatch format=24 swap_effect=0 flags=0x00000000 buffers=1 windowed=1 model=COMPOSED/BITBLT direct_state=unverified"
+      ]
+    },
+    {
+      "log": "vp.log.1",
+      "line": 22526,
+      "recovery": "2026-10-26 20:28:22 | VP display timing recovery: attempt=1 expected_hz=23.976000 observed_hz=59.952877 window_ms=200.2 recreated=1 workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+      "precedingEvidence": [
+        "2026-10-26 20:28:22 | VP display timing state: state=mismatch expected_hz=23.976000 observed_hz=59.952877 intervals=5 window_ms=200.2 cached_repeats_suppressed=1 recovery_pending=1 workahead_corroborated=1 attempts=0 epoch=3 stats_hr=0x00000000",
+        "2026-10-26 20:28:22 | libplacebo [info]: Using bitblt-model presentation",
+        "2026-10-26 20:28:22 | Alpha presentation target: trigger=display cadence mismatch hwnd=000000000006099A parent=00000000000E0262 root=000000000006099A owner=00000000000E0262 style=0x94000000 exstyle=0x0000009C is_child=0 visible=1 iconic=0 cloaked=0 cloak_result=0x00000000 client=0,0-3840,2160 screen=2560,0-6400,2160 monitor=0000000000020001 monitor_rect=2560,0-6400,2160 requested=DIRECT/FULL/2.4/Rec.709 effective=DIRECT/FULL/2.4/Rec.709 fallback=none",
+        "2026-10-26 20:28:22 | libplacebo DXGI swapchain: trigger=display cadence mismatch format=24 swap_effect=0 flags=0x00000000 buffers=1 windowed=1 model=COMPOSED/BITBLT direct_state=unverified"
+      ]
+    },
+    {
+      "log": "vp.log.0",
+      "line": 39236,
+      "recovery": "2026-10-26 20:36:42 | VP display timing recovery: attempt=1 expected_hz=23.976398 observed_hz=59.948301 window_ms=283.7 recreated=1 workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+      "precedingEvidence": [
+        "2026-10-26 20:36:42 | VP display timing state: state=mismatch expected_hz=23.976398 observed_hz=59.948301 intervals=5 window_ms=283.7 cached_repeats_suppressed=1 recovery_pending=1 workahead_corroborated=1 attempts=0 epoch=3 stats_hr=0x00000000",
+        "2026-10-26 20:36:42 | libplacebo [info]: Using bitblt-model presentation",
+        "2026-10-26 20:36:42 | Alpha presentation target: trigger=display cadence mismatch hwnd=00000000000E0A00 parent=0000000000090782 root=00000000000E0A00 owner=0000000000090782 style=0x94000000 exstyle=0x0000009C is_child=0 visible=1 iconic=0 cloaked=0 cloak_result=0x00000000 client=0,0-3840,2160 screen=2560,0-6400,2160 monitor=0000000000020001 monitor_rect=2560,0-6400,2160 requested=DIRECT/FULL/2.4/Rec.709 effective=DIRECT/FULL/2.4/Rec.709 fallback=none",
+        "2026-10-26 20:36:42 | libplacebo DXGI swapchain: trigger=display cadence mismatch format=24 swap_effect=0 flags=0x00000000 buffers=1 windowed=1 model=COMPOSED/BITBLT direct_state=unverified"
+      ]
+    },
+    {
+      "log": "vp.log",
+      "line": 1170,
+      "recovery": "2026-10-26 20:37:51 | VP display timing recovery: attempt=1 expected_hz=23.976000 observed_hz=59.963003 window_ms=233.5 recreated=1 workahead_corroborated=1 output_verified=1 timing_verified=0 cached_repeats_suppressed=1 hdmi_resync=0",
+      "precedingEvidence": [
+        "2026-10-26 20:37:51 | VP display timing state: state=mismatch expected_hz=23.976000 observed_hz=59.963003 intervals=5 window_ms=233.5 cached_repeats_suppressed=1 recovery_pending=1 workahead_corroborated=1 attempts=0 epoch=3 stats_hr=0x00000000",
+        "2026-10-26 20:37:51 | libplacebo [info]: Using bitblt-model presentation",
+        "2026-10-26 20:37:51 | Alpha presentation target: trigger=display cadence mismatch hwnd=0000000000120A00 parent=00000000000907D2 root=0000000000120A00 owner=00000000000907D2 style=0x94000000 exstyle=0x0000009C is_child=0 visible=1 iconic=0 cloaked=0 cloak_result=0x00000000 client=0,0-3840,2160 screen=2560,0-6400,2160 monitor=0000000000020001 monitor_rect=2560,0-6400,2160 requested=DIRECT/FULL/2.4/Rec.709 effective=DIRECT/FULL/2.4/Rec.709 fallback=none",
+        "2026-10-26 20:37:51 | libplacebo DXGI swapchain: trigger=display cadence mismatch format=24 swap_effect=0 flags=0x00000000 buffers=1 windowed=1 model=COMPOSED/BITBLT direct_state=unverified"
+      ]
+    }
+  ],
+  "limitation": "Logs prove source/GPU progress and swapchain fallback, not physical scanout. Config-window causality not yet established.",
+  "userConfirmedWorkaround": "With present every VSync off, Epson playback stays moving, including with Config open."
+}

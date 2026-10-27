@@ -1,0 +1,95 @@
+{
+  "sourceCommit": "bc060dba1266e7664c30f846fcbc0e0bf967e895",
+  "sourceTree": "b12b2b98d114549d9eda0d30d2770f883e978225",
+  "baseCommit": "37b8720a46f88181cc41c283a35f0a2bc18cfbe8",
+  "clean": true,
+  "build": "Full x64 Release solution build succeeded, zero errors",
+  "finalSuite": {
+    "total": "123",
+    "executed": "123",
+    "passed": "123",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "earlierSuite": {
+    "total": "190",
+    "executed": "190",
+    "passed": "188",
+    "failed": "2",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "earlierSuiteSource": "51f9c3b0c95471ece9f3de267c63008988cb1aa2",
+  "earlierFailures": "Two new fixtures assumed FLIP_SEQUENTIAL; corrected to preserve either valid initial flip effect. Only test code changed afterward. Both pass in final suite.",
+  "uniquePassedTests": 190,
+  "isolatedMatrixCases": 32,
+  "physicalScanoutVerified": false,
+  "deployed": false,
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "0012d4f926f47bcb5d6072b94d6edf7c4d44b89e1d7a2a4a2ee4a541b381c6b9",
+      "runtime": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "0012D4F926F47BCB5D6072B94D6EDF7C4D44B89E1D7A2A4A2EE4A541B381C6B9"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "e69dd2e995baf6dde8d485b7d00d8b300d38425d2630a127dd6747644002016b",
+      "runtime": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "E69DD2E995BAF6DDE8D485B7D00D8B300D38425D2630A127DD6747644002016B"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "14b754b0059ab057ac17d71f4609fd240f2b15daae78b3a6bfa2a558950dc747",
+      "runtime": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "14B754B0059AB057AC17D71F4609FD240F2B15DAAE78B3A6BFA2A558950DC747"
+      }
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\render-freeze-20261026\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "8efe0f1eee0edd68a1ce3505d39f3825ad1ce6f1056eb7b23df30b8ed341bafe",
+      "runtime": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "8EFE0F1EEE0EDD68A1CE3505D39F3825AD1CE6F1056EB7B23DF30B8ED341BAFE"
+      }
+    }
+  ]
+}
