@@ -10,6 +10,12 @@ Use strong current evidence more consistently, with separate proofs for each kin
 
 The objective is correct, stable framing: promptly follow real aspect changes, preserve actual picture and captions, stay steady through ambiguous scenes, and avoid added queue delay. A strong border is a useful observation; it is not by itself permission to discard everything outside it.
 
+## Configured presentation goal
+
+The 2026-10-27 user clarification confirms a 2.35:1 scope screen with constant image height. Read the active deployment configuration and selected state before interpreting AR diagnostics. Detect the actual picture inside the input container, then apply the configured CIH mapping and aspect-fill limits. Full-raster retention is a conservative detector outcome, not a successful presentation criterion: a scope picture letterboxed inside a 16:9 input can remain undersized with borders on all four sides when the whole raster is fitted to screen height. Tests must measure the final displayed active picture, including expected screen-width scope presentation and screen-height 16:9 presentation, with the current 2.32/2.42 fill limits respected.
+
+The [capture interpretation](native-capture-20261026.md#cih-interpretation-corrected-on-2026-10-27) records the configuration evidence. Boundary straightness and distributed local contrast remain useful evidence despite the failure of one coarse smooth-profile experiment. That failed experiment does not establish that the visible boundary itself is ambiguous. Continue qualifying each edge and protecting actual picture/caption detail; do not require the user to redefine the purpose of automatic AR detection.
+
 ## What is already implemented
 
 The detector already adapts its black reference every frame, qualifies some raised mattes, compares local boundaries, checks distributed dark-picture texture, learns recurring geometry, and uses already-buffered future frames. There is no temporal learned black-level calibration in the inspected paths; recurring geometry still requires current pixel proof.

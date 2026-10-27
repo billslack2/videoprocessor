@@ -8,6 +8,16 @@ The saved example persistently fails acquisition because the upper exterior does
 
 The upper band contains a substantial gray gradient and fine texture; the lower band is nearly flat black. This contradicts the initial proposal that matching uniform matte references would fix the captured example. A separate independently qualified per-edge spatial profile is now specified in the [revised design](adaptive-evidence-design.md#captured-ad-independently-qualified-variable-exterior-profiles). That proposal is not implemented or validated, and a visible border alone does not prove that the outside artwork is expendable.
 
+## CIH interpretation corrected on 2026-10-27
+
+The user reaffirmed the intended scope/constant-image-height presentation. The active deployment configuration has a 2.35:1 Scope viewport, automatic cropping enabled, centered alignment, and aspect-fill limits 2.32 (narrower) and 2.42 (wider). The saved state selects both Scope viewport and Scope zoom, with NLS Off. These settings establish the framing goal; asking the user to choose between the incoming 16:9 raster and the detected picture without first consulting this setup was unnecessary.
+
+The 3840x2160 input is a 16:9 transport container. The red picture rectangle between the measured horizontal transitions is approximately 2.47:1. All 1,516 recorded presentations retain the entire input raster. Under the configured CIH mapping, this treats the outer bands as part of a 16:9 picture: the raster fits the scope screen height and occupies only about 75.7% of its width, while the red picture is reduced further vertically by the retained bands. Full-raster retention therefore does not demonstrate successful AR detection; it explains how a scope picture can remain undersized with borders on all four sides.
+
+The intended improvement is automatic recognition of the active picture followed by the existing configured screen mapping. A qualified picture near 2.47:1 would use screen width with small vertical margins; it is beyond the current wider-fill limit of 2.42 and must not be forced to 2.35 by changing configuration. Genuine 16:9 content should continue to fit screen height with side margins. The capture has no transition onset and does not establish the timing of an earlier scope-to-16:9 failure.
+
+The straight, distributed upper/lower boundary measurements are useful evidence even though the current upper black-level/profile predicates fail. Failure of the coarse linear exterior model does not negate boundary evidence or by itself label the exterior as scene content. Continue independent per-edge qualification and validate the final displayed picture size, exact removed pixels, subtitle retention and configured fill limits. This correction does not claim a new detector fix, a qualified hard crop, or a new deployment.
+
 ## Capture and method
 
 Original data remains at `C:\Videoprocessor\vp\logs\analysis-20261026-232451-35800-1`. Local replay/preview artifacts are at `E:\codex\diagnostics\ar-dynamic-evidence-review-20261026\native-ad-replay`.

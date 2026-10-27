@@ -16,6 +16,12 @@ The design and validation contract are in [adaptive-evidence-design.md](../asset
 
 As a viewer of mixed-aspect movies and YouTube TV, I want VP to use clear current differences between matte and picture to acquire and follow the correct format promptly, including raised bars and dark scenes, without hiding picture/captions, introducing framing chatter, or adding playback latency.
 
+## Standing CIH context
+
+The user uses a 2.35:1 scope screen with constant image height. The active configuration and saved state select Scope viewport/zoom with automatic bar cropping; narrower/wider fill limits are 2.32/2.42 and NLS is Off. The input raster, detected active picture and physical screen are distinct. A letterboxed scope picture inside a 16:9 input must not be judged correctly framed merely because the whole raster is preserved: fitting that raster to screen height can leave the active picture undersized with borders on all four sides. Genuine taller/16:9 pictures should fit screen height with side margins; detected scope pictures should use screen width subject to the user's fill limits and preservation rules.
+
+This framing goal is established by configuration and the user's 2026-10-27 clarification, rather than awaiting another user choice. Acceptance must check final displayed active-picture size and source/target mapping. See the [corrected capture interpretation](../assets/VP-0218/native-capture-20261026.md#cih-interpretation-corrected-on-2026-10-27). No additional code or deployment is implied by this documentation correction.
+
 ## Confirmed source findings
 
 - Strong adaptive evidence already exists; this is not a proposal to replace a static detector wholesale.
