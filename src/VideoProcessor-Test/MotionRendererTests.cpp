@@ -489,7 +489,8 @@ TEST_CLASS(MotionRendererTests){public:
                 g.Upload(100);
                 Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
                 if (hdr && !processed) {
-                    const pl_frame* frames[8]{};uint64_t signatures[8]{};float timestamps[8]{};
+                    using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+                    const pl_frame* frames[8]{};uint64_t signatures[8]{};Timestamp timestamps[8]{};
                     for (int count : {1,2,4,8}) {
                         for (int i=0;i<count;++i) {frames[i]=&g.input;signatures[i]=uint64_t(i+1);timestamps[i]=float(i-count/2)+0.25f;}
                         pl_frame_mix mix{};mix.num_frames=count;mix.frames=frames;mix.signatures=signatures;
