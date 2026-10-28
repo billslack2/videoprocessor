@@ -2571,24 +2571,29 @@ struct SubtitleShaderGpuFixture {
         Assert::IsTrue(BindSubtitleCutPasteHook(hook,noCurrentMask,mode,input.color.transfer,style,0,SubtitleCompositionPhase::CleanupOnly));
         Assert::AreEqual(signature,hook->signature,L"Disabling a current contour clears dynamic authority without a new shader.");
     }
-    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0,bool transparent=false) {
+    void VerifyFreshBackingLipCleanupAndOriginalWidth(int mode,bool top,int reduction,int spatialFill=0,bool transparent=false,bool floating=false,bool brightPicturePadding=false) {
         const auto mirror=[&](SubtitleBoxRect r) {
             return top?SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
         };
         SubtitleCutPasteGeometry base;
-        base.valid=true;base.source=mirror({22,50,42,58});base.content=mirror({26,51,38,57});
+        base.valid=true;base.source=mirror({22,brightPicturePadding?44:50,42,58});base.content=mirror({26,51,38,57});
         base.glyphLines[0]=base.content;base.layoutContent=base.content;
         base.destination=mirror({20,32,44,44});base.pictureTop=16;base.pictureBottom=48;
         base.displayPictureLeft=0;base.displayPictureRight=64;base.displayPictureTop=16;base.displayPictureBottom=48;
         base.placementLimits={0,16,64,48};base.fromTopBar=top;
-        base.roundedCorners=false;base.extendToBar=true;
-        const SubtitleBoxPadding padding{6,2,2};
+        base.roundedCorners=false;base.extendToBar=!floating;
+        // The centered glyph mapping follows the glyph envelope rather than
+        // the source rectangle. Give this fixture enough vertical padding so
+        // its transformed destination actually samples the bright picture
+        // rows inside the padded source rectangle.
+        const SubtitleBoxPadding padding=brightPicturePadding?
+            SubtitleBoxPadding{6,8,8}:SubtitleBoxPadding{6,2,2};
         SubtitleGeneratedGrayStyle style;
         if(transparent) {
             style.opacity=0;style.blurPixels=0;style.borderOpacity=0;style.maxLuminance=1;
-            style.textColor={0.7f,0.8f,0.0f};
+            style.textColor={1.0f,1.0f,0.0f};
         }
-        base=ApplySubtitleTextReduction(base,reduction,padding,false,false);
+        base=ApplySubtitleTextReduction(base,reduction,padding,false,floating);
         SubtitleBoxPreview preview;preview.available=true;preview.policyGeneration=7;preview.continuityGeneration=8;
         preview.current.identity={2,2,2,83416,2,3,4};preview.current.width=preview.current.height=64;
         preview.current.pictureTop=16;preview.current.pictureBottom=48;preview.current.analyzed=preview.current.barAuthority=true;
@@ -2596,11 +2601,11 @@ struct SubtitleShaderGpuFixture {
         text.lineCount=1;text.bounds=text.anchor=text.lineBounds[0]=base.content;
         text.signature.fill(0x55);text.anchorSignature.fill(0x55);text.lineSignatures[0].fill(0x55);
         SubtitleLayoutAnchor finalAnchor;
-        base=finalAnchor.Consume(base,text,preview,padding,4,false);
+        base=finalAnchor.Consume(base,text,preview,padding,4,floating);
         Assert::IsTrue(base.valid && !base.pictureCapture.Valid() && !base.pictureIntrusion && !base.generatedCleanup.Valid());
         const auto original=base;
-        base=PreserveExtendedSubtitleBackingWidth(base,padding,true);
-        Assert::AreEqual(24,base.destination.right-base.destination.left,
+        base=PreserveExtendedSubtitleBackingWidth(base,padding,!floating);
+        if(!floating)Assert::AreEqual(24,base.destination.right-base.destination.left,
             L"Explicit extension keeps the original twelve-pixel glyph envelope plus both native paddings, at every reduction.");
         Assert::AreEqual(original.glyphScale,base.glyphScale);Assert::AreEqual(original.glyphTranslateX,base.glyphTranslateX);
         Assert::AreEqual(original.glyphTranslateY,base.glyphTranslateY);
@@ -2628,7 +2633,8 @@ struct SubtitleShaderGpuFixture {
             for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
                 const auto inside=[&](SubtitleBoxRect r) {return x>=r.left && x<r.right && y>=r.top && y<r.bottom;};
                 const bool glyph=inside(geometry.content);
-                const uint8_t value=glyph?250:lip&&inside(proof.measured)?0:y>=16&&y<48?80:0;
+                const bool brightPadding=brightPicturePadding && inside(base.source) && y>=16 && y<48;
+                const uint8_t value=glyph?250:lip&&inside(proof.measured)?0:brightPadding?250:y>=16&&y<48?80:0;
                 const size_t i=(y*64+x)*4;pixels[i]=pixels[i+1]=pixels[i+2]=value;
             }
             pl_tex_transfer_params transfer{};transfer.tex=inputTexture;transfer.ptr=pixels.data();
@@ -2678,6 +2684,30 @@ struct SubtitleShaderGpuFixture {
         const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
         const int centerY=(geometry.destination.top+geometry.destination.bottom)/2;
         if(transparent) {
+            if(brightPicturePadding && reduction==0) {
+                unsigned sampledBrightPicturePadding=0;
+                for(int y=geometry.destination.top;y<geometry.destination.bottom;++y)
+                    for(int x=geometry.destination.left;x<geometry.destination.right;++x) {
+                        const float sourceX=(float(x)+0.5f-geometry.glyphTranslateX)/geometry.glyphScale;
+                        const float sourceY=(float(y)+0.5f-geometry.glyphTranslateY)/geometry.glyphScale;
+                        const auto& line=geometry.glyphLines[0];
+                        const auto contains=[](const SubtitleBoxRect& r,float px,float py) {
+                            return r.Valid() && px>=r.left && px<r.right && py>=r.top && py<r.bottom;
+                        };
+                        const bool insideSourcePadding=sourceX>=base.source.left && sourceX<base.source.right &&
+                            sourceY>=base.source.top && sourceY<base.source.bottom &&
+                            !(sourceX>=line.left && sourceX<line.right && sourceY>=line.top && sourceY<line.bottom);
+                        const bool brightInputPixel=insideSourcePadding && sourceY>=16.0f && sourceY<48.0f &&
+                            !contains(proof.measured,sourceX,sourceY);
+                        if(brightInputPixel) {
+                            ++sampledBrightPicturePadding;
+                            Assert::IsTrue(Pixel(layerPixels,x,y)[3]<0.001f,
+                                L"Bright live picture inside source padding must not become relocated glyphs");
+                        }
+                    }
+                Assert::IsTrue(sampledBrightPicturePadding>0,
+                    L"The shader-equivalent transform must sample bright picture pixels in source padding");
+            }
             for(int y=geometry.destination.top;y<geometry.destination.bottom;++y) {
                 Assert::IsTrue(Pixel(layerPixels,geometry.destination.left+1,y)[3]<0.001f);
                 Assert::IsTrue(Pixel(layerPixels,geometry.destination.right-1,y)[3]<0.001f);
@@ -3051,6 +3081,16 @@ public:
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
         for(bool top:{false,true})for(int reduction:{0,50,75})for(int fill:{0,1,2,3})
             gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,reduction,fill,true);
+    }
+    TEST_METHOD(TransparentYellowFloatRepairsBackingAndLeavesDestinationClear) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
+        for(bool top:{false,true})for(int reduction:{0,25,75})
+            gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,reduction,3,true,true);
+    }
+    TEST_METHOD(TransparentYellowFloatRejectsBrightPictureInsideSourcePadding) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
+        for(bool top:{false,true})
+            gpu.VerifyFreshBackingLipCleanupAndOriginalWidth(5,top,0,3,true,true,true);
     }
     TEST_METHOD(SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs) {
         SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_PQ);

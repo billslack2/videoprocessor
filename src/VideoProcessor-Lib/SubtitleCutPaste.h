@@ -173,6 +173,7 @@ public:
     {
         m_reference={};m_safe={};m_requested={};m_cue=0;m_policy=0;m_continuity=0;
         m_valid=false;m_glyphHeight=0;m_displayBounds={};m_scalePolicy={};
+        m_cachedPictureTop=m_cachedPictureBottom=0;
     }
     int GlyphHeight() const { return m_glyphHeight; }
     SubtitleBoxRect DisplayBounds() const { return m_displayBounds; }
@@ -182,6 +183,19 @@ public:
     {
         if(!preview.available || (!text.detected && !text.held) || !text.bounds.Valid()) {
             Reset();return requested;
+        }
+        const auto& current=preview.current;
+        if(cueContinuation && m_valid && m_cue==text.cue && m_requested==requested &&
+            m_scalePolicy==scalePolicy && m_policy==preview.policyGeneration &&
+            m_continuity==preview.continuityGeneration && !current.discontinuity &&
+            current.sharedPicture.required && current.pictureAuthorityUnavailableForMeasurement &&
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+            SameLocalSubtitlePresentationContext(m_reference,current) &&
+            cueContinuation->MatchesLocal(current.identity,preview.policyGeneration,
+                preview.continuityGeneration,current.width,current.height,text,m_reference.identity) &&
+            cueContinuation->MatchesCachedGlyphPicture(m_cachedPictureTop,m_cachedPictureBottom)) {
+            m_reference=current;m_reference.ink.reset();m_reference.text={};
+            return m_safe;
         }
         if(cueContinuation && m_valid && m_cue==text.cue && m_requested==requested && m_scalePolicy==scalePolicy &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
@@ -196,6 +210,8 @@ public:
             m_requested=requested;m_scalePolicy=scalePolicy;m_cue=text.cue;
             m_policy=preview.policyGeneration;m_continuity=preview.continuityGeneration;
             m_valid=true;m_glyphHeight=0;
+            m_cachedPictureTop=preview.current.pictureTop;
+            m_cachedPictureBottom=preview.current.pictureBottom;
             m_displayBounds=scalePolicy.glyphRelative
                 ? SubtitleGlyphCaptureBounds(text,preview.current.width,preview.current.height) : text.bounds;
             if(scalePolicy.glyphRelative) {
@@ -261,6 +277,16 @@ public:
         return m_safe;
     }
 private:
+    static bool SameLocalSubtitlePresentationContext(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b) {
+        const auto& x=a.identity;const auto& y=b.identity;
+        return x.transportGeneration==y.transportGeneration &&
+            x.sourceFormatGeneration==y.sourceFormatGeneration &&
+            x.analysisDomainKey==y.analysisDomainKey && x.viewportGeneration==y.viewportGeneration &&
+            x.rendererGeneration==y.rendererGeneration && a.width==b.width && a.height==b.height &&
+            a.scriptHint==b.scriptHint && a.optimizationMode==b.optimizationMode &&
+            a.nearBarDistance==b.nearBarDistance;
+    }
     static bool SameCueContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b)
     {
         const auto& x=a.identity;const auto& y=b.identity;
@@ -280,6 +306,7 @@ private:
     int m_glyphHeight=0;
     SubtitleBoxRect m_displayBounds;
     SubtitlePaddingPolicy m_scalePolicy;
+    int m_cachedPictureTop=0,m_cachedPictureBottom=0;
 };
 
 struct SubtitleCutPasteGeometry
@@ -693,6 +720,40 @@ public:
             Reset();return {};
         }
         const auto& current=preview.current;
+        if(cueContinuation && cueContinuation->valid && cueContinuation->localGlyphsOnly &&
+            current.sharedPicture.required && current.pictureAuthorityUnavailableForMeasurement &&
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height)) {
+            const auto& display=displayBounds && displayBounds->Valid()?*displayBounds:text.bounds;
+            const bool localMatch=current.sharedPicture.required &&
+                current.pictureAuthorityUnavailableForMeasurement &&
+                !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+                !current.discontinuity && !current.pendingRefresh && !current.analysisRefresh &&
+                SameLocalSubtitlePresentationContext(m_reference,current) &&
+                cueContinuation->MatchesLocal(current.identity,preview.policyGeneration,
+                    preview.continuityGeneration,current.width,current.height,text,m_reference.identity) &&
+                cueContinuation->MatchesLocal(current.identity,preview.policyGeneration,
+                    preview.continuityGeneration,current.width,current.height,m_cachedText,m_reference.identity) &&
+                cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) &&
+                cueContinuation->MatchesCue(m_cachedText) && cueContinuation->MatchesCue(text) &&
+                m_geometry.valid && m_cue==text.cue && m_policy==preview.policyGeneration &&
+                m_continuity==preview.continuityGeneration && m_padding==padding && m_gap==gap &&
+                m_relativeDisplay==(displayBounds!=nullptr) &&
+                SubtitleCueContinuation::SameRect(display,m_cachedDisplay) &&
+                SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&
+                SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.source) &&
+                LocalContentAndGlyphsStayInProvenBar(m_geometry,*cueContinuation) &&
+                CoordinateOnlyGeometry(m_geometry) && !m_sourcePanel.Valid() && !m_stablePanel.Valid();
+            if(!localMatch) {Reset();return {};}
+            auto held=m_geometry;
+            // A current glyph lease carries placement coordinates only. The
+            // output cannot reuse source capture, old backing or cleanup masks.
+            held.pictureCapture={};held.generatedCleanup={};held.generatedCleanupRows={};
+            held.generatedCleanupRowCount=0;held.generatedCleanupExclusion={};
+            held.cleanupLimit={};held.layoutCoverage={};held.pictureIntrusion=false;
+            m_backingReason="current-local-glyph-coordinate-hold";
+            m_reference=current;m_reference.ink.reset();m_reference.text={};
+            return held;
+        }
         if(text.confirmationPending) {
             // Temporary CURRENT glyphs must not borrow the remembered source
             // card, capture rectangle or cleanup. Only placement is retained.
@@ -1004,6 +1065,45 @@ public:
         return m_geometry;
     }
 private:
+    static bool SameLocalSubtitlePresentationContext(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b) {
+        const auto& x=a.identity;const auto& y=b.identity;
+        return x.transportGeneration==y.transportGeneration &&
+            x.sourceFormatGeneration==y.sourceFormatGeneration &&
+            x.analysisDomainKey==y.analysisDomainKey && x.viewportGeneration==y.viewportGeneration &&
+            x.rendererGeneration==y.rendererGeneration && a.width==b.width && a.height==b.height &&
+            a.scriptHint==b.scriptHint && a.optimizationMode==b.optimizationMode &&
+            a.nearBarDistance==b.nearBarDistance;
+    }
+    static bool CoordinateOnlyGeometry(const SubtitleCutPasteGeometry& g) {
+        return g.valid && g.source.Valid() && g.destination.Valid() &&
+            !g.pictureCapture.Valid() && !g.generatedCleanup.Valid() &&
+            !g.generatedCleanupRowCount && !g.generatedCleanupExclusion.Valid() &&
+            !g.cleanupLimit.Valid() && !g.layoutCoverage.Valid();
+    }
+    static bool LocalContentAndGlyphsStayInProvenBar(const SubtitleCutPasteGeometry& g,
+        const SubtitleCueContinuation& proof) {
+        const auto& base=proof.physicalBase;
+        bool top=true,bottom=true;
+        for(int i=0;i<proof.accepted.lineCount;++i) {
+            const auto& line=proof.accepted.lineBounds[i];
+            top &= line.bottom<=(std::min)(base.top,proof.pictureTop);
+            bottom &= line.top>=(std::max)(base.bottom,proof.pictureBottom);
+        }
+        if(top==bottom)return false;
+        if(top) {
+            const int limit=(std::min)(base.top,proof.pictureTop);
+            if(g.content.bottom>limit)return false;
+            for(int i=0;i<proof.accepted.lineCount;++i)
+                if(!g.glyphLines[i].Valid() || g.glyphLines[i].bottom>limit)return false;
+            return true;
+        }
+        const int limit=(std::max)(base.bottom,proof.pictureBottom);
+        if(g.content.top<limit)return false;
+        for(int i=0;i<proof.accepted.lineCount;++i)
+            if(!g.glyphLines[i].Valid() || g.glyphLines[i].top<limit)return false;
+        return true;
+    }
     SubtitleBackgroundGuardPolicy m_backgroundGuard{false};
     bool m_guardedCue=false;
     SubtitleBoxResult m_cachedText;

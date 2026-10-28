@@ -274,7 +274,14 @@ TEST_CLASS(ReconstructionMotionTests) { public:
         }
     }
     TEST_METHOD(RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs) {
+        VerifyRoundedNativeLipAcrossMixedOutputs(false);
+    }
+    TEST_METHOD(ClearYellowFloatLipStaysRepairedAcrossMixedAndRepeatedOutputs) {
+        VerifyRoundedNativeLipAcrossMixedOutputs(true);
+    }
+    void VerifyRoundedNativeLipAcrossMixedOutputs(bool clearYellow) {
         for(bool floating:{false,true}) {
+            if(clearYellow && !floating)continue;
             NativeReconstructionPixels pixels;
             constexpr int left=1371,right=2469,top=PictureBottom-24;
             // A glyph-free rounded backing intrudes only 24 native UHD rows.
@@ -290,6 +297,10 @@ TEST_CLASS(ReconstructionMotionTests) { public:
                 L"The regression must use native measured rounded row masks");
             auto geometry=cue->geometry;geometry.extendToBar=!floating;
             auto g=std::make_unique<ReconstructionMotionGpu>();g->settings.mixer="mitchell_clamp";
+            if(clearYellow) {
+                g->style.opacity=0;g->style.blurPixels=0;g->style.borderOpacity=0;
+                g->style.maxLuminance=1;g->style.textColor={1.f,1.f,0.f};
+            }
             const auto blackLipSamples=[&]() {
                 std::vector<uint8_t> rgb(size_t(2000)*1125*4);pl_tex_transfer_params read{};
                 read.tex=g->outputTexture;read.ptr=rgb.data();
@@ -315,6 +326,8 @@ TEST_CLASS(ReconstructionMotionTests) { public:
                 for(double pts:g->temporal.outputs) {
                     g->temporal.outputPts=pts;if(!g->temporal.CompositionOutputReady())continue;
                     const auto crop=g->mapped.crop;g->Draw();++draws;
+                    if(clearYellow)Assert::IsTrue(g->YellowPixels()>100,
+                        L"Clear Float glyphs must survive every mixed source presentation");
                     Assert::AreEqual(size_t(0),blackLipSamples(),
                         L"Rounded backing endpoints must stay repaired in mixed and inserted outputs");
                     Assert::IsTrue(g->mapped.crop.y0==crop.y0&&g->mapped.crop.y1==crop.y1);

@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <RendererLiveness.h>
+#include <ModernOperatorLayout.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -10,6 +11,50 @@ namespace Tests
 	TEST_CLASS(RendererLivenessTests)
 	{
 	public:
+        TEST_METHOD(NarrowModernDashboardCanPauseWithVisibleZeroAreaPreview)
+        {
+            const auto narrow=ModernOperatorLayout::Calculate(560,671);
+            Assert::AreEqual(0,narrow.preview.width);
+            Assert::AreEqual(0,narrow.preview.height);
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,true,false,
+                narrow.preview.width,narrow.preview.height,false));
+            const auto restored=ModernOperatorLayout::Calculate(1600,671);
+            Assert::IsTrue(restored.preview.width>0 && restored.preview.height>0);
+            Assert::IsFalse(IsExpectedRendererPresentationPause(false,true,false,
+                restored.preview.width,restored.preview.height,false));
+        }
+        TEST_METHOD(VisibleOccludedWindowIsPauseButDrawableFailureIsNot)
+        {
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,true,false,640,360,true));
+            Assert::IsFalse(IsExpectedRendererPresentationPause(false,true,false,640,360,false));
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,false,false,640,360,false));
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,true,true,640,360,false));
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,true,false,0,360,false));
+            Assert::IsTrue(IsExpectedRendererPresentationPause(false,true,false,640,0,false));
+        }
+        TEST_METHOD(GpuFailureCannotBeExcusedByOcclusionHiddenOrEmptyTarget)
+        {
+            for(bool visible:{false,true}) for(bool iconic:{false,true})
+                for(bool occluded:{false,true}) for(int width:{0,640})
+                    Assert::IsFalse(IsExpectedRendererPresentationPause(true,visible,
+                        iconic,width,360,occluded));
+        }
+        TEST_METHOD(OcclusionBelongsOnlyToSuccessfulRenderingInCurrentAttempt)
+        {
+            RendererPresentationAttempt attempt;
+            attempt.Begin();attempt.Presented(true);
+            Assert::IsTrue(attempt.Deferred(true,false));
+            Assert::IsFalse(attempt.Deferred(false,false),L"Shader failure is not a presentation pause");
+            Assert::IsFalse(attempt.Deferred(true,true),L"Successful submission is not deferred");
+            attempt.Begin();
+            Assert::IsFalse(attempt.Deferred(true,false),L"Prior occlusion cannot excuse failed acquisition");
+            attempt.Presented(false);
+            Assert::IsFalse(attempt.Deferred(true,false),L"Other Present failures remain failures");
+            attempt.Begin();attempt.Presented(true);
+            Assert::IsTrue(attempt.Deferred(true,false));
+            attempt.Presented(false);
+            Assert::IsFalse(attempt.Deferred(true,true),L"Restored presentation resumes normally");
+        }
 		TEST_METHOD(EnqueuedFrameIsNotDownstreamDelivery)
 		{
 			RendererLivenessSnapshot snapshot;

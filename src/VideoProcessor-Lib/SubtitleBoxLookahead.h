@@ -2169,11 +2169,20 @@ public:
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration &&
             m_previous.current.scriptHint==preview.current.scriptHint) return m_handoffActive?m_handoffResult:m_result;
-        if(cueContinuation && m_hasPrevious && m_result.detected &&
+        const bool currentSharedPicture=preview.current.sharedPicture.AvailableFor(
+            preview.current.identity,preview.current.width,preview.current.height);
+        const bool sharedContinuation=cueContinuation && currentSharedPicture &&
             cueContinuation->Matches(preview.current.identity,preview.policyGeneration,
                 preview.continuityGeneration,preview.current.sharedPicture.bounds) &&
-            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height) &&
-            cueContinuation->MatchesCue(m_result) &&
+            cueContinuation->MatchesCue(m_result);
+        const bool localContinuation=cueContinuation && !currentSharedPicture &&
+            preview.current.sharedPicture.required &&
+            preview.current.pictureAuthorityUnavailableForMeasurement &&
+            cueContinuation->MatchesLocal(preview.current.identity,preview.policyGeneration,
+                preview.continuityGeneration,preview.current.width,preview.current.height,
+                m_result,m_previous.current.identity);
+        if(cueContinuation && m_hasPrevious && m_result.detected &&
+            (sharedContinuation || localContinuation) &&
             SameAnalysisFrameIdentity(cueContinuation->previousIdentity,m_previous.current.identity) &&
             preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1) {
             // Explicit current proof retains geometry only; do not renew the
