@@ -3315,10 +3315,20 @@ namespace VideoProcessorTest
 				Assert::IsTrue(moved[pixel].r<12,
 					L"black backing reaches the last picture row and has square lower corners");
 			}
-			const int firstBarPixel=geometry.pictureBottom*64+
+			// Attached backing deliberately overlaps the bar by two source rows
+			// to avoid a fractional sampling seam in complete mixed packets.
+			// It must cover those rows without growing beyond that display overlap.
+			for(int y=geometry.pictureBottom;y<geometry.pictureBottom+2;++y) {
+				const int pixel=y*64+geometry.destination.left+2;
+				Assert::IsTrue(baseline[pixel].r>80,
+					L"the overlap fixture must expose a visible source sample");
+				Assert::IsTrue(moved[pixel].r<12,
+					L"attached backing covers exactly the two bar-facing overlap rows");
+			}
+			const int beyondOverlapPixel=(geometry.pictureBottom+2)*64+
 				geometry.destination.left+2;
-			Assert::IsTrue(PixelDistance(moved[firstBarPixel],baseline[firstBarPixel])<=6,
-				L"the panel ends exactly at the picture/bar boundary");
+			Assert::IsTrue(PixelDistance(moved[beyondOverlapPixel],baseline[beyondOverlapPixel])<=6,
+				L"pixels beyond the two-row panel overlap remain unchanged");
 			pl_mpv_user_shader_destroy(&hook);
 		}
 
