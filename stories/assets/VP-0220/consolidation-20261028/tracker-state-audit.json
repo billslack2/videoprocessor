@@ -1,0 +1,30 @@
+{
+  "canonical_records": 238,
+  "indexed_rows": 238,
+  "duplicate_ids": [],
+  "missing_rows": [],
+  "orphan_rows": [],
+  "changed_records_consistent": [
+    "VP-0213",
+    "VP-0218",
+    "VP-0220"
+  ],
+  "preexisting_findings": [
+    {
+      "id": "VP-0211",
+      "finding": "origin/main index says Review; canonical folder and Status say In Progress."
+    },
+    {
+      "id": "VP-0070",
+      "finding": "Canonical root record lacks the standard Status heading; folder/index and prose describe Blocked."
+    },
+    {
+      "ids": [
+        "VP-0088",
+        "VP-0168"
+      ],
+      "finding": "Historical status capitalization differs (In progress). Semantic state agrees."
+    }
+  ],
+  "decision": "Record and report pre-existing issues, preserve unrelated historical state and user edits. Do not infer a new disposition; handle tracker repair separately."
+}

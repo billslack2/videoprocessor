@@ -4,7 +4,7 @@
 
 Will Not Do
 
-2026-10-28: Superseded as separate work by [VP-0220](../review/VP-0220_validate-consolidated-off-fit-and-ar-evidence.md) and [PR #223](https://github.com/billslack2/videoprocessor/pull/223). PR #203 is being closed as superseded, not merged or accepted. The still-applicable Off implementation is retained in the consolidated candidate; playback acceptance and the final merge decision move to VP-0220. Historical evidence below is preserved.
+2026-10-28: Superseded as separate work by [VP-0220](../review/VP-0220_validate-consolidated-off-fit-and-ar-evidence.md) and [PR #223](https://github.com/billslack2/videoprocessor/pull/223). PR #203 was closed as superseded, not merged or accepted. The still-applicable Off implementation is retained in the consolidated candidate; playback acceptance and the final merge decision move to VP-0220. Historical evidence below is preserved.
 
 2026-10-25: Off-only implementation is committed and pushed at clean source
 `697c1bcd779891cadde993528c03a71f473e0653` in
