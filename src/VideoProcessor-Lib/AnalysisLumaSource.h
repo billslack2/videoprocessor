@@ -54,7 +54,7 @@ struct AnalysisLumaSource
 	VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
 	ColorSpace colorspace = ColorSpace::UNKNOWN;
 	uint64_t generation = 0;
-	uint8_t rgbBitAlignment = 0; // SDR tunnel: 1 high, 2 low eight bits
+	uint8_t rgbBitAlignment = 0; // SDR tunnel: 1 r210 high8, 2 low8 or packed RGB8
 	std::shared_ptr<const void> backingOwner;
 	AnalysisLumaRange range = AnalysisLumaRange::Unknown;
 

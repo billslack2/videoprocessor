@@ -2,21 +2,22 @@
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <Windows.h>
+#include <VideoFrameEncoding.h>
 #include <cstdint>
 #include <array>
 
-// DeckLink r210 carries the HDMI 8-bit RGB tunnel. Each pixel contains one
+// Raw ARGB/BGRA or DeckLink r210 carries the HDMI RGB8 tunnel. Each pixel contains one
 // 12-bit I sample and one alternating 12-bit chroma sample.
-class CR210DolbyVisionTunnelFormatter final : public IVideoFrameFormatter
+class CRGBDolbyVisionTunnelFormatter final : public IVideoFrameFormatter
 {
 public:
 	// Explicit dispatch also permits the scalar and SIMD paths to be qualified.
 	enum class ConversionMethod { AUTO, SCALAR, AVX2 };
 	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
-	CR210DolbyVisionTunnelFormatter();
-	~CR210DolbyVisionTunnelFormatter() override;
-	CR210DolbyVisionTunnelFormatter(const CR210DolbyVisionTunnelFormatter&) = delete;
-	CR210DolbyVisionTunnelFormatter& operator=(const CR210DolbyVisionTunnelFormatter&) = delete;
+	CRGBDolbyVisionTunnelFormatter();
+	~CRGBDolbyVisionTunnelFormatter() override;
+	CRGBDolbyVisionTunnelFormatter(const CRGBDolbyVisionTunnelFormatter&) = delete;
+	CRGBDolbyVisionTunnelFormatter& operator=(const CRGBDolbyVisionTunnelFormatter&) = delete;
 	void OnVideoState(VideoStateComPtr& state) override;
 	bool FormatVideoFrame(const VideoFrame& frame, BYTE* output) override;
 	LONG GetOutFrameSize() const override { return m_outputSize; }
@@ -28,7 +29,8 @@ public:
 	DolbyVisionTunnelFrameMetadata GetDolbyVisionTunnelMetadata() const override
 	{
 		auto metadata = m_metadata;
-		metadata.allowSdrFallback = !m_tunnelConfirmed;
+		metadata.allowSdrFallback = !m_tunnelConfirmed &&
+			m_sdrRange != TunnelSdrRgbRange::Unknown;
 		metadata.requiresBlackFrame = m_tunnelConfirmed &&
 			(!m_currentPictureHasValidHeader || !metadata.valid);
 		return metadata;
@@ -43,6 +45,8 @@ private:
 		uint32_t firstRow, uint32_t rowCount, bool leftAligned) const;
 	static void CALLBACK ConversionWorkCallback(
 		PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WORK work);
+	TunnelSdrRgbRange m_sdrRange = TunnelSdrRgbRange::Full;
+	VideoFrameEncoding m_encoding = VideoFrameEncoding::UNKNOWN;
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
 	uint32_t m_stride = 0;

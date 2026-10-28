@@ -177,6 +177,30 @@ namespace Tests
 				CaptureStateChangeMayRetainRendererIngress(changeClass));
 		}
 
+        TEST_METHOD(RgbTunnelPreservationChangeGatesIngressUntilStateAcknowledgement)
+        {
+            VideoState previous;
+            previous.valid = true;
+            previous.displayMode = std::make_shared<DisplayMode>(130, 128, false, 24, 1);
+            previous.videoFrameEncoding = VideoFrameEncoding::ARGB_8BIT;
+            previous.eotf = EOTF::SDR;
+            for (const bool preserved : { false, true })
+            {
+                previous.rgbTunnelBytesPreserved = !preserved;
+                VideoState current(previous);
+                current.rgbTunnelBytesPreserved = preserved;
+                const auto change = ClassifyCaptureVideoStateChange(&previous, current);
+                Assert::IsTrue(change == CaptureVideoStateChangeClass::MaterialSignal);
+                Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(change));
+            }
+            previous.rgbTunnelBytesPreserved = true;
+            VideoState rangeOnly(previous);
+            rangeOnly.tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+            const auto rangeChange = ClassifyCaptureVideoStateChange(&previous, rangeOnly);
+            Assert::IsTrue(rangeChange == CaptureVideoStateChangeClass::MaterialSignal);
+            Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(rangeChange));
+        }
+
 		TEST_METHOD(MaterialCaptureContractChangeStillGatesIngress)
 		{
 			VideoState previous;

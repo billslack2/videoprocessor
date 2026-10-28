@@ -62,6 +62,9 @@ enum class VideoFrameEncoding
 };
 
 
+// SDR interpretation of raw RGB carrier bytes; independent of decoded DV range.
+enum class TunnelSdrRgbRange { Unknown, Full, Limited };
+
 // Return the VideoFrameEncoding as a human-readable string
 const TCHAR* ToString(const VideoFrameEncoding);
 

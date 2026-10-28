@@ -7,8 +7,16 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <CpuFeatures.h>
-#include <video_frame_formatter/CR210DolbyVisionTunnelFormatter.h>
+#include <DolbyVisionTunnelInput.h>
+#include <vprenderer/AlphaNativeRgbIngress.h>
+#include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
 #include <algorithm>
+#include "DolbyVisionTunnelTestSender.h"
+#include <vprenderer/LibplaceboRendererPluginApi.h>
+#include <atomic>
+#include <chrono>
+#include <fstream>
+#include <thread>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -19,246 +27,295 @@ namespace Tests
 {
     namespace
     {
-        using Packet = std::array<uint8_t, 128>;
-        using Formatter = CR210DolbyVisionTunnelFormatter;
+        using namespace DolbyVisionTestSender;
+        using Formatter = CRGBDolbyVisionTunnelFormatter;
 
-        // A forward sender, independent of the decoder's bit-mask expressions.
-        // ETSI GS CCM 001 V1.1.1 sections 6.2-6.4 define the byte syntax,
-        // scrambling and raster order. RGB8 packing follows HDMI 1.4a 6.5.4
-        // and the independently published CroqueMr/libreelec-x86-DV packer:
-        // d9ad989e, CB1/src/dvbridge_render.c, lines 629-633.
-        uint32_t SenderCrc(const uint8_t* bytes, size_t count)
+        void __cdecl TunnelRendererLog(const char*) {}
+        struct TunnelRendererCallback : IRendererCallback
         {
-            uint32_t remainder = 0xFFFFFFFFU;
-            for (size_t byte = 0; byte < count; ++byte)
-            {
-                for (int bit = 7; bit >= 0; --bit)
-                {
-                    const bool feedback = ((remainder >> 31) ^
-                        ((bytes[byte] >> bit) & 1U)) != 0;
-                    remainder <<= 1;
-                    if (feedback)
-                        remainder ^= 0x04C11DB7U;
-                }
-            }
-            return remainder;
-        }
-
-        void Put16(std::vector<uint8_t>& bytes, size_t at, uint16_t value)
+            std::atomic<RendererState> state{ RENDERSTATE_UNKNOWN };
+            void OnRendererState(RendererState next, uint32_t) override { state = next; }
+            void OnRendererDetailString(const CString&, uint32_t) override {}
+        };
+        // Pixels are owned by SenderPicture until the renderer is stopped.
+        struct BorrowedTunnelBuffer : IUnknown
         {
-            bytes[at] = static_cast<uint8_t>(value >> 8);
-            bytes[at + 1] = static_cast<uint8_t>(value);
-        }
-
-        void Put32(uint8_t* bytes, uint32_t value)
-        {
-            for (unsigned byte = 0; byte < 4; ++byte)
-                bytes[byte] = static_cast<uint8_t>(value >> (24 - byte * 8));
-        }
-
-        void FinishPacket(Packet& packet)
-        {
-            Put32(packet.data() + 124, SenderCrc(packet.data(), 124));
-        }
-
-        std::vector<uint8_t> DmBody(uint16_t peak = 3072,
-            bool fullRange = true, size_t unknownPayload = 0)
-        {
-            std::vector<uint8_t> dm(71, 0);
-            dm[1] = 1; // scene refresh
-            const int16_t nonlinear[] = {
-                8192, -4096, 2048, 0, 8192, -2048, 512, 256, 8192
-            };
-            const uint16_t linear[] = {
-                16384, 0, 0, 0, 8192, 0, 0, 0, 4096
-            };
-            for (size_t i = 0; i < 9; ++i)
-            {
-                Put16(dm, 2 + i * 2, static_cast<uint16_t>(nonlinear[i]));
-                Put16(dm, 32 + i * 2, linear[i]);
-            }
-            Put32(dm.data() + 20, 0x01000000U);
-            Put32(dm.data() + 24, 0x08000000U);
-            Put32(dm.data() + 28, 0x08000000U);
-            dm[50] = dm[51] = 0xFF;
-            dm[60] = 12;
-            dm[61] = 2;
-            dm[62] = 1;
-            dm[63] = fullRange ? 1 : 0;
-            Put16(dm, 64, 62);
-            Put16(dm, 66, 3696);
-            dm[69] = 42;
-            dm[70] = unknownPayload ? 2 : 1;
-            if (unknownPayload)
-            {
-                const size_t at = dm.size();
-                dm.resize(at + 5 + unknownPayload, 0xA5);
-                Put32(dm.data() + at, static_cast<uint32_t>(unknownPayload));
-                dm[at + 4] = 200; // bounded unknown extension, deliberately skipped
-            }
-            const size_t at = dm.size();
-            dm.resize(at + 11, 0);
-            Put32(dm.data() + at, 6);
-            dm[at + 4] = 1;
-            Put16(dm, at + 5, 62);
-            Put16(dm, at + 7, peak);
-            Put16(dm, at + 9, 1024);
-            return dm;
-        }
-
-        std::vector<Packet> Packetize(const std::vector<uint8_t>& body,
-            uint8_t current = 3, uint8_t affected = 3,
-            bool noMetadata = false, bool eos = false)
-        {
-            std::vector<Packet> packets;
-            size_t offset = 0;
-            do
-            {
-                Packet packet{};
-                const bool first = packets.empty();
-                const size_t capacity = first ? 119 : 121;
-                const size_t chunk = noMetadata ? 0 :
-                    (std::min)(capacity, body.size() - offset);
-                const bool last = noMetadata || offset + chunk == body.size();
-                const unsigned kind = first ? (last ? 0 : 1) : (last ? 3 : 2);
-                packet[0] = static_cast<uint8_t>((kind << 6) | (noMetadata ? 1 : 0));
-                packet[1] = static_cast<uint8_t>((affected << 4) | current);
-                packet[2] = eos ? 1 : 0;
-                if (first && !noMetadata)
-                {
-                    packet[3] = static_cast<uint8_t>(body.size() >> 8);
-                    packet[4] = static_cast<uint8_t>(body.size());
-                }
-                if (chunk)
-                    std::copy_n(body.data() + offset, chunk,
-                        packet.data() + (first ? 5 : 3));
-                FinishPacket(packet);
-                packets.push_back(packet);
-                offset += chunk;
-                if (last)
-                    break;
-            } while (true);
-            return packets;
-        }
-
-        struct SenderPicture
-        {
-            VideoStateComPtr state;
-            std::vector<uint16_t> intensity, chroma;
-            std::vector<BYTE> input;
-            bool high8;
-
-            SenderPicture(bool high, uint32_t width = 130, uint32_t height = 128)
-                : high8(high)
-            {
-                state = new VideoState();
-                state->valid = true;
-                state->displayMode = std::make_shared<DisplayMode>(
-                    width, height, false, 24000, 1001);
-                state->videoFrameEncoding = VideoFrameEncoding::R210;
-                state->dolbyVisionTunnel = true;
-                intensity.resize(static_cast<size_t>(width) * height);
-                chroma.resize(intensity.size());
-                input.resize(state->BytesPerFrame(), 0xAD);
-                for (size_t i = 0; i < intensity.size(); ++i)
-                {
-                    intensity[i] = static_cast<uint16_t>(i & 4095U);
-                    chroma[i] = static_cast<uint16_t>((i * 73U + 31U) & 4095U);
-                    Pack(i);
-                }
-            }
-
-            void Pack(size_t pixel)
-            {
-                const unsigned y = intensity[pixel], c = chroma[pixel];
-                const unsigned rgb8[] = { c / 16, y / 16,
-                    (c % 16) * 16 + y % 16 };
-                const unsigned factor = high8 ? 4 : 1;
-                const uint32_t r210 = (rgb8[0] * factor << 20) |
-                    (rgb8[1] * factor << 10) | (rgb8[2] * factor);
-                const size_t width = state->displayMode->FrameWidth();
-                Put32(input.data() + (pixel / width) * state->BytesPerRow() +
-                    (pixel % width) * 4, r210);
-            }
-
-            void Embed(const std::vector<Packet>& packets)
-            {
-                Assert::IsTrue(packets.size() * 3072 <= intensity.size());
-                for (size_t p = 0; p < packets.size(); ++p)
-                {
-                    for (size_t copy = 0; copy < 3; ++copy)
-                    {
-                        for (size_t bit = 0; bit < 1024; ++bit)
-                        {
-                            const size_t pixel = p * 3072 + copy * 1024 + bit;
-                            const unsigned metadataBit =
-                                (packets[p][bit / 8] >> (7 - bit % 8)) & 1U;
-                            unsigned parity = 0;
-                            for (unsigned b = 0; b < 12; ++b)
-                            {
-                                parity ^= (intensity[pixel] >> b) & 1U;
-                                if (b != 0)
-                                    parity ^= (chroma[pixel] >> b) & 1U;
-                            }
-                            chroma[pixel] = static_cast<uint16_t>(
-                                (chroma[pixel] / 2) * 2 + (metadataBit ^ parity));
-                            Pack(pixel);
-                        }
-                    }
-                }
-            }
-
-            void CorruptCopy(size_t packet, size_t copy)
-            {
-                const size_t pixel = packet * 3072 + copy * 1024 + 17;
-                chroma[pixel] ^= 1;
-                Pack(pixel);
-            }
-
-            void CorruptAllCopies(size_t packet = 0)
-            {
-                for (size_t copy = 0; copy < 3; ++copy)
-                    CorruptCopy(packet, copy);
-            }
+            HRESULT QueryInterface(REFIID, void**) override { return E_NOINTERFACE; }
+            ULONG AddRef() override { return 1; }
+            ULONG Release() override { return 0; }
         };
 
-        DolbyVisionTunnelFrameMetadata Deliver(Formatter& formatter,
-            SenderPicture& picture, uint64_t counter,
-            std::vector<BYTE>* converted = nullptr)
-        {
-            std::vector<BYTE> output(formatter.GetOutFrameSize(), 0xCD);
-            VideoFrame frame(picture.input.data(), counter, 0, nullptr);
-            Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
-            if (converted)
-                *converted = std::move(output);
-            return formatter.GetDolbyVisionTunnelMetadata();
-        }
 
-        void AssertExactSamples(const SenderPicture& picture,
-            const std::vector<BYTE>& output)
-        {
-            const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
-            for (size_t pixel = 0; pixel < picture.intensity.size(); ++pixel)
-            {
-                Assert::AreEqual(static_cast<unsigned>(picture.intensity[pixel] * 16),
-                    static_cast<unsigned>(samples[pixel]), L"12-bit intensity changed");
-                Assert::AreEqual(static_cast<unsigned>(picture.chroma[pixel] * 16),
-                    static_cast<unsigned>(samples[picture.intensity.size() + pixel]),
-                    L"12-bit chroma changed");
-            }
-        }
 
-        void AssertPeak(const DolbyVisionTunnelFrameMetadata& dm, uint16_t peak)
-        {
-            Assert::IsTrue(dm.valid && dm.hasSceneMetadata);
-            Assert::AreEqual(static_cast<unsigned>(peak), static_cast<unsigned>(dm.sceneMaxPq));
-            Assert::IsFalse(dm.allowSdrFallback);
-        }
     }
 
     TEST_CLASS(DolbyVisionTunnelFormatterTests)
     {
     public:
+
+
+        TEST_METHOD(RealRendererDecodesRgb8WithNativeUploadEnabled)
+        {
+            // The native-RGB shortcut used to skip formatter creation entirely.
+            // Exercise the real renderer DLL, conversion worker, upload and DM
+            // status publication with conversion NONE, for both packed layouts.
+            HMODULE module = nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&TunnelRendererLog), &module) != FALSE);
+            wchar_t modulePath[MAX_PATH] = {};
+            GetModuleFileNameW(module, modulePath, MAX_PATH);
+            std::wstring path(modulePath);
+            path.resize(path.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
+#else
+            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+#endif
+            HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin, L"Build both Release renderer DLLs before running the tunnel integration test");
+            struct PluginCleanup { HMODULE plugin; ~PluginCleanup(){ FreeLibrary(plugin); } } pluginCleanup{plugin};
+            const auto version = reinterpret_cast<VideoProcessorLibplaceboGetApiVersionFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_VERSION_EXPORT));
+            const auto create = reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy = reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(version && create && destroy);
+            Assert::AreEqual(VP_LIBPLACEBO_PLUGIN_API_VERSION, version());
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            {
+                char temporary[MAX_PATH] = {}, configPath[MAX_PATH] = {};
+                Assert::IsTrue(GetTempPathA(MAX_PATH, temporary) != 0);
+                Assert::IsTrue(GetTempFileNameA(temporary, "dvt", 0, configPath) != 0);
+                std::ofstream(configPath) << "[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                    "[vprenderer]\nquality: fast\n";
+                TunnelRendererCallback callback;
+                BorrowedTunnelBuffer buffer;
+                SenderPicture picture(false, 130, 128, encoding);
+                picture.state->eotf = EOTF::PQ; picture.state->colorspace = ColorSpace::BT_2020;
+                picture.state->tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+                picture.Embed(Packetize(DmBody()));
+                struct Cleanup
+                {
+                    HWND window; IVideoRenderer* renderer; VideoProcessorLibplaceboDestroyRendererFn destroy;
+                    const char* config;
+                    ~Cleanup(){ if(renderer){ renderer->Stop(); destroy(renderer); }
+                        if(window) DestroyWindow(window); DeleteFileA(config); }
+                } cleanup{CreateWindowExW(0, L"STATIC", L"DV RGB fixture", WS_POPUP,
+                    0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr), nullptr, destroy, configPath};
+                Assert::IsNotNull(cleanup.window);
+                cleanup.renderer = create(&callback, 1, cleanup.window, nullptr, false, 1,
+                    VideoConversionOverride::VIDEOCONVERSION_NONE, configPath, TunnelRendererLog);
+                Assert::IsNotNull(cleanup.renderer);
+                Assert::IsTrue(cleanup.renderer->OnVideoState(picture.state));
+                cleanup.renderer->Build(); cleanup.renderer->Start();
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+                uint64_t sequence = 1;
+                bool trusted = false;
+                while (std::chrono::steady_clock::now() < deadline && callback.state != RENDERSTATE_FAILED)
+                {
+                    MSG message;
+                    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                    { TranslateMessage(&message); DispatchMessageW(&message); }
+                    if (callback.state == RENDERSTATE_RENDERING)
+                    {
+                        VideoFrame frame(picture.input.data(), sequence++, 0, &buffer);
+                        cleanup.renderer->OnVideoFrame(frame);
+                        DolbyVisionLuminanceStatus status;
+                        CString ingress;
+                        trusted = cleanup.renderer->HasPresentedLiveFrame() &&
+                            cleanup.renderer->GetDolbyVisionLuminanceStatus(status) &&
+                            status.tunnelActive && status.available && status.sceneAvailable &&
+                            cleanup.renderer->GetVideoIngressInfo(ingress) &&
+                            ingress.Find(L"Dolby Vision RGB tunnel (12-bit 4:2:2)") >= 0;
+                        if (trusted) break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                }
+                Assert::IsTrue(trusted, L"RGB8 tunnel never reached decoded upload and DM status publication");
+            }
+        }
+
+
+        TEST_METHOD(UnknownWireRangePermitsValidatedDvButNeverGuessesSdr)
+        {
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.state->tunnelSdrRgbRange = TunnelSdrRgbRange::Unknown;
+            Formatter formatter; formatter.OnVideoState(picture.state);
+            Assert::IsFalse(Deliver(formatter, picture, 1).allowSdrFallback);
+            picture.Embed(Packetize(DmBody()));
+            AssertPeak(Deliver(formatter, picture, 2), 3072);
+            picture.Embed(Packetize({}, 3, 3, true, true));
+            Deliver(formatter, picture, 3);
+            std::fill(picture.input.begin(), picture.input.end(), 0);
+            const auto unknown = Deliver(formatter, picture, 4);
+            Assert::IsFalse(unknown.valid || unknown.allowSdrFallback);
+        }
+
+        TEST_METHOD(Rgb8ScalarAndAvx2PreserveEveryTwelveBitCodeAndIgnoreAlpha)
+        {
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const uint32_t width : { 130U, 1922U })
+            {
+                // Odd heights and non-SIMD tails exercise both serial and worker rows.
+                SenderPicture picture(false, width, width == 130 ? 129 : 1081, encoding);
+                picture.Embed(Packetize(DmBody(2048, false, 157)));
+                for (const auto method : { Formatter::ConversionMethod::SCALAR, Formatter::ConversionMethod::AVX2 })
+                {
+                    if (method == Formatter::ConversionMethod::AVX2 && !CpuFeatures::SupportsAvx2Kernels())
+                        continue;
+                    Formatter formatter;
+                    formatter.SetConversionMethod(method);
+                    formatter.OnVideoState(picture.state);
+                    std::vector<BYTE> output;
+                    const auto metadata = Deliver(formatter, picture, 1, &output);
+                    AssertPeak(metadata, 2048);
+                    Assert::IsFalse(metadata.fullRange);
+                    AssertExactSamples(picture, output);
+                    const auto contract = formatter.GetOutputContract();
+                    Assert::AreEqual(12U, unsigned(contract.colorDepth));
+                    Assert::AreEqual(4U, unsigned(contract.bitShift));
+                    Assert::IsTrue(contract.sampleRange == VideoFrameSampleRange::LIMITED);
+                    const size_t alpha = encoding == VideoFrameEncoding::ARGB_8BIT ? 0 : 3;
+                    for (size_t i = alpha; i < picture.input.size(); i += 4)
+                        picture.input[i] ^= 0xFF;
+                    AssertPeak(Deliver(formatter, picture, 2, &output), 2048);
+                    AssertExactSamples(picture, output);
+                }
+            }
+        }
+
+        TEST_METHOD(Rgb8PacketRedundancyContinuationAndTransitionRecovery)
+        {
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            {
+                SenderPicture picture(false, 130, 128, encoding);
+                Formatter formatter;
+                formatter.OnVideoState(picture.state);
+                auto sdr = Deliver(formatter, picture, 1);
+                Assert::IsFalse(sdr.valid || sdr.requiresBlackFrame);
+                Assert::IsTrue(sdr.allowSdrFallback);
+                Assert::AreEqual(2U, unsigned(sdr.rgbBitAlignment));
+                picture.Embed(Packetize(DmBody(), 1, 1));
+                picture.CorruptCopy(0, 0); picture.CorruptCopy(0, 1);
+                AssertPeak(Deliver(formatter, picture, 2), 3072);
+                picture.Embed(Packetize(DmBody(2048, true, 157), 1, 1));
+                picture.CorruptAllCopies(1);
+                AssertPeak(Deliver(formatter, picture, 3), 3072);
+                picture.CorruptAllCopies(0);
+                const auto lost = Deliver(formatter, picture, 4);
+                Assert::IsTrue(lost.requiresBlackFrame);
+                Assert::IsFalse(lost.allowSdrFallback);
+                picture.Embed(Packetize({}, 1, 1, true));
+                Assert::IsFalse(Deliver(formatter, picture, 5).requiresBlackFrame);
+                picture.Embed(Packetize(DmBody(2048), 1, 2));
+                AssertPeak(Deliver(formatter, picture, 6), 3072);
+                picture.Embed(Packetize({}, 2, 2, true));
+                AssertPeak(Deliver(formatter, picture, 7), 2048);
+                picture.Embed(Packetize({}, 2, 2, true, true));
+                AssertPeak(Deliver(formatter, picture, 8), 2048);
+                std::fill(picture.input.begin(), picture.input.end(), 0);
+                const auto menu = Deliver(formatter, picture, 10);
+                Assert::IsFalse(menu.valid || menu.requiresBlackFrame);
+                Assert::IsTrue(menu.allowSdrFallback);
+                Assert::AreEqual(2U, unsigned(menu.rgbBitAlignment));
+                for (size_t pixel = 0; pixel < picture.intensity.size(); ++pixel)
+                    picture.Pack(pixel);
+                picture.Embed(Packetize(DmBody(1024), 3, 3));
+                std::vector<BYTE> output;
+                AssertPeak(Deliver(formatter, picture, 11, &output), 1024);
+                AssertExactSamples(picture, output);
+            }
+        }
+
+        TEST_METHOD(Rgb8RejectsInvalidHeaderAndBlanksAfterMetadataLossLimit)
+        {
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            {
+                SenderPicture picture(false, 130, 128, encoding);
+                Formatter formatter;
+                formatter.OnVideoState(picture.state);
+                auto packets = Packetize(DmBody());
+                packets[0][2] |= 2; FinishPacket(packets[0]);
+                picture.Embed(packets);
+                Assert::IsFalse(Deliver(formatter, picture, 1).valid);
+                picture.Embed(Packetize(DmBody()));
+                AssertPeak(Deliver(formatter, picture, 2), 3072);
+                picture.CorruptAllCopies();
+                for (uint64_t counter = 3; counter < 27; ++counter)
+                {
+                    const auto dm = Deliver(formatter, picture, counter);
+                    Assert::IsTrue(dm.requiresBlackFrame);
+                    Assert::IsFalse(dm.allowSdrFallback);
+                }
+                std::vector<BYTE> output;
+                const auto expired = Deliver(formatter, picture, 27, &output);
+                Assert::IsFalse(expired.valid || expired.allowSdrFallback);
+                Assert::IsTrue(std::all_of(output.begin(), output.end(), [](BYTE b){ return b == 0; }));
+                picture.Embed(Packetize(DmBody(2048)));
+                AssertPeak(Deliver(formatter, picture, 28), 2048);
+            }
+        }
+
+        TEST_METHOD(LayoutChangeResetsDolbyLockAndCannotReuseOldDm)
+        {
+            Formatter formatter;
+            for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            {
+                SenderPicture picture(false, 130, 128, encoding);
+                formatter.OnVideoState(picture.state);
+                Assert::IsFalse(Deliver(formatter, picture, 1).valid);
+                picture.Embed(Packetize({}, 3, 3, true));
+                const auto absent = Deliver(formatter, picture, 2);
+                Assert::IsFalse(absent.valid || absent.allowSdrFallback);
+                Assert::IsTrue(absent.requiresBlackFrame);
+                picture.Embed(Packetize(DmBody()));
+                AssertPeak(Deliver(formatter, picture, 3), 3072);
+            }
+        }
+
+        TEST_METHOD(TunnelAdmissionRequiresOptInRendererSdrAndPreservedSupportedRgb)
+        {
+            VideoStateComPtr state = new VideoState();
+            state->valid = true; state->eotf = EOTF::SDR;
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT, VideoFrameEncoding::R210 })
+            {
+                state->videoFrameEncoding = encoding;
+                Assert::IsTrue(DolbyVisionTunnelCanEnable(true, true, *state));
+                Assert::IsFalse(DolbyVisionTunnelCanEnable(false, true, *state));
+                Assert::IsFalse(DolbyVisionTunnelCanEnable(true, false, *state));
+                Assert::IsFalse(AlphaCanUseNativeRgbUpload(encoding, true));
+                state->rgbTunnelBytesPreserved = false;
+                Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *state));
+                VideoStateComPtr copied = new VideoState(*state);
+                Assert::IsFalse(copied->rgbTunnelBytesPreserved);
+                state->rgbTunnelBytesPreserved = true;
+                for (const auto eotf : { EOTF::UNKNOWN, EOTF::HDR, EOTF::PQ, EOTF::HLG })
+                {
+                    state->eotf = eotf;
+                    Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *state));
+                }
+                state->eotf = EOTF::SDR; state->valid = false;
+                Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *state));
+                state->valid = true;
+            }
+            Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::ARGB_8BIT));
+            Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::BGRA_8BIT));
+            for (const auto encoding : { VideoFrameEncoding::UNKNOWN, VideoFrameEncoding::V210, VideoFrameEncoding::UYVY,
+                VideoFrameEncoding::HDYC, VideoFrameEncoding::R10b, VideoFrameEncoding::R10l,
+                VideoFrameEncoding::R12B, VideoFrameEncoding::R12L, VideoFrameEncoding::H265 })
+            {
+                state->videoFrameEncoding = encoding;
+                Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *state));
+                state->displayMode = std::make_shared<DisplayMode>(130, 128, false, 24, 1);
+                state->dolbyVisionTunnel = true;
+                Formatter formatter;
+                Assert::ExpectException<std::runtime_error>([&] { formatter.OnVideoState(state); });
+            }
+        }
+
         TEST_METHOD(IndependentSenderHasKnownCrcAndPackingAnchors)
         {
             const uint8_t reference[] = { '1','2','3','4','5','6','7','8','9' };
