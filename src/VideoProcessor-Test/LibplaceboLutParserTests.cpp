@@ -2592,8 +2592,18 @@ namespace VideoProcessorTest
                     Assert::IsTrue(PixelDistance(baseline[pixel],moved[pixel])<=6,
                         L"picture beyond measured card and destination must remain unchanged");
                 }
-                Assert::IsTrue(PixelDistance(moved[56*64+9],RgbaPixel{0,0,0,255})<=6,
-                    L"restoration must stop exactly at the black-bar seam");
+                // All composition includes the attached display panel's two-row
+                // bar overlap. Check its outer limit separately from restoration.
+                Assert::IsTrue(PixelDistance(moved[(geometry.pictureBottom+2)*64+9],
+                    RgbaPixel{0,0,0,255})<=6,
+                    L"display backing must not extend beyond its two-row bar overlap");
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,
+                    SubtitleGeneratedGrayStyle{},0,SubtitleCompositionPhase::CleanupOnly));
+                const auto cleanup=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                    PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,false,false,nullptr,nullptr,false,-1,false);
+                for(int y=geometry.pictureBottom;y<64;++y)for(const int x:{9,54})
+                    Assert::IsTrue(PixelDistance(cleanup[y*64+x],baseline[y*64+x])<=6,
+                        L"source restoration stops at the picture boundary despite display overlap");
             }
             pl_mpv_user_shader_destroy(&hook);
         }
