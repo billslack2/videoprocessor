@@ -73,6 +73,10 @@ public:
 	void SourceBufferAddRef();
 	void SourceBufferRelease();
 
+	// The buffer the frame's data lives in (may be null). Query it for more
+	// about the frame, e.g. ISourceCueCarrier.
+	IUnknown* GetSourceBuffer() const { return m_sourceBuffer; }
+
 	VideoFrame& operator= (const VideoFrame& videoFrame);
 
 private:

@@ -285,6 +285,9 @@
     <ClInclude Include="RendererId.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SourceCue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="VideoFrame.h">
       <Filter>Header Files</Filter>
     </ClInclude>
