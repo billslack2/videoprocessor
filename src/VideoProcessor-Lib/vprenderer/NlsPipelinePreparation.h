@@ -253,8 +253,11 @@ public:
     ~NlsPipelinePreparation() { Stop(); }
     Status Get(const std::string& key) const {
         const auto publication = std::atomic_load(&current);
-        return publication && publication->key == key ?
-            publication->status.load(std::memory_order_acquire) : Status::Missing;
+        if (publication && publication->key == key)
+            return publication->status.load(std::memory_order_acquire);
+        const auto ready = std::atomic_load(&completed);
+        return ready && std::find(ready->begin(), ready->end(), key) != ready->end()
+            ? Status::Ready : Status::Missing;
     }
     // A replacement cancels pending work, not an in-flight driver call. A
     // superseded completion can populate the content-addressed cache but can
@@ -270,8 +273,11 @@ public:
         changed.notify_one();
         return true;
     }
-    void Invalidate() {
+    // Selection changes cancel obsolete work but may retain successful exact
+    // pipeline contracts. Device/settings invalidation still forgets everything.
+    void Invalidate(bool forgetCompleted = true) {
         std::lock_guard<std::mutex> lock(mutex);
+        if (forgetCompleted) std::atomic_store(&completed, std::shared_ptr<const ReadyKeys>{});
         ++generation;
         std::atomic_store(&current, std::shared_ptr<Publication>{});
         pending = {};
@@ -282,6 +288,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex);
             stopping = true;
+            std::atomic_store(&completed, std::shared_ptr<const ReadyKeys>{});
             pending = {};
             ++generation;
             std::atomic_store(&current, std::shared_ptr<Publication>{});
@@ -299,6 +306,10 @@ private:
         std::atomic<Status> status{Status::Pending};
         explicit Publication(const std::string& identity) : key(identity) {}
     };
+    using ReadyKeys = std::vector<std::string>;
+    // Immutable bounded snapshots keep Get off the compiler mutex. No GPU
+    // resources are retained, only successful preparation identities.
+    std::shared_ptr<const ReadyKeys> completed;
     std::shared_ptr<Publication> current;
     uint64_t generation = 0;
     bool stopping = false;
@@ -321,8 +332,18 @@ private:
                 std::lock_guard<std::mutex> lock(mutex);
                 if (!stopping && generation == workGeneration) {
                     const auto publication = std::atomic_load(&current);
-                    if (publication) publication->status.store(success ? Status::Ready : Status::Failed,
-                        std::memory_order_release);
+                    if (publication) {
+                        if (success) {
+                            const auto previous = std::atomic_load(&completed);
+                            auto ready = std::make_shared<ReadyKeys>(previous ? *previous : ReadyKeys{});
+                            ready->erase(std::remove(ready->begin(), ready->end(), publication->key), ready->end());
+                            if (ready->size() >= 16) ready->erase(ready->begin());
+                            ready->push_back(publication->key);
+                            std::atomic_store(&completed, std::shared_ptr<const ReadyKeys>(std::move(ready)));
+                        }
+                        publication->status.store(success ? Status::Ready : Status::Failed,
+                            std::memory_order_release);
+                    }
                 }
             }
         }
