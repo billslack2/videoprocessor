@@ -1,0 +1,11 @@
+# VideoProcessor 1.4 RC6
+
+This beta prerelease updates RC6 with smoother NLS and NLS+ profile switching. Previously prepared exact pipelines are reused when returning to a profile, avoiding a repeated warmup and safe-fit flash. First use or a changed rendering contract still prepares in the background.
+
+RC6 also improves subtitle continuity during dark scenes and Smooth Motion, and treats fullscreen/windowed occlusion and zero-area presentation as pauses rather than renderer failures.
+
+Download the new [Setup EXE](https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc6/VideoProcessorSetup-1.4.0-rc6-7af23836ae93.exe) or [x64 Portable ZIP](https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc6/VideoProcessor-1.4.0-rc6-7af23836ae93-x64-Portable.zip). Previous RC6 files remain available below for rollback. Both include VP, both renderers, Config and the updater; there is no separate Config-only package. For a fresh portable folder, copy VideoProcessor.cfg.example to VideoProcessor.cfg; preserve existing settings when upgrading. Select the Beta update channel for automatic updates.
+
+Windows 10/11 x64. The Windows binaries and installer are unsigned; updater metadata is signed. Clean Windows without Visual Studio and physical display/capture acceptance are not newly qualified. Some dark-scene boundary transitions and fullscreen aspect-ratio history transfer remain under investigation. Older versions may not understand newer settings on rollback.
+
+Production application source matches beta 74c67da75afb12d09691850e1fb9b02d31b70a06, including PR #222. Release source 7af23836ae937353edb50a5b1b3f8e9176634480 carries forward RC6 packaging fixes and two test-only expectation corrections. The x64 Release build passed all 3,483 native tests, installer support/identity/runtime and payload-hash checks, and portable configuration checks. An isolated installer identity passed 225 lifecycle checks on the development machine. The previous RC6 qualification identified an intermittent configuration-cache test failure; its cause remains unconfirmed.
