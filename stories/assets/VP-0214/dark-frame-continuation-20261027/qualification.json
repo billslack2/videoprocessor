@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "sourceBase": "52f625c113191511f2890775fe9bdd8e511a7049",
+  "branch": "codex/dark-frame-subtitle-review-20261027",
+  "sourceDirty": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "nativePassed": 468,
+  "standardDistinctPassed": 206,
+  "standardQualification": "205 full-suite passes plus corrected fixture rerun; production source unchanged",
+  "betaPassed": 206,
+  "deployed": false,
+  "merged": false,
+  "artifacts": [
+    {
+      "path": "reviewed-source.patch",
+      "sha256": "216287C5FD19F65271770018B245F79DDC5229BDCF4DD395B5272755185C846A"
+    },
+    {
+      "path": "reviewed-source-before-oracle.patch",
+      "sha256": "F7088A37DB66941D2C72D73038EE31FA2A7F8A50CADCFEFCEA41C307D88C4B3F"
+    },
+    {
+      "path": "tests\\native-qualified.trx",
+      "sha256": "1166A2E19ABEAA3118547595F2F7059FB99E3C1BA3CCFDEF62E72821065FFEDE"
+    },
+    {
+      "path": "dual\\standard.trx",
+      "sha256": "13D4889F4CCF28C37F4BF2AC34F226727FF16341F20F48251792F926DC7C76E5"
+    },
+    {
+      "path": "tests\\padding-oracle.trx",
+      "sha256": "D3D8861A141BA386B2963A49210EB477C3B4F49ED25C12CE4B54D95419E6D464"
+    },
+    {
+      "path": "dual-beta\\beta.trx",
+      "sha256": "6E008D1D5912AC6EA9DA0631B374039FAA2EEF51FF69006A3EEB54D7FD71C92C"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "83E845B2F8D152267A5D9F077D9C402BAA23F480DEF0D55186F7C5D113AB88C5"
+    },
+    {
+      "path": "x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "359D3C5F17C97E62F937B8874BE20A534AAD40F629C9706DD6B0D8EC484D8BB1"
+    },
+    {
+      "path": "x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "305E68F4FDF90D7ECFFF776A5E5AE79B40B005ADB478386D0222266F13C27101"
+    },
+    {
+      "path": "x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "78DF57C2E4992EC5DF4479E16D317B33740B77E6685E4F3E5693C6BA51BE5AF5"
+    },
+    {
+      "path": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "417D2C6526ED721AC053936C36A39DE3B9819A8166BCD55532A2A8C6C60D1E08"
+    }
+  ],
+  "limits": [
+    "Live playback acceptance pending",
+    "No forced production aspect ratio",
+    "Cue-side boundary movement remains ineligible for local continuity",
+    "Fullscreen renderer replacement AR-history handoff remains unfixed",
+    "Later deployment must preserve running 7059c944 fullscreen/windowed health fix"
+  ],
+  "finished": "2026-10-27T21:46:49.8315708-04:00"
+}

@@ -1,0 +1,14 @@
+Ben-Hur paused-frame follow-up, 2026-10-27
+Source: E:\codex\videoprocessor\dark-frame-subtitle-review-20261027
+Base: 52f625c113191511f2890775fe9bdd8e511a7049
+Patch: reviewed-source.patch (SHA256 216287C5FD19F65271770018B245F79DDC5229BDCF4DD395B5272755185C846A)
+
+Implemented: local bar-only continuation when required shared-picture authority is unavailable. Seeds need established current glyphs and both current edges; subsequent opposite-edge loss requires an exact retained cue-side plane and current pixel verification. Missing detector grace remains bounded at 250 ms. Continuously verified positive glyph evidence is not expired by that timer. Cached coordinates confer no AR, picture capture or cleanup authority.
+
+Backing outline coordinates can survive a held/uninspected gap; erasure still requires fresh validation. Tiny expanded-edge strips require distributed outside-caption picture support and current neutral-black checks. Added candidate presence/match/rejection and continuation/profile/hold telemetry, plus native-anchor reset diagnostics.
+
+Validation: x64 Release full solution build passed. 468 relevant native regressions passed, including the saved paused native frame through the real pipeline with diagnostic-only independently observed 384..1776 bounds. Standard: 205 full-suite passes plus one fixture-only coordinate-oracle correction passing on rerun, 206 distinct passes. Beta: all 206 passed. Production code unchanged after native qualification; see qualification.json and TRX artifacts.
+
+Limits: no production forced 2.76 ratio. Exact glyphs alone do not prove AR. Genuine cue-side movement (e.g.1774->1778) still rejects local continuation. Fullscreen renderer replacement losing retained AR history remains separate and unfixed. No claim of complete live flicker resolution. No deployment, merge or configuration changes. The running 7059c944 fullscreen/windowed health fix must be retained in any later deployed combination.
+
+Next playback: short Clear/Yellow + Float + Smooth Motion replay; record event time and inspect continuation state and lip candidate mismatch. Repeat with Reconstruction/Extend if needed. Larger native capture only if logs identify a missing pixel condition; current 64-frame capture already contains unchanged luma across first/last frames. Logs are transition-based but can emit each frame during alternating states, so short sessions remain preferable.
