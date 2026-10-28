@@ -776,3 +776,33 @@ configuration edits. Main installation unchanged; no merge or public release.
 Player is responsive and presentation telemetry continues. Windows computer-use
 helper still fails at sandbox setup, so no physical-screen screenshot/keyboard
 verification is claimed. Evidence: assets/VP-0140/cih-osd-aef76053-20261026/.
+
+## Reuse prepared NLS pipelines on profile selection - 2026-10-28
+
+User-approved playback fix merged in PR #222:
+https://github.com/billslack2/videoprocessor/pull/222
+Feature commit: 78d1336cee4bbd19b1926fc7a57401ed19a04f87.
+Beta merge commit: 74c67da75afb12d09691850e1fb9b02d31b70a06.
+Integration branch: v1.4.02-beta; tested base: 3bae9f228173b9b2d024d7c977a87766bcbc02c1.
+
+Profile selection previously discarded readiness and reran a private-device
+background warmup even for an already compiled NLS+ pipeline. Keep up to sixteen
+successful exact pipeline identities across selection changes. Superseded work
+cannot activate; full invalidation still clears readiness. Shader content and
+composition mode are included in the identity. First cold use or a changed
+rendering contract still prepares in the background.
+
+The x64 Release solution build passed. Both shipped libplacebo GPU/cue suites
+passed 208 tests each (416 total); focused selection, cancellation and retry
+checks also passed. The committed three-file source is byte-identical to the
+pre-commit source used for those tests and the deployed test build; beta had
+not advanced. Receipt: assets/VP-0140/nls-ready-reuse-20261028/motion-renderer-tests.json.
+
+Deployed and hash-verified the host plus both renderer DLLs at
+C:\Videoprocessor\vp. Backup:
+C:\Videoprocessor\vp\backup-before-nls-ready-reuse-20261028-002646.
+Live Off -> NLS+ and regular NLS -> NLS+ selections reached active hooks without
+another preparation job or safe-fit transition in telemetry. Original profile
+selections were restored and the active configuration hash was unchanged.
+The user subsequently confirmed "looks good" and authorized this merge.
+This merge does not replace that installed test build or publish release assets.

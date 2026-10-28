@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "3bae9f228173b9b2d024d7c977a87766bcbc02c1",
+  "sourceDirty": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\nls-plus-activation-20261027\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "99286E817570B290494DB057545C0EDFDDA8CB74CFB0B6A140AF1CF3FB731CF0",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 208
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\nls-plus-activation-20261027\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "918C3C7F9B1E5D047430522C18668504E0395EF86AD5B5223BC60B51561C9962",
+      "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+      "passed": 208
+    }
+  ],
+  "finished": "2026-10-28T00:25:43.4524709-04:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}
