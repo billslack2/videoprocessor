@@ -2592,8 +2592,18 @@ namespace VideoProcessorTest
                     Assert::IsTrue(PixelDistance(baseline[pixel],moved[pixel])<=6,
                         L"picture beyond measured card and destination must remain unchanged");
                 }
-                Assert::IsTrue(PixelDistance(moved[56*64+9],RgbaPixel{0,0,0,255})<=6,
-                    L"restoration must stop exactly at the black-bar seam");
+                // All composition includes the attached display panel's two-row
+                // bar overlap. Check its outer limit separately from restoration.
+                Assert::IsTrue(PixelDistance(moved[(geometry.pictureBottom+2)*64+9],
+                    RgbaPixel{0,0,0,255})<=6,
+                    L"display backing must not extend beyond its two-row bar overlap");
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,
+                    SubtitleGeneratedGrayStyle{},0,SubtitleCompositionPhase::CleanupOnly));
+                const auto cleanup=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                    PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,false,false,nullptr,nullptr,false,-1,false);
+                for(int y=geometry.pictureBottom;y<64;++y)for(const int x:{9,54})
+                    Assert::IsTrue(PixelDistance(cleanup[y*64+x],baseline[y*64+x])<=6,
+                        L"source restoration stops at the picture boundary despite display overlap");
             }
             pl_mpv_user_shader_destroy(&hook);
         }
@@ -3315,10 +3325,20 @@ namespace VideoProcessorTest
 				Assert::IsTrue(moved[pixel].r<12,
 					L"black backing reaches the last picture row and has square lower corners");
 			}
-			const int firstBarPixel=geometry.pictureBottom*64+
+			// Attached backing deliberately overlaps the bar by two source rows
+			// to avoid a fractional sampling seam in complete mixed packets.
+			// It must cover those rows without growing beyond that display overlap.
+			for(int y=geometry.pictureBottom;y<geometry.pictureBottom+2;++y) {
+				const int pixel=y*64+geometry.destination.left+2;
+				Assert::IsTrue(baseline[pixel].r>80,
+					L"the overlap fixture must expose a visible source sample");
+				Assert::IsTrue(moved[pixel].r<12,
+					L"attached backing covers exactly the two bar-facing overlap rows");
+			}
+			const int beyondOverlapPixel=(geometry.pictureBottom+2)*64+
 				geometry.destination.left+2;
-			Assert::IsTrue(PixelDistance(moved[firstBarPixel],baseline[firstBarPixel])<=6,
-				L"the panel ends exactly at the picture/bar boundary");
+			Assert::IsTrue(PixelDistance(moved[beyondOverlapPixel],baseline[beyondOverlapPixel])<=6,
+				L"pixels beyond the two-row panel overlap remain unchanged");
 			pl_mpv_user_shader_destroy(&hook);
 		}
 

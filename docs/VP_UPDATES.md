@@ -160,8 +160,10 @@ no NuGet or Qt dependency. It is compiled by packaging, not the native solution.
    metadata. The default descriptor lifetime is 90 days. Renew it before expiry
    by re-signing the same verified source/packages; never change payload bytes
    after signing. Expired metadata is rejected rather than silently trusted.
-5. Upload the exact EXEs, inventory/hash sidecars and `vp-update.json` to a draft
-   GitHub release whose tag matches the descriptor URLs. Publish after testing.
+5. Upload only the exact installer EXEs, portable ZIPs, and required signed
+   `vp-update.json` to a draft GitHub release whose tag matches the descriptor
+   URLs. Do not upload SHA files, inventory/manifest sidecars, build receipts,
+   or other JSON files. Retain verification evidence internally. Publish after testing.
    These tools do not publish, push, merge, or deploy automatically.
 
 Portable mode refuses folders with orphaned uninstall records or another product
