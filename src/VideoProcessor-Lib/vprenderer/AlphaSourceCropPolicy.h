@@ -1812,6 +1812,41 @@ namespace AlphaSourceCrop
 	};
 
 
+    // Off has one source-owned presentation envelope, including an explicit
+    // released/native view. Displayed/queued rectangles never originate evidence.
+    struct OffBarContentMeasurement
+    {
+        bool available = false;
+        ActivePictureBounds bounds;
+    };
+    OffBarContentMeasurement MeasureOffBarContentFit(const ActivePictureBounds& nativeBase,
+        const ActivePicturePresentationRetentionEvidence& retention,
+        const ActivePictureBounds& denseBounds, bool denseAvailable, int densePadding);
+    struct OffBarContentFitState
+    {
+        bool available = false;
+        ActivePictureBounds nativeBase, bounds;
+        uint64_t sourceGeneration = 0, viewportEpoch = 0, policyGeneration = 0, continuityGeneration = 0;
+        uint64_t holdMs = 0, lastSourceSequence = 0, lastSourceTick = 0;
+        std::array<uint64_t,4> extentTicks{};
+    };
+    struct OffBarContentFitInput
+    {
+        OffBarContentFitState previous;
+        bool enabled = false, nativeAvailable = false;
+        ActivePictureBounds nativeBase;
+        OffBarContentMeasurement measurement;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, sourceTick = 0;
+        uint64_t viewportEpoch = 0, policyGeneration = 0, continuityGeneration = 0, holdMs = 0;
+    };
+    struct OffBarContentFitDecision
+    {
+        OffBarContentFitState state;
+        bool available = false, active = false;
+        Decision presentation;
+    };
+    OffBarContentFitDecision ResolveOffBarContentFit(const OffBarContentFitInput& input);
+
     // The approved envelope is built independently from current accepted
     // caption/UI evidence. A dense geometry/FIT completion is not ownership.
     struct ConfirmedFitOwnershipInput
@@ -2037,6 +2072,7 @@ namespace AlphaSourceCrop
         bool fixedCropAspectConfigured = false;
         double fixedCropAspect = 0.0;
         bool protectedCaptionFit = false;
+        bool offBarContentFit = false;
         bool nlsPresentationFailOpen = false;
         bool recoveryBoundedPresentation = false;
         bool nearBlackBoundedPresentation = false;
