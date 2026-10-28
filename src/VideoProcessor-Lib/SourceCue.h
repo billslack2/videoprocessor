@@ -33,12 +33,14 @@ struct SourceCue
 
 
 /**
- * The cues on one frame. Either may be empty.
+ * The cues on one frame. Either may be empty. whiteNits is the level a cue's
+ * white is drawn at on screen.
  */
 struct SourceCues
 {
 	std::shared_ptr<const SourceCue> subtitle;
 	std::shared_ptr<const SourceCue> message;
+	float whiteNits = 50.0f;
 };
 
 

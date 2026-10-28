@@ -206,6 +206,26 @@ namespace
 			line.pop_back();
 		return line;
 	}
+
+	// [player] sub_nits: the on-screen level of a cue's white, 10 to 1000
+	// nits, default 50. VP draws the cues, so the plugin never sees it.
+	float PlayerCueNits()
+	{
+		constexpr float defaultNits = 50.0f;
+		ConfigFile config;
+		std::string value;
+		if (!config.Load() || !config.TryGetString(PLAYER_SECTION, "sub_nits", value))
+			return defaultNits;
+		char* end = nullptr;
+		const double nits = strtod(value.c_str(), &end);
+		if (end == value.c_str() || *end != 0 || !(nits >= 10.0 && nits <= 1000.0))
+		{
+			DEBUGLOG("Source plugin: [player] sub_nits=%s refused (10 to 1000); using %.0f",
+				value.c_str(), defaultNits);
+			return defaultNits;
+		}
+		return static_cast<float>(nits);
+	}
 }
 
 
@@ -383,6 +403,7 @@ void SourcePluginCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 	m_rejectedCues = 0;
 	m_lastSubtitleCue.reset();
 	m_lastMessageCue.reset();
+	m_cueNits = PlayerCueNits();
 
 	// From here on out data can egress
 	m_captureRunToken.store(captureRunToken, std::memory_order_release);
@@ -739,6 +760,7 @@ void SourcePluginCaptureDevice::DeliverFrame(const vp_source_frame& frame)
 	SourceCues cues;
 	cues.subtitle = TakeCue(frame.subtitle, m_lastSubtitleCue, "subtitle");
 	cues.message = TakeCue(frame.message, m_lastMessageCue, "message");
+	cues.whiteNits = m_cueNits;
 	buffer->SetSourceCues(std::move(cues));
 
 	VideoFrame vpVideoFrame(

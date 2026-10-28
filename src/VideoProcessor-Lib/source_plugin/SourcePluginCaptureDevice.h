@@ -106,6 +106,9 @@ private:
 	std::atomic_bool m_outputCaptureData = false;
 	std::atomic<CaptureRunToken> m_captureRunToken{0};
 
+	// [player] sub_nits, set before each start publishes the run token.
+	float m_cueNits = 50.0f;
+
 	// Reader thread only.
 	uint32_t m_frameBytes = 0;          // 0 while the state is not valid
 	uint32_t m_frameWidth = 0;
