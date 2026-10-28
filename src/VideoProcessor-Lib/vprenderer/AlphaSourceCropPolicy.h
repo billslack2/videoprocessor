@@ -37,11 +37,21 @@ namespace AlphaSourceCrop
 
 	struct OutwardPictureConfirmationState
 	{
+		struct RouteRun
+		{
+			// Each predicate keeps its own fixed sampling anchor and adjacent votes.
+			ActivePictureBounds referenceCandidate;
+			uint64_t lastObservedSourceSequence = 0;
+			uint32_t confirmations = 0;
+		};
+		RouteRun broadRun, nativeDistributedRun;
+		// The selected complete/pending route is projected below for consumers.
+		// Episode age and owner provenance are shared, never reset by route selection.
 		ActivePictureBounds candidate;
 		ActivePictureBounds base;
 		// Confirmation is anchored here; accepted sampling jitter never walks it.
 		ActivePictureBounds referenceCandidate;
-		// Continuous broad-picture episode age survives candidate proof restarts.
+		// Continuous picture episode age survives candidate and route proof restarts.
 		uint64_t firstPictureSourceSequence = 0;
 		uint32_t confirmations = 0;
 		// Preserve subtitle ownership across this proof, even if dense FIT later replaces it.

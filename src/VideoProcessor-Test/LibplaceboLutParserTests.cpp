@@ -2563,7 +2563,7 @@ namespace VideoProcessorTest
             // not depend on ComputeSubtitleCutPaste or display padding.
             const SubtitleBoxRect card{8,28,56,56};
             for(const int margin:{0,3,7}) {
-                const auto geometry=ComputeSubtitleCutPaste(glyphs,64,64,8,56,
+                auto geometry=ComputeSubtitleCutPaste(glyphs,64,64,8,56,
                     SubtitleBoxPadding(margin),0,&card);
                 Assert::IsTrue(geometry.valid);
                 Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB));
@@ -3314,8 +3314,13 @@ namespace VideoProcessorTest
 			Assert::IsTrue(geometry.valid);
 			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,PL_COLOR_TRC_SRGB));
 			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,
-				PL_COLOR_TRC_SRGB,false,false,230);
+				PL_COLOR_TRC_SRGB,true,false,230);
 			const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+				PL_COLOR_TRC_SRGB,true,false,230);
+			// Gray sentinels expose the attached panel extent independently of the black bar.
+			const auto sentinelBaseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,
+				PL_COLOR_TRC_SRGB,false,false,230);
+			const auto sentinelMoved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
 				PL_COLOR_TRC_SRGB,false,false,230);
 			const int lastPictureY=geometry.pictureBottom-1;
 			for(const int x:{geometry.destination.left+2,geometry.destination.right-3}) {
@@ -3325,20 +3330,22 @@ namespace VideoProcessorTest
 				Assert::IsTrue(moved[pixel].r<12,
 					L"black backing reaches the last picture row and has square lower corners");
 			}
-			// Attached backing deliberately overlaps the bar by two source rows
-			// to avoid a fractional sampling seam in complete mixed packets.
-			// It must cover those rows without growing beyond that display overlap.
-			for(int y=geometry.pictureBottom;y<geometry.pictureBottom+2;++y) {
-				const int pixel=y*64+geometry.destination.left+2;
-				Assert::IsTrue(baseline[pixel].r>80,
-					L"the overlap fixture must expose a visible source sample");
-				Assert::IsTrue(moved[pixel].r<12,
-					L"attached backing covers exactly the two bar-facing overlap rows");
+			// Attached panels deliberately extend two source pixels into the bar
+			// to prevent fractional scaling from sampling a transparent edge. The
+			// gray sentinel verifies the exact extent, while the black-bar render
+			// checks the physical bar output at both lower corners.
+			for(const int x:{geometry.destination.left+2,geometry.destination.right-3}) {
+				for(int y=geometry.pictureBottom;y<geometry.pictureBottom+2;++y) {
+					const int pixel=y*64+x;
+					Assert::IsTrue(PixelDistance(sentinelMoved[pixel],RgbaPixel{0,0,0,255})<=6,
+						L"attached backing covers its intentional two-pixel bar overlap");
+				}
+				for(int y=geometry.pictureBottom+2;y<geometry.pictureBottom+5;++y) {
+					const int pixel=y*64+x;
+					Assert::IsTrue(PixelDistance(sentinelMoved[pixel],sentinelBaseline[pixel])<=6,
+						L"pixels beyond attached backing retain the original scene");
+				}
 			}
-			const int beyondOverlapPixel=(geometry.pictureBottom+2)*64+
-				geometry.destination.left+2;
-			Assert::IsTrue(PixelDistance(moved[beyondOverlapPixel],baseline[beyondOverlapPixel])<=6,
-				L"pixels beyond the two-row panel overlap remain unchanged");
 			pl_mpv_user_shader_destroy(&hook);
 		}
 
