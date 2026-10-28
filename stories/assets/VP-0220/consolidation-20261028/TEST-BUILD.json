@@ -1,0 +1,45 @@
+{
+  "commit": "e132c6d8483c91a457a983e0ec4e6caee2ac4773",
+  "base": "74c67da75afb12d09691850e1fb9b02d31b70a06",
+  "configuration": "Release",
+  "architecture": "x64",
+  "scope": "Current beta + RC6 + PR203 + PR213, with conflict resolutions preserving newer beta safeguards and RC6 cleanup coverage",
+  "excluded": [
+    "PR200",
+    "DV trim diagnostics"
+  ],
+  "githubMerged": false,
+  "backup": "C:\\Videoprocessor\\vp-test-rc6-20261028-backup-before-pr203-pr213",
+  "buildLog": "C:\\Users\\bslac\\AppData\\Local\\Temp\\vp-rc6-pr203-pr213-rebuild.log",
+  "tests": {
+    "native": 491,
+    "standardGpu": 208,
+    "betaGpu": 208,
+    "reconciledStandard": 2,
+    "reconciledBeta": 2
+  },
+  "binaries": [
+    {
+      "path": "VideoProcessor.exe",
+      "sha256": "7BCEDFD755611D99E3C5A50C290390B27A62CB3D45F411B5A28C6A199813921C"
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "A652DE7474CD9F9CFEE2BB06353143DEF0FC1AF534F6440AD287A0B261B8271E"
+    },
+    {
+      "path": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "42429073AD8B81E219A7817369E02A467293444379B48D31998BE48645D9C940"
+    },
+    {
+      "path": "config\\VideoProcessorConfig.exe",
+      "sha256": "EF2219EE5BF0EB328AF3A6A559F53CB43D8FD77BD6CBD74764D1A461EC2D8EFB"
+    },
+    {
+      "path": "config\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "7E35C32B90708841B30C3F283D4F6C66294902F52F55A447DD12FEB8AFB36ADF"
+    }
+  ],
+  "settingsPreserved": true,
+  "activeInstallationVerifiedUnchanged": true
+}

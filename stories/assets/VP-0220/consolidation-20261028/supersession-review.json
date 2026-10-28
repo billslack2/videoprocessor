@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "e132c6d8483c91a457a983e0ec4e6caee2ac4773",
+  "baseline": "74c67da75afb12d09691850e1fb9b02d31b70a06",
+  "purpose": "Review for superseded behavior, not only textual merge conflicts",
+  "pr203": {
+    "head": "697c1bcd779891cadde993528c03a71f473e0653",
+    "finding": "No complete replacement found: control replay using current recovery functions still exhibits competing envelopes; Off owner test stabilizes them.",
+    "preserved": "Newer confirmed-fit provenance and shared recovery functions remain; moved enum retained once; both newer provenance tests and Off tests retained.",
+    "limits": "Live performance and transitions unqualified; every eligible Off source measured; active Off envelope intentionally uses linear fit."
+  },
+  "pr213": {
+    "head": "ddf5d666803c29e0bdf7af310963b2695e382bc2",
+    "finding": "Independent AR proof runs, raised-matte qualification and queued native-proof behavior remain distinct additions; no later replacement in beta found.",
+    "preserved": "Current Classic changes remain. Use PR213 sentinel backing checks with RC6 separate CleanupOnly boundary check; do not disable extendToBar in that test."
+  },
+  "nativeTestsPassed": 491,
+  "deployment": "Held pending required GPU validation; normal installation untouched"
+}

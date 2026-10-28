@@ -1,0 +1,11 @@
+{
+  "canonical_records_before": 237,
+  "indexed_rows_before": 237,
+  "duplicate_ids": [],
+  "missing_rows": [],
+  "orphan_rows": [],
+  "highest_assigned_file_id": 218,
+  "highest_registry_token": 219,
+  "assigned": 220,
+  "note": "Conservatively selected above every ID token including the existing Next marker, per strict tracker rule. VP-0219 is unassigned; no existing record was renumbered."
+}

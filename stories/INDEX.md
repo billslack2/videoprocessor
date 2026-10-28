@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0218`
-- Next root story number: `VP-0219`
-- Total indexed items: 237
+- Last assigned root story: `VP-0220`
+- Next root story number: `VP-0221`
+- Total indexed items: 238
 
 ## Story locations
 
@@ -272,7 +272,7 @@ they must not contain requirements that are absent from this file.
 | VP-0210 | Review | Qualify passive presentation event collection |
 | VP-0211 | Review | Configurable presentation depth and display-driven vsync output |
 | VP-0212 | Review | Use madVR crop feedback exclusively for madVR NLS |
-| VP-0213 | Review | Stable Off bar-content fit and release hold |
+| VP-0213 | Will Not Do | Stable Off bar-content fit and release hold |
 | VP-0214 | In Progress | Audit shared subtitle fit ownership and temporal recovery |
 
 | VP-0215 | Review | Make configuration choices clear and consolidate scaling |
@@ -280,6 +280,7 @@ they must not contain requirements that are absent from this file.
 | VP-0216 | Done | Disable Config Apply when no settings are pending |
 | VP-0217 | Done | Stable reconstructed subtitle background and soft boundary blending |
 | VP-0218 | In Progress | Improve aspect transitions with current relative boundary evidence |
+| VP-0220 | Review | Validate consolidated Off fit and AR evidence changes |
 
 ## Codex story workflow
 
