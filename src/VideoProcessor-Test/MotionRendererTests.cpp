@@ -418,6 +418,44 @@ TEST_CLASS(MotionRendererTests){public:
         worker.Invalidate();
         Assert::IsTrue(worker.Get("99") == NlsPipelinePreparation::Status::Missing);
     }
+    TEST_METHOD(NlsPreparedProfilesSurviveOffAndOtherSelections) {
+        NlsPipelinePreparation worker;
+        int compilations = 0;
+        for (const auto* key : {"standard", "plus"}) {
+            Assert::IsTrue(worker.Submit(key, [&] { ++compilations; return true; }));
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (worker.Get(key) == NlsPipelinePreparation::Status::Pending &&
+                std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+            Assert::IsTrue(worker.Get(key) == NlsPipelinePreparation::Status::Ready);
+            worker.Invalidate(false); // Off, followed by another selection.
+        }
+        for (int toggle = 0; toggle < 20; ++toggle) {
+            worker.Invalidate(false);
+            Assert::IsTrue(worker.Get(toggle % 2 ? "plus" : "standard") == NlsPipelinePreparation::Status::Ready);
+        }
+        Assert::AreEqual(2, compilations);
+        Assert::IsTrue(worker.Get("changed-shader-or-source") == NlsPipelinePreparation::Status::Missing);
+        worker.Invalidate();
+        Assert::IsTrue(worker.Get("plus") == NlsPipelinePreparation::Status::Missing);
+        Assert::IsTrue(worker.Get("standard") == NlsPipelinePreparation::Status::Missing);
+    }
+    TEST_METHOD(NlsSelectionCancellationNeverRemembersSupersededCompletion) {
+        NlsPipelinePreparation worker;
+        struct Gate { std::promise<void> release; ~Gate(){try{release.set_value();}catch(...){}} } gate;
+        auto released = gate.release.get_future().share();
+        std::promise<void> entered;
+        auto started = entered.get_future();
+        Assert::IsTrue(worker.Submit("old", [&entered,released] { entered.set_value(); released.wait(); return true; }));
+        Assert::IsTrue(started.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+        worker.Invalidate(false);
+        Assert::IsTrue(worker.Submit("new", [] { return true; }));
+        gate.release.set_value();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (worker.Get("new") == NlsPipelinePreparation::Status::Pending &&
+            std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+        Assert::IsTrue(worker.Get("new") == NlsPipelinePreparation::Status::Ready);
+        Assert::IsTrue(worker.Get("old") == NlsPipelinePreparation::Status::Missing);
+    }
     TEST_METHOD(NlsPreparationFailureRemainsFailedAndCanRetry) {
         NlsPipelinePreparation worker;
         Assert::IsTrue(worker.Submit("bad", []()->bool {throw std::runtime_error("compile");}));

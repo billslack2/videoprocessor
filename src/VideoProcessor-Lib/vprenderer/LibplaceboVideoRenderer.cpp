@@ -9435,10 +9435,11 @@ struct LibplaceboVideoRenderer::Impl
 		const std::vector<ConfiguredShaderRule>& selection,
 		uint64_t rendererGeneration)
 	{
-		nlsPreparation.Invalidate();
+        // A profile toggle is not a new GPU pipeline. Keep successful exact
+        // contracts so returning to NLS/NLS+ does not flash through safe fit.
+        nlsPreparation.Invalidate(false);
 		nlsPreparationPending.store(false, std::memory_order_release);
         nlsPreparationFailed.store(false, std::memory_order_release);
-		++nlsPreparationRevision;
 		renderLoadMeter.ResetForPipelineChange();
 		coreRenderLoadMeter.ResetForPipelineChange();
 		originalPrRenderLoadMeter.ResetForPipelineChange();
@@ -9647,6 +9648,8 @@ struct LibplaceboVideoRenderer::Impl
 		const double mixDuration = temporalRenderer.NlsPreparationMixDuration();
 		std::ostringstream key;
 		key << nlsPreparationRevision << '|' << nlsHookSignature << '|'
+            << nlsHook->signature << '|' << temporalRenderer.Active() << '|'
+            << temporalRenderer.PreparesComposedSources() << '|'
 			<< (parameters.frame_mixer ? parameters.frame_mixer->name : "none") << '|'
 			<< (parameters.deinterlace_params ? int(parameters.deinterlace_params->algo) : -1) << '|'
 			<< (parameters.frame_mixer ? std::ceil(2.0 * std::max(1.0, double(pl_frame_mix_radius(&parameters))) * std::max(1.0, mixDuration)) : 0.0);
