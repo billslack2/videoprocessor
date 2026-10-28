@@ -1,0 +1,9 @@
+﻿{
+    "sourceCommit":  "13878270b559339f82896345c66b113b56dfd39e",
+    "localBase":  "3bae9f228173b9b2d024d7c977a87766bcbc02c1",
+    "beta":  "3bae9f228173b9b2d024d7c977a87766bcbc02c1",
+    "configuration":  "Release",
+    "architecture":  "x64",
+    "startedUtc":  "2026-10-28T03:07:31.4027363+00:00",
+    "command":  "MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3 /v:minimal"
+}

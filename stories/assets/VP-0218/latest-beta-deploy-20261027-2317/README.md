@@ -1,0 +1,9 @@
+# Latest-beta rebase and deployment
+
+Rebased the two existing AR commits onto latest fetched beta `3bae9f228173b9b2d024d7c977a87766bcbc02c1` and deployed clean x64 Release `13878270b559339f82896345c66b113b56dfd39e` at 23:17 EDT on 2026-10-27. Both patches retain exact range-diff equivalence. The base includes the current installed subtitle/presentation fixes from `038bddc6`. Branch `codex/vp-0218-latest-20261027-2307` is pushed; no PR merge or release publication was performed.
+
+**Tests were skipped at the user's explicit request.** The fresh solution build completed successfully; the earlier 3,439 passes are historical evidence and are not qualification of this new integration. Deployment preflight verified Release/x64 runtime records, embedded host/renderer commit identities, all 14 payload hashes and 24 retained dependency hashes. Runtime files were backed up and staged on the target volume before atomic replacement; displaced originals and installed files were independently hash-verified.
+
+VP exited normally through its UI. Config was tray-resident; normal window close cannot exit that process. Its UI showed Apply disabled (no pending edits), and the existing updater's AppLifecycle API shut it down normally. No force-kill was used. VP was restarted from the deployment directory and started its background Config process. Startup logs confirm matching clean host/active renderer identities and advancing source/output sequence numbers. These are deployment checks, not regression or physical viewing acceptance.
+
+Backup: `C:\Videoprocessor\vp\backups\ar-latest-13878270-20261027-231730`. Active cfg/state were backed up and unchanged during replacement; the cfg remained byte-identical after startup. Configuration edits: none. The textured YTTV ad research is still not enabled and that case remains unresolved. VP-0218 remains In Progress.
