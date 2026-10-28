@@ -339,6 +339,7 @@
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
     <ClInclude Include="VideoConversionOverride.h" />
+    <ClInclude Include="SourceCue.h" />
     <ClInclude Include="VideoFrame.h" />
     <ClInclude Include="VideoFrameEncoding.h" />
     <ClInclude Include="CaptureDeliveryStats.h" />
