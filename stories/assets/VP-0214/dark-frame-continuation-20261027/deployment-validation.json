@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "038bddc60fac406522c1f2acf57f7f4cde4452bf",
+  "baseCommit": "52f625c113191511f2890775fe9bdd8e511a7049",
+  "sourceBranch": "codex/dark-frame-subtitle-review-20261027",
+  "configuration": "Release",
+  "architecture": "x64",
+  "buildExitCode": 0,
+  "buildLog": "E:\\codex\\diagnostics\\yellow-float-dropout-20261027\\deploy-build.log",
+  "passed": 495,
+  "failed": 0,
+  "testPath": "E:\\codex\\diagnostics\\yellow-float-dropout-20261027\\tests\\deployment-combination.trx",
+  "testSha256": "F9686E3B338993A8FA47F92390A364E0C0A8573942F300E765A9F85D732A4B35",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\dark-frame-subtitle-review-20261027\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "C7B5973655F4D6DE796239F9007E128C639214ACCA67297D2720C9FE3221752D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\dark-frame-subtitle-review-20261027\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "2BF6995C35F4C189957460262399FEA5A5927A8557801ACDCC815D5AAAE1F0FA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\dark-frame-subtitle-review-20261027\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "9FA7D13A922367AC6B6E6121C473DD57DB95518A47526FB8A1B3B47909883BE2"
+    }
+  ],
+  "scope": "Qualified subtitle continuation plus the previously deployed presentation-health fix; prior full dual GPU results retained, combined native/health/focused GPU tests rerun.",
+  "validatedAtUtc": "2026-10-28T02:42:16.1993697+00:00"
+}
