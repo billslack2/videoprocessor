@@ -1,0 +1,23 @@
+{
+  "sourceCommit": "e3a34b6c9358485e2d975d7b76c7be1ad05baec2",
+  "betaCommit": "3bae9f228173b9b2d024d7c977a87766bcbc02c1",
+  "mergePr": 221,
+  "releaseVersion": "1.4.0-rc6",
+  "tag": "1.4-beta-rc6",
+  "qaRoot": "E:\\codex\\videoprocessor\\release-1.4-rc6\\artifacts\\full-installer-qa-6a5daf9105c74a9db3250fa4c0af34fa",
+  "isolatedInstallerChecks": 225,
+  "updaterPolicyChecks": 29,
+  "updaterControlChecks": 19,
+  "portableConfigChecks": 8,
+  "configScopeAndShutdownPassed": true,
+  "cleanWindowsVmQualified": false,
+  "runningInstallationModified": false,
+  "intermittentCacheFailure": {
+    "test": "SameSizeEditWithRestoredWriteTimeInvalidatesCache",
+    "failedRun": "release-verification-d493271ac3b843fa8428a254761eae92",
+    "cacheGroupPassed": 5,
+    "focusedRepetitionsPassed": 20,
+    "sourceChanged": false,
+    "rootCauseConfirmed": false
+  }
+}

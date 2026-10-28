@@ -1,0 +1,10 @@
+
+> E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3649:  Failed SameSizeEditWithRestoredWriteTimeInvalidatesCache [220 ms]
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3650:  Error Message:
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3651:   Assert failed. Expected:<two> Actual:<one>
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3652:  Stack Trace:
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3653:  	at VideoProcessorTest::ConfigurationReadCacheTests::SameSizeEditWithRestoredWriteTimeInvalidatesCache() in E:\codex\videoprocessor\release-1.4-rc6\src\VideoProcessor-Test\ConfigFileTests.cpp:line 150
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3654:  Passed RestartReadersReuseOneReadAndExplicitReloadSamplesIndependently [3 ms]
+  E:\codex\videoprocessor\release-1.4-rc6\artifacts\release-verification-d493271ac3b843fa8428a254761eae92\tests.log:3655:  Passed RendererPathAliasSharesCachedContentAndWarnings [1 ms]
+
+
