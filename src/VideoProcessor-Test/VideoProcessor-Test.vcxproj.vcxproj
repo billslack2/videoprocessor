@@ -192,6 +192,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DolbyVisionTunnelTestSender.h" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="FullscreenActivationTests.cpp" />
     <ClCompile Include="StartupPresentationReadinessTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>

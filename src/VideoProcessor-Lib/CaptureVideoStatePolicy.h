@@ -50,7 +50,9 @@ inline bool HasSameMaterialCaptureContract(
 	return previous.videoFrameEncoding == current.videoFrameEncoding &&
 		previous.eotf == current.eotf &&
 		previous.colorspace == current.colorspace &&
-		previous.invertedVertical == current.invertedVertical;
+		previous.invertedVertical == current.invertedVertical &&
+		previous.rgbTunnelBytesPreserved == current.rgbTunnelBytesPreserved &&
+		previous.tunnelSdrRgbRange == current.tunnelSdrRgbRange;
 }
 
 

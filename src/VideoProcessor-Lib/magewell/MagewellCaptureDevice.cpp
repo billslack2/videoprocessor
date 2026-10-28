@@ -10,6 +10,7 @@
 
 #include "MagewellCaptureDevice.h"
 #include "MagewellInput.h"
+#include "MagewellRgbTunnelRange.h"
 
 #include <MWFOURCC.h>
 #include <LibMWCapture/MWHDMIPackets.h>
@@ -106,6 +107,7 @@ bool MagewellCaptureDevice::SignalDescription::SameFormatAs(
 	const SignalDescription& other) const
 {
 	return locked == other.locked &&
+		rawRgbTunnel == other.rawRgbTunnel &&
 		width == other.width &&
 		height == other.height &&
 		interlaced == other.interlaced &&
@@ -538,6 +540,28 @@ bool MagewellCaptureDevice::ReadSignal(
 	signal.colorFormat = status.colorFormat;
 	signal.quantRange = status.quantRange;
 
+    if (signal.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB)
+    {
+        DWORD flags = 0;
+        HDMI_INFOFRAME_PACKET packet = {};
+        if (m_sdkInstance->Api().MWGetHDMIInfoFrameValidFlag(channel, &flags) == MW_SUCCEEDED &&
+            (flags & MWCAP_HDMI_INFOFRAME_MASK_AVI) &&
+            m_sdkInstance->Api().MWGetHDMIInfoFramePacket &&
+            m_sdkInstance->Api().MWGetHDMIInfoFramePacket(channel, MWCAP_HDMI_INFOFRAME_ID_AVI, &packet) == MW_SUCCEEDED)
+        {
+            const auto& avi = packet.aviInfoFramePayload;
+            if (avi.byRGB_YCbCr == HDMI_ENCODING_RGB_444)
+            {
+                signal.wireRgbRangeKnown = true;
+                signal.quantRange = avi.byRGBQuantizationRange == 1 ? MWCAP_VIDEO_QUANTIZATION_LIMITED :
+                    avi.byRGBQuantizationRange == 2 ? MWCAP_VIDEO_QUANTIZATION_FULL :
+                    avi.byRGBQuantizationRange == 0 ?
+                        (avi.byVIC > 1 ? MWCAP_VIDEO_QUANTIZATION_LIMITED : MWCAP_VIDEO_QUANTIZATION_FULL) :
+                        MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
+            }
+        }
+    }
+
 	MWCAP_INPUT_SPECIFIC_STATUS specific = {};
 	if (m_sdkInstance->Api().MWGetInputSpecificStatus(channel, &specific) == MW_SUCCEEDED &&
 		specific.bValid)
@@ -881,6 +905,9 @@ bool MagewellCaptureDevice::PublishVideoState(
 		static_cast<unsigned int>(MAGEWELL_CLOCK_TICKS_SECOND),
 		signal.frameDuration100ns,signal.fieldOrder);
 	videoState->videoFrameEncoding = encoding;
+	videoState->rgbTunnelBytesPreserved = encoding == VideoFrameEncoding::ARGB_8BIT &&
+        (signal.rawRgbTunnel || signal.quantRange == MWCAP_VIDEO_QUANTIZATION_FULL);
+    videoState->tunnelSdrRgbRange = signal.rawRgbTunnel ? signal.tunnelSdrRange : TunnelSdrRgbRange::Full;
 	videoState->eotf = signal.eotf;
 	videoState->colorspace = signal.colorSpace;
 	videoState->invertedVertical = false;
@@ -894,6 +921,9 @@ bool MagewellCaptureDevice::PublishVideoState(
 		*(videoState->hdrData) = signal.hdrData;
 	}
 	videoState->valid = true;
+    if (signal.rawRgbTunnel)
+        DebugLog::Log("Magewell RGB tunnel: raw ARGB capture, SDK input/output range=full, wire_range=%d SDR_range=%d",
+            int(signal.quantRange), int(videoState->tunnelSdrRgbRange));
 
 	DebugLog::Log(
 		"Magewell video state: %ux%u%s @ %.3f Hz, %u-bit, capture=%s, "
@@ -992,6 +1022,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	std::vector<std::shared_ptr<MagewellCaptureBuffer>> buffers;
 	int bufferIndex = 0;
 
+	MagewellRgbTunnelRange rgbTunnelRange(m_sdkInstance->Api(), channel);
+	bool rawRequest = false;
 	SignalDescription current;
 	bool haveState = false;
 	bool haveCardState = false;
@@ -1033,6 +1065,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			capturing = false;
 		}
 		buffers.clear();
+		if (!rgbTunnelRange.Restore())
+			throw std::runtime_error("Magewell could not restore input range after an unsupported signal");
 		haveState = false;
 		if (lastUnsupportedReason != reason)
 		{
@@ -1074,10 +1108,13 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (capturing)
 			m_sdkInstance->Api().MWStopVideoCapture(channel);
 		buffers.clear();
+		const bool rangeRestored = rgbTunnelRange.Restore();
 		if (notifyEvent) CloseHandle(notifyEvent);
 		if (captureEvent) CloseHandle(captureEvent);
 		DebugLog::Log("MagewellCaptureDevice capture thread ended, %llu frames",
 			(unsigned long long)m_capturedVideoFrameCount.load());
+		if (!rangeRestored)
+			Error(TEXT("Magewell could not restore the original input range after raw DV capture"));
 	};
 	MagewellScopeExit<decltype(stopCaptureFn)> stopCapture(stopCaptureFn);
 
@@ -1127,12 +1164,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 	while (m_captureThreadRunning.load(std::memory_order_acquire))
 	{
+		const bool requestedRaw = m_rawRgbTunnelRequested.load(std::memory_order_acquire);
+		const bool rawRequestChanged = requestedRaw != rawRequest;
 		ULONGLONG notifyStatus = 0;
 		const DWORD waitResult = WaitForSingleObject(notifyEvent, 100);
 		if (waitResult == WAIT_TIMEOUT)
 		{
 			const auto now = std::chrono::steady_clock::now();
-			if (now - lastSignalPoll < std::chrono::milliseconds(250))
+			if (!rawRequestChanged && now - lastSignalPoll < std::chrono::milliseconds(250))
 				continue;
 			lastSignalPoll = now;
 			notifyStatus = MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE;
@@ -1152,9 +1191,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 
         if (!m_captureThreadRunning.load(std::memory_order_acquire)) break;
-        if (recoveringStall && std::chrono::steady_clock::now() < nextStallAttempt)
+        if (recoveringStall && !rawRequestChanged &&
+            std::chrono::steady_clock::now() < nextStallAttempt)
             continue;
-        const bool formatEvent = (notifyStatus & (
+        const bool formatEvent = rawRequestChanged || (notifyStatus & (
 			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
 			MWCAP_NOTIFY_INPUT_SPECIFIC_CHANGE |
 			MWCAP_NOTIFY_HDMI_INFOFRAME_HDR |
@@ -1177,6 +1217,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				continue;
 			}
 			signalFailures = 0;
+            // While the SDK override is active, its status range can describe
+            // our interpretation rather than the wire. Never guess SDR levels.
+            if (rgbTunnelRange.Active() && requestedRaw && !signal.wireRgbRangeKnown)
+                signal.quantRange = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
+			rawRequest = requestedRaw;
+			signal.rawRgbTunnel = requestedRaw && signal.locked &&
+				signal.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB &&
+				signal.bitDepth == 8 && signal.eotf == EOTF::SDR;
 
 			if (!haveCardState || !signal.SameFormatAs(current))
 			{
@@ -1211,6 +1259,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					capturing = false;
 				}
 				buffers.clear();
+				if (!rgbTunnelRange.Restore())
+					throw std::runtime_error("Magewell could not restore the input range on signal loss");
 				current = signal;
 				continue;
 			}
@@ -1224,8 +1274,21 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					m_sdkInstance->Api().MWStopVideoCapture(channel);
 					capturing = false;
 				}
+				if (haveState) PublishInvalidVideoState(captureRunToken);
 				buffers.clear();
+				if (signal.rawRgbTunnel) rgbTunnelRange.Enable();
+				else if (!rgbTunnelRange.Restore())
+					throw std::runtime_error("Magewell could not restore the input range before ordinary capture");
 				current = signal;
+                if (current.rawRgbTunnel)
+                {
+                    // Preserve an explicit user interpretation for SDR menus;
+                    // AUTO follows the wire independently of our temporary override.
+                    const auto original = rgbTunnelRange.OriginalRange();
+                    const auto sdrRange = original == MWCAP_VIDEO_QUANTIZATION_UNKNOWN ? current.quantRange : original;
+                    current.tunnelSdrRange = sdrRange == MWCAP_VIDEO_QUANTIZATION_LIMITED ? TunnelSdrRgbRange::Limited :
+                        sdrRange == MWCAP_VIDEO_QUANTIZATION_FULL ? TunnelSdrRgbRange::Full : TunnelSdrRgbRange::Unknown;
+                }
 
 				try { ChooseCaptureFormat(current, supportedFormats, fourcc, encoding); }
 				catch (const std::exception& exception)
@@ -1314,6 +1377,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
             if (haveState && m_captureThreadRunning.load(std::memory_order_acquire) &&
                 m_outputCaptureData.load(std::memory_order_acquire) &&
+                m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest &&
                 std::chrono::steady_clock::now() - lastFrameNotification > std::chrono::seconds(2))
             {
                 recoverStall("buffered-frame-notifications-stalled");
@@ -1328,7 +1392,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			continue;
 		if (!haveState || buffers.empty())
 			continue;
-		if (!m_outputCaptureData.load(std::memory_order_acquire))
+		if (!m_outputCaptureData.load(std::memory_order_acquire) ||
+            m_rawRgbTunnelRequested.load(std::memory_order_acquire) != rawRequest)
 			continue;
 
 		MWCAP_VIDEO_BUFFER_INFO bufferInfo = {};
@@ -1503,7 +1568,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				(unsigned long long)counter, m_hardwareLatencyMs.load());
 
         const auto callbackStarted = std::chrono::steady_clock::now();
-		if (m_callback && m_outputCaptureData.load(std::memory_order_acquire))
+        if (m_callback && m_outputCaptureData.load(std::memory_order_acquire) &&
+            m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest)
 			m_callback->OnCaptureDeviceVideoFrame(this, captureRunToken, videoFrame);
         const auto callbackReturned = std::chrono::steady_clock::now();
         if (callbackReturned - callbackStarted >= std::chrono::milliseconds(200))

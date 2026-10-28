@@ -5,7 +5,7 @@
 #include <ActivePictureDecisionTimeline.h>
 #include <VideoFrame.h>
 #include <VideoState.h>
-#include <video_frame_formatter/CR210DolbyVisionTunnelFormatter.h>
+#include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
 
 #include <cstdint>
 #include <memory>
@@ -134,6 +134,83 @@ namespace Tests
 	TEST_CLASS(AnalysisRecoveryDvTests)
 	{
 	public:
+
+
+        TEST_METHOD(TunnelSdrFallbackPreservesLimitedAndFullBlackWhiteAndDomain)
+        {
+            for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+            {
+                auto pixels = MakeR210Rgb8(4, 2, 2, 16);
+                if (encoding != VideoFrameEncoding::R210)
+                    std::fill(pixels->begin(), pixels->end(), 16);
+                auto input = MakeSdrFallbackInput(pixels, 4, 2, 2, profile);
+                input.encoding = encoding; input.tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+                auto limited = PrepareAnalysisFrame(input);
+                Assert::IsTrue(limited.IsValid());
+                Assert::IsTrue(limited.sampleRange == VideoFrameSampleRange::LIMITED);
+                Assert::AreEqual(64, int(SampleAt(limited, 0, 0).luma));
+                if (encoding == VideoFrameEncoding::R210)
+                    pixels = MakeR210Rgb8(4, 2, 2, 235);
+                else
+                    std::fill(pixels->begin(), pixels->end(), 235);
+                input.nativeData = pixels->data(); input.nativeOwner = pixels;
+                limited = PrepareAnalysisFrame(input);
+                Assert::AreEqual(940, int(SampleAt(limited, 0, 0).luma));
+                input.tunnelSdrRgbRange = TunnelSdrRgbRange::Full;
+                const auto full = PrepareAnalysisFrame(input);
+                Assert::IsTrue(full.IsValid());
+                Assert::AreNotEqual(static_cast<unsigned long long>(limited.domainKey),
+                    static_cast<unsigned long long>(full.domainKey));
+                input.tunnelSdrRgbRange = TunnelSdrRgbRange::Unknown;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            }
+        }
+
+        TEST_METHOD(Rgb8TunnelUsesDecodedEvidenceAndExplicitSdrAcrossBothConsumers)
+        {
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+            {
+                auto decoded = MakeDecoded12Bit422(4, 2);
+                auto raw = std::make_shared<std::vector<uint8_t>>(32, 0);
+                for (size_t i = 0; i < raw->size(); i += 4)
+                {
+                    if (encoding == VideoFrameEncoding::ARGB_8BIT)
+                    { (*raw)[i] = 99; (*raw)[i+1] = 255; (*raw)[i+2] = 128; (*raw)[i+3] = 64; }
+                    else
+                    { (*raw)[i] = 64; (*raw)[i+1] = 128; (*raw)[i+2] = 255; (*raw)[i+3] = 99; }
+                }
+                auto input = MakeDvInput(decoded, raw, 4, 2, profile);
+                input.encoding = encoding; input.dolby.rgbBitAlignment = 2;
+                const auto dv = PrepareAnalysisFrame(input);
+                Assert::IsTrue(dv.IsValid() && dv.usesConverted);
+                Assert::IsTrue(dv.source.data == decoded->data());
+                Assert::AreEqual(687, int(SampleAt(dv, 0, 1).luma));
+                input.dolby.requiresBlackFrame = true;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.requiresBlackFrame = false; input.dolby.valid = false;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.allowSdrFallback = true;
+                const auto sdr = PrepareAnalysisFrame(input);
+                Assert::IsTrue(sdr.IsValid() && !sdr.usesConverted);
+                Assert::IsTrue(sdr.source.data == raw->data());
+                Assert::AreNotEqual(static_cast<unsigned long long>(dv.domainKey),
+                    static_cast<unsigned long long>(sdr.domainKey));
+                input.dolbyVisionTunnel = false;
+                const auto native = PrepareAnalysisFrame(input);
+                Assert::IsTrue(native.IsValid());
+                const auto a = SampleAt(sdr, 0, 0), b = SampleAt(native, 0, 0);
+                Assert::AreEqual(int(a.luma), int(b.luma));
+                Assert::AreEqual(int(a.chromaU), int(b.chromaU));
+                Assert::AreEqual(int(a.chromaV), int(b.chromaV));
+                input.dolbyVisionTunnel = true; input.dolby.rgbBitAlignment = 1;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.rgbBitAlignment = 2; input.nativeRowBytes = 15;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            }
+        }
+
 		TEST_METHOD(DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence)
 		{
 			auto decoded = MakeDecoded12Bit422(4, 2);
@@ -248,7 +325,7 @@ namespace Tests
 				state->colorspace = ColorSpace::REC_709;
 				state->dolbyVisionTunnel = true;
 
-				CR210DolbyVisionTunnelFormatter formatter;
+				CRGBDolbyVisionTunnelFormatter formatter;
 				formatter.OnVideoState(state);
 				VideoFrame frame(rgb->data(), 1, 0, nullptr);
 				std::vector<BYTE> output(

@@ -175,7 +175,9 @@
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
-    <ClInclude Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.h">
+    <ClInclude Include="magewell\MagewellRgbTunnelRange.h" />
+    <ClInclude Include="DolbyVisionTunnelInput.h" />
+    <ClInclude Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h">
@@ -490,7 +492,7 @@
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.cpp">
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp">
@@ -712,7 +714,7 @@
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.Common.h" />
     <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp" />
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp" />
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.AVX2.cpp" />
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.AVX2.cpp" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.Common.h" />
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.AVX2.cpp" />

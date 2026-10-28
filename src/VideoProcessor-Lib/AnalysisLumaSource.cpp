@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "AnalysisLumaSource.h"
+#include <DolbyVisionTunnelInput.h>
 
 #include <algorithm>
 #include <limits>
@@ -286,8 +287,9 @@ bool AnalysisLumaSource::IsValid() const
 		requiredBytes > dataBytes)
 		return false;
 	if (format == AnalysisLumaFormat::SdrTunnelRgb)
-		return encoding == VideoFrameEncoding::R210 &&
-			(rgbBitAlignment == 1 || rgbBitAlignment == 2) &&
+		return DolbyVisionTunnelEncodingSupported(encoding) &&
+			(rgbBitAlignment == 2 ||
+				(encoding == VideoFrameEncoding::R210 && rgbBitAlignment == 1)) &&
 			rowBytes >= static_cast<size_t>(width) * 4;
 	if (format == AnalysisLumaFormat::NativeRgb)
 	{
@@ -433,12 +435,12 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 	{
 		const uint8_t* pixel = data + static_cast<size_t>(y) * rowBytes +
 			static_cast<size_t>(x) * 4;
-		const uint32_t word = ReadBigEndian32(pixel);
+		const uint32_t word = ReadDolbyVisionTunnelWord(pixel, encoding);
 		auto channel = [this](uint16_t code)
 		{
 			const uint8_t byte = static_cast<uint8_t>(rgbBitAlignment == 1 ?
 				(code >> 2) : (code & 0xff));
-			return Expand8To10(byte);
+			return range == AnalysisLumaRange::Limited ? uint16_t(byte) << 2 : Expand8To10(byte);
 		};
 		red = channel(static_cast<uint16_t>((word >> 20) & 0x3ff));
 		green = channel(static_cast<uint16_t>((word >> 10) & 0x3ff));
@@ -447,15 +449,21 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 	else if (!ReadRgb10(*this, x, y, red, green, blue))
 		return false;
 	const bool bt2020 = colorspace == ColorSpace::BT_2020;
-	const bool limitedRgb = format != AnalysisLumaFormat::SdrTunnelRgb &&
+	const bool limitedRgb = (format == AnalysisLumaFormat::SdrTunnelRgb && range == AnalysisLumaRange::Limited) ||
+        (format != AnalysisLumaFormat::SdrTunnelRgb &&
 		(encoding == VideoFrameEncoding::R210 ||
 		encoding == VideoFrameEncoding::R10b ||
-		encoding == VideoFrameEncoding::R10l);
+		encoding == VideoFrameEncoding::R10l));
 	if (limitedRgb)
 	{
+        // SDR tunnel bytes use the RGB8 16-235 interval even inside r210.
+        // The distinct native DeckLink r210 64-960 convention applies only
+        // to ordinary ten-bit capture, not this eight-bit carrier.
+        const bool nativeR210Range = format != AnalysisLumaFormat::SdrTunnelRgb &&
+            encoding == VideoFrameEncoding::R210;
 		const LimitedRgbCoefficients& coefficients = bt2020 ?
-			(encoding == VideoFrameEncoding::R210 ? BT2020_R210 : BT2020_R10) :
-			(encoding == VideoFrameEncoding::R210 ? BT709_R210 : BT709_R10);
+			(nativeR210Range ? BT2020_R210 : BT2020_R10) :
+			(nativeR210Range ? BT709_R210 : BT709_R10);
 		const int r = static_cast<int>(red) - 64;
 		const int g = static_cast<int>(green) - 64;
 		const int b = static_cast<int>(blue) - 64;

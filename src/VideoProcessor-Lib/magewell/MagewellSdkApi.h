@@ -28,6 +28,8 @@ using MagewellSdkExportResolver = FARPROC (*)(
 	X(MWGetHDMIInfoFrameValidFlag) \
 	X(MWGetHDMIInfoFramePacket) \
 	X(MWGetVideoSignalStatus) \
+	X(MWGetVideoInputQuantizationRange) \
+	X(MWSetVideoInputQuantizationRange) \
 	X(MWGetInputSpecificStatus) \
 	X(MWGetFamilyInfo) \
 	X(MWStartVideoCapture) \
