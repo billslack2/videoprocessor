@@ -12,7 +12,10 @@ public:
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
     const char* LastSeedReason() const { return m_lastSeedReason; }
     bool NeedsCurrentProof(const SubtitleBoxPreview& preview) const {
-        return m_valid && EdgeLossKind(preview.current)!=0;
+        if(!m_valid || !preview.available)return false;
+        const auto& c=preview.current;
+        return EdgeLossKind(c)!=0 || LocalCurrentBarEvidence(c,preview.policyGeneration,
+            preview.continuityGeneration,m_base);
     }
     bool Remember(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const ActivePictureBounds& base,const AnalysisLumaSource& source) {
@@ -26,14 +29,21 @@ public:
         if(!c.ink || !c.ink->paletteValid || !c.ink->rawEvidenceComplete)
             return reject("ink-unavailable");
         if(!ValidSource(c,source))return reject("source-mismatch");
-        if(!c.sharedPicture.AvailableFor(c.identity,c.width,c.height))
-            return reject("shared-hint-unavailable");
-        if(!SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
+        const bool sharedCurrent=c.sharedPicture.AvailableFor(c.identity,c.width,c.height);
+        const bool localSeed=!sharedCurrent &&
+            LocalCurrentBarEvidence(c,preview.policyGeneration,preview.continuityGeneration,base);
+        if(!sharedCurrent && !localSeed)return reject("shared-hint-unavailable");
+        if(sharedCurrent && !SameBase(base,c.sharedPicture.bounds))return reject("native-base-shared-hint-mismatch");
+        if(localSeed && accepted.observations<2)return reject("local-seed-not-established");
         const bool physicalEdgesAligned=base.top==c.pictureTop && base.bottom==c.pictureBottom;
         // Different sampler/native edges may nominate fixed bar glyphs only.
         // This does not reconcile, sample or certify the intervening picture strips.
         if(!physicalEdgesAligned && !BarOnlyCue(c,accepted,base))
             return reject("native-base-physical-edge-mismatch");
+        // An unavailable shared snapshot may seed only an already established
+        // current cue that is wholly in one physical bar. Its geometry remains
+        // glyph-local and cannot be promoted into picture or backing authority.
+        if(localSeed && !BarOnlyCue(c,accepted,base))return reject("local-seed-not-fixed-bar-cue");
         if(c.pictureTop<=0 || c.pictureBottom>=c.height)
             return reject("seed-physical-context-incomplete");
         if(preview.policyGeneration!=c.policyGeneration || preview.continuityGeneration!=c.continuityGeneration)
@@ -71,10 +81,11 @@ public:
         for(size_t i=0;i<words;++i)sampled->ownedInk[i]=c.ink->ownedInk[i]&sampled->rawInk[i];
         m_reference=acceptedObservation;m_reference.ink=sampled;
         m_baseline=sampled;m_base=base;m_roi=roi;m_last=c.identity;m_elapsed=0;m_missingStarted=false;m_valid=true;m_cached={};
-        m_localGlyphsOnly=!physicalEdgesAligned;
+        m_localGlyphsOnly=localSeed || !physicalEdgesAligned;
         m_format=source.format;m_encoding=source.encoding;m_range=source.range;m_colorspace=source.colorspace;
         m_sourceGeneration=source.generation;
-        m_lastSeedReason=m_localGlyphsOnly?"seeded-local-bar-glyphs":"seeded";
+        m_lastSeedReason=localSeed?"seeded-local-unshared-bar-glyphs":
+            m_localGlyphsOnly?"seeded-local-bar-glyphs":"seeded";
         return true;
     }
     SubtitleCueContinuation Prepare(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
@@ -86,9 +97,15 @@ public:
         out.physicalBase=m_base;out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
         auto fail=[&](const char* why) {out.reason=why;m_valid=false;m_cached=out;return out;};
         if(!m_valid)return out;
+        const bool sharedCurrent=c.sharedPicture.AvailableFor(c.identity,c.width,c.height);
+        const bool localCurrent=!sharedCurrent &&
+            ((LocalCurrentBarEvidence(c,preview.policyGeneration,preview.continuityGeneration,m_base) &&
+                CueSideMatchesReference(c,m_reference.text,m_reference,m_base)) ||
+             LocalCandidateCueSideEvidence(c,preview.policyGeneration,preview.continuityGeneration,
+                m_base,m_reference.text,m_reference));
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.analysisRefresh ||
             c.text.workLimit || !ValidSource(c,source) || !SameBase(base,m_base) ||
-            !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) || !SameBase(base,c.sharedPicture.bounds) ||
+            (!sharedCurrent && !localCurrent) || (sharedCurrent && !SameBase(base,c.sharedPicture.bounds)) ||
             !Context(c,m_reference) || preview.policyGeneration!=m_reference.policyGeneration ||
             preview.continuityGeneration!=m_reference.continuityGeneration ||
             c.policyGeneration!=preview.policyGeneration || c.continuityGeneration!=preview.continuityGeneration ||
@@ -96,7 +113,8 @@ public:
             source.colorspace!=m_colorspace || source.generation!=m_sourceGeneration)
             return fail("context-changed");
         const int edgeLoss=EdgeLossKind(c);
-        if(!edgeLoss || !SubtitleBoxLookahead::HasBarEvidence(c))return fail("not-missing-cue-edge");
+        if((!edgeLoss && !localCurrent) || !SubtitleBoxLookahead::HasBarEvidence(c))
+            return fail("not-missing-cue-edge");
         if(edgeLoss==2 && (c.cadenceSkipped || c.text.held || c.text.confirmationPending || c.text.revised ||
             !c.ink || !c.ink->rawEvidenceComplete || !c.ink->paletteValid))
             return fail("current-detector-proof-not-fresh");
@@ -120,11 +138,17 @@ public:
         // A detector miss spends the absolute non-renewing grace. An exact
         // healthy positive on the cue side is freshly verified below each frame;
         // it does not reset that grace or renew the acquisition/physical baseline.
-        if(edgeLoss==1 && m_elapsed>(std::max)(0,(std::min)(250,holdMs)))return fail("lease-expired");
-        auto fresh=Verify(c,source,maxSamples,out.samples,out.reason,edgeLoss==2,&out);
+        // Only an actual detector miss spends the finite grace. A positive
+        // local cue is re-proved from this frame's glyph and cue-side pixels;
+        // that proof does not renew or acquire any picture/backing authority.
+        if(edgeLoss==1 && m_elapsed>(std::max)(0,(std::min)(250,holdMs)))
+            return fail("lease-expired");
+        auto fresh=Verify(c,source,maxSamples,out.samples,out.reason,
+            edgeLoss==2 || localCurrent,&out);
         if(!fresh)return fail(out.reason);
-        out.valid=true;out.localGlyphsOnly=m_localGlyphsOnly || edgeLoss==2;
-        out.reason=edgeLoss==2?"current-cue-opposite-edge-pixels":"current-cue-pixels";
+        out.valid=true;out.localGlyphsOnly=m_localGlyphsOnly || localCurrent || edgeLoss==2;
+        out.reason=localCurrent?"current-local-cue-pixels":
+            edgeLoss==2?"current-cue-opposite-edge-pixels":"current-cue-pixels";
         out.physicalBase=m_base;out.sampledBounds=m_roi;
         out.backingVerifiedBounds=out.localGlyphsOnly?SubtitleBoxRect{}:m_reference.text.sourcePanel;
         out.pictureTop=m_reference.pictureTop;out.pictureBottom=m_reference.pictureBottom;
@@ -139,9 +163,15 @@ public:
         if(!m_valid)return false;
         SubtitleCueContinuation ownership;ownership.valid=true;ownership.accepted=m_reference.text;
         if(!ownership.MatchesCue(accepted)) {Reset();return false;}
+        const bool sharedCurrent=c.sharedPicture.AvailableFor(c.identity,c.width,c.height);
+        const bool localCurrent=!sharedCurrent &&
+            ((LocalCurrentBarEvidence(c,preview.policyGeneration,preview.continuityGeneration,m_base) &&
+                CueSideMatchesReference(c,m_reference.text,m_reference,m_base)) ||
+             LocalCandidateCueSideEvidence(c,preview.policyGeneration,preview.continuityGeneration,
+                m_base,m_reference.text,m_reference));
         if(!preview.available || !c.analyzed || c.glyphLocalTop || c.glyphLocalBottom || c.discontinuity || c.pendingRefresh || c.text.workLimit ||
             !ValidSource(c,source) || !SameBase(base,m_base) || !Context(c,m_reference) ||
-            !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) || !SameBase(base,c.sharedPicture.bounds) ||
+            (!sharedCurrent && !localCurrent) || (sharedCurrent && !SameBase(base,c.sharedPicture.bounds)) ||
             preview.policyGeneration!=m_reference.policyGeneration || preview.continuityGeneration!=m_reference.continuityGeneration ||
             c.policyGeneration!=preview.policyGeneration || c.continuityGeneration!=preview.continuityGeneration ||
             source.format!=m_format || source.encoding!=m_encoding || source.range!=m_range ||
@@ -153,10 +183,97 @@ public:
         if(m_missingStarted)m_elapsed+=frameMs;
         if(m_elapsed>(std::max)(0,(std::min)(250,holdMs))) {Reset();return false;}
         unsigned samples=0;const char* reason="not-eligible";
-        if(!Verify(c,source,maxSamples,samples,reason)) {Reset();return false;}
+        if(!Verify(c,source,maxSamples,samples,reason,localCurrent)) {Reset();return false;}
+        if(localCurrent)m_localGlyphsOnly=true;
         m_last=c.identity;m_cached={};return true;
     }
 private:
+    static bool SameCandidateBase(const SubtitleInspectionCandidate& candidate,
+        const ActivePictureBounds& base,const SubtitleBoxObservation& c,
+        uint64_t policy,uint64_t continuity) {
+        const auto& b=candidate.bounds;
+        return c.inspectionCandidateUsed && candidate.AvailableFor(c.identity,c.width,c.height,policy,continuity) &&
+            b.left==base.left && b.top==base.top && b.right==base.right && b.bottom==base.bottom &&
+            b.rasterWidth==base.rasterWidth && b.rasterHeight==base.rasterHeight;
+    }
+    static bool FreshEdge(const SubtitleBarEvidence& e,bool bottom) {
+        if(bottom) return e.bottom>0 && !e.captionBackedBottom &&
+            ((e.bottomRevalidatedAtReference || e.bottomRevalidatedNearby) ?
+                e.bottomReferenceBoundarySupport>0 : e.bottomBoundarySupport>0);
+        return e.top>0 && !e.captionBackedTop &&
+            ((e.topRevalidatedAtReference || e.topRevalidatedNearby) ?
+                e.topReferenceBoundarySupport>0 : e.topBoundarySupport>0);
+    }
+    static bool LocalCurrentBarEvidence(const SubtitleBoxObservation& c,uint64_t policy,
+        uint64_t continuity,const ActivePictureBounds& base) {
+        if(!c.sharedPicture.required || !c.pictureAuthorityUnavailableForMeasurement ||
+            !c.barAuthority || !c.barEvidence.available || c.barTrackingAuthority ||
+            c.hasBarTrackingReference || c.currentAnchorUsesTrackedEdge ||
+            c.analysisRefresh || c.pendingRefresh || c.discontinuity ||
+            c.glyphLocalTop || c.glyphLocalBottom || c.barEvidence.captionBackedTop ||
+            c.barEvidence.captionBackedBottom || c.pictureTop<=0 ||
+            c.pictureBottom>=c.height || c.pictureTop>=c.pictureBottom ||
+            c.pictureTop!=c.barEvidence.top || c.pictureBottom!=c.barEvidence.bottom ||
+            c.barEvidence.top<=0 || c.barEvidence.bottom>=c.height ||
+            c.barEvidence.top>=c.barEvidence.bottom || base.rasterWidth!=c.width ||
+            base.rasterHeight!=c.height || base.left!=0 || base.right!=c.width ||
+            base.top<=0 || base.bottom>=c.height || base.top>=base.bottom)
+            return false;
+        const bool untrackedIndependent=c.independentBarAnalysis &&
+            !c.barEvidence.topRevalidatedAtReference && !c.barEvidence.topRevalidatedNearby &&
+            !c.barEvidence.bottomRevalidatedAtReference && !c.barEvidence.bottomRevalidatedNearby;
+        const bool exactCandidate=c.inspectionCandidateUsed &&
+            SameCandidateBase(c.sharedPicture.inspectionCandidate,base,c,policy,continuity);
+        if(untrackedIndependent)return true;
+        if(!exactCandidate)return false;
+        const auto& e=c.barEvidence;
+        return FreshEdge(e,false) && FreshEdge(e,true);
+    }
+    static bool CueSideMatchesReference(const SubtitleBoxObservation& c,
+        const SubtitleBoxResult& text,const SubtitleBoxObservation& reference,
+        const ActivePictureBounds& base) {
+        if(!BarOnlyCue(reference,text,base))return false;
+        bool top=true,bottom=true;
+        for(int i=0;i<text.lineCount;++i) {
+            const auto& line=text.lineBounds[i];
+            top &= line.bottom<=(std::min)(base.top,reference.pictureTop);
+            bottom &= line.top>=(std::max)(base.bottom,reference.pictureBottom);
+        }
+        if(top==bottom)return false;
+        return bottom ? c.pictureBottom==reference.pictureBottom :
+            c.pictureTop==reference.pictureTop;
+    }
+    // A fresh inspection candidate can retain only the cue-facing physical
+    // edge when its opposite edge is absent. The line must remain beyond both
+    // that current plane and the prior base; the missing side stays unknown.
+    static bool LocalCandidateCueSideEvidence(const SubtitleBoxObservation& c,uint64_t policy,
+        uint64_t continuity,const ActivePictureBounds& base,const SubtitleBoxResult& text,
+        const SubtitleBoxObservation& reference) {
+        if(!c.sharedPicture.required || !c.pictureAuthorityUnavailableForMeasurement ||
+            !c.barAuthority || !c.barEvidence.available || c.barTrackingAuthority ||
+            c.hasBarTrackingReference || c.currentAnchorUsesTrackedEdge ||
+            c.analysisRefresh || c.pendingRefresh || c.discontinuity || c.glyphLocalTop ||
+            c.glyphLocalBottom || base.rasterWidth!=c.width || base.rasterHeight!=c.height ||
+            base.left!=0 || base.right!=c.width || base.top<=0 || base.bottom>=c.height ||
+            base.top>=base.bottom || !SameCandidateBase(c.sharedPicture.inspectionCandidate,
+                base,c,policy,continuity) || !text.detected || text.held ||
+            text.confirmationPending || text.workLimit || text.lineCount<1 || text.lineCount>3)
+            return false;
+        bool bottom=true,top=true;
+        for(int i=0;i<text.lineCount;++i) {
+            const auto& line=text.lineBounds[i];
+            if(!InRaster(line,c.width,c.height) || text.linePanels[i].Valid() ||
+                text.lineCapturePanels[i].Valid())return false;
+            bottom &= c.pictureBottom>0 && c.pictureBottom<c.height &&
+                c.pictureBottom==c.barEvidence.bottom &&
+                line.top>=(std::max)(base.bottom,c.pictureBottom);
+            top &= c.pictureTop>0 && c.pictureTop<c.height &&
+                c.pictureTop==c.barEvidence.top &&
+                line.bottom<=(std::min)(base.top,c.pictureTop);
+        }
+        return bottom!=top && FreshEdge(c.barEvidence,bottom) &&
+            CueSideMatchesReference(c,text,reference,base);
+    }
     static bool BarOnlyCue(const SubtitleBoxObservation& c,const SubtitleBoxResult& accepted,
         const ActivePictureBounds& base) {
         if(c.pictureTop<=0 || c.pictureBottom>=c.height || c.pictureTop>=c.pictureBottom ||
@@ -167,7 +284,8 @@ private:
         bool top=true,bottom=true;
         for(int i=0;i<accepted.lineCount;++i) {
             const auto& line=accepted.lineBounds[i];
-            if(!InRaster(line,c.width,c.height) || accepted.lineCapturePanels[i].Valid())return false;
+            if(!InRaster(line,c.width,c.height) || accepted.linePanels[i].Valid() ||
+                accepted.lineCapturePanels[i].Valid())return false;
             top &= line.bottom<=(std::min)(base.top,c.pictureTop);
             bottom &= line.top>=(std::max)(base.bottom,c.pictureBottom);
         }
@@ -198,7 +316,9 @@ private:
         // from the added-caption-ink veto. Owned glyphs and their adjacent black
         // backing are still compared below, and every new bar sample still vetoes.
         const bool pictureIsNotCaption=currentPositiveBarOnly &&
-            BarOnlyCue(m_reference,m_reference.text,m_base);
+            (BarOnlyCue(m_reference,m_reference.text,m_base) ||
+             LocalCandidateCueSideEvidence(c,m_reference.policyGeneration,
+                m_reference.continuityGeneration,m_base,m_reference.text,m_reference));
         const auto mismatch=[&](int x,int y,int sx,int sy) {
             if(!diagnostic)return;
             diagnostic->mismatchX=sx;diagnostic->mismatchY=sy;

@@ -4895,6 +4895,197 @@ public:
             Assert::AreEqual(0,MeasureCurrentCaptionForPresentation(current,accepted,currentKey.identity,true,width,height).rasterWidth);
         }
     }
+    TEST_METHOD(UnsharedInspectionCandidateHoldsOnlyVerifiedCueCoordinates) {
+        auto fixture=std::make_unique<NativeBarCueFixture>();
+        fixture->base.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+        auto source=fixture->Native();source.generation=2;
+        auto seedIdentity=Identity(1);seedIdentity.transportGeneration=2;seedIdentity.analysisDomainKey=55;
+        const auto candidate=NominateSubtitleInspectionCandidate(source,fixture->base,
+            source.generation,seedIdentity.sourceFormatGeneration,ActivePictureAuthorityOrigin::NATIVE,
+            ActivePictureClassification::BAR_CROP_TRUSTED,1,seedIdentity,7,9,true,false);
+        Assert::IsTrue(candidate.valid,L"the fixture needs an exact native inspection coordinate candidate");
+        const auto makeObservation=[&](uint64_t sequence,bool missingTop,bool tracked=false) {
+            auto observation=fixture->acquired.current;
+            auto identity=Identity(sequence);identity.transportGeneration=2;identity.analysisDomainKey=55;
+            observation.identity=identity;observation.policyGeneration=7;observation.continuityGeneration=9;
+            observation.analyzed=true;observation.discontinuity=false;observation.analysisRefresh=false;
+            observation.pendingRefresh=false;observation.glyphLocalTop=observation.glyphLocalBottom=false;
+            observation.sharedPicture.required=true;observation.sharedPicture.identity=identity;
+            observation.sharedPicture.bounds={};observation.sharedPicture.inspectionCandidate=candidate;
+            observation.pictureAuthorityUnavailableForMeasurement=true;
+            observation.inspectionCandidateUsed=true;
+            observation.barAuthority=!tracked;observation.barTrackingAuthority=tracked;
+            observation.hasBarTrackingReference=tracked;observation.currentAnchorUsesTrackedEdge=false;
+            observation.independentBarAnalysis=false;
+            observation.pictureTop=missingTop?0:384;observation.pictureBottom=1776;
+            observation.barEvidence={};observation.barEvidence.available=true;
+            observation.barEvidence.top=observation.pictureTop;
+            observation.barEvidence.bottom=observation.pictureBottom;
+            observation.barEvidence.bottomBoundarySupport=24;
+            observation.barEvidence.topBoundarySupport=missingTop?0:24;
+            observation.barEvidence.bottomRevalidatedAtReference=true;
+            observation.barEvidence.bottomReferenceBoundarySupport=24;
+            if(!missingTop) {
+                observation.barEvidence.topRevalidatedAtReference=true;
+                observation.barEvidence.topReferenceBoundarySupport=24;
+            }
+            observation.barEvidence.reason=missingTop?"current-pixel-revalidated-shared-bar":
+                "current-pixel-revalidated-shared-bar";
+            observation.text=fixture->acquired.current.text;
+            observation.text.held=false;observation.text.confirmationPending=false;
+            observation.text.workLimit=false;observation.text.observations=2;
+            return observation;
+        };
+
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        auto padding=std::make_unique<SubtitlePaddingGuard>();
+        auto compositor=std::make_unique<SubtitleCutPastePresentation>();
+        auto guard=std::make_unique<SubtitleCueContinuationGuard>();
+        SubtitlePaddingPolicy scale;scale.glyphRelative=true;
+        const SubtitleBoxPadding requested{72,34,24};
+        auto first=makeObservation(1,false);
+        auto firstPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&first,1,7,9));
+        const auto firstText=tracker->Consume(*firstPreview,250,41.708);
+        Assert::IsTrue(firstText.detected && !firstText.held);
+        auto seed=makeObservation(2,false);
+        auto seedPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&seed,1,7,9));
+        const auto seedText=tracker->Consume(*seedPreview,250,41.708);
+        Assert::IsTrue(seedText.detected && !seedText.held && seedText.observations>=2);
+        Assert::IsTrue(seed.barAuthority && !seed.independentBarAnalysis &&
+            seed.inspectionCandidateUsed && seed.pictureTop>0 && seed.pictureBottom<seed.height);
+        Assert::IsFalse(seed.sharedPicture.AvailableFor(seed.identity,seed.width,seed.height));
+        Assert::IsTrue(guard->Remember(*seedPreview,seedText,fixture->base,source),
+            L"only the exact candidate with freshly revalidated two-edge evidence can seed local glyph continuity");
+        const auto safe=padding->Consume(seedText,*seedPreview,requested,scale);
+        const auto display=padding->DisplayBounds();
+        const auto original=compositor->Consume(seedText,*seedPreview,safe,25,&display);
+        Assert::IsTrue(original.valid);
+        Assert::IsFalse(original.generatedCleanup.Valid());
+        Assert::IsFalse(original.pictureCapture.Valid());
+        const auto originalDestination=original.destination;
+        const auto originalSource=original.source;
+        const auto originalContent=original.content;
+        SubtitleCutPastePresentation largePaddingCompositor;
+        const SubtitleBoxPadding largePadding{72,174,24};
+        const auto largeSource=largePaddingCompositor.Consume(seedText,*seedPreview,
+            largePadding,25,&display);
+        Assert::IsTrue(largeSource.valid);
+        Assert::IsTrue(largeSource.source.top<seed.pictureBottom,
+            L"the negative fixture must include unverified source padding inside the picture");
+
+        for(uint64_t sequence=3;sequence<=10;++sequence) {
+            auto current=makeObservation(sequence,true);
+            auto preview=std::make_unique<SubtitleBoxPreview>(
+                SubtitleBoxLookahead::Resolve(&current,1,7,9));
+            Assert::IsTrue(current.text.detected && current.pictureTop==0 &&
+                current.pictureBottom==1776 && current.barEvidence.available);
+            Assert::IsTrue(guard->NeedsCurrentProof(*preview));
+            const auto token=guard->Prepare(*preview,source,fixture->base,250,41.708);
+            Assert::IsTrue(token.valid,L"the current local cue-side pixels must verify the held caption");
+            Assert::IsTrue(token.localGlyphsOnly);
+            Assert::IsFalse(token.backingVerifiedBounds.Valid());
+            Assert::IsFalse(current.sharedPicture.AvailableFor(current.identity,current.width,current.height));
+            Assert::IsFalse(current.subtitleArProof.accepted);
+
+            const auto accepted=tracker->Consume(*preview,250,41.708,nullptr,false,false,&token);
+            Assert::IsTrue(accepted.detected && accepted.held,
+                L"the tracker must retain only the freshly verified unchanged glyphs");
+            const auto heldPadding=padding->Consume(accepted,*preview,requested,scale,&token);
+            Assert::AreEqual(safe.sides,heldPadding.sides);
+            Assert::AreEqual(safe.top,heldPadding.top);
+            Assert::AreEqual(safe.bottom,heldPadding.bottom);
+            const auto heldDisplay=padding->DisplayBounds();
+            auto held=compositor->Consume(accepted,*preview,heldPadding,25,&heldDisplay,&token);
+            Assert::IsTrue(held.valid,L"verified local glyphs may retain display coordinates");
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(originalDestination,held.destination));
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(originalSource,held.source));
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(originalContent,held.content));
+            Assert::IsFalse(held.generatedCleanup.Valid());
+            Assert::IsFalse(held.pictureCapture.Valid());
+            Assert::IsFalse(held.cleanupLimit.Valid());
+            Assert::IsFalse(held.layoutCoverage.Valid());
+            Assert::AreEqual(0u,held.generatedCleanupRowCount);
+            Assert::IsTrue(std::strcmp(compositor->BackingDecisionReason(),
+                "current-local-glyph-coordinate-hold")==0);
+            if(sequence==3) {
+                const auto rejectedLargeSource=largePaddingCompositor.Consume(accepted,*preview,
+                    largePadding,25,&heldDisplay,&token);
+                Assert::IsTrue(rejectedLargeSource.valid,
+                    L"masked source padding may cross the physical edge without granting capture authority");
+                Assert::IsTrue(rejectedLargeSource.source.top<seed.pictureBottom);
+                Assert::IsTrue(rejectedLargeSource.content.top>=seed.pictureBottom);
+                Assert::IsFalse(rejectedLargeSource.pictureCapture.Valid());
+                Assert::IsFalse(rejectedLargeSource.generatedCleanup.Valid());
+            }
+            if(sequence==10)Assert::IsTrue(token.elapsedMs>250.0,
+                L"fresh positive glyph and cue-side boundary proofs do not expire as stale holds");
+        }
+
+        auto next=makeObservation(11,true);
+        auto nextPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&next,1,7,9));
+        const auto nextToken=guard->Prepare(*nextPreview,source,fixture->base,250,41.708);
+        Assert::IsTrue(nextToken.valid);
+        auto changedCue=tracker->Consume(*nextPreview,250,41.708,nullptr,false,false,&nextToken);
+        changedCue.cue++;
+        auto changedCompositor=*compositor;
+        const auto changedResult=changedCompositor.Consume(changedCue,*nextPreview,safe,25,
+            &display,&nextToken);
+        Assert::IsFalse(changedResult.valid,
+            L"a new cue cannot borrow coordinates from the previous cue's local proof");
+
+        auto trackedGuard=std::make_unique<SubtitleCueContinuationGuard>();
+        Assert::IsTrue(trackedGuard->Remember(*seedPreview,seedText,fixture->base,source));
+        auto tracked=makeObservation(3,true,true);
+        auto trackedPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&tracked,1,7,9));
+        const auto trackedToken=trackedGuard->Prepare(*trackedPreview,source,fixture->base,250,41.708);
+        Assert::IsFalse(trackedToken.valid,
+            L"tracked-only edge evidence cannot continue a local cue");
+
+        auto gapGuard=std::make_unique<SubtitleCueContinuationGuard>(*guard);
+        auto gap=makeObservation(13,true);
+        auto gapPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&gap,1,7,9));
+        const auto gapToken=gapGuard->Prepare(*gapPreview,source,fixture->base,250,41.708);
+        Assert::IsFalse(gapToken.valid,
+            L"local glyph proof cannot skip an analyzed source sequence");
+
+        auto glyphGuard=std::make_unique<SubtitleCueContinuationGuard>();
+        Assert::IsTrue(glyphGuard->Remember(*seedPreview,seedText,fixture->base,source));
+        for(int y=1936;y<2028;++y)for(int x=1316;x<1328;++x)
+            fixture->pixels[size_t(y)*3840+x]=fixture->Word(64);
+        auto changedGlyph=makeObservation(3,true);
+        auto changedGlyphPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&changedGlyph,1,7,9));
+        const auto changedGlyphToken=glyphGuard->Prepare(*changedGlyphPreview,source,
+            fixture->base,250,41.708);
+        Assert::IsFalse(changedGlyphToken.valid,
+            L"a changed current glyph component must fail native pixel verification");
+        // The actual byte change above is restored for the independent geometry/context negatives.
+        for(int y=1936;y<2028;++y)for(int x=1316;x<1328;++x)
+            fixture->pixels[size_t(y)*3840+x]=fixture->Word(600);
+
+        auto baseGuard=std::make_unique<SubtitleCueContinuationGuard>();
+        Assert::IsTrue(baseGuard->Remember(*seedPreview,seedText,fixture->base,source));
+        auto baseChanged=makeObservation(3,true);
+        auto basePreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&baseChanged,1,7,9));
+        auto changedBase=fixture->base;--changedBase.bottom;
+        const auto baseToken=baseGuard->Prepare(*basePreview,source,changedBase,250,41.708);
+        Assert::IsFalse(baseToken.valid,L"a changed base cannot borrow local cue proof");
+
+        auto policyGuard=std::make_unique<SubtitleCueContinuationGuard>();
+        Assert::IsTrue(policyGuard->Remember(*seedPreview,seedText,fixture->base,source));
+        auto policyChanged=makeObservation(3,true);policyChanged.policyGeneration=8;
+        auto policyPreview=std::make_unique<SubtitleBoxPreview>(
+            SubtitleBoxLookahead::Resolve(&policyChanged,1,8,9));
+        const auto policyToken=policyGuard->Prepare(*policyPreview,source,fixture->base,250,41.708);
+        Assert::IsFalse(policyToken.valid,L"a policy change cannot borrow local cue proof");
+    }
+
     TEST_METHOD(NativePausedReplayReportsSubtitleBarReferenceSensitivity) {
         char* pathValue=nullptr;size_t pathSize=0;
         _dupenv_s(&pathValue,&pathSize,"VP_SUBTITLE_REPLAY_PATH");

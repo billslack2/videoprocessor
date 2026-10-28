@@ -226,6 +226,8 @@ TEST_CLASS(SubtitleBackingLipTests) {
             <<" measured="<<proof.measured.left<<","<<proof.measured.top<<"-"<<proof.measured.right<<","<<proof.measured.bottom
             <<" context_mask="<<proof.contextMismatchMask<<" edge_mask="<<proof.edgeEvidenceMask
             <<" pixel_inspected="<<proof.pixelInspectionPerformed<<" candidate_retained="<<proof.candidateRetained
+            <<" candidate_present="<<proof.candidatePresent<<" candidate_matched="<<proof.candidateMatched
+            <<" candidate_mismatch_mask="<<proof.candidateMismatchMask
             <<" candidate_age="<<proof.candidateAgeFrames<<" cleanup_rows="<<proof.cleanupRowCount
             <<" mismatch="<<proof.mismatchPhase<<"@"<<proof.mismatchX<<","<<proof.mismatchY
             <<" YUV="<<proof.mismatchLuma<<","<<proof.mismatchU<<","<<proof.mismatchV;
@@ -878,6 +880,168 @@ public:
             }
         }
     }
+    TEST_METHOD(RememberedLipUsesStableCompositionWhenEdgeJitterEntersEncodedBar) {
+        // The source's active picture ends at row 1774. A later boundary
+        // estimate at 1778 would make a cold bottom scan start on row 1777,
+        // inside the encoded black bar where the card has no finite flanks.
+        Frame frame(6,Format::P210,false,64);
+        frame.pictureBottom=1774;
+        frame.Fill({0,1774,frame.width,1776},frame.floor);
+        const auto lip=frame.Lip(30,true);
+        auto cue=AcquireOnHeap(frame,20);
+        auto geometry=Geometry(*cue);
+        Assert::AreEqual(1774,geometry.pictureBottom);
+
+        SubtitleBackingLipContinuity continuity;
+        const auto first=continuity.Consume(frame.Source(),cue->preview,cue->accepted,
+            Identity(2),7,8,65536,&geometry);
+        Assert::IsTrue(first.valid && !first.revalidatedOutline);
+        Assert::IsFalse(first.candidatePresent);
+        Assert::IsTrue(Contains(lip,first.cleanup));
+
+        const auto bindNearbyBoundary=[&](SubtitleBoxPreview& preview,uint64_t sequence) {
+            auto& current=preview.current;
+            current.identity=Identity(sequence);
+            auto& authority=current.sharedPicture;
+            authority.required=true;authority.identity=Identity(sequence);
+            authority.bounds.left=0;authority.bounds.right=frame.width;
+            authority.bounds.top=frame.pictureTop;authority.bounds.bottom=frame.pictureBottom;
+            authority.bounds.rasterWidth=frame.width;authority.bounds.rasterHeight=frame.height;
+            auto& bars=current.barEvidence;
+            bars.bottom=current.pictureBottom;
+            bars.bottomRevalidatedAtReference=false;bars.bottomRevalidatedNearby=true;
+            bars.referenceBottom=frame.pictureBottom;bars.bottomReferenceDelta=4;bars.nearbyProbes=1;
+            bars.bottomReferenceBoundarySupport=16;bars.bottomReferenceBlackFraction=0.95;
+            bars.bottomReferenceMaxIntrusion=1;
+        };
+        auto expanded=cue->preview;
+        expanded.current.pictureBottom=1778;
+        bindNearbyBoundary(expanded,3);
+        auto expandedGeometry=geometry;
+        expandedGeometry.pictureBottom=1778;
+
+        // Without an already measured outline, the encoded black bar extends
+        // to the bounded search limits. It is not a backing plate.
+        const auto cold=ProveCurrentSubtitleBackingLip(frame.Source(),expanded,cue->accepted,
+            Identity(3),7,8,65536,nullptr,&expandedGeometry);
+        Assert::IsFalse(cold.valid);
+        Assert::AreEqual("lip-side-search-limit",cold.reason);
+        Assert::IsFalse(cold.candidatePresent);
+        Assert::IsTrue(cold.pixelInspectionPerformed);
+
+        // The nearby edge report is ambiguous, while the independently valid
+        // composition still clips to the remembered 1774 edge. That only
+        // nominates the outline: every current body pixel, flank and closure
+        // is re-read before cleanup is returned.
+        const auto revalidated=continuity.Consume(frame.Source(),expanded,cue->accepted,
+            Identity(3),7,8,65536,&geometry);
+        Assert::IsTrue(revalidated.valid && revalidated.revalidatedOutline);
+        Assert::IsTrue(revalidated.candidatePresent && revalidated.candidateMatched);
+        Assert::AreEqual(uint32_t(0),revalidated.candidateMismatchMask);
+        Assert::IsTrue(revalidated.outlineBaseAnchored && revalidated.compositionEdgeClipped);
+        Assert::AreEqual(1774,revalidated.pictureBottom);
+        Assert::IsTrue(Same(first.cleanup,revalidated.cleanup) && Contains(lip,revalidated.cleanup));
+        Assert::AreEqual(first.bodyRowCount,revalidated.bodyRowCount);
+        Assert::AreEqual(first.roundingRows,revalidated.roundingRows);
+        Assert::AreEqual(first.cornerPixels,revalidated.cornerPixels);
+        AssertCurrentCleanupRows(revalidated,frame);
+        const auto applied=ApplyCurrentSubtitleBackingLip(geometry,revalidated,Identity(3),7,8);
+        AssertGeometryExceptCleanup(geometry,applied);
+        Assert::IsTrue(Same(applied.generatedCleanup,first.cleanup));
+
+        // A held same-cue gap may retain only outline coordinates. It cannot
+        // apply cleanup until a fresh current cue and pixels revalidate them.
+        auto held=cue->accepted;held.held=true;
+        bindNearbyBoundary(expanded,4);
+        const auto heldGap=continuity.Consume(frame.Source(),expanded,held,
+            Identity(4),7,8,65536,&geometry);
+        Assert::IsFalse(heldGap.valid);
+        Assert::IsFalse(heldGap.pixelInspectionPerformed);
+        Assert::IsTrue(heldGap.candidateRetained);
+        Assert::IsTrue(heldGap.candidatePresent && heldGap.candidateMatched);
+        Assert::AreEqual(uint32_t(LipContextLocalContinuationUnavailable),heldGap.contextMismatchMask);
+        Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,heldGap,Identity(4),7,8).generatedCleanup.Valid());
+
+        bindNearbyBoundary(expanded,5);
+        const auto recovered=continuity.Consume(frame.Source(),expanded,cue->accepted,
+            Identity(5),7,8,65536,&geometry);
+        Assert::IsTrue(recovered.valid && recovered.revalidatedOutline);
+        Assert::IsTrue(recovered.candidatePresent && recovered.candidateMatched);
+        Assert::IsTrue(Same(recovered.cleanup,first.cleanup));
+
+        // An independently supplied interval that moved with the ambiguous
+        // edge no longer proves the remembered edge. Fail closed without
+        // retaining cleanup authority.
+        bindNearbyBoundary(expanded,6);
+        const auto mismatched=ProveCurrentSubtitleBackingLip(frame.Source(),expanded,cue->accepted,
+            Identity(6),7,8,65536,&recovered,&expandedGeometry);
+        Assert::IsFalse(mismatched.valid);
+        Assert::IsTrue(mismatched.candidatePresent && mismatched.candidateMatched);
+        Assert::IsFalse(ApplyCurrentSubtitleBackingLip(expandedGeometry,mismatched,
+            Identity(6),7,8).generatedCleanup.Valid());
+
+        // A real current-body contradiction still retires the remembered
+        // outline, even when composition remains stable.
+        const int bodyX=(first.measured.left+first.measured.right)/2;
+        const int bodyY=first.measured.bottom-2;
+        frame.Pixel(bodyX,bodyY,300);
+        bindNearbyBoundary(expanded,7);
+        const auto changed=ProveCurrentSubtitleBackingLip(frame.Source(),expanded,cue->accepted,
+            Identity(7),7,8,65536,&recovered,&geometry);
+        Assert::IsFalse(changed.valid);
+        Assert::IsTrue(changed.candidatePresent && changed.candidateMatched);
+        Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,changed,
+            Identity(7),7,8).generatedCleanup.Valid());
+    }
+    TEST_METHOD(RememberedLipCannotSurviveRealPictureExpansionOverFiniteDarkObject) {
+        Frame frame(6,Format::P210,false,64);
+        frame.pictureBottom=1774;
+        frame.Fill({0,1774,frame.width,1776},frame.floor);
+        frame.Lip(30,true); // It becomes a finite dark scene object after expansion.
+        auto cue=AcquireOnHeap(frame,20);
+        const auto geometry=Geometry(*cue);
+        SubtitleBackingLipContinuity continuity;
+        const auto first=continuity.Consume(frame.Source(),cue->preview,cue->accepted,
+            Identity(2),7,8,65536,&geometry);
+        Assert::IsTrue(first.valid);
+
+        // Change the actual source raster: four rows of bright active picture
+        // now extend past the old edge while the rounded object and glyphs stay
+        // fixed. Keep the old composition interval to exercise both bounds.
+        frame.Fill({0,1774,frame.width,1778},300);
+        frame.pictureBottom=1778;
+        const auto source=frame.Source();
+        for(int y=1774;y<1778;++y)for(int i=0;i<64;++i) {
+            AnalysisLumaSample value;
+            const int x=int((int64_t(2*i+1)*frame.width)/128);
+            Assert::IsTrue(source.Sample(x,y,value));
+            Assert::IsTrue(value.luma>frame.floor+4,
+                L"The changed current source really contains picture-level luma across the expansion strip.");
+        }
+        auto preview=cue->preview;
+        auto& current=preview.current;
+        current.identity=Identity(3);current.pictureBottom=1778;
+        current.pendingRefresh=true; // Recheck every glyph classifier cell from this changed source.
+        auto text=cue->accepted;
+
+        // Supply independent source-boundary evidence at the expanded edge.
+        auto& authority=current.sharedPicture;
+        authority.required=true;authority.identity=Identity(3);
+        authority.bounds.left=0;authority.bounds.right=frame.width;
+        authority.bounds.top=frame.pictureTop;authority.bounds.bottom=1778;
+        authority.bounds.rasterWidth=frame.width;authority.bounds.rasterHeight=frame.height;
+        auto& bars=current.barEvidence;
+        bars.bottom=1778;bars.bottomRevalidatedAtReference=true;bars.bottomRevalidatedNearby=false;
+        bars.referenceBottom=1778;bars.bottomReferenceDelta=0;bars.bottomReferenceBoundarySupport=16;
+        bars.bottomReferenceBlackFraction=0.95;bars.bottomReferenceMaxIntrusion=1;
+
+        const auto rejected=ProveCurrentSubtitleBackingLip(source,preview,text,
+            Identity(3),7,8,65536,&first,&geometry);
+        Assert::IsFalse(rejected.valid);
+        Assert::AreEqual("lip-outline-edge-expansion-not-bar",rejected.reason);
+        Assert::IsTrue(rejected.pixelInspectionPerformed && rejected.samples<=65536);
+        Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,rejected,Identity(3),7,8).generatedCleanup.Valid());
+    }
     TEST_METHOD(NearBlackEndpointAllowanceRejectsHolesWideChangesAndBudgetFailure) {
         for(bool top:{false,true})for(int fault=0;fault<4;++fault) {
             Frame frame(2,Format::P210,top,0);frame.Lip(16,true);auto cue=AcquireOnHeap(frame);
@@ -923,7 +1087,8 @@ public:
     TEST_METHOD(CurrentOutlineCannotSurviveMissingCueAmbiguousBoundaryOrBudgetFailure) {
         for(int failure=0;failure<5;++failure) {
             Frame frame;frame.Lip(8,true);auto cue=Acquire(frame);SubtitleBackingLipContinuity continuity;
-            Assert::IsTrue(continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8).valid);
+            const auto first=continuity.Consume(frame.Source(),cue.preview,cue.accepted,Identity(2),7,8);
+            Assert::IsTrue(first.valid);
             auto preview=cue.preview;preview.current.identity=Identity(3);auto text=cue.accepted;
             if(failure==0)text.detected=false;
             if(failure==1)text.held=true;
@@ -931,10 +1096,20 @@ public:
             if(failure==3)frame.Fill({215,245,425,288},frame.floor);
             const auto proof=continuity.Consume(frame.Source(),preview,text,Identity(3),7,8,failure==4?16:65536);
             Assert::IsFalse(proof.valid);
+            if(failure==1) {
+                Assert::IsTrue(proof.candidatePresent && proof.candidateMatched && proof.candidateRetained);
+                Assert::IsFalse(proof.pixelInspectionPerformed);
+                Assert::IsFalse(ApplyCurrentSubtitleBackingLip(Geometry(cue),proof,Identity(3),7,8).generatedCleanup.Valid());
+            }
             frame.Fill({215,280,425,288},300);
             preview=cue.preview;preview.current.identity=Identity(4);
             const auto next=continuity.Consume(frame.Source(),preview,cue.accepted,Identity(4),7,8);
-            Assert::IsTrue(next.valid && !next.revalidatedOutline,L"failure must retire the remembered outline");
+            if(failure==1) {
+                Assert::IsTrue(next.valid && next.revalidatedOutline,
+                    L"A retained coordinate outline must pass fresh body and closure checks before recovery.");
+                Assert::IsTrue(Same(next.cleanup,first.cleanup));
+                Assert::IsTrue(ApplyCurrentSubtitleBackingLip(Geometry(cue),next,Identity(4),7,8).generatedCleanup.Valid());
+            } else Assert::IsTrue(next.valid && !next.revalidatedOutline,L"failure must retire the remembered outline");
         }
     }
     TEST_METHOD(CurrentOutlineRetiresOnCuePolicyEpochAndSequenceChanges) {
@@ -956,6 +1131,16 @@ public:
             preview.current.identity=id;
             const auto proof=continuity.Consume(frame.Source(),preview,text,id,policy,epoch);
             Assert::IsTrue(proof.valid && !proof.revalidatedOutline,L"fresh proof may acquire, but old authority cannot cross a reset");
+            if(change==9)Assert::IsFalse(proof.candidatePresent);
+            else {
+                Assert::IsTrue(proof.candidatePresent && !proof.candidateMatched);
+                const uint32_t expectedMask=change==0?LipCandidateMismatchCue:
+                    change==1?LipCandidateMismatchGlyphs:
+                    change>=2 && change<=5?LipCandidateMismatchFrame:
+                    change==6?LipCandidateMismatchPolicy:
+                    change==7?LipCandidateMismatchContinuity:LipCandidateMismatchAge;
+                Assert::IsTrue((proof.candidateMismatchMask&expectedMask)!=0);
+            }
         }
     }
     TEST_METHOD(ExplicitBarBackingRetainsOriginalGlyphWidthAfterTextReduction) {

@@ -45,6 +45,20 @@ enum SubtitleBackingLipEdgeEvidence : uint32_t
     LipEdgeBottomNearbyReference=1u<<7
 };
 
+enum SubtitleBackingLipCandidateMismatch : uint32_t
+{
+    LipCandidateMismatchInvalid=1u<<0,
+    LipCandidateMismatchFrame=1u<<1,
+    LipCandidateMismatchPolicy=1u<<2,
+    LipCandidateMismatchContinuity=1u<<3,
+    LipCandidateMismatchSequence=1u<<4,
+    LipCandidateMismatchAge=1u<<5,
+    LipCandidateMismatchDimensions=1u<<6,
+    LipCandidateMismatchCue=1u<<7,
+    LipCandidateMismatchGlyphs=1u<<8,
+    LipCandidateMismatchGeometry=1u<<9
+};
+
 inline bool HasExactCurrentLocalGlyphContinuationForLip(const SubtitleCueContinuation* certificate,
     const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
     const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity)
@@ -114,6 +128,10 @@ struct CurrentSubtitleBackingLipProof
 {
     bool valid=false;
     bool pixelInspectionPerformed=false,candidateRetained=false;
+    // Candidate match is nomination state only; it never implies current
+    // cleanup proof. The mask identifies why a stored outline was not nominated.
+    bool candidatePresent=false,candidateMatched=false;
+    uint32_t candidateMismatchMask=0;
     uint64_t candidateAgeFrames=0;
     uint32_t contextMismatchMask=0,edgeEvidenceMask=0;
     const char* reason="not-evaluated";
@@ -165,12 +183,22 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     candidateEpoch.acceptedSequence=expectedIdentity.acceptedSequence;
     candidateEpoch.sourceFrameNumber=expectedIdentity.sourceFrameNumber;
     candidateEpoch.captureTimestamp=expectedIdentity.captureTimestamp;
-    const bool candidateContext=candidate && candidate->valid &&
-        SameAnalysisFrameIdentity(candidateEpoch,expectedIdentity) &&
-        candidate->policyGeneration==policy && candidate->continuityGeneration==continuity &&
-        expectedIdentity.acceptedSequence>=candidate->identity.acceptedSequence &&
-        expectedIdentity.acceptedSequence-candidate->identity.acceptedSequence<=8 &&
-        candidate->width==source.width && candidate->height==source.height;
+    result.candidatePresent=candidate!=nullptr;
+    uint32_t candidateMismatch=0;
+    if(candidate) {
+        if(!candidate->valid)candidateMismatch|=LipCandidateMismatchInvalid;
+        if(!SameAnalysisFrameIdentity(candidateEpoch,expectedIdentity))candidateMismatch|=LipCandidateMismatchFrame;
+        if(candidate->policyGeneration!=policy)candidateMismatch|=LipCandidateMismatchPolicy;
+        if(candidate->continuityGeneration!=continuity)candidateMismatch|=LipCandidateMismatchContinuity;
+        if(expectedIdentity.acceptedSequence<candidate->identity.acceptedSequence)
+            candidateMismatch|=LipCandidateMismatchSequence;
+        else if(expectedIdentity.acceptedSequence-candidate->identity.acceptedSequence>8)
+            candidateMismatch|=LipCandidateMismatchAge;
+        if(candidate->width!=source.width || candidate->height!=source.height)
+            candidateMismatch|=LipCandidateMismatchDimensions;
+    }
+    result.candidateMismatchMask=candidateMismatch;
+    const bool candidateContext=candidate && candidateMismatch==0;
     // The cached outline is only a coordinate candidate. It is tied to the
     // same cue/epoch below and cannot authorize cleanup until every current
     // body and boundary sample has been revalidated.
@@ -183,6 +211,8 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         candidate->pictureTop>=0 && candidate->pictureBottom<=source.height &&
         candidate->pictureTop<candidate->pictureBottom &&
         candidate->measured.top>=candidate->pictureTop && candidate->measured.bottom<=candidate->pictureBottom;
+    if(candidateContext && !boundedOutline)result.candidateMismatchMask|=LipCandidateMismatchGeometry;
+    result.candidateMatched=candidateContext && boundedOutline;
     if(current.pictureTop>0 && current.barEvidence.top==current.pictureTop)result.edgeEvidenceMask|=LipEdgeTopCurrent;
     if(current.pictureBottom<source.height && current.barEvidence.bottom==current.pictureBottom)result.edgeEvidenceMask|=LipEdgeBottomCurrent;
     if(current.barEvidence.captionBackedTop)result.edgeEvidenceMask|=LipEdgeTopCaptionBacked;
@@ -298,7 +328,7 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
         current,allTop,source,policy,continuity);
     // A current independently measured edge can vary by one native analysis
-    // step while composition clips to the exact same remembered edge. Keep
+    // step while composition clips to the exact remembered edge. Keep
     // revalidating that finite outline instead of cold-acquiring it each frame.
     // Caption metadata without current boundary proof retains the three-row limit.
     const int64_t candidateEdgeDelta=boundedOutline?(allTop?
@@ -433,6 +463,66 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         result.mismatchFloor=floor;result.mismatchDarkLimit=darkLimit;
         result.mismatchExpectedRow=row;result.mismatchExpectedCore=core;
     };
+    const bool compositionContainsRememberedEdge=boundedOutline && composition && composition->valid &&
+        composition->fromTopBar==allTop && composition->pictureTop>=0 &&
+        composition->pictureBottom<=source.height && composition->pictureTop<composition->pictureBottom &&
+        (allTop?composition->pictureTop<=candidate->pictureTop:
+            composition->pictureBottom>=candidate->pictureBottom);
+    const bool candidateEdgeExpanded=boundedOutline && (allTop?
+        current.pictureTop<candidate->pictureTop:current.pictureBottom>candidate->pictureBottom);
+    if(candidateCueSideWithinTolerance && candidateEdgeExpanded && compositionContainsRememberedEdge) {
+        // Prove the short strip between the remembered edge and the expanded
+        // current edge from source pixels. Exclude the remembered card's full
+        // horizontal extent so its own black shoulders cannot count as bar
+        // evidence. A broad, distributed picture-side sample must remain
+        // visible; otherwise the boundary is ambiguous and we fail closed.
+        constexpr int edgeProbeCount=64,edgeProbeBins=8;
+        const int outsideLeft=candidate->measured.left;
+        const int outsideRight=candidate->measured.right;
+        if(outsideLeft<0 || outsideRight>source.width || outsideLeft>=outsideRight)
+            return reject("lip-outline-edge-flanks-unavailable");
+        const int outsideWidth=outsideLeft+source.width-outsideRight;
+        if(outsideWidth<source.width/4)
+            return reject("lip-outline-edge-flanks-unavailable");
+        const auto outsideX=[&](int index) {
+            const int offset=int((int64_t(2*index+1)*outsideWidth)/(2*edgeProbeCount));
+            return offset<outsideLeft?offset:outsideRight+(offset-outsideLeft);
+        };
+        const int pictureSideY=allTop?candidate->pictureTop:candidate->pictureBottom-1;
+        std::array<unsigned,edgeProbeBins> brightBins{};
+        unsigned pictureSideBright=0;
+        for(int i=0;i<edgeProbeCount;++i) {
+            AnalysisLumaSample value;
+            const int x=outsideX(i);
+            if(!sample(x,pictureSideY,value))
+                return reject(exhausted?"lip-work-budget":"lip-native-sample-unavailable");
+            if(value.luma>darkLimit) {
+                ++pictureSideBright;
+                ++brightBins[(std::min)(edgeProbeBins-1,int(int64_t(x)*edgeProbeBins/source.width))];
+            }
+        }
+        unsigned supportedBins=0;
+        for(const auto count:brightBins)supportedBins+=count>=2;
+        if(pictureSideBright<edgeProbeCount/2 || supportedBins<4)
+            return reject("lip-outline-edge-picture-support-unavailable");
+
+        const int extensionTop=allTop?current.pictureTop:candidate->pictureBottom;
+        const int extensionBottom=allTop?candidate->pictureTop:current.pictureBottom;
+        if(extensionTop<0 || extensionBottom>source.height || extensionTop>=extensionBottom ||
+            extensionBottom-extensionTop>candidateEdgeDelta)
+            return reject("lip-outline-edge-expansion-invalid");
+        for(int y=extensionTop;y<extensionBottom;++y) {
+            unsigned barLike=0;
+            for(int i=0;i<edgeProbeCount;++i) {
+                AnalysisLumaSample value;
+                if(!sample(outsideX(i),y,value))
+                    return reject(exhausted?"lip-work-budget":"lip-native-sample-unavailable");
+                if(value.luma<=darkLimit && neutral(value))++barLike;
+            }
+            if(barLike*10<edgeProbeCount*9)
+                return reject("lip-outline-edge-expansion-not-bar");
+        }
+    }
     if(candidateCueSideWithinTolerance &&
         (allTop?candidate->pictureTop==result.pictureTop:candidate->pictureBottom==result.pictureBottom) &&
         candidate->measured.top>=result.pictureTop && candidate->measured.bottom<=result.pictureBottom) {
@@ -763,13 +853,30 @@ public:
         previous.acceptedSequence=identity.acceptedSequence;
         previous.sourceFrameNumber=identity.sourceFrameNumber;
         previous.captureTimestamp=identity.captureTimestamp;
-        const bool matches=m_outline.valid && SameAnalysisFrameIdentity(previous,identity) &&
-            m_outline.policyGeneration==policy && m_outline.continuityGeneration==continuity &&
-            identity.acceptedSequence>=m_outline.identity.acceptedSequence &&
-            identity.acceptedSequence-m_outline.identity.acceptedSequence<=8 &&
-            matchingText.cue==m_text.cue && SameFreshSubtitleGlyphs(m_text,matchingText,0);
+        // A held same-cue result may keep only the remembered coordinates
+        // through a context gap. Normalize `held` for this identity comparison
+        // only; ProveCurrentSubtitleBackingLip still rejects cleanup unless
+        // this exact frame has fresh text or a valid local-glyph certificate.
+        auto comparableText=matchingText;
+        comparableText.held=false;
+        uint32_t candidateMismatch=0;
+        if(m_outline.valid) {
+            if(!SameAnalysisFrameIdentity(previous,identity))candidateMismatch|=LipCandidateMismatchFrame;
+            if(m_outline.policyGeneration!=policy)candidateMismatch|=LipCandidateMismatchPolicy;
+            if(m_outline.continuityGeneration!=continuity)candidateMismatch|=LipCandidateMismatchContinuity;
+            if(identity.acceptedSequence<m_outline.identity.acceptedSequence)
+                candidateMismatch|=LipCandidateMismatchSequence;
+            else if(identity.acceptedSequence-m_outline.identity.acceptedSequence>8)
+                candidateMismatch|=LipCandidateMismatchAge;
+            if(comparableText.cue!=m_text.cue)candidateMismatch|=LipCandidateMismatchCue;
+            if(!SameFreshSubtitleGlyphs(m_text,comparableText,0))candidateMismatch|=LipCandidateMismatchGlyphs;
+        }
+        const bool matches=m_outline.valid && candidateMismatch==0;
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
             maxSamples,matches?&m_outline:nullptr,composition,glyphContinuity);
+        proof.candidatePresent=m_outline.valid;
+        proof.candidateMatched=matches && proof.candidateMatched;
+        proof.candidateMismatchMask|=candidateMismatch;
         proof.candidateAgeFrames=matches?
             identity.acceptedSequence-m_outline.identity.acceptedSequence:0;
         if(proof.valid) {
@@ -779,7 +886,7 @@ public:
             const uint32_t recoverableContext=LipContextPreviewUnavailable|LipContextNotAnalyzed|
                 LipContextAnalysisRefresh|LipContextCadenceSkipped|LipContextGlyphLocalTop|
                 LipContextGlyphLocalBottom|LipContextCueSideTopUnavailable|
-                LipContextCueSideBottomUnavailable;
+                LipContextCueSideBottomUnavailable|LipContextLocalContinuationUnavailable;
             if((proof.contextMismatchMask&~recoverableContext)==0)
                 proof.candidateRetained=true;
             else Reset();

@@ -40,6 +40,38 @@ struct SubtitleCueContinuation {
         const SubtitleBoxResult& text,const ActivePictureBounds& base) const {
         return Matches(current,policy,continuity,base) && MatchesCue(text);
     }
+    // A local proof can retain an established bar cue when the shared picture
+    // snapshot is explicitly unavailable. It is deliberately incapable of
+    // carrying a detected panel or backing-cleanup footprint.
+    bool MatchesLocal(const ActivePictureFrameIdentity& current,uint64_t policy,uint64_t continuity,
+        int width,int height,const SubtitleBoxResult& text,
+        const ActivePictureFrameIdentity& previous) const {
+        if(!valid || !ink || !localGlyphsOnly || backingVerifiedBounds.Valid() ||
+            !SameAnalysisFrameIdentity(identity,current) ||
+            !SameAnalysisFrameIdentity(previousIdentity,previous) ||
+            current.acceptedSequence<=previous.acceptedSequence ||
+            current.acceptedSequence-previous.acceptedSequence!=1 ||
+            policyGeneration!=policy || continuityGeneration!=continuity ||
+            width<=0 || height<=0 || physicalBase.rasterWidth!=width ||
+            physicalBase.rasterHeight!=height || physicalBase.left!=0 ||
+            physicalBase.right!=width || physicalBase.top<=0 ||
+            physicalBase.bottom>=height || physicalBase.top>=physicalBase.bottom ||
+            pictureTop<=0 || pictureBottom>=height || pictureTop>=pictureBottom ||
+            accepted.sourcePanel.Valid() || accepted.capturePanel.Valid() ||
+            accepted.provenSourcePanel.Valid() || accepted.lineCount<1 || accepted.lineCount>3)
+            return false;
+        bool topBar=true,bottomBar=true;
+        for(int i=0;i<accepted.lineCount;++i) {
+            const auto& line=accepted.lineBounds[i];
+            if(!line.Valid() || line.left<0 || line.top<0 || line.right>width ||
+                line.bottom>height || accepted.linePanels[i].Valid() ||
+                accepted.lineCapturePanels[i].Valid())return false;
+            topBar &= line.bottom<=(std::min)(physicalBase.top,pictureTop);
+            bottomBar &= line.top>=(std::max)(physicalBase.bottom,pictureBottom);
+        }
+        if(topBar==bottomBar)return false;
+        return MatchesCue(text);
+    }
     // Local current glyph ownership can reuse a cached opposite plane, but
     // never changes that geometry or relaxes the independently current cue side.
     bool MatchesCachedGlyphPicture(int cachedTop,int cachedBottom) const {

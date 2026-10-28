@@ -4508,6 +4508,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t subtitleContinuationLogTick=0;
     bool subtitleContinuationStateLogged=false;
     bool subtitleContinuationStateLastBase=false,subtitleContinuationStateLastReference=false;
+    bool subtitleContinuationStateLastAccepted=false,subtitleContinuationStateLastHeld=false;
     std::string subtitleContinuationStateLastSeedReason;
     uint64_t subtitleContinuationStateLogTick=0;
     SubtitleStabilityTelemetry subtitleStabilityTelemetry;
@@ -4648,8 +4649,8 @@ struct LibplaceboVideoRenderer::Impl
     const char* subtitleLipLogReason="not-evaluated";
     SubtitleBoxRect subtitleLipLogCleanup;
     uint64_t subtitleLipLogTick=0;
-    uint32_t subtitleLipLogContextMask=0,subtitleLipLogEdgeMask=0;
-    bool subtitleLipLogCandidateRetained=false;
+    uint32_t subtitleLipLogContextMask=0,subtitleLipLogEdgeMask=0,subtitleLipLogCandidateMismatch=0;
+    bool subtitleLipLogCandidateRetained=false,subtitleLipLogCandidatePresent=false,subtitleLipLogCandidateMatched=false;
 	SubtitleBoxResult subtitleBoxResult;
     SubtitleCutPastePresentation subtitleCutPastePresentation;
     const pl_hook* subtitleCutPasteHook = nullptr;
@@ -9950,6 +9951,12 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ClearLatestActivePictureEvidence()
 	{
+        if(submittedNativeScopeAnchor.available) {
+            const auto& crop=submittedNativeScopeAnchor.crop;
+            DebugLog::Log("Alpha native continuity reset: renderer=%p source_generation=%llu retained=%d,%d-%d,%d action=clear-submitted-anchor",
+                static_cast<void*>(this),activePictureAnalysisSourceGeneration,
+                crop.left,crop.top,crop.right,crop.bottom);
+        }
 		latestActivePictureEvidenceAvailable = false;
 		latestActivePictureEvidenceClassification =
 			ActivePictureClassification::UNAVAILABLE;
@@ -14328,16 +14335,20 @@ struct LibplaceboVideoRenderer::Impl
             if(!subtitleContinuationStateLogged ||
                 subtitleContinuationStateLastBase!=continuationBaseAvailable ||
                 subtitleContinuationStateLastReference!=continuationHasReference ||
+                subtitleContinuationStateLastAccepted!=subtitleBoxResult.detected ||
+                subtitleContinuationStateLastHeld!=subtitleBoxResult.held ||
                 subtitleContinuationStateLastSeedReason!=continuationSeedReason ||
                 continuationStateNow-subtitleContinuationStateLogTick>=2000) {
                 subtitleContinuationStateLogged=true;
                 subtitleContinuationStateLastBase=continuationBaseAvailable;
                 subtitleContinuationStateLastReference=continuationHasReference;
+                subtitleContinuationStateLastAccepted=subtitleBoxResult.detected;
+                subtitleContinuationStateLastHeld=subtitleBoxResult.held;
                 subtitleContinuationStateLastSeedReason=continuationSeedReason;
                 subtitleContinuationStateLogTick=continuationStateNow;
                 const auto& observed=currentSubtitlePreview.current;
                 const auto& shared=observed.sharedPicture;
-                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d raw=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d",
+                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d raw=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d mode=%d float=%d opacity=%.3f hold_ms=%d held=%d cue=%llu raw_lines=%d decision=%s",
                     observed.identity.transportGeneration,observed.identity.acceptedSequence,
                     observed.identity.sourceFormatGeneration,observed.identity.analysisDomainKey,
                     observed.identity.viewportGeneration,observed.identity.rendererGeneration,
@@ -14349,7 +14360,11 @@ struct LibplaceboVideoRenderer::Impl
                     observed.text.detected?1:0,subtitleBoxResult.detected?1:0,
                     shared.required?1:0,
                     shared.AvailableFor(observed.identity,observed.width,observed.height)?1:0,
-                    shared.bounds.left,shared.bounds.top,shared.bounds.right,shared.bounds.bottom);
+                    shared.bounds.left,shared.bounds.top,shared.bounds.right,shared.bounds.bottom,
+                    int(subtitlePreviewMode),activeSettings.subtitleFloatBackground?1:0,
+                    double(activeSettings.subtitleGeneratedGray.opacity),activeSettings.subtitleHoldMs,
+                    subtitleBoxResult.held?1:0,subtitleBoxResult.cue,observed.text.lineCount,
+                    subtitleBoxPresentation.DecisionReason());
             }
 
             // A bounded source caption can constrain a first picture crop only
@@ -14476,10 +14491,12 @@ struct LibplaceboVideoRenderer::Impl
                     const bool changed=std::strcmp(subtitleLipLogReason,lip.reason)!=0 ||
                         subtitleLipLogContextMask!=lip.contextMismatchMask || subtitleLipLogEdgeMask!=lip.edgeEvidenceMask ||
                         subtitleLipLogCandidateRetained!=lip.candidateRetained ||
+                        subtitleLipLogCandidateMismatch!=lip.candidateMismatchMask ||
+                        subtitleLipLogCandidatePresent!=lip.candidatePresent || subtitleLipLogCandidateMatched!=lip.candidateMatched ||
                         prior.left!=move.generatedCleanup.left || prior.top!=move.generatedCleanup.top ||
                         prior.right!=move.generatedCleanup.right || prior.bottom!=move.generatedCleanup.bottom;
                     if(changed || (lip.samples && now-subtitleLipLogTick>=2000)) {
-                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_age_frames=%llu cleanup_rows=%u cleanup_pixels=%zu luma_fringe_pixels=%zu mismatch_phase=%s mismatch_xy=%d,%d mismatch_yuv=%d,%d,%d mismatch_floor=%d mismatch_dark_limit=%d expected_row=%d,%d-%d,%d expected_core=%d,%d-%d,%d",
+                        DebugLog::Log("SUBTITLE LIP: frame=%llu cue=%llu valid=%d applied=%d reason=%s samples=%zu ms=%.3f measured=%d,%d-%d,%d cleanup=%d,%d-%d,%d corners=%zu pending=%d application=%s physical=%d-%d composed=%d-%d closure=%u/%u longest_dark_run=%u seam_clipped=%d measured_physical=%d-%d composition_edge_clipped=%d outline_base_anchored=%d context_mask=0x%x edge_mask=0x%x pixels_inspected=%d candidate_retained=%d candidate_present=%d candidate_matched=%d candidate_mismatch=0x%x candidate_age_frames=%llu cleanup_rows=%u cleanup_pixels=%zu luma_fringe_pixels=%zu mismatch_phase=%s mismatch_xy=%d,%d mismatch_yuv=%d,%d,%d mismatch_floor=%d mismatch_dark_limit=%d expected_row=%d,%d-%d,%d expected_core=%d,%d-%d,%d",
                             sourceSequence,subtitleBoxResult.cue,lip.valid?1:0,
                             move.generatedCleanup.Valid()?1:0,lip.reason,lip.samples,
                             lipMs,
@@ -14492,7 +14509,8 @@ struct LibplaceboVideoRenderer::Impl
                             lip.attachmentSeamClipped?1:0,subtitlePreview->current.pictureTop,
                             subtitlePreview->current.pictureBottom,lip.compositionEdgeClipped?1:0,lip.outlineBaseAnchored?1:0,
                             lip.contextMismatchMask,lip.edgeEvidenceMask,lip.pixelInspectionPerformed?1:0,
-                            lip.candidateRetained?1:0,lip.candidateAgeFrames,
+                            lip.candidateRetained?1:0,lip.candidatePresent?1:0,lip.candidateMatched?1:0,
+                            lip.candidateMismatchMask,lip.candidateAgeFrames,
                             move.generatedCleanupRowCount,cleanupPixels,lip.lumaFringePixels,lip.mismatchPhase,
                             lip.mismatchX,lip.mismatchY,lip.mismatchLuma,lip.mismatchU,lip.mismatchV,
                             lip.mismatchFloor,lip.mismatchDarkLimit,
@@ -14511,7 +14529,8 @@ struct LibplaceboVideoRenderer::Impl
                             (lip.pixelInspectionPerformed?4u:0u)|(lip.candidateRetained?8u:0u);
                         AnalysisDiagnosticTrace::Emit(lipTrace);
                         subtitleLipLogTick=now;subtitleLipLogReason=lip.reason;
-                        subtitleLipLogCleanup=move.generatedCleanup;
+                        subtitleLipLogCleanup=move.generatedCleanup;subtitleLipLogCandidateMismatch=lip.candidateMismatchMask;
+                        subtitleLipLogCandidatePresent=lip.candidatePresent;subtitleLipLogCandidateMatched=lip.candidateMatched;
                         subtitleLipLogContextMask=lip.contextMismatchMask;subtitleLipLogEdgeMask=lip.edgeEvidenceMask;
                         subtitleLipLogCandidateRetained=lip.candidateRetained;
                     }
