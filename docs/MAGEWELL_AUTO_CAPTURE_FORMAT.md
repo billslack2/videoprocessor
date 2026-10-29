@@ -32,6 +32,18 @@ input intervals, and smooth motion in the user's visual trial. The separate UHD5
 DV trial retained packed RGB and delivered about 46-47 fps; subsampling a Dolby
 Vision RGB tunnel is not a valid fallback. YCbCr UHD50/P210 remains unqualified.
 
+High-bandwidth progressive raw RGB8 tunnels now request advertised BGR24 from
+Magewell and restore opaque BGRA with byte-exact packing before the existing
+decoder. This drops only the unused alpha byte on PCIe; it does not subsample or
+change RGB range. Lower-rate RGB32, unsupported BGR24, non-raw/legacy consumers,
+interlaced capture and DeckLink keep their prior route. CPU-dispatched AVX2
+packing uses bounded loads and fenced streaming stores; scalar fallback is exact.
+The UHD50 card probe compared all 24,883,200 RGB channels on the same picture
+against BGRA with zero differences, then sustained 50 fps with zero input skips.
+UHD59.94/60 DV remains unqualified without a suitable hardware source.
+OSD identifies lossless RGB24 packing. Its render-budget row is not panel scanout
+telemetry; actual smooth-motion engagement must be verified separately.
+
 Magewell delivery telemetry now feeds the OSD as well as the log. Five-second
 windows show actual captured fps beside expected input fps. Hardware timestamp
 gaps increment the existing capture-missed counter, separately from renderer

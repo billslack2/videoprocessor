@@ -8,6 +8,7 @@ struct CaptureDeliveryStats
     double deliveredFps = 0.0;
     double windowSeconds = 0.0; // zero until a complete observation window
     uint64_t recentMissedFrames = 0;
+    bool losslessRgb24Capture = false;
 };
 
 inline uint64_t CaptureMissedInputFrames(int64_t previous, int64_t current,
