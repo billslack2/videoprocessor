@@ -1,5 +1,10 @@
 # Reading the render-load stats
 
+Only the new Prep/New/Reuse CPU/wait rows and their processing-window
+measurements are temporarily disabled (`OsdTimingPolicy::ProcessingPerformanceEnabled`).
+The existing GPU frame, CPU/GPU output load, source/output interval, conversion,
+queue/drop and cadence statistics remain enabled.
+
 The Ctrl+I panel reports a rolling ten-second view:
 
 ```text

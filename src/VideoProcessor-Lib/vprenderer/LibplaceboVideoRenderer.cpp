@@ -5507,7 +5507,8 @@ struct LibplaceboVideoRenderer::Impl
 	RendererRenderLoad RenderLoadSnapshot() const
 	{
 		RendererRenderLoad load = renderLoadMeter.Snapshot();
-        load.processing=processingPerformance.Snapshot(GetTickCount64());
+        if (OsdTimingPolicy::ProcessingPerformanceEnabled)
+            load.processing=processingPerformance.Snapshot(GetTickCount64());
 		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
 			gpuFrameTimer.Snapshot();
 		load.supported = timing.supported;
@@ -14092,6 +14093,7 @@ struct LibplaceboVideoRenderer::Impl
         const auto* subtitleSourceProcessingOptions=temporalSubtitleComposition?
             &subtitleSourceProcessing:nullptr;
         const auto measureSubtitlePreparation=[&](auto&& prepare) {
+            if (!OsdTimingPolicy::ProcessingPerformanceEnabled) return prepare();
             const auto before=subtitlePreparationRenderer.RenderCallCount();
             const auto started=SteadyClock::now();
             const bool result=prepare();
@@ -20062,7 +20064,7 @@ releaseDriftBaseRetention =
             const double beforeRenderMs=repeatedTemporalOutput?0:preRenderTimings.activeMs+preRenderTimings.renderLockWaitMs;
             // Total active CPU submission/wait work, including the preparation
             // row as a subset. Present/VSync waiting is reported separately.
-            processingPerformance.RecordDraw({frameGeneration,pictureProcessingEpoch,
+            if (OsdTimingPolicy::ProcessingPerformanceEnabled) processingPerformance.RecordDraw({frameGeneration,pictureProcessingEpoch,
                 static_cast<uint64_t>(sourceSubtitleMode) | (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
                 (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},correlationNow,
                 repeatedTemporalOutput || cadenceRepeat,beforeRenderMs+livePreparationMs+renderMs);

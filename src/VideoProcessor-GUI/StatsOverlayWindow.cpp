@@ -633,7 +633,7 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
             stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs,
             stats.renderLoadGpuFrames, stats.renderLoadFrames);
         add(L"GPU frame:", gpuTime);
-        if (stats.isAlphaRenderer)
+        if (OsdTimingPolicy::ProcessingPerformanceEnabled && stats.isAlphaRenderer)
         {
             const auto& timing=stats.processingPerformance;
             const auto cpuTiming=[&](const RendererRenderLoadStat& cost,uint64_t count) {

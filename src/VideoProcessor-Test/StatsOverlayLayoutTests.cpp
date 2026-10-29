@@ -192,32 +192,42 @@ public:
             Assert::AreEqual((alpha ? 2 : 3) * StatsOverlayLayout::SectionGap, gaps);
         }
     }
-    TEST_METHOD(ProcessingRowsKeepTwoSecondCpuCountsSeparateFromAsyncGpuCoverage)
+    TEST_METHOD(PausedProcessingRowsPreserveLegacyStatsWithAvailableOrUnavailableData)
     {
-        auto stats=Example(true);stats.renderLoadKnown=true;stats.renderLoadGpuValid=true;
-        stats.renderLoadGpuAvgMs=5;stats.renderLoadGpuPeakMs=9;stats.renderLoadGpuFrames=50;stats.renderLoadFrames=120;
-        auto& timing=stats.processingPerformance;timing.available=true;timing.windowMilliseconds=2000;
-        timing.preparationCalls=48;timing.preparationCpu.average=2;timing.preparationCpu.peak=10;
-        timing.sourceDraws=48;timing.sourceDrawCpu.average=12;timing.sourceDrawCpu.peak=20;
-        timing.reusedDraws=72;timing.reusedDrawCpu.average=0.5;timing.reusedDrawCpu.peak=1;
-        const auto rows=StatsOverlayWindow::BuildStatsRows(stats);
-        Assert::IsTrue(Find(rows,L"GPU frame:").value.find(L"50/120 async (10 s)")!=std::wstring::npos);
-        Assert::IsTrue(Find(rows,L"Prep CPU/wait:").value.find(L"n=48 (2.0 s)")!=std::wstring::npos);
-        Assert::IsTrue(Find(rows,L"New CPU/wait:").value.find(L"12.00 / 20.00")!=std::wstring::npos);
-        Assert::IsTrue(Find(rows,L"Reuse CPU/wait:").value.find(L"n=72 (2.0 s)")!=std::wstring::npos);
-        VerifyNative(stats);
-    }
-    TEST_METHOD(ProcessingRowsDistinguishUnavailableNoCallsAndMeasuredZero)
-    {
-        auto stats=Example(true);stats.renderLoadKnown=true;
-        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
-        Assert::IsTrue(Find(rows,L"Prep CPU/wait:").value==L"measuring...");
-        stats.processingPerformance.available=true;stats.processingPerformance.windowMilliseconds=2000;
-        stats.processingPerformance.sourceDraws=1;
-        rows=StatsOverlayWindow::BuildStatsRows(stats);
-        Assert::IsTrue(Find(rows,L"Prep CPU/wait:").value==L"no calls in window");
-        Assert::IsTrue(Find(rows,L"New CPU/wait:").value.find(L"0.00 / 0.00")!=std::wstring::npos);
-        VerifyNative(stats);
+        for (const bool alpha : {false, true})
+            for (const bool available : {false, true})
+            {
+                auto stats = Example(alpha);
+                stats.renderLoadKnown = true; stats.renderLoadGpuValid = available;
+                stats.renderLoadGpuAvgMs = 5; stats.renderLoadGpuPeakMs = 9;
+                stats.renderLoadGpuFrames = 50; stats.renderLoadFrames = 120;
+                stats.cpuUsageKnown = available;
+                stats.cpuUsageAvgPercent = 12; stats.cpuUsagePeakPercent = 34;
+                stats.renderLoadGpuPercentValid = available;
+                stats.renderLoadGpuAvgPercent = 16; stats.renderLoadGpuPercent = 20;
+                stats.measuredRefreshRate = 59.94;
+                stats.renderLoadFramePeriodMs = 16.68;
+                stats.renderLoadFramePeriodFromRenderCadence = true;
+                stats.processingPerformance.available = available;
+                stats.processingPerformance.windowMilliseconds = 2000;
+                stats.processingPerformance.sourceDraws = 48;
+                const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+                for (const wchar_t* label : {L"Prep CPU/wait:", L"New CPU/wait:", L"Reuse CPU/wait:"})
+                    Assert::IsTrue(std::none_of(rows.begin(), rows.end(),
+                        [&](const auto& row) { return row.label == label; }));
+                Find(rows, L"GPU frame:"); Find(rows, L"10s avg/max:");
+                Find(rows, L"Source interval:"); Find(rows, L"Output interval:");
+                Find(rows, alpha ? L"Queue:" : L"Queue R/C/T:");
+                Find(rows, L"VFrames:"); Find(rows, L"Dropped:"); Find(rows, L"D/R estimate:");
+                if (available)
+                {
+                    Assert::IsTrue(Find(rows,L"GPU frame:").value.find(L"50/120 async (10 s)") != std::wstring::npos);
+                    Assert::IsTrue(Find(rows,L"10s avg/max:").value == L"CPU 12/34%, GPU output load 16/20%");
+                    Assert::IsTrue(Find(rows,L"Source interval:").value.find(L"59.940 fps") != std::wstring::npos);
+                    Assert::IsTrue(Find(rows,L"Output interval:").value.find(L"16.68 ms") != std::wstring::npos);
+                }
+                VerifyNative(stats);
+            }
     }
     TEST_METHOD(WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers)
     {
