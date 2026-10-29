@@ -121,6 +121,7 @@ namespace AlphaSourceCrop
         // Complete current/future native proof of bounded progressive edges.
         // This can defer current publication, never grant a crop or motion lease.
         bool progressiveNativeEdges = false;
+        OutwardPictureProofRoute proofRoute = OutwardPictureProofRoute::NONE;
         ActivePictureFrameDecision decision;
     };
 

@@ -142,6 +142,79 @@ public:
                     if (floor) Assert::AreEqual(vertical ? 1 : 2, int(result.blackReference.qualifiedAxes));
                 }
     }
+    TEST_METHOD(UniformFullMattesCoverNominationAndQualificationDiscontinuities)
+    {
+        for (int format = 0; format < 4; ++format)
+            for (bool vertical : { false, true })
+                for (int floor : {24,25,31,32,64,80,81,90,100,104})
+                {
+                    BlackReferenceFrame frame; frame.Bars(vertical,floor);
+                    auto source=frame.Source(format);
+                    const auto evidence=ExtractActivePictureEvidence(source);
+                    Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),int(evidence.classification));
+                    Assert::AreEqual(vertical ? 48 : 0,evidence.trustedBounds.top);
+                    Assert::AreEqual(vertical ? 0 : 64,evidence.trustedBounds.left);
+                    Assert::IsTrue(evidence.blackReference.threshold<=104);
+                    // Successful nomination must survive the real current-frame
+                    // retention and handoff paths, not just classify a rectangle.
+                    const auto retained=EvaluateActivePicturePresentationRetention(source,evidence.trustedBounds);
+                    Assert::IsTrue(retained.excludedBandsPixelSafe);
+                    Assert::IsTrue(retained.CanRetainPresentation());
+                    const auto handoff=ResolveActivePictureRetentionHandoff(source,
+                        evidence.trustedBounds,retained,evidence.trustedBounds);
+                    Assert::IsTrue(handoff.evidence.CanRetainPresentation());
+                }
+    }
+    TEST_METHOD(UniformMatteRangeMatrixPreservesLimitedAndUnknownInterpretation)
+    {
+        for (auto range : {AnalysisLumaRange::Full,AnalysisLumaRange::Limited,AnalysisLumaRange::Unknown})
+            for (int floor : {0,24,25,31,32,40,64,80,81,90,104,105,128})
+            {
+                BlackReferenceFrame frame; frame.Bars(true,floor);
+                const auto source=frame.Source(1,range);
+                const auto result=ExtractActivePictureEvidence(source);
+                const bool expectedCrop=floor<=104 &&
+                    (range==AnalysisLumaRange::Full || (floor!=25 && floor!=31));
+                Assert::AreEqual(expectedCrop,result.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(expectedCrop,EvaluateActivePicturePresentationRetention(source,frame.Scope()).CanRetainPresentation());
+                Assert::IsTrue(result.blackReference.threshold<=104);
+                if (range!=AnalysisLumaRange::Full)
+                {
+                    Assert::AreEqual(int(ActivePictureBlackReferenceMode::LEGACY),int(result.blackReference.mode));
+                    Assert::AreEqual(0,int(result.blackReference.qualifiedAxes));
+                }
+            }
+    }
+
+    TEST_METHOD(UpperEnvelopeQualificationPreservesGradientAndMismatchRejection)
+    {
+        for (int floor : {25,81,90})
+            for (bool vertical : {false,true})
+            {
+                BlackReferenceFrame frame; frame.Bars(vertical,floor);
+                for (int y=0;y<frame.height;++y)
+                    for (int x=0;x<frame.width;++x)
+                        if (vertical ? y<48 || y>=frame.height-48 : x<64 || x>=frame.width-64)
+                            frame.Pixel(x,y,floor+(18*(vertical?x:y))/((vertical?frame.width:frame.height)-1));
+                const auto gradient=ExtractActivePictureEvidence(frame.Source(1));
+                Assert::IsFalse(gradient.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                BlackReferenceFrame mismatched; mismatched.Bars(vertical,floor);
+                if (vertical) mismatched.Rect(0,frame.height-48,frame.width,frame.height,floor+8);
+                else mismatched.Rect(frame.width-64,0,frame.width,frame.height,floor+8);
+                const auto mismatch=ExtractActivePictureEvidence(mismatched.Source(1));
+                Assert::IsFalse(mismatch.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            }
+        // The existing ceiling remains a ceiling, including at retention.
+        for (int floor : {105,128,180})
+        {
+            BlackReferenceFrame frame; frame.Bars(true,floor);
+            const auto source=frame.Source(1);
+            Assert::IsFalse(ExtractActivePictureEvidence(source).classification==
+                ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsFalse(EvaluateActivePicturePresentationRetention(source,frame.Scope()).CanRetainPresentation());
+        }
+    }
+
     TEST_METHOD(RaisedMatteNoiseCannotTurnIntoFullRaster)
     {
         for (int format = 0; format < 4; ++format)

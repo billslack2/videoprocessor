@@ -118,3 +118,10 @@
   saved configuration. For a fresh folder only, copy the example to VideoProcessor.cfg.
 - Run tools/test_portable_config_contract.ps1 and validate each finished archive
   with tools/test_portable_config.ps1 before exporting or sharing it.
+
+## Published release assets
+
+- Publish only installer EXEs and portable ZIPs, plus the required signed
+  `vp-update.json` for automatic updates. It is the only public JSON asset.
+- Do not upload SHA/checksum files, manifest sidecars, build receipts, or other
+  JSON evidence. Keep hashes and qualification records internal.

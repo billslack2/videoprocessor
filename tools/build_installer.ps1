@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$')][string]$CoreVersion,
     [Parameter(Mandatory=$true)][string]$VcRedistPath,
@@ -43,7 +43,7 @@ try {
     }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     if (-not $receipt.PSObject.Properties['sourceFingerprint'] -or $receipt.sourceFingerprint -ne $identity.fingerprint -or
-        $receipt.dirty -ne $identity.dirty -or $receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne 4) {
+        $receipt.dirty -ne $identity.dirty -or $receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne 5) {
         throw 'No successful x64 Release solution build for these exact sources. Rerun without -SkipBuild.'
     }
     foreach ($binary in $receipt.binaries) {

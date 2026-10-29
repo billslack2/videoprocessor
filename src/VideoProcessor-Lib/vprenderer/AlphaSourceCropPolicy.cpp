@@ -628,6 +628,17 @@ namespace AlphaSourceCrop
             return decision;
         }
 		decision.outwardTransition = true;
+		// An older source identity cannot rewind shared episode age or either route run.
+		// Keep the previous state for deferral, but grant no current-frame proof.
+		if (sourceSequence != 0 && previous.lastObservedSourceSequence != 0 &&
+			 sourceSequence < previous.lastObservedSourceSequence &&
+			 previous.sourceGeneration == sourceGeneration &&
+			 SameTrustedCropContract(previous.base, trustedGeometry))
+		{
+			decision.state = previous;
+			decision.diagnosticReason = "stale-source-sequence";
+			return decision;
+		}
 		const bool stripsMatch = evidence.expansionStripsAvailable &&
 			SameBounds(evidence.expansionBase, trustedGeometry) && SameBounds(evidence.expansionCandidate, candidate);
 		// A supplied but mismatched certificate must not fall back to old strips.
@@ -644,8 +655,7 @@ namespace AlphaSourceCrop
 			 (candidate.right <= trustedGeometry.right || BroadPictureLike(stripsMatch ? evidence.expandingRight : evidence.excludedRight)));
 		decision.broadOpposingPicture = evidence.analysisValid && evidence.presentationValid &&
 			verticalPicture && horizontalPicture;
-		decision.nativeDistributedPicture = !decision.broadOpposingPicture &&
-			sourceSequence != 0 && expandsVertical && !expandsHorizontal &&
+		decision.nativeDistributedPicture = sourceSequence != 0 && expandsVertical && !expandsHorizontal &&
 			HasStrictNativeDistributedPictureProof(evidence, trustedGeometry, candidate);
 		if (!decision.broadOpposingPicture && !decision.nativeDistributedPicture)
         {
@@ -654,58 +664,78 @@ namespace AlphaSourceCrop
                     ? "both-axes-not-broad" : (!verticalPicture ? "vertical-not-broad" : "horizontal-not-broad"));
             return decision;
         }
-		const auto proofRoute = decision.broadOpposingPicture
-			? OutwardPictureProofRoute::BROAD_OCCUPANCY
-			: OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
-
 		const bool sequenceContinuous = sourceSequence == 0 || previous.lastObservedSourceSequence == 0 ||
 			sourceSequence == previous.lastObservedSourceSequence ||
 			sourceSequence == previous.lastObservedSourceSequence + 1;
 		const bool sameEpisode = previous.sourceGeneration == sourceGeneration && sequenceContinuous &&
 			previous.confirmations != 0 && SameBounds(previous.base, trustedGeometry) &&
-			previous.base.trustedBarAxes == trustedGeometry.trustedBarAxes &&
-			previous.proofRoute == proofRoute;
-		const auto& reference = previous.referenceCandidate;
-		const bool exactCandidate = SameBounds(reference, candidate) &&
-			reference.trustedBarAxes == candidate.trustedBarAxes;
-		// Only fresh exact strip evidence can bridge detector-step jitter in a
-		// trusted outward picture candidate. Each edge may move one scan step,
-		// but every comparison stays anchored to the first candidate in this
-		// confirmation run. The current candidate/certificate remain exact.
-		const bool samplingEquivalentCandidate = stripsMatch && !evidence.EffectiveArNearBlack() &&
-			SameTrustedCropContract(evidence.expansionBase, trustedGeometry) &&
-			SameTrustedCropContract(evidence.expansionCandidate, candidate) &&
-			ValidBounds(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
-			HasAuthorityForCroppedAxes(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
-			HasAuthorityForCroppedAxes(candidate, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
-			reference.trustedBarAxes == candidate.trustedBarAxes &&
-			ContainedBounds(reference, trustedGeometry) && ContainedBounds(candidate, trustedGeometry) &&
-			SamePictureWithinDetectorStep(reference, candidate);
-		const bool continues = sameEpisode && (exactCandidate || samplingEquivalentCandidate);
-		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
-			previous.lastObservedSourceSequence == sourceSequence;
+			previous.base.trustedBarAxes == trustedGeometry.trustedBarAxes;
+
+		// Broad occupancy and source-relative native support are independent
+		// predicates. A brighter frame must not erase a still-valid native run,
+		// and alternating incomplete routes must never pool their samples.
+		auto advanceRoute = [&](const OutwardPictureConfirmationState::RouteRun& prior, bool supported)
+		{
+			OutwardPictureConfirmationState::RouteRun run;
+			if (!supported) return run;
+			const auto& reference = prior.referenceCandidate;
+			const bool exactCandidate = SameBounds(reference, candidate) &&
+				reference.trustedBarAxes == candidate.trustedBarAxes;
+			// Every comparison stays anchored to this route's first candidate.
+			// Fresh exact strips may bridge one detector step, never cumulative drift.
+			const bool samplingEquivalentCandidate = stripsMatch && !evidence.EffectiveArNearBlack() &&
+				SameTrustedCropContract(evidence.expansionBase, trustedGeometry) &&
+				SameTrustedCropContract(evidence.expansionCandidate, candidate) &&
+				ValidBounds(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+				HasAuthorityForCroppedAxes(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+				HasAuthorityForCroppedAxes(candidate, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+				reference.trustedBarAxes == candidate.trustedBarAxes &&
+				ContainedBounds(reference, trustedGeometry) && ContainedBounds(candidate, trustedGeometry) &&
+				SamePictureWithinDetectorStep(reference, candidate);
+			const bool routeContinuous = sourceSequence == 0 || prior.lastObservedSourceSequence == 0 ||
+				sourceSequence == prior.lastObservedSourceSequence || sourceSequence == prior.lastObservedSourceSequence + 1;
+			const bool continues = sameEpisode && prior.confirmations != 0 && routeContinuous &&
+				(exactCandidate || samplingEquivalentCandidate);
+			const bool repeated = continues && sourceSequence != 0 && prior.lastObservedSourceSequence == sourceSequence;
+			run.referenceCandidate = continues ? reference : candidate;
+			run.lastObservedSourceSequence = sourceSequence;
+			run.confirmations = repeated ? prior.confirmations : (continues ?
+				std::min(OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED, prior.confirmations + 1) : 1);
+			return run;
+		};
+		decision.state.broadRun = advanceRoute(previous.broadRun, decision.broadOpposingPicture);
+		decision.state.nativeDistributedRun = advanceRoute(previous.nativeDistributedRun, decision.nativeDistributedPicture);
+		// Choose an independently complete route; prefer broad only on equal counts.
+		// Selection cannot restart the common owner episode or its bounded budget.
+		const bool selectNative = decision.state.nativeDistributedRun.confirmations >
+			decision.state.broadRun.confirmations;
+		const auto& selected = selectNative ? decision.state.nativeDistributedRun : decision.state.broadRun;
+		const auto& priorSelected = selectNative ? previous.nativeDistributedRun : previous.broadRun;
+		const bool sameSelectedAnchor = SameBounds(priorSelected.referenceCandidate, selected.referenceCandidate) &&
+			priorSelected.referenceCandidate.trustedBarAxes == selected.referenceCandidate.trustedBarAxes;
+		const bool repeatedSourceSample = sameEpisode && sourceSequence != 0 &&
+			priorSelected.lastObservedSourceSequence == sourceSequence &&
+			sameSelectedAnchor && selected.confirmations == priorSelected.confirmations;
+		const bool restarted = priorSelected.confirmations != 0 && selected.confirmations == 1 &&
+			!repeatedSourceSample;
 		decision.state.candidate = candidate;
 		decision.state.base = trustedGeometry;
-		decision.state.referenceCandidate = continues ? reference : candidate;
-		decision.state.firstPictureSourceSequence = sameEpisode
-			? previous.firstPictureSourceSequence : sourceSequence;
+		decision.state.referenceCandidate = selected.referenceCandidate;
+		decision.state.firstPictureSourceSequence = sameEpisode ? previous.firstPictureSourceSequence : sourceSequence;
+		decision.state.verticalPresentationSeen = sameEpisode && previous.verticalPresentationSeen;
 		decision.state.sourceGeneration = sourceGeneration;
-		decision.state.proofRoute = proofRoute;
+		decision.state.proofRoute = selectNative ? OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT :
+			OutwardPictureProofRoute::BROAD_OCCUPANCY;
 		decision.state.lastObservedSourceSequence = sourceSequence;
-		decision.state.confirmations = repeatedSourceSample
-			? previous.confirmations : (continues
-			? std::min(OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
-				previous.confirmations + 1) : 1);
-		decision.authoritative = decision.state.confirmations >=
-			OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
-        decision.diagnosticReason = decision.nativeDistributedPicture
-            ? (decision.authoritative ? "native-distributed-confirmed" :
-                (repeatedSourceSample ? "native-distributed-repeated-source" :
-                 (previous.confirmations != 0 && !continues ? "native-distributed-proof-restarted" :
-                  "native-distributed-proof-pending")))
-            : (decision.authoritative ? "confirmed" :
-                (repeatedSourceSample ? "repeated-source" :
-                 (previous.confirmations != 0 && !continues ? "proof-restarted" : "proof-pending")));
+		decision.state.confirmations = selected.confirmations;
+		decision.authoritative = selected.confirmations >= OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+		decision.diagnosticReason = selectNative
+			? (decision.authoritative ? "native-distributed-confirmed" :
+				(repeatedSourceSample ? "native-distributed-repeated-source" :
+				 (restarted ? "native-distributed-proof-restarted" : "native-distributed-proof-pending")))
+			: (decision.authoritative ? "confirmed" :
+				(repeatedSourceSample ? "repeated-source" : (restarted ? "proof-restarted" : "proof-pending")));
+
 		return decision;
 	}
 
@@ -3894,6 +3924,104 @@ namespace AlphaSourceCrop
 		return true;
 	}
 
+    OffBarContentMeasurement MeasureOffBarContentFit(const ActivePictureBounds& native,
+        const ActivePicturePresentationRetentionEvidence& retention,
+        const ActivePictureBounds& dense, bool denseAvailable, int densePadding)
+    {
+        OffBarContentMeasurement result;
+        const int width=native.rasterWidth, height=native.rasterHeight;
+        if (!ValidBounds(native,width,height) || !retention.analysisValid || !retention.presentationValid)
+            return result;
+        auto bounds=native;
+        if (retention.outwardVisibleBoundsAvailable &&
+            ValidBounds(retention.outwardVisibleBounds,width,height) &&
+            ContainedBounds(retention.outwardVisibleBounds,native))
+            bounds=retention.outwardVisibleBounds; // Already has the raw scan's margins.
+        else if (!retention.excludedBandsPixelSafe)
+            bounds={0,0,width,height,width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+        // A complete unsafe scan without bounded extent is positive fail-open
+        // coverage, never a negative observation. Dense evidence cannot narrow it.
+        if (denseAvailable && ValidBounds(dense,width,height) && ContainedBounds(dense,native))
+        {
+            const int padding=std::max(0,densePadding);
+            if (dense.top<native.top) bounds.top=std::min(bounds.top,std::max(0,dense.top-padding));
+            if (dense.bottom>native.bottom) bounds.bottom=std::max(bounds.bottom,std::min(height,dense.bottom+padding));
+        }
+        bounds.left &= ~1; bounds.top &= ~1;
+        bounds.right=std::min(width,(bounds.right+1)&~1);
+        bounds.bottom=std::min(height,(bounds.bottom+1)&~1);
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+        bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        result.available=true; result.bounds=bounds;
+        return result;
+    }
+
+    OffBarContentFitDecision ResolveOffBarContentFit(const OffBarContentFitInput& input)
+    {
+        OffBarContentFitDecision result;
+        const auto& native=input.nativeBase;
+        const int width=native.rasterWidth, height=native.rasterHeight;
+        if (!input.enabled || !input.nativeAvailable || !input.sourceGeneration ||
+            !input.sourceSequence || !input.sourceTick || !ValidBounds(native,width,height) ||
+            !HasAuthorityForCroppedAxes(native,width,height) ||
+            !CropEdgesAreChromaAligned(native,width,height) || native.trustedBarAxes==ActivePictureBounds::BarAxes::NONE)
+            return result;
+        const auto& previous=input.previous;
+        const bool same=previous.available && SameTrustedCropContract(previous.nativeBase,native) &&
+            previous.sourceGeneration==input.sourceGeneration && previous.viewportEpoch==input.viewportEpoch &&
+            previous.policyGeneration==input.policyGeneration && previous.continuityGeneration==input.continuityGeneration &&
+            previous.holdMs==input.holdMs;
+        if (same) result.state=previous;
+        if (same && (input.sourceSequence<previous.lastSourceSequence || input.sourceTick<previous.lastSourceTick))
+            return result; // Leave current state intact; old work cannot author a source decision.
+        const bool duplicate=same && input.sourceSequence==previous.lastSourceSequence;
+        const bool measured=input.measurement.available && ValidBounds(input.measurement.bounds,width,height) &&
+            CropEdgesAreChromaAligned(input.measurement.bounds,width,height) &&
+            ContainedBounds(input.measurement.bounds,native);
+        if (!same && !measured) return result;
+        auto& state=result.state;
+        if (!same) { state.nativeBase=native; state.bounds=native; }
+        if (!duplicate)
+        {
+            // Unknown inspection advances source ordering, not evidence deadlines.
+            // It never renews, releases, or invents an envelope.
+            state.lastSourceSequence=input.sourceSequence; state.lastSourceTick=input.sourceTick;
+            if (measured)
+            {
+                const std::array<int,4> base{{native.left,native.top,native.right,native.bottom}};
+                const auto& current=input.measurement.bounds;
+                const std::array<int,4> fresh{{current.left,current.top,current.right,current.bottom}};
+                const std::array<int,4> prior{{state.bounds.left,state.bounds.top,state.bounds.right,state.bounds.bottom}};
+                auto selected=fresh;
+                for (size_t edge=0;edge<4;++edge)
+                {
+                    const bool outward=edge<2 ? fresh[edge]<base[edge] : fresh[edge]>base[edge];
+                    const bool reaches=edge<2 ? fresh[edge]<=prior[edge] : fresh[edge]>=prior[edge];
+                    const uint64_t tick=state.extentTicks[edge];
+                    if (outward && reaches) state.extentTicks[edge]=input.sourceTick;
+                    else if (same && input.holdMs && tick && input.sourceTick>=tick &&
+                        input.sourceTick-tick<input.holdMs)
+                        selected[edge]=prior[edge];
+                    else state.extentTicks[edge]=outward ? input.sourceTick : 0;
+                }
+                state.bounds={selected[0],selected[1],selected[2],selected[3],width,height,0.0,
+                    ActivePictureBounds::BarAxes::NONE};
+                state.bounds.aspectRatio=double(selected[2]-selected[0])/std::max(1,selected[3]-selected[1]);
+            }
+        }
+        state.available=true; state.nativeBase=native; state.sourceGeneration=input.sourceGeneration;
+        state.viewportEpoch=input.viewportEpoch; state.policyGeneration=input.policyGeneration;
+        state.continuityGeneration=input.continuityGeneration; state.holdMs=input.holdMs;
+        result.available=true; result.active=!SameBounds(state.bounds,native);
+        auto& presentation=result.presentation;
+        presentation.sourceBounds=state.bounds;
+        presentation.applyCrop=state.bounds.left!=0 || state.bounds.top!=0 || state.bounds.right!=width || state.bounds.bottom!=height;
+        presentation.outwardExpanded=result.active;
+        presentation.owner=result.active ? DecisionOwner::OUTWARD_FIT : DecisionOwner::TRUSTED_CROP;
+        presentation.reason=result.active ? "Off source content fit" : "Off source content released";
+        return result;
+    }
+
     ConfirmedFitOwnershipEvidence QualifyConfirmedFitOwnership(
         const ConfirmedFitOwnershipInput& input)
     {
@@ -6270,6 +6398,11 @@ namespace AlphaSourceCrop
             fixed.fixedAspect = input.fixedCropAspect;
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
+        }
+        if (input.offBarContentFit)
+        {
+            result.reason = "Off bar content preserves the complete fitted envelope";
+            return result;
         }
         const auto& submittedFillAnchor = input.evidence.submittedScopeAnchor;
         if (input.currentConfirmedPresentationConflict && input.presentation.applyCrop &&
