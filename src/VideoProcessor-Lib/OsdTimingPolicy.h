@@ -11,6 +11,10 @@ namespace OsdTimingPolicy
 // immediately by default. Renderer readiness/correction gates are independent.
 constexpr bool WarmingEnabled = false;
 
+// Pause only the new preparation/source/reuse CPU-wait measurements and rows.
+// Existing GPU timing, process CPU load and cadence statistics remain active.
+constexpr bool ProcessingPerformanceEnabled = false;
+
 // Capacity uses the known input format while reset temporarily invalidates
 // the measured drift estimate. This fallback never feeds cadence correction.
 inline double FrameBudgetRate(double measuredHz, double nominalHz)
