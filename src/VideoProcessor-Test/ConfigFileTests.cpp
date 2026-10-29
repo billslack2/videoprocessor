@@ -3619,7 +3619,7 @@ namespace VideoProcessorTest
 		{
 			// API 32 adds native two-plane P210 capture to the shared frame contract.
 			// Host and renderer must reject older payload and vtable layouts.
-			Assert::AreEqual(static_cast<uint32_t>(32),
+			Assert::AreEqual(static_cast<uint32_t>(33),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

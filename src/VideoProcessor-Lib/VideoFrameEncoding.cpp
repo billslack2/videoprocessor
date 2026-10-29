@@ -30,6 +30,8 @@ const TCHAR* ToString(const VideoFrameEncoding videoFrameEncoding)
 		return TEXT("YUV 10-bit (v210)");
 	case VideoFrameEncoding::P210:
 		return TEXT("YUV 10-bit (P210)");
+    case VideoFrameEncoding::P010:
+        return TEXT("YUV 10-bit (P010 4:2:0)");
 
 	case VideoFrameEncoding::ARGB_8BIT:
 		return TEXT("ARGB 8-bit");
@@ -75,6 +77,8 @@ uint32_t VideoFrameEncodingBitsPerPixel(const VideoFrameEncoding videoFrameEncod
 		return 10;
 	case VideoFrameEncoding::P210:
 		return 32; // average stored bits per pixel across both 16-bit planes
+    case VideoFrameEncoding::P010:
+        return 24; // full-height Y and half-height UV in 16-bit lanes
 
 	case VideoFrameEncoding::ARGB_8BIT:
 	case VideoFrameEncoding::BGRA_8BIT:
@@ -108,6 +112,8 @@ uint32_t VideoFrameEncodingFourCC(const VideoFrameEncoding videoFrameEncoding)
 		return FCC('v210');
 	case VideoFrameEncoding::P210:
 		return FCC('P210');
+    case VideoFrameEncoding::P010:
+        return FCC('P010');
 	}
 
 	throw std::runtime_error("Don't know fourCC for VideoFrameEncoding");

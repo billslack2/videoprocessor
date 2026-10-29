@@ -84,11 +84,13 @@ uint32_t VideoState::BytesPerRow() const
 
 	case VideoFrameEncoding::V210:
 		return ((displayMode->FrameWidth() + 47) / 48) * 128;
+	case VideoFrameEncoding::P010:
 	case VideoFrameEncoding::P210:
 	{
 		P210FrameLayout layout;
-		if (!displayMode || !GetP210FrameLayout(displayMode->FrameWidth(),
-			displayMode->FrameHeight(), layout))
+		if (!displayMode || !(videoFrameEncoding == VideoFrameEncoding::P010
+            ? GetP010FrameLayout(displayMode->FrameWidth(), displayMode->FrameHeight(), layout)
+            : GetP210FrameLayout(displayMode->FrameWidth(), displayMode->FrameHeight(), layout)))
 			throw std::runtime_error("Invalid native P210 frame geometry");
 		return static_cast<uint32_t>(layout.rowBytes);
 	}
@@ -113,11 +115,12 @@ uint32_t VideoState::BytesPerRow() const
 
 uint32_t VideoState::BytesPerFrame() const
 {
-	if (videoFrameEncoding == VideoFrameEncoding::P210)
+	if (videoFrameEncoding == VideoFrameEncoding::P210 || videoFrameEncoding == VideoFrameEncoding::P010)
 	{
 		P210FrameLayout layout;
-		if (!displayMode || !GetP210FrameLayout(displayMode->FrameWidth(),
-			displayMode->FrameHeight(), layout))
+		if (!displayMode || !(videoFrameEncoding == VideoFrameEncoding::P010
+            ? GetP010FrameLayout(displayMode->FrameWidth(), displayMode->FrameHeight(), layout)
+            : GetP210FrameLayout(displayMode->FrameWidth(), displayMode->FrameHeight(), layout)))
 			throw std::runtime_error("Invalid native P210 frame geometry");
 		return static_cast<uint32_t>(layout.frameBytes);
 	}

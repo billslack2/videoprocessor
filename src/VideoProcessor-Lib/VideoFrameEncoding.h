@@ -62,7 +62,10 @@ enum class VideoFrameEncoding
 
 	// P210: 10-bit 4:2:2 in two full-height 16-bit planes (Y, then UV).
 	// Appended to preserve all existing encoding identifiers across the ABI.
-	P210
+	P210,
+
+    // Native 10-bit 4:2:0, appended without renumbering existing encodings.
+    P010
 };
 
 
