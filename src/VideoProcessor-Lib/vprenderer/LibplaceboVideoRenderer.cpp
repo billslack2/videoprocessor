@@ -12882,7 +12882,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			P210PlaneView view;
             const bool validPlanes = state.videoFrameEncoding == VideoFrameEncoding::P010
-                ? GetP010PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view)
+                ? GetNativeP010PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view)
                 : GetP210PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view);
             if (!validPlanes)
 				return false;
