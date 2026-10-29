@@ -648,15 +648,29 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 	};
 	if (signal.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB)
 	{
-		if (signal.bitDepth > 0 && signal.bitDepth <= 8 &&
-			supports(MWFOURCC_ARGB))
+		if (signal.bitDepth > 0 && signal.bitDepth <= 8)
 		{
-			fourcc = MWFOURCC_ARGB;
-			encoding = VideoFrameEncoding::ARGB_8BIT;
-			return;
+			// SDK FOURCCs describe byte order. The Pro Capture HDMI 4K+
+			// advertises BGRA (B,G,R,A), not ARGB (A,R,G,B).
+			if (supports(MWFOURCC_ARGB))
+			{
+				fourcc = MWFOURCC_ARGB;
+				encoding = VideoFrameEncoding::ARGB_8BIT;
+				return;
+			}
+			if (supports(MWFOURCC_BGRA))
+			{
+				fourcc = MWFOURCC_BGRA;
+				encoding = VideoFrameEncoding::BGRA_8BIT;
+				return;
+			}
+			throw std::runtime_error(
+				"Magewell RGB8 capture requires supported ARGB or BGRA output");
 		}
-		if (signal.bitDepth == 10 && supports(MWFOURCC_RGB10))
+		if (signal.bitDepth == 10)
 		{
+			if (!supports(MWFOURCC_RGB10))
+				throw std::runtime_error("Magewell RGB10 capture requires supported RGB10 output");
 			fourcc = MWFOURCC_RGB10;
 			encoding = VideoFrameEncoding::R10l;
 			return;
@@ -668,7 +682,7 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 		// capabilities rejected rather than silently degrading every RGB mode.
 		if (signal.bitDepth != 12)
 			throw std::runtime_error(
-				"Magewell RGB input requires ARGB for 8-bit, RGB10 for 10-bit, or P210 conversion for 12-bit; unknown depth is unsupported");
+				"Magewell RGB input depth is unsupported (expected 8, 10 or 12 bits)");
 	}
 	if (signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_RGB &&
 		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV601 &&
@@ -905,7 +919,12 @@ bool MagewellCaptureDevice::PublishVideoState(
 		static_cast<unsigned int>(MAGEWELL_CLOCK_TICKS_SECOND),
 		signal.frameDuration100ns,signal.fieldOrder);
 	videoState->videoFrameEncoding = encoding;
-	videoState->rgbTunnelBytesPreserved = encoding == VideoFrameEncoding::ARGB_8BIT &&
+	const bool rgb8 = encoding == VideoFrameEncoding::ARGB_8BIT ||
+		encoding == VideoFrameEncoding::BGRA_8BIT;
+	const char* captureName = encoding == VideoFrameEncoding::V210 ? "V210" :
+		encoding == VideoFrameEncoding::R10l ? "R10l" :
+		encoding == VideoFrameEncoding::BGRA_8BIT ? "BGRA" : "ARGB";
+	videoState->rgbTunnelBytesPreserved = rgb8 &&
         (signal.rawRgbTunnel || signal.quantRange == MWCAP_VIDEO_QUANTIZATION_FULL);
     videoState->tunnelSdrRgbRange = signal.rawRgbTunnel ? signal.tunnelSdrRange : TunnelSdrRgbRange::Full;
 	videoState->eotf = signal.eotf;
@@ -922,8 +941,8 @@ bool MagewellCaptureDevice::PublishVideoState(
 	}
 	videoState->valid = true;
     if (signal.rawRgbTunnel)
-        DebugLog::Log("Magewell RGB tunnel: raw ARGB capture, SDK input/output range=full, wire_range=%d SDR_range=%d",
-            int(signal.quantRange), int(videoState->tunnelSdrRgbRange));
+        DebugLog::Log("Magewell RGB tunnel: raw %s capture, SDK input/output range=full, wire_range=%d SDR_range=%d",
+            captureName, int(signal.quantRange), int(videoState->tunnelSdrRgbRange));
 
 	DebugLog::Log(
 		"Magewell video state: %ux%u%s @ %.3f Hz, %u-bit, capture=%s, "
@@ -932,8 +951,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 		signal.frameDuration100ns > 0
 			? (double)MAGEWELL_CLOCK_TICKS_SECOND / signal.frameDuration100ns : 0.0,
 		(unsigned int)signal.bitDepth,
-		encoding == VideoFrameEncoding::V210 ? "V210" :
-			(encoding == VideoFrameEncoding::R10l ? "R10l" : "ARGB"),
+		captureName,
 		(int)signal.colorSpace, (int)signal.eotf, signal.hasHdrData ? 1 : 0);
 
 	m_callback->OnCaptureDeviceVideoStateChange(
@@ -1304,7 +1322,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				}
 				else
 				{
-					// ARGB is delivered directly without a repack.
+					// Packed RGB8 is delivered directly without a repack.
 					captureStride = stride;
 					captureFrameSize = frameSize;
 					scratch.clear();
@@ -1389,10 +1407,12 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		// The output colour format and range are stated explicitly so the
 		// card's conversion matches what the video state promises downstream.
 		// State the output matrix and range so captured bytes agree with the
-		// existing VP converters. ARGB expects full RGB; R10l expects limited
+		// existing VP converters. RGB8 expects full RGB; R10l expects limited
 		// RGB; V210 expects limited YCbCr in the signaled color space.
 
 
+		const bool rgb8 = encoding == VideoFrameEncoding::ARGB_8BIT ||
+			encoding == VideoFrameEncoding::BGRA_8BIT;
 		if (m_sdkInstance->Api().MWCaptureVideoFrameToVirtualAddressEx(
 			channel,
 			MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERED,
@@ -1419,7 +1439,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			nullptr,                                // destination rect
 			0,                                      // aspect X
 			0,                                      // aspect Y
-			(repackRGB10 || encoding == VideoFrameEncoding::ARGB_8BIT)
+			(repackRGB10 || rgb8)
 				? MWCAP_VIDEO_COLOR_FORMAT_RGB :
 				repackP210
 					? (current.colorSpace == ColorSpace::BT_2020
@@ -1429,7 +1449,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 							? MWCAP_VIDEO_COLOR_FORMAT_YUV601
 							: MWCAP_VIDEO_COLOR_FORMAT_YUV709)
 					: MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN,
-			encoding == VideoFrameEncoding::ARGB_8BIT
+			rgb8
 				? MWCAP_VIDEO_QUANTIZATION_FULL
 				: MWCAP_VIDEO_QUANTIZATION_LIMITED,
 			MWCAP_VIDEO_SATURATION_UNKNOWN) != MW_SUCCEEDED)

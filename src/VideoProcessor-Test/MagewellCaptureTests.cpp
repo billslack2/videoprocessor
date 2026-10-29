@@ -37,13 +37,14 @@ public:
 	}
 
 	static void PublishRgb8(MagewellCaptureDevice& device,
-        MWCAP_VIDEO_QUANTIZATION_RANGE range)
+        MWCAP_VIDEO_QUANTIZATION_RANGE range,
+        VideoFrameEncoding encoding = VideoFrameEncoding::ARGB_8BIT)
     {
         MagewellCaptureDevice::SignalDescription signal;
         signal.width = 130; signal.height = 128; signal.frameDuration100ns = 416667;
         signal.colorFormat = MWCAP_VIDEO_COLOR_FORMAT_RGB;
         signal.bitDepth = 8; signal.eotf = EOTF::SDR; signal.quantRange = range;
-        device.PublishVideoState(signal, VideoFrameEncoding::ARGB_8BIT, 1);
+        device.PublishVideoState(signal, encoding, 1);
     }
 
 	static void RepackRgb(const uint8_t* source, uint32_t sourceStride,
@@ -115,6 +116,15 @@ namespace Tests
 		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
         const std::vector<BYTE>* rgbSenderBytes = nullptr;
+        DWORD rgbCaptureFourcc = MWFOURCC_ARGB;
+        std::vector<DWORD> rgbCaptureFormats{ MWFOURCC_ARGB };
+        // Exact list returned by the installed Pro Capture HDMI 4K+ driver.
+        const std::vector<DWORD> proCapture4kPlusFormats{
+            MWFOURCC_YUY2, MWFOURCC_YUYV, MWFOURCC_UYVY, MWFOURCC_NV12,
+            MWFOURCC_I420, MWFOURCC_YV12, MWFOURCC_V308, MWFOURCC_IYU2,
+            MWFOURCC_V408, MWFOURCC_V410, MWFOURCC_Y410, MWFOURCC_BGR24,
+            MWFOURCC_BGRA, MWFOURCC_I422, MWFOURCC_YV16, MWFOURCC_NV16,
+            MWFOURCC_NV61, MWFOURCC_P010, MWFOURCC_P210 };
         std::atomic<int> rgbWireRange{MWCAP_VIDEO_QUANTIZATION_LIMITED};
         std::atomic<int> inputRangeSetting{MWCAP_VIDEO_QUANTIZATION_UNKNOWN};
         std::atomic<int> restoreWriteFailures{0};
@@ -411,8 +421,10 @@ namespace Tests
 		MW_RESULT FakeFamily(HCHANNEL, void*, DWORD) { return MW_FAILED; }
 		MW_RESULT FakeFormats(HCHANNEL, DWORD* formats, int* count)
 		{
-			if (formats) formats[0] = signalMode == 5 ? MWFOURCC_ARGB : MWFOURCC_P210;
-			*count = 1;
+			const std::vector<DWORD> values = signalMode == 5 ? rgbCaptureFormats :
+				std::vector<DWORD>{ MWFOURCC_P210 };
+			if (formats) std::copy(values.begin(), values.end(), formats);
+			*count = static_cast<int>(values.size());
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCaptureStart(HCHANNEL, HANDLE eventHandle)
@@ -474,7 +486,7 @@ namespace Tests
 			}
             if (signalMode == 5)
             {
-                if (!rgbSenderBytes || fourcc != MWFOURCC_ARGB || stride != 130*4 ||
+                if (!rgbSenderBytes || fourcc != rgbCaptureFourcc || stride != 130*4 ||
                     frameBytes != rgbSenderBytes->size() || width != 130 || height != 128 ||
                     color != MWCAP_VIDEO_COLOR_FORMAT_RGB || range != MWCAP_VIDEO_QUANTIZATION_FULL)
                     return MW_FAILED;
@@ -483,7 +495,8 @@ namespace Tests
                     rgbWireRange.load() : inputRangeSetting.load();
                 if (effectiveInputRange == MWCAP_VIDEO_QUANTIZATION_LIMITED)
                     for (size_t pixel = 0; pixel < frameBytes; pixel += 4)
-                        for (size_t c = 1; c < 4; ++c)
+                        for (size_t c = fourcc == MWFOURCC_ARGB ? 1 : 0,
+                            end = c + 3; c < end; ++c)
                             frame[pixel+c] = BYTE(std::max(0, std::min(255, (int(frame[pixel+c])-16)*255/219)));
                 SetEvent(fakeCaptureEvent);
                 if (streamFrames.load()) SetEvent(fakeNotifyEvent);
@@ -660,6 +673,7 @@ namespace Tests
             inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
             rgbWireRange = MWCAP_VIDEO_QUANTIZATION_LIMITED;
             rangeFailure = 0; restoreWriteFailures = 0; rgbSenderBytes = nullptr;
+            rgbCaptureFourcc = MWFOURCC_ARGB; rgbCaptureFormats = { MWFOURCC_ARGB };
 			fakeNotifyEvent = fakeCaptureEvent = nullptr;
 		}
 
@@ -712,13 +726,19 @@ namespace Tests
         TEST_METHOD(RawMagewellCapturePreservesDvForFullLimitedAndUnknownWireRanges)
         {
             using namespace DolbyVisionTestSender;
+            for (const auto format : { MWFOURCC_ARGB, MWFOURCC_BGRA })
             for (const auto wire : { MWCAP_VIDEO_QUANTIZATION_FULL,
                 MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_UNKNOWN })
             for (const auto original : { MWCAP_VIDEO_QUANTIZATION_UNKNOWN,
                 MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_FULL })
             {
                 ResetFakeCard(); signalMode = 5; rgbWireRange = wire; inputRangeSetting = original;
-                SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+                rgbCaptureFourcc = format;
+                rgbCaptureFormats = format == MWFOURCC_BGRA ? proCapture4kPlusFormats :
+                    std::vector<DWORD>{ MWFOURCC_ARGB };
+                const auto encoding = format == MWFOURCC_ARGB ?
+                    VideoFrameEncoding::ARGB_8BIT : VideoFrameEncoding::BGRA_8BIT;
+                SenderPicture picture(false, 130, 128, encoding);
                 picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
                 const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
                 MWCAP_CHANNEL_INFO info = {};
@@ -731,6 +751,9 @@ namespace Tests
                 Assert::IsTrue(callback.errors.empty());
                 Assert::AreEqual(int(original), inputRangeSetting.load(), L"User input-range override was not restored");
                 Assert::IsTrue(!callback.frames.empty() && callback.latestValidState);
+                Assert::IsTrue(callback.latestValidState->videoFrameEncoding == encoding);
+                Assert::IsTrue(requestedColor == MWCAP_VIDEO_COLOR_FORMAT_RGB);
+                Assert::IsTrue(requestedRange == MWCAP_VIDEO_QUANTIZATION_FULL);
                 Assert::IsTrue(DolbyVisionTunnelCanEnable(true, true, *callback.latestValidState));
                 const auto expectedSdrRange = original == MWCAP_VIDEO_QUANTIZATION_UNKNOWN ? wire : original;
                 Assert::IsTrue(callback.latestValidState->tunnelSdrRgbRange ==
@@ -812,13 +835,14 @@ namespace Tests
             MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
             HoldingCallback callback;
             device.SetCallbackHandler(&callback);
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
             for (const auto range : { MWCAP_VIDEO_QUANTIZATION_FULL,
                 MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_UNKNOWN })
             {
-                MagewellCaptureTestAccess::PublishRgb8(device, range);
+                MagewellCaptureTestAccess::PublishRgb8(device, range, encoding);
                 Assert::IsNotNull(callback.state.p);
                 Assert::IsTrue(callback.state->valid);
-                Assert::IsTrue(callback.state->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT);
+                Assert::IsTrue(callback.state->videoFrameEncoding == encoding);
                 Assert::AreEqual(range == MWCAP_VIDEO_QUANTIZATION_FULL,
                     callback.state->rgbTunnelBytesPreserved);
                 Assert::AreEqual(range == MWCAP_VIDEO_QUANTIZATION_FULL,
@@ -1268,6 +1292,27 @@ namespace Tests
 					10, formats, fourcc, encoding, 1919);
 			});
 		}
+
+        TEST_METHOD(ProCapture4kPlusAdvertisedFormatsSelectBgraByteOrder)
+        {
+            DWORD fourcc = 0;
+            VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                8, proCapture4kPlusFormats, fourcc, encoding);
+            Assert::AreEqual<DWORD>(MWFOURCC_BGRA, fourcc);
+            Assert::IsTrue(encoding == VideoFrameEncoding::BGRA_8BIT);
+            // Independent SDK memory layout: B,G,R,A, not A,R,G,B.
+            const uint8_t pixel[] = { 0x12, 0x34, 0x56, 0xE7 };
+            Assert::AreEqual(uint32_t((0x56u << 20) | (0x34u << 10) | 0x12u),
+                ReadDolbyVisionTunnelWord(pixel, encoding));
+            Assert::ExpectException<std::runtime_error>([&] {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                    8, { MWFOURCC_P210, MWFOURCC_BGR24 }, fourcc, encoding);
+            });
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                8, { MWFOURCC_ARGB, MWFOURCC_BGRA }, fourcc, encoding);
+            Assert::AreEqual<DWORD>(MWFOURCC_ARGB, fourcc);
+        }
 
 		TEST_METHOD(Rgb12CompatibilityRequiresP210AndEvenWidth)
 		{

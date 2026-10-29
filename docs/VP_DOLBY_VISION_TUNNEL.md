@@ -89,7 +89,7 @@ reconstructs the same exact 12-bit 4:2:2 samples as r210. Both scalar and AVX2
 kernels handle row tails and threaded UHD conversion without an intermediate
 full-frame RGB repack. Format changes reset the metadata and DV lock.
 
-Magewell RGB8 capture delivers ARGB and requests full-range RGB output.
+Magewell RGB8 capture chooses advertised ARGB or BGRA output with matching byte order and requests full-range RGB output. Pro Capture HDMI 4K+ advertises BGRA without ARGB; it must not be rejected or sent through YCbCr conversion for DV.
 While DV Tunneling is selected with VP Renderer, capture saves the existing
 SDK input-range override (including AUTO), temporarily treats input as full,
 and verifies that setting before restarting capture. Matching full-range
