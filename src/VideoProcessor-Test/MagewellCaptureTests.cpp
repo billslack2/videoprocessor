@@ -1033,6 +1033,42 @@ namespace Tests
                     {MWFOURCC_P010}, fourcc, encoding, 1920, true); });
         }
 
+        TEST_METHOD(ObservedSdkTimestampGapsReachTheOsdCaptureMissedCounter)
+        {
+            QueueCallback callback; callback.goal = 4;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback);
+            // Four deliveries cover six source pictures: two input pictures lost.
+            fakeFrameTimes = {1001000, 1167667, 1667668, 1834335};
+            streamFrames = true; device.StartCapture(1);
+            const bool reached = callback.Wait([&] { return callback.frames.size() >= 4 || !callback.errors.empty(); });
+            const auto missed = device.VideoFrameMissedCount();
+            CaptureDeliveryStats beforeStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(beforeStop));
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(reached && callback.errors.empty());
+            Assert::AreEqual(uint64_t(2), missed);
+            Assert::IsTrue(callback.frames.size() >= 4);
+            Assert::IsTrue(beforeStop.expectedFps > 59.9);
+            Assert::AreEqual(0.0, beforeStop.windowSeconds);
+            CaptureDeliveryStats afterStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(afterStop));
+            Assert::AreEqual(0.0, afterStop.expectedFps);
+            Assert::AreEqual(0.0, afterStop.windowSeconds);
+        }
+
+        TEST_METHOD(CaptureMissesIgnoreInitialDuplicateBackwardsAndJitteredTimestamps)
+        {
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(0, 9000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 900000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1205000, 200000));
+            Assert::AreEqual(uint64_t(3), CaptureMissedInputFrames(1000000, 1800000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1800000, 0));
+        }
+
 		TEST_METHOD(CaptureFillsDeepQueueAndEightFrameAnalysisLookahead)
 		{
 			QueueCallback callback;
