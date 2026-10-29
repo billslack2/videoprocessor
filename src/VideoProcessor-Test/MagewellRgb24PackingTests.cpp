@@ -10,7 +10,7 @@ namespace Tests {
 TEST_CLASS(MagewellRgb24PackingTests) { public:
     TEST_METHOD(ScalarAndDispatchedPackingPreserveEveryRgbByteAndAllRowGuards)
     {
-        for(uint32_t width:{1u,2u,6u,8u,15u,16u,17u,30u,32u,34u,130u})
+        for(uint32_t width:{1u,2u,6u,8u,15u,16u,17u,30u,32u,34u,48u,64u,66u,130u})
         for(size_t offset:{size_t(0),size_t(1),size_t(16)})
         {
             constexpr uint32_t height=9;
