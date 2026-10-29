@@ -127,6 +127,8 @@ namespace Tests
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
 		std::atomic_bool formatEventPending{ false };
+		std::vector<LONGLONG> fakeFrameTimes;
+        std::atomic<size_t> fakeFrameTimeIndex{0};
 		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
         const std::vector<BYTE>* rgbSenderBytes = nullptr;
@@ -478,7 +480,8 @@ namespace Tests
 		MW_RESULT FakeFrameInfo(HCHANNEL, BYTE, MWCAP_VIDEO_FRAME_INFO* info)
 		{
 			*info = {};
-			info->allFieldStartTimes[0] = 1001000;
+			info->allFieldStartTimes[0] = fakeFrameTimes.empty() ? 1001000 :
+                fakeFrameTimes[(std::min)(fakeFrameTimeIndex.fetch_add(1), fakeFrameTimes.size()-1)];
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCopy(HCHANNEL, int, LPBYTE frame, DWORD frameBytes,
@@ -687,6 +690,7 @@ namespace Tests
 			selectedInput = 0;
 			scanEnabled = true;
 			signalMode = 0;
+            fakeFrameTimes.clear(); fakeFrameTimeIndex = 0;
 			sdiDepth = SDI_BIT_DEPTH_10BIT;
             inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
             rgbWireRange = MWCAP_VIDEO_QUANTIZATION_LIMITED;
@@ -1024,6 +1028,38 @@ namespace Tests
             Assert::ExpectException<std::runtime_error>([&]() {
                 MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709, 10,
                     {MWFOURCC_P010}, fourcc, encoding, 1920, true); });
+        }
+
+        TEST_METHOD(ObservedSdkTimestampGapsReachTheOsdCaptureMissedCounter)
+        {
+            QueueCallback callback; callback.goal = 4;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback);
+            // Four deliveries cover six source pictures: two input pictures lost.
+            fakeFrameTimes = {1001000, 1167667, 1667668, 1834335};
+            streamFrames = true; device.StartCapture(1);
+            const bool reached = callback.Wait([&] { return callback.frames.size() >= 4 || !callback.errors.empty(); });
+            const auto missed = device.VideoFrameMissedCount();
+            CaptureDeliveryStats beforeStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(beforeStop));
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(reached && callback.errors.empty());
+            Assert::AreEqual(uint64_t(2), missed);
+            Assert::AreEqual(size_t(4), callback.frames.size());
+            Assert::IsTrue(beforeStop.expectedFps > 59.9);
+            Assert::AreEqual(0.0, beforeStop.windowSeconds);
+        }
+
+        TEST_METHOD(CaptureMissesIgnoreInitialDuplicateBackwardsAndJitteredTimestamps)
+        {
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(0, 9000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 900000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1205000, 200000));
+            Assert::AreEqual(uint64_t(3), CaptureMissedInputFrames(1000000, 1800000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1800000, 0));
         }
 
 		TEST_METHOD(CaptureFillsDeepQueueAndEightFrameAnalysisLookahead)

@@ -339,6 +339,7 @@
     <ClInclude Include="VideoFrame.h" />
     <ClInclude Include="VideoFrameEncoding.h" />
     <ClInclude Include="P210FrameLayout.h" />
+    <ClInclude Include="CaptureDeliveryStats.h" />
     <ClInclude Include="VideoState.h" />
     <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h" />

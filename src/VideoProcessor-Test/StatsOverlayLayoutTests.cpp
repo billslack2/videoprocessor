@@ -96,6 +96,32 @@ public:
             VerifyNative(stats);
         }
     }
+    TEST_METHOD(CaptureUnderDeliveryIsVisibleSeparatelyFromRendererDrops)
+    {
+        auto stats = Example(true);
+        stats.captureDeliverySupported = true;
+        stats.captureDelivery.expectedFps = 50.0;
+        stats.captureDelivery.deliveredFps = 46.1;
+        stats.captureDelivery.windowSeconds = 5.0;
+        stats.captureDelivery.recentMissedFrames = 19;
+        stats.capturedDroppedFrames = 238;
+        stats.queueDroppedFrames = 0;
+        auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"46.10 / 50.00 expected (5s)", Find(rows,L"Capture fps:").value.c_str());
+        Assert::AreEqual(L"238 total; 19 last 5s", Find(rows,L"Capture missed:").value.c_str());
+        Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
+        VerifyNative(stats);
+        stats.captureDelivery = {};
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"unavailable", Find(rows,L"Capture fps:").value.c_str());
+        stats.captureDelivery.expectedFps = 59.94;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"starting / 59.94 expected", Find(rows,L"Capture fps:").value.c_str());
+        // Unsupported backends retain the existing counters and layout.
+        stats.captureDeliverySupported = false;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"238/0", Find(rows,L"Dropped:").value.c_str());
+    }
     TEST_METHOD(MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows)
     {
         for (const bool alpha : {false, true})

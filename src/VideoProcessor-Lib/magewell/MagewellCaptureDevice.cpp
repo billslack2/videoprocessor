@@ -301,6 +301,7 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 		}
 		m_capturedVideoFrameCount = 0;
 		m_missedVideoFrameCount = 0;
+        { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 		m_captureThreadRunning.store(true, std::memory_order_release);
 		m_outputCaptureData.store(true, std::memory_order_release);
 		m_captureThread = std::thread(
@@ -981,6 +982,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 void MagewellCaptureDevice::PublishInvalidVideoState(
 	CaptureRunToken captureRunToken)
 {
+    { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 	if (!m_callback)
 		return;
 	VideoStateComPtr invalidState = new VideoState();
@@ -1378,6 +1380,11 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				bufferIndex = 0;
                 deliveryWindowStart = std::chrono::steady_clock::now();
                 deliveryWindowFrames = skippedInputFrames = 0; lastDeliveredTicks = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                    m_deliveryStats = {};
+                    m_deliveryStats.expectedFps = current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0;
+                }
                 copyTotalMs = copyPeakMs = callbackTotalMs = 0;
 
 				if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
@@ -1563,11 +1570,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 
 
-        if (lastDeliveredTicks && rawCaptureTicks > lastDeliveredTicks && current.frameDuration100ns)
-        {
-            const auto intervals = static_cast<uint64_t>(std::llround(double(rawCaptureTicks-lastDeliveredTicks)/current.frameDuration100ns));
-            if (intervals > 1) skippedInputFrames += intervals - 1;
-        }
+        const uint64_t missed = CaptureMissedInputFrames(lastDeliveredTicks,
+            rawCaptureTicks, current.frameDuration100ns);
+        skippedInputFrames += missed;
+        if (missed) m_missedVideoFrameCount.fetch_add(missed, std::memory_order_relaxed);
         lastDeliveredTicks = rawCaptureTicks;
 		const uint64_t counter = ++m_capturedVideoFrameCount;
 
@@ -1592,6 +1598,12 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
         const double windowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-deliveryWindowStart).count();
         if (windowSeconds >= 5.0)
         {
+            {
+                std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                m_deliveryStats.deliveredFps = deliveryWindowFrames/windowSeconds;
+                m_deliveryStats.windowSeconds = windowSeconds;
+                m_deliveryStats.recentMissedFrames = skippedInputFrames;
+            }
             DebugLog::Log("Magewell delivery cadence: fourcc=0x%08X frames=%llu window_s=%.3f delivered_fps=%.5f expected_fps=%.5f skipped_input_frames=%llu copy_avg_ms=%.3f copy_peak_ms=%.3f callback_avg_ms=%.3f",
                 fourcc, static_cast<unsigned long long>(deliveryWindowFrames), windowSeconds, deliveryWindowFrames/windowSeconds,
                 current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0, static_cast<unsigned long long>(skippedInputFrames),

@@ -27,5 +27,16 @@ source/delivery cadence, skipped input intervals and SDK/callback timing. The
 appended native P010 encoding requires ABI 33 in matching host/renderers.
 
 The initial independent UHD59.94 probe measured P210 52.02 fps with 76 skipped
-intervals; P010 59.94 fps with zero skipped intervals. Full VP playback, mode
-transitions and GPU/caption regressions must be qualified before deployment.
+intervals; P010 59.94 fps with zero skipped intervals. Full VP UHD59.94 playback confirmed native P010, sustained 59.94 fps without skipped
+input intervals, and smooth motion in the user's visual trial. The separate UHD50
+DV trial retained packed RGB and delivered about 46-47 fps; subsampling a Dolby
+Vision RGB tunnel is not a valid fallback. YCbCr UHD50/P210 remains unqualified.
+
+Magewell delivery telemetry now feeds the OSD as well as the log. Five-second
+windows show actual captured fps beside expected input fps. Hardware timestamp
+gaps increment the existing capture-missed counter, separately from renderer
+drops. Capture totals reset on capture restart; interval tracking and window
+measurements reset on format changes, without charging the resync gap as lost
+pictures. Invalid video clears cached rate telemetry. This does not change
+DeckLink's capture or OSD behavior. The source clock interval is timing evidence,
+not proof that every input frame reached host memory.
