@@ -52,6 +52,11 @@ Frame ActiveProfileResponse(const Frame& request)
 		status.zoom = bounded(snapshot.zoom);
         status.subtitles = bounded(snapshot.subtitles);
         status.outputDisplay = bounded(snapshot.outputDisplay);
+        status.motion = bounded(snapshot.motion);
+        if (snapshot.profileCount > ActiveProfileStatus::MaximumActiveProfiles)
+            return ErrorResponse(request.operation, "Active-profile status is invalid.");
+        for (uint32_t index = 0; index < snapshot.profileCount; ++index)
+            status.profiles.push_back(bounded(snapshot.profiles[index]));
 		status.shaderAvailable = ActiveProfileStatus::ShaderSetIsCurrent(snapshot);
 		if (status.shaderAvailable)
 			for (uint32_t index = 0; index < snapshot.shaderCount; ++index)
