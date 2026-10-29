@@ -9,6 +9,7 @@
 #include <pch.h>
 
 #include "MagewellCaptureDevice.h"
+#include "MagewellRgb24Packing.h"
 #include "MagewellInput.h"
 #include "MagewellRgbTunnelRange.h"
 
@@ -655,6 +656,16 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 	{
 		if (signal.bitDepth > 0 && signal.bitDepth <= 8)
 		{
+            // DV bytes remain RGB: remove only the unused alpha byte on DMA,
+            // then restore opaque BGRA for the existing decoder/SDR fallback.
+            if (signal.rawRgbTunnel && supports(MWFOURCC_BGR24) &&
+                MagewellNeedsBandwidthSavingCapture(signal.width,signal.height,
+                    signal.frameDuration100ns,signal.interlaced))
+            {
+                fourcc=MWFOURCC_BGR24;
+                encoding=VideoFrameEncoding::BGRA_8BIT;
+                return;
+            }
 			// SDK FOURCCs describe byte order. The Pro Capture HDMI 4K+
 			// advertises BGRA (B,G,R,A), not ARGB (A,R,G,B).
 			if (supports(MWFOURCC_ARGB))
@@ -960,7 +971,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 	}
 	videoState->valid = true;
     if (signal.rawRgbTunnel)
-        DebugLog::Log("Magewell RGB tunnel: raw %s capture, SDK input/output range=full, wire_range=%d SDR_range=%d",
+        DebugLog::Log("Magewell RGB tunnel: raw %s delivery, SDK input/output range=full, wire_range=%d SDR_range=%d",
             captureName, int(signal.quantRange), int(videoState->tunnelSdrRgbRange));
 
 	DebugLog::Log(
@@ -1075,6 +1086,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	uint32_t captureFrameSize = 0;
 	bool repackP210 = false;
 	bool repackRGB10 = false;
+    bool repackRgb24 = false;
 	std::vector<uint8_t> scratch;
 	std::vector<DWORD> supportedFormats;
 	bool capturing = false;
@@ -1359,6 +1371,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				// width * 2 bytes per row.
 				repackP210 = (encoding == VideoFrameEncoding::V210);
 				repackRGB10 = (encoding == VideoFrameEncoding::R10l);
+                repackRgb24 = fourcc == MWFOURCC_BGR24 && encoding == VideoFrameEncoding::BGRA_8BIT;
 				if (repackP210)
 				{
 					// P210 is planar and a different size to v210, so the card
@@ -1372,6 +1385,13 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					captureFrameSize = static_cast<uint32_t>(sourceBytes);
 					scratch.assign(captureFrameSize, 0);
 				}
+                else if (repackRgb24)
+                {
+                    captureStride=static_cast<uint32_t>((uint64_t(current.width)*3+3)&~uint64_t(3));
+                    captureFrameSize=captureStride*current.height;
+                    scratch.assign(captureFrameSize,0);
+                    DebugLog::Log("Magewell DV capture: card=BGR24 bytes_per_pixel=3 delivery=BGRA bytes_per_pixel=4 packing=lossless no_colour_or_range_conversion=1");
+                }
 				else if (repackRGB10)
 				{
 					captureStride = current.width * 4;
@@ -1394,7 +1414,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					"Magewell capture geometry: card fourcc=0x%08X stride=%u "
 					"size=%u -> VP stride=%u size=%u repack=%d native_p210=%d",
 					fourcc, captureStride, captureFrameSize,
-					stride, frameSize, (repackP210 || repackRGB10) ? 1 : 0,
+					stride, frameSize, (repackP210 || repackRGB10 || repackRgb24) ? 1 : 0,
 					encoding == VideoFrameEncoding::P210 ? 1 : 0);
 
                 DebugLog::Log("Magewell capture policy: format=%s native_consumer=%d width=%u height=%u period_100ns=%u payload_bytes_per_second=%.0f chroma=%s reduction=%s",
@@ -1411,6 +1431,12 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				bufferIndex = 0;
                 deliveryWindowStart = std::chrono::steady_clock::now();
                 deliveryWindowFrames = skippedInputFrames = 0; lastDeliveredTicks = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                    m_deliveryStats = {};
+                    m_deliveryStats.losslessRgb24Capture = repackRgb24;
+                    m_deliveryStats.expectedFps = current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0;
+                }
                 copyTotalMs = copyPeakMs = callbackTotalMs = 0;
 
                 ResetEvent(captureEvent);
@@ -1500,7 +1526,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (m_sdkInstance->Api().MWCaptureVideoFrameToVirtualAddressEx(
 			channel,
 			MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERED,
-			(repackP210 || repackRGB10) ? scratch.data() : buffer->Data(),
+			(repackP210 || repackRGB10 || repackRgb24) ? scratch.data() : buffer->Data(),
 			captureFrameSize,
 			captureStride,
 			FALSE,                                  // not bottom up
@@ -1590,6 +1616,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				scratch.data(), captureStride,
 				buffer->Data(), stride,
 				current.width, current.height);
+
+        if (repackRgb24 && !MagewellRgb24Packing::Expand(scratch.data(),scratch.size(),
+            captureStride,buffer->Data(),frameSize,stride,current.width,current.height))
+            throw std::runtime_error("Magewell RGB24 packing rejected invalid buffer geometry");
 
 		const timingclocktime_t rawCaptureTicks =
 			static_cast<timingclocktime_t>(frameInfo.allFieldStartTimes[0]);
