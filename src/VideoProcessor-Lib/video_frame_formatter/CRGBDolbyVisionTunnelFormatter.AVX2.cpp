@@ -16,7 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <immintrin.h>
-#include "CR210DolbyVisionTunnelFormatter.h"
+#include "CRGBDolbyVisionTunnelFormatter.h"
 
 #if !defined(__AVX2__)
 #error This file requires /arch:AVX2
@@ -82,13 +82,56 @@ namespace
 		}
 		_mm256_zeroupper();
 	}
+	template<bool Bgra>
+	void ConvertRgb8Rows(const uint8_t* source, uint16_t* output,
+		uint32_t width, uint32_t height, uint32_t stride,
+		uint32_t firstRow, uint32_t rowCount) noexcept
+	{
+		const __m256i byteMask = _mm256_set1_epi32(255);
+		const __m256i nibbleMask = _mm256_set1_epi32(15);
+		const size_t planePixels = static_cast<size_t>(width) * height;
+		for (uint32_t row = firstRow; row < firstRow + rowCount; ++row)
+		{
+			const uint8_t* input = source + static_cast<size_t>(row) * stride;
+			uint16_t* y = output + static_cast<size_t>(row) * width;
+			uint16_t* uv = output + planePixels + static_cast<size_t>(row) * width;
+			uint32_t x = 0;
+			for (; x + 8 <= width; x += 8)
+			{
+				const __m256i p = _mm256_loadu_si256(
+					reinterpret_cast<const __m256i*>(input + static_cast<size_t>(x) * 4));
+				const __m256i r = _mm256_and_si256(_mm256_srli_epi32(p, Bgra ? 16 : 8), byteMask);
+				const __m256i g = _mm256_and_si256(_mm256_srli_epi32(p, Bgra ? 8 : 16), byteMask);
+				const __m256i b = _mm256_and_si256(_mm256_srli_epi32(p, Bgra ? 0 : 24), byteMask);
+				const __m256i intensity = _mm256_or_si256(_mm256_slli_epi32(g, 8),
+					_mm256_slli_epi32(_mm256_and_si256(b, nibbleMask), 4));
+				const __m256i chroma = _mm256_or_si256(_mm256_slli_epi32(r, 8),
+					_mm256_and_si256(b, _mm256_set1_epi32(240)));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(y + x), PackEight(intensity));
+				_mm_storeu_si128(reinterpret_cast<__m128i*>(uv + x), PackEight(chroma));
+			}
+			for (; x < width; ++x)
+			{
+				const uint8_t* p = input + static_cast<size_t>(x) * 4;
+				const uint8_t r = p[Bgra ? 2 : 1], g = p[Bgra ? 1 : 2], b = p[Bgra ? 0 : 3];
+				y[x] = static_cast<uint16_t>((uint16_t(g) << 8) | ((b & 15) << 4));
+				uv[x] = static_cast<uint16_t>((uint16_t(r) << 8) | (b & 240));
+			}
+		}
+		_mm256_zeroupper();
+	}
+
 }
 
-void CR210DolbyVisionTunnelFormatter::ConvertRowsAVX2(
+void CRGBDolbyVisionTunnelFormatter::ConvertRowsAVX2(
 	const uint8_t* source, uint16_t* output, uint32_t firstRow,
 	uint32_t rowCount, bool leftAligned) const
 {
-	if (leftAligned)
+	if (m_encoding == VideoFrameEncoding::ARGB_8BIT)
+		ConvertRgb8Rows<false>(source, output, m_width, m_height, m_stride, firstRow, rowCount);
+	else if (m_encoding == VideoFrameEncoding::BGRA_8BIT)
+		ConvertRgb8Rows<true>(source, output, m_width, m_height, m_stride, firstRow, rowCount);
+	else if (leftAligned)
 		ConvertRowsImpl<2>(source, output, m_width, m_height, m_stride,
 			firstRow, rowCount);
 	else

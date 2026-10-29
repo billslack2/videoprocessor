@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AnalysisFrame.h"
+#include <DolbyVisionTunnelInput.h>
 
 #include <algorithm>
 #include <utility>
@@ -120,7 +121,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
             return result;
         if (input.dolby.valid)
         {
-            if (input.encoding != VideoFrameEncoding::R210 ||
+            if (!DolbyVisionTunnelEncodingSupported(input.encoding) ||
                 !input.convertedOwner || !input.converted422 ||
                 !input.convertedContract.IsValid() ||
                 input.convertedContract.colorDepth != 12 ||
@@ -142,10 +143,10 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
         {
             // A missing/invalid packet cannot unlock the packed RGB transport.
             // The formatter alone can authorize a proven SDR alignment.
-            if (!input.dolby.allowSdrFallback ||
+            if (!input.dolby.allowSdrFallback || input.tunnelSdrRgbRange == TunnelSdrRgbRange::Unknown ||
                 (input.dolby.rgbBitAlignment != 1 &&
                     input.dolby.rgbBitAlignment != 2) ||
-                input.encoding != VideoFrameEncoding::R210 ||
+                !DolbyVisionTunnelEncodingSupported(input.encoding) ||
                 !input.nativeOwner)
                 return result;
             backing = native(AnalysisLumaFormat::SdrTunnelRgb,
@@ -153,7 +154,8 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
             backing.rgbBitAlignment = input.dolby.rgbBitAlignment;
             result.domain = AnalysisFrameDomain::SdrTunnelRgb;
             result.sourceOwner = input.nativeOwner;
-            result.sampleRange = VideoFrameSampleRange::FULL;
+            result.sampleRange = input.tunnelSdrRgbRange == TunnelSdrRgbRange::Limited ?
+                VideoFrameSampleRange::LIMITED : VideoFrameSampleRange::FULL;
             result.colorDepth = 8;
             result.rgbBitAlignment = input.dolby.rgbBitAlignment;
         }

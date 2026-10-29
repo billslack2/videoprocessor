@@ -65,6 +65,7 @@ static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.Update
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationRpcProtocol.h>
 #include <CaptureVideoStatePolicy.h>
+#include <DolbyVisionTunnelInput.h>
 #include <ActiveProfileStatus.h>
 #include <ActiveOutputSweepPolicy.h>
 #include <EventActionLauncher.h>
@@ -9136,6 +9137,13 @@ void CVideoProcessorDlg::CaptureStart()
 		captureRunToken = m_captureVideoStateSourceEpoch;
 	}
 
+    const int captureRendererIndex = m_rendererCombo.GetCurSel();
+    const RendererId* captureRenderer = captureRendererIndex >= 0 ?
+        reinterpret_cast<const RendererId*>(m_rendererCombo.GetItemData(captureRendererIndex)) : nullptr;
+    m_captureDevice->SetRawRgbTunnelCapture(captureRenderer &&
+        captureRenderer->backend == RendererBackend::LIBPLACEBO &&
+        (m_profileDolbyVisionTunnelOverride >= 0 ?
+            m_profileDolbyVisionTunnelOverride != 0 : m_enableDolbyVisionTunnel));
 	m_captureDevice->StartCapture(captureRunToken);
 
 	// Update GUI
@@ -11918,18 +11926,19 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 			throw std::runtime_error("Unknown HdrLuminanceOptions");
 	}
 
-	// The opt-in path is limited to R210 carrying an RGB8 Dolby tunnel.
+	// The opt-in path accepts byte-preserving raw RGB8 tunnel layouts.
 	// DeckLink reports the tunnel's wrapper as SDR/Rec.709, so use the
 	// recovered picture's PQ/BT.2020 state for output negotiation.
 	const int rendererIndex = m_rendererCombo.GetCurSel();
 	const RendererId* rendererId = rendererIndex >= 0 ?
 		reinterpret_cast<const RendererId*>(
 			m_rendererCombo.GetItemData(rendererIndex)) : nullptr;
-	videoState->dolbyVisionTunnel = enableDolbyVisionTunnel &&
-		rendererId && rendererId->backend == RendererBackend::LIBPLACEBO &&
-		m_captureDeviceVideoState->valid &&
-		m_captureDeviceVideoState->videoFrameEncoding == VideoFrameEncoding::R210 &&
-		m_captureDeviceVideoState->eotf == EOTF::SDR;
+	if (m_captureDevice) m_captureDevice->SetRawRgbTunnelCapture(enableDolbyVisionTunnel &&
+        rendererId && rendererId->backend == RendererBackend::LIBPLACEBO);
+	videoState->dolbyVisionTunnel = DolbyVisionTunnelCanEnable(
+        enableDolbyVisionTunnel,
+        rendererId && rendererId->backend == RendererBackend::LIBPLACEBO,
+        *m_captureDeviceVideoState);
 	if (videoState->dolbyVisionTunnel)
 	{
 		videoState->eotf = EOTF::PQ;
@@ -11955,10 +11964,12 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 			hdr.maxCll = 1000;
 		if (hdr.maxFall <= 0)
 			hdr.maxFall = 1000;
-		DebugLog::Log("Dolby Vision RGB tunnel: effective source R210/12-bit 4:2:2 PQ BT.2020");
+		DebugLog::Log("Dolby Vision RGB tunnel: effective source %s/12-bit 4:2:2 PQ BT.2020",
+			CStringA(ToString(videoState->videoFrameEncoding)).GetString());
 	}
 	else if (enableDolbyVisionTunnel)
-		DebugLog::Log("Dolby Vision RGB tunnel: waiting for R210 SDR capture state");
+		DebugLog::Log("Dolby Vision RGB tunnel: requires VP Renderer and byte-preserving ARGB/BGRA/R210 SDR capture (bytes_preserved=%d)",
+			m_captureDeviceVideoState->rgbTunnelBytesPreserved ? 1 : 0);
 
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;

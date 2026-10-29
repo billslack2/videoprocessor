@@ -1,8 +1,10 @@
 # TV-led Dolby Vision HDMI RGB tunnel
 
 This experimental path accepts an Apple TV or other TV-led Dolby Vision
-source through an HDFury Vertex2 and a DeckLink device that captures the
-4K23.976 RGB 8-bit tunnel as r210. Enable it in the source configuration:
+source through a capture path that preserves the RGB8 tunnel as ARGB, BGRA,
+or DeckLink r210. The original live qualification used a Vertex2/DeckLink
+4K23.976 chain; the additional layouts are qualified by independent synthetic
+senders and real renderer tests, and still need live card/driver qualification. Enable it in the source configuration:
 
     [general]
     renderer: VP Renderer (Beta)
@@ -12,8 +14,8 @@ Restart VP after changing this startup setting. Keep the Vertex2 on a
 **real Dolby Vision** custom EDID and **No Scaling** for the DeckLink output.
 Use the normal HDR10/LLDV configuration when the tunnel switch is off.
 
-The formatter accepts either placement of RGB8 in DeckLink's 10-bit r210
-channels, but recognizes Dolby Vision only after an embedded
+The formatter accepts native ARGB/BGRA bytes and either placement of RGB8
+in DeckLink's 10-bit r210 channels, but recognizes Dolby Vision only after an embedded
 display-management packet passes its MPEG-2 CRC-32. It reconstructs the
 original 12-bit intensity and alternating chroma samples in two 16-bit
 planes at full 4:2:2 resolution. It does not convert the tunnel to P010.
@@ -50,7 +52,8 @@ indistinguishable from a same-mode SDR switch without EOS. An EOS boundary or
 capture video-state reset permits SDR again. A same-mode SDR switch that omits
 EOS may therefore remain black until Restart capture.
 
-DeckLink reports the transport container as RGB 10-bit 4:4:4 (r210).
+Capture may report the transport container as ARGB/BGRA 8-bit or RGB
+10-bit 4:4:4 (r210). The alpha byte in ARGB/BGRA is ignored.
 The DV tunnel inside that container is 12-bit 4:2:2, which the VP OSD
 reports after unpacking. This does not add 4:4:4 movie chroma. The
 previous measured LLDV input was also 4:2:2, at 10-bit capture depth,
@@ -61,21 +64,70 @@ whether a disc player used a Profile 7 FEL before HDMI output.
 For Apple TV, choose 4K SDR as the normal menu format and enable Match
 Dynamic Range and Match Frame Rate. This lets 23.976 Hz Dolby Vision
 movies use the supported RGB tunnel while keeping the 59.94 Hz menu in
-ordinary SDR. The current decoder only accepts the r210 RGB tunnel;
-do not interpret a 59.94 Hz v210 menu as Dolby Vision.
+ordinary SDR. The decoder accepts ARGB/BGRA/R210 RGB tunnels; a v210
+menu is an ordinary YCbCr capture, not a supported RGB tunnel.
 
 The log reports complete DM length/packet count/IDs when the layout changes,
 newly encountered extension levels (L1 is applied; other levels are logged
 but not applied), loss/recovery events, and aggregate counters every 600
 pictures. CRC-failed-copy counts include attempts at an alternate RGB8
 alignment, so a nonzero count alone is not proof of HDMI corruption.
-The log also reports "CRC-validated r210 RGB8 alignment" on first detection,
+The log also reports "CRC-validated &lt;layout&gt; RGB8 alignment" on first detection,
 "new display-management matrix" when it changes, and "DV 12-bit 4:2:2"
 for the formatter contract. If the CRC never validates, the path cannot
 interpret that signal as Dolby Vision; check Vertex2 EDID/scaling, DeckLink
 packing, and whether the player actually sends TV-led DV. The previous single-packet decoder has produced a correct image on the
 user's DeckLink/Vertex2/Apple TV and Sony setup. Multi-packet reception and
 loss/recovery changes still need live source confirmation.
+
+
+## Capture compatibility
+
+ARGB and BGRA preserve the RGB8 carrier without increasing HDMI bit depth.
+The decoder reads their documented byte order directly, ignores alpha and
+reconstructs the same exact 12-bit 4:2:2 samples as r210. Both scalar and AVX2
+kernels handle row tails and threaded UHD conversion without an intermediate
+full-frame RGB repack. Format changes reset the metadata and DV lock.
+
+Magewell RGB8 capture delivers ARGB and requests full-range RGB output.
+While DV Tunneling is selected with VP Renderer, capture saves the existing
+SDK input-range override (including AUTO), temporarily treats input as full,
+and verifies that setting before restarting capture. Matching full-range
+input interpretation and output avoids range expansion or nominal-range
+clipping of the RGB8 data carrier, even when HDMI reports limited or unknown
+range. The original override is restored before ordinary capture resumes,
+on signal loss, on stop and on capture failure. Setup/readback failure stops
+capture without delivering a falsely admitted tunnel. Restoration failure
+is reported explicitly. No EDID or active configuration file is changed.
+
+The wire range comes from AVI independently of the temporary SDK override.
+SDR fallback honors an explicit saved input-range override, or the original
+AVI full/limited range when that override was AUTO, for both renderer levels
+and picture analysis. Unknown wire range permits CRC-validated Dolby Vision
+because DM owns its decoded range; it cannot authorize guessed SDR levels.
+Real Magewell hardware/driver qualification remains required: the automated
+capture harness models SDK range expansion and tests byte-exact delivery,
+but cannot establish how an untested card implements its processing engine.
+
+Native RGB upload is bypassed while tunneling so the conversion worker always
+validates packets before rendering. Picture, bar and subtitle analysis consume
+the decoded picture, never the packed transport. SDR RGB analysis is permitted
+only before DV lock or after an explicit EOS/state reset; loss after lock blanks
+presentation and excludes the picture from analysis.
+
+Run `DolbyVisionTunnelFormatterTests`, `AnalysisRecoveryDvTests`, and
+`MagewellCaptureTests` after an x64 Release solution build. Magewell tests
+feed the independent sender through the real capture-thread code and a fake
+SDK that expands limited RGB unless raw capture is requested. They cover
+full/limited/unknown signaling, all saved range overrides, a deliberately
+corrupted normal-capture negative control, live mode changes and failed
+override setup/readback with restoration. The tunnel class
+includes an integration test that loads the built renderer DLL and confirms
+actual RGB8 decoded upload and recovered DM/L1 status with native RGB upload
+otherwise enabled. Run this class for both standard and beta test binaries;
+then run `tools/test_subtitle_motion_renderers.ps1` for both dependencies.
+The renderer plugin API is incremented because the shared capture state now
+includes the RGB-byte-preservation contract; mismatched host/DLL pairs fail closed.
 
 References: [HDMI 1.4a RGB tunnel packing](https://felloff.net/doc/comp/spec/HDMISpecification14a.pdf),
 [ETSI GS CCM 001 display-management packet format](https://www.etsi.org/deliver/etsi_gs/CCM/001_099/001/01.01.01_60/gs_ccm001v010101p.pdf),

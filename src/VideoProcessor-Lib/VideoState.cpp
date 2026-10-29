@@ -20,6 +20,8 @@ VideoState::VideoState(const VideoState& other)
 	colorspace = other.colorspace;
 	invertedVertical = other.invertedVertical;
 	dolbyVisionTunnel = other.dolbyVisionTunnel;
+	rgbTunnelBytesPreserved = other.rgbTunnelBytesPreserved;
+	tunnelSdrRgbRange = other.tunnelSdrRgbRange;
 
 	// Deepcopy
 	if (other.hdrData)

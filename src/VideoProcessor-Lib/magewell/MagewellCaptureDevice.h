@@ -137,6 +137,8 @@ public:
 	bool CanCapture() override;
 	void StartCapture(CaptureRunToken captureRunToken) override;
 	void StopCapture() override;
+	void SetRawRgbTunnelCapture(bool enabled) override
+	{ m_rawRgbTunnelRequested.store(enabled, std::memory_order_release); }
 	CaptureInputId CurrentCaptureInputId() override;
 	CaptureInputs SupportedCaptureInputs() override;
 	void SetCaptureInput(const CaptureInputId) override;
@@ -163,6 +165,9 @@ private:
 	struct SignalDescription
 	{
 		bool locked = false;
+		bool rawRgbTunnel = false;
+		bool wireRgbRangeKnown = false;
+		TunnelSdrRgbRange tunnelSdrRange = TunnelSdrRgbRange::Full;
 		unsigned int width = 0;
 		unsigned int height = 0;
 		bool interlaced = false;
@@ -249,6 +254,7 @@ private:
 
 	std::thread m_captureThread;
 	std::atomic_bool m_captureThreadRunning{ false };
+	std::atomic_bool m_rawRgbTunnelRequested{ false };
 	std::atomic_bool m_outputCaptureData{ false };
 
 	std::atomic<timingclocktime_t> m_frameOffsetTicks{ 0 };

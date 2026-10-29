@@ -341,7 +341,9 @@
     <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h" />
-    <ClInclude Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.h" />
+    <ClInclude Include="magewell\MagewellRgbTunnelRange.h" />
+    <ClInclude Include="DolbyVisionTunnelInput.h" />
+    <ClInclude Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
@@ -481,7 +483,7 @@
     <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp" />
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
@@ -551,7 +553,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp">
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.AVX2.cpp">
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
