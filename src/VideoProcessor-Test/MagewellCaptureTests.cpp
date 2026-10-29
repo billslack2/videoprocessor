@@ -5,6 +5,7 @@
 #include <MWFOURCC.h>
 #include <AnalysisLumaSource.h>
 #include <P210FrameLayout.h>
+#include <magewell/MagewellCaptureFormatPolicy.h>
 #include <DolbyVisionTunnelInput.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaQueuePolicy.h>
@@ -37,6 +38,18 @@ public:
 		MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding, nativeP210);
 	}
 
+    static VideoFrameEncoding ChooseAuto(unsigned width, unsigned height, unsigned period,
+        const std::vector<DWORD>& formats, bool native = true, bool interlaced = false)
+    {
+        MagewellCaptureDevice::SignalDescription signal;
+        signal.colorFormat = MWCAP_VIDEO_COLOR_FORMAT_YUV709;
+        signal.bitDepth = 10; signal.width = width; signal.height = height;
+        signal.frameDuration100ns = period; signal.interlaced = interlaced;
+        DWORD fourcc = 0; VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+        MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding, native);
+        Assert::AreEqual(encoding == VideoFrameEncoding::P010 ? MWFOURCC_P010 : MWFOURCC_P210, fourcc);
+        return encoding;
+    }
 	static void PublishRgb8(MagewellCaptureDevice& device,
         MWCAP_VIDEO_QUANTIZATION_RANGE range,
         VideoFrameEncoding encoding = VideoFrameEncoding::ARGB_8BIT)
@@ -869,6 +882,24 @@ namespace Tests
 			Assert::IsTrue(weak.expired());
 		}
 
+        TEST_METHOD(AutoCaptureKeepsLowerRatesAndHdLosslessButUsesCardP010AtUhd60)
+        {
+            const std::vector<DWORD> formats{MWFOURCC_P210, MWFOURCC_P010};
+            for (const unsigned period : {416667u,400000u,333667u,333333u})
+                Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,period,formats)==VideoFrameEncoding::P210);
+            for (const unsigned period : {166830u,166667u,200000u})
+                Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,period,formats)==VideoFrameEncoding::P010);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(1920,1080,166667,formats)==VideoFrameEncoding::P210);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,formats,false)==VideoFrameEncoding::V210);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(1920,1080,166667,formats,true,true)==VideoFrameEncoding::P210);
+        }
+        TEST_METHOD(BandwidthPolicyNeverRequestsUnsupportedOrMalformedP010)
+        {
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,{MWFOURCC_P210});});
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2161,166667,{MWFOURCC_P010,MWFOURCC_P210});});
+            // No bit-depth fallback when 10-bit capture cannot be supported.
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,{MWFOURCC_UYVY});});
+        }
 		TEST_METHOD(MemoryBudgetCountsRetiredFramesUntilLastRelease)
 		{
 			auto budget = std::make_shared<MagewellCaptureMemoryBudget>(48);

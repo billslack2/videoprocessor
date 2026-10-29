@@ -344,6 +344,7 @@
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h" />
     <ClInclude Include="magewell\MagewellRgbTunnelRange.h" />
+    <ClInclude Include="magewell\MagewellCaptureFormatPolicy.h" />
     <ClInclude Include="DolbyVisionTunnelInput.h" />
     <ClInclude Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
