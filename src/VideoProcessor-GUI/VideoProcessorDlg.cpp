@@ -15273,7 +15273,30 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		::GetWindowThreadProcessId(foregroundBefore, &foregroundProcess);
 		::ShowWindow(target, SW_RESTORE);
 		::BringWindowToTop(target);
-		const BOOL activated = ::SetForegroundWindow(target);
+        BOOL activated = ::SetForegroundWindow(target);
+        UINT unlockInputs = 0;
+        if (!activated && ::GetForegroundWindow() != target)
+        {
+            // Windows unlocks foreground activation on ALT input. A background
+            // launch (e.g. Explorer retaining foreground) can otherwise deny all
+            // ten retries. Keep this fallback inside the bounded entry session,
+            // and never combine it with modifiers the user is currently holding.
+            bool modifierHeld = false;
+            for (const int key : {VK_MENU, VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN})
+                modifierHeld = modifierHeld || (::GetAsyncKeyState(key) & 0x8000) != 0;
+            if (!modifierHeld)
+            {
+                INPUT input[2] = {};
+                input[0].type = input[1].type = INPUT_KEYBOARD;
+                input[0].ki.wVk = input[1].ki.wVk = VK_MENU;
+                input[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                unlockInputs = ::SendInput(2, input, sizeof(INPUT));
+                if (unlockInputs == 1)
+                    ::SendInput(1, &input[1], sizeof(INPUT));
+                if (unlockInputs == 2)
+                    activated = ::SetForegroundWindow(target);
+            }
+        }
         ::SetActiveWindow(target);
 		::SetFocus(target);
 		const HWND foregroundAfter = ::GetForegroundWindow();
@@ -15281,10 +15304,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		DebugLog::Log(
 			"Fullscreen focus retry: event=attempt target=%p generation=%u "
 			"requested=%d foreground_before=%p foreground_process=%lu "
-			"foreground=%p acquired=%d focus=%p attempt=%u max_attempts=%u remaining_ms=%llu",
+			"foreground=%p acquired=%d focus=%p unlock_inputs=%u attempt=%u max_attempts=%u remaining_ms=%llu",
 			target, generation, activated ? 1 : 0, foregroundBefore, foregroundProcess,
 			foregroundAfter, foregroundAfter == target ? 1 : 0, ::GetFocus(),
-            m_fullscreenActivation.Attempts(), FullscreenActivation::MaximumAttempts,
+            unlockInputs, m_fullscreenActivation.Attempts(), FullscreenActivation::MaximumAttempts,
             static_cast<unsigned long long>(attemptTick < m_fullscreenActivation.Deadline()
                 ? m_fullscreenActivation.Deadline() - attemptTick : 0));
         ScheduleFullscreenActivation();
