@@ -256,6 +256,60 @@ namespace VideoProcessorTest
 				selected.snapshot->queue.profile);
 		}
 
+        TEST_METHOD(AllProfileGroupsPublishThroughSharedStatus)
+        {
+            std::map<std::string, std::string> selections;
+            std::set<std::string> expected;
+            for (const auto& group : ProfileGroups::Definitions())
+            {
+                Assert::IsTrue(ProfileGroups::ForSection(group.section) == &group);
+                if (group.shader) continue;
+                selections[group.name] = "chosen";
+                expected.insert(std::string(group.section) + ".chosen");
+            }
+            ActiveProfileStatus::Publish(GetCurrentProcessId(), 100, selections, 1, false, {});
+            ActiveProfileStatus::Snapshot active;
+            Assert::IsTrue(ActiveProfileStatus::Read(GetCurrentProcessId(), active));
+            Assert::AreEqual(expected.size(), size_t(active.profileCount));
+            std::set<std::string> actual;
+            for (uint32_t index = 0; index < active.profileCount; ++index)
+                actual.insert(active.profiles[index]);
+            Assert::IsTrue(expected == actual);
+            Assert::IsTrue(actual.count("lldv.chosen") == 1);
+            Assert::IsTrue(actual.count("vprenderer.input.chosen") == 1);
+        }
+
+        TEST_METHOD(ManualMotionSelectionOverridesRulesAndPublishesSavedSection)
+        {
+            CachedConfigTestFile file;
+            std::ofstream(file.path) <<
+                "[general]\npersist_profile_selection: false\n"
+                "[vprenderer.motion.Default]\nsmooth_motion: auto\nframe_mixer: oversample\n"
+                "[vprenderer.motion.Test]\nsmooth_motion: always\nframe_mixer: linear\ndeinterlace: off\n";
+            ConfigFile config;
+            Assert::IsTrue(config.Load(file.path));
+            UnifiedProfileRuntime::Runtime runtime;
+            std::string error;
+            Assert::IsTrue(runtime.Initialize(config, {}, error));
+            Assert::AreEqual(std::string("default"),
+                runtime.GetSnapshot()->effectiveSelections.at("motion").front());
+            UnifiedProfileRuntime::SelectionResult selected;
+            Assert::IsTrue(runtime.SelectProfile("motion", "Test", true, {}, selected, error));
+            Assert::IsTrue(selected.changed);
+            Assert::AreEqual(std::string("test"),
+                selected.snapshot->effectiveSelections.at("motion").front());
+            const auto selections = RendererProfileConfig::FormatSelections(selected.snapshot->effectiveSelections);
+            Assert::AreEqual(std::string("test"), selections.at("motion"));
+            ActiveProfileStatus::Publish(GetCurrentProcessId(), selected.snapshot->generation,
+                selections, 1, false, {}, {}, {}, {}, false, false, 0, {}, &config);
+            ActiveProfileStatus::Snapshot active;
+            Assert::IsTrue(ActiveProfileStatus::Read(GetCurrentProcessId(), active));
+            Assert::AreEqual(std::string("vprenderer.motion.test"), std::string(active.motion));
+            Assert::IsTrue(runtime.SelectProfile("motion", "Default", true, {}, selected, error));
+            Assert::AreEqual(std::string("default"),
+                selected.snapshot->effectiveSelections.at("motion").front());
+        }
+
 		TEST_METHOD(ManualProfileAndActionCommandsUseSavedRuntimeModel)
 		{
 			CachedConfigTestFile file;

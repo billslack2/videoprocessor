@@ -389,13 +389,35 @@ namespace VideoProcessorTest
 			Assert::AreEqual(7, harness.handled.load());
 		}
 
+        TEST_METHOD(MotionStatusAcceptsOlderPublishersWithoutInventingAnActiveProfile)
+        {
+            for (uint8_t version : { uint8_t(1), uint8_t(2), uint8_t(3), uint8_t(4) })
+            {
+                std::vector<uint8_t> payload{ version, 1 };
+                for (const char* section : { "queue", "vprenderer.cinema", "", "", "", "", "" })
+                    Assert::IsTrue(WriteString(payload, section));
+                if (version >= 2) Assert::IsTrue(WriteString(payload, "vprenderer.subtitles.classic"));
+                if (version >= 3) Assert::IsTrue(WriteString(payload, "output_display.projector"));
+                if (version >= 4) Assert::IsTrue(WriteString(payload, "vprenderer.motion.test"));
+                payload.push_back(0);
+                Write32(payload, 0);
+                LiveProfileStatus status;
+                status.motion = "stale";
+                Assert::IsTrue(ParseLiveProfileStatus(payload, status));
+                Assert::IsTrue(status.available);
+                Assert::IsTrue(version >= 4 || status.motion.empty());
+                Assert::IsTrue(std::find(status.profiles.begin(), status.profiles.end(), "vprenderer.cinema") != status.profiles.end());
+                Assert::AreEqual(std::string("vprenderer.cinema"), status.renderer);
+            }
+        }
+
 		TEST_METHOD(ActiveProfilePollingReadsSnapshotWithoutPostingToOwner)
 		{
 			ServerHarness harness;
 			Assert::IsTrue(harness.Start());
 			ActiveProfileStatus::Publish(GetCurrentProcessId(), 1,
 				{ { "display", "cinema" }, { "color", "hdr" },
-				  { "queue", "base" }, { "viewport", "wide" } },
+				  { "queue", "base" }, { "viewport", "wide" }, { "motion", "test" }, { "lldv", "tunnel" }, { "input", "default" } },
 				2, true, { "shader.main", "shader.detail" });
 			ConfigurationRpcClient client("127.0.0.1",
 				harness.server.BoundTcpPort());
@@ -409,6 +431,9 @@ namespace VideoProcessorTest
 				Assert::AreEqual(std::string("vprenderer.cinema"), status.renderer);
 				Assert::AreEqual(std::string("vprenderer.color.hdr"), status.color);
 				Assert::AreEqual(std::string("vprenderer.viewport.wide"), status.viewport);
+                Assert::AreEqual(std::string("vprenderer.motion.test"), status.motion);
+                Assert::IsTrue(std::find(status.profiles.begin(), status.profiles.end(), "lldv.tunnel") != status.profiles.end());
+                Assert::IsTrue(std::find(status.profiles.begin(), status.profiles.end(), "vprenderer.input.default") != status.profiles.end());
 				Assert::IsTrue(status.shaderAvailable);
 				Assert::AreEqual(static_cast<size_t>(2), status.shaders.size());
 			}
@@ -418,6 +443,8 @@ namespace VideoProcessorTest
 			std::string error;
 			Assert::IsTrue(client.GetActiveProfileStatus(changed, error));
 			Assert::AreEqual(std::string("vprenderer.sports"), changed.renderer);
+            Assert::IsTrue(changed.motion.empty());
+            Assert::IsTrue(std::find(changed.profiles.begin(), changed.profiles.end(), "lldv.tunnel") == changed.profiles.end());
 			Assert::IsFalse(changed.shaderAvailable);
 			Assert::IsTrue(changed.shaders.empty());
 			Assert::AreEqual(0, harness.handled.load());

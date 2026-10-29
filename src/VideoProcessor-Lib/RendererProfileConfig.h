@@ -1,5 +1,6 @@
 #pragma once
 #include "ProfileSectionIdentity.h"
+#include "ProfileGroups.h"
 #include "SubtitleDetectionOptimization.h"
 #include "SubtitleGeneratedGrayStyle.h"
 
@@ -1321,26 +1322,6 @@ namespace RendererProfileConfig
 				return false;
 			}
 
-		struct GroupSpec
-		{
-			const char* name;
-			const char* section;
-			bool inheritRoot;
-		};
-		const GroupSpec specs[] = {
-			{ "input", "vprenderer.input", true },
-			{ "scaling", "vprenderer.scaling", true },
-            { "motion", "vprenderer.motion", true },
-			{ "display", "vprenderer", false },
-			{ "color", "vprenderer.color", true },
-
-			{ "viewport", "vprenderer.viewport", true },
-			{ "zoom", "vprenderer.zoom", true },
-            { "subtitles", "vprenderer.subtitles", true },
-			{ "queue", "queue", true },
-			{ "lldv", "lldv", true },
-			{ "output_display", "output_display", true }
-		};
 		const std::set<std::string> expressionVariables = {
 			"eotf", "transfer", "colorspace", "primaries", "format",
 			"hdr_metadata", "interlaced", "scan", "source_rate", "cadence",
@@ -1348,8 +1329,9 @@ namespace RendererProfileConfig
 			"key"
 		};
 
-		for (const GroupSpec& spec : specs)
+		for (const auto& spec : ProfileGroups::Definitions())
 		{
+            if (!spec.targetModel) continue;
 			const std::string section(spec.section);
             if (!ProfileSectionIdentity::Validate(config, section, error)) return false;
 			const auto* rootValues = config.GetSectionValues(section);
@@ -1651,18 +1633,9 @@ namespace RendererProfileConfig
 		// profile families, but shader files are never inherited.  A root
 		// section, when present, is one ordinary selectable profile (and may
 		// intentionally contain no files, which is unconfigured/off at runtime).
-		const struct ShaderGroupSpec
-		{
-			const char* name;
-			const char* section;
-			bool multiSelection;
-			const char* expectedShaderType;
-		} shaderSpecs[] = {
-			{ "nls", "shader.nls", false, "nls" },
-			{ "standard_shaders", "shader.standard", true, "custom" }
-		};
-		for (const ShaderGroupSpec& spec : shaderSpecs)
-		{
+        for (const auto& spec : ProfileGroups::Definitions())
+        {
+            if (!spec.shader) continue;
 			const std::string rootSection(spec.section);
             if (!ProfileSectionIdentity::Validate(config, rootSection, error)) return false;
 			const std::string prefix = rootSection + ".";
