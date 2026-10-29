@@ -14,9 +14,9 @@ public:
   Assert::AreEqual(size_t(24883200),p.frameBytes);Assert::AreEqual(size_t(16588800),p.planeBytes);
   Assert::IsFalse(GetP010FrameLayout(130,129,p));Assert::IsFalse(GetP010FrameLayout(131,130,p));
   Assert::IsFalse(GetP010FrameLayout(0xffffffffu,0xfffffffeu,p));
-  std::vector<uint8_t> bytes(130*130*3);P010PlaneView v;
-  Assert::IsFalse(GetP010PlaneView(bytes.data(),bytes.size()-1,130,130,v));
-  Assert::IsTrue(GetP010PlaneView(bytes.data(),bytes.size(),130,130,v));
+  std::vector<uint8_t> bytes(130*130*3);NativeP010PlaneView v;
+  Assert::IsFalse(GetNativeP010PlaneView(bytes.data(),bytes.size()-1,130,130,v));
+  Assert::IsTrue(GetNativeP010PlaneView(bytes.data(),bytes.size(),130,130,v));
   Assert::IsTrue(v.uv==bytes.data()+130*130*2);
   VideoState state;state.videoFrameEncoding=VideoFrameEncoding::P010;
   state.displayMode=std::make_shared<DisplayMode>(130,130,false,60000,1001);
