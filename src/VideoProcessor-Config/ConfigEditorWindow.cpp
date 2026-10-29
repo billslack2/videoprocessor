@@ -319,7 +319,7 @@ QString effectCategory(const std::string& section)
     return QStringLiteral("Preserved content");
 }
 
-constexpr int ActiveProfileRole = Qt::UserRole + 12;
+constexpr int ActiveProfileRole = ProfileListController::ActiveProfileRole;
 
 class ProfileStateItemDelegate final : public QStyledItemDelegate
 {
@@ -2484,22 +2484,8 @@ void ConfigEditorWindow::installProfileContextMenu(QListWidget* list,
 			if (!item) return;
 			const QString section = item->data(Qt::UserRole).toString();
 			if (section.isEmpty()) return;
-			const QMap<QString, QString> groups{
-				{ QStringLiteral("queue"), QStringLiteral("queue") },
-				{ QStringLiteral("output_display"), QStringLiteral("output_display") },
-				{ QStringLiteral("vprenderer"), QStringLiteral("display") },
-				{ QStringLiteral("vprenderer.color"), QStringLiteral("color") },
-				{ QStringLiteral("vprenderer.scaling"), QStringLiteral("scaling") },
-                { QStringLiteral("vprenderer.motion"), QStringLiteral("motion") },
-				{ QStringLiteral("vprenderer.output"), QStringLiteral("output") },
-				{ QStringLiteral("vprenderer.viewport"), QStringLiteral("viewport") },
-				{ QStringLiteral("vprenderer.zoom"), QStringLiteral("zoom") },
-                { QStringLiteral("vprenderer.subtitles"), QStringLiteral("subtitles") },
-				{ QStringLiteral("lldv"), QStringLiteral("lldv") },
-				{ QStringLiteral("shader.nls"), QStringLiteral("nls") },
-				{ QStringLiteral("shader.standard"), QStringLiteral("standard_shaders") }
-			};
-			const QString group = groups.value(sectionPrefix);
+            const auto* identity = ProfileGroups::ForSection(sectionPrefix.toStdString());
+            const QString group = identity ? QString::fromLatin1(identity->name) : QString();
 			if (group.isEmpty() ||
 				(section.compare(sectionPrefix, Qt::CaseInsensitive) != 0 &&
 				 !section.startsWith(sectionPrefix + u'.', Qt::CaseInsensitive)))
@@ -2635,17 +2621,12 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
 				if (available && status.shaderAvailable)
 					for (const auto& shader : status.shaders)
 						shaders.push_back(QString::fromLocal8Bit(shader.c_str()));
-				applyActiveProfileIndicators(available,
-					QString::fromLocal8Bit(status.queue.c_str()),
-					QString::fromLocal8Bit(status.renderer.c_str()),
-					QString::fromLocal8Bit(status.color.c_str()),
-					QString::fromLocal8Bit(status.viewport.c_str()),
-					shaders, available && status.shaderAvailable,
-					QString::fromLocal8Bit(status.zoom.c_str()),
-					QString::fromLocal8Bit(status.scaling.c_str()),
-					QString::fromLocal8Bit(status.output.c_str()),
-                    QString::fromLocal8Bit(status.subtitles.c_str()),
-                    QString::fromLocal8Bit(status.outputDisplay.c_str()));
+                QStringList profiles;
+                if (available)
+                    for (const auto& section : status.profiles)
+                        profiles.push_back(QString::fromLocal8Bit(section.c_str()));
+                applyActiveProfileIndicators(available, profiles, shaders,
+                    available && status.shaderAvailable);
 			});
 		activeProfileThread_->start();
 		return;
@@ -2657,16 +2638,10 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const uint32_t expectedProcessId = nativeOwnerIsValid() ?
         ownerProcessId_ : 0;
     ActiveProfileStatus::Snapshot active;
-    const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
+    const bool available = ActiveProfileStatus::Read(expectedProcessId, active) &&
+        active.profileCount <= ActiveProfileStatus::MaximumActiveProfiles;
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
     const QString color = available ? QString::fromLocal8Bit(active.color) : QString();
-    const QString scaling = available ? QString::fromLocal8Bit(active.scaling) : QString();
-    const QString output = available ? QString::fromLocal8Bit(active.output) : QString();
-    const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
-    const QString subtitles = available ? QString::fromLocal8Bit(active.subtitles) : QString();
-    const QString outputDisplay = available ? QString::fromLocal8Bit(active.outputDisplay) : QString();
-    const QString zoom = available ? QString::fromLocal8Bit(active.zoom) : QString();
-    const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     const QString sourceEotf = available ?
         QString::fromLocal8Bit(active.sourceEotf).trimmed() : QString();
     // The renderer assumes pure gamma 2.4 for captured SDR before applying the
@@ -2689,8 +2664,11 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     if (shaderAvailable)
         for (uint32_t index = 0; index < active.shaderCount; ++index)
             shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
-    applyActiveProfileIndicators(available, queue, renderer, color, viewport,
-        shaders, shaderAvailable, zoom, scaling, output, subtitles, outputDisplay);
+    QStringList profiles;
+    if (available && active.profileCount <= ActiveProfileStatus::MaximumActiveProfiles)
+        for (uint32_t index = 0; index < active.profileCount; ++index)
+            profiles.push_back(QString::fromLocal8Bit(active.profiles[index]));
+    applyActiveProfileIndicators(available, profiles, shaders, shaderAvailable);
     refreshRendererAutoStatus();
     refreshCalibrationControls();
     if (auto* label = findChild<QLabel*>(QStringLiteral("config.color_output.live_status")))
@@ -2704,53 +2682,30 @@ void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
     const QString& renderer, const QString& color, const QString& viewport,
     const QStringList& shaders, bool shaderAvailable, const QString& zoom,
     const QString& scaling, const QString& output, const QString& subtitles,
-    const QString& outputDisplay)
+    const QString& outputDisplay, const QString& motion)
 {
-    applyActiveProfileIndicators(true, queue, renderer, color, viewport, shaders,
-        shaderAvailable, zoom, scaling, output, subtitles, outputDisplay);
+    applyActiveProfileIndicators(true,
+        { queue, renderer, color, viewport, zoom, scaling, output, subtitles, outputDisplay, motion },
+        shaders, shaderAvailable);
+}
+
+void ConfigEditorWindow::setActiveProfileSectionsForTesting(const QStringList& profiles,
+    const QStringList& shaders, bool available, bool shaderAvailable)
+{
+    applyActiveProfileIndicators(available, profiles, shaders, shaderAvailable);
 }
 
 void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
-    const QString& queue, const QString& renderer, const QString& color,
-    const QString& viewport,
-    const QStringList& shaders, bool shaderAvailable, const QString& zoom,
-    const QString& scaling, const QString& output, const QString& subtitles,
-    const QString& outputDisplay)
+    const QStringList& profiles, const QStringList& shaders, bool shaderAvailable)
 {
     activeProfileSnapshotAvailable_ = available;
     for (ProfileListBinding& binding : activeProfileLists_)
     {
-        const bool shaderList = binding.sectionPrefix.startsWith(
-            QStringLiteral("shader."));
-        const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
-            (binding.sectionPrefix == QStringLiteral("vprenderer.color") ? color :
-                (binding.sectionPrefix == QStringLiteral("vprenderer.scaling") ? scaling :
-                    (binding.sectionPrefix == QStringLiteral("vprenderer.output") ? output :
-                        (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
-                            (binding.sectionPrefix == QStringLiteral("vprenderer.zoom") ? zoom :
-                                (binding.sectionPrefix == QStringLiteral("subtitles") || binding.sectionPrefix == QStringLiteral("vprenderer.subtitles") ? subtitles :
-                                (binding.sectionPrefix == QStringLiteral("output_display") ? outputDisplay :
-                                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()))))))));
-        int activeRow = -1;
-        for (int index = 0; binding.list && index < binding.list->count(); ++index)
-        {
-            QListWidgetItem* item = binding.list->item(index);
-            const QString section = item->data(Qt::UserRole).toString();
-            const bool isActive = shaderList ?
-                (shaderAvailable && std::any_of(shaders.cbegin(), shaders.cend(),
-                    [&section](const QString& shader)
-                    {
-                        return shader.compare(section, Qt::CaseInsensitive) == 0;
-                    })) :
-                (available && !activeSection.isEmpty() &&
-                    section.compare(activeSection, Qt::CaseInsensitive) == 0);
-            // QListWidget emits dataChanged even when the assigned value is
-            // identical. Do not continually invalidate every profile list on
-            // the UI thread for an unchanged shared-memory snapshot.
-            if (item->data(ActiveProfileRole).toBool() != isActive)
-                item->setData(ActiveProfileRole, isActive);
-            if (isActive) activeRow = index;
-        }
+        const auto* identity = ProfileGroups::ForSection(binding.sectionPrefix.toStdString());
+        const bool shaderList = identity && identity->shader;
+        const int activeRow = ProfileListController::UpdateActiveStatus(binding.list,
+            shaderList ? available && shaderAvailable : available,
+            shaderList ? shaders : profiles);
         // A profile list initially edits its first (default) row. Once the
         // live snapshot arrives, open the active row instead. A later snapshot
         // must never move an operator away from a row they chose to edit.
@@ -2767,18 +2722,14 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                 binding.pendingActiveSelection = false;
             }
         }
-        if (binding.selectedTitle && binding.list && binding.list->currentItem())
-        {
-            const QListWidgetItem* current = binding.list->currentItem();
-            const QString display = current->data(Qt::UserRole + 1).toString();
-            const QString title = !available ?
-                QStringLiteral("%1 (Live status unavailable)").arg(display) :
-                current->data(ActiveProfileRole).toBool() ?
-                    QStringLiteral("%1 (Active)").arg(display) :
-                    QStringLiteral("%1 (Not active)").arg(display);
-            if (binding.selectedTitle->text() != title)
-                binding.selectedTitle->setText(title);
-        }
+        ProfileListController::UpdateSelectedStatus(binding.list ? binding.list->currentItem() : nullptr,
+            binding.selectedTitle, shaderList ? available && shaderAvailable : available);
+    }
+    QString viewport, zoom;
+    for (const auto& section : profiles)
+    {
+        if (section == QStringLiteral("vprenderer.viewport") || section.startsWith(QStringLiteral("vprenderer.viewport."), Qt::CaseInsensitive)) viewport = section;
+        if (section == QStringLiteral("vprenderer.zoom") || section.startsWith(QStringLiteral("vprenderer.zoom."), Qt::CaseInsensitive)) zoom = section;
     }
     const QString hdrSelection=available ? viewport+QStringLiteral("\n")+zoom : QString();
     if (hdrSelection!=subtitleHdrFallbackSelection_) {
@@ -5222,15 +5173,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     list->setDragDropMode(QAbstractItemView::InternalMove);
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
-    const bool showsActiveProfile = sectionPrefix == QStringLiteral("queue") ||
-        sectionPrefix == QStringLiteral("vprenderer") ||
-        sectionPrefix == QStringLiteral("vprenderer.scaling") ||
-        sectionPrefix == QStringLiteral("vprenderer.motion") ||
-        sectionPrefix == QStringLiteral("vprenderer.color") ||
-        sectionPrefix == QStringLiteral("vprenderer.viewport") ||
-        sectionPrefix == QStringLiteral("vprenderer.zoom") ||
-        sectionPrefix == QStringLiteral("vprenderer.subtitles") ||
-        sectionPrefix == QStringLiteral("output_display");
+    const bool showsActiveProfile = ProfileGroups::ForSection(sectionPrefix.toStdString()) != nullptr;
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
@@ -7988,11 +7931,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         }
         const QString section = state->section;
         const QString display = current->data(Qt::UserRole + 1).toString();
-        selectedTitle->setText(!activeProfileSnapshotAvailable_ ?
-            QStringLiteral("%1 (Live status unavailable)").arg(display) :
-            current->data(ActiveProfileRole).toBool() ?
-                QStringLiteral("%1 (Active)").arg(display) :
-                QStringLiteral("%1 (Not active)").arg(display));
+        ProfileListController::UpdateSelectedStatus(current, selectedTitle,
+            activeProfileSnapshotAvailable_);
         name->setText(display);
         shortcut->setText(canonicalShortcutText(
             value(section, QStringLiteral("shortcut"))));

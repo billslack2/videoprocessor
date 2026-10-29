@@ -74,7 +74,10 @@ public:
         const QStringList& shaders, bool shaderAvailable = true,
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {}, const QString& subtitles = {},
-        const QString& outputDisplay = {});
+        const QString& outputDisplay = {}, const QString& motion = {});
+    void setActiveProfileSectionsForTesting(const QStringList& profiles,
+        const QStringList& shaders = {}, bool available = true,
+        bool shaderAvailable = true);
     void setCalibrationStatusForTesting(bool available, bool attached,
         quint64 configIdentity, const QString& configPath,
         const QString& renderer, const QString& color, bool hdrSource = false);
@@ -195,12 +198,8 @@ private:
     void installActionContextMenu(QListWidget* list);
     void runTargetCommand(const QString& group, const QString& name,
         bool enabled, bool action);
-    void applyActiveProfileIndicators(bool available, const QString& queue,
-        const QString& renderer, const QString& color, const QString& viewport,
-        const QStringList& shaders, bool shaderAvailable,
-        const QString& zoom = {}, const QString& scaling = {},
-        const QString& output = {}, const QString& subtitles = {},
-        const QString& outputDisplay = {});
+    void applyActiveProfileIndicators(bool available, const QStringList& profiles,
+        const QStringList& shaders, bool shaderAvailable);
     void refreshRendererAutoStatus();
     void refreshCalibrationControls();
     void seedCalibratedProfile(const QString& root, const QString& section);

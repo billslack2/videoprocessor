@@ -46,6 +46,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QListWidget>
+#include <QStyledItemDelegate>
 #include <QListView>
 #include <QMessageBox>
 #include <QMenu>
@@ -3973,10 +3974,94 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		"Disabling calibration did not gate its selectors");
 }
 
+void testAllProfileListsShareActiveStatus()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append), "Cannot append profile status fixture");
+    file.write("\n[lldv.StatusDefault]\ndolby_vision_tunnel: true\n[lldv.StatusOther]\ndolby_vision_tunnel: false\n"
+        "[vprenderer.input.StatusDefault]\nlabel: First\n[vprenderer.input.StatusOther]\nlabel: Second\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* dv = requireControl<QListWidget>(window, "config.lldv.profiles");
+    auto* dvTitle = requireControl<QLabel>(window, "config.lldv.selected_profile_status");
+    require(dv->count() >= 2, "DV fixture lacks two profiles");
+    // Every editor list must have the active-state delegate and consume the
+    // same generic section collection; no per-page status allowlist is used.
+    int tested = 0;
+    for (const auto& group : ProfileGroups::Definitions())
+    {
+        const QString root = QString::fromLatin1(group.section);
+        auto* list = window.findChild<QListWidget*>("config." + root + ".profiles");
+        if (!list && group.shader)
+            list = window.findChild<QListWidget*>("config." + root + ".modes");
+        if (!list || list->count() == 0) continue;
+        ++tested;
+        require(typeid(*list->itemDelegate()) != typeid(QStyledItemDelegate),
+            "Profile list still uses a plain delegate");
+        const int last = list->count() - 1;
+        list->setCurrentRow(last);
+        const QString first = list->item(0)->data(Qt::UserRole).toString();
+        const QString other = list->item(last)->data(Qt::UserRole).toString();
+        auto publish = [&](const QString& section) {
+            window.setActiveProfileSectionsForTesting(group.shader ? QStringList() : QStringList{section},
+                group.shader ? QStringList{section} : QStringList());
+        };
+        publish(first);
+        require(list->item(0)->data(Qt::UserRole + 12).toBool(), "Profile group has no default active marker");
+        publish(other.toUpper());
+        require(list->item(last)->data(Qt::UserRole + 12).toBool(), "Profile marker did not follow activation");
+        if (last > 0) require(!list->item(0)->data(Qt::UserRole + 12).toBool(), "Previous marker did not clear");
+        window.setActiveProfileSectionsForTesting({}, {}, false, false);
+        require(!list->item(last)->data(Qt::UserRole + 12).toBool(), "Unavailable live status retained a stale marker");
+    }
+    require(tested >= 9, "Shared status regression skipped profile groups");
+    const int last = dv->count() - 1;
+    dv->setCurrentRow(last);
+    const QString selected = dv->item(last)->data(Qt::UserRole).toString();
+    window.setActiveProfileSectionsForTesting({selected});
+    require(dvTitle->text().contains("(Active)"), "DV title does not use shared activation status");
+    window.setActiveProfileSectionsForTesting({dv->item(0)->data(Qt::UserRole).toString()});
+    require(dv->currentRow() == last && dvTitle->text().contains("(Not active)"),
+        "DV activation changed the profile being edited or left its title active");
+}
+
+void testMotionProfileMarkerFollowsActivation()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append), "Cannot append motion profile fixture");
+    file.write("\n[vprenderer.motion.ActivationDefault]\nsmooth_motion: auto\nframe_mixer: oversample\n[vprenderer.motion.ActivationTest]\nsmooth_motion: always\nframe_mixer: linear\ndeinterlace: off\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* list = requireControl<QListWidget>(window, "config.vprenderer.motion.profiles");
+    auto* title = requireControl<QLabel>(window, "config.vprenderer.motion.selected_profile_status");
+    require(list->count() >= 2, "Motion fixture must contain two profiles");
+    const int last = list->count() - 1;
+    const QString first = list->item(0)->data(Qt::UserRole).toString();
+    const QString test = list->item(last)->data(Qt::UserRole).toString();
+    auto publish = [&](const QString& section) {
+        window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false, {}, {}, {}, {}, {}, section);
+    };
+    list->setCurrentRow(last);
+    publish(first);
+    require(list->item(0)->data(Qt::UserRole + 12).toBool(), "Default Motion profile has no active marker");
+    require(title->text().contains("Not active"), "Motion edit selection is confused with activation");
+    publish(test.toUpper());
+    require(list->item(last)->data(Qt::UserRole + 12).toBool() &&
+        !list->item(0)->data(Qt::UserRole + 12).toBool(), "Motion marker did not follow activation");
+    require(title->text().contains("(Active)"), "Activated Motion profile is still labelled inactive");
+    publish({});
+    require(!list->item(last)->data(Qt::UserRole + 12).toBool(), "Stale Motion marker survived missing status");
+}
+
 void testActiveProfileMarkersCoverRelevantLists()
 {
     QTemporaryDir directory;
     ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* motion = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.motion.profiles"));
     auto* queue = requireControl<QListWidget>(window, QStringLiteral("config.queue.profiles"));
     auto* renderer = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.profiles"));
     auto* scaling = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.scaling.profiles"));
@@ -3993,8 +4078,10 @@ void testActiveProfileMarkersCoverRelevantLists()
         viewport->item(0)->data(Qt::UserRole).toString(),
         { shader->item(0)->data(Qt::UserRole).toString() }, true, {},
         scaling->item(0)->data(Qt::UserRole).toString(),
-        output->item(0)->data(Qt::UserRole).toString());
-    require(queue->item(0)->data(Qt::UserRole + 12).toBool() &&
+        output->item(0)->data(Qt::UserRole).toString(), {}, {},
+        motion->item(0)->data(Qt::UserRole).toString());
+    require(motion->item(0)->data(Qt::UserRole + 12).toBool() &&
+        queue->item(0)->data(Qt::UserRole + 12).toBool() &&
         renderer->item(0)->data(Qt::UserRole + 12).toBool() &&
         scaling->item(0)->data(Qt::UserRole + 12).toBool() &&
         color->item(0)->data(Qt::UserRole + 12).toBool() &&
@@ -8494,6 +8581,8 @@ int main(int argc, char** argv)
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);
+    failures += run("all profile lists share active status", testAllProfileListsShareActiveStatus);
+    failures += run("Motion profile marker follows activation", testMotionProfileMarkerFollowsActivation);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("active profile opens selected after late status and preserves edits",
         testActiveProfileOpensSelectedAfterLateStatusAndPreservesEdits);
