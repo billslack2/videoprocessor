@@ -34,6 +34,11 @@
  *   P010: Y plane (width * 2 bytes x height rows), then interleaved CbCr
  *         (width * 2 bytes x height / 2 rows). 10 bits in the high bits of
  *         each little-endian 16-bit word; low 6 bits zero.
+ *   BGRA8: one plane, bytes B, G, R, A (width * 4 bytes x height rows),
+ *         delivered exactly as an HDMI RGB capture would deliver it. It is
+ *         how a plugin sends a TV-led Dolby Vision picture: declare it SDR,
+ *         Rec.709, and VP's Dolby Vision tunnel setting decides, as for a
+ *         capture card.
  *   P010 is limited range. A plugin must not declare a frame it cannot
  *   deliver in this layout. An 8-bit source may be carried as P010 by an
  *   exact shift (value << 8, low 8 bits zero), declared with bit_depth 8;
@@ -83,6 +88,8 @@ extern "C" {
  * capture cards never deliver them. */
 #define VP_SOURCE_ENCODING_NONE   0u
 #define VP_SOURCE_ENCODING_P010   1u
+/* 2 is not used. */
+#define VP_SOURCE_ENCODING_BGRA8  3u
 
 /* Transfer functions and colour spaces. Our own numbers, not VP's enum
  * values: the adapter maps each one by name, so VP can reorder its enums
