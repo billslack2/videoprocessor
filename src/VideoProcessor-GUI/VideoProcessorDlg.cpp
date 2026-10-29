@@ -16882,6 +16882,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			? totalCapturedFrames - m_rendererStartCapturedFrameCount
 			: 0;
 		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
+        stats.captureDeliverySupported = m_captureDevice->GetCaptureDeliveryStats(stats.captureDelivery);
 	}
 
 	// Video conversion
