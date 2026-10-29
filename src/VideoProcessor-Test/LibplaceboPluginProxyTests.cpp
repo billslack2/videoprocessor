@@ -20,12 +20,21 @@ namespace
     std::mutex snapshotTestLogMutex;
     std::ofstream snapshotTestLog;
     std::atomic<unsigned> snapshotTestReads{0};
+    std::atomic<unsigned> nativeP210Initializations{0};
     void __cdecl SnapshotTestLog(const char* message)
     {
+        if (strstr(message, "native P210 (no CPU repack) upload")) ++nativeP210Initializations;
         if (strstr(message, "Configuration disk read:")) ++snapshotTestReads;
         std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
         if (snapshotTestLog) snapshotTestLog << message << std::endl;
     }
+    struct NativeP210Buffer : IUnknown
+    {
+        std::atomic<int> references{0};
+        HRESULT QueryInterface(REFIID, void**) override { return E_NOINTERFACE; }
+        ULONG AddRef() override { ++references; return 1; }
+        ULONG Release() override { --references; return 0; }
+    };
     struct SnapshotTestCallback : IRendererCallback
     {
         std::atomic<RendererState> state{RENDERSTATE_UNKNOWN};
@@ -150,7 +159,11 @@ namespace VideoProcessorTest
 			GetModuleFileNameW(testModule, modulePath, MAX_PATH);
 			const std::wstring fullPath(modulePath);
 			const std::wstring root = fullPath.substr(0, fullPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            const std::wstring pluginPath = root + L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
+#else
 			const std::wstring pluginPath = root + L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+#endif
 			HMODULE plugin = LoadLibraryExW(pluginPath.c_str(), nullptr,
 				LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 			Assert::IsNotNull(plugin, L"Build the Release renderer DLL before this integration test");
@@ -247,6 +260,92 @@ namespace VideoProcessorTest
 			Logger::WriteMessage("VP-0188: real renderer initialized; 10 HDR withdrawal/restoration cycles, profile F4, and explicit reload passed with zero renderer config disk reads.\n");
 			DeleteFileA(path.c_str());
 		}
+
+        TEST_METHOD(RealRendererUploadsNativeP210ForSdrAndHdrWithoutConversion)
+        {
+            HMODULE module = nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&SnapshotTestLog), &module) != FALSE);
+            wchar_t modulePath[MAX_PATH] = {};
+            GetModuleFileNameW(module, modulePath, MAX_PATH);
+            std::wstring path(modulePath); path.resize(path.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
+#else
+            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+#endif
+            HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct PluginCleanup { HMODULE plugin; ~PluginCleanup(){ FreeLibrary(plugin); } } pluginCleanup{plugin};
+            const auto create = reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy = reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(create && destroy);
+            VideoStateComPtr state = new VideoState();
+            state->valid = true; state->videoFrameEncoding = VideoFrameEncoding::P210;
+            state->displayMode = std::make_shared<DisplayMode>(130, 129, false, 60000, 1001);
+            std::vector<uint16_t> pixels(130*129*2);
+            for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = uint16_t((64+(i%877)) << 6);
+            for (const auto eotf : {EOTF::SDR, EOTF::PQ})
+            {
+                state->eotf = eotf; state->colorspace = eotf == EOTF::PQ ? ColorSpace::BT_2020 : ColorSpace::REC_709;
+                char temporary[MAX_PATH] = {}, configPath[MAX_PATH] = {};
+                Assert::IsTrue(GetTempPathA(MAX_PATH, temporary) != 0);
+                Assert::IsTrue(GetTempFileNameA(temporary, "p21", 0, configPath) != 0);
+                std::ofstream(configPath) << "[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                    "[vprenderer]\nquality: fast\n";
+                SnapshotTestCallback callback; NativeP210Buffer buffer;
+                const unsigned initialized = nativeP210Initializations.load();
+                {
+                    struct Cleanup
+                    {
+                        HWND window; IVideoRenderer* renderer; VideoProcessorLibplaceboDestroyRendererFn destroy;
+                        const char* config;
+                        ~Cleanup(){ if(renderer){ renderer->Stop(); destroy(renderer); }
+                            if(window) DestroyWindow(window); DeleteFileA(config); }
+                    } cleanup{CreateWindowExW(0, L"STATIC", L"Native P210 fixture", WS_POPUP,
+                        0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr), nullptr, destroy, configPath};
+                    Assert::IsNotNull(cleanup.window);
+                    // An explicit P010 consumer must wait for legacy v210 capture.
+                    auto* forced = create(&callback, 1, cleanup.window, nullptr, false, 1,
+                        VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010, configPath, SnapshotTestLog);
+                    Assert::IsNotNull(forced);
+                    const bool accepted = forced->OnVideoState(state);
+                    destroy(forced);
+                    Assert::IsFalse(accepted);
+                    cleanup.renderer = create(&callback, 2, cleanup.window, nullptr, false, 1,
+                        VideoConversionOverride::VIDEOCONVERSION_NONE, configPath, SnapshotTestLog);
+                    Assert::IsNotNull(cleanup.renderer);
+                    Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+                    cleanup.renderer->Build(); cleanup.renderer->Start();
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+                    uint64_t sequence = 1; bool presented = false;
+                    while (std::chrono::steady_clock::now() < deadline && callback.state != RENDERSTATE_FAILED)
+                    {
+                        MSG message;
+                        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                        { TranslateMessage(&message); DispatchMessageW(&message); }
+                        if (callback.state == RENDERSTATE_RENDERING)
+                        {
+                            VideoFrame frame(pixels.data(), sequence++, 0, &buffer);
+                            cleanup.renderer->OnVideoFrame(frame);
+                            CString ingress;
+                            presented = cleanup.renderer->HasPresentedLiveFrame() &&
+                                cleanup.renderer->GetVideoIngressInfo(ingress) &&
+                                ingress.Find(L"P210 (native capture; no CPU repack)") >= 0;
+                            if (presented) break;
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    }
+                    Assert::IsTrue(presented, L"Native P210 failed to upload and present");
+                    Assert::AreEqual(initialized+1, nativeP210Initializations.load());
+                }
+                Assert::AreEqual(0, buffer.references.load(), L"Renderer retained a capture buffer after shutdown");
+            }
+        }
 
 		TEST_METHOD(ActivePictureLookaheadHasExplicitProxyOverride)
 		{

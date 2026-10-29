@@ -9140,6 +9140,9 @@ void CVideoProcessorDlg::CaptureStart()
     const int captureRendererIndex = m_rendererCombo.GetCurSel();
     const RendererId* captureRenderer = captureRendererIndex >= 0 ?
         reinterpret_cast<const RendererId*>(m_rendererCombo.GetItemData(captureRendererIndex)) : nullptr;
+    m_captureDevice->SetNativeP210Capture(captureRenderer &&
+        captureRenderer->backend == RendererBackend::LIBPLACEBO &&
+        m_vpRendererVideoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE);
     m_captureDevice->SetRawRgbTunnelCapture(captureRenderer &&
         captureRenderer->backend == RendererBackend::LIBPLACEBO &&
         (m_profileDolbyVisionTunnelOverride >= 0 ?
@@ -11935,6 +11938,19 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 			m_rendererCombo.GetItemData(rendererIndex)) : nullptr;
 	if (m_captureDevice) m_captureDevice->SetRawRgbTunnelCapture(enableDolbyVisionTunnel &&
         rendererId && rendererId->backend == RendererBackend::LIBPLACEBO);
+    const bool nativeP210Allowed = rendererId &&
+        rendererId->backend == RendererBackend::LIBPLACEBO &&
+        m_vpRendererVideoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE;
+    if (m_captureDevice) m_captureDevice->SetNativeP210Capture(nativeP210Allowed);
+    if (videoState->videoFrameEncoding == VideoFrameEncoding::P210 && !nativeP210Allowed)
+    {
+        // Do not hand the previous consumer's planar layout to a legacy or
+        // forced-P010 renderer while the capture thread negotiates v210.
+        videoState->valid = false;
+        m_builtVideoState = videoState;
+        DebugLog::Log("Native P210 capture: waiting for compatible v210 delivery");
+        return PushRendererVideoState();
+    }
 	videoState->dolbyVisionTunnel = DolbyVisionTunnelCanEnable(
         enableDolbyVisionTunnel,
         rendererId && rendererId->backend == RendererBackend::LIBPLACEBO,
