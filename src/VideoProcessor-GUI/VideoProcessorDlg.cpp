@@ -10923,13 +10923,13 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			m_rendererResetTransitionActive = false;
 		}
 	}
-	// The existing validated reveal releases the pending one-shot for the
-	// current host/generation, even if startup took longer than five seconds.
+    // Begin focus retries when the current fullscreen picture actually appears,
+    // including startup that took longer than the retry window.
 	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
 		m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
 	{
 		m_fullscreenActivation.OnRevealed(
-			reinterpret_cast<uintptr_t>(m_rendererTargetHwnd), generation);
+			reinterpret_cast<uintptr_t>(m_rendererTargetHwnd), generation, GetTickCount64());
 		ScheduleFullscreenActivation();
 	}
 	DebugLog::Log(
@@ -11165,9 +11165,8 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
 		monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom,
 		rectAfter.left, rectAfter.top, rectAfter.right, rectAfter.bottom);
-	// Give the fullscreen host and renderer five seconds to settle, then make
-	// one focus attempt for this fullscreen session. Display-change placement
-	// uses a different timer and cannot postpone or repeat activation.
+    // Arm immediate-on-reveal focus, then one-second retries for ten attempts.
+    // Display-change placement uses a separate timer and cannot restart retries.
 	m_fullscreenActivation.Arm(GetTickCount64());
 	ScheduleFullscreenActivation();
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
@@ -11197,7 +11196,7 @@ void CVideoProcessorDlg::ScheduleFullscreenActivation()
 	const UINT delay = static_cast<UINT>(
 		m_fullscreenActivation.DelayMs(GetTickCount64()));
 	if (!SetTimer(FULLSCREEN_ACTIVATION_TIMER_ID, delay, nullptr))
-		DebugLog::Log("Fullscreen delayed activation: event=timer-failed error=%lu", GetLastError());
+		DebugLog::Log("Fullscreen focus retry: event=timer-failed error=%lu", GetLastError());
 }
 
 
@@ -15254,13 +15253,14 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		const auto decision = m_fullscreenActivation.Evaluate(GetTickCount64(),
 			m_rendererFullscreenCheck.GetCheck() != FALSE, m_wantToTerminate,
 			reinterpret_cast<uintptr_t>(target), generation, ready);
-		if (decision == FullscreenActivation::Decision::WaitDelay)
-			ScheduleFullscreenActivation();
+        if (decision == FullscreenActivation::Decision::WaitDelay ||
+            decision == FullscreenActivation::Decision::WaitReady)
+            ScheduleFullscreenActivation();
 		if (decision == FullscreenActivation::Decision::WaitReady)
 		{
-			// Keep intent; only a validated reveal schedules another wake.
+			// Poll readiness at the retry interval; never target a stale host.
 			DebugLog::Log(
-				"Fullscreen delayed activation: event=await-reveal target=%p generation=%u "
+				"Fullscreen focus retry: event=await-reveal target=%p generation=%u "
 				"ready=%d retarget=%d shield=%d reveal_pending=%u",
 				target, generation, ready ? 1 : 0, m_fullscreenRetargetPending ? 1 : 0,
 				m_rendererTransitionWindow.IsVisible() ? 1 : 0,
@@ -15274,15 +15274,20 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		::ShowWindow(target, SW_RESTORE);
 		::BringWindowToTop(target);
 		const BOOL activated = ::SetForegroundWindow(target);
+        ::SetActiveWindow(target);
 		::SetFocus(target);
 		const HWND foregroundAfter = ::GetForegroundWindow();
+        const uint64_t attemptTick = GetTickCount64();
 		DebugLog::Log(
-			"Fullscreen delayed activation: event=attempt target=%p generation=%u "
+			"Fullscreen focus retry: event=attempt target=%p generation=%u "
 			"requested=%d foreground_before=%p foreground_process=%lu "
-			"foreground=%p acquired=%d focus=%p overdue_ms=%llu",
+			"foreground=%p acquired=%d focus=%p attempt=%u max_attempts=%u remaining_ms=%llu",
 			target, generation, activated ? 1 : 0, foregroundBefore, foregroundProcess,
 			foregroundAfter, foregroundAfter == target ? 1 : 0, ::GetFocus(),
-			static_cast<unsigned long long>(GetTickCount64() - m_fullscreenActivation.Deadline()));
+            m_fullscreenActivation.Attempts(), FullscreenActivation::MaximumAttempts,
+            static_cast<unsigned long long>(attemptTick < m_fullscreenActivation.Deadline()
+                ? m_fullscreenActivation.Deadline() - attemptTick : 0));
+        ScheduleFullscreenActivation();
 		return;
 	}
 
