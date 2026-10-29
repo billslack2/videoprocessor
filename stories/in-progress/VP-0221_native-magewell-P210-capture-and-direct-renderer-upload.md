@@ -4,7 +4,7 @@
 
 In Progress
 
-Started 2026-10-29 after the user authorized removing the Magewell P210 -> v210 -> P210 CPU round trip. Source worktree: E:\codex\videoprocessor\magewell-native-p210-20261029, branch codex/magewell-native-p210-20261029. Baseline is freshly fetched beta c716bd8108b03b0ef279c14c584e097eecc29515 with the tested BGRA fix 7e746c749698146f1619c18b89908cf2c9fdef57 (PR #226) included as a dependency. The native P210 change is not yet implemented or qualified.
+Started 2026-10-29 after the user authorized removing the Magewell P210 -> v210 -> P210 CPU round trip. Source worktree: E:\codex\videoprocessor\magewell-native-p210-20261029, branch codex/magewell-native-p210-20261029. Baseline is freshly fetched beta c716bd8108b03b0ef279c14c584e097eecc29515 with the tested BGRA fix 7e746c749698146f1619c18b89908cf2c9fdef57 (PR #226) included as a dependency. Implementation is committed at 5dfb96dc7c35b4ffa28543e851aa3150f5e5be8d and included in the existing PR #226. Final GPU and physical-card qualification are in progress.
 
 ## Objective
 
@@ -23,3 +23,15 @@ For ordinary Magewell YCbCr capture with VP Renderer and no forced P010 conversi
 ## Initial evidence
 
 The October 7 Magewell tester note explicitly excluded direct P210 renderer optimization. Current code captures P210, repacks it into v210, then VP Renderer unpacks it into P210 for upload. The installed card captures P210 successfully. Separate v210 probes at small and 1920x1080 geometry returned success without completing or modifying the destination, so native v210 is not selected merely because its SDK constant exists. User confirmed ordinary versus DV output follows content, rather than requiring a setting change.
+
+## Implementation and focused verification — 2026-10-29
+
+PR: https://github.com/billslack2/videoprocessor/pull/226 (updated existing BGRA fix PR; not merged or publicly released).
+
+- Added the native P210 frame contract, two-plane layout/bounds validation and ABI 32. Existing encoding identifiers are preserved.
+- Compatible VP Renderer consumers borrow the retained SDK capture destination directly for two-plane upload, without a capture repack, conversion formatter/worker or intermediate conversion image. Legacy DirectShow and explicit P010 consumers still receive v210.
+- Capture renegotiation and delivery guards cover consumer changes; the renderer rejects incompatible forced-P010 P210 states. Source analysis retains full-height chroma and original 10-bit codes, including all precision-sensitive picture-evidence paths.
+- Complete x64 Release solution build succeeded on the clean exact commit. All 487 focused native tests passed, including nine new native P210 tests and existing capture/DV/analysis/ABI regressions. The first run's one failure was a test fixture below DisplayMode's supported raster minimum; corrected before the exact-commit passing run.
+- Required GPU/caption tests against libplacebo 360 and 377 are running. Native P210 physical-card qualification is still pending. User configuration already selects Magewell and VP Renderer conversion NONE; no configuration edit is required.
+
+Local evidence: E:\codex\diagnostics\magewell-native-p210-20261029, including native-p210-final.trx and the pinned GPU run gpu-5dfb96dc. Source worktree remains E:\codex\videoprocessor\magewell-native-p210-20261029; PR branch codex/magewell-bgra-capture-20261029 was fast-forwarded to the same commit.
