@@ -1,0 +1,67 @@
+{
+  "betaBranch": "v1.4.02-beta",
+  "capturePr": 226,
+  "captureCommit": "5dfb96dc7c35b4ffa28543e851aa3150f5e5be8d",
+  "captureMerge": "561fcab49be5285c0059a02713f00502f53ae256",
+  "focusStatsPr": 227,
+  "focusStatsCommit": "8b9095f316c87a9f21c67821ac5be92b1472e615",
+  "focusStatsMerge": "7c2735f067eb0418e97b2ea49e1a55c0befa6856",
+  "madvrPr": 200,
+  "madvrIntegrationCommit": "98b95e2531beeefda51f2c7ddef24ed1cfd08fcb",
+  "madvrMerge": "9f5c9749a6732d3ca55a4c45cae7b61b04192811",
+  "configuration": "x64 Release",
+  "tests": {
+    "total": "277",
+    "executed": "277",
+    "passed": "277",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "deployedThisMergeRun": false,
+  "artifacts": [
+    {
+      "path": "VideoProcessor-GUI.exe",
+      "sha256": "E360650B6ED1EC2E7B1DE237D712D30AF2DB35258A3BA539C03AC41A7D4D8C31",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "E360650B6ED1EC2E7B1DE237D712D30AF2DB35258A3BA539C03AC41A7D4D8C31"
+      }
+    },
+    {
+      "path": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "DE3D71A28A60C5D6A7CAB8B7E756293E908639AAB0656C4E5A45DA3E05823F5F",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "DE3D71A28A60C5D6A7CAB8B7E756293E908639AAB0656C4E5A45DA3E05823F5F"
+      }
+    },
+    {
+      "path": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "68FAC0A7E13BBE834FAF388E1C39DC27941DFF8C95EF152221223C262696CB08",
+      "runtimeRecord": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "68FAC0A7E13BBE834FAF388E1C39DC27941DFF8C95EF152221223C262696CB08"
+      }
+    }
+  ]
+}

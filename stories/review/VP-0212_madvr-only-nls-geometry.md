@@ -4,6 +4,8 @@
 
 Review
 
+2026-10-29: User-authorized [PR #200](https://github.com/billslack2/videoprocessor/pull/200) merged into beta at `9f5c9749a6732d3ca55a4c45cae7b61b04192811`. Clean combined source `98b95e2531beeefda51f2c7ddef24ed1cfd08fcb`, based on beta after PRs #226 and #227, passed a full x64 Release build and all 277 selected integration checks. [Exact evidence](../assets/VP-0212/integration-20261029/README.md). Live madVR acceptance remains open; no deployment or release was performed by this merge.
+
 2026-10-25: Implemented and pushed clean commit
 `a5769e53a89c4684104feb90cfedd2de06eff55e` to
 [draft PR #200](https://github.com/billslack2/videoprocessor/pull/200).

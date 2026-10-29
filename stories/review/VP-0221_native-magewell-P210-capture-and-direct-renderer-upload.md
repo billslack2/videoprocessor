@@ -4,9 +4,11 @@
 
 Review
 
+2026-10-29: User-authorized [PR #226](https://github.com/billslack2/videoprocessor/pull/226) merged into beta at `561fcab49be5285c0059a02713f00502f53ae256`, using the already qualified clean source `5dfb96dc`. The dependent focus/stats correction merged as [PR #227](https://github.com/billslack2/videoprocessor/pull/227), followed by madVR NLS [PR #200](https://github.com/billslack2/videoprocessor/pull/200). [Combined integration evidence](../assets/VP-0212/integration-20261029/README.md). Broader capture performance/card qualification remains open, including the newly reported sixty-Hz delivery concern.
+
 Implemented at 5dfb96dc7c35b4ffa28543e851aa3150f5e5be8d in PR #226. Complete x64 Release solution build, 487 focused standard checks, 16 beta feature checks, and both 208-test GPU/caption suites passed on the exact clean commit. The user's Pro Capture HDMI 4K+ validated ordinary SDR and HDR10 native P210 plus a clean content transition through BGRA Dolby Vision. User confirmed the native-capture OSD label and SDR picture.
 
-Deployed the matching host, both renderers, Config and ConfigDiscovery; all five hashes were verified during hardware validation. Backup: C:\Videoprocessor\vp\backups\magewell-native-p210-5dfb96dc-20261029-110238. No configuration edits. A newer concurrent stats build e6f8c62 subsequently superseded the host/renderers; Git confirms it contains 5dfb96dc, and it was preserved. This validation applies to 5dfb96dc, not the later stats changes. PR remains open with no public release update. Full driver/card matrix, calibrated color/performance and extended queue-pressure qualification remain separate.
+Deployed the matching host, both renderers, Config and ConfigDiscovery; all five hashes were verified during hardware validation. Backup: C:\Videoprocessor\vp\backups\magewell-native-p210-5dfb96dc-20261029-110238. No configuration edits. A newer concurrent stats build e6f8c62 subsequently superseded the host/renderers; Git confirms it contains 5dfb96dc, and it was preserved. This validation applies to 5dfb96dc, not the later stats changes. PR was subsequently merged on 2026-10-29; no public release update is included in that merge. Full driver/card matrix, calibrated color/performance and extended queue-pressure qualification remain separate.
 
 ## Objective
 
