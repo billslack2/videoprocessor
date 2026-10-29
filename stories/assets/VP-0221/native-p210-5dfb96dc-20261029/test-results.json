@@ -1,0 +1,4632 @@
+{
+  "sourceCommit": "5dfb96dc7c35b4ffa28543e851aa3150f5e5be8d",
+  "runs": [
+    {
+      "run": "focused-standard",
+      "passed": 487,
+      "failed": 0,
+      "trxSha256": "4A91D3C194FC51FCA71C4F0F502143D790D27E20EA2E6B88496843735B2CC994",
+      "results": [
+        {
+          "name": "WindowCloseAlwaysAdvancesSafeShutdown",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000316"
+        },
+        {
+          "name": "UnrelatedCurrentIdDiscardsPendingAndActiveDm",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003106"
+        },
+        {
+          "name": "Rgb8TunnelUsesDecodedEvidenceAndExplicitSdrAcrossBothConsumers",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000295"
+        },
+        {
+          "name": "MainConfigSchemaUsesSharedTypedValidation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0050858"
+        },
+        {
+          "name": "RendererConfigSelectionDefaultsToPrimaryConfig",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000051"
+        },
+        {
+          "name": "RejectedOrInvalidCandidateCannotAppearAsRendererInput",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000220"
+        },
+        {
+          "name": "FakeCardCapturesBt601AndRetainsFrameAcrossStop",
+          "outcome": "Passed",
+          "duration": "00:00:00.1088379"
+        },
+        {
+          "name": "Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014147"
+        },
+        {
+          "name": "CaptionOnWouldBePublicationFrameCannotCompleteStaleExperimentalProof",
+          "outcome": "Passed",
+          "duration": "00:00:00.0055665"
+        },
+        {
+          "name": "PoolBudgetExhaustionInvalidatesInsteadOfSilentlyStarving",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003035"
+        },
+        {
+          "name": "QueuedAdoptionRejectsExperimentalTargetButAcceptsNativeOutwardAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000096"
+        },
+        {
+          "name": "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000173"
+        },
+        {
+          "name": "BufferOutlivesCapturePool",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000264"
+        },
+        {
+          "name": "SharedRefreshPolicyDoesNotWarnAsLegacyRendererPolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0018183"
+        },
+        {
+          "name": "OlderPluginStaticHdrFallbackUsesCopiedAcceptedMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000132"
+        },
+        {
+          "name": "AnalysisDomainChangesInvalidateEvidenceReuseButPreserveTransportIdentity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000367"
+        },
+        {
+          "name": "BlackSubmittedViewTimesOutButNoSignalCannotExposeRetiredSurface",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000319"
+        },
+        {
+          "name": "MetadataOnlyChangeCannotBypassPendingMaterialState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000094"
+        },
+        {
+          "name": "LostFrameNotificationsInvalidateInsteadOfKeepingStaleVideo",
+          "outcome": "Passed",
+          "duration": "00:00:02.2913980"
+        },
+        {
+          "name": "RenderingFeedbackClassificationKeepsMixedAndCycleSelections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000051"
+        },
+        {
+          "name": "MainConfigSchemaOwnsOnlyTheKnownLoggingKey",
+          "outcome": "Passed",
+          "duration": "00:00:00.0017847"
+        },
+        {
+          "name": "CDeckLinkLimitedRgbAVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0155281"
+        },
+        {
+          "name": "DisplayRuleSubstringGrammarAndNormalization",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000324"
+        },
+        {
+          "name": "CR12BtoRGB48VideoFrameFormatterRejectsInvalidWidth",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001188"
+        },
+        {
+          "name": "RenderingFeedbackRemainsSuppressedDuringScriptOnly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000024"
+        },
+        {
+          "name": "NativeP210LayoutUsesTwoFullHeightPlanesAndRejectsTruncation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0115956"
+        },
+        {
+          "name": "PpmNumericSentinelDoesNotEnableAutomaticMode",
+          "outcome": "Passed",
+          "duration": "00:00:00.0056363"
+        },
+        {
+          "name": "OutwardRoundingIncludesUnmeasuredBoundaryStripsAtFourK",
+          "outcome": "Passed",
+          "duration": "00:00:00.0701442"
+        },
+        {
+          "name": "Vp0097ShortcutKeyCombinesWithOptionalProfileRule",
+          "outcome": "Passed",
+          "duration": "00:00:00.0063987"
+        },
+        {
+          "name": "TunnelSdrFallbackPreservesLimitedAndFullBlackWhiteAndDomain",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000272"
+        },
+        {
+          "name": "RepeatedFramesAndMovingVerticalEndpointsCannotMatureAnAnchor",
+          "outcome": "Passed",
+          "duration": "00:00:00.8519534"
+        },
+        {
+          "name": "WaitingGeometryDoesNotAdvanceCoordinatedShieldReleaseState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000848"
+        },
+        {
+          "name": "Vp0097ProfileFileOrderIsPriorityAndRootShortcutSelectsDefault",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010529"
+        },
+        {
+          "name": "IndependentSenderHasKnownCrcAndPackingAnchors",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002028"
+        },
+        {
+          "name": "CaptionAfterAcquisitionUsesOutwardPresentationWithoutChangingLogicalAspect",
+          "outcome": "Passed",
+          "duration": "00:00:00.0059631"
+        },
+        {
+          "name": "ConfigurationPublicationPreservesTransientPresentation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000072"
+        },
+        {
+          "name": "CARGBtoP010AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0130601"
+        },
+        {
+          "name": "AlphaNativeRgbLayoutPreservesComponentBitfields",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000226"
+        },
+        {
+          "name": "PairedShadowPausedAndRepeatedFramesDoNotManufactureMotion",
+          "outcome": "Passed",
+          "duration": "00:00:00.0766008"
+        },
+        {
+          "name": "Vp0123InputProcessingChildIsNotADisplayProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010680"
+        },
+        {
+          "name": "MovieExitBlanksFirstUntrustedPictureButRetainsDmForRecovery",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008657"
+        },
+        {
+          "name": "UnifiedActionsRejectArgumentVariableForWrongEvent",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011387"
+        },
+        {
+          "name": "SetupFailureReturnsToReadyWithoutThrowing",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000183"
+        },
+        {
+          "name": "MainConfigSchemaValidatesTargetOnlyDisplaySessionMode",
+          "outcome": "Passed",
+          "duration": "00:00:00.0018662"
+        },
+        {
+          "name": "Vp0103VerticalAlignmentDefaultsValidatesAndPublishes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0076866"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatter720pPreservesAllActivePixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0019152"
+        },
+        {
+          "name": "Vp0159ShaderProfilesShareRulesWithoutInheritance",
+          "outcome": "Passed",
+          "duration": "00:00:00.0061364"
+        },
+        {
+          "name": "UnsupportedSignalRecoversWithoutRestartOrDriverNotification",
+          "outcome": "Passed",
+          "duration": "00:00:00.4411306"
+        },
+        {
+          "name": "RawRangeSetupFailuresNeverDeliverFramesAndRestorePartialWrites",
+          "outcome": "Passed",
+          "duration": "00:00:00.0006171"
+        },
+        {
+          "name": "HistoryRetainsAtMost32ObservationsAndOnlyThreeSeconds",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016086"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatterTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001711"
+        },
+        {
+          "name": "FormatterMetadataAuthorizesOnlyRecognizedSdrAlignmentsBeforeDvLock",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001884"
+        },
+        {
+          "name": "CR12BtoRGB48VideoFrameFormatter4KSmokeTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.1846350"
+        },
+        {
+          "name": "SubtitleTextReductionIsOptionalBoundedAndMovedProfileOnly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0022713"
+        },
+        {
+          "name": "RawModeSwitchRestoresRangeAndPublishesNewStateBeforeOrdinaryFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.3256318"
+        },
+        {
+          "name": "ConfigurationEditorRevealIntentSurvivesColdStartupTransitions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000020"
+        },
+        {
+          "name": "ActualAsymmetryAndTwoWeakEdgesDoNotInventAReflectedAperture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0781146"
+        },
+        {
+          "name": "UnifiedActionsPublishCommittedSourceAndProfileEvents",
+          "outcome": "Passed",
+          "duration": "00:00:00.0042197"
+        },
+        {
+          "name": "ApplicationInterfaceNoUiAlwaysWins",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000022"
+        },
+        {
+          "name": "ConcurrentRequestsPublishExactlyOnce",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014800"
+        },
+        {
+          "name": "SubtitleHdrAnalysisOverridesLegacyZoomForEveryStyle",
+          "outcome": "Passed",
+          "duration": "00:00:00.0135519"
+        },
+        {
+          "name": "CDeckLinkRGBToP010VideoFrameFormatterGoldenTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0664356"
+        },
+        {
+          "name": "EveryIdentityChangeCutAndSequenceDiscontinuityDiscardsPendingProof",
+          "outcome": "Passed",
+          "duration": "00:00:00.0502784"
+        },
+        {
+          "name": "CUYVYtoP210AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000882"
+        },
+        {
+          "name": "GeneralRecoveryToggleDefaultsBoundedAndValidatesBothModes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0080437"
+        },
+        {
+          "name": "OptionalRendererUsesOnePrivateDependencyDirectory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0039946"
+        },
+        {
+          "name": "ModernBackgroundAndConfigurationModalPoliciesAreFailSafe",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000035"
+        },
+        {
+          "name": "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers",
+          "outcome": "Passed",
+          "duration": "00:00:00.8248174"
+        },
+        {
+          "name": "RendererConfigSelectionFollowsPrimaryConfig",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000049"
+        },
+        {
+          "name": "CR12BtoRGB48VideoFrameFormatterBlackWhiteTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.1786735"
+        },
+        {
+          "name": "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000238"
+        },
+        {
+          "name": "SmallBoundaryChangesCannotWalkTheOriginalAnchor",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008841"
+        },
+        {
+          "name": "SourcePixelsExposeLocalOpposingRunsWithoutPolicyAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008051"
+        },
+        {
+          "name": "CalibrationMigrationUsesLiteralRootAndPreservesMixedColorOverrides",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000761"
+        },
+        {
+          "name": "OptionalNativeSubtitleCaptureReportsAcquisitionEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000632"
+        },
+        {
+          "name": "UnsupportedHeaderCannotAuthorizeDolbyVisionLock",
+          "outcome": "Passed",
+          "duration": "00:00:00.0006876"
+        },
+        {
+          "name": "ContinuationBoundariesAndUnknownBlocksPreserveL1",
+          "outcome": "Passed",
+          "duration": "00:00:00.0024307"
+        },
+        {
+          "name": "PublishesImmediatelyAndOnlyOnceWhilePending",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000076"
+        },
+        {
+          "name": "ErrorKeepsClockAvailableUntilStop",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000130"
+        },
+        {
+          "name": "RejectedInvalidOrSdrCandidateNeverSuppliesStaticHdrFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000030"
+        },
+        {
+          "name": "ProfileChangeOverlayUsesFriendlyOrderedLabels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000352"
+        },
+        {
+          "name": "Rgb8ScalarAndAvx2PreserveEveryTwelveBitCodeAndIgnoreAlpha",
+          "outcome": "Passed",
+          "duration": "00:00:00.0692696"
+        },
+        {
+          "name": "OptionalCapturedDeckLink8BitYuvFrameReplay",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000547"
+        },
+        {
+          "name": "EqualAcceptedStateOmitsWireSuffixAndCopiesValuesAtAcceptance",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000058"
+        },
+        {
+          "name": "FrameOffsetAutoAndOmissionUseStableDefault",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000736"
+        },
+        {
+          "name": "ManualQueueSelectionUsesSavedSectionIdWithoutShortcut",
+          "outcome": "Passed",
+          "duration": "00:00:00.0075682"
+        },
+        {
+          "name": "ColonAssignmentsPreserveEqualityExpressions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009865"
+        },
+        {
+          "name": "StartupAdmissionClosesOncePerRealSourceGenerationAcrossUnrelatedResets",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000239"
+        },
+        {
+          "name": "UnifiedColorOutputRuntimeMigrationRetainsRulesAndRejectsMalformedProfiles",
+          "outcome": "Passed",
+          "duration": "00:00:00.0019153"
+        },
+        {
+          "name": "PreparedNativeRgbProfilesShareExactSamplingAndOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0005568"
+        },
+        {
+          "name": "ExperimentalGeometryCannotEnterRecentTrustedHistoryOrReacquireAsNative",
+          "outcome": "Passed",
+          "duration": "00:00:00.0055028"
+        },
+        {
+          "name": "AlphaHostReconstructionRevealsOnlyCurrentGenerationAndTarget",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000023"
+        },
+        {
+          "name": "CDeckLinkRGBToP010VideoFrameFormatterR12BEndpointsAndWidthValidation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001401"
+        },
+        {
+          "name": "ZoomShortcutNeverChangesSelectedScreenProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0032762"
+        },
+        {
+          "name": "CDeckLinkLimitedRgbToP010MatchesBT2020ReferenceCodes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002765"
+        },
+        {
+          "name": "DecodedP210FixtureLogsDirectDetectorAndActivePictureCosts",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000483"
+        },
+        {
+          "name": "InvalidDvFrameBreaksPartialTransitionVotesWithoutChangingTransportSequence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000559"
+        },
+        {
+          "name": "UnifiedQueueProfileRestartPolicyUsesCommittedLatestQueueSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0049574"
+        },
+        {
+          "name": "ConfigurationEditorActivationAckBreaksReverseCallbackCycle",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000017"
+        },
+        {
+          "name": "MismatchedContinuationIdsFlagsAndKindsAreRejected",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009364"
+        },
+        {
+          "name": "V210P010AndP210SupportStandardResolutionMatrix",
+          "outcome": "Passed",
+          "duration": "00:00:00.0741543"
+        },
+        {
+          "name": "PairedShadowResetAndGenerationChangeDiscardRefinedAnchor",
+          "outcome": "Passed",
+          "duration": "00:00:00.2073787"
+        },
+        {
+          "name": "CurrentExteriorLumaOrChromaObstructionPreventsRefinement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0526046"
+        },
+        {
+          "name": "LldvSdrToPqRewriteDoesNotInventAColorspaceDifference",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000054"
+        },
+        {
+          "name": "ExhaustedProbeBudgetReturnsUnchangedCoarseObservation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0280485"
+        },
+        {
+          "name": "BlackSceneIsPresentAndNotConfusedWithMissingL1",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000103"
+        },
+        {
+          "name": "ModernOperatorLayoutScalesApprovedGeometryWithDpi",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000173"
+        },
+        {
+          "name": "MovingArtworkCounterexampleRemainsAnExplicitAcquisitionLimitation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0040394"
+        },
+        {
+          "name": "EquivalentP010P210AndNativeV210ProduceTheSameMeasurements",
+          "outcome": "Passed",
+          "duration": "00:00:00.0032330"
+        },
+        {
+          "name": "ShaderPreparationSharesProfileBannerAcrossSelectionChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000209"
+        },
+        {
+          "name": "CheckedInVp0079ConfigurationPassesStartupSchemas",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012558"
+        },
+        {
+          "name": "FrozenExteriorCutoffCannotRiseWithCurrentBackgroundFloor",
+          "outcome": "Passed",
+          "duration": "00:00:00.0041138"
+        },
+        {
+          "name": "NamedBaseIdentityAndRootCollision",
+          "outcome": "Passed",
+          "duration": "00:00:00.0044474"
+        },
+        {
+          "name": "RecoveredHeaderAndDamagedContinuationDoNotBlankKnownDvPixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003667"
+        },
+        {
+          "name": "LayoutChangeResetsDolbyLockAndCannotReuseOldDm",
+          "outcome": "Passed",
+          "duration": "00:00:00.0007815"
+        },
+        {
+          "name": "Vp0159ShaderProfilesResolveRootBaseSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009647"
+        },
+        {
+          "name": "ThinBrightLineDoesNotClaimInwardPersistence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008694"
+        },
+        {
+          "name": "PersistentCopyFailureInvalidatesAndReportsOnlyOnce",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002948"
+        },
+        {
+          "name": "RetainedInvalidSupersedesUnappliedValidWithoutStrandingIngress",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000113"
+        },
+        {
+          "name": "UnifiedActionsRejectValueEncodedEventNames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010415"
+        },
+        {
+          "name": "LumaAndColorWitnessesAreReportedSeparately",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014934"
+        },
+        {
+          "name": "NoopFormatterPreservesEveryDeckLinkInputRangeContract",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000458"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatterDciWidthSmokeTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0168244"
+        },
+        {
+          "name": "InvalidAndOversizedHeadersNeverReachOwner",
+          "outcome": "Passed",
+          "duration": "00:00:00.0021790"
+        },
+        {
+          "name": "MadVRPackedTwelveBitIngressUsesP010Policy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000062"
+        },
+        {
+          "name": "SceneValuesRemainDistinctFromSourceRangeAndContentLight",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000232"
+        },
+        {
+          "name": "RendererConfigSelectionExplicitOverrideWins",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000103"
+        },
+        {
+          "name": "NativeP210CopyFailureInvalidatesAndDoesNotPublishPartialPlanes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003218"
+        },
+        {
+          "name": "LldvProfilesUseOrderedSelectionAndInheritBaselineMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:00.0025929"
+        },
+        {
+          "name": "RealExpansionAndGradualAspectRampsCannotReuseScopeHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0047516"
+        },
+        {
+          "name": "EveryContextGenerationInvalidatesOldSpatialCoverage",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016345"
+        },
+        {
+          "name": "RendererProfileConfigReadsOrderedIndependentGroups",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013430"
+        },
+        {
+          "name": "FreshConstructionDoesNotConsumeNewerOrChangedProfileIntent",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000298"
+        },
+        {
+          "name": "NearBlackStartupEpisodeReopensBeforeFreshOrdinaryCropConfirmation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0196006"
+        },
+        {
+          "name": "RendererProfileConfigRejectsWrongOwnerAndUnknownSetting",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012488"
+        },
+        {
+          "name": "PreparedCanonicalNativeFramesRetainTheirBackingOwner",
+          "outcome": "Passed",
+          "duration": "00:00:00.0072029"
+        },
+        {
+          "name": "ProfileActionCircuitBreakerBoundsRecursiveLaunches",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000164"
+        },
+        {
+          "name": "CurrentObstructionClearsHistoryAndCleanRecoveryStartsFresh",
+          "outcome": "Passed",
+          "duration": "00:00:00.0032175"
+        },
+        {
+          "name": "CommandLineConfigOptionRejectsDuplicates",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000037"
+        },
+        {
+          "name": "RecoveredRangeReplacesFallbackAndClearsInventedContentLight",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000164"
+        },
+        {
+          "name": "AbsentSdkReportsNoDevicesAndStopsCleanly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000069"
+        },
+        {
+          "name": "CV210toP210VideoFrameFormatterTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000048"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatterAlignedPathsRemainEquivalent",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009226"
+        },
+        {
+          "name": "NativeP210CapabilityPreservesRgbByteLayoutsAndRejectsMissingPlaneFormat",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000476"
+        },
+        {
+          "name": "MissingOrUnsupportedCapturePixelsCannotBorrowRenderConversion",
+          "outcome": "Passed",
+          "duration": "00:00:00.0031364"
+        },
+        {
+          "name": "UYVYAndHDYCProduceByteIdenticalP010AndP210Frames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000983"
+        },
+        {
+          "name": "RejectedQueueProfileResetSubmissionRestoresExactIdentity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000280"
+        },
+        {
+          "name": "SubtitleBackgroundLayoutDefaultsValidationAndLiveProfilePolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0021146"
+        },
+        {
+          "name": "Rgb12CompatibilityRequiresP210AndEvenWidth",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001366"
+        },
+        {
+          "name": "CommandLineConfigOptionAcceptsSeparateAndEqualsValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000075"
+        },
+        {
+          "name": "AdvanceMetadataAppliesOnlyToImmediateNextPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003121"
+        },
+        {
+          "name": "FullscreenActivationNeverStealsAnotherProcessForeground",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000020"
+        },
+        {
+          "name": "ShrinkingOrMissingFreshProposalKeepsPendingReferenceWhileOldExteriorIsSafe",
+          "outcome": "Passed",
+          "duration": "00:00:00.0064970"
+        },
+        {
+          "name": "ScaleOsdBooleanIsValidatedAndRestartsEitherRenderer",
+          "outcome": "Passed",
+          "duration": "00:00:00.0138107"
+        },
+        {
+          "name": "ThrowingCallbackStopsCaptureAndUnregistersNotification",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000460"
+        },
+        {
+          "name": "CommandLineConfigOptionRejectsMissingValue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000022"
+        },
+        {
+          "name": "ColorCalibrationAliasesResolveBeforeInheritance",
+          "outcome": "Passed",
+          "duration": "00:00:00.0025647"
+        },
+        {
+          "name": "VideoOnlyRetainsForegroundEscapeShortcuts",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000085"
+        },
+        {
+          "name": "FoundDeviceSurvivesDiscovererStopWhileClientRetainsIt",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000123"
+        },
+        {
+          "name": "RendererProfileConfigValidatesCalibrationLutContract",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000055"
+        },
+        {
+          "name": "Vp0089AndVp0131TypedAdvancedNlsSettingsResolveForAlpha",
+          "outcome": "Passed",
+          "duration": "00:00:00.0018719"
+        },
+        {
+          "name": "RealRendererDecodesRgb8WithNativeUploadEnabled",
+          "outcome": "Passed",
+          "duration": "00:00:00.7329386"
+        },
+        {
+          "name": "StatsOsdWholePercentUiUsesRebasedDefaultAndSharedParsing",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000588"
+        },
+        {
+          "name": "IndexedShortcutKeyRejectsZeroAndMalformedValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "TimeRollbackSequenceRollbackAndObservationGapDiscardHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0017304"
+        },
+        {
+          "name": "NativeTenBitRgbIsSampledButEightBitRgbAbstains",
+          "outcome": "Passed",
+          "duration": "00:00:00.0021197"
+        },
+        {
+          "name": "CR12BtoRGB48UsesDocumentedFullRangeScalingAtVideoCodePoints",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001995"
+        },
+        {
+          "name": "OmittedHardwareSelectionsUseFirstDiscoveredValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000026"
+        },
+        {
+          "name": "EightBitPackedAndConvertedYuvDoNotAcquireFalsePrecision",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001732"
+        },
+        {
+          "name": "FreshAlphaConstructionConsumesMatchingPendingProfileReset",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000115"
+        },
+        {
+          "name": "RawMagewellCapturePreservesDvForFullLimitedAndUnknownWireRanges",
+          "outcome": "Passed",
+          "duration": "00:00:01.9697100"
+        },
+        {
+          "name": "Vp0097NamedViewportsUseFileOrderAndIgnoreLabels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013609"
+        },
+        {
+          "name": "PrecisionMetadataCannotPromoteUnknownOrEightBitSourcePrecision",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016848"
+        },
+        {
+          "name": "OrdinaryLimitedRgbConversionCorruptsTunnelAndCannotBeAdmitted",
+          "outcome": "Passed",
+          "duration": "00:00:00.1091338"
+        },
+        {
+          "name": "FreshRendererConsumesLatchedRestartIntent",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000025"
+        },
+        {
+          "name": "BackendInputSettingsRemainScoped",
+          "outcome": "Passed",
+          "duration": "00:00:00.0222361"
+        },
+        {
+          "name": "ActualSparseSourceNeedsTemporalEvidenceAndOrdinaryPublicationConfirmation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0057202"
+        },
+        {
+          "name": "DisplayRecoveryDetectionIsStateFileScoped",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010483"
+        },
+        {
+          "name": "RendererProfileConfigAllowsOmittedGroupsWithoutPlaceholders",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010743"
+        },
+        {
+          "name": "UnifiedActionsRouteByBuiltInRendererAliasOrWildcard",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012156"
+        },
+        {
+          "name": "ProfileOverlaySkipsResolutionWhenSelectionsAreUnchanged",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000180"
+        },
+        {
+          "name": "AnyConfirmedNativeAspectAndBarAxisCanRevealAfterSettling",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000227"
+        },
+        {
+          "name": "ProfileChangeDisplayDurationIsBoundedAndLive",
+          "outcome": "Passed",
+          "duration": "00:00:00.0020063"
+        },
+        {
+          "name": "RefinementIsBoundedAndCannotMutateSourceOrNativeEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0370582"
+        },
+        {
+          "name": "Rgb8PacketRedundancyContinuationAndTransitionRecovery",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014669"
+        },
+        {
+          "name": "IndexedShortcutKeyParsesOneBasedIndex",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000113"
+        },
+        {
+          "name": "PairedShadowRefinesMovingEdgeWithoutChangingCoarseOrSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.3039083"
+        },
+        {
+          "name": "ManualCommandsUseNamedRequestsOnOwnerThread",
+          "outcome": "Passed",
+          "duration": "00:00:00.0017628"
+        },
+        {
+          "name": "LateSinkReceivesAlreadyLatchedRequest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000227"
+        },
+        {
+          "name": "V210P010PacedCpuBenchmark",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000285"
+        },
+        {
+          "name": "HdrToneMapTargetGammaAndTargetPrimariesValidateCanonicalAndOldKeys",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000448"
+        },
+        {
+          "name": "SelectedOwnerMustBeQualifiedButNoCaptionIsRequired",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000365"
+        },
+        {
+          "name": "QueueRecoveryUsesDefaultQueueAndRejectsLegacyDuplicates",
+          "outcome": "Passed",
+          "duration": "00:00:00.0041681"
+        },
+        {
+          "name": "P210FormatterParityPreservesOneTwoAndThreeLineGeometryAcrossNativeInputs",
+          "outcome": "Passed",
+          "duration": "00:00:01.2847315"
+        },
+        {
+          "name": "CalibrationMigrationPreservesDistinctSetsSelectorsAndArchiveCollisions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001151"
+        },
+        {
+          "name": "RendererProfileConfigRejectsConfigurationVersionKeys",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011543"
+        },
+        {
+          "name": "SuccessfulCompletionAllowsNextRequest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000062"
+        },
+        {
+          "name": "DeclaredLengthBoundsAndMalformedExtensionsDoNotReplaceDm",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009403"
+        },
+        {
+          "name": "VideoOnlyFillsClientWithoutChangingOuterWindowBounds",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000240"
+        },
+        {
+          "name": "ProposalsAndFailedSubmissionCannotReleaseStartupCover",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000167"
+        },
+        {
+          "name": "NoUsableCardReleasesSdkAndReportsUnavailableReason",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000159"
+        },
+        {
+          "name": "AdmittedCropUsesCurrentNativeRetentionWithoutDiagnosticExpiryBounce",
+          "outcome": "Passed",
+          "duration": "00:00:00.1124583"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatterPreservesPaddedTailSamples",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008261"
+        },
+        {
+          "name": "ScreenIntentSurvivesRunningProfileScript",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000036"
+        },
+        {
+          "name": "InvalidInitialGeometryCanRecoverByPolling",
+          "outcome": "Passed",
+          "duration": "00:00:00.4342115"
+        },
+        {
+          "name": "DisableOrLossOfStartupEligibilityCannotRetainOrResurrectPendingCrop",
+          "outcome": "Passed",
+          "duration": "00:00:00.0100600"
+        },
+        {
+          "name": "FreshDirectShowConstructionRequiresCompleteConsistentAudit",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000162"
+        },
+        {
+          "name": "ProCapture4kPlusAdvertisedFormatsSelectBgraByteOrder",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000242"
+        },
+        {
+          "name": "OldLutInputKeysRemainLoadableInTheirOriginalSections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000137"
+        },
+        {
+          "name": "DirectShowNominalRangeFollowsFormatterContractUnlessForced",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000080"
+        },
+        {
+          "name": "MatureCandidateRequiresFreshValidationBetweenDiscoveryTicks",
+          "outcome": "Passed",
+          "duration": "00:00:00.0046514"
+        },
+        {
+          "name": "ClassicSubtitleDefaultsRestoreDriftAndPreserveExplicitZero",
+          "outcome": "Passed",
+          "duration": "00:00:00.0026703"
+        },
+        {
+          "name": "ManualMotionSelectionOverridesRulesAndPublishesSavedSection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012182"
+        },
+        {
+          "name": "ManualProfileAndActionCommandsUseSavedRuntimeModel",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013412"
+        },
+        {
+          "name": "ApplicationInterfaceNoUiSuppressesInvalidSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000132"
+        },
+        {
+          "name": "Vp0099MaximumStretchRatioIsValidatedAndPublished",
+          "outcome": "Passed",
+          "duration": "00:00:00.0116791"
+        },
+        {
+          "name": "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain",
+          "outcome": "Passed",
+          "duration": "00:00:00.1269762"
+        },
+        {
+          "name": "CR210toRGB48VideoFrameFormatter4KSmokeTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.1396993"
+        },
+        {
+          "name": "UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0031646"
+        },
+        {
+          "name": "StatsOsdSizePercentValidatesSharedRendererIngressAndRestarts",
+          "outcome": "Passed",
+          "duration": "00:00:00.0211511"
+        },
+        {
+          "name": "RendererProfileConfigRejectsRemovedViewportAliases",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010342"
+        },
+        {
+          "name": "PausedInteriorNoiseAndDriftingAsymmetricTitlesNeverAcquire",
+          "outcome": "Passed",
+          "duration": "00:00:00.0214110"
+        },
+        {
+          "name": "ManualFixedOrAutomaticCropOffBypassesOnlyGeometryWait",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000160"
+        },
+        {
+          "name": "SdiRgbDepthSelectsNativeFormatsAndConvertsTwelveBit",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000289"
+        },
+        {
+          "name": "ApplicationInterfaceValuesAreCaseInsensitiveAndTrimmed",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000074"
+        },
+        {
+          "name": "LegacyRendererPolicyFallsBackToHiddenForMalformedValue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010552"
+        },
+        {
+          "name": "ApplicationInterfaceMissingCommandLineValueFallsBackToModern",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000025"
+        },
+        {
+          "name": "RendererConfigRejectsWrongCanonicalOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011065"
+        },
+        {
+          "name": "CR210toRGB48AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0435153"
+        },
+        {
+          "name": "Vp0097LegacyViewportRootRetainsPrecedenceAndRejectsDefaultId",
+          "outcome": "Passed",
+          "duration": "00:00:00.0078723"
+        },
+        {
+          "name": "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies",
+          "outcome": "Passed",
+          "duration": "00:00:00.0033248"
+        },
+        {
+          "name": "V210P010ConfigurationDefaultsAndExplicitOverrides",
+          "outcome": "Passed",
+          "duration": "00:00:00.0116266"
+        },
+        {
+          "name": "NoUiVideoGeometryIsSixteenByNineAtDefaultAndMinimum",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000111"
+        },
+        {
+          "name": "CDeckLinkRGBToP010VideoFrameFormatterR12BGoldenTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0233035"
+        },
+        {
+          "name": "HdmiRgb12DeliversConvertedYuvFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.1088945"
+        },
+        {
+          "name": "ClassicSubtitleControlsResolveFromTheirOwnProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011600"
+        },
+        {
+          "name": "Vp0159ReorderedNlsFallbackSelectsFirstProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012794"
+        },
+        {
+          "name": "SourceFormatViewportAndOutputChangesClearUnsubmittedReadiness",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000258"
+        },
+        {
+          "name": "Vp0098RejectsRemovedSecondScreenAspect",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010565"
+        },
+        {
+          "name": "V210P010AdvancedMatchesAnalyticLanczosOracle",
+          "outcome": "Passed",
+          "duration": "00:00:00.7309065"
+        },
+        {
+          "name": "DisplayRuleExpressionTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000339"
+        },
+        {
+          "name": "RendererProfileConfigUsesFirstMatchingProfileInFileOrder",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002217"
+        },
+        {
+          "name": "MixedNativeAndExperimentalFramesCannotShareInitialConfirmationVotes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000394"
+        },
+        {
+          "name": "ApplicationInterfaceCommandLineOverridesConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000024"
+        },
+        {
+          "name": "SubtitleSpatialCleanupModesValidateWithoutChangingLegacyChoices",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000210"
+        },
+        {
+          "name": "RendererIngressRejectsFramesAfterCaptureStatePublication",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000053"
+        },
+        {
+          "name": "DenseSourceRunRefinesEitherOpposingEdgeWithoutInflatingCoverage",
+          "outcome": "Passed",
+          "duration": "00:00:00.1605060"
+        },
+        {
+          "name": "RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0018191"
+        },
+        {
+          "name": "RefreshFailureReleasesSdkAndReportsActionableReason",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000068"
+        },
+        {
+          "name": "StaticHdrMetadataOnlyChangeRetainsLiveIngress",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000036"
+        },
+        {
+          "name": "V210P010BlockingWorkersWakeAndReloadWithoutStaleFrames",
+          "outcome": "Passed",
+          "duration": "00:00:02.8366712"
+        },
+        {
+          "name": "InitializationFailureUnloadsWithoutCallingExit",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000177"
+        },
+        {
+          "name": "MainConfigSchemaValidatesForegroundOnlyShortcutPolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0018498"
+        },
+        {
+          "name": "RendererProfileConfigResolvesGenericViewportDefaults",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000399"
+        },
+        {
+          "name": "ClientLoadsCapabilitiesAndAppliesWithoutFileAccess",
+          "outcome": "Passed",
+          "duration": "00:00:00.0857941"
+        },
+        {
+          "name": "FormatTransitionsChangeDomainAndDoNotReusePriorEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000199"
+        },
+        {
+          "name": "DeckLinkR210Rgb48ContractIsLimitedRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000113"
+        },
+        {
+          "name": "RendererProfileConfigCheckedInExamplesPassStartupValidation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0021833"
+        },
+        {
+          "name": "ModernOperatorPreviewRemainsSixteenByNineWhenResized",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000045"
+        },
+        {
+          "name": "Rgb10ToR10lFourKRepackProfileAndReference",
+          "outcome": "Passed",
+          "duration": "00:00:00.8173924"
+        },
+        {
+          "name": "RetainedInvalidCaptureStateNeverClosesLiveIngress",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000073"
+        },
+        {
+          "name": "DeckLinkRgbAndUyvyConvertersSupportStandardResolutionMatrix",
+          "outcome": "Passed",
+          "duration": "00:00:00.2321771"
+        },
+        {
+          "name": "ModernOperatorBuildIdentityUsesBranchForCleanBuildsAndCommitForDirtyBuilds",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000092"
+        },
+        {
+          "name": "P210TailAcrossRowsDoesNotReadOrWritePastRow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000335"
+        },
+        {
+          "name": "RendererIngressResumesAfterPublishedStateIsBound",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000031"
+        },
+        {
+          "name": "CV210toP010VideoFrameFormatter4K60PerformanceSmokeTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0629696"
+        },
+        {
+          "name": "InvalidOrMissingCandidateAndGridChangesCannotCarryHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008112"
+        },
+        {
+          "name": "PackedTwelveBitRgbUsesOneFullRangeNativeAnalysisDomain",
+          "outcome": "Passed",
+          "duration": "00:00:00.2801400"
+        },
+        {
+          "name": "IndexedShortcutKeyRejectsOverflow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000274"
+        },
+        {
+          "name": "AlphaFormatterOutputContractsAreExplicit",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002960"
+        },
+        {
+          "name": "SubtitleProfilesCycleIndependentlyAndIgnoreLegacyKnobs",
+          "outcome": "Passed",
+          "duration": "00:00:00.0023255"
+        },
+        {
+          "name": "CanonicalRendererAcceptsDocumentedPeakAndCalibrationLutValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011794"
+        },
+        {
+          "name": "CurrentCaptionBetweenDiscoverySamplesWithdrawsRefinedReference",
+          "outcome": "Passed",
+          "duration": "00:00:00.2064531"
+        },
+        {
+          "name": "MaterialCaptureContractChangeStillGatesIngress",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000020"
+        },
+        {
+          "name": "DefaultOffPreservesRawPixelsEvidenceAndNativeTransitionDecisions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0043185"
+        },
+        {
+          "name": "UnifiedColorOutputMigrationPreservesEveryBaselineSettingAndArchivesSelectors",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000855"
+        },
+        {
+          "name": "ConfigurationReferenceMatchesPublicFieldInventory",
+          "outcome": "Passed",
+          "duration": "00:00:00.1049286"
+        },
+        {
+          "name": "P210ToV210FourKRepackProfileAndReference",
+          "outcome": "Passed",
+          "duration": "00:00:01.7943912"
+        },
+        {
+          "name": "AllBlackAndInvalidSourcesCannotProduceAUsefulPair",
+          "outcome": "Passed",
+          "duration": "00:00:00.0113994"
+        },
+        {
+          "name": "ActiveProfilePollingReadsSnapshotWithoutPostingToOwner",
+          "outcome": "Passed",
+          "duration": "00:00:00.0020701"
+        },
+        {
+          "name": "LegacyLldvRootRemainsTheBaselineProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012003"
+        },
+        {
+          "name": "DiagnosticsDoNotMutateSourcePixelsOrExistingDetectorDecisions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0128050"
+        },
+        {
+          "name": "SceneCutsAndSubtitlesNeverRearmAnAlreadyRevealedRenderer",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000232"
+        },
+        {
+          "name": "SubtitleAssistedProofIsParityStableAcrossNativeP210P010AndDecodedDv",
+          "outcome": "Passed",
+          "duration": "00:00:00.0333373"
+        },
+        {
+          "name": "RepeatedPausedInputDoesNotInventGeometryAuthorityAndHasBoundedWait",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000317"
+        },
+        {
+          "name": "DeckLinkCapturePackingFallsBackWhenDeviceRejectsPreference",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000183"
+        },
+        {
+          "name": "Vp0089NlsPlusNewParametersHaveBackwardCompatibleDefaults",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009248"
+        },
+        {
+          "name": "DroppedNextPictureWaitsForHeaderNamingAffectedId",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003041"
+        },
+        {
+          "name": "SubstringRuleRuntimeRefreshAndManualSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0052313"
+        },
+        {
+          "name": "WeakTopUsesTheSameMovingEvidenceAndDefaultOffRemainsUnchanged",
+          "outcome": "Passed",
+          "duration": "00:00:00.3993308"
+        },
+        {
+          "name": "ReacquireWaitsForPreviousExitAndModuleRelease",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004879"
+        },
+        {
+          "name": "NearBlackTitleArtworkCannotPublishThroughOrdinaryAcquisitionConstraint",
+          "outcome": "Passed",
+          "duration": "00:00:00.0143819"
+        },
+        {
+          "name": "PersistentRestoreFailureIsReportedInsteadOfClaimingOriginalSettings",
+          "outcome": "Passed",
+          "duration": "00:00:00.1088672"
+        },
+        {
+          "name": "P010ConvertersUseOneVerticalChromaDownsamplingPolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014608"
+        },
+        {
+          "name": "RenderingProfilesUseExactParsedNames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012549"
+        },
+        {
+          "name": "IndependentFullRasterIsReadyButConservativeFallbackIsNotAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000226"
+        },
+        {
+          "name": "LoopbackRequestRunsOnOwnerThreadAndReturnsFramedResponse",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016394"
+        },
+        {
+          "name": "TemporalAcquisitionLogicalButNeverPresentedStillNeedsFreshAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.1134317"
+        },
+        {
+          "name": "SuccessKeepsModuleLoadedUntilExitInstanceCompletes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000179"
+        },
+        {
+          "name": "UnsupportedFamilyAndUnopenableCardStayHidden",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000157"
+        },
+        {
+          "name": "ActivePictureLookaheadHasExplicitProxyOverride",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000016"
+        },
+        {
+          "name": "EventActionArgumentsExpandAllSupportedValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000155"
+        },
+        {
+          "name": "AllProfileGroupsPublishThroughSharedStatus",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000600"
+        },
+        {
+          "name": "RealRendererUploadsNativeP210ForSdrAndHdrWithoutConversion",
+          "outcome": "Passed",
+          "duration": "00:00:00.5621628"
+        },
+        {
+          "name": "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000213"
+        },
+        {
+          "name": "SinglePacketReadsSignedMatricesOffsetsAndRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004072"
+        },
+        {
+          "name": "CommandLineConfigOptionIsCaseInsensitive",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000156"
+        },
+        {
+          "name": "CompletionCannotOvertakePublication",
+          "outcome": "Passed",
+          "duration": "00:00:00.0568809"
+        },
+        {
+          "name": "ModernOperatorLayoutMatchesApprovedDefaultGeometry",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000143"
+        },
+        {
+          "name": "SourceColorMetadataChangesInvalidateCanonicalEvidenceDomain",
+          "outcome": "Passed",
+          "duration": "00:00:00.0017561"
+        },
+        {
+          "name": "AlignmentChangeWithNoMetadataUsesNewLayoutAndActiveDm",
+          "outcome": "Passed",
+          "duration": "00:00:00.0005190"
+        },
+        {
+          "name": "ShutdownFinalizationHasExplicitProxyOverride",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000032"
+        },
+        {
+          "name": "NoMetadataRetainsActiveDmAndDoesNotResurrectAbsentDm",
+          "outcome": "Passed",
+          "duration": "00:00:00.0022339"
+        },
+        {
+          "name": "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000089"
+        },
+        {
+          "name": "CARGBtoP010VideoFrameFormatterUsesVpAssumedFullRangeEndpoints",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001432"
+        },
+        {
+          "name": "RgbTunnelPreservationChangeGatesIngressUntilStateAcknowledgement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000101"
+        },
+        {
+          "name": "ExplicitSdrFallbackHonorsHighAndLowRgb8Alignment",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000323"
+        },
+        {
+          "name": "FailedReloadRestoresAcceptedRendererSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000065"
+        },
+        {
+          "name": "OrdinaryMagewellRgb8RejectsRemappedTunnelBytes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000288"
+        },
+        {
+          "name": "ThreadedRowsAndUnevenTailPreserveEverySample",
+          "outcome": "Passed",
+          "duration": "00:00:00.0436712"
+        },
+        {
+          "name": "PersistentClockFailureInvalidatesOnCaptureThread",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003570"
+        },
+        {
+          "name": "CR12BtoRGB48AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0682034"
+        },
+        {
+          "name": "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000757"
+        },
+        {
+          "name": "AutomaticQueueRuleOverridesPersistedQueueSelection",
+          "outcome": "Passed",
+          "duration": "00:00:00.0029615"
+        },
+        {
+          "name": "DvProfilesResolveModeAndPublishModeOnlyReloads",
+          "outcome": "Passed",
+          "duration": "00:00:00.0057860"
+        },
+        {
+          "name": "CalibrationArchivesPassRuntimeValidationForTargetAndOlderFormats",
+          "outcome": "Passed",
+          "duration": "00:00:00.0138053"
+        },
+        {
+          "name": "NarrowExteriorLumaOrChromaObstructionInvalidatesSampledBars",
+          "outcome": "Passed",
+          "duration": "00:00:00.0015236"
+        },
+        {
+          "name": "P210ToV210PreservesSixPixelGroup",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000086"
+        },
+        {
+          "name": "ProfileOverlayDerivesShaderOffFromFilesNotNames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000324"
+        },
+        {
+          "name": "DeckLinkR12BAndRgb48ContractsRemainFullRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000059"
+        },
+        {
+          "name": "P210TailWidthsAndPaddedRowsMatchDecodedCodes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004196"
+        },
+        {
+          "name": "SubmittedPoseAndContextChangesRestartOnlyTheStartupStabilityDwell",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000231"
+        },
+        {
+          "name": "DeckLinkPackedRgbFormatterContractsMatchDocumentedRanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000217"
+        },
+        {
+          "name": "CR12BtoRGB48VideoFrameFormatterGoldenBlockTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001354"
+        },
+        {
+          "name": "GuiStyleDetachedFoundAndLostTokensOwnDeviceIndependently",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000281"
+        },
+        {
+          "name": "DisplayRuleLutValuesPreserveBasePathAndBlankOverride",
+          "outcome": "Passed",
+          "duration": "00:00:00.0060342"
+        },
+        {
+          "name": "CapabilityPolicyPreservesRgbAndRejectsUnsupportedDepth",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000347"
+        },
+        {
+          "name": "VideoOnlyImmediatelyReflowsVideoBoundsInBothDirections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000135"
+        },
+        {
+          "name": "PausedNoiseAndSubBinMotionCannotManufactureTemporalCoverage",
+          "outcome": "Passed",
+          "duration": "00:00:00.7852498"
+        },
+        {
+          "name": "NarrowMovingOpposingEdgeAcquiresOnlyAfterRealSpatialCoverage",
+          "outcome": "Passed",
+          "duration": "00:00:00.2179264"
+        },
+        {
+          "name": "RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads",
+          "outcome": "Passed",
+          "duration": "00:00:00.1402460"
+        },
+        {
+          "name": "ModernOperatorHeaderControlsAreCompactAndDpiAligned",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000157"
+        },
+        {
+          "name": "ApplicationInterfaceConfigurationSelectsEitherUi",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000049"
+        },
+        {
+          "name": "ApplicationInterfaceDefaultsToModern",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000065"
+        },
+        {
+          "name": "Rgb10ToR10lPreservesChannelCodesAndRowPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000208"
+        },
+        {
+          "name": "RendererProfileConfigResetChordDoesNotSuppressOtherProfileKeys",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000304"
+        },
+        {
+          "name": "RendererConfigViewRejectsCanonicalDisplayCoexistence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008669"
+        },
+        {
+          "name": "SamplingBudgetIsResolutionIndependentAndBenchmarkIsReported",
+          "outcome": "Passed",
+          "duration": "00:00:00.1065260"
+        },
+        {
+          "name": "IncompatibleConfigurationModelCannotReadOrApply",
+          "outcome": "Passed",
+          "duration": "00:00:00.0026964"
+        },
+        {
+          "name": "FullRasterExpansionWithdrawsExperimentalCropUsingExistingPolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0059519"
+        },
+        {
+          "name": "FullscreenProfileAndResetRetriesDoNotRestartGeometryDeadline",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000176"
+        },
+        {
+          "name": "LoadFailureReturnsUnavailableAndDoesNotResolveOrFree",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000126"
+        },
+        {
+          "name": "ModernOperatorPreviewStaysBoundedAtTwoHundredPercentDpi",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000054"
+        },
+        {
+          "name": "DeckLinkConvertersSustained4K60PerformanceComparison",
+          "outcome": "Passed",
+          "duration": "00:00:27.9244952"
+        },
+        {
+          "name": "NativeP210BorrowsSdkDestinationAndRetainsBothPlanesAcrossStop",
+          "outcome": "Passed",
+          "duration": "00:00:00.1088267"
+        },
+        {
+          "name": "RightAltFullscreenAndModifiedEnterAreFailSafe",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000027"
+        },
+        {
+          "name": "CNoopVideoFrameFormatterTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000036"
+        },
+        {
+          "name": "CDeckLinkRGBToP010R12BBlackWhiteContractTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0329317"
+        },
+        {
+          "name": "CandidatePreservesRawAxisMeasurementsAndReportsItsExperimentalOrigin",
+          "outcome": "Passed",
+          "duration": "00:00:00.0041957"
+        },
+        {
+          "name": "Vp0089AndVp0131InvalidAdvancedNlsSettingsAreRejected",
+          "outcome": "Passed",
+          "duration": "00:00:00.0051494"
+        },
+        {
+          "name": "TemporalAcquisitionNativeRecoveryThenAmbiguousRetentionNeedsNoRestart",
+          "outcome": "Passed",
+          "duration": "00:00:00.1005619"
+        },
+        {
+          "name": "ConfigurationEditorStaleHandleRediscoveryIsBounded",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000010"
+        },
+        {
+          "name": "MovingNearBlackWitnessesCannotBypassOrdinaryAcquisitionGuard",
+          "outcome": "Passed",
+          "duration": "00:00:00.2682159"
+        },
+        {
+          "name": "InvalidSourceContextRetainsCompatibleQueueInsteadOfPersistedMadVRFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0014172"
+        },
+        {
+          "name": "Vp0079OwnerVariantsPersistAndRestoreProfileState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0046204"
+        },
+        {
+          "name": "DisplayRuleSubstringRejectsInvalidOperands",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000488"
+        },
+        {
+          "name": "OffZoomHoldIsIndependentBoundedAndDefaultsToTwoSeconds",
+          "outcome": "Passed",
+          "duration": "00:00:00.0060473"
+        },
+        {
+          "name": "BlankingPersistsThroughLostDmAndStopsOnFreshDmOrEos",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011945"
+        },
+        {
+          "name": "NativeP210SwitchesToLegacyV210AndBackWithoutReusingRetainedBuffers",
+          "outcome": "Passed",
+          "duration": "00:00:00.5461213"
+        },
+        {
+          "name": "DeckLinkCapturePackingSchemaRejectsInvalidDepthVariant",
+          "outcome": "Passed",
+          "duration": "00:00:00.0047276"
+        },
+        {
+          "name": "AspectRatioParserRejectsMalformedAndOutOfRangeForms",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "BetaUsesSeparatePluginAndRuntimeNames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000155"
+        },
+        {
+          "name": "DeckLinkCapturePackingDefaultsRemainCanonical",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000125"
+        },
+        {
+          "name": "ProfileOverlayIncludesQueueAndConfiguredNlsState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000355"
+        },
+        {
+          "name": "MissingOldPluginExportBypassesWhileBusyExportKeepsWaiting",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000498"
+        },
+        {
+          "name": "StartupOwnershipAcceptsOldAndSavedOutputArchivesButRejectsUnknownSections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0050438"
+        },
+        {
+          "name": "DisplayRuleSubstringRendererAndRate",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001159"
+        },
+        {
+          "name": "ShortcutTableStagesWithoutRendererRestart",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000022"
+        },
+        {
+          "name": "CoalescerReportsOnlyActualPendingReplacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000166"
+        },
+        {
+          "name": "CV210toP210VideoFrameFormatterPreservesEvery422Sample",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000450"
+        },
+        {
+          "name": "RendererConfigViewPreservesLegacyPrecedence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008934"
+        },
+        {
+          "name": "StoppingReplacementAndMissingCaptureFailClosedUntilNextAcceptance",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000146"
+        },
+        {
+          "name": "CUYVYtoP010AVX2MatchesScalarBitExactlyIncludingRowTails",
+          "outcome": "Passed",
+          "duration": "00:00:00.0005047"
+        },
+        {
+          "name": "DeclaredPacketCountCannotReadBeyondActiveRaster",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001910"
+        },
+        {
+          "name": "PendingEventActionsCoalesceToNewestTrigger",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000220"
+        },
+        {
+          "name": "CaptureFillsDeepQueueAndEightFrameAnalysisLookahead",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009320"
+        },
+        {
+          "name": "MainConfigSchemaRejectsForeignAndIllTypedKeys",
+          "outcome": "Passed",
+          "duration": "00:00:00.0095277"
+        },
+        {
+          "name": "MissingScanExportUnloadsRuntimeBeforeInitialization",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000090"
+        },
+        {
+          "name": "MadVRAutomaticYuvPassThroughDeclaresLimitedNominalRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000150"
+        },
+        {
+          "name": "Rgb10RepackFeedsNativeRgbAnalysisAtLimitedEndpoints",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000134"
+        },
+        {
+          "name": "CDeckLinkR12BToP010UsesNormalizedFullRangeRounding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004725"
+        },
+        {
+          "name": "InvalidSourceRangeKeepsExplicitFallbackWithoutInventingScene",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000295"
+        },
+        {
+          "name": "RendererProfileConfigEnforcesSafeSubtitleHoldBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000470"
+        },
+        {
+          "name": "RendererProfileConfigRejectsRemovedAliasAlongsideCanonicalKey",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010806"
+        },
+        {
+          "name": "MovingYellowObjectPoolsCoverageButRemainsExplicitlyAmbiguous",
+          "outcome": "Passed",
+          "duration": "00:00:00.0061804"
+        },
+        {
+          "name": "CurrentExteriorLumaAndChromaIntrusionsRejectMaturePendingReference",
+          "outcome": "Passed",
+          "duration": "00:00:00.0083061"
+        },
+        {
+          "name": "DolbyVisionTunnelUsesAcceptedPqPrimariesAndKeepsWireObservation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000073"
+        },
+        {
+          "name": "DefaultNativeOriginMatchesExplicitNativeAndExactNativeProofCanUpgradeExperiment",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001005"
+        },
+        {
+          "name": "LegacyEqualsAssignmentsRemainReadable",
+          "outcome": "Passed",
+          "duration": "00:00:00.0048226"
+        },
+        {
+          "name": "ValidHeaderBlocksSdrEvenWhenBodyIsUnsupported",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001660"
+        },
+        {
+          "name": "CDeckLinkR12AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0174305"
+        },
+        {
+          "name": "RendererConfigViewReadsCanonicalNamespace",
+          "outcome": "Passed",
+          "duration": "00:00:00.0008680"
+        },
+        {
+          "name": "RepeatedSequenceAndCadenceRepeatCannotSupplyTemporalVotes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0066939"
+        },
+        {
+          "name": "CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.3805431"
+        },
+        {
+          "name": "TransitionBlankExcludesCachedDmPixelsFromAllAnalysisProfiles",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000048"
+        },
+        {
+          "name": "LossLimitSuspendsUntilFreshCompleteDmWithoutSdrFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0012705"
+        },
+        {
+          "name": "NativeAuthorityAlwaysWinsAndCannotBeRelabeledExperimental",
+          "outcome": "Passed",
+          "duration": "00:00:00.0084228"
+        },
+        {
+          "name": "EquivalentPlanarAndPackedSourcesProduceTheSameGuardedCandidate",
+          "outcome": "Passed",
+          "duration": "00:00:00.0164676"
+        },
+        {
+          "name": "ClockUsesSameOriginBeforeAndAfterFirstFrame",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000179"
+        },
+        {
+          "name": "RepeatedCopiesRecoverFirstAndContinuationCorruption",
+          "outcome": "Passed",
+          "duration": "00:00:00.0005955"
+        },
+        {
+          "name": "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000098"
+        },
+        {
+          "name": "TemporalAcquisitionWithoutLogicalGeometryCannotPromoteMovingArtwork",
+          "outcome": "Passed",
+          "duration": "00:00:00.0718700"
+        },
+        {
+          "name": "ConfigurationEditorShortcutAlwaysStartsFreshReveal",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000014"
+        },
+        {
+          "name": "RendererConfigViewWarnsOnlyForConsumedLegacySections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016604"
+        },
+        {
+          "name": "SameSequencePollingCannotKeepEvidenceAliveBeyondThreeSeconds",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009178"
+        },
+        {
+          "name": "SourceChromaCanSupplyARealConnectedEdgeWithoutLumaContrast",
+          "outcome": "Passed",
+          "duration": "00:00:00.0261310"
+        },
+        {
+          "name": "CUYVYtoP210VideoFrameFormatterPreservesEvery422Sample",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000239"
+        },
+        {
+          "name": "RendererConfigViewRejectsPolicyKeyDuplicate",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009621"
+        },
+        {
+          "name": "PairedShadowReadsP010P210AndNativeV210Consistently",
+          "outcome": "Passed",
+          "duration": "00:00:00.1349672"
+        },
+        {
+          "name": "EosNoMetadataAllowsSdrAfterBoundaryIncludingCounterGap",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003580"
+        },
+        {
+          "name": "LostMetadataDoesNotPublishPreviousFrameValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000256"
+        },
+        {
+          "name": "UnknownWireRangePermitsValidatedDvButNeverGuessesSdr",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002721"
+        },
+        {
+          "name": "RendererIngressHelpersCoverEveryDeckLinkCaptureEncoding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000642"
+        },
+        {
+          "name": "DeckLinkR12BDirectMediaTypeUsesThirtySixBitsPerPixel",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000036"
+        },
+        {
+          "name": "DolbyAnalysisUsesDecoded422AndNeverTheRawTunnelBytes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000120"
+        },
+        {
+          "name": "DamagedContinuationNeverReplacesActiveMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004875"
+        },
+        {
+          "name": "ConfigurationBoundaryDefersRendererForNewerCaptureState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000013"
+        },
+        {
+          "name": "RendererProfileConfigKeySelectionIgnoresOtherAutomaticBranches",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000146"
+        },
+        {
+          "name": "ApplicationInterfaceDuplicateOptionWarnsAndUsesConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000030"
+        },
+        {
+          "name": "RebindingPendingRequestPublishesToNewBinding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000083"
+        },
+        {
+          "name": "ApplicationInterfaceInvalidCommandLineFallsBackToConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000027"
+        },
+        {
+          "name": "MainConfigSchemaAcceptsLegacyQueueNamesButRejectsAmbiguousAliases",
+          "outcome": "Passed",
+          "duration": "00:00:00.0066215"
+        },
+        {
+          "name": "ReadySnapshotOrRepeatedSourceCannotAgeIntoStableStartupShape",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000087"
+        },
+        {
+          "name": "DuplicateKeyWarnsAndLastValueWins",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010209"
+        },
+        {
+          "name": "VideoConversionOverrideAcceptsConfiguredDisabledValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000040"
+        },
+        {
+          "name": "CaptureCopyFailureRestoresRawInputRangeAndPublishesInvalidState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003080"
+        },
+        {
+          "name": "AspectOsdSnapsAtOnePercentAndHoldsAmbiguousChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000365"
+        },
+        {
+          "name": "ConfigurationEditorOwnerSurvivesMissingOrChangingRenderer",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000118"
+        },
+        {
+          "name": "ConfigurationEditorUsesNativeOwnerWithoutRuntimePolling",
+          "outcome": "Passed",
+          "duration": "00:00:00.0146811"
+        },
+        {
+          "name": "IsolatedStarsAndThinHorizontalMarksCannotBecomeEdges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0789673"
+        },
+        {
+          "name": "ProfileSnapshotsReuseAcceptedConfigurationUntilExplicitReload",
+          "outcome": "Passed",
+          "duration": "00:00:00.0039772"
+        },
+        {
+          "name": "StartupWaitsForConsistentSubmittedShapeThroughInitialFlashes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000020"
+        },
+        {
+          "name": "PreparedEvidenceRetainsItsDecodedBackingOwner",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000113"
+        },
+        {
+          "name": "DelayedActionCannotClaimReusedGenerationAfterCompletion",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000079"
+        },
+        {
+          "name": "CV210toP210AVX2MatchesScalarBitExactly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000619"
+        },
+        {
+          "name": "CDeckLinkLimitedRgbToP010MatchesBT709ReferenceCodes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004439"
+        },
+        {
+          "name": "Rgb8RejectsInvalidHeaderAndBlanksAfterMetadataLossLimit",
+          "outcome": "Passed",
+          "duration": "00:00:00.0015225"
+        },
+        {
+          "name": "AspectRatioParserAcceptsAndNormalizesDocumentedForms",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000333"
+        },
+        {
+          "name": "GlobalShortcutPolicyAllowsBareKeysOutsideConfig",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "Vp0079EmptyShaderRootResolvesAsExplicitOff",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010903"
+        },
+        {
+          "name": "ProfileAndTargetPrerequisitesCannotBeBypassedByOldReadySnapshot",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000267"
+        },
+        {
+          "name": "UnifiedActionsRejectUnknownRendererAliasAndLegacyScope",
+          "outcome": "Passed",
+          "duration": "00:00:00.0080671"
+        },
+        {
+          "name": "InvalidPrecisionAndMismatchedSourceIdentityCannotAcquire",
+          "outcome": "Passed",
+          "duration": "00:00:00.0046118"
+        },
+        {
+          "name": "DeckLinkCapturePackingConfigurationExposesEveryRgbVariant",
+          "outcome": "Passed",
+          "duration": "00:00:00.0061589"
+        },
+        {
+          "name": "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails",
+          "outcome": "Passed",
+          "duration": "00:00:00.0013593"
+        },
+        {
+          "name": "LegacyRendererPolicyDefaultsToHiddenAndAcceptsExplicitFalse",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011804"
+        },
+        {
+          "name": "NativeP210PreservesEveryTenBitCodeAndEveryChromaRow",
+          "outcome": "Passed",
+          "duration": "00:00:00.7133669"
+        },
+        {
+          "name": "RendererProfileConfigRejectsProfileForOmittedGroup",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011010"
+        },
+        {
+          "name": "DeckLinkEightBitYuvUsesHdycOnlyForRec709",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000118"
+        },
+        {
+          "name": "RendererProfileConfigRejectsIncompleteUnifiedConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010149"
+        },
+        {
+          "name": "MotionStatusAcceptsOlderPublishersWithoutInventingAnActiveProfile",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000262"
+        },
+        {
+          "name": "RendererProfileConfigOneKeySelectsIndependentGroups",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000180"
+        },
+        {
+          "name": "ModernCapturedVideoNeverLeaksTemplatePlaceholders",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000219"
+        },
+        {
+          "name": "RawRangeRestorationRetriesTransientSdkFailure",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000092"
+        },
+        {
+          "name": "DiscoveryAdvertisesActualListenerPort",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016531"
+        },
+        {
+          "name": "PlanarConversionAndPackedV210KeepTheSameRefinedSourceCoordinates",
+          "outcome": "Passed",
+          "duration": "00:00:00.0749795"
+        },
+        {
+          "name": "AspectOsdMapsEveryNamedFormat",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000124"
+        },
+        {
+          "name": "UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport",
+          "outcome": "Passed",
+          "duration": "00:00:00.0031862"
+        },
+        {
+          "name": "V210P010ChromaPoliciesMatchIndependentPixelOracle",
+          "outcome": "Passed",
+          "duration": "00:00:00.3008022"
+        },
+        {
+          "name": "EligibleTransitionAndDefaultShadowSessionDoNotRunStartupRefinement",
+          "outcome": "Passed",
+          "duration": "00:00:00.2397288"
+        },
+        {
+          "name": "SessionRendererSelectionSurvivesLifecyclePublication",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000097"
+        },
+        {
+          "name": "FullscreenToggleUsesRequestedAndEffectiveState",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000073"
+        },
+        {
+          "name": "ValidDvFramesKeepPublishedStatusStableBetweenFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000024"
+        },
+        {
+          "name": "CUYVYtoP010VideoFrameFormatterPreservesLimitedRangeCodes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000427"
+        },
+        {
+          "name": "CR210toRGB48VideoFrameFormatterGoldenTest",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001493"
+        },
+        {
+          "name": "ProfileOverlayOmitsGroupsWithoutAChoice",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000083"
+        },
+        {
+          "name": "ContainerOrForcedPrimariesComeFromAcceptedStateForEveryPixelFormat",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000163"
+        },
+        {
+          "name": "MemoryBudgetCountsRetiredFramesUntilLastRelease",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000246"
+        },
+        {
+          "name": "Vp0099TypedNlsDefaultsToExpansionOnly",
+          "outcome": "Passed",
+          "duration": "00:00:00.0035464"
+        },
+        {
+          "name": "DirectShowSchemaOwnsAllRendererOverridesAndRejectsStartupKeys",
+          "outcome": "Passed",
+          "duration": "00:00:00.0037890"
+        },
+        {
+          "name": "FailedInputSelectionClosesChannelAndReturnsReady",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000636"
+        },
+        {
+          "name": "ScopeActionSurvivesOldRenderingFeedbackAndRepeatedSelections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0152788"
+        },
+        {
+          "name": "TunnelAdmissionRequiresOptInRendererSdrAndPreservedSupportedRgb",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000701"
+        },
+        {
+          "name": "MainAndRendererSchemasAcceptOneCombinedConfig",
+          "outcome": "Passed",
+          "duration": "00:00:00.0011811"
+        },
+        {
+          "name": "CanceledActionCannotClaimNewSelectionAfterReload",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000025"
+        },
+        {
+          "name": "RepeatedPictureFingerprintsNeverBecomeDistinctEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0009484"
+        },
+        {
+          "name": "AutomaticQueueProfilesMayUseRendererAndActualRefresh",
+          "outcome": "Passed",
+          "duration": "00:00:00.0010003"
+        }
+      ]
+    },
+    {
+      "run": "focused-beta",
+      "passed": 16,
+      "failed": 0,
+      "trxSha256": "2C2961C50BDFA0026FCD19A062BAE7B31E437CBE9CD817CA85D115EDD5B2BACB",
+      "results": [
+        {
+          "name": "SubtitleAssistedProofIsParityStableAcrossNativeP210P010AndDecodedDv",
+          "outcome": "Passed",
+          "duration": "00:00:00.0319763"
+        },
+        {
+          "name": "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies",
+          "outcome": "Passed",
+          "duration": "00:00:00.0028064"
+        },
+        {
+          "name": "NativeP210SwitchesToLegacyV210AndBackWithoutReusingRetainedBuffers",
+          "outcome": "Passed",
+          "duration": "00:00:00.5590045"
+        },
+        {
+          "name": "NativeP210ScopeUsesTheSameAxisAuthorityContract",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001932"
+        },
+        {
+          "name": "NativeP210BorrowsSdkDestinationAndRetainsBothPlanesAcrossStop",
+          "outcome": "Passed",
+          "duration": "00:00:00.1037372"
+        },
+        {
+          "name": "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000305"
+        },
+        {
+          "name": "NativeP210CapabilityPreservesRgbByteLayoutsAndRejectsMissingPlaneFormat",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000729"
+        },
+        {
+          "name": "SidePictureProbeUsesNativeP210Luma",
+          "outcome": "Passed",
+          "duration": "00:00:00.0016577"
+        },
+        {
+          "name": "RealRendererUploadsNativeP210ForSdrAndHdrWithoutConversion",
+          "outcome": "Passed",
+          "duration": "00:00:00.6386918"
+        },
+        {
+          "name": "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers",
+          "outcome": "Passed",
+          "duration": "00:00:00.8280458"
+        },
+        {
+          "name": "RealRendererDecodesRgb8WithNativeUploadEnabled",
+          "outcome": "Passed",
+          "duration": "00:00:00.8658781"
+        },
+        {
+          "name": "NativeP210CopyFailureInvalidatesAndDoesNotPublishPartialPlanes",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004092"
+        },
+        {
+          "name": "NativeP210LayoutUsesTwoFullHeightPlanesAndRejectsTruncation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0140730"
+        },
+        {
+          "name": "NativeP210TopOverlayUsesTheSameOutwardFitPolicy",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004267"
+        },
+        {
+          "name": "NativeP210PreservesEveryTenBitCodeAndEveryChromaRow",
+          "outcome": "Passed",
+          "duration": "00:00:00.7196529"
+        },
+        {
+          "name": "RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads",
+          "outcome": "Passed",
+          "duration": "00:00:00.1429941"
+        }
+      ]
+    },
+    {
+      "run": "gpu-standard",
+      "passed": 208,
+      "failed": 0,
+      "trxSha256": "7F6C12D367F4A88FF07E606C3C5E00B2BD8E8C30BB6FB2EF4A7FAF7DF6605008",
+      "results": [
+        {
+          "name": "GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000134"
+        },
+        {
+          "name": "AllMixerFiltersRenderOnGpu",
+          "outcome": "Passed",
+          "duration": "00:00:00.9982468"
+        },
+        {
+          "name": "UncleanSameCropNeighborCannotLeakIntoCleanSelectedPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2575003"
+        },
+        {
+          "name": "CompositionCaptureFailureDoesNotRetainBorrowedPixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.2095947"
+        },
+        {
+          "name": "CompositionRejectsNonNormalizedCleanFrameAndClearsHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.1876295"
+        },
+        {
+          "name": "ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:33.9620875"
+        },
+        {
+          "name": "PaddingClipsEveryRasterEdgeWithoutOverflow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000195"
+        },
+        {
+          "name": "BackgroundGuardScalesAndMirrorsAtTopBar",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000192"
+        },
+        {
+          "name": "NativeCompositionRetainsRawTextureAfterUploadRelease",
+          "outcome": "Passed",
+          "duration": "00:00:00.1960627"
+        },
+        {
+          "name": "SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors",
+          "outcome": "Passed",
+          "duration": "00:00:13.2584362"
+        },
+        {
+          "name": "ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.2174925"
+        },
+        {
+          "name": "CompositionDeinterlaceProducesCorrectTopAndBottomFields",
+          "outcome": "Passed",
+          "duration": "00:00:02.2271115"
+        },
+        {
+          "name": "FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000115"
+        },
+        {
+          "name": "SubtitleStyleEpochChangeClearsSameSourceBeforeRecapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2052996"
+        },
+        {
+          "name": "CompositionModeRendersEveryMixerWithOpaqueGlyphs",
+          "outcome": "Passed",
+          "duration": "00:00:01.0906117"
+        },
+        {
+          "name": "DisplayRefreshUsesNominalDeinterlacingWithoutEnablingBlending",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000363"
+        },
+        {
+          "name": "AlgorithmsReceiveBothFieldsInTopAndBottomOrder",
+          "outcome": "Passed",
+          "duration": "00:00:01.6419535"
+        },
+        {
+          "name": "AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000251"
+        },
+        {
+          "name": "UnknownFieldOrderDoesNotDeinterlaceProgressiveOrGuessInterlace",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000235"
+        },
+        {
+          "name": "CompositionModeRetainsFieldCadenceAndParity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000236"
+        },
+        {
+          "name": "PlacementNeverSurvivesLostCueOrFreshBarAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "SurroundFillPreservesSplitCompositionAndTransferFunctions",
+          "outcome": "Passed",
+          "duration": "00:02:21.9858698"
+        },
+        {
+          "name": "FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000406"
+        },
+        {
+          "name": "OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001834"
+        },
+        {
+          "name": "NativeP010ChromaUpscalerChangesNoCuePixelsLikeDirectRender",
+          "outcome": "Passed",
+          "duration": "00:00:00.6226292"
+        },
+        {
+          "name": "OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000073"
+        },
+        {
+          "name": "MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000022"
+        },
+        {
+          "name": "SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000147"
+        },
+        {
+          "name": "BlackAndReconstructionLayersPreserveAlphaAndComposition",
+          "outcome": "Passed",
+          "duration": "00:03:27.2201260"
+        },
+        {
+          "name": "UhdLateCurrentCueReplacesNoCuePacketBeforeSealingSourceReuse",
+          "outcome": "Passed",
+          "duration": "00:00:26.6672242"
+        },
+        {
+          "name": "MatchedCadenceBypassesAndMismatchSchedulesEveryVsync",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000358"
+        },
+        {
+          "name": "GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000572"
+        },
+        {
+          "name": "SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000152"
+        },
+        {
+          "name": "SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:34.6539327"
+        },
+        {
+          "name": "DefaultOffDoesNotAllocateTemporalHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000213"
+        },
+        {
+          "name": "TransparentYellowFloatRejectsBrightPictureInsideSourcePadding",
+          "outcome": "Passed",
+          "duration": "00:00:14.0086204"
+        },
+        {
+          "name": "CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle",
+          "outcome": "Passed",
+          "duration": "00:00:00.2247769"
+        },
+        {
+          "name": "BackgroundGuardConfigValidation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000062"
+        },
+        {
+          "name": "GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000132"
+        },
+        {
+          "name": "PaddingStopsBeforeNearbyUnclaimedGlyphRows",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000085"
+        },
+        {
+          "name": "NlsPreparationCacheReusedAcrossIsolatedDevices",
+          "outcome": "Passed",
+          "duration": "00:00:03.1375555"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRequiresProcessedCueAndCurrentGeometry",
+          "outcome": "Passed",
+          "duration": "00:00:01.6490178"
+        },
+        {
+          "name": "CompositionSnapshotDoesNotBorrowUploadTextures",
+          "outcome": "Passed",
+          "duration": "00:00:00.2063732"
+        },
+        {
+          "name": "SourceGapRetainsProgramsButClearsSubtitlePixelsAndHdrState",
+          "outcome": "Passed",
+          "duration": "00:00:00.7317587"
+        },
+        {
+          "name": "NlsSelectionCancellationNeverRemembersSupersededCompletion",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003423"
+        },
+        {
+          "name": "ExplicitCadenceRepeatReusesSubmittedPixelsAndLeavesNextTickUnchanged",
+          "outcome": "Passed",
+          "duration": "00:00:00.4119319"
+        },
+        {
+          "name": "ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000053"
+        },
+        {
+          "name": "CoverageMarginProtectsMaximumRadiusAtViewportSides",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000123"
+        },
+        {
+          "name": "RealSourceAlphaRetainsOpaqueBackgroundComposition",
+          "outcome": "Passed",
+          "duration": "00:00:27.4310463"
+        },
+        {
+          "name": "SurroundFill4KPreparationCost",
+          "outcome": "Passed",
+          "duration": "00:00:13.4317730"
+        },
+        {
+          "name": "MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers",
+          "outcome": "Passed",
+          "duration": "00:00:36.0561871"
+        },
+        {
+          "name": "TransparentYellowFloatRepairsBackingAndLeavesDestinationClear",
+          "outcome": "Passed",
+          "duration": "00:00:13.7972958"
+        },
+        {
+          "name": "RepeatReusesOnlyPlanesAndPreservesPerOutputMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:00.1182212"
+        },
+        {
+          "name": "PictureIntrusionDisablesFloatUntilCueChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000077"
+        },
+        {
+          "name": "PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000566"
+        },
+        {
+          "name": "TemporalCleanupKeepsLegacyRectangleAndCoalescesTheMaximumRowCount",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000167"
+        },
+        {
+          "name": "ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock",
+          "outcome": "Passed",
+          "duration": "00:00:00.3759708"
+        },
+        {
+          "name": "NativeCompositionSnapshotsDolbyMetadataBeforeCallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.2002515"
+        },
+        {
+          "name": "MovePreservesSizeAndReachesTheActivePictureBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000111"
+        },
+        {
+          "name": "TopBarMovesEntirePaddedCueDownIntoPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000356"
+        },
+        {
+          "name": "NearBarPlacementDoesNotPullGlyphsTowardEitherBar",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000217"
+        },
+        {
+          "name": "IndependentPaddingAndInsetChangesInvalidateCachedPlacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000319"
+        },
+        {
+          "name": "BackgroundGuardRejectsUnevenMarginsAndRetainsCueFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000273"
+        },
+        {
+          "name": "NearBarConfigurationValidatesSourcePixelRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0429812"
+        },
+        {
+          "name": "AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000402"
+        },
+        {
+          "name": "TwoPlaneReusePreservesChromaLayout",
+          "outcome": "Passed",
+          "duration": "00:00:00.1229004"
+        },
+        {
+          "name": "DisplayRefreshCacheSurvivesSourceAndBackbufferReuseWithExactPixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.1964418"
+        },
+        {
+          "name": "ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000041"
+        },
+        {
+          "name": "EmptyPixelSafeBandsPermitMixAcrossDifferentSourceCrops",
+          "outcome": "Passed",
+          "duration": "00:00:00.2264416"
+        },
+        {
+          "name": "NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead",
+          "outcome": "Passed",
+          "duration": "00:00:00.1713038"
+        },
+        {
+          "name": "AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000251"
+        },
+        {
+          "name": "NearBarBackingCoversGapWithoutEnlargingGlyphCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000096"
+        },
+        {
+          "name": "OptionalAnalysisTargetsOnlyReachableDisplayBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000438"
+        },
+        {
+          "name": "OutputTelemetryKeepsSelectedPacketDistinctFromInputDebtKey",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000454"
+        },
+        {
+          "name": "TransparentLayersPreservePictureAtEveryPanelEdge",
+          "outcome": "Passed",
+          "duration": "00:00:39.6596539"
+        },
+        {
+          "name": "AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar",
+          "outcome": "Passed",
+          "duration": "00:00:13.8538986"
+        },
+        {
+          "name": "PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint",
+          "outcome": "Passed",
+          "duration": "00:00:36.0453333"
+        },
+        {
+          "name": "SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000203"
+        },
+        {
+          "name": "FinalBackgroundCentersTextAfterReservingConfiguredEdgePixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0024572"
+        },
+        {
+          "name": "TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000112"
+        },
+        {
+          "name": "FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0050632"
+        },
+        {
+          "name": "ReuseRendersSameRgbPixelsAcrossOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:00.2258104"
+        },
+        {
+          "name": "HdrToneMappedSourceIsReusedAtOutputRate",
+          "outcome": "Passed",
+          "duration": "00:00:00.3418459"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRejectsChangedProcessedOutputContract",
+          "outcome": "Passed",
+          "duration": "00:00:01.6426488"
+        },
+        {
+          "name": "ChangedSourceDomainGeometryDeviceOrResourceCannotReuse",
+          "outcome": "Passed",
+          "duration": "00:00:00.1261492"
+        },
+        {
+          "name": "UnsubmittedWarmupRepeatCannotCreateOutputOrEraseHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.1060993"
+        },
+        {
+          "name": "SubtitleCompositionModeKeepsSmoothMotionCadenceAcrossCues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000381"
+        },
+        {
+          "name": "NlsPreparationUsesActualCompositionContract",
+          "outcome": "Passed",
+          "duration": "00:00:00.2052796"
+        },
+        {
+          "name": "AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000153"
+        },
+        {
+          "name": "RejectsTooTallCueAndInvalidInsetsRatherThanClippingText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000093"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldCannotCrossGpuOwners",
+          "outcome": "Passed",
+          "duration": "00:00:00.2567093"
+        },
+        {
+          "name": "OptionalWorkerFailureIsVisibleWithoutInventingEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001685"
+        },
+        {
+          "name": "IncompatibleGeometryNeighborDoesNotBlendIntoSelectedPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2203496"
+        },
+        {
+          "name": "PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002119"
+        },
+        {
+          "name": "VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption",
+          "outcome": "Passed",
+          "duration": "00:00:00.0006692"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldKeepsPixelsTogetherAndExpiresWithoutOutputRenewal",
+          "outcome": "Passed",
+          "duration": "00:00:00.4369543"
+        },
+        {
+          "name": "UhdCompleteCaptureRejectsIdentityAndContextRebinding",
+          "outcome": "Passed",
+          "duration": "00:00:27.1553234"
+        },
+        {
+          "name": "GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001957"
+        },
+        {
+          "name": "GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001296"
+        },
+        {
+          "name": "FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003130"
+        },
+        {
+          "name": "CompositionSnapshotsSurviveTextureReuseAndDuplicateCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2114863"
+        },
+        {
+          "name": "HoldConfigurationValidatesMillisecondsInSubtitleProfiles",
+          "outcome": "Passed",
+          "duration": "00:00:00.0435347"
+        },
+        {
+          "name": "TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000332"
+        },
+        {
+          "name": "EngagedSmoothMotionOutputIsUnchangedByEveryRefreshPreference",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001780"
+        },
+        {
+          "name": "MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000193"
+        },
+        {
+          "name": "SourceGapRendererProgramsCannotCrossGpuOwners",
+          "outcome": "Passed",
+          "duration": "00:00:00.2568222"
+        },
+        {
+          "name": "DiscontinuityClearsHistoryInsteadOfMixingOldSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.2170560"
+        },
+        {
+          "name": "NlsPreparationFailureRemainsFailedAndCanRetry",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001461"
+        },
+        {
+          "name": "DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000140"
+        },
+        {
+          "name": "TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000077"
+        },
+        {
+          "name": "NlsPreparedProfilesSurviveOffAndOtherSelections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001169"
+        },
+        {
+          "name": "CompositionModeTransitionResetsHistoryButKeepsMotionActive",
+          "outcome": "Passed",
+          "duration": "00:00:00.1787396"
+        },
+        {
+          "name": "GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000166"
+        },
+        {
+          "name": "SourceSequenceGapClearsSelectedPacketBeforeNewCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.1216355"
+        },
+        {
+          "name": "TemporalContourValidatesTheEntireMaskBeforeAnyCallbackAndNeverFallsBack",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000180"
+        },
+        {
+          "name": "ClearYellowFloatLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:20.2766502"
+        },
+        {
+          "name": "BackgroundGuardPaddingFollowsTextRatherThanRasterResolution",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000092"
+        },
+        {
+          "name": "FailedUploadAndNewBatchCannotReuseEarlierSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.1197308"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldClearsAtSourceAndHistoryBoundaries",
+          "outcome": "Passed",
+          "duration": "00:00:02.0203958"
+        },
+        {
+          "name": "RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:47.1044045"
+        },
+        {
+          "name": "PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000157"
+        },
+        {
+          "name": "BackgroundGuardCapsDarkSceneAndPreservesText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000092"
+        },
+        {
+          "name": "SubtitlePreviewCycleAndResyncRestoreNormalConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000181"
+        },
+        {
+          "name": "FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer",
+          "outcome": "Passed",
+          "duration": "00:00:36.7046716"
+        },
+        {
+          "name": "BackingFootprintReleasesOnCueAndContextChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000219"
+        },
+        {
+          "name": "GpuTestsLoadTheSelectedRendererDependency",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001201"
+        },
+        {
+          "name": "PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000230"
+        },
+        {
+          "name": "SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:35.3097355"
+        },
+        {
+          "name": "BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000129"
+        },
+        {
+          "name": "WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000145"
+        },
+        {
+          "name": "NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000149"
+        },
+        {
+          "name": "RejectsMissingBarInvalidPictureAndOppositeBarCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000039"
+        },
+        {
+          "name": "ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000554"
+        },
+        {
+          "name": "SourceProcessingSnapshotOwnsDebandValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000211"
+        },
+        {
+          "name": "StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000457"
+        },
+        {
+          "name": "TemporalDonorMatchExcludesFullMeasuredBackingButStillChecksSurroundingScene",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003159"
+        },
+        {
+          "name": "GlyphPaddingScalesWithLineHeightNotMultilineHeight",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000501"
+        },
+        {
+          "name": "ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition",
+          "outcome": "Passed",
+          "duration": "00:00:01.9249744"
+        },
+        {
+          "name": "NativeCompositionOversampleMixesAdjacentCleanFields",
+          "outcome": "Passed",
+          "duration": "00:00:00.2729142"
+        },
+        {
+          "name": "LinearMixerRetainsSourceAfterUploadTextureIsReleased",
+          "outcome": "Passed",
+          "duration": "00:00:00.2020789"
+        },
+        {
+          "name": "IncompatibleInterlaceNeighborsFallBackToBob",
+          "outcome": "Passed",
+          "duration": "00:00:00.3694347"
+        },
+        {
+          "name": "CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000283"
+        },
+        {
+          "name": "LegacyGeometryIsPreservedButIgnored",
+          "outcome": "Passed",
+          "duration": "00:00:00.1767906"
+        },
+        {
+          "name": "FieldOrderChangeResetsHistoryAndLowerCadenceRetainsIt",
+          "outcome": "Passed",
+          "duration": "00:00:00.1061966"
+        },
+        {
+          "name": "DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0114552"
+        },
+        {
+          "name": "ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000121"
+        },
+        {
+          "name": "NativeRecoveryNominationRequiresCurrentCompleteEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0770859"
+        },
+        {
+          "name": "MeasuredCoverageClipsOnlyDisplayAtVisibleViewport",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000041"
+        },
+        {
+          "name": "TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination",
+          "outcome": "Passed",
+          "duration": "00:00:13.7278061"
+        },
+        {
+          "name": "GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000090"
+        },
+        {
+          "name": "SubtitlePacketReuseRejectsChangedPixelsEpochsAndFailedAttempts",
+          "outcome": "Passed",
+          "duration": "00:00:00.0162703"
+        },
+        {
+          "name": "AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000337"
+        },
+        {
+          "name": "UhdInFlightHistoryAndFailedPreparationPreservePacketAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:27.3967377"
+        },
+        {
+          "name": "CompositionFixtureDirectHalfRenderBaseline",
+          "outcome": "Passed",
+          "duration": "00:00:00.1858016"
+        },
+        {
+          "name": "GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000158"
+        },
+        {
+          "name": "SubtitlePreviewRequiresControlShiftT",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000215"
+        },
+        {
+          "name": "RelocationOverridesClassicHandlingThroughoutHotkeyCycle",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000066"
+        },
+        {
+          "name": "DestinationWinsOverlapAndUncoveredSourceClears",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000327"
+        },
+        {
+          "name": "ChromaDefaultAndExplicitScalerReachRenderParameters",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000357"
+        },
+        {
+          "name": "FreshCardCoverageRecentersVerticallyAndRetainsHorizontalAnchor",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000264"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldReplacesWithNewCueImmediately",
+          "outcome": "Passed",
+          "duration": "00:00:00.2164687"
+        },
+        {
+          "name": "NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer",
+          "outcome": "Passed",
+          "duration": "00:00:00.2127736"
+        },
+        {
+          "name": "EveryRefreshDefersToActualMixingIncludingAutoTransitions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000276"
+        },
+        {
+          "name": "CompositionCapturesSourceFramesWithNoScheduledOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.1824512"
+        },
+        {
+          "name": "NativeCompositionPreparationFailureClearsHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.2000274"
+        },
+        {
+          "name": "SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases",
+          "outcome": "Passed",
+          "duration": "00:02:02.3218487"
+        },
+        {
+          "name": "CenteredLargeCueKeepsLargestFittingSymmetricMargins",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000171"
+        },
+        {
+          "name": "CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000135"
+        },
+        {
+          "name": "CompositionAppliesCropAndRotationOnce",
+          "outcome": "Passed",
+          "duration": "00:00:00.2844588"
+        },
+        {
+          "name": "LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000201"
+        },
+        {
+          "name": "OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:13.7042072"
+        },
+        {
+          "name": "FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000142"
+        },
+        {
+          "name": "UhdCompletePacketHoldExpiresAndNewMeasuredCueWins",
+          "outcome": "Passed",
+          "duration": "00:00:27.5940896"
+        },
+        {
+          "name": "HalfFloatReadbackPreservesSignedAndNonFiniteValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000490"
+        },
+        {
+          "name": "GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000181"
+        },
+        {
+          "name": "RoundedNativeBackingContourCleansShouldersAndPreservesLiveCornersInFloatAndExtend",
+          "outcome": "Passed",
+          "duration": "00:00:34.9496033"
+        },
+        {
+          "name": "MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000170"
+        },
+        {
+          "name": "DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001353"
+        },
+        {
+          "name": "DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000171"
+        },
+        {
+          "name": "ZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.2317929"
+        },
+        {
+          "name": "ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch",
+          "outcome": "Passed",
+          "duration": "00:00:00.2687547"
+        },
+        {
+          "name": "SurroundFillDoesNotAmplifyMovingTextureOrNoise",
+          "outcome": "Passed",
+          "duration": "00:00:13.1851659"
+        },
+        {
+          "name": "MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000379"
+        },
+        {
+          "name": "ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003087"
+        },
+        {
+          "name": "NativeP010ChromaFieldsMatchDirectLibplacebo",
+          "outcome": "Passed",
+          "duration": "00:00:11.9000600"
+        },
+        {
+          "name": "MeasuredSourceCardCleanupIsIndependentOfDisplayPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000372"
+        },
+        {
+          "name": "OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000289"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldUsesFrozenHostContractBeforeTargetAcquisition",
+          "outcome": "Passed",
+          "duration": "00:00:00.8244016"
+        },
+        {
+          "name": "NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000144"
+        },
+        {
+          "name": "UhdNativeCueUsesOneCompletePreparationAcrossInsertedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:27.3200313"
+        },
+        {
+          "name": "UhdConclusiveCuePacketSurvivesAnalysisOnlyCadenceRetry",
+          "outcome": "Passed",
+          "duration": "00:00:27.4022835"
+        },
+        {
+          "name": "NlsPreparationTenSecondGateKeepsLiveFramesRendering",
+          "outcome": "Passed",
+          "duration": "00:00:10.1917822"
+        },
+        {
+          "name": "MotionConfigLoadsAllSupportedOptionsAndRejectsUnknownMixer",
+          "outcome": "Passed",
+          "duration": "00:00:00.0051542"
+        },
+        {
+          "name": "GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000243"
+        },
+        {
+          "name": "PlacementFreezesBarFringeButResetsForNewCueOrContext",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000217"
+        },
+        {
+          "name": "OutputOverlayStaysLiveWhileSourceProcessingIsCached",
+          "outcome": "Passed",
+          "duration": "00:00:00.2035884"
+        },
+        {
+          "name": "ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000288"
+        },
+        {
+          "name": "TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001897"
+        },
+        {
+          "name": "ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001574"
+        },
+        {
+          "name": "NlsPreparationOnlyNewestRequestCanActivate",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001598"
+        },
+        {
+          "name": "TemporalContourRestoresEveryShoulderAndPreservesLiveCornersInAnyRowOrder",
+          "outcome": "Passed",
+          "duration": "00:00:00.0241602"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRemapsOnlyItsOwnedPacketWhenFinalTargetChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.5150721"
+        },
+        {
+          "name": "SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:13.1841107"
+        },
+        {
+          "name": "DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000104"
+        },
+        {
+          "name": "PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000247"
+        },
+        {
+          "name": "HardTemporalBoundariesStillReleaseProcessingRenderer",
+          "outcome": "Passed",
+          "duration": "00:00:01.0182777"
+        },
+        {
+          "name": "ClassicZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.2328046"
+        },
+        {
+          "name": "BackgroundGuardAcceptsNormalOffCenterAndMultilineCards",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000019"
+        }
+      ]
+    },
+    {
+      "run": "gpu-beta",
+      "passed": 208,
+      "failed": 0,
+      "trxSha256": "30600E91611E97B0D8DA903799DC15E989E0C39C6F223F1A4507C99C0BA57CFB",
+      "results": [
+        {
+          "name": "CompositionModeTransitionResetsHistoryButKeepsMotionActive",
+          "outcome": "Passed",
+          "duration": "00:00:00.2101516"
+        },
+        {
+          "name": "HoldConfigurationValidatesMillisecondsInSubtitleProfiles",
+          "outcome": "Passed",
+          "duration": "00:00:00.0225142"
+        },
+        {
+          "name": "FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000310"
+        },
+        {
+          "name": "SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors",
+          "outcome": "Passed",
+          "duration": "00:00:19.1626520"
+        },
+        {
+          "name": "NearBarConfigurationValidatesSourcePixelRange",
+          "outcome": "Passed",
+          "duration": "00:00:00.0087027"
+        },
+        {
+          "name": "AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000402"
+        },
+        {
+          "name": "ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000054"
+        },
+        {
+          "name": "DefaultOffDoesNotAllocateTemporalHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000355"
+        },
+        {
+          "name": "MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers",
+          "outcome": "Passed",
+          "duration": "00:00:41.3928697"
+        },
+        {
+          "name": "PlacementFreezesBarFringeButResetsForNewCueOrContext",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000209"
+        },
+        {
+          "name": "HdrToneMappedSourceIsReusedAtOutputRate",
+          "outcome": "Passed",
+          "duration": "00:00:00.5797112"
+        },
+        {
+          "name": "HalfFloatReadbackPreservesSignedAndNonFiniteValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000494"
+        },
+        {
+          "name": "NativeCompositionOversampleMixesAdjacentCleanFields",
+          "outcome": "Passed",
+          "duration": "00:00:00.3516469"
+        },
+        {
+          "name": "NativeCompositionPreparationFailureClearsHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.2494288"
+        },
+        {
+          "name": "TemporalContourRestoresEveryShoulderAndPreservesLiveCornersInAnyRowOrder",
+          "outcome": "Passed",
+          "duration": "00:00:00.0247213"
+        },
+        {
+          "name": "ReuseRendersSameRgbPixelsAcrossOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:00.2062944"
+        },
+        {
+          "name": "FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale",
+          "outcome": "Passed",
+          "duration": "00:00:00.0005689"
+        },
+        {
+          "name": "SurroundFill4KPreparationCost",
+          "outcome": "Passed",
+          "duration": "00:00:24.9289012"
+        },
+        {
+          "name": "SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000290"
+        },
+        {
+          "name": "OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001741"
+        },
+        {
+          "name": "AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000234"
+        },
+        {
+          "name": "SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases",
+          "outcome": "Passed",
+          "duration": "00:01:56.8758672"
+        },
+        {
+          "name": "AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000359"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRequiresProcessedCueAndCurrentGeometry",
+          "outcome": "Passed",
+          "duration": "00:00:02.0757824"
+        },
+        {
+          "name": "HardTemporalBoundariesStillReleaseProcessingRenderer",
+          "outcome": "Passed",
+          "duration": "00:00:01.2847007"
+        },
+        {
+          "name": "PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000280"
+        },
+        {
+          "name": "SurroundFillDoesNotAmplifyMovingTextureOrNoise",
+          "outcome": "Passed",
+          "duration": "00:00:15.8597062"
+        },
+        {
+          "name": "TemporalCleanupKeepsLegacyRectangleAndCoalescesTheMaximumRowCount",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000475"
+        },
+        {
+          "name": "SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000093"
+        },
+        {
+          "name": "ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002277"
+        },
+        {
+          "name": "BackgroundGuardCapsDarkSceneAndPreservesText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000111"
+        },
+        {
+          "name": "DisplayRefreshCacheSurvivesSourceAndBackbufferReuseWithExactPixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.2225182"
+        },
+        {
+          "name": "PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000663"
+        },
+        {
+          "name": "CompositionFixtureDirectHalfRenderBaseline",
+          "outcome": "Passed",
+          "duration": "00:00:00.2218174"
+        },
+        {
+          "name": "FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer",
+          "outcome": "Passed",
+          "duration": "00:00:39.4419102"
+        },
+        {
+          "name": "RejectsTooTallCueAndInvalidInsetsRatherThanClippingText",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000193"
+        },
+        {
+          "name": "PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001865"
+        },
+        {
+          "name": "PaddingStopsBeforeNearbyUnclaimedGlyphRows",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000080"
+        },
+        {
+          "name": "AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000355"
+        },
+        {
+          "name": "SubtitlePreviewCycleAndResyncRestoreNormalConfiguration",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption",
+          "outcome": "Passed",
+          "duration": "00:00:00.0006803"
+        },
+        {
+          "name": "SourceGapRendererProgramsCannotCrossGpuOwners",
+          "outcome": "Passed",
+          "duration": "00:00:00.3567534"
+        },
+        {
+          "name": "RelocationOverridesClassicHandlingThroughoutHotkeyCycle",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000090"
+        },
+        {
+          "name": "UnsubmittedWarmupRepeatCannotCreateOutputOrEraseHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.1289163"
+        },
+        {
+          "name": "IndependentPaddingAndInsetChangesInvalidateCachedPlacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000426"
+        },
+        {
+          "name": "NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer",
+          "outcome": "Passed",
+          "duration": "00:00:00.2782250"
+        },
+        {
+          "name": "OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000123"
+        },
+        {
+          "name": "SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000206"
+        },
+        {
+          "name": "AlgorithmsReceiveBothFieldsInTopAndBottomOrder",
+          "outcome": "Passed",
+          "duration": "00:00:02.4688602"
+        },
+        {
+          "name": "CompositionSnapshotsSurviveTextureReuseAndDuplicateCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2678946"
+        },
+        {
+          "name": "MeasuredSourceCardCleanupIsIndependentOfDisplayPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000335"
+        },
+        {
+          "name": "CompositionModeRetainsFieldCadenceAndParity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000310"
+        },
+        {
+          "name": "FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0050625"
+        },
+        {
+          "name": "NlsSelectionCancellationNeverRemembersSupersededCompletion",
+          "outcome": "Passed",
+          "duration": "00:00:00.0003466"
+        },
+        {
+          "name": "TopBarMovesEntirePaddedCueDownIntoPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000566"
+        },
+        {
+          "name": "OutputOverlayStaysLiveWhileSourceProcessingIsCached",
+          "outcome": "Passed",
+          "duration": "00:00:00.3378881"
+        },
+        {
+          "name": "SourceSequenceGapClearsSelectedPacketBeforeNewCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.1254784"
+        },
+        {
+          "name": "BackgroundGuardRejectsUnevenMarginsAndRetainsCueFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000851"
+        },
+        {
+          "name": "MotionConfigLoadsAllSupportedOptionsAndRejectsUnknownMixer",
+          "outcome": "Passed",
+          "duration": "00:00:00.0062857"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldClearsAtSourceAndHistoryBoundaries",
+          "outcome": "Passed",
+          "duration": "00:00:02.5697690"
+        },
+        {
+          "name": "OptionalAnalysisTargetsOnlyReachableDisplayBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000247"
+        },
+        {
+          "name": "SubtitleStyleEpochChangeClearsSameSourceBeforeRecapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2611156"
+        },
+        {
+          "name": "MeasuredCoverageClipsOnlyDisplayAtVisibleViewport",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000081"
+        },
+        {
+          "name": "PlacementNeverSurvivesLostCueOrFreshBarAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000160"
+        },
+        {
+          "name": "CompositionCapturesSourceFramesWithNoScheduledOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.2163312"
+        },
+        {
+          "name": "ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000274"
+        },
+        {
+          "name": "IncompatibleGeometryNeighborDoesNotBlendIntoSelectedPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2743757"
+        },
+        {
+          "name": "DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000155"
+        },
+        {
+          "name": "GlyphPaddingScalesWithLineHeightNotMultilineHeight",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000513"
+        },
+        {
+          "name": "CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000855"
+        },
+        {
+          "name": "FailedUploadAndNewBatchCannotReuseEarlierSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.1087306"
+        },
+        {
+          "name": "LegacyGeometryIsPreservedButIgnored",
+          "outcome": "Passed",
+          "duration": "00:00:00.0710991"
+        },
+        {
+          "name": "ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000128"
+        },
+        {
+          "name": "NlsPreparationCacheReusedAcrossIsolatedDevices",
+          "outcome": "Passed",
+          "duration": "00:00:04.1376391"
+        },
+        {
+          "name": "GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000717"
+        },
+        {
+          "name": "CoverageMarginProtectsMaximumRadiusAtViewportSides",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000172"
+        },
+        {
+          "name": "TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002000"
+        },
+        {
+          "name": "SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:54.4562990"
+        },
+        {
+          "name": "CompositionModeRendersEveryMixerWithOpaqueGlyphs",
+          "outcome": "Passed",
+          "duration": "00:00:01.3708996"
+        },
+        {
+          "name": "ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:38.4338431"
+        },
+        {
+          "name": "UhdCompletePacketHoldExpiresAndNewMeasuredCueWins",
+          "outcome": "Passed",
+          "duration": "00:00:27.1240086"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldKeepsPixelsTogetherAndExpiresWithoutOutputRenewal",
+          "outcome": "Passed",
+          "duration": "00:00:00.5630969"
+        },
+        {
+          "name": "TransparentYellowFloatRepairsBackingAndLeavesDestinationClear",
+          "outcome": "Passed",
+          "duration": "00:00:13.8505303"
+        },
+        {
+          "name": "SubtitleCompositionModeKeepsSmoothMotionCadenceAcrossCues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000487"
+        },
+        {
+          "name": "NlsPreparationTenSecondGateKeepsLiveFramesRendering",
+          "outcome": "Passed",
+          "duration": "00:00:10.2258548"
+        },
+        {
+          "name": "GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001654"
+        },
+        {
+          "name": "GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000219"
+        },
+        {
+          "name": "FinalBackgroundCentersTextAfterReservingConfiguredEdgePixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.0031671"
+        },
+        {
+          "name": "ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000348"
+        },
+        {
+          "name": "BlackAndReconstructionLayersPreserveAlphaAndComposition",
+          "outcome": "Passed",
+          "duration": "00:03:54.9338995"
+        },
+        {
+          "name": "ChangedSourceDomainGeometryDeviceOrResourceCannotReuse",
+          "outcome": "Passed",
+          "duration": "00:00:00.1079625"
+        },
+        {
+          "name": "TemporalContourValidatesTheEntireMaskBeforeAnyCallbackAndNeverFallsBack",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000300"
+        },
+        {
+          "name": "MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000024"
+        },
+        {
+          "name": "SubtitlePacketReuseRejectsChangedPixelsEpochsAndFailedAttempts",
+          "outcome": "Passed",
+          "duration": "00:00:00.0259055"
+        },
+        {
+          "name": "GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000233"
+        },
+        {
+          "name": "CompositionDeinterlaceProducesCorrectTopAndBottomFields",
+          "outcome": "Passed",
+          "duration": "00:00:03.1221430"
+        },
+        {
+          "name": "TemporalDonorMatchExcludesFullMeasuredBackingButStillChecksSurroundingScene",
+          "outcome": "Passed",
+          "duration": "00:00:00.0004378"
+        },
+        {
+          "name": "TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "CompositionSnapshotDoesNotBorrowUploadTextures",
+          "outcome": "Passed",
+          "duration": "00:00:00.2549280"
+        },
+        {
+          "name": "FieldOrderChangeResetsHistoryAndLowerCadenceRetainsIt",
+          "outcome": "Passed",
+          "duration": "00:00:00.1352018"
+        },
+        {
+          "name": "UhdConclusiveCuePacketSurvivesAnalysisOnlyCadenceRetry",
+          "outcome": "Passed",
+          "duration": "00:00:26.3188851"
+        },
+        {
+          "name": "NearBarBackingCoversGapWithoutEnlargingGlyphCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000129"
+        },
+        {
+          "name": "ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock",
+          "outcome": "Passed",
+          "duration": "00:00:00.5157118"
+        },
+        {
+          "name": "OutputTelemetryKeepsSelectedPacketDistinctFromInputDebtKey",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000469"
+        },
+        {
+          "name": "CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "NearBarPlacementDoesNotPullGlyphsTowardEitherBar",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000264"
+        },
+        {
+          "name": "RepeatReusesOnlyPlanesAndPreservesPerOutputMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:00.1076464"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldCannotCrossGpuOwners",
+          "outcome": "Passed",
+          "duration": "00:00:00.3404366"
+        },
+        {
+          "name": "GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000240"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldReplacesWithNewCueImmediately",
+          "outcome": "Passed",
+          "duration": "00:00:00.2704743"
+        },
+        {
+          "name": "DiscontinuityClearsHistoryInsteadOfMixingOldSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.2531518"
+        },
+        {
+          "name": "ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition",
+          "outcome": "Passed",
+          "duration": "00:00:02.3691277"
+        },
+        {
+          "name": "TransparentYellowFloatRejectsBrightPictureInsideSourcePadding",
+          "outcome": "Passed",
+          "duration": "00:00:13.9183819"
+        },
+        {
+          "name": "MatchedCadenceBypassesAndMismatchSchedulesEveryVsync",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000310"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRejectsChangedProcessedOutputContract",
+          "outcome": "Passed",
+          "duration": "00:00:02.1496639"
+        },
+        {
+          "name": "SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:43.3090857"
+        },
+        {
+          "name": "BackgroundGuardAcceptsNormalOffCenterAndMultilineCards",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000032"
+        },
+        {
+          "name": "PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000157"
+        },
+        {
+          "name": "EngagedSmoothMotionOutputIsUnchangedByEveryRefreshPreference",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001919"
+        },
+        {
+          "name": "AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000266"
+        },
+        {
+          "name": "NlsPreparationOnlyNewestRequestCanActivate",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001479"
+        },
+        {
+          "name": "SourceGapRetainsProgramsButClearsSubtitlePixelsAndHdrState",
+          "outcome": "Passed",
+          "duration": "00:00:01.1499520"
+        },
+        {
+          "name": "DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002609"
+        },
+        {
+          "name": "TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000670"
+        },
+        {
+          "name": "OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000264"
+        },
+        {
+          "name": "CenteredLargeCueKeepsLargestFittingSymmetricMargins",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000646"
+        },
+        {
+          "name": "SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars",
+          "outcome": "Passed",
+          "duration": "00:00:18.3992383"
+        },
+        {
+          "name": "ExplicitCadenceRepeatReusesSubmittedPixelsAndLeavesNextTickUnchanged",
+          "outcome": "Passed",
+          "duration": "00:00:00.5415439"
+        },
+        {
+          "name": "NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "PictureIntrusionDisablesFloatUntilCueChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000295"
+        },
+        {
+          "name": "NativeCompositionRetainsRawTextureAfterUploadRelease",
+          "outcome": "Passed",
+          "duration": "00:00:00.2424888"
+        },
+        {
+          "name": "BackingFootprintReleasesOnCueAndContextChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000317"
+        },
+        {
+          "name": "UhdInFlightHistoryAndFailedPreparationPreservePacketAuthority",
+          "outcome": "Passed",
+          "duration": "00:00:22.5674018"
+        },
+        {
+          "name": "FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000471"
+        },
+        {
+          "name": "TwoPlaneReusePreservesChromaLayout",
+          "outcome": "Passed",
+          "duration": "00:00:00.1157344"
+        },
+        {
+          "name": "LinearMixerRetainsSourceAfterUploadTextureIsReleased",
+          "outcome": "Passed",
+          "duration": "00:00:00.2478685"
+        },
+        {
+          "name": "NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead",
+          "outcome": "Passed",
+          "duration": "00:00:00.2010857"
+        },
+        {
+          "name": "BackgroundGuardScalesAndMirrorsAtTopBar",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000348"
+        },
+        {
+          "name": "OptionalWorkerFailureIsVisibleWithoutInventingEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001568"
+        },
+        {
+          "name": "RealSourceAlphaRetainsOpaqueBackgroundComposition",
+          "outcome": "Passed",
+          "duration": "00:00:28.3087785"
+        },
+        {
+          "name": "NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000152"
+        },
+        {
+          "name": "PaddingClipsEveryRasterEdgeWithoutOverflow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000246"
+        },
+        {
+          "name": "GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000096"
+        },
+        {
+          "name": "DisplayRefreshUsesNominalDeinterlacingWithoutEnablingBlending",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000421"
+        },
+        {
+          "name": "GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002005"
+        },
+        {
+          "name": "UhdNativeCueUsesOneCompletePreparationAcrossInsertedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:38.0496170"
+        },
+        {
+          "name": "WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000244"
+        },
+        {
+          "name": "MovePreservesSizeAndReachesTheActivePictureBoundary",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000147"
+        },
+        {
+          "name": "ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch",
+          "outcome": "Passed",
+          "duration": "00:00:00.3320212"
+        },
+        {
+          "name": "NlsPreparationFailureRemainsFailedAndCanRetry",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001326"
+        },
+        {
+          "name": "DestinationWinsOverlapAndUncoveredSourceClears",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000227"
+        },
+        {
+          "name": "SubtitlePreviewRequiresControlShiftT",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000224"
+        },
+        {
+          "name": "SurroundFillPreservesSplitCompositionAndTransferFunctions",
+          "outcome": "Passed",
+          "duration": "00:02:55.3962891"
+        },
+        {
+          "name": "UnknownFieldOrderDoesNotDeinterlaceProgressiveOrGuessInterlace",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000136"
+        },
+        {
+          "name": "NlsPreparedProfilesSurviveOffAndOtherSelections",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001224"
+        },
+        {
+          "name": "GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000174"
+        },
+        {
+          "name": "GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000204"
+        },
+        {
+          "name": "BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000105"
+        },
+        {
+          "name": "MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000193"
+        },
+        {
+          "name": "GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000179"
+        },
+        {
+          "name": "NlsPreparationUsesActualCompositionContract",
+          "outcome": "Passed",
+          "duration": "00:00:00.2224086"
+        },
+        {
+          "name": "ZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.2813629"
+        },
+        {
+          "name": "GpuTestsLoadTheSelectedRendererDependency",
+          "outcome": "Passed",
+          "duration": "00:00:00.0001141"
+        },
+        {
+          "name": "DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000148"
+        },
+        {
+          "name": "ChromaDefaultAndExplicitScalerReachRenderParameters",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000516"
+        },
+        {
+          "name": "EveryRefreshDefersToActualMixingIncludingAutoTransitions",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000256"
+        },
+        {
+          "name": "NativeCompositionSnapshotsDolbyMetadataBeforeCallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.2643023"
+        },
+        {
+          "name": "NativeRecoveryNominationRequiresCurrentCompleteEvidence",
+          "outcome": "Passed",
+          "duration": "00:00:00.0709407"
+        },
+        {
+          "name": "CompositionRejectsNonNormalizedCleanFrameAndClearsHistory",
+          "outcome": "Passed",
+          "duration": "00:00:00.2176570"
+        },
+        {
+          "name": "TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000335"
+        },
+        {
+          "name": "RejectsMissingBarInvalidPictureAndOppositeBarCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000034"
+        },
+        {
+          "name": "ClearYellowFloatLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:27.3500195"
+        },
+        {
+          "name": "RoundedNativeBackingContourCleansShouldersAndPreservesLiveCornersInFloatAndExtend",
+          "outcome": "Passed",
+          "duration": "00:00:44.3799616"
+        },
+        {
+          "name": "AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar",
+          "outcome": "Passed",
+          "duration": "00:00:16.7685192"
+        },
+        {
+          "name": "SourceProcessingSnapshotOwnsDebandValues",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000287"
+        },
+        {
+          "name": "PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000252"
+        },
+        {
+          "name": "UncleanSameCropNeighborCannotLeakIntoCleanSelectedPicture",
+          "outcome": "Passed",
+          "duration": "00:00:00.2211895"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldRemapsOnlyItsOwnedPacketWhenFinalTargetChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.6588608"
+        },
+        {
+          "name": "ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue",
+          "outcome": "Passed",
+          "duration": "00:00:00.2621921"
+        },
+        {
+          "name": "ClassicZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+          "outcome": "Passed",
+          "duration": "00:00:00.2772907"
+        },
+        {
+          "name": "AllMixerFiltersRenderOnGpu",
+          "outcome": "Passed",
+          "duration": "00:00:01.3896675"
+        },
+        {
+          "name": "DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture",
+          "outcome": "Passed",
+          "duration": "00:00:00.0132481"
+        },
+        {
+          "name": "TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination",
+          "outcome": "Passed",
+          "duration": "00:00:14.2264994"
+        },
+        {
+          "name": "UhdCompleteCaptureRejectsIdentityAndContextRebinding",
+          "outcome": "Passed",
+          "duration": "00:00:26.6926534"
+        },
+        {
+          "name": "IncompatibleInterlaceNeighborsFallBackToBob",
+          "outcome": "Passed",
+          "duration": "00:00:00.4639496"
+        },
+        {
+          "name": "ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource",
+          "outcome": "Passed",
+          "duration": "00:00:00.0002769"
+        },
+        {
+          "name": "ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000066"
+        },
+        {
+          "name": "CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle",
+          "outcome": "Passed",
+          "duration": "00:00:00.2651350"
+        },
+        {
+          "name": "PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint",
+          "outcome": "Passed",
+          "duration": "00:00:38.3694901"
+        },
+        {
+          "name": "OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata",
+          "outcome": "Passed",
+          "duration": "00:00:14.4886584"
+        },
+        {
+          "name": "DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000229"
+        },
+        {
+          "name": "LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000378"
+        },
+        {
+          "name": "EmptyPixelSafeBandsPermitMixAcrossDifferentSourceCrops",
+          "outcome": "Passed",
+          "duration": "00:00:00.2839235"
+        },
+        {
+          "name": "SmoothSubtitlePacketHoldUsesFrozenHostContractBeforeTargetAcquisition",
+          "outcome": "Passed",
+          "duration": "00:00:01.1271030"
+        },
+        {
+          "name": "UhdLateCurrentCueReplacesNoCuePacketBeforeSealingSourceReuse",
+          "outcome": "Passed",
+          "duration": "00:00:23.0555311"
+        },
+        {
+          "name": "BackgroundGuardPaddingFollowsTextRatherThanRasterResolution",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000166"
+        },
+        {
+          "name": "CompositionAppliesCropAndRotationOnce",
+          "outcome": "Passed",
+          "duration": "00:00:00.3474999"
+        },
+        {
+          "name": "BackgroundGuardConfigValidation",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000176"
+        },
+        {
+          "name": "FreshCardCoverageRecentersVerticallyAndRetainsHorizontalAnchor",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000417"
+        },
+        {
+          "name": "NativeP010ChromaFieldsMatchDirectLibplacebo",
+          "outcome": "Passed",
+          "duration": "00:00:20.1822460"
+        },
+        {
+          "name": "MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000631"
+        },
+        {
+          "name": "MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000177"
+        },
+        {
+          "name": "RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+          "outcome": "Passed",
+          "duration": "00:00:43.6201487"
+        },
+        {
+          "name": "TransparentLayersPreservePictureAtEveryPanelEdge",
+          "outcome": "Passed",
+          "duration": "00:00:57.9123695"
+        },
+        {
+          "name": "NativeP010ChromaUpscalerChangesNoCuePixelsLikeDirectRender",
+          "outcome": "Passed",
+          "duration": "00:00:01.1015841"
+        },
+        {
+          "name": "FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000685"
+        },
+        {
+          "name": "CompositionCaptureFailureDoesNotRetainBorrowedPixels",
+          "outcome": "Passed",
+          "duration": "00:00:00.2469850"
+        },
+        {
+          "name": "StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery",
+          "outcome": "Passed",
+          "duration": "00:00:00.0000523"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5dfb96dc7c35b4ffa28543e851aa3150f5e5be8d",
+  "betaBaseCommit": "c716bd8108b03b0ef279c14c584e097eecc29515",
+  "sourceClean": true,
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/226",
+  "configuration": "Release",
+  "architecture": "x64",
+  "completedLocal": "2026-10-29T11:34:17.638338",
+  "tests": [
+    {
+      "run": "focused-standard",
+      "passed": 487,
+      "failed": 0,
+      "trxSha256": "4A91D3C194FC51FCA71C4F0F502143D790D27E20EA2E6B88496843735B2CC994"
+    },
+    {
+      "run": "focused-beta",
+      "passed": 16,
+      "failed": 0,
+      "trxSha256": "2C2961C50BDFA0026FCD19A062BAE7B31E437CBE9CD817CA85D115EDD5B2BACB"
+    },
+    {
+      "run": "gpu-standard",
+      "passed": 208,
+      "failed": 0,
+      "trxSha256": "7F6C12D367F4A88FF07E606C3C5E00B2BD8E8C30BB6FB2EF4A7FAF7DF6605008"
+    },
+    {
+      "run": "gpu-beta",
+      "passed": 208,
+      "failed": 0,
+      "trxSha256": "30600E91611E97B0D8DA903799DC15E989E0C39C6F223F1A4507C99C0BA57CFB"
+    }
+  ],
+  "testedDeploymentFiles": [
+    {
+      "destination": "VideoProcessor.exe",
+      "testedBuildSha256": "3E84A40450C6CBCB0F0DF7FEF54F920F3866016E651673E8A568EE32D4CE668E",
+      "runtimeReceipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "3E84A40450C6CBCB0F0DF7FEF54F920F3866016E651673E8A568EE32D4CE668E"
+      },
+      "currentObservedSha256": "0A5F6400829BC6D95D52B94A8B2DE1FFFB6C3BA907CAB6C578A19576E8D7F3A0",
+      "currentMatchesTestedBuild": false
+    },
+    {
+      "destination": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "testedBuildSha256": "0B40B91FF1EA6F22B75725999C4C905FC303200C31EEAD78C5A48538AD9A194E",
+      "runtimeReceipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "0B40B91FF1EA6F22B75725999C4C905FC303200C31EEAD78C5A48538AD9A194E"
+      },
+      "currentObservedSha256": "2B18A9AA8DCD66521FDCD050CA9D4CF0AC1D718E7CF4E2C55A815DB7C0927664",
+      "currentMatchesTestedBuild": false
+    },
+    {
+      "destination": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "testedBuildSha256": "59EBFF587DDBBF3B7973D273B1D20E6140A4D213EA3D1ADD23ED45D743787BEB",
+      "runtimeReceipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "59EBFF587DDBBF3B7973D273B1D20E6140A4D213EA3D1ADD23ED45D743787BEB"
+      },
+      "currentObservedSha256": "A6DEBBF0EF06F7ACE6789AB71F09CD3413EDB534C2C72EC2B314F3F1D75F42D0",
+      "currentMatchesTestedBuild": false
+    },
+    {
+      "destination": "config\\VideoProcessorConfig.exe",
+      "testedBuildSha256": "B91B320428380C64C684FF200C5B320F77912B4F5B3DD7986AE4AD3B23AB5A91",
+      "runtimeReceipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.44.35207",
+        "sha256": "B91B320428380C64C684FF200C5B320F77912B4F5B3DD7986AE4AD3B23AB5A91"
+      },
+      "currentObservedSha256": "B91B320428380C64C684FF200C5B320F77912B4F5B3DD7986AE4AD3B23AB5A91",
+      "currentMatchesTestedBuild": true
+    },
+    {
+      "destination": "config\\VideoProcessorConfigDiscovery.dll",
+      "testedBuildSha256": "1B24D1D79B784E0F6FD2AFA90023826818335C5312CAE33A559E0A0202490031",
+      "runtimeReceipt": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "1B24D1D79B784E0F6FD2AFA90023826818335C5312CAE33A559E0A0202490031"
+      },
+      "currentObservedSha256": "1B24D1D79B784E0F6FD2AFA90023826818335C5312CAE33A559E0A0202490031",
+      "currentMatchesTestedBuild": true
+    }
+  ],
+  "configurationEdits": [],
+  "backup": "C:\\Videoprocessor\\vp\\backups\\magewell-native-p210-5dfb96dc-20261029-110238",
+  "hardwareEvidence": "hardware-validation.json",
+  "laterDeploymentObservation": {
+    "commit": "e6f8c62d3aeafc701ffdf9e6d3e399b29cd206ad",
+    "containsTestedFeatureCommit": true,
+    "action": "Preserved; no overwrite of the newer local stats build",
+    "coverage": "This test record qualifies 5dfb96dc; it does not qualify the later stats changes"
+  },
+  "testScope": "Counts are per run; some beta focus cases also appear in the GPU run. No public release or full driver/card matrix qualification is implied."
+}
