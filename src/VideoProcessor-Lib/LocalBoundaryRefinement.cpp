@@ -34,6 +34,7 @@ namespace
         switch (encoding)
         {
         case VideoFrameEncoding::V210:
+        case VideoFrameEncoding::P210:
         case VideoFrameEncoding::R210:
         case VideoFrameEncoding::R10b:
         case VideoFrameEncoding::R10l:

@@ -108,6 +108,7 @@ bool MagewellCaptureDevice::SignalDescription::SameFormatAs(
 {
 	return locked == other.locked &&
 		rawRgbTunnel == other.rawRgbTunnel &&
+		nativeP210 == other.nativeP210 &&
 		width == other.width &&
 		height == other.height &&
 		interlaced == other.interlaced &&
@@ -639,7 +640,7 @@ bool MagewellCaptureDevice::ReadSignal(
 void MagewellCaptureDevice::ChooseCaptureFormat(
 	const SignalDescription& signal,
 	const std::vector<DWORD>& supportedFormats,
-	DWORD& fourcc, VideoFrameEncoding& encoding)
+	DWORD& fourcc, VideoFrameEncoding& encoding, bool nativeP210)
 {
 	const auto supports = [&supportedFormats](DWORD candidate)
 	{
@@ -676,7 +677,7 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 			return;
 		}
 		// Preserve the earlier deep-RGB compatibility route: the card converts
-		// 12-bit RGB to limited-range 10-bit YCbCr P210, repacked below as V210.
+		// 12-bit RGB to limited-range 10-bit YCbCr P210 (repacked for legacy consumers).
 		// This is intentionally lossy (12 -> 10 bits and 4:4:4 -> 4:2:2), not
 		// native 12-bit RGB delivery. Keep unknown depths and other missing
 		// capabilities rejected rather than silently degrading every RGB mode.
@@ -696,7 +697,7 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 		throw std::runtime_error(
 			"Magewell card does not support P210 required for YCbCr capture");
 	fourcc = MWFOURCC_P210;
-	encoding = VideoFrameEncoding::V210;
+	encoding = nativeP210 ? VideoFrameEncoding::P210 : VideoFrameEncoding::V210;
 }
 
 
@@ -812,6 +813,8 @@ uint32_t MagewellCaptureDevice::BytesPerRowFor(
 	{
 	case VideoFrameEncoding::V210:
 		return ((width + 47) / 48) * 128;
+	case VideoFrameEncoding::P210:
+		return width * 2;
 	case VideoFrameEncoding::BGRA_8BIT:
 	case VideoFrameEncoding::ARGB_8BIT:
 		return width * 4;
@@ -921,7 +924,8 @@ bool MagewellCaptureDevice::PublishVideoState(
 	videoState->videoFrameEncoding = encoding;
 	const bool rgb8 = encoding == VideoFrameEncoding::ARGB_8BIT ||
 		encoding == VideoFrameEncoding::BGRA_8BIT;
-	const char* captureName = encoding == VideoFrameEncoding::V210 ? "V210" :
+	const char* captureName = encoding == VideoFrameEncoding::P210 ? "P210" :
+		encoding == VideoFrameEncoding::V210 ? "V210" :
 		encoding == VideoFrameEncoding::R10l ? "R10l" :
 		encoding == VideoFrameEncoding::BGRA_8BIT ? "BGRA" : "ARGB";
 	videoState->rgbTunnelBytesPreserved = rgb8 &&
@@ -1042,6 +1046,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 	MagewellRgbTunnelRange rgbTunnelRange(m_sdkInstance->Api(), channel);
 	bool rawRequest = false;
+	bool nativeP210Request = false;
 	SignalDescription current;
 	bool haveState = false;
 	bool haveCardState = false;
@@ -1183,13 +1188,15 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	while (m_captureThreadRunning.load(std::memory_order_acquire))
 	{
 		const bool requestedRaw = m_rawRgbTunnelRequested.load(std::memory_order_acquire);
+		const bool requestedNativeP210 = m_nativeP210Requested.load(std::memory_order_acquire);
 		const bool rawRequestChanged = requestedRaw != rawRequest;
+		const bool nativeP210RequestChanged = requestedNativeP210 != nativeP210Request;
 		ULONGLONG notifyStatus = 0;
 		const DWORD waitResult = WaitForSingleObject(notifyEvent, 100);
 		if (waitResult == WAIT_TIMEOUT)
 		{
 			const auto now = std::chrono::steady_clock::now();
-			if (!rawRequestChanged && now - lastSignalPoll < std::chrono::milliseconds(250))
+			if (!rawRequestChanged && !nativeP210RequestChanged && now - lastSignalPoll < std::chrono::milliseconds(250))
 				continue;
 			lastSignalPoll = now;
 			notifyStatus = MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE;
@@ -1209,10 +1216,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 
         if (!m_captureThreadRunning.load(std::memory_order_acquire)) break;
-        if (recoveringStall && !rawRequestChanged &&
+        if (recoveringStall && !rawRequestChanged && !nativeP210RequestChanged &&
             std::chrono::steady_clock::now() < nextStallAttempt)
             continue;
-        const bool formatEvent = rawRequestChanged || (notifyStatus & (
+        const bool formatEvent = rawRequestChanged || nativeP210RequestChanged || (notifyStatus & (
 			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
 			MWCAP_NOTIFY_INPUT_SPECIFIC_CHANGE |
 			MWCAP_NOTIFY_HDMI_INFOFRAME_HDR |
@@ -1240,6 +1247,9 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
             if (rgbTunnelRange.Active() && requestedRaw && !signal.wireRgbRangeKnown)
                 signal.quantRange = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
 			rawRequest = requestedRaw;
+			nativeP210Request = requestedNativeP210;
+			signal.nativeP210 = requestedNativeP210 && signal.locked &&
+				(signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_RGB || signal.bitDepth == 12);
 			signal.rawRgbTunnel = requestedRaw && signal.locked &&
 				signal.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB &&
 				signal.bitDepth == 8 && signal.eotf == EOTF::SDR;
@@ -1308,7 +1318,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
                         sdrRange == MWCAP_VIDEO_QUANTIZATION_FULL ? TunnelSdrRgbRange::Full : TunnelSdrRgbRange::Unknown;
                 }
 
-				try { ChooseCaptureFormat(current, supportedFormats, fourcc, encoding); }
+				try { ChooseCaptureFormat(current, supportedFormats, fourcc, encoding, current.nativeP210); }
 				catch (const std::exception& exception)
 				{
 					unsupportedSignal(exception.what());
@@ -1316,10 +1326,11 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				}
 				if (current.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB &&
 					current.bitDepth == 12)
-					DebugLog::Log("Magewell compatibility conversion: RGB 12-bit input -> P210/V210 10-bit YCbCr 4:2:2; precision and chroma reduced");
+					DebugLog::Log("Magewell compatibility conversion: RGB 12-bit input -> P210 10-bit YCbCr 4:2:2; precision and chroma reduced");
 				stride = BytesPerRowFor(encoding, current.width);
 				const uint64_t deliveryBytes =
-					static_cast<uint64_t>(stride) * current.height;
+					static_cast<uint64_t>(stride) * current.height *
+					(encoding == VideoFrameEncoding::P210 ? 2u : 1u);
 				if (deliveryBytes == 0 || deliveryBytes > 128ULL * 1024 * 1024)
 					throw std::runtime_error("Magewell capture frame exceeds supported size");
 				frameSize = static_cast<uint32_t>(deliveryBytes);
@@ -1354,7 +1365,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				}
 				else
 				{
-					// Packed RGB8 is delivered directly without a repack.
+					// Native P210 and packed RGB8 are delivered without a repack.
 					captureStride = stride;
 					captureFrameSize = frameSize;
 					scratch.clear();
@@ -1362,9 +1373,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 				DebugLog::Log(
 					"Magewell capture geometry: card fourcc=0x%08X stride=%u "
-					"size=%u -> VP stride=%u size=%u repack=%d",
+					"size=%u -> VP stride=%u size=%u repack=%d native_p210=%d",
 					fourcc, captureStride, captureFrameSize,
-					stride, frameSize, repackP210 ? 1 : 0);
+					stride, frameSize, (repackP210 || repackRGB10) ? 1 : 0,
+					encoding == VideoFrameEncoding::P210 ? 1 : 0);
 
 				buffers.clear();
 				buffers.reserve(MAGEWELL_CAPTURE_BUFFER_COUNT);
@@ -1411,7 +1423,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (!haveState || buffers.empty())
 			continue;
 		if (!m_outputCaptureData.load(std::memory_order_acquire) ||
-            m_rawRgbTunnelRequested.load(std::memory_order_acquire) != rawRequest)
+            m_rawRgbTunnelRequested.load(std::memory_order_acquire) != rawRequest ||
+            m_nativeP210Requested.load(std::memory_order_acquire) != nativeP210Request)
 			continue;
 
 		MWCAP_VIDEO_BUFFER_INFO bufferInfo = {};
@@ -1484,7 +1497,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			0,                                      // aspect Y
 			(repackRGB10 || rgb8)
 				? MWCAP_VIDEO_COLOR_FORMAT_RGB :
-				repackP210
+				(fourcc == MWFOURCC_P210)
 					? (current.colorSpace == ColorSpace::BT_2020
 						? MWCAP_VIDEO_COLOR_FORMAT_YUV2020
 						: (current.colorSpace == ColorSpace::REC_601_525 ||
@@ -1589,7 +1602,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
         const auto callbackStarted = std::chrono::steady_clock::now();
         if (m_callback && m_outputCaptureData.load(std::memory_order_acquire) &&
-            m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest)
+            m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest &&
+            m_nativeP210Requested.load(std::memory_order_acquire) == nativeP210Request)
 			m_callback->OnCaptureDeviceVideoFrame(this, captureRunToken, videoFrame);
         const auto callbackReturned = std::chrono::steady_clock::now();
         if (callbackReturned - callbackStarted >= std::chrono::milliseconds(200))

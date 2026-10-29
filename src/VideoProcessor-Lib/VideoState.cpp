@@ -9,6 +9,7 @@
 #include <pch.h>
 
 #include "VideoState.h"
+#include <P210FrameLayout.h>
 
 
 VideoState::VideoState(const VideoState& other)
@@ -83,6 +84,14 @@ uint32_t VideoState::BytesPerRow() const
 
 	case VideoFrameEncoding::V210:
 		return ((displayMode->FrameWidth() + 47) / 48) * 128;
+	case VideoFrameEncoding::P210:
+	{
+		P210FrameLayout layout;
+		if (!displayMode || !GetP210FrameLayout(displayMode->FrameWidth(),
+			displayMode->FrameHeight(), layout))
+			throw std::runtime_error("Invalid native P210 frame geometry");
+		return static_cast<uint32_t>(layout.rowBytes);
+	}
 
 	case VideoFrameEncoding::ARGB_8BIT:
 	case VideoFrameEncoding::BGRA_8BIT:
@@ -104,5 +113,13 @@ uint32_t VideoState::BytesPerRow() const
 
 uint32_t VideoState::BytesPerFrame() const
 {
+	if (videoFrameEncoding == VideoFrameEncoding::P210)
+	{
+		P210FrameLayout layout;
+		if (!displayMode || !GetP210FrameLayout(displayMode->FrameWidth(),
+			displayMode->FrameHeight(), layout))
+			throw std::runtime_error("Invalid native P210 frame geometry");
+		return static_cast<uint32_t>(layout.frameBytes);
+	}
 	return BytesPerRow() * displayMode->FrameHeight();
 }

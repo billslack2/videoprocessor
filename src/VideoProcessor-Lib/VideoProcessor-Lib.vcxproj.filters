@@ -285,6 +285,9 @@
     <ClInclude Include="VideoFrameEncoding.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="P210FrameLayout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="VideoState.h">
       <Filter>Header Files</Filter>
     </ClInclude>

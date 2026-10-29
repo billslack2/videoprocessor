@@ -40,6 +40,7 @@
 #include <vprenderer/AlphaD3D11FrameGpuTimer.h>
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <P210FrameLayout.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <vprenderer/GradualPictureBoundaryRetention.h>
@@ -787,6 +788,13 @@ namespace
 		return videoConversionOverride ==
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
 			AlphaCanUseNativeRgbUpload(encoding, dolbyVisionTunnel);
+	}
+
+	bool IsNativeP210Upload(VideoFrameEncoding encoding,
+		VideoConversionOverride conversion, bool dolbyVisionTunnel)
+	{
+		return encoding == VideoFrameEncoding::P210 && !dolbyVisionTunnel &&
+			conversion == VideoConversionOverride::VIDEOCONVERSION_NONE;
 	}
 
 	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
@@ -8629,7 +8637,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!renderer)
 			throw std::runtime_error("Failed to create libplacebo renderer");
 
-		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel))
+		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) &&
+			!IsNativeP210Upload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel))
 		{
 			std::lock_guard<std::mutex> formatterGuard(formatterMutex);
 			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
@@ -8644,6 +8653,8 @@ struct LibplaceboVideoRenderer::Impl
 			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
 			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
 				"native RGB" :
+			IsNativeP210Upload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
+				"native P210 (no CPU repack)" :
 			((state->videoFrameEncoding == VideoFrameEncoding::V210 ||
 				state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
 				state->videoFrameEncoding == VideoFrameEncoding::HDYC) &&
@@ -12851,12 +12862,10 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 				GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout));
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
+		const bool nativeP210Upload = IsNativeP210Upload(
+			state.videoFrameEncoding, videoConversionOverride, state.dolbyVisionTunnel);
 		const bool lossless422Upload = state.dolbyVisionTunnel ||
-			((state.videoFrameEncoding == VideoFrameEncoding::V210 ||
-				state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
-				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
-			videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE);
+			AlphaUsesP210Ingress(state.videoFrameEncoding, videoConversionOverride);
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
 		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
@@ -12867,7 +12876,17 @@ struct LibplaceboVideoRenderer::Impl
 		bool logFormatterContract = false;
 		const double conversionCpuMs = convertedPayload ?
 			convertedPayload->conversionCpuMs : 0.0;
-		if (!nativeRgbUpload)
+		if (nativeP210Upload)
+		{
+			P210PlaneView view;
+			if (!GetP210PlaneView(videoFrame.GetData(), state.BytesPerFrame(),
+				static_cast<uint32_t>(width), static_cast<uint32_t>(height), view))
+				return false;
+			yPixels = view.y;
+			uvPixels = view.uv;
+			formattedContract = { VideoFrameSampleRange::LIMITED, 10, 6 };
+		}
+		else if (!nativeRgbUpload)
 		{
 			if (!convertedPayload || convertedPayload->pixels.empty())
 				return false;
@@ -12904,7 +12923,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
         const auto preparedLive = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
-            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload,lossless422Upload);
+            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativeP210Upload,lossless422Upload);
         const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
             analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
         analysisSource = preparedLive.source;
@@ -13861,6 +13880,9 @@ struct LibplaceboVideoRenderer::Impl
 				case VideoFrameEncoding::BGRA_8BIT:
 				case VideoFrameEncoding::R210:
 					setIngressStatus("Dolby Vision RGB tunnel (12-bit 4:2:2)");
+					break;
+				case VideoFrameEncoding::P210:
+					setIngressStatus("P210 (native capture; no CPU repack)");
 					break;
 				case VideoFrameEncoding::V210:
 					setIngressStatus("P210 (lossless v210 4:2:2)");
@@ -20992,6 +21014,10 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 {
 	if (!videoState)
 		throw std::runtime_error("null video state is invalid");
+
+	if (videoState->valid && videoState->videoFrameEncoding == VideoFrameEncoding::P210 &&
+		!IsNativeP210Upload(videoState->videoFrameEncoding, m_videoConversionOverride, videoState->dolbyVisionTunnel))
+		return false;
 
 	std::lock_guard<std::mutex> guard(m_stateMutex);
 	const bool materialSourceTransition = m_videoState &&

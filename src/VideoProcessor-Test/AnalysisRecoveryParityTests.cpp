@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <ActivePictureEvidence.h>
+#include <LocalBoundaryDiagnostics.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <AnalysisFrame.h>
 #include <SubtitleBoxDetector.h>
@@ -257,6 +258,20 @@ namespace Tests
             fixture.rowBytes = fixture.state->BytesPerRow();
             fixture.pixels = std::make_shared<std::vector<uint8_t>>(
                 fixture.rowBytes * Height, 0);
+
+            if (encoding == VideoFrameEncoding::P210)
+            {
+                fixture.pixels->resize(fixture.state->BytesPerFrame());
+                auto* ys = reinterpret_cast<uint16_t*>(fixture.pixels->data());
+                auto* uv = ys + Width * Height;
+                for (int y = 0; y < Height; ++y)
+                    for (int x = 0; x < Width; ++x)
+                    {
+                        ys[y*Width+x] = static_cast<uint16_t>(Luma(scene, x, y, topSide, phase) << 6);
+                        uv[y*Width+x] = static_cast<uint16_t>(Chroma(scene, y, phase, (x&1) != 0) << 6);
+                    }
+                return fixture;
+            }
 
             if (IsEightBitYuv(encoding))
             {
@@ -957,6 +972,105 @@ namespace Tests
                 AssertYuvDomainParity(encoding, Scene::MovingTexture, false, 0, 0);
                 AssertYuvDomainParity(encoding, Scene::MovingTexture, false, 0, 1);
             }
+        }
+
+        TEST_METHOD(NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers)
+        {
+            const std::array<Scene, 6> scenes = {Scene::OneLineCue, Scene::TwoLineCue,
+                Scene::ThreeLineCard, Scene::MidPictureText, Scene::MovingTexture, Scene::ChromaEdge};
+            for (const auto scene : scenes)
+            for (const bool top : {false, true})
+            for (const int phase : {0, 1})
+            {
+                auto packed = MakeFixture(VideoFrameEncoding::V210, scene, top, phase);
+                auto planar = MakeFixture(VideoFrameEncoding::P210, scene, top, phase);
+                auto converted = Convert(packed, false);
+                auto input = InputFor(planar, converted, AnalysisSourceProfile::LiveRenderer, true);
+                // A deliberately unusable render conversion cannot affect native analysis.
+                input.convertedData = nullptr; input.convertedBytes = 0; input.convertedOwner.reset();
+                input.rendererUsesNative = true;
+                const auto live = PrepareAnalysisFrame(input);
+                input.profile = AnalysisSourceProfile::QueuedCapture;
+                const auto queued = PrepareAnalysisFrame(input);
+                Assert::IsTrue(live.IsValid() && queued.IsValid());
+                Assert::AreEqual(live.domainKey, queued.domainKey);
+                const auto reference = LegacyNativeSource(packed);
+                for (const auto* prepared : {&live, &queued})
+                {
+                    Assert::IsFalse(prepared->usesConverted);
+                    Assert::IsTrue(prepared->source.data == planar.pixels->data());
+                    Assert::AreEqual(10, static_cast<int>(prepared->colorDepth));
+                    Assert::AreEqual(6, static_cast<int>(prepared->bitShift));
+                    Assert::IsTrue(prepared->sampleRange == VideoFrameSampleRange::LIMITED);
+                    AssertSameSamples(reference, prepared->source);
+                    AssertSameActivePicture(reference, prepared->source);
+                    const auto referenceColor = EvaluateFullRasterColorEvidence(reference);
+                    const auto nativeColor = EvaluateFullRasterColorEvidence(prepared->source);
+                    Assert::IsTrue(nativeColor.precisionSupported);
+                    Assert::AreEqual(referenceColor.evaluated, nativeColor.evaluated);
+                    Assert::AreEqual(referenceColor.candidateSupported, nativeColor.candidateSupported);
+                    Assert::AreEqual(referenceColor.sampleCount, nativeColor.sampleCount);
+                    const auto referenceBoundary = SampleLocalBoundaryDiagnostics(reference);
+                    const auto nativeBoundary = SampleLocalBoundaryDiagnostics(prepared->source);
+                    Assert::IsTrue(nativeBoundary.precisionSupported);
+                    Assert::AreEqual(referenceBoundary.top, nativeBoundary.top);
+                    Assert::AreEqual(referenceBoundary.bottom, nativeBoundary.bottom);
+                    const int lines = scene == Scene::OneLineCue ? 1 : scene == Scene::TwoLineCue ? 2 :
+                        scene == Scene::ThreeLineCard ? 3 : scene == Scene::MidPictureText ? -1 : 0;
+                    if (lines >= 0) AssertSameSubtitleResult(reference, prepared->source, lines, top);
+                }
+            }
+        }
+
+        TEST_METHOD(NativeP210PreservesEveryTenBitCodeAndEveryChromaRow)
+        {
+            auto fixture = MakeFixture(VideoFrameEncoding::P210, Scene::ChromaEdge);
+            auto* words = reinterpret_cast<uint16_t*>(fixture.pixels->data());
+            for (int i = 0; i < Width*Height; ++i)
+            {
+                words[i] = static_cast<uint16_t>((i%1024) << 6);
+                words[Width*Height+i] = static_cast<uint16_t>(((i*7+17)%1024) << 6);
+            }
+            AnalysisFrameInput input;
+            input.nativeData = fixture.pixels->data(); input.nativeBytes = fixture.pixels->size();
+            input.nativeOwner = fixture.pixels; input.nativeRowBytes = fixture.rowBytes;
+            input.width = Width; input.height = Height; input.encoding = fixture.encoding;
+            const auto prepared = PrepareAnalysisFrame(input);
+            Assert::IsTrue(prepared.IsValid());
+            for (int y = 0; y < Height; ++y)
+                for (int x = 0; x < Width; ++x)
+                {
+                    AnalysisLumaSample sample;
+                    Assert::IsTrue(prepared.source.Sample(x, y, sample));
+                    const int i = y*Width+x, pair = y*Width+(x&~1);
+                    Assert::AreEqual(i%1024, int(sample.luma));
+                    Assert::AreEqual((pair*7+17)%1024, int(sample.chromaU));
+                    Assert::AreEqual(((pair+1)*7+17)%1024, int(sample.chromaV));
+                }
+        }
+
+        TEST_METHOD(NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies)
+        {
+            auto fixture = MakeFixture(VideoFrameEncoding::P210, Scene::OneLineCue);
+            AnalysisFrameInput input;
+            input.nativeData = fixture.pixels->data(); input.nativeBytes = fixture.pixels->size();
+            input.nativeOwner = fixture.pixels; input.nativeRowBytes = fixture.rowBytes;
+            input.width = Width; input.height = Height; input.encoding = fixture.encoding;
+            --input.nativeBytes;
+            Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            ++input.nativeBytes; --input.nativeRowBytes;
+            Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            ++input.nativeRowBytes;
+            auto prepared = PrepareAnalysisFrame(input);
+            std::weak_ptr<std::vector<uint8_t>> owner = fixture.pixels;
+            input.nativeOwner.reset(); fixture.pixels.reset();
+            Assert::IsFalse(owner.expired());
+            auto source = prepared.source; prepared = {};
+            Assert::IsFalse(owner.expired());
+            AnalysisLumaSample sample;
+            Assert::IsTrue(source.Sample(0, 0, sample));
+            source = {};
+            Assert::IsTrue(owner.expired());
         }
 
         TEST_METHOD(P010AndP210UploadChoicesKeepOneNativeAnalysisDomain)

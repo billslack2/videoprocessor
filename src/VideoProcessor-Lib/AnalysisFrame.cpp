@@ -44,7 +44,8 @@ namespace
     {
         return encoding == VideoFrameEncoding::UYVY ||
             encoding == VideoFrameEncoding::HDYC ||
-            encoding == VideoFrameEncoding::V210;
+            encoding == VideoFrameEncoding::V210 ||
+            encoding == VideoFrameEncoding::P210;
     }
 
     void NativeContract(PreparedAnalysisFrame& result,
@@ -57,7 +58,7 @@ namespace
         const bool yuv8 = encoding == VideoFrameEncoding::UYVY ||
             encoding == VideoFrameEncoding::HDYC;
         result.colorDepth = rgb12 ? 12 : ((rgb8 || yuv8) ? 8 : 10);
-        result.bitShift = 0;
+        result.bitShift = encoding == VideoFrameEncoding::P210 ? 6 : 0;
         result.sampleRange = (rgb8 || rgb12) ? VideoFrameSampleRange::FULL :
             VideoFrameSampleRange::LIMITED;
     }
@@ -178,8 +179,11 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
         }
         else
         {
-            backing = native(AnalysisLumaFormat::NativeYuv422,
+            backing = native(input.encoding == VideoFrameEncoding::P210 ?
+                AnalysisLumaFormat::P210 : AnalysisLumaFormat::NativeYuv422,
                 input.colorspace);
+            if (input.encoding == VideoFrameEncoding::P210)
+                backing.chromaRowBytes = input.nativeRowBytes;
             result.domain = AnalysisFrameDomain::NativeYuv422;
         }
         result.sourceOwner = input.nativeOwner;

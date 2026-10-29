@@ -17,8 +17,11 @@ Defender settings to make a test pass.
 
 This backend targets the Magewell **Pro Capture** family only. USB Capture and
 Eco Capture use different capture APIs and are excluded from discovery.
-Supported outputs are ARGB for RGB 8-bit, RGB10 repacked to VP's existing R10l
-for RGB 10-bit, and P210 repacked to VP's existing V210 for YCbCr. The default
+Supported outputs are ARGB or advertised BGRA for RGB 8-bit, RGB10 repacked
+to VP's existing R10l for RGB 10-bit, and P210 for YCbCr. With VP Renderer
+(standard or beta) and conversion `none`, P210 capture is delivered directly
+to the existing two-plane GPU upload. DirectShow and forced P010 consumers
+retain the P210-to-V210 compatibility repack. The default
 RGB10-to-R10l path preserves 4:4:4 channel data. Output choice is checked
 against the card's reported capabilities. RGB 12-bit uses a logged P210
 compatibility conversion to 10-bit YCbCr 4:2:2; unknown RGB depth is rejected.
@@ -34,7 +37,7 @@ when renderer queue or crop lookahead holds them. The 1 GiB budget counts all
 live Magewell delivery buffers for that device, including buffers still held
 by downstream frame references across format changes or after StopCapture;
 their bytes stop counting only when the final reference releases. A separate
-SDK input scratch buffer used for P210 or RGB10 repacking is capped at 128 MiB
+SDK input scratch buffer used for legacy P210 or RGB10 repacking is capped at 128 MiB
 and is not included in that pool budget. If another delivery buffer would
 exceed 1 GiB, capture reports an error and requires a restart with lower queue
 depth or resolution.
@@ -52,7 +55,7 @@ property to the official SDK's `SDKv3` folder. No vendor import library is
 linked and no vendor runtime is bundled. Keep the optional backend contained
 under `src/VideoProcessor-Lib/magewell`; the GUI and configuration editor use
 the small `MagewellBackend` facade. Existing DeckLink, renderer, shared frame,
-and shared converter implementations are unchanged.
+and existing converter implementations remain available for compatibility.
 
 ## Evidence to collect before hardware testing
 
@@ -132,7 +135,7 @@ it passed. Divide rare modes across the two testers where possible.
 | --- | --- | --- |
 | Discovery and input selection | Connect each physical input in turn, select the corresponding VP input, and also select an unplugged or wrong connector. | Device and connector names are stable. The selected connector, not the card default, drives the signal. Wrong or unplugged input reports no signal without stale frames. |
 | SDR RGB 8-bit | Feed an 8-bit RGB SDR pattern with color bars, grayscale, and edge detail. | Correct geometry, channel order, range, color, smooth motion, and no corrupt rows or black output. |
-| SDR YCbCr 4:2:2 | Feed a 10-bit 4:2:2 signal, including odd/edge patterns if the source permits. | P210 to v210 conversion preserves pixel order, stride, luma range, chroma phase, and motion. |
+| SDR YCbCr 4:2:2 | Feed a 10-bit 4:2:2 signal, including odd/edge patterns if the source permits. | Native P210 reaches VP Renderer with no CPU repack; both full-height planes retain pixel order, stride, luma range, chroma phase and motion. Verify conversion `none` versus forced P010, plus DirectShow switching and retained buffers across transitions. |
 | BT.601 SD | Feed 480i/p or 576i/p BT.601 color bars. | VP reports BT.601 and colors match the source; the capture request must not silently use BT.709. |
 | BT.709 HD | Feed 720p/1080p SDR bars and grayscale. | Reported matrix, range, and pixels agree. |
 | BT.2020 HDR | Feed PQ/HDR10 with known highlights and metadata, then HLG if available. If the source can produce full-range RGB HDR, test it separately. | VP reports the intended color space and EOTF. Metadata and image update as source changes, with no retained HDR state after returning to SDR. Compare full-range black and white levels; this build requests limited range for R10l, so record any clipping or level mismatch as a qualification failure. |
@@ -213,3 +216,36 @@ live signal changes. Those claims require the two hardware tester reports.
 Keep the Magewell feature unqualified until the clean VM and hardware cases
 pass. Record every unavailable signal mode so the release description states
 the supported card and format scope accurately.
+
+## VP-0221 native P210 route
+
+The SDK writes into the retained capture buffer, with tightly packed
+little-endian 16-bit Y rows followed by full-height interleaved UV rows.
+Ten-bit limited-range samples occupy bits 15..6. VP Renderer borrows those
+planes for upload without a P210-to-V210 repack, V210-to-P210 formatter,
+conversion worker, or intermediate conversion image. This removes the two
+CPU transformations; capture and GPU upload still transfer the image.
+The two full-height planes occupy four bytes per pixel, so retained queues
+reach the existing 1 GiB capture-buffer limit sooner than packed V210.
+
+Renderer/conversion changes renegotiate delivery on the capture thread and
+invalidate incompatible prior layouts. Live and queued analysis both retain
+the original P210 capture owner and sample its full 4:2:2 precision. The
+shared renderer ABI is 32: deploy the host and both renderer DLLs together.
+
+This route applies to ordinary YCbCr and the existing lossy RGB12 compatibility
+conversion. It does not change the RGB8 TV-led Dolby Vision path: that still
+requires exact ARGB/BGRA tunnel bytes and the validated 12-bit decoder.
+Do not request literal `r210` or `v210` based only on an SDK constant or a
+successful return code. On the tested Pro Capture HDMI 4K+ driver, the r210
+request returned BGRA bytes, and v210 never completed or wrote a destination;
+P210 completed correctly. Other cards/drivers require their own qualification.
+
+Regression coverage includes retained SDK-buffer identity, renegotiation,
+copy failures, plane sizes and bounds (including odd heights), all 1,024 codes,
+row-specific chroma, native V210/P210 picture and caption evidence parity,
+SDR/HDR real-renderer uploads, and rejection of native planes by forced P010.
+Hardware qualification must still check content transitions, range/color,
+queue pressure, and both renderer dependencies. The earlier repack timings
+above describe the compatibility route and are not measured speedups for
+this implementation.
