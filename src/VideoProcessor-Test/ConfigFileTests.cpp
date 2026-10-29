@@ -3617,9 +3617,9 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload)
 		{
-			// API 31 also carries the byte-preserving RGB tunnel SDR range contract.
+			// API 32 adds native two-plane P210 capture to the shared frame contract.
 			// Host and renderer must reject older payload and vtable layouts.
-			Assert::AreEqual(static_cast<uint32_t>(31),
+			Assert::AreEqual(static_cast<uint32_t>(32),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

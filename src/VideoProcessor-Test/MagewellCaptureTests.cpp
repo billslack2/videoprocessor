@@ -4,6 +4,7 @@
 #include <magewell/MagewellCaptureDevice.h>
 #include <MWFOURCC.h>
 #include <AnalysisLumaSource.h>
+#include <P210FrameLayout.h>
 #include <DolbyVisionTunnelInput.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaQueuePolicy.h>
@@ -27,13 +28,13 @@ public:
 	static void Choose(MWCAP_VIDEO_COLOR_FORMAT color, BYTE depth,
 		const std::vector<DWORD>& formats,
 		DWORD& fourcc, VideoFrameEncoding& encoding,
-		unsigned int width = 1920)
+		unsigned int width = 1920, bool nativeP210 = false)
 	{
 		MagewellCaptureDevice::SignalDescription signal;
 		signal.colorFormat = color;
 		signal.bitDepth = depth;
 		signal.width = width;
-		MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding);
+		MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding, nativeP210);
 	}
 
 	static void PublishRgb8(MagewellCaptureDevice& device,
@@ -156,6 +157,7 @@ namespace Tests
             return MW_SUCCEEDED;
         }
 		std::atomic_bool failCopies{ false };
+        std::atomic<const BYTE*> lastSdkCopyPointer{nullptr};
 		HANDLE fakeNotifyEvent = nullptr;
 		HANDLE fakeCaptureEvent = nullptr;
 		MWCAP_VIDEO_COLOR_FORMAT requestedColor = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
@@ -477,7 +479,8 @@ namespace Tests
 			MWCAP_VIDEO_QUANTIZATION_RANGE range,
 			MWCAP_VIDEO_SATURATION_RANGE)
 		{
-			requestedColor = color;
+			lastSdkCopyPointer = frame;
+            requestedColor = color;
 			requestedRange = range;
 			if (failCopies.load())
 			{
@@ -552,6 +555,7 @@ namespace Tests
 			std::mutex mutex;
 			std::condition_variable changed;
 			std::vector<std::unique_ptr<VideoFrame>> frames;
+            std::vector<VideoFrameEncoding> frameEncodings;
 			std::vector<CString> errors;
 			int validStates = 0, invalidStates = 0;
 			size_t goal = 34;
@@ -574,7 +578,8 @@ namespace Tests
 				ACaptureDevice*, CaptureRunToken, VideoFrame& frame) override
 			{
 				std::lock_guard<std::mutex> lock(mutex);
-				frames.emplace_back(new VideoFrame(frame));
+				frameEncodings.push_back(latestValidState->videoFrameEncoding);
+                frames.emplace_back(new VideoFrame(frame));
 				frames.back()->SourceBufferAddRef();
 				if (frames.size() >= goal) streamFrames = false;
 				if (failClockAfterFirstFrame) failDeviceTime = true;
@@ -675,6 +680,7 @@ namespace Tests
             rangeFailure = 0; restoreWriteFailures = 0; rgbSenderBytes = nullptr;
             rgbCaptureFourcc = MWFOURCC_ARGB; rgbCaptureFormats = { MWFOURCC_ARGB };
 			fakeNotifyEvent = fakeCaptureEvent = nullptr;
+            lastSdkCopyPointer = nullptr;
 		}
 
 
@@ -878,6 +884,116 @@ namespace Tests
 			auto replacement = std::make_shared<MagewellCaptureBuffer>(32, budget);
 			Assert::AreEqual<uint32_t>(32, replacement->Size());
 		}
+
+        TEST_METHOD(NativeP210BorrowsSdkDestinationAndRetainsBothPlanesAcrossStop)
+        {
+            QueueCallback callback; callback.goal = 1;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback);
+            device.SetNativeP210Capture(true);
+            device.StartCapture(1);
+            const bool delivered = callback.Wait([&]() { return !callback.frames.empty() || !callback.errors.empty(); });
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(delivered && !callback.frames.empty());
+            Assert::IsTrue(callback.errors.empty());
+            const auto& state = callback.latestValidState;
+            Assert::IsTrue(state->videoFrameEncoding == VideoFrameEncoding::P210);
+            Assert::AreEqual(204u, state->BytesPerRow());
+            Assert::AreEqual(40800u, state->BytesPerFrame());
+            Assert::IsTrue(callback.frames.front()->GetData() == lastSdkCopyPointer.load(),
+                L"Native capture must deliver the SDK destination, without a scratch copy");
+            P210PlaneView view;
+            Assert::IsTrue(GetP210PlaneView(callback.frames.front()->GetData(), state->BytesPerFrame(), 102, 100, view));
+            const uint16_t ys[] = {64,128,192,256,320,384}, uvs[] = {704,768,832,896,960,1024};
+            Assert::IsTrue(memcmp(view.y, ys, sizeof(ys)) == 0);
+            Assert::IsTrue(memcmp(view.uv, uvs, sizeof(uvs)) == 0);
+            Assert::IsTrue(requestedColor == MWCAP_VIDEO_COLOR_FORMAT_YUV601);
+            Assert::IsTrue(requestedRange == MWCAP_VIDEO_QUANTIZATION_LIMITED);
+        }
+
+        TEST_METHOD(NativeP210SwitchesToLegacyV210AndBackWithoutReusingRetainedBuffers)
+        {
+            QueueCallback callback; callback.goal = 1;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetNativeP210Capture(true);
+            device.StartCapture(1);
+            const bool first = callback.Wait([&]() { return !callback.frames.empty(); });
+            bool legacy = false, nativeAgain = false;
+            if (first)
+            {
+                device.SetNativeP210Capture(false);
+                // Deliberately do not send a driver format event: consumer
+                // changes must renegotiate even with an unchanged HDMI signal.
+                legacy = callback.Wait([&]() { return callback.validStates >= 2; });
+                if (legacy)
+                {
+                    SetEvent(fakeNotifyEvent);
+                    legacy = callback.Wait([&]() { return callback.frames.size() >= 2; });
+                    device.SetNativeP210Capture(true);
+                    nativeAgain = callback.Wait([&]() { return callback.validStates >= 3; });
+                    if (nativeAgain)
+                    {
+                        SetEvent(fakeNotifyEvent);
+                        nativeAgain = callback.Wait([&]() { return callback.frames.size() >= 3; });
+                    }
+                }
+            }
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(first && legacy && nativeAgain);
+            Assert::IsTrue(callback.errors.empty());
+            Assert::IsTrue(callback.invalidStates >= 2);
+            Assert::IsTrue(callback.frameEncodings[0] == VideoFrameEncoding::P210);
+            Assert::IsTrue(callback.frameEncodings[1] == VideoFrameEncoding::V210);
+            Assert::IsTrue(callback.frameEncodings[2] == VideoFrameEncoding::P210);
+            Assert::IsTrue(callback.frames[0]->GetData() != callback.frames[2]->GetData());
+            const auto* words = static_cast<const uint16_t*>(callback.frames[0]->GetData());
+            Assert::AreEqual(64, int(words[0]));
+            Assert::AreEqual(704, int(words[102*100]));
+            Assert::AreEqual<uint32_t>(11u | (1u << 10) | (12u << 20),
+                static_cast<const uint32_t*>(callback.frames[1]->GetData())[0]);
+        }
+
+        TEST_METHOD(NativeP210CopyFailureInvalidatesAndDoesNotPublishPartialPlanes)
+        {
+            QueueCallback callback;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetNativeP210Capture(true);
+            failCopies = true; device.StartCapture(1);
+            const bool failed = callback.Wait([&]() { return !callback.errors.empty(); });
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(failed && callback.invalidStates > 0);
+            Assert::IsTrue(callback.frames.empty());
+        }
+
+        TEST_METHOD(NativeP210CapabilityPreservesRgbByteLayoutsAndRejectsMissingPlaneFormat)
+        {
+            DWORD fourcc = 0; VideoFrameEncoding encoding;
+            for (const BYTE depth : {BYTE(8), BYTE(10), BYTE(12)})
+            {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709, depth,
+                    proCapture4kPlusFormats, fourcc, encoding, 1922, true);
+                Assert::IsTrue(encoding == VideoFrameEncoding::P210);
+                Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
+            }
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 8,
+                proCapture4kPlusFormats, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::BGRA_8BIT);
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 10,
+                {MWFOURCC_RGB10, MWFOURCC_P210}, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::R10l);
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 12,
+                proCapture4kPlusFormats, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::P210);
+            Assert::ExpectException<std::runtime_error>([&]() {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709, 10,
+                    {MWFOURCC_P010}, fourcc, encoding, 1920, true); });
+        }
 
 		TEST_METHOD(CaptureFillsDeepQueueAndEightFrameAnalysisLookahead)
 		{

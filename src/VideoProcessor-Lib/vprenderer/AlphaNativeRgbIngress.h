@@ -88,5 +88,6 @@ inline bool AlphaUsesP210Ingress(VideoFrameEncoding encoding,
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
 		(encoding == VideoFrameEncoding::UYVY ||
 			encoding == VideoFrameEncoding::HDYC ||
-			encoding == VideoFrameEncoding::V210);
+			encoding == VideoFrameEncoding::V210 ||
+			encoding == VideoFrameEncoding::P210);
 }
