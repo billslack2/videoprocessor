@@ -371,6 +371,7 @@ void MagewellCaptureDevice::StopCapture()
 	UpdateState(m_canCapture
 		? CaptureDeviceState::CAPTUREDEVICESTATE_READY
 		: CaptureDeviceState::CAPTUREDEVICESTATE_FAILED);
+    { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 }
 
 

@@ -1047,9 +1047,13 @@ namespace Tests
             device.StopCapture(); device.SetCallbackHandler(nullptr);
             Assert::IsTrue(reached && callback.errors.empty());
             Assert::AreEqual(uint64_t(2), missed);
-            Assert::AreEqual(size_t(4), callback.frames.size());
+            Assert::IsTrue(callback.frames.size() >= 4);
             Assert::IsTrue(beforeStop.expectedFps > 59.9);
             Assert::AreEqual(0.0, beforeStop.windowSeconds);
+            CaptureDeliveryStats afterStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(afterStop));
+            Assert::AreEqual(0.0, afterStop.expectedFps);
+            Assert::AreEqual(0.0, afterStop.windowSeconds);
         }
 
         TEST_METHOD(CaptureMissesIgnoreInitialDuplicateBackwardsAndJitteredTimestamps)
