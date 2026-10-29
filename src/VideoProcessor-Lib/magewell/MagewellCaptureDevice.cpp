@@ -1104,6 +1104,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
     uint64_t deliveryWindowFrames = 0, skippedInputFrames = 0;
     timingclocktime_t lastDeliveredTicks = 0;
     double copyTotalMs = 0, copyPeakMs = 0, callbackTotalMs = 0;
+    double packingTotalMs = 0, packingPeakMs = 0;
 	const auto sdkFailure = [](int& failures, const char* message)
 	{
 		if (++failures >= 5)
@@ -1438,6 +1439,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
                     m_deliveryStats.expectedFps = current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0;
                 }
                 copyTotalMs = copyPeakMs = callbackTotalMs = 0;
+                packingTotalMs = packingPeakMs = 0;
 
                 ResetEvent(captureEvent);
                 if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
@@ -1617,9 +1619,15 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				buffer->Data(), stride,
 				current.width, current.height);
 
-        if (repackRgb24 && !MagewellRgb24Packing::Expand(scratch.data(),scratch.size(),
-            captureStride,buffer->Data(),frameSize,stride,current.width,current.height))
-            throw std::runtime_error("Magewell RGB24 packing rejected invalid buffer geometry");
+        if (repackRgb24)
+        {
+            const auto packingStarted=std::chrono::steady_clock::now();
+            if(!MagewellRgb24Packing::Expand(scratch.data(),scratch.size(),captureStride,
+                buffer->Data(),frameSize,stride,current.width,current.height))
+                throw std::runtime_error("Magewell RGB24 packing rejected invalid buffer geometry");
+            const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-packingStarted).count();
+            packingTotalMs+=ms; packingPeakMs=(std::max)(packingPeakMs,ms);
+        }
 
 		const timingclocktime_t rawCaptureTicks =
 			static_cast<timingclocktime_t>(frameInfo.allFieldStartTimes[0]);
@@ -1679,12 +1687,19 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
         const double windowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-deliveryWindowStart).count();
         if (windowSeconds >= 5.0)
         {
-            DebugLog::Log("Magewell delivery cadence: fourcc=0x%08X frames=%llu window_s=%.3f delivered_fps=%.5f expected_fps=%.5f skipped_input_frames=%llu copy_avg_ms=%.3f copy_peak_ms=%.3f callback_avg_ms=%.3f",
+            {
+                std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                m_deliveryStats.deliveredFps = deliveryWindowFrames/windowSeconds;
+                m_deliveryStats.windowSeconds = windowSeconds;
+                m_deliveryStats.recentMissedFrames = skippedInputFrames;
+            }
+            DebugLog::Log("Magewell delivery cadence: fourcc=0x%08X frames=%llu window_s=%.3f delivered_fps=%.5f expected_fps=%.5f skipped_input_frames=%llu copy_avg_ms=%.3f copy_peak_ms=%.3f packing_avg_ms=%.3f packing_peak_ms=%.3f callback_avg_ms=%.3f",
                 fourcc, static_cast<unsigned long long>(deliveryWindowFrames), windowSeconds, deliveryWindowFrames/windowSeconds,
                 current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0, static_cast<unsigned long long>(skippedInputFrames),
-                copyTotalMs/deliveryWindowFrames, copyPeakMs, callbackTotalMs/deliveryWindowFrames);
+                copyTotalMs/deliveryWindowFrames, copyPeakMs, packingTotalMs/deliveryWindowFrames, packingPeakMs, callbackTotalMs/deliveryWindowFrames);
             deliveryWindowStart = std::chrono::steady_clock::now(); deliveryWindowFrames = skippedInputFrames = 0;
             copyTotalMs = copyPeakMs = callbackTotalMs = 0;
+                packingTotalMs = packingPeakMs = 0;
         }
 	}
 

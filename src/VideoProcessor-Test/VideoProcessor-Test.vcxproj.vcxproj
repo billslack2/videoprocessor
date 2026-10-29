@@ -197,7 +197,6 @@
   <ItemGroup>
     <ClCompile Include="FullscreenActivationTests.cpp" />
     <ClCompile Include="NativeP010CaptureTests.cpp" />
-    <ClCompile Include="MagewellRgb24PackingTests.cpp" />
     <ClCompile Include="StartupPresentationReadinessTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
