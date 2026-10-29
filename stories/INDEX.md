@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0220`
-- Next root story number: `VP-0221`
-- Total indexed items: 238
+- Last assigned root story: `VP-0221`
+- Next root story number: `VP-0222`
+- Total indexed items: 239
 
 ## Story locations
 
@@ -281,6 +281,7 @@ they must not contain requirements that are absent from this file.
 | VP-0217 | Done | Stable reconstructed subtitle background and soft boundary blending |
 | VP-0218 | In Progress | Improve aspect transitions with current relative boundary evidence |
 | VP-0220 | Review | Validate consolidated Off fit and AR evidence changes |
+| VP-0221 | In Progress | Native Magewell P210 capture and direct VP Renderer upload |
 
 ## Codex story workflow
 
