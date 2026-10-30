@@ -581,6 +581,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_2",             ID_COMMAND_CAPTURE_2,              '2',       FCONTROL },
 	{ "capture_3",             ID_COMMAND_CAPTURE_3,              '3',       FCONTROL },
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
+	{ "capture_player",        ID_COMMAND_CAPTURE_PLAYER,         '0',       FCONTROL | FALT },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
 	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL | FSHIFT },
@@ -2105,6 +2106,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND_RANGE(ID_COMMAND_UNIFIED_PROFILE_FIRST, ID_COMMAND_UNIFIED_PROFILE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
 	ON_COMMAND_RANGE(ID_COMMAND_RENDERER_SELECT_FIRST, ID_COMMAND_RENDERER_SELECT_LAST, &CVideoProcessorDlg::OnCommandRendererSelect)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
+	ON_COMMAND(ID_COMMAND_CAPTURE_PLAYER, &CVideoProcessorDlg::OnCommandCapturePlayer)
 
 
 
@@ -2296,6 +2298,7 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(
 		*this, deckLinkFormatPreferences);
 	m_magewellDeviceDiscoverer = MagewellBackend::CreateDiscoverer(*this);
+	m_sourcePluginDeviceDiscoverer = SourcePluginBackend::CreateDiscoverer(*this);
 	
 	// Initialize stats overlay
 	m_statsOverlay = new StatsOverlayWindow();
@@ -8888,6 +8891,26 @@ void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
 	SelectCaptureDevice(deviceIndex);
 }
 
+// Selects the Player. Matches it by device type, never by SelectCaptureDevice's
+// regex, which selects entry 0 when nothing matches.
+void CVideoProcessorDlg::OnCommandCapturePlayer()
+{
+	const int itemCount = m_captureDeviceCombo.GetCount();
+	for (int i = 0; i < itemCount; ++i)
+	{
+		if (!SourcePluginBackend::IsSourcePluginDevice(
+			static_cast<ACaptureDevice*>(m_captureDeviceCombo.GetItemDataPtr(i))))
+			continue;
+		if (i != m_captureDeviceCombo.GetCurSel())
+		{
+			m_captureDeviceCombo.SetCurSel(i);
+			OnCaptureDeviceSelected();
+		}
+		return;
+	}
+	DebugLog::Log("Player input key: no Player input listed");
+}
+
 void CVideoProcessorDlg::SelectCaptureDevice(int n)
 {
 	// Logic to select the capture device
@@ -9505,6 +9528,12 @@ void CVideoProcessorDlg::RenderStart()
 	assert(i >= 0);
 	VideoConversionOverride videoConversionOverride =
 		(VideoConversionOverride)m_rendererVideoConversionCombo.GetItemData(i);
+	// The override converts v210/UYVY card input. A source plugin delivers
+	// 4:2:0 already and cannot renegotiate to v210 the way a card does, so the
+	// override would only refuse its frames (no picture). The saved setting
+	// still applies when a card is selected again.
+	if (SourcePluginBackend::IsSourcePluginDevice(m_captureDevice))
+		videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 
 	i = m_rendererNominalRangeCombo.GetCurSel();
 	assert(i >= 0);
@@ -11939,7 +11968,8 @@ bool CVideoProcessorDlg::BuildPushVideoState()
         rendererId && rendererId->backend == RendererBackend::LIBPLACEBO);
     const bool nativeP210Allowed = rendererId &&
         rendererId->backend == RendererBackend::LIBPLACEBO &&
-        m_vpRendererVideoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE;
+        (m_vpRendererVideoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE ||
+            SourcePluginBackend::IsSourcePluginDevice(m_captureDevice)); // see RenderStart()
     if (m_captureDevice) m_captureDevice->SetNativeP210Capture(nativeP210Allowed);
     if ((videoState->videoFrameEncoding == VideoFrameEncoding::P210 ||
         videoState->videoFrameEncoding == VideoFrameEncoding::P010) && !nativeP210Allowed)
@@ -13737,6 +13767,15 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		DebugLog::Log("Magewell discovery unavailable: %s", exception.what());
 	}
 
+	try
+	{
+		m_sourcePluginDeviceDiscoverer->Start();
+	}
+	catch (const std::exception& exception)
+	{
+		DebugLog::Log("Source plugin discovery unavailable: %s", exception.what());
+	}
+
 	const CString magewellUnavailable = MagewellBackend::UnavailableMessage(m_initialCaptureDevice);
 	if (!magewellUnavailable.IsEmpty())
     {
@@ -14872,6 +14911,19 @@ void CVideoProcessorDlg::OnClose()
 			// Never started because the runtime is absent. Nothing to unwind.
 		}
 		m_magewellDeviceDiscoverer.Release();
+	}
+
+	if (m_sourcePluginDeviceDiscoverer)
+	{
+		try
+		{
+			m_sourcePluginDeviceDiscoverer->Stop();
+		}
+		catch (const std::exception&)
+		{
+			// Never started. Nothing to unwind.
+		}
+		m_sourcePluginDeviceDiscoverer.Release();
 	}
 
 	UpdateState();

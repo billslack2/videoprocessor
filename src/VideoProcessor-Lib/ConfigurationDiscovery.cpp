@@ -9,6 +9,7 @@
 #include <DeckLinkAPI_h.h>
 
 #include "magewell/MagewellBackend.h"
+#include "source_plugin/SourcePluginBackend.h"
 
 #include <algorithm>
 
@@ -61,12 +62,15 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureDeviceNames()
 		}
 	}
 	MagewellBackend::AppendDeviceNames(names);
+	SourcePluginBackend::AppendDeviceNames(names);
 	return names;
 }
 
 std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 	const std::wstring& captureDeviceName)
 {
+	if (SourcePluginBackend::IsDeviceName(captureDeviceName))
+		return SourcePluginBackend::ConnectionNames(captureDeviceName);
 	std::vector<std::wstring> names;
 	CComPtr<IDeckLinkIterator> iterator;
 	if (CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
