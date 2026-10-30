@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-30). Investigating the user report that the aspect OSD remains Unknown or updates slowly. Source worktree: `E:/codex/videoprocessor/ar-unknown-20261030`, branch `codex/ar-unknown-20261030`, remote beta baseline `d8518ef8` (`v1.4.02-beta`). The aspect getter currently depends on acquiring the busy render mutex, and nearby-label dwell restarts on every publication revision. Implementing independent telemetry and bounded label confirmation.
+Review (2026-10-30). Aspect OSD starvation and label dwell fixes are ready in [draft PR #235](https://github.com/billslack2/videoprocessor/pull/235), source `b6118deac0711c6973cf343cd9b34a20a8f510a7`, based on freshly fetched `v1.4.02-beta` tip `d8518ef8`. Clean x64 Release solution build passed (both renderer variants); 18 focused tests passed. Deployment and live playback acceptance remain pending. Worktree: `E:/codex/videoprocessor/ar-unknown-20261030`.
 
 Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
@@ -189,3 +189,17 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - User approved merging after live visual inspection and asked to move the story to Review.
 - PR #124 merged into the current GitHub default/latest beta branch `v1.3.005-beta` at merge commit `c84863eaa59e03fe218de824c34b7c0220c4fd87`. Source head was pinned to `bcc80ea97972249b7a5325ea5bbf351d046e919a`; base before merge was `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
 - The final clean source commit passed the full x64 Release solution build. Focused aspect tests passed on an earlier source commit, and their updated code compiled in the final build; no automated tests were run after the viewport edit. The user confirmed the displayed feature looks good in live use. Precise HDTV / Digital IMAX switch timing remains unmeasured.
+
+## Unknown/slow aspect OSD follow-up (2026-10-30)
+
+- User supplied a Ctrl+I screenshot showing `--- (Unknown)` with live 3840x2160 v210 input and reported very slow acquisition.
+- Read deployed configuration and state plus current/rotated `C:/Videoprocessor/vp/logs/vp.log` files. The current session logged trusted full-raster publication at 14:36:51 and again at 14:40:16. The `no-trusted-base` preview diagnostic specifically requires BAR_CROP_TRUSTED and does not establish that full-raster detector geometry was absent.
+- The aspect getter attempted the main render mutex and skipped updates whenever busy. It now reads a coherent small snapshot populated by the render thread before display-output throttling. The same source-generation, classification and geometric validity checks remain. No detector, fitting, crop, or configuration changes were made.
+- Repeated publication revisions of an unchanged nearby label previously restarted the five-second dwell indefinitely. Returning to the held label or an unavailable result also failed to restart a later matching candidate correctly. A standalone before/after regression failed both cases against the base header and passed with this fix.
+- All 18 selected aspect and OSD telemetry tests passed, including acquisition/change while another thread holds the render mutex, coherent concurrent reads, unavailable/new-source state, retirement, existing mappings, repeated publication and interrupted dwell. TRX: `E:/codex/videoprocessor/ar-unknown-20261030/x64/Release/ar-osd-results/aspect-osd.trx`.
+- Full solution Release/x64 build passed, followed by a successful committed-source rebuild. Host and renderer generated version headers identify `b6118de`, dirty=false. Runtime record hashes and Release/x64 identities verified:
+  - Host `VideoProcessor-GUI.exe`: `81B2170C47EED844E5E44138A5B7C1AEF7A4410ED71F051FAF5E8F8624D4B44C`.
+  - Standard renderer DLL: `ACF2E49C50071BE4A7782EBB6ABA3100546DD9FB3DA3B298AFD6F457FAA7A5E3`.
+  - Beta renderer DLL: `13A35C18696E91979A03989478C7052FB96C4D9BBC51CE7A7877F508B8155C04`.
+- Installed files were not changed. The installed session identifies source `4112a0b`; any later deployment should preserve relevant local work and deploy the paired Release host/renderer after authorization. Confirm initial ratio acquisition and genuine aspect transitions live; nearby competing labels intentionally retain five-second confirmation.
+- Tracker audit found 239 canonical files / 239 indexed items, no duplicate IDs or missing records. Existing unrelated discrepancy: VP-0211 remains in `in-progress` with In Progress status while INDEX says Review. VP-0070 lacks an exact `## Status` heading; VP-0088/VP-0168 use noncanonical capitalization. These existing records and the user's unrelated VP-0207 asset edit were preserved.
