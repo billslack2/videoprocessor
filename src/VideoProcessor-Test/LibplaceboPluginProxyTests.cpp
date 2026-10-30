@@ -129,10 +129,10 @@ namespace VideoProcessorTest
             r.ratio=1.509; osd.Update(r); r.ratio=1.514;
             Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
             r.ratio=1.515;
-            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard; provisional)");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard; provisional)");
             r.ratio=1.514; r.provisional=false;
             r.inUseAvailable=true; r.inUseState=PictureAspectUse::DETECTED; r.inUseRatio=2.39;
-            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard)");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
             r.inUseRatio=2.40;
             Assert::IsTrue(osd.Update(r).inUse == L"2.40:1 (Scope)");
         }
