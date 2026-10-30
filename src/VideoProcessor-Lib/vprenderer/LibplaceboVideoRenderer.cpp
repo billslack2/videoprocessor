@@ -22585,6 +22585,27 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 
 void LibplaceboVideoRenderer::RefreshOsdCacheLocked()
 {
+    // Publish before the output-description throttle and pending-display checks.
+    // Aspect is source geometry, independent of display mode and fitting.
+    DetectedPictureAspect result;
+	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
+	result.publicationGeneration = m_impl->nlsGeometryGeneration;
+	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
+	if (m_impl->nlsGeometryAvailable &&
+		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
+		(m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::FULL_RASTER_TRUSTED ||
+		 m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED) &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top)
+	{
+		result.ratio = static_cast<double>(geometry.right - geometry.left) /
+			(geometry.bottom - geometry.top);
+		result.available = std::isfinite(result.ratio) &&
+			result.ratio > 0.0;
+	}
+    m_impl->osdTelemetry.PublishAspect(result);
+
     // Capture before checking pending flags: a concurrent UI invalidation must
     // not let this old render state adopt the new publication generation.
     const auto generation = m_impl->osdTelemetry.OutputGeneration();
@@ -22909,26 +22930,7 @@ bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
 	result = {};
 	if (!m_impl)
 		return true;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
-	result.publicationGeneration = m_impl->nlsGeometryGeneration;
-	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
-	if (m_impl->nlsGeometryAvailable &&
-		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
-		(m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::FULL_RASTER_TRUSTED ||
-		 m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED) &&
-		geometry.right > geometry.left && geometry.bottom > geometry.top)
-	{
-		result.ratio = static_cast<double>(geometry.right - geometry.left) /
-			(geometry.bottom - geometry.top);
-		result.available = std::isfinite(result.ratio) &&
-			result.ratio > 0.0;
-	}
+	result = m_impl->osdTelemetry.ReadAspect();
 	return true;
 }
 

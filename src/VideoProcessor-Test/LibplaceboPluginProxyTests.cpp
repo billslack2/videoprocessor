@@ -148,6 +148,39 @@ namespace VideoProcessorTest
 			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
 		}
 
+        TEST_METHOD(AspectOsdRepeatedPublicationsDoNotRestartLabelDwell)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect reading{1, 1, 2.39, true};
+            Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
+            reading.ratio = 2.40;
+            for (uint64_t now = 1100; now < 6100; now += 100) {
+                ++reading.publicationGeneration;
+                Assert::IsTrue(osd.Update(reading, now).ratio == L"2.39:1");
+            }
+            ++reading.publicationGeneration;
+            Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.40:1");
+        }
+
+        TEST_METHOD(AspectOsdInterruptedCandidateMustEarnFreshContinuousDwell)
+        {
+            for (bool unavailable : {false, true}) {
+                AspectRatioOsd osd;
+                DetectedPictureAspect reading{1, 1, 2.39, true};
+                osd.Update(reading, 1000);
+                reading.ratio = 2.40;
+                osd.Update(reading, 1100);
+                reading.available = !unavailable;
+                reading.ratio = 2.39;
+                Assert::IsTrue(osd.Update(reading, 4000).ratio == L"2.39:1");
+                reading.available = true;
+                reading.ratio = 2.40;
+                Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.39:1");
+                Assert::IsTrue(osd.Update(reading, 11099).ratio == L"2.39:1");
+                Assert::IsTrue(osd.Update(reading, 11100).ratio == L"2.40:1");
+            }
+        }
+
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
 		{
 			// Exercise the real renderer DLL and D3D initialization without capture hardware.
