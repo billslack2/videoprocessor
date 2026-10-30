@@ -298,6 +298,12 @@ namespace VideoProcessorTest
 		}
 
         TEST_METHOD(RealRendererUploadsNativeP210AndP010ForSdrAndHdrWithoutConversion)
+        { VerifyNativeCaptureAspect(false); }
+
+        TEST_METHOD(BetaRendererPublishesSubmittedAspectForNativeCapture)
+        { VerifyNativeCaptureAspect(true); }
+
+        void VerifyNativeCaptureAspect(bool beta)
         {
             HMODULE module = nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -307,10 +313,10 @@ namespace VideoProcessorTest
             GetModuleFileNameW(module, modulePath, MAX_PATH);
             std::wstring path(modulePath); path.resize(path.find_last_of(L"\\/"));
 #ifdef VP_LIBPLACEBO_BETA
-            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
-#else
-            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            path += L"\\..";
 #endif
+            path += beta ? L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll" :
+                L"\\vprenderer\\VideoProcessorVPRenderer.dll";
             HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             Assert::IsNotNull(plugin);
