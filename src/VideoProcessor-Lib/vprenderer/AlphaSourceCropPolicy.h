@@ -400,12 +400,15 @@ namespace AlphaSourceCrop
 		uint64_t presentationEvidenceGeneration = 0;
 		ActivePicturePresentationRetentionEvidence retention;
 		OutwardPictureConfirmationState previousOutward;
+		OutwardPictureConfirmationState previousPillarboxContradiction;
 	};
 
 	struct TransitionAdmissionDecision
 	{
 		ActivePictureObservation observation;
 		OutwardPictureConfirmationDecision outward;
+		// Withdraws obsolete side-bar authority; never certifies replacement bounds.
+		OutwardPictureConfirmationDecision pillarboxContradiction;
 		bool deferPresentation = false;
 		bool deferOutward = false;
 		// Unresolved margins defer composition changes unless the exact vertical

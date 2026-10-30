@@ -4932,6 +4932,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::MovingPictureTransitionState movingPictureTransition;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
+	AlphaSourceCrop::OutwardPictureConfirmationState pillarboxContradictionConfirmation;
 	uint64_t outwardPictureConfirmationEpoch = 0;
 	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
@@ -10072,6 +10073,7 @@ struct LibplaceboVideoRenderer::Impl
         deferredQueueNativeResetEpoch = deferredQueueNativeResetGeneration = 0;
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
+		pillarboxContradictionConfirmation = {};
 		movingPictureTransition = {};
 		pictureTransitionHandoff = {};
 		nlsGeometryAvailable = false;
@@ -10717,6 +10719,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -11669,6 +11672,7 @@ struct LibplaceboVideoRenderer::Impl
                     retentionEvidence);
 			admissionInput.retention = retentionEvidence;
 			admissionInput.previousOutward = outwardPictureConfirmation;
+			admissionInput.previousPillarboxContradiction = pillarboxContradictionConfirmation;
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
@@ -11878,6 +11882,21 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(bufferedExpansion->decision.proofFrameCount),
 					bufferedExpansionReady ? 1 : 0, bufferedExpansion->relativeContrast ? 1 : 0,
                     currentQualifiedPair ? 1 : 0, currentRelativeContrast.reason);
+			pillarboxContradictionConfirmation = admission.pillarboxContradiction.state;
+			if (admission.pillarboxContradiction.authoritative)
+			{
+				DebugLog::Log("Alpha pillarbox authority contradicted: generation=%llu sequence=%llu old_rect=%d,%d-%d,%d proof=%u action=withdraw_then_reacquire",
+					analysisSource.generation, frameNumber, nlsGeometry.left, nlsGeometry.top,
+					nlsGeometry.right, nlsGeometry.bottom,
+					admission.pillarboxContradiction.state.confirmations);
+				// Complete the existing synchronized live/queue reset after rendering.
+				// No queued or moving-picture decision may restore this crop meanwhile.
+				nativeBoundaryReacquisitionPending = true;
+				nlsTransitionWithdrawn = true;
+				nlsGeometryAvailable = false;
+				scheduledDecision = nullptr;
+				admission.observation.transitionDeferred = true;
+			}
 			const auto observation = admission.observation;
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
@@ -12764,6 +12783,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			latestActivePictureObservationSupportsCrop = false;
@@ -13025,6 +13045,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -13143,6 +13164,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The stable geometry remains the last affirmative logical reference.
 			nlsTransition.ResetCandidateEvidence();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			scopeSubtitleTranslationConfirmation = {};
@@ -16633,7 +16655,7 @@ releaseDriftBaseRetention =
 			const bool nearBlackEpisodeRetainCrop =
 				AlphaSourceCrop::NearBlackEpisodeOwnsCropThisFrame(episodeDecision);
 			const bool nearBlackEpisodeFullRaster =
-				episodeDecision.resetTrustedGeometry ||
+				episodeDecision.resetTrustedGeometry || nativeBoundaryReacquisitionPending ||
 				nearBlackPresentationEpisode.mode ==
 					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
 
