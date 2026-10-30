@@ -5,12 +5,19 @@
 #include <cwchar>
 #include <string>
 
+enum class PictureAspectUse : uint32_t { UNAVAILABLE, STARTUP_FALLBACK, DETECTED, HELD, PRESENTATION };
+
 struct DetectedPictureAspect
 {
 	uint64_t sourceGeneration = 0;
 	uint64_t publicationGeneration = 0;
 	double ratio = 0.0;
 	bool available = false;
+    bool provisional = false;
+    double inUseRatio = 0.0;
+    bool inUseAvailable = false;
+    PictureAspectUse inUseState = PictureAspectUse::UNAVAILABLE;
+    uint64_t detectedSequence = 0, presentedSequence = 0;
 };
 
 // Presentation-only labels for the VP Renderer Ctrl+I OSD.
@@ -24,82 +31,34 @@ public:
 		int target = -1;
 	};
 
-	void Reset()
-	{
-		m_sourceGeneration = 0;
-		m_hasSource = false;
-		m_label = {};
-		m_candidate = {};
-		m_candidateSinceMs = 0;
-		m_candidatePublication = 0;
-		m_unavailableSinceMs = 0;
-	}
-
-	const Label& Update(const DetectedPictureAspect& reading, uint64_t nowMs)
-	{
-		if (!m_hasSource ||
-			(reading.sourceGeneration != 0 &&
-			 m_sourceGeneration != reading.sourceGeneration))
-		{
-			Reset();
-			m_hasSource = true;
-			m_sourceGeneration = reading.sourceGeneration;
-		}
-		if (!reading.available || !std::isfinite(reading.ratio) ||
-			reading.ratio <= 0.0)
-		{
-			m_candidateSinceMs = 0;
-			// Fullscreen/windowed handoff can temporarily withdraw the detector
-			// publication. Keep the last trusted display for a bounded interval
-			// while the same source is reacquired.
-			if (m_unavailableSinceMs == 0)
-				m_unavailableSinceMs = nowMs;
-			if (m_label.ratio != L"---" &&
-				nowMs - m_unavailableSinceMs < 10000)
-				return m_label;
-			m_label = {};
-			return m_label;
-		}
-		m_unavailableSinceMs = 0;
-		const Label incoming = Classify(reading.ratio);
-		if (m_label.ratio == L"---")
-		{
-			m_label = incoming;
-			return m_label;
-		}
-		if (incoming.ratio == m_label.ratio &&
-			incoming.name == m_label.name)
-		{
-			m_candidateSinceMs = 0;
-			return m_label;
-		}
-
-		// The detector has already committed a stable rectangle. Publish clear
-		// changes at once; only nearby competing labels need extra dwell.
-		const bool ambiguous = m_label.target >= 0 &&
-			std::abs(reading.ratio - Targets()[m_label.target].value) /
-				Targets()[m_label.target].value <= 0.03 + 1e-12;
-		if (!ambiguous)
-		{
-			m_label = incoming;
-			m_candidateSinceMs = 0;
-			return m_label;
-		}
-		if (incoming.ratio != m_candidate.ratio ||
-			incoming.name != m_candidate.name ||
-			reading.publicationGeneration != m_candidatePublication)
-		{
-			m_candidate = incoming;
-			m_candidatePublication = reading.publicationGeneration;
-			m_candidateSinceMs = nowMs;
-		}
-		if (nowMs - m_candidateSinceMs >= 5000)
-		{
-			m_label = incoming;
-			m_candidateSinceMs = 0;
-		}
-		return m_label;
-	}
+    struct Rows { std::wstring inUse, detected; };
+    static std::wstring Measured(double ratio)
+    {
+        if (!std::isfinite(ratio) || ratio <= 0.0) return L"Unavailable";
+        wchar_t value[40]{};
+        swprintf_s(value, L"%.3f:1", ratio);
+        return value;
+    }
+    static Rows Format(const DetectedPictureAspect& reading)
+    {
+        Rows rows{L"Unavailable", L"Unavailable"};
+        if (reading.inUseAvailable) {
+            rows.inUse = Measured(reading.inUseRatio);
+            switch (reading.inUseState) {
+            case PictureAspectUse::STARTUP_FALLBACK: rows.inUse += L" (startup fallback)"; break;
+            case PictureAspectUse::DETECTED: rows.inUse += L" (detected)"; break;
+            case PictureAspectUse::HELD: rows.inUse += L" (held)"; break;
+            case PictureAspectUse::PRESENTATION: rows.inUse += L" (presentation)"; break;
+            default: break;
+            }
+        }
+        if (reading.available) {
+            rows.detected = Measured(reading.ratio);
+            rows.detected += reading.provisional ? L" (provisional)" :
+                L" (" + Classify(reading.ratio).name + L")";
+        }
+        return rows;
+    }
 
 	static Label Classify(double ratio)
 	{
@@ -127,7 +86,7 @@ public:
 		std::wstring formatted(numeric);
 		while (formatted.size() > 4 && formatted.back() == L'0')
 			formatted.pop_back();
-		return { formatted + L":1", L"Unknown", -1 };
+		return { formatted + L":1", L"nonstandard", -1 };
 	}
 
 private:
@@ -158,11 +117,53 @@ private:
 		return targets;
 	}
 
-	uint64_t m_sourceGeneration = 0;
-	bool m_hasSource = false;
-	Label m_label;
-	Label m_candidate;
-	uint64_t m_candidatePublication = 0;
-	uint64_t m_candidateSinceMs = 0;
-	uint64_t m_unavailableSinceMs = 0;
+};
+
+// Telemetry only: this never selects or holds a renderer crop. Used geometry is
+// updated solely after successful submission; live evidence has no UI dwell.
+class PictureAspectTelemetry
+{
+public:
+    void Source(uint64_t generation)
+    {
+        if (generation != m_value.sourceGeneration) {
+            m_value = {};
+            m_value.sourceGeneration = generation;
+            m_seenDetection = false;
+        }
+    }
+    void Observe(uint64_t generation, uint64_t sequence, double ratio,
+        bool available, bool provisional)
+    {
+        Source(generation);
+        m_value.detectedSequence = sequence;
+        m_value.available = available && std::isfinite(ratio) && ratio > 0.0;
+        m_value.ratio = m_value.available ? ratio : 0.0;
+        m_value.provisional = m_value.available && provisional;
+    }
+    void ClearDetection()
+    { m_value.available = m_value.provisional = false; m_value.ratio = 0.0; }
+    void Submitted(uint64_t generation, uint64_t sequence, double ratio,
+        double nativeRatio, bool acceptedPicture, bool succeeded)
+    {
+        Source(generation);
+        if (!succeeded || !std::isfinite(ratio) || ratio <= 0.0) return;
+        const bool sameAsLast = m_value.inUseAvailable && Same(ratio, m_value.inUseRatio);
+        const bool sameAsLive = m_value.available && !m_value.provisional && Same(ratio,m_value.ratio);
+        m_seenDetection = m_seenDetection || acceptedPicture || sameAsLive;
+        m_value.inUseState = !m_seenDetection && Same(ratio,nativeRatio)
+            ? PictureAspectUse::STARTUP_FALLBACK
+            : sameAsLive ? PictureAspectUse::DETECTED
+            : sameAsLast ? PictureAspectUse::HELD : PictureAspectUse::PRESENTATION;
+        m_value.inUseAvailable = true;
+        m_value.inUseRatio = ratio;
+        m_value.presentedSequence = sequence;
+        ++m_value.publicationGeneration;
+    }
+    void ClearPresentation() { m_value.inUseAvailable = false; m_value.inUseState = PictureAspectUse::UNAVAILABLE; }
+    const DetectedPictureAspect& Read() const { return m_value; }
+private:
+    static bool Same(double a, double b) { return std::abs(a-b) <= 0.0005; }
+    DetectedPictureAspect m_value;
+    bool m_seenDetection = false;
 };

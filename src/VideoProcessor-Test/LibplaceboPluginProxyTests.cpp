@@ -86,13 +86,13 @@ namespace VideoProcessorTest
 				Assert::IsTrue(label.ratio == item.ratio);
 				Assert::IsTrue(label.name == item.name);
 			}
-			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"Unknown");
+			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"nonstandard");
 			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.503:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.50).ratio == L"2.50:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(0.0).ratio == L"---");
 		}
 
-		TEST_METHOD(AspectOsdSnapsAtOnePercentAndHoldsAmbiguousChanges)
+		TEST_METHOD(AspectNamesClassifyWithoutChangingMeasurements)
 		{
 			const double isolatedTargets[] = {
 				4.0 / 3.0, 1.37, 1.43, 1.66, 16.0 / 9.0,
@@ -106,47 +106,83 @@ namespace VideoProcessorTest
 				Assert::IsTrue(AspectRatioOsd::Classify(
 					target * 1.01).ratio == atTarget.ratio);
 				Assert::IsTrue(AspectRatioOsd::Classify(
-					target * 0.9899).name == L"Unknown");
+					target * 0.9899).name == L"nonstandard");
 				Assert::IsTrue(AspectRatioOsd::Classify(
-					target * 1.0101).name == L"Unknown");
+					target * 1.0101).name == L"nonstandard");
 			}
 			const auto atBoundary = AspectRatioOsd::Classify(2.76 * 1.01);
 			Assert::IsTrue(atBoundary.ratio == L"2.76:1");
-			Assert::IsTrue(AspectRatioOsd::Classify(2.76 * 1.01001).name == L"Unknown");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.76 * 1.01001).name == L"nonstandard");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.39).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.40).ratio == L"2.40:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(
 				2.0 * 2.39 * 2.40 / (2.39 + 2.40)).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
-			AspectRatioOsd osd;
-			DetectedPictureAspect reading{1, 1, 2.39, true};
-			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
-			reading.publicationGeneration = 2;
-			reading.ratio = 2.40;
-			Assert::IsTrue(osd.Update(reading, 1100).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 6099).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.40:1");
-			reading.publicationGeneration = 3;
-			reading.ratio = 2.40 * 1.03;
-			Assert::IsTrue(osd.Update(reading, 6200).ratio == L"2.40:1");
-			reading.sourceGeneration = 2;
-			reading.publicationGeneration = 1;
-			reading.ratio = 2.39;
-			Assert::IsTrue(osd.Update(reading, 6300).ratio == L"2.39:1");
-			reading.available = false;
-			reading.sourceGeneration = 0; // display-mode handoff
-			Assert::IsTrue(osd.Update(reading, 6400).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 16399).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 16400).name == L"Unknown");
-			reading.available = true;
-			reading.sourceGeneration = 3; // actual new source
-			reading.ratio = 16.0 / 9.0;
-			Assert::IsTrue(osd.Update(reading, 16500).ratio == L"16:9");
-			reading.publicationGeneration = 2;
-			reading.ratio = 1.90;
-			Assert::IsTrue(osd.Update(reading, 16600).ratio == L"1.90:1");
-			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
 		}
+
+        TEST_METHOD(AspectTelemetryUsesNativeStartupWithoutClaimingDetection)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Submitted(1, 1, 3840.0/2160.0, 3840.0/2160.0, false, true);
+            const auto rows = AspectRatioOsd::Format(telemetry.Read());
+            Assert::IsTrue(rows.inUse == L"1.778:1 (startup fallback)");
+            Assert::IsTrue(rows.detected == L"Unavailable");
+            telemetry.Observe(1, 2, 16.0/9.0, true, false);
+            telemetry.Submitted(1, 2, 16.0/9.0, 16.0/9.0, false, true);
+            Assert::IsTrue(telemetry.Read().inUseState == PictureAspectUse::DETECTED);
+        }
+        TEST_METHOD(AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 10, 2.39, true, false);
+            telemetry.Submitted(1, 10, 2.39, 16.0/9.0, true, true);
+            telemetry.Observe(1, 11, 1.66, true, true);
+            telemetry.Submitted(1, 11, 2.39, 16.0/9.0, true, true);
+            const auto rows = AspectRatioOsd::Format(telemetry.Read());
+            Assert::IsTrue(rows.inUse == L"2.390:1 (held)");
+            Assert::IsTrue(rows.detected == L"1.660:1 (provisional)");
+            telemetry.ClearDetection();
+            telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
+            Assert::AreEqual(2.39, telemetry.Read().inUseRatio);
+        }
+        TEST_METHOD(AspectTelemetryDoesNotHideARealSubmittedAspectChange)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 1, 2.39, true, false);
+            telemetry.Submitted(1, 1, 2.39, 16.0/9.0, true, true);
+            telemetry.Observe(1, 2, 1.66, true, false);
+            telemetry.Submitted(1, 2, 1.66, 16.0/9.0, true, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.660:1 (detected)");
+            telemetry.Observe(1, 3, 2.17, true, false);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.170:1 (nonstandard)");
+        }
+        TEST_METHOD(AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 20, 2.39, true, false);
+            telemetry.Submitted(1, 19, 2.17, 16.0/9.0, true, true);
+            Assert::AreEqual(uint64_t(19), telemetry.Read().presentedSequence);
+            Assert::AreEqual(uint64_t(20), telemetry.Read().detectedSequence);
+            Assert::AreEqual(2.17, telemetry.Read().inUseRatio);
+            telemetry.Submitted(1, 21, 1.66, 16.0/9.0, true, false);
+            Assert::AreEqual(2.17, telemetry.Read().inUseRatio);
+            telemetry.ClearPresentation();
+            Assert::IsFalse(telemetry.Read().inUseAvailable);
+            Assert::IsTrue(telemetry.Read().available);
+        }
+        TEST_METHOD(AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 1, 2.39, true, false);
+            telemetry.Submitted(1, 1, 2.39, 16.0/9.0, true, true);
+            telemetry.Source(2);
+            Assert::IsFalse(telemetry.Read().inUseAvailable || telemetry.Read().available);
+            telemetry.Submitted(2, 1, 4.0/3.0, 4.0/3.0, false, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.333:1 (startup fallback)");
+            telemetry.Observe(2, 2, 0.0, true, false);
+            Assert::IsFalse(telemetry.Read().available);
+        }
 
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
 		{
@@ -343,6 +379,16 @@ namespace VideoProcessorTest
                         std::this_thread::sleep_for(std::chrono::milliseconds(30));
                     }
                     Assert::IsTrue(presented, L"Native P210 failed to upload and present");
+                    DetectedPictureAspect aspect;
+                    const auto aspectDeadline = std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                    do {
+                        cleanup.renderer->GetDetectedPictureAspect(aspect);
+                        if (aspect.inUseAvailable) break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    } while (std::chrono::steady_clock::now()<aspectDeadline);
+                    Assert::IsTrue(aspect.inUseAvailable, L"Actual renderer did not publish submitted AR");
+                    Assert::AreEqual(1.0,aspect.inUseRatio,0.0001,L"Source is 130x130; target window aspect must not replace it");
+                    Assert::IsTrue(aspect.presentedSequence>0);
                     Assert::AreEqual(initialized+(nativeEncoding==VideoFrameEncoding::P210?1u:0u), nativeP210Initializations.load());
                 }
                 Assert::AreEqual(0, buffer.references.load(), L"Renderer retained a capture buffer after shutdown");

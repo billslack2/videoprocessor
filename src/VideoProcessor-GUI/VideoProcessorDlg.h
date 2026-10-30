@@ -903,7 +903,6 @@ protected:
 	static constexpr double CPU_PEAK_LOG_STEP_PERCENT = 5.0;
 
 	StatsOverlayWindow* m_statsOverlay = nullptr;
-	AspectRatioOsd m_aspectRatioOsd;
 	InputLocked m_cadenceInputLocked = InputLocked::UNKNOWN;
 	CadenceIntervalEstimate m_cadenceIntervalEstimate;
 	ULONGLONG m_lastCadenceIntervalLogTick = 0;

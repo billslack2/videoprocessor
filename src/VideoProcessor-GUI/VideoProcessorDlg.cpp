@@ -15675,13 +15675,13 @@ void CVideoProcessorDlg::PollAspectRatioOsd()
 	DetectedPictureAspect detected;
 	if (!m_videoRenderer->GetDetectedPictureAspect(detected))
 		return;
-	const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
-	if (m_lastStatsData->aspectRatio == label.ratio.c_str() &&
-		m_lastStatsData->aspectName == label.name.c_str())
+	const auto label = AspectRatioOsd::Format(detected);
+	if (m_lastStatsData->aspectInUse == label.inUse.c_str() &&
+		m_lastStatsData->aspectDetected == label.detected.c_str())
 		return;
 
-	m_lastStatsData->aspectRatio = label.ratio.c_str();
-	m_lastStatsData->aspectName = label.name.c_str();
+	m_lastStatsData->aspectInUse = label.inUse.c_str();
+	m_lastStatsData->aspectDetected = label.detected.c_str();
 	m_statsOverlay->UpdateStats(*m_lastStatsData);
 	std::vector<uint8_t> pixels;
 	int width = 0;
@@ -16560,7 +16560,6 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		m_processCpuUsage.Reset();
 		m_cadenceIntervalEstimate.Reset();
-		m_aspectRatioOsd.Reset();
 		m_cpuUsageRenderer = statsRenderer;
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
@@ -16756,15 +16755,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			DetectedPictureAspect detected;
 			if (m_videoRenderer->GetDetectedPictureAspect(detected))
 			{
-				const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
-				stats.aspectRatio = label.ratio.c_str();
-				stats.aspectName = label.name.c_str();
+				const auto label = AspectRatioOsd::Format(detected);
+				stats.aspectInUse = label.inUse.c_str();
+				stats.aspectDetected = label.detected.c_str();
 			}
 			else if (sameStatsTelemetryGeneration && m_lastStatsData)
 			{
 				// A busy render lock cannot blank the last displayed label.
-				stats.aspectRatio = m_lastStatsData->aspectRatio;
-				stats.aspectName = m_lastStatsData->aspectName;
+				stats.aspectInUse = m_lastStatsData->aspectInUse;
+				stats.aspectDetected = m_lastStatsData->aspectDetected;
 			}
 		}
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();

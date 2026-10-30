@@ -4770,6 +4770,8 @@ struct LibplaceboVideoRenderer::Impl
 	// The L1 minimum, maximum and average last seen; a change logs at once.
 	double hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
+    PictureAspectTelemetry aspectTelemetry;
+    DetectedPictureAspect lastLoggedAspect;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
 	mutable std::mutex shaderStatusMutex;
@@ -9979,6 +9981,8 @@ struct LibplaceboVideoRenderer::Impl
                 crop.left,crop.top,crop.right,crop.bottom);
         }
 		latestActivePictureEvidenceAvailable = false;
+        aspectTelemetry.ClearDetection();
+        osdTelemetry.PublishAspect(aspectTelemetry.Read());
 		latestActivePictureEvidenceClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
@@ -10690,6 +10694,8 @@ struct LibplaceboVideoRenderer::Impl
         const SceneDetectorResult* motionBoundary = nullptr)
 	{
 		latestColdStrictWorkerProof = false;
+        aspectTelemetry.Source(analysisSource.generation);
+        osdTelemetry.PublishAspect(aspectTelemetry.Read());
 		ConfigureSparseBoundaryExperiment();
         ConfigureRememberedEdgeReturn();
 		sparseBoundaryStartupGate.ObserveSource(analysisSource.generation);
@@ -11574,6 +11580,16 @@ struct LibplaceboVideoRenderer::Impl
 					? evidence.proposedBounds : evidence.trustedBounds)
 				: ActivePictureBounds{};
 			latestActivePictureEvidenceFrame = frameNumber;
+            const auto& observed = latestActivePictureEvidenceBounds;
+            const bool observedAspectAvailable = latestActivePictureEvidenceAvailable &&
+                (latestActivePictureEvidenceClassification == ActivePictureClassification::FULL_RASTER_TRUSTED ||
+                 latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+                 latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL) &&
+                observed.right > observed.left && observed.bottom > observed.top;
+            aspectTelemetry.Observe(analysisSource.generation, frameNumber,
+                observedAspectAvailable ? double(observed.right-observed.left)/(observed.bottom-observed.top) : 0.0,
+                observedAspectAvailable, latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
 			const bool currentBoundsAreFullRaster =
 				latestActivePictureEvidenceBounds.left == 0 &&
 				latestActivePictureEvidenceBounds.top == 0 &&
@@ -19624,6 +19640,11 @@ releaseDriftBaseRetention =
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
+        if (!rendered && submitted) {
+            // The fallback submitted a black clear, not the previous picture.
+            aspectTelemetry.ClearPresentation();
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+        }
         const bool restartCadence=displayCadenceTransition.Presented(rendered&&submitted,displayVsyncClock.Active());
         if (rendered && submitted) {
             if (restartCadence) {
@@ -19640,6 +19661,25 @@ releaseDriftBaseRetention =
 		}
 		if (rendered && submitted)
 		{
+            const double usedWidth = std::abs(double(renderImage.crop.x1)-renderImage.crop.x0);
+            const double usedHeight = std::abs(double(renderImage.crop.y1)-renderImage.crop.y0);
+            aspectTelemetry.Submitted(frameGeneration,
+                temporalRenderer.Active() ? temporalRenderer.SelectedPacketSequence() : sourceSequence,
+                usedHeight > 0.0 ? usedWidth/usedHeight : 0.0,
+                height > 0 ? double(width)/height : 0.0, trustedActivePicture, true);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+            const auto& aspect = aspectTelemetry.Read();
+            if (aspect.sourceGeneration != lastLoggedAspect.sourceGeneration ||
+                aspect.inUseState != lastLoggedAspect.inUseState ||
+                aspect.available != lastLoggedAspect.available ||
+                aspect.provisional != lastLoggedAspect.provisional ||
+                std::abs(aspect.inUseRatio-lastLoggedAspect.inUseRatio) >= 0.001 ||
+                std::abs(aspect.ratio-lastLoggedAspect.ratio) >= 0.001) {
+                lastLoggedAspect = aspect;
+                DebugLog::Log("VP aspect telemetry: generation=%llu presented=%llu detected_sequence=%llu in_use=%.6f use_state=%u detected=%.6f available=%d provisional=%d",
+                    frameGeneration, aspect.presentedSequence, aspect.detectedSequence, aspect.inUseRatio,
+                    static_cast<unsigned>(aspect.inUseState), aspect.ratio, aspect.available?1:0, aspect.provisional?1:0);
+            }
             const bool submittedGeometryChanged=submittedOutputGeometryTrace.Observe(true,frameGeneration,viewportRequestSerial,
                 {renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1},
                 {target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1});
@@ -22909,26 +22949,7 @@ bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
 	result = {};
 	if (!m_impl)
 		return true;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
-	result.publicationGeneration = m_impl->nlsGeometryGeneration;
-	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
-	if (m_impl->nlsGeometryAvailable &&
-		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
-		(m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::FULL_RASTER_TRUSTED ||
-		 m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED) &&
-		geometry.right > geometry.left && geometry.bottom > geometry.top)
-	{
-		result.ratio = static_cast<double>(geometry.right - geometry.left) /
-			(geometry.bottom - geometry.top);
-		result.available = std::isfinite(result.ratio) &&
-			result.ratio > 0.0;
-	}
+	result = m_impl->osdTelemetry.ReadAspect();
 	return true;
 }
 

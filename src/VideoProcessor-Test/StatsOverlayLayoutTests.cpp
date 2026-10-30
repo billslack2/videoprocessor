@@ -23,7 +23,7 @@ TEST_CLASS(StatsOverlayLayoutTests)
     static StatsData Example(bool alpha)
     {
         StatsData stats; stats.isAlphaRenderer = alpha; stats.rendererName = L"Alpha";
-        stats.resolution = L"4096 x 2160"; stats.aspectRatio = L"2.350"; stats.aspectName = L"Scope";
+        stats.resolution = L"4096 x 2160"; stats.aspectInUse = L"2.350:1 (held)"; stats.aspectDetected = L"Unavailable";
         stats.refreshRate = 23.976; stats.displayRefreshRate = 59.940;
         stats.eotf = L"PQ (wire SDR)"; stats.colorspace = L"BT.2020 (wire Rec.709)";
         stats.dtmProfile = L"Cinema"; stats.hdr10 = L"CLL 10000 / FALL 10000 | M 0.005-10000";
@@ -82,6 +82,22 @@ TEST_CLASS(StatsOverlayLayoutTests)
                 Assert::AreEqual(uint8_t(43), pixels[size_t(scan) * stride + x * 4]);
     }
 public:
+    TEST_METHOD(AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr)
+    {
+        auto stats=Example(true);
+        stats.aspectInUse=L"2.390:1 (held)";
+        stats.aspectDetected=L"1.660:1 (provisional)";
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"2.390:1 (held)",Find(rows,L"AR in use:").value.c_str());
+        Assert::AreEqual(L"1.660:1 (provisional)",Find(rows,L"Detected AR:").value.c_str());
+        Assert::IsTrue(std::none_of(rows.begin(),rows.end(),[](const auto& row) {
+            return row.label==L"Input AR:" || row.label==L"Aspect Ratio:";
+        }));
+        VerifyNative(stats);
+        stats.aspectInUse=L"1.778:1 (startup fallback)";
+        stats.aspectDetected=L"Unavailable";
+        VerifyNative(stats);
+    }
     TEST_METHOD(BothBackendsDeriveNativeHeightFromExactRowsAndConditionalSections)
     {
         for (const bool alpha : {false, true})
