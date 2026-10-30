@@ -261,7 +261,7 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-        TEST_METHOD(RealRendererUploadsNativeP210ForSdrAndHdrWithoutConversion)
+        TEST_METHOD(RealRendererUploadsNativeP210AndP010ForSdrAndHdrWithoutConversion)
         {
             HMODULE module = nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -285,9 +285,11 @@ namespace VideoProcessorTest
                 GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
             Assert::IsTrue(create && destroy);
             VideoStateComPtr state = new VideoState();
-            state->valid = true; state->videoFrameEncoding = VideoFrameEncoding::P210;
-            state->displayMode = std::make_shared<DisplayMode>(130, 129, false, 60000, 1001);
-            std::vector<uint16_t> pixels(130*129*2);
+            for (const auto nativeEncoding : {VideoFrameEncoding::P210, VideoFrameEncoding::P010})
+            {
+            state->valid = true; state->videoFrameEncoding = nativeEncoding;
+            state->displayMode = std::make_shared<DisplayMode>(130, 130, false, 60000, 1001);
+            std::vector<uint16_t> pixels(state->BytesPerFrame()/2);
             for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = uint16_t((64+(i%877)) << 6);
             for (const auto eotf : {EOTF::SDR, EOTF::PQ})
             {
@@ -335,15 +337,16 @@ namespace VideoProcessorTest
                             CString ingress;
                             presented = cleanup.renderer->HasPresentedLiveFrame() &&
                                 cleanup.renderer->GetVideoIngressInfo(ingress) &&
-                                ingress.Find(L"P210 (native capture; no CPU repack)") >= 0;
+                                ingress.Find(nativeEncoding==VideoFrameEncoding::P010 ? L"P010 (card capture; 10-bit 4:2:0; no CPU repack)" : L"P210 (native capture; no CPU repack)") >= 0;
                             if (presented) break;
                         }
                         std::this_thread::sleep_for(std::chrono::milliseconds(30));
                     }
                     Assert::IsTrue(presented, L"Native P210 failed to upload and present");
-                    Assert::AreEqual(initialized+1, nativeP210Initializations.load());
+                    Assert::AreEqual(initialized+(nativeEncoding==VideoFrameEncoding::P210?1u:0u), nativeP210Initializations.load());
                 }
                 Assert::AreEqual(0, buffer.references.load(), L"Renderer retained a capture buffer after shutdown");
+            }
             }
         }
 

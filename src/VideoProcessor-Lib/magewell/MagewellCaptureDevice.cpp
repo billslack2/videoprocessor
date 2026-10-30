@@ -9,16 +9,21 @@
 #include <pch.h>
 
 #include "MagewellCaptureDevice.h"
+#include "MagewellRgb24Packing.h"
+#include "MagewellPackingWorker.h"
 #include "MagewellInput.h"
 #include "MagewellRgbTunnelRange.h"
 
 #include <MWFOURCC.h>
+#include <P210FrameLayout.h>
+#include <magewell/MagewellCaptureFormatPolicy.h>
 #include <LibMWCapture/MWHDMIPackets.h>
 
 #include <DebugLog.h>
 #include <VideoState.h>
 
 #include <stdexcept>
+#include <cmath>
 #include <algorithm>
 #include <chrono>
 
@@ -298,6 +303,7 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 		}
 		m_capturedVideoFrameCount = 0;
 		m_missedVideoFrameCount = 0;
+        { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 		m_captureThreadRunning.store(true, std::memory_order_release);
 		m_outputCaptureData.store(true, std::memory_order_release);
 		m_captureThread = std::thread(
@@ -367,6 +373,7 @@ void MagewellCaptureDevice::StopCapture()
 	UpdateState(m_canCapture
 		? CaptureDeviceState::CAPTUREDEVICESTATE_READY
 		: CaptureDeviceState::CAPTUREDEVICESTATE_FAILED);
+    { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 }
 
 
@@ -651,6 +658,16 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 	{
 		if (signal.bitDepth > 0 && signal.bitDepth <= 8)
 		{
+            // DV bytes remain RGB: remove only the unused alpha byte on DMA,
+            // then restore opaque BGRA for the existing decoder/SDR fallback.
+            if (signal.rawRgbTunnel && supports(MWFOURCC_BGR24) &&
+                MagewellNeedsBandwidthSavingCapture(signal.width,signal.height,
+                    signal.frameDuration100ns,signal.interlaced))
+            {
+                fourcc=MWFOURCC_BGR24;
+                encoding=VideoFrameEncoding::BGRA_8BIT;
+                return;
+            }
 			// SDK FOURCCs describe byte order. The Pro Capture HDMI 4K+
 			// advertises BGRA (B,G,R,A), not ARGB (A,R,G,B).
 			if (supports(MWFOURCC_ARGB))
@@ -693,6 +710,15 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 		throw std::runtime_error("Magewell input color format is unsupported or unknown");
 	if ((signal.width & 1u) != 0)
 		throw std::runtime_error("Magewell P210 requires an even input width");
+    if (nativeP210 && MagewellNeedsBandwidthSavingCapture(signal.width, signal.height,
+        signal.frameDuration100ns, signal.interlaced))
+    {
+        if ((signal.height & 1u) || !supports(MWFOURCC_P010))
+            throw std::runtime_error("Magewell bandwidth-safe 10-bit capture requires supported P010 and even height");
+        fourcc = MWFOURCC_P010;
+        encoding = VideoFrameEncoding::P010;
+        return;
+    }
 	if (!supports(MWFOURCC_P210))
 		throw std::runtime_error(
 			"Magewell card does not support P210 required for YCbCr capture");
@@ -813,6 +839,7 @@ uint32_t MagewellCaptureDevice::BytesPerRowFor(
 	{
 	case VideoFrameEncoding::V210:
 		return ((width + 47) / 48) * 128;
+	case VideoFrameEncoding::P010:
 	case VideoFrameEncoding::P210:
 		return width * 2;
 	case VideoFrameEncoding::BGRA_8BIT:
@@ -924,7 +951,8 @@ bool MagewellCaptureDevice::PublishVideoState(
 	videoState->videoFrameEncoding = encoding;
 	const bool rgb8 = encoding == VideoFrameEncoding::ARGB_8BIT ||
 		encoding == VideoFrameEncoding::BGRA_8BIT;
-	const char* captureName = encoding == VideoFrameEncoding::P210 ? "P210" :
+	const char* captureName = encoding == VideoFrameEncoding::P010 ? "P010 (10-bit 4:2:0 bandwidth-safe)" :
+        encoding == VideoFrameEncoding::P210 ? "P210" :
 		encoding == VideoFrameEncoding::V210 ? "V210" :
 		encoding == VideoFrameEncoding::R10l ? "R10l" :
 		encoding == VideoFrameEncoding::BGRA_8BIT ? "BGRA" : "ARGB";
@@ -945,7 +973,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 	}
 	videoState->valid = true;
     if (signal.rawRgbTunnel)
-        DebugLog::Log("Magewell RGB tunnel: raw %s capture, SDK input/output range=full, wire_range=%d SDR_range=%d",
+        DebugLog::Log("Magewell RGB tunnel: raw %s delivery, SDK input/output range=full, wire_range=%d SDR_range=%d",
             captureName, int(signal.quantRange), int(videoState->tunnelSdrRgbRange));
 
 	DebugLog::Log(
@@ -967,6 +995,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 void MagewellCaptureDevice::PublishInvalidVideoState(
 	CaptureRunToken captureRunToken)
 {
+    { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 	if (!m_callback)
 		return;
 	VideoStateComPtr invalidState = new VideoState();
@@ -1060,7 +1089,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	uint32_t captureFrameSize = 0;
 	bool repackP210 = false;
 	bool repackRGB10 = false;
+    bool repackRgb24 = false;
 	std::vector<uint8_t> scratch;
+    std::vector<uint8_t> alternateRgb24Scratch;
+    unsigned rgb24Slot = 0;
+    MagewellPackingWorker rgb24Worker;
+    CComPtr<IUnknown> pendingRgb24Owner;
+    VideoFrame pendingRgb24Frame;
+    bool pendingRgb24 = false, pendingRaw = false, pendingNative = false;
 	std::vector<DWORD> supportedFormats;
 	bool capturing = false;
 	std::string lastUnsupportedReason;
@@ -1068,6 +1104,33 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	auto lastFrameNotification = lastSignalPoll;
 	int notifyFailures = 0, signalFailures = 0, bufferFailures = 0;
 	int copyFailures = 0, frameInfoFailures = 0, clockFailures = 0;
+    auto deliveryWindowStart = std::chrono::steady_clock::now();
+    uint64_t deliveryWindowFrames = 0, skippedInputFrames = 0;
+    timingclocktime_t lastDeliveredTicks = 0;
+    double copyTotalMs = 0, copyPeakMs = 0, callbackTotalMs = 0;
+    double packingTotalMs = 0, packingPeakMs = 0;
+    const auto deliverFrame = [&](VideoFrame& frame, bool expectedRaw, bool expectedNative)
+    {
+        const auto started = std::chrono::steady_clock::now();
+        if (m_callback && m_outputCaptureData.load(std::memory_order_acquire) &&
+            m_rawRgbTunnelRequested.load(std::memory_order_acquire) == expectedRaw &&
+            m_nativeP210Requested.load(std::memory_order_acquire) == expectedNative)
+            m_callback->OnCaptureDeviceVideoFrame(this, captureRunToken, frame);
+        callbackTotalMs += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now()-started).count();
+    };
+    const auto flushRgb24 = [&](bool deliver)
+    {
+        if (!pendingRgb24) return;
+        pendingRgb24 = false;
+        CComPtr<IUnknown> owner;
+        owner.Attach(pendingRgb24Owner.Detach());
+        const auto result = rgb24Worker.Wait();
+        if (!result.success) throw std::runtime_error("Magewell RGB24 packing rejected invalid buffer geometry");
+        packingTotalMs += result.milliseconds;
+        packingPeakMs = (std::max)(packingPeakMs, result.milliseconds);
+        if (deliver) deliverFrame(pendingRgb24Frame, pendingRaw, pendingNative);
+    };
 	const auto sdkFailure = [](int& failures, const char* message)
 	{
 		if (++failures >= 5)
@@ -1075,6 +1138,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	};
 	const auto unsupportedSignal = [&](const char* reason)
 	{
+        flushRgb24(false);
 		if (haveState)
 			PublishInvalidVideoState(captureRunToken);
 		if (capturing)
@@ -1101,8 +1165,11 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (notify != nullptr)
 			m_sdkInstance->Api().MWUnregisterNotify(channel, notify);
 		if (capturing)
-			m_sdkInstance->Api().MWStopVideoCapture(channel);
-		buffers.clear();
+            m_sdkInstance->Api().MWStopVideoCapture(channel);
+        // Stop any DMA before retiring its target; drain CPU reads before
+        // either scratch slot or delivery buffer can disappear.
+        try { flushRgb24(false); } catch (...) { DebugLog::Log("Magewell pending packing failed during cleanup"); }
+        buffers.clear();
 		const bool rangeRestored = rgbTunnelRange.Restore();
 		if (notifyEvent) CloseHandle(notifyEvent);
 		if (captureEvent) CloseHandle(captureEvent);
@@ -1167,6 +1234,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		const DWORD waitResult = WaitForSingleObject(notifyEvent, 100);
 		if (waitResult == WAIT_TIMEOUT)
 		{
+            flushRgb24(true);
 			const auto now = std::chrono::steady_clock::now();
 			if (!rawRequestChanged && !nativeP210RequestChanged && now - lastSignalPoll < std::chrono::milliseconds(250))
 				continue;
@@ -1224,6 +1292,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 			if (!haveCardState || !signal.SameFormatAs(current))
 			{
+                flushRgb24(false);
 				PublishCardState(signal);
 				haveCardState = true;
 			}
@@ -1263,6 +1332,8 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 			if (!haveState || !signal.SameFormatAs(current))
 			{
+                flushRgb24(false);
+                alternateRgb24Scratch.clear(); rgb24Slot = 0;
 				// Stop capture before touching the buffer set. A frame copy in
 				// flight must not land in a buffer that is about to be freed.
 				if (capturing)
@@ -1296,9 +1367,9 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					current.bitDepth == 12)
 					DebugLog::Log("Magewell compatibility conversion: RGB 12-bit input -> P210 10-bit YCbCr 4:2:2; precision and chroma reduced");
 				stride = BytesPerRowFor(encoding, current.width);
-				const uint64_t deliveryBytes =
-					static_cast<uint64_t>(stride) * current.height *
-					(encoding == VideoFrameEncoding::P210 ? 2u : 1u);
+                uint64_t deliveryBytes = static_cast<uint64_t>(stride) * current.height;
+                if (encoding == VideoFrameEncoding::P210) deliveryBytes *= 2;
+                if (encoding == VideoFrameEncoding::P010) deliveryBytes += deliveryBytes / 2;
 				if (deliveryBytes == 0 || deliveryBytes > 128ULL * 1024 * 1024)
 					throw std::runtime_error("Magewell capture frame exceeds supported size");
 				frameSize = static_cast<uint32_t>(deliveryBytes);
@@ -1308,6 +1379,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				// width * 2 bytes per row.
 				repackP210 = (encoding == VideoFrameEncoding::V210);
 				repackRGB10 = (encoding == VideoFrameEncoding::R10l);
+                repackRgb24 = fourcc == MWFOURCC_BGR24 && encoding == VideoFrameEncoding::BGRA_8BIT;
 				if (repackP210)
 				{
 					// P210 is planar and a different size to v210, so the card
@@ -1321,6 +1393,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					captureFrameSize = static_cast<uint32_t>(sourceBytes);
 					scratch.assign(captureFrameSize, 0);
 				}
+                else if (repackRgb24)
+                {
+                    captureStride=static_cast<uint32_t>((uint64_t(current.width)*3+3)&~uint64_t(3));
+                    captureFrameSize=captureStride*current.height;
+                    scratch.assign(captureFrameSize,0);
+                    alternateRgb24Scratch.assign(captureFrameSize,0);
+                    DebugLog::Log("Magewell DV capture: card=BGR24 bytes_per_pixel=3 delivery=BGRA bytes_per_pixel=4 packing=lossless pipelined=1 no_colour_or_range_conversion=1");
+                }
 				else if (repackRGB10)
 				{
 					captureStride = current.width * 4;
@@ -1333,7 +1413,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				}
 				else
 				{
-					// Native P210 and packed RGB8 are delivered without a repack.
+					// Native P010/P210 and packed RGB8 are delivered without a repack.
 					captureStride = stride;
 					captureFrameSize = frameSize;
 					scratch.clear();
@@ -1343,9 +1423,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					"Magewell capture geometry: card fourcc=0x%08X stride=%u "
 					"size=%u -> VP stride=%u size=%u repack=%d native_p210=%d",
 					fourcc, captureStride, captureFrameSize,
-					stride, frameSize, (repackP210 || repackRGB10) ? 1 : 0,
+					stride, frameSize, (repackP210 || repackRGB10 || repackRgb24) ? 1 : 0,
 					encoding == VideoFrameEncoding::P210 ? 1 : 0);
 
+                DebugLog::Log("Magewell capture policy: format=%s native_consumer=%d width=%u height=%u period_100ns=%u payload_bytes_per_second=%.0f chroma=%s reduction=%s",
+                    encoding == VideoFrameEncoding::P010 ? "P010" : fourcc == MWFOURCC_P210 ? "P210" : "RGB",
+                    current.nativeP210 ? 1 : 0, current.width, current.height, current.frameDuration100ns,
+                    current.frameDuration100ns ? double(captureFrameSize) * 10000000.0 / current.frameDuration100ns : 0.0,
+                    encoding == VideoFrameEncoding::P010 ? "4:2:0" : "source-path", encoding == VideoFrameEncoding::P010 ? "vertical-chroma-only" : "none-by-policy");
 				buffers.clear();
 				buffers.reserve(MAGEWELL_CAPTURE_BUFFER_COUNT);
 				for (int i = 0; i < MAGEWELL_CAPTURE_BUFFER_COUNT; ++i)
@@ -1353,6 +1438,16 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 						std::make_shared<MagewellCaptureBuffer>(frameSize,
 							m_memoryBudget));
 				bufferIndex = 0;
+                deliveryWindowStart = std::chrono::steady_clock::now();
+                deliveryWindowFrames = skippedInputFrames = 0; lastDeliveredTicks = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                    m_deliveryStats = {};
+                    m_deliveryStats.losslessRgb24Capture = repackRgb24;
+                    m_deliveryStats.expectedFps = current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0;
+                }
+                copyTotalMs = copyPeakMs = callbackTotalMs = 0;
+                packingTotalMs = packingPeakMs = 0;
 
 				if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
 					throw std::runtime_error("Failed to restart Magewell capture after format change");
@@ -1426,10 +1521,14 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 		const bool rgb8 = encoding == VideoFrameEncoding::ARGB_8BIT ||
 			encoding == VideoFrameEncoding::BGRA_8BIT;
+        const auto copyStarted = std::chrono::steady_clock::now();
+        auto& rgb24Source = rgb24Slot ? alternateRgb24Scratch : scratch;
+        BYTE* const captureData = repackRgb24 ? rgb24Source.data() :
+            (repackP210 || repackRGB10) ? scratch.data() : buffer->Data();
 		if (m_sdkInstance->Api().MWCaptureVideoFrameToVirtualAddressEx(
 			channel,
 			MWCAP_VIDEO_FRAME_ID_NEWEST_BUFFERED,
-			(repackP210 || repackRGB10) ? scratch.data() : buffer->Data(),
+			captureData,
 			captureFrameSize,
 			captureStride,
 			FALSE,                                  // not bottom up
@@ -1472,9 +1571,15 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 		copyFailures = 0;
 
-		if (WaitForSingleObject(captureEvent, 200) != WAIT_OBJECT_0)
+        // Issue DMA into the other raw slot BEFORE waiting for the previous
+        // pack/callback. Waiting earlier serializes ~15 ms DMA + ~2 ms packing
+        // and drops 4K60 frames even though RGB24 fits the PCIe link.
+        flushRgb24(true);
+        if (WaitForSingleObject(captureEvent, 200) != WAIT_OBJECT_0)
 			throw std::runtime_error("Magewell frame copy timed out; capture stopped to avoid a late write into reused memory");
 
+        const double copyMs = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-copyStarted).count();
+        copyTotalMs += copyMs; copyPeakMs = (std::max)(copyPeakMs, copyMs);
 		MWCAP_VIDEO_CAPTURE_STATUS captureStatus = {};
 		const MW_RESULT captureStatusResult =
 			m_sdkInstance->Api().MWGetVideoCaptureStatus(channel, &captureStatus);
@@ -1508,6 +1613,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				buffer->Data(), stride,
 				current.width, current.height);
 
+
 		const timingclocktime_t rawCaptureTicks =
 			static_cast<timingclocktime_t>(frameInfo.allFieldStartTimes[0]);
 
@@ -1534,6 +1640,11 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 
 
+        const uint64_t missed = CaptureMissedInputFrames(lastDeliveredTicks,
+            rawCaptureTicks, current.frameDuration100ns);
+        skippedInputFrames += missed;
+        if (missed) m_missedVideoFrameCount.fetch_add(missed, std::memory_order_relaxed);
+        lastDeliveredTicks = rawCaptureTicks;
 		const uint64_t counter = ++m_capturedVideoFrameCount;
 
 		VideoFrame videoFrame(
@@ -1547,10 +1658,43 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			DebugLog::Log("Magewell delivering frame %llu, latency %.1f ms",
 				(unsigned long long)counter, m_hardwareLatencyMs.load());
 
-		if (m_callback && m_outputCaptureData.load(std::memory_order_acquire) &&
-            m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest &&
-            m_nativeP210Requested.load(std::memory_order_acquire) == nativeP210Request)
-			m_callback->OnCaptureDeviceVideoFrame(this, captureRunToken, videoFrame);
+        if (repackRgb24)
+        {
+            // The COM lease makes InUse() true while packing and while the
+            // next DMA is selected. A shared_ptr alone would allow pool reuse.
+            pendingRgb24Owner = static_cast<IUnknown*>(buffer);
+            pendingRgb24Frame = videoFrame;
+            pendingRaw = rawRequest; pendingNative = nativeP210Request;
+            const auto sourceBytes = captureFrameSize, sourceStride = captureStride;
+            const auto destBytes = frameSize, destStride = stride;
+            const auto width = current.width, height = current.height;
+            BYTE* const destination = buffer->Data();
+            rgb24Worker.Submit([=] {
+                return MagewellRgb24Packing::Expand(captureData, sourceBytes, sourceStride,
+                    destination, destBytes, destStride, width, height);
+            });
+            pendingRgb24 = true;
+            rgb24Slot ^= 1;
+        }
+        else deliverFrame(videoFrame, rawRequest, nativeP210Request);
+        ++deliveryWindowFrames;
+        const double windowSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-deliveryWindowStart).count();
+        if (windowSeconds >= 5.0)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+                m_deliveryStats.deliveredFps = deliveryWindowFrames/windowSeconds;
+                m_deliveryStats.windowSeconds = windowSeconds;
+                m_deliveryStats.recentMissedFrames = skippedInputFrames;
+            }
+            DebugLog::Log("Magewell delivery cadence: fourcc=0x%08X frames=%llu window_s=%.3f delivered_fps=%.5f expected_fps=%.5f skipped_input_frames=%llu copy_avg_ms=%.3f copy_peak_ms=%.3f packing_avg_ms=%.3f packing_peak_ms=%.3f callback_avg_ms=%.3f",
+                fourcc, static_cast<unsigned long long>(deliveryWindowFrames), windowSeconds, deliveryWindowFrames/windowSeconds,
+                current.frameDuration100ns ? 10000000.0/current.frameDuration100ns : 0.0, static_cast<unsigned long long>(skippedInputFrames),
+                copyTotalMs/deliveryWindowFrames, copyPeakMs, packingTotalMs/deliveryWindowFrames, packingPeakMs, callbackTotalMs/deliveryWindowFrames);
+            deliveryWindowStart = std::chrono::steady_clock::now(); deliveryWindowFrames = skippedInputFrames = 0;
+            copyTotalMs = copyPeakMs = callbackTotalMs = 0;
+                packingTotalMs = packingPeakMs = 0;
+        }
 	}
 
 cleanup:

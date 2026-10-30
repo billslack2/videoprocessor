@@ -96,6 +96,34 @@ public:
             VerifyNative(stats);
         }
     }
+    TEST_METHOD(CaptureUnderDeliveryIsVisibleSeparatelyFromRendererDrops)
+    {
+        auto stats = Example(true);
+        stats.captureDeliverySupported = true;
+        stats.captureDelivery.expectedFps = 50.0;
+        stats.captureDelivery.deliveredFps = 46.1;
+        stats.captureDelivery.windowSeconds = 5.0;
+        stats.captureDelivery.recentMissedFrames = 19;
+        stats.captureDelivery.losslessRgb24Capture = true;
+        stats.capturedDroppedFrames = 238;
+        stats.queueDroppedFrames = 0;
+        auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"46.10 / 50.00 expected (5s)", Find(rows,L"Capture fps:").value.c_str());
+        Assert::AreEqual(L"238 total; 19 last 5s", Find(rows,L"Capture missed:").value.c_str());
+        Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
+        Assert::AreEqual(L"RGB24 -> BGRA (lossless)", Find(rows,L"Capture packing:").value.c_str());
+        VerifyNative(stats);
+        stats.captureDelivery = {};
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"unavailable", Find(rows,L"Capture fps:").value.c_str());
+        stats.captureDelivery.expectedFps = 59.94;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"starting / 59.94 expected", Find(rows,L"Capture fps:").value.c_str());
+        // Unsupported backends retain the existing counters and layout.
+        stats.captureDeliverySupported = false;
+        rows = StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"238/0", Find(rows,L"Dropped:").value.c_str());
+    }
     TEST_METHOD(MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows)
     {
         for (const bool alpha : {false, true})
@@ -216,7 +244,7 @@ public:
                     Assert::IsTrue(std::none_of(rows.begin(), rows.end(),
                         [&](const auto& row) { return row.label == label; }));
                 Find(rows, L"GPU frame:"); Find(rows, L"10s avg/max:");
-                Find(rows, L"Source interval:"); Find(rows, L"Output interval:");
+                Find(rows, L"Source interval:"); Find(rows, L"Render budget:");
                 Find(rows, alpha ? L"Queue:" : L"Queue R/C/T:");
                 Find(rows, L"VFrames:"); Find(rows, L"Dropped:"); Find(rows, L"D/R estimate:");
                 if (available)
@@ -224,7 +252,7 @@ public:
                     Assert::IsTrue(Find(rows,L"GPU frame:").value.find(L"50/120 async (10 s)") != std::wstring::npos);
                     Assert::IsTrue(Find(rows,L"10s avg/max:").value == L"CPU 12/34%, GPU output load 16/20%");
                     Assert::IsTrue(Find(rows,L"Source interval:").value.find(L"59.940 fps") != std::wstring::npos);
-                    Assert::IsTrue(Find(rows,L"Output interval:").value.find(L"16.68 ms") != std::wstring::npos);
+                    Assert::IsTrue(Find(rows,L"Render budget:").value.find(L"16.68 ms") != std::wstring::npos);
                 }
                 VerifyNative(stats);
             }

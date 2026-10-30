@@ -43,3 +43,28 @@ inline bool GetP210PlaneView(const void* pixels, size_t bytes,
     view.layout = layout;
     return true;
 }
+
+// Native P010 keeps every ten-bit luma sample; UV has half vertical resolution.
+using P010FrameLayout = P210FrameLayout;
+using NativeP010PlaneView = P210PlaneView;
+inline bool GetP010FrameLayout(uint32_t width, uint32_t height,
+    P010FrameLayout& layout) noexcept
+{
+    layout = {};
+    if (!height || (height & 1u)) return false;
+    P210FrameLayout full;
+    if (!GetP210FrameLayout(width, height, full)) return false;
+    layout = full;
+    layout.frameBytes = full.planeBytes + full.planeBytes / 2;
+    return true;
+}
+inline bool GetNativeP010PlaneView(const void* pixels, size_t bytes,
+    uint32_t width, uint32_t height, NativeP010PlaneView& view) noexcept
+{
+    view = {};
+    if (!pixels || !GetP010FrameLayout(width, height, view.layout) ||
+        bytes < view.layout.frameBytes) { view = {}; return false; }
+    view.y = static_cast<const uint8_t*>(pixels);
+    view.uv = view.y + view.layout.planeBytes;
+    return true;
+}

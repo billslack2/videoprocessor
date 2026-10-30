@@ -3073,6 +3073,7 @@ FullRasterColorEvidence EvaluateFullRasterColorEvidence(
     switch (source.encoding)
     {
     case VideoFrameEncoding::V210:
+    case VideoFrameEncoding::P010:
     case VideoFrameEncoding::P210:
     case VideoFrameEncoding::R210:
     case VideoFrameEncoding::R10b:

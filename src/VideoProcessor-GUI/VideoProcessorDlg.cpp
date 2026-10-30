@@ -11941,7 +11941,8 @@ bool CVideoProcessorDlg::BuildPushVideoState()
         rendererId->backend == RendererBackend::LIBPLACEBO &&
         m_vpRendererVideoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE;
     if (m_captureDevice) m_captureDevice->SetNativeP210Capture(nativeP210Allowed);
-    if (videoState->videoFrameEncoding == VideoFrameEncoding::P210 && !nativeP210Allowed)
+    if ((videoState->videoFrameEncoding == VideoFrameEncoding::P210 ||
+        videoState->videoFrameEncoding == VideoFrameEncoding::P010) && !nativeP210Allowed)
     {
         // Do not hand the previous consumer's planar layout to a legacy or
         // forced-P010 renderer while the capture thread negotiates v210.
@@ -16909,6 +16910,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			? totalCapturedFrames - m_rendererStartCapturedFrameCount
 			: 0;
 		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
+        stats.captureDeliverySupported = m_captureDevice->GetCaptureDeliveryStats(stats.captureDelivery);
 	}
 
 	// Video conversion

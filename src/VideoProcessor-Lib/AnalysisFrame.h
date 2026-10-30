@@ -26,6 +26,7 @@ enum class AnalysisFrameDomain : uint8_t
     ConvertedP210,
     DecodedDolbyVision422,
     SdrTunnelRgb,
+    NativeYuv420,
 };
 
 struct AnalysisFrameInput

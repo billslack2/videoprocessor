@@ -24,6 +24,7 @@
 #include <CaptureInput.h>
 #include <VideoFrame.h>
 #include <VideoState.h>
+#include <CaptureDeliveryStats.h>
 
 
 typedef std::vector<CaptureInput> CaptureInputs;
@@ -220,6 +221,9 @@ public:
 	// Some hardware supports this, sometimes directly and sometimes it can be derived from
 	// gaps in the the hardware clock timestamps
 	virtual uint64_t VideoFrameMissedCount() const = 0;
+
+	// Optional measured throughput; unsupported backends keep their existing OSD.
+	virtual bool GetCaptureDeliveryStats(CaptureDeliveryStats& stats) const { return false; }
 };
 
 

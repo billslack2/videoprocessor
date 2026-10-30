@@ -659,10 +659,25 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
             outputInterval = stats.renderLoadFramePeriodFromRenderCadence
                 ? format(L"%.2f ms @ %.3f fps", stats.renderLoadFramePeriodMs, 1000.0 / stats.renderLoadFramePeriodMs)
                 : CString(L"cadence unavailable");
-        add(L"Output interval:", outputInterval);
+        add(L"Render budget:", outputInterval);
     }
     add(L"VFrames:", format(L"%llu", stats.rendererCapturedFrames));
-    add(L"Dropped:", format(L"%llu/%llu", stats.capturedDroppedFrames, stats.queueDroppedFrames));
+    if (stats.captureDeliverySupported)
+    {
+        const auto& capture = stats.captureDelivery;
+        add(L"Capture fps:", capture.windowSeconds > 0.0
+            ? format(L"%.2f / %.2f expected (%.0fs)", capture.deliveredFps,
+                capture.expectedFps, capture.windowSeconds)
+            : capture.expectedFps > 0.0 ? format(L"starting / %.2f expected", capture.expectedFps)
+            : CString(L"unavailable"));
+        add(L"Capture missed:", capture.windowSeconds > 0.0
+            ? format(L"%llu total; %llu last %.0fs", stats.capturedDroppedFrames,
+                capture.recentMissedFrames, capture.windowSeconds)
+            : format(L"%llu", stats.capturedDroppedFrames));
+        add(L"Render dropped:", format(L"%llu", stats.queueDroppedFrames));
+        if(capture.losslessRgb24Capture) add(L"Capture packing:",L"RGB24 -> BGRA (lossless)");
+    }
+    else add(L"Dropped:", format(L"%llu/%llu", stats.capturedDroppedFrames, stats.queueDroppedFrames));
     add(L"D/R estimate:", present(stats.cadenceIntervalEstimate, L"Unavailable"));
     add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));
     CString sceneStatus;

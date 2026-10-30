@@ -790,10 +790,10 @@ namespace
 			AlphaCanUseNativeRgbUpload(encoding, dolbyVisionTunnel);
 	}
 
-	bool IsNativeP210Upload(VideoFrameEncoding encoding,
+	bool IsNativePlanarUpload(VideoFrameEncoding encoding,
 		VideoConversionOverride conversion, bool dolbyVisionTunnel)
 	{
-		return encoding == VideoFrameEncoding::P210 && !dolbyVisionTunnel &&
+		return (encoding == VideoFrameEncoding::P210 || encoding == VideoFrameEncoding::P010) && !dolbyVisionTunnel &&
 			conversion == VideoConversionOverride::VIDEOCONVERSION_NONE;
 	}
 
@@ -8639,7 +8639,7 @@ struct LibplaceboVideoRenderer::Impl
 			throw std::runtime_error("Failed to create libplacebo renderer");
 
 		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) &&
-			!IsNativeP210Upload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel))
+			!IsNativePlanarUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel))
 		{
 			std::lock_guard<std::mutex> formatterGuard(formatterMutex);
 			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
@@ -8654,8 +8654,9 @@ struct LibplaceboVideoRenderer::Impl
 			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
 			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
 				"native RGB" :
-			IsNativeP210Upload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
-				"native P210 (no CPU repack)" :
+			IsNativePlanarUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
+				(state->videoFrameEncoding == VideoFrameEncoding::P010 ?
+                    "native P010 10-bit 4:2:0 (no CPU repack)" : "native P210 (no CPU repack)") :
 			((state->videoFrameEncoding == VideoFrameEncoding::V210 ||
 				state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
 				state->videoFrameEncoding == VideoFrameEncoding::HDYC) &&
@@ -12863,7 +12864,7 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 				GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout));
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
-		const bool nativeP210Upload = IsNativeP210Upload(
+		const bool nativePlanarUpload = IsNativePlanarUpload(
 			state.videoFrameEncoding, videoConversionOverride, state.dolbyVisionTunnel);
 		const bool lossless422Upload = state.dolbyVisionTunnel ||
 			AlphaUsesP210Ingress(state.videoFrameEncoding, videoConversionOverride);
@@ -12877,11 +12878,13 @@ struct LibplaceboVideoRenderer::Impl
 		bool logFormatterContract = false;
 		const double conversionCpuMs = convertedPayload ?
 			convertedPayload->conversionCpuMs : 0.0;
-		if (nativeP210Upload)
+		if (nativePlanarUpload)
 		{
 			P210PlaneView view;
-			if (!GetP210PlaneView(videoFrame.GetData(), state.BytesPerFrame(),
-				static_cast<uint32_t>(width), static_cast<uint32_t>(height), view))
+            const bool validPlanes = state.videoFrameEncoding == VideoFrameEncoding::P010
+                ? GetNativeP010PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view)
+                : GetP210PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view);
+            if (!validPlanes)
 				return false;
 			yPixels = view.y;
 			uvPixels = view.uv;
@@ -12924,7 +12927,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
         const auto preparedLive = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
-            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativeP210Upload,lossless422Upload);
+            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativePlanarUpload,lossless422Upload);
         const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
             analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
         analysisSource = preparedLive.source;
@@ -13896,6 +13899,8 @@ struct LibplaceboVideoRenderer::Impl
 					break;
 				}
 			}
+            else if (state.videoFrameEncoding == VideoFrameEncoding::P010)
+                setIngressStatus("P010 (card capture; 10-bit 4:2:0; no CPU repack)");
 			else
 				setIngressStatus(videoConversionOverride ==
 					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
@@ -21017,8 +21022,9 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	if (!videoState)
 		throw std::runtime_error("null video state is invalid");
 
-	if (videoState->valid && videoState->videoFrameEncoding == VideoFrameEncoding::P210 &&
-		!IsNativeP210Upload(videoState->videoFrameEncoding, m_videoConversionOverride, videoState->dolbyVisionTunnel))
+	if (videoState->valid && (videoState->videoFrameEncoding == VideoFrameEncoding::P210 ||
+        videoState->videoFrameEncoding == VideoFrameEncoding::P010) &&
+		!IsNativePlanarUpload(videoState->videoFrameEncoding, m_videoConversionOverride, videoState->dolbyVisionTunnel))
 		return false;
 
 	std::lock_guard<std::mutex> guard(m_stateMutex);
