@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-30). Aspect OSD starvation and label dwell fixes are ready in [draft PR #235](https://github.com/billslack2/videoprocessor/pull/235), source `b6118deac0711c6973cf343cd9b34a20a8f510a7`, based on freshly fetched `v1.4.02-beta` tip `d8518ef8`. Clean x64 Release solution build passed (both renderer variants); 18 focused tests passed. Deployment and live playback acceptance remain pending. Worktree: `E:/codex/videoprocessor/ar-unknown-20261030`.
+In Progress (2026-10-30). User requested completion of the two-field AR OSD and startup/held/detected behavior. Integrating the existing submitted/live telemetry commits with VP-0222 from fresh current beta `v1.4.02-beta` tip `a8f62855`, in `E:/codex/videoprocessor/ar-complete-20261030` on `codex/ar-complete-20261030`. Combined Release build, regressions, and paired deployment are underway; prior PR #235 is superseded by this two-field reporting implementation.
 
 Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
