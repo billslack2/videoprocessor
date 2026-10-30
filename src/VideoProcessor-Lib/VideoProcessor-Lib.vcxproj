@@ -188,6 +188,7 @@
     <ClInclude Include="AspectRatio.h" />
     <ClInclude Include="BitDepth.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.h" />
+    <ClInclude Include="blackmagic_decklink\DeckLinkCaptureDelivery.h" />
     <ClInclude Include="magewell\MagewellSdkInstance.h" />
     <ClInclude Include="magewell\MagewellSdkApi.h" />
     <ClInclude Include="magewell\MagewellBackend.h" />
