@@ -203,3 +203,13 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
   - Beta renderer DLL: `13A35C18696E91979A03989478C7052FB96C4D9BBC51CE7A7877F508B8155C04`.
 - Installed files were not changed. The installed session identifies source `4112a0b`; any later deployment should preserve relevant local work and deploy the paired Release host/renderer after authorization. Confirm initial ratio acquisition and genuine aspect transitions live; nearby competing labels intentionally retain five-second confirmation.
 - Tracker audit found 239 canonical files / 239 indexed items, no duplicate IDs or missing records. Existing unrelated discrepancy: VP-0211 remains in `in-progress` with In Progress status while INDEX says Review. VP-0070 lacks an exact `## Status` heading; VP-0088/VP-0168 use noncanonical capitalization. These existing records and the user's unrelated VP-0207 asset edit were preserved.
+
+
+## Applied/live aspect integration (2026-10-30)
+
+- User resumed the complete two-field behavior; implementation is in draft PR #238, https://github.com/billslack2/videoprocessor/pull/238, clean commit `955a8d54a41fbee2de030a2ef627f987d1ded3e4`, branch `codex/ar-complete-20261030`, worktree `E:/codex/videoprocessor/ar-complete-20261030`.
+- Started from freshly fetched current beta `v1.4.02-beta` at `a8f62855`. Integrated the earlier two-field OSD work and VP-0222 detector fix, plus the capture delivery statistics and Magewell recovery changes found in installed commit `cfe7560e`.
+- The OSD reports only AR in use and Detected AR. In-use geometry is published only after successful rendering/submission; live provisional evidence is labeled, unavailable analysis is cleared explicitly, nonstandard measured ratios stay numeric, and source generations reset incompatible telemetry. Source-raster fallback remains independent of the physical screen.
+- Clean full x64 Release rebuild passed; host and both renderer generated headers identify `955a8d5`, dirty=false. All 1,039 selected regressions passed, including actual standard/beta DLL aspect publication and the 97-frame Netflix capture. Withdrawal first confirms at source sequence 24594 after three adjacent usable observations; gaps restart proof. Genuine pillarbox/dark-hold controls passed.
+- Broader standard/beta GPU subtitle-motion regressions are running. Deployment remains pending their completion and verification. Existing user configuration and saved profile selection will be preserved.
+- Evidence: `x64/Release/ar-validation/native.trx`, `build-receipt.json`, and `motion/` beneath the integration worktree. Draft #235's accepted-only OSD implementation is superseded by #238's distinct submitted/live telemetry.
