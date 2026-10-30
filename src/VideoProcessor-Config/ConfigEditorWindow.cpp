@@ -4420,10 +4420,15 @@ QWidget* ConfigEditorWindow::createShell()
                             previousToneSections->emplace_back(QString::fromLatin1(name), section->isChecked());
                             section->setChecked(true);
                         }
-                    QTimer::singleShot(0, workspace, [workspace, scroll] {
+                    const auto focusTone = [workspace, scroll] {
                         if (!scroll || !workspace->isAdvancedFocus()) return;
                         if (auto* section = workspace->findChild<QToolButton*>(QStringLiteral("rendererSection.toneMapping")))
                             scroll->verticalScrollBar()->setValue(section->mapTo(scroll->widget(), QPoint()).y() - 8);
+                    };
+                    // Expansion and docking post another layout pass. Measure
+                    // after that turn so changed row heights cannot clip the header.
+                    QTimer::singleShot(0, workspace, [workspace, focusTone] {
+                        QTimer::singleShot(0, workspace, focusTone);
                     });
                 }
                 else if (!workspace->isAdvancedFocus()) {
@@ -7187,6 +7192,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
             return request;
         };
+        // Coalesce drag requests before resolving profiles or drawing charts.
+        // The number stays immediate; release still publishes the final edit.
+        auto* toneDragTimer = new QTimer(toneCharts);
+        toneDragTimer->setSingleShot(true);
+        toneDragTimer->setInterval(100);
+        toneDragTimer->setTimerType(Qt::PreciseTimer);
+        connect(toneDragTimer, &QTimer::timeout, toneCharts, [toneCharts, toneRequest, toneDrag] {
+            if (toneDrag->first.empty()) return;
+            toneCharts->setRequest(toneRequest());
+            toneDrag->first.clear();
+        });
         // Compared profiles come from this page: its profiles, or an exported
         // profile file, through the same request as the edited one.
         toneCharts->setCompareSources({
@@ -7211,9 +7227,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 });
             } });
         updateToneControls = [his = updateToneControls, toneControls, toneNotes, peakNote, peakNoteSection,
-            toneCharts, toneMapping, state, toneRequest, refreshNoInheritanceNote, restyleRenderingFields, betaRendererKeys] {
+            toneCharts, toneMapping, state, toneRequest, toneDragTimer, toneDrag, refreshNoInheritanceNote, restyleRenderingFields, betaRendererKeys] {
             his();
             if (state->loading) return;
+            toneDragTimer->stop();
+            toneDrag->first.clear();
             refreshNoInheritanceNote();
             restyleRenderingFields();
             if (*peakNoteSection != state->section) peakNote->hide();
@@ -7275,10 +7293,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         for (int i = 0; i < ToneMappingTuning::Count; ++i) {
             auto* slider = toneControls[i]->findChild<QSlider*>(toneControls[i]->editor()->objectName() + ".slider");
             if (!slider) continue;
-            connect(slider, &QSlider::valueChanged, this, [i, slider, toneControls, toneCharts, toneRequest, toneDrag, state] {
+            connect(slider, &QSlider::valueChanged, this, [i, slider, toneControls, toneDragTimer, toneDrag, state] {
                 if (state->loading || !slider->isSliderDown()) return;
                 *toneDrag = { ToneMappingTuning::Specs()[i].key, toneControls[i]->editor()->text() };
-                toneCharts->setRequest(toneRequest());
+                if (!toneDragTimer->isActive()) toneDragTimer->start();
+            });
+            connect(slider, &QSlider::sliderReleased, this, [toneDragTimer, toneDrag] {
+                toneDragTimer->stop();
                 toneDrag->first.clear();
             });
         }
