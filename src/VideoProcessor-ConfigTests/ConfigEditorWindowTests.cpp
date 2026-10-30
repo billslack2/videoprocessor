@@ -52,6 +52,7 @@
 #include <QMenu>
 #include <QFileDialog>
 #include "../VideoProcessor-Config/ToneProfileFile.h"
+#include "../VideoProcessor-ChartCore/ToneCurveProvider.h"
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -559,6 +560,49 @@ void testToneSliderDragPerformance()
     lowSlider->setValue(0);
     lowSlider->setValue(1000000);
     require(low->text().toDouble()<.001,"Fine typed high threshold produced an invalid low slider range");
+}
+
+void testToneSliderPreviewThrottle()
+{
+    static std::vector<double> previews;
+    struct RestoreFunctions {
+        ToneCurveProvider::Functions saved;
+        ~RestoreFunctions() { ToneCurveProvider::Registered() = saved; }
+    } restore{ToneCurveProvider::Registered()};
+    auto& functions = ToneCurveProvider::Registered();
+    functions.sample = [](const ToneCurveProvider::Request& request, ToneCurveProvider::Result&, std::wstring&) {
+        previews.push_back(request.toneTuning[ToneMappingTuning::SmoothingPeriod].value_or(-1));
+        return false;
+    };
+    functions.nitsToPq = [](double nits) { return nits / 10000.; };
+    functions.pqToNits = [](double pq) { return pq * 10000.; };
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    selectData(requireControl<QComboBox>(window, "config.general.renderer"), "VP Renderer");
+    QApplication::processEvents();
+    auto* slider = requireControl<QSlider>(window, "config.vprenderer.smoothing_period.slider");
+    auto* edit = requireControl<QLineEdit>(window, "config.vprenderer.smoothing_period");
+    int commits = 0;
+    QObject::connect(edit, &QLineEdit::textChanged, &window, [&] { ++commits; });
+    const auto wait = [] {
+        QEventLoop turn; QTimer::singleShot(150, &turn, &QEventLoop::quit); turn.exec();
+    };
+    previews.clear();
+    slider->setSliderDown(true);
+    for (int position : {100000, 200000, 300000}) slider->setValue(position);
+    require(edit->text() == "300" && commits == 0 && previews.empty(),
+        "Dragging must update the number without immediately rebuilding chart requests or committing");
+    wait();
+    require(previews.size() == 1 && previews.back() == 300 && commits == 0,
+        "A held drag must preview its newest value without committing it");
+    slider->setValue(400000); slider->setValue(500000);
+    slider->setSliderDown(false);
+    require(commits == 1 && previews.size() == 2 && previews.back() == 500,
+        "Release must commit and preview the final value immediately");
+    wait();
+    require(previews.size() == 2 && commits == 1,
+        "A pending drag preview must not replay after release");
 }
 
 void testToneSliderWheelScrollsPanelWithoutEditing()
@@ -5766,9 +5810,41 @@ void testLeftDocksRestoreManualChoicesAndDrawerEditing()
     auto* toneCurves = requireControl<QToolButton>(window, "rendererSection.toneCurves");
     auto* settingsScroll = workspace->findChild<QScrollArea*>("workspaceSettingsViewport");
     require(toneSection->isChecked() && toneCurves->isChecked(), "Advanced controls were not expanded");
-    require(settingsScroll && toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() >= 0 &&
-        toneSection->mapTo(settingsScroll->viewport(), QPoint()).y() < 40,
-        "Advanced focus did not bring tone controls into view");
+    const auto toneInView = [&] {
+        if (!settingsScroll || !toneSection->isVisibleTo(&window)) return false;
+        const int y = toneSection->mapTo(settingsScroll->viewport(), QPoint()).y();
+        auto* bar = settingsScroll->verticalScrollBar();
+        // A tall viewport can fit the whole form and have no scroll range.
+        // Otherwise the header should be as near the top as the range permits.
+        const int expected = std::clamp(toneSection->mapTo(settingsScroll->widget(), QPoint()).y() - 8,
+            bar->minimum(), bar->maximum());
+        return y >= 0 && y + toneSection->height() <= settingsScroll->viewport()->height() &&
+            bar->value() == expected;
+    };
+    // Native maximization and section expansion can finish on later event turns.
+    const auto waitForTone = [&] {
+        QElapsedTimer elapsed; elapsed.start();
+        while (!toneInView() && elapsed.elapsed() < 1500) {
+            QEventLoop turn; QTimer::singleShot(10, &turn, &QEventLoop::quit); turn.exec();
+        }
+        if (!toneInView() && settingsScroll) std::cout << "FOCUS: y=" << toneSection->mapTo(settingsScroll->viewport(), QPoint()).y()
+            << " content=" << toneSection->mapTo(settingsScroll->widget(), QPoint()).y()
+            << " viewport=" << settingsScroll->viewport()->height() << " heightLimit=" << settingsScroll->maximumHeight()
+            << " value=" << settingsScroll->verticalScrollBar()->value() << " max=" << settingsScroll->verticalScrollBar()->maximum()
+            << std::endl;
+        require(toneInView(), "Advanced focus did not bring tone controls into view");
+    };
+    waitForTone();
+    // Exercise actual scrolling even on a tall desktop that fits the whole form.
+    advanced->click(); events();
+    const int previousMaximumHeight = settingsScroll->maximumHeight();
+    settingsScroll->setMaximumHeight(400);
+    advanced->click(); events(); waitForTone();
+    require(settingsScroll->verticalScrollBar()->maximum() > 0,
+        "Constrained focus fixture did not exercise scrolling");
+    advanced->click(); events();
+    settingsScroll->setMaximumHeight(previousMaximumHeight);
+    advanced->click(); events(); waitForTone();
     requireControl<QAbstractButton>(window, "settingsRail.settingsNavigation.22")->click(); events();
     require(requireControl<QStackedWidget>(window, "settingsPages")->currentIndex() == 22,
         "Settings rail did not activate the original Display page action");
@@ -8501,6 +8577,7 @@ int main(int argc, char** argv)
     failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
+    failures += run("Tone slider preview throttle", testToneSliderPreviewThrottle);
     failures += run("Tone mapping controls round trip", testToneMappingControls);
     failures += run("Tone slider wheel scrolls panel without editing", testToneSliderWheelScrollsPanelWithoutEditing);
     failures += run("Wheel guards all Config value controls and allows popup lists", testWheelGuardsAllConfigValueControlsAndAllowsPopupLists);
