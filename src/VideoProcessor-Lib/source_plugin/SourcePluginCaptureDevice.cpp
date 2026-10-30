@@ -772,6 +772,8 @@ void SourcePluginCaptureDevice::DeliverFrame(const vp_source_frame& frame)
 		buffer.p, frame.timestamp);
 	vpVideoFrame.SetSourceDiscontinuity(
 		(frame.flags & VP_SOURCE_FRAME_DISCONTINUITY) != 0);
+	vpVideoFrame.SetSourceCadenceRestart(
+		(frame.flags & VP_SOURCE_FRAME_CADENCE_RESTART) != 0);
 
 	++m_framesDelivered;
 	if (m_frameEncoding == VideoFrameEncoding::P010 &&
