@@ -2,7 +2,9 @@
 
 ## Status
 
-Review (2026-09-30). User confirmed the live OSD feature looks good.
+In Progress (2026-10-30). Investigating the user report that the aspect OSD remains Unknown or updates slowly. Source worktree: `E:/codex/videoprocessor/ar-unknown-20261030`, branch `codex/ar-unknown-20261030`, remote beta baseline `d8518ef8` (`v1.4.02-beta`). The aspect getter currently depends on acquiring the busy render mutex, and nearby-label dwell restarts on every publication revision. Implementing independent telemetry and bounded label confirmation.
+
+Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
 `v1.3.005-beta` at `c84863eaa59e03fe218de824c34b7c0220c4fd87` from clean source
 commit `bcc80ea97972249b7a5325ea5bbf351d046e919a`. The x64 Release
