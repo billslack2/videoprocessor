@@ -109,6 +109,13 @@ extern "C" {
 #define VP_SOURCE_FRAME_DISCONTINUITY   (1u << 0)   /* first frame after a
                                                        seek, file change or
                                                        format change */
+#define VP_SOURCE_FRAME_CADENCE_RESTART (1u << 1)   /* the source's timing
+                                                       has settled here, e.g.
+                                                       after a seek or its
+                                                       start-up correction;
+                                                       VP restarts its cadence
+                                                       estimate. Independent
+                                                       of DISCONTINUITY */
 
 /* Log levels for host->log. */
 #define VP_SOURCE_LOG_ERROR   0u
