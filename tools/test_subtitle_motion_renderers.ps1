@@ -35,7 +35,7 @@ try {
         if($vpBuildExit -ne 0){throw "$vpVariant build failed: $vpBuildExit"}
         $vpBin=Join-Path $vpRoot 'x64\Release'
         $vpName='VideoProcessor-Test.dll';$vpDependency='libplacebo-360.dll'
-        if($vpVariant -eq 'beta'){$vpBin=Join-Path $vpBin 'tests-beta';$vpName='VideoProcessor-TestBeta.dll';$vpDependency='libplacebo-377.dll'}
+        if($vpVariant -eq 'beta'){$vpBin=Join-Path $vpBin 'tests-beta';$vpName='VideoProcessor-TestBeta.dll';$vpDependency='libplacebo-388.dll'}
         $vpRun.binary=Join-Path $vpBin $vpName
         $vpRun.sha256=(Get-FileHash -LiteralPath $vpRun.binary).Hash
         $vpRun.dependencySha256=(Get-FileHash -LiteralPath (Join-Path $vpBin $vpDependency)).Hash

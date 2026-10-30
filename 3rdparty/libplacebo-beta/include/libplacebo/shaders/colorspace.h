@@ -37,7 +37,8 @@ PL_API_BEGIN
 PL_API void pl_shader_set_alpha(pl_shader sh, struct pl_color_repr *repr,
                                 enum pl_alpha_mode mode);
 
-// Colorspace reshaping for PL_COLOR_SYSTEM_DOLBYVISION. Note that this is done
+// Colorspace reshaping for PL_COLOR_SYSTEM_DOLBYVISION. The input color holds
+// the base layer sample codes divided by 2^BL_bit_depth. Note that this is done
 // automatically by `pl_shader_decode_color` for PL_COLOR_SYSTEM_DOLBYVISION.
 PL_API void pl_shader_dovi_reshape(pl_shader sh, const struct pl_dovi_metadata *data);
 
@@ -52,8 +53,14 @@ struct pl_color_decode_args {
 
     // Optional sub-shader producing the enhancement-layer. The expected format
     // and output of the shader depends on the EL being used, based on repr.
-    // Currently only Dolby Vision EL is supported.
+    // Currently only Dolby Vision EL is supported, whose shader returns the
+    // EL sample codes as floats.
     pl_shader enhancement_layer;
+
+    // The primaries of the RGB color space to decode into. Only relevant for
+    // PL_COLOR_SYSTEM_XYZ, see `pl_color_repr_decode_params.primaries`.
+    // Defaults to PL_COLOR_PRIM_DCI_P3 if unknown.
+    enum pl_color_primaries primaries;
 };
 
 #define pl_color_decode_args(...) (&(struct pl_color_decode_args) { __VA_ARGS__ })
@@ -66,8 +73,9 @@ struct pl_color_decode_args {
 // Note: This function always returns PC-range RGB with independent alpha.
 // It mutates the pl_color_repr to reflect the change.
 //
-// Note: For DCDM XYZ decoding input is expected to be linear, use
-// `pl_shader_linearize` before calling this function.
+// Note: For XYZ decoding, the input is expected to be linear (use
+// `pl_shader_linearize` before calling this function), and the output is
+// linear RGB with the primaries given by `args->primaries`.
 PL_API void pl_shader_decode_color_ex(pl_shader sh,
                                       const struct pl_color_decode_args *args);
 
@@ -76,11 +84,28 @@ PL_DEPRECATED_IN(v7.368)
 PL_API void pl_shader_decode_color(pl_shader sh, struct pl_color_repr *repr,
                                    const struct pl_color_adjustment *params);
 
+struct pl_color_encode_args {
+    // The color representation to encode into. Required.
+    const struct pl_color_repr *repr;
+
+    // The primaries of the RGB input color space. Only relevant for
+    // PL_COLOR_SYSTEM_XYZ, see `pl_color_repr_decode_params.primaries`.
+    // Defaults to PL_COLOR_PRIM_DCI_P3 if unknown.
+    enum pl_color_primaries primaries;
+};
+
+#define pl_color_encode_args(...) (&(struct pl_color_encode_args) { __VA_ARGS__ })
+
 // Encodes a color from normalized, PC-range, independent alpha RGB into a
 // given representation. That is, this performs the inverse operation of
-// `pl_shader_decode_color` (sans color adjustments).
+// `pl_shader_decode_color_ex` (sans color adjustments).
 //
-// Note: For DCDM XYZ encoding input is expected to be linear
+// Note: For XYZ encoding, the input is expected to be linear RGB with the
+// primaries given by `args->primaries`, and the output is linear XYZ.
+PL_API void pl_shader_encode_color_ex(pl_shader sh,
+                                      const struct pl_color_encode_args *args);
+
+// Convenience wrapper around `pl_shader_encode_color_ex`.
 PL_API void pl_shader_encode_color(pl_shader sh, const struct pl_color_repr *repr);
 
 // Linearize (expand) `vec4 color`, given a specified color space. Shader

@@ -58,7 +58,7 @@ namespace VideoProcessorTest
             using namespace OptionalRendererLayout;
             Assert::IsTrue(PluginPath(L"C:\\VP", true) == L"C:\\VP\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll");
             Assert::IsTrue(PluginPath(L"C:\\VP") == L"C:\\VP\\vprenderer\\VideoProcessorVPRenderer.dll");
-            Assert::AreEqual(L"libplacebo-377.dll", PrivateDependencies(true)[3]);
+            Assert::AreEqual(L"libplacebo-388.dll", PrivateDependencies(true)[3]);
             Assert::AreEqual(L"libplacebo-360.dll", PrivateDependencies()[3]);
         }
 		TEST_METHOD(AspectOsdMapsEveryNamedFormat)

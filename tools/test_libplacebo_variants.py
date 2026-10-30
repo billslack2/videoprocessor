@@ -24,7 +24,7 @@ kernel.GetModuleHandleW.restype = ctypes.c_void_p
 kernel.GetModuleFileNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_uint]
 kernel.GetModuleFileNameW.restype = ctypes.c_uint
 variants = [(False, "vprenderer", "VideoProcessorVPRenderer.dll", "libplacebo-360.dll"),
-            (True, "vprenderer-beta", "VideoProcessorVPRendererBeta.dll", "libplacebo-377.dll")]
+            (True, "vprenderer-beta", "VideoProcessorVPRendererBeta.dll", "libplacebo-388.dll")]
 if args.beta_first:
     variants.reverse()
 modules = []

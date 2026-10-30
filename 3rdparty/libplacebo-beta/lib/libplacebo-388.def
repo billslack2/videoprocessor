@@ -1,4 +1,4 @@
-LIBRARY libplacebo-377.dll
+LIBRARY libplacebo-388.dll
 EXPORTS
 pl_alpha_overlay
 pl_bit_encoding_equal
@@ -41,6 +41,7 @@ pl_color_primaries_is_wide_gamut
 pl_color_primaries_name
 pl_color_primaries_names
 pl_color_repr_decode
+pl_color_repr_decode_ex
 pl_color_repr_equal
 pl_color_repr_hdtv
 pl_color_repr_jpeg
@@ -73,6 +74,17 @@ pl_color_system_names
 pl_color_transfer_name
 pl_color_transfer_names
 pl_color_transfer_nominal_peak
+pl_compositor_create
+pl_compositor_current_frame
+pl_compositor_destroy
+pl_compositor_get_errors
+pl_compositor_init
+pl_compositor_input_create
+pl_compositor_input_destroy
+pl_compositor_options_set
+pl_compositor_render
+pl_compositor_reset_errors
+pl_compositor_update
 pl_d3d11_create
 pl_d3d11_create_swapchain
 pl_d3d11_default_params
@@ -197,6 +209,7 @@ pl_frame_mix_current
 pl_frame_mix_nearest
 pl_frame_mixers
 pl_frame_set_chroma_location
+pl_frame_size
 pl_frames_infer
 pl_frames_infer_mix
 pl_gamut_map_absolute
@@ -244,12 +257,14 @@ pl_icc_open
 pl_icc_profile_compute_signature
 pl_icc_profile_equal
 pl_icc_update
+pl_input_place
+pl_input_update
 pl_ipt_ipt2lms
 pl_ipt_lms2ipt
 pl_ipt_lms2rgb
 pl_ipt_rgb2lms
 pl_log_color
-pl_log_create_377
+pl_log_create_388
 pl_log_default_params
 pl_log_destroy
 pl_log_level_update
@@ -259,6 +274,7 @@ pl_lut_free
 pl_lut_parse_cube
 pl_matrix2x2_apply
 pl_matrix2x2_apply_rc
+pl_matrix2x2_apply_v
 pl_matrix2x2_identity
 pl_matrix2x2_invert
 pl_matrix2x2_mul
@@ -267,6 +283,7 @@ pl_matrix2x2_rotation
 pl_matrix2x2_scale
 pl_matrix3x3_apply
 pl_matrix3x3_apply_rc
+pl_matrix3x3_apply_v
 pl_matrix3x3_identity
 pl_matrix3x3_invert
 pl_matrix3x3_mul
@@ -322,12 +339,14 @@ pl_queue_create
 pl_queue_destroy
 pl_queue_estimate_fps
 pl_queue_estimate_vps
+pl_queue_get_status
 pl_queue_num_frames
 pl_queue_peek
 pl_queue_pts_offset
 pl_queue_push
 pl_queue_push_block
 pl_queue_reset
+pl_queue_set_status
 pl_queue_update
 pl_raw_primaries_equal
 pl_raw_primaries_get
@@ -357,10 +376,14 @@ pl_renderer_flush_cache
 pl_renderer_get_errors
 pl_renderer_get_hdr_metadata
 pl_renderer_load
+pl_renderer_reset
 pl_renderer_reset_errors
 pl_renderer_save
 pl_reset_detected_peak
 pl_scale_filters
+pl_scene_create_json
+pl_scene_destroy
+pl_scene_update
 pl_shader_alloc
 pl_shader_color_map
 pl_shader_color_map_ex
@@ -377,6 +400,7 @@ pl_shader_distort
 pl_shader_dither
 pl_shader_dovi_reshape
 pl_shader_encode_color
+pl_shader_encode_color_ex
 pl_shader_error_diffusion
 pl_shader_extract_features
 pl_shader_film_grain
@@ -447,6 +471,7 @@ pl_tone_map_st2094_10
 pl_tone_map_st2094_40
 pl_transform2x2_apply
 pl_transform2x2_apply_rc
+pl_transform2x2_apply_v
 pl_transform2x2_bounds
 pl_transform2x2_identity
 pl_transform2x2_invert
@@ -455,6 +480,7 @@ pl_transform2x2_rmul
 pl_transform2x2_scale
 pl_transform3x3_apply
 pl_transform3x3_apply_rc
+pl_transform3x3_apply_v
 pl_transform3x3_identity
 pl_transform3x3_invert
 pl_transform3x3_scale
