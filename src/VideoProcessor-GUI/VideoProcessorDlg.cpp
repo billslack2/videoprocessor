@@ -15675,7 +15675,7 @@ void CVideoProcessorDlg::PollAspectRatioOsd()
 	DetectedPictureAspect detected;
 	if (!m_videoRenderer->GetDetectedPictureAspect(detected))
 		return;
-	const auto label = AspectRatioOsd::Format(detected);
+	const auto label = m_aspectRatioOsd.Update(detected);
 	if (m_lastStatsData->aspectInUse == label.inUse.c_str() &&
 		m_lastStatsData->aspectDetected == label.detected.c_str())
 		return;
@@ -16608,6 +16608,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const bool sameStatsTelemetryGeneration = statsRenderer != nullptr &&
 		statsRenderer == m_lastStatsTelemetryRenderer &&
 		m_transitionGeneration == m_lastStatsTelemetryGeneration;
+	if (!sameStatsTelemetryGeneration)
+		m_aspectRatioOsd.Reset();
 
 	// Video format info
 	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
@@ -16755,7 +16757,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			DetectedPictureAspect detected;
 			if (m_videoRenderer->GetDetectedPictureAspect(detected))
 			{
-				const auto label = AspectRatioOsd::Format(detected);
+				const auto label = m_aspectRatioOsd.Update(detected);
 				stats.aspectInUse = label.inUse.c_str();
 				stats.aspectDetected = label.detected.c_str();
 			}

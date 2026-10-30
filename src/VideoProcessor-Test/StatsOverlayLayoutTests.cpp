@@ -85,16 +85,16 @@ public:
     TEST_METHOD(AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr)
     {
         auto stats=Example(true);
-        stats.aspectInUse=L"2.390:1 (held)";
-        stats.aspectDetected=L"1.660:1 (provisional)";
+        stats.aspectInUse=L"2.39:1 (Scope; held)";
+        stats.aspectDetected=L"1.66:1 (European widescreen; provisional)";
         auto rows=StatsOverlayWindow::BuildStatsRows(stats);
-        Assert::AreEqual(L"2.390:1 (held)",Find(rows,L"AR in use:").value.c_str());
-        Assert::AreEqual(L"1.660:1 (provisional)",Find(rows,L"Detected AR:").value.c_str());
+        Assert::AreEqual(L"2.39:1 (Scope; held)",Find(rows,L"AR in use:").value.c_str());
+        Assert::AreEqual(L"1.66:1 (European widescreen; provisional)",Find(rows,L"Detected AR:").value.c_str());
         Assert::IsTrue(std::none_of(rows.begin(),rows.end(),[](const auto& row) {
             return row.label==L"Input AR:" || row.label==L"Aspect Ratio:";
         }));
         VerifyNative(stats);
-        stats.aspectInUse=L"1.778:1 (startup fallback)";
+        stats.aspectInUse=L"16:9 (HDTV)";
         stats.aspectDetected=L"Unavailable";
         VerifyNative(stats);
     }

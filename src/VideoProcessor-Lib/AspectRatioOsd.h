@@ -32,31 +32,46 @@ public:
 	};
 
     struct Rows { std::wstring inUse, detected; };
-    static std::wstring Measured(double ratio)
+    // UI-only deadband, anchored to the last displayed measurement so a slow
+    // cumulative drift cannot remain hidden. Raw and submitted telemetry stay exact.
+    Rows Update(const DetectedPictureAspect& reading)
+    {
+        if (m_sourceGeneration != reading.sourceGeneration) {
+            Reset();
+            m_sourceGeneration = reading.sourceGeneration;
+        }
+        auto displayed = reading;
+        if (!reading.available || !std::isfinite(reading.ratio) || reading.ratio <= 0.0) {
+            m_displayedDetection = 0.0;
+            displayed.available = false;
+        } else {
+            if (m_displayedDetection <= 0.0 ||
+                std::abs(reading.ratio - m_displayedDetection) + 1e-12 >= 0.01 * m_displayedDetection)
+                m_displayedDetection = reading.ratio;
+            displayed.ratio = m_displayedDetection;
+        }
+        return Format(displayed);
+    }
+    void Reset() { m_sourceGeneration = 0; m_displayedDetection = 0.0; }
+
+    static std::wstring Named(double ratio, const wchar_t* status = nullptr)
     {
         if (!std::isfinite(ratio) || ratio <= 0.0) return L"Unavailable";
-        wchar_t value[40]{};
-        swprintf_s(value, L"%.3f:1", ratio);
-        return value;
+        const auto label = Classify(ratio);
+        return label.ratio + L" (" + label.name +
+            (status ? std::wstring(L"; ") + status : std::wstring{}) + L")";
     }
     static Rows Format(const DetectedPictureAspect& reading)
     {
         Rows rows{L"Unavailable", L"Unavailable"};
         if (reading.inUseAvailable) {
-            rows.inUse = Measured(reading.inUseRatio);
-            switch (reading.inUseState) {
-            case PictureAspectUse::STARTUP_FALLBACK: rows.inUse += L" (startup fallback)"; break;
-            case PictureAspectUse::DETECTED: rows.inUse += L" (detected)"; break;
-            case PictureAspectUse::HELD: rows.inUse += L" (held)"; break;
-            case PictureAspectUse::PRESENTATION: rows.inUse += L" (presentation)"; break;
-            default: break;
-            }
+            const wchar_t* status = nullptr;
+            if (reading.inUseState == PictureAspectUse::HELD) status = L"held";
+            else if (reading.inUseState == PictureAspectUse::PRESENTATION) status = L"presentation";
+            rows.inUse = Named(reading.inUseRatio, status);
         }
-        if (reading.available) {
-            rows.detected = Measured(reading.ratio);
-            rows.detected += reading.provisional ? L" (provisional)" :
-                L" (" + Classify(reading.ratio).name + L")";
-        }
+        if (reading.available)
+            rows.detected = Named(reading.ratio, reading.provisional ? L"provisional" : nullptr);
         return rows;
     }
 
@@ -82,14 +97,14 @@ public:
 		if (best >= 0)
 			return { targets[best].display, targets[best].name, best };
 		wchar_t numeric[32] = {};
-		swprintf_s(numeric, L"%.3f", ratio);
+		swprintf_s(numeric, L"%.2f", ratio);
 		std::wstring formatted(numeric);
-		while (formatted.size() > 4 && formatted.back() == L'0')
-			formatted.pop_back();
 		return { formatted + L":1", L"nonstandard", -1 };
 	}
 
 private:
+    uint64_t m_sourceGeneration = 0;
+    double m_displayedDetection = 0.0;
 	struct Target
 	{
 		double value;

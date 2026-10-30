@@ -87,7 +87,7 @@ namespace VideoProcessorTest
 				Assert::IsTrue(label.name == item.name);
 			}
 			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"nonstandard");
-			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.503:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.50:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.50).ratio == L"2.50:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(0.0).ratio == L"---");
 		}
@@ -120,12 +120,42 @@ namespace VideoProcessorTest
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
 		}
 
+        TEST_METHOD(AspectDisplayDeadbandAnchorsToDisplayedValueWithoutDelayingAppliedGeometry)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect r;
+            r.sourceGeneration=1; r.available=true; r.provisional=true; r.ratio=1.50;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
+            r.ratio=1.509; osd.Update(r); r.ratio=1.514;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
+            r.ratio=1.515;
+            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard; provisional)");
+            r.ratio=1.514; r.provisional=false;
+            r.inUseAvailable=true; r.inUseState=PictureAspectUse::DETECTED; r.inUseRatio=2.39;
+            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard)");
+            r.inUseRatio=2.40;
+            Assert::IsTrue(osd.Update(r).inUse == L"2.40:1 (Scope)");
+        }
+        TEST_METHOD(AspectDisplayResetsForUnavailableNewSourceAndRenderer)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect r; r.sourceGeneration=1; r.available=true; r.ratio=1.50;
+            osd.Update(r); r.available=false;
+            Assert::IsTrue(osd.Update(r).detected == L"Unavailable");
+            r.available=true; r.ratio=1.509;
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
+            r.sourceGeneration=2; r.ratio=1.519;
+            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard)");
+            osd.Reset(); r.ratio=1.529;
+            Assert::IsTrue(osd.Update(r).detected == L"1.53:1 (nonstandard)");
+        }
+
         TEST_METHOD(AspectTelemetryUsesNativeStartupWithoutClaimingDetection)
         {
             PictureAspectTelemetry telemetry;
             telemetry.Submitted(1, 1, 3840.0/2160.0, 3840.0/2160.0, false, true);
             const auto rows = AspectRatioOsd::Format(telemetry.Read());
-            Assert::IsTrue(rows.inUse == L"1.778:1 (startup fallback)");
+            Assert::IsTrue(rows.inUse == L"16:9 (HDTV)");
             Assert::IsTrue(rows.detected == L"Unavailable");
             telemetry.Observe(1, 2, 16.0/9.0, true, false);
             telemetry.Submitted(1, 2, 16.0/9.0, 16.0/9.0, false, true);
@@ -139,8 +169,8 @@ namespace VideoProcessorTest
             telemetry.Observe(1, 11, 1.66, true, true);
             telemetry.Submitted(1, 11, 2.39, 16.0/9.0, true, true);
             const auto rows = AspectRatioOsd::Format(telemetry.Read());
-            Assert::IsTrue(rows.inUse == L"2.390:1 (held)");
-            Assert::IsTrue(rows.detected == L"1.660:1 (provisional)");
+            Assert::IsTrue(rows.inUse == L"2.39:1 (Scope; held)");
+            Assert::IsTrue(rows.detected == L"1.66:1 (European widescreen; provisional)");
             telemetry.ClearDetection();
             telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
@@ -153,9 +183,9 @@ namespace VideoProcessorTest
             telemetry.Submitted(1, 1, 2.39, 16.0/9.0, true, true);
             telemetry.Observe(1, 2, 1.66, true, false);
             telemetry.Submitted(1, 2, 1.66, 16.0/9.0, true, true);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.660:1 (detected)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.66:1 (European widescreen)");
             telemetry.Observe(1, 3, 2.17, true, false);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.170:1 (nonstandard)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.17:1 (nonstandard)");
         }
         TEST_METHOD(AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission)
         {
@@ -179,7 +209,7 @@ namespace VideoProcessorTest
             telemetry.Source(2);
             Assert::IsFalse(telemetry.Read().inUseAvailable || telemetry.Read().available);
             telemetry.Submitted(2, 1, 4.0/3.0, 4.0/3.0, false, true);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.333:1 (startup fallback)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"4:3 (TV)");
             telemetry.Observe(2, 2, 0.0, true, false);
             Assert::IsFalse(telemetry.Read().available);
         }

@@ -907,6 +907,7 @@ protected:
 	CadenceIntervalEstimate m_cadenceIntervalEstimate;
 	ULONGLONG m_lastCadenceIntervalLogTick = 0;
 	StatsData* m_lastStatsData = nullptr;
+	AspectRatioOsd m_aspectRatioOsd;
 	// Renderer telemetry getters are deliberately nonblocking. Retain their
 	// last valid values only within the same renderer/host generation when a
 	// periodic OSD read loses the render-lock race.
