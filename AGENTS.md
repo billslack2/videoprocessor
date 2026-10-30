@@ -121,7 +121,9 @@
 
 ## Published release assets
 
-- Publish only installer EXEs and portable ZIPs, plus the required signed
-  `vp-update.json` for automatic updates. It is the only public JSON asset.
+- Publish installer EXEs, portable ZIPs, the optional manually applied
+  `docs/edid/vertex2-lg-dv30-hdr10bit.bin`, and the required signed
+  `vp-update.json` for automatic updates. Never apply the EDID automatically.
 - Do not upload SHA/checksum files, manifest sidecars, build receipts, or other
   JSON evidence. Keep hashes and qualification records internal.
+
