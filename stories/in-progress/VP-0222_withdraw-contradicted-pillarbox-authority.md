@@ -19,3 +19,9 @@ Netflix menu side gutters acquired 136,0-3704,2160 (1.65185, labeled 1.66) despi
 ## Tracker audit
 
 Before allocation: 239 canonical files and 239 index rows, no duplicate or missing IDs; highest root 0221. Existing unrelated VP-0207 asset edit preserved. Pre-existing VP-0211 index/state mismatch and noncanonical Status formatting on VP-0070/0088/0168 are outside this change.
+
+## Implementation progress
+
+2026-10-30: Source commit `c8b4943b` pushed in [draft PR #237](https://github.com/billslack2/videoprocessor/pull/237), including VP-0194 OSD commit `2ce63718`. All 669 affected detector/evidence/crop-policy/timeline/OSD regressions pass. Original native capture replay confirms withdrawal at accepted source sequence 24594 after the first available three-frame contiguous run; 97 original frames inspected. Native P010/P210 1080p/2160p 1.66-adjacent and 4:3 positive controls retain four-observation acquisition. Initial implementation required complete full-axis support; capture replay demonstrated dark lower menu pixels correctly withhold that certificate, so withdrawal uses majority picture in each old side band while keeping source continuity, native provenance, complete scans, and broad luma/texture support strict.
+
+Clean committed x64 Release solution build passed, including both renderer variants. Generated host/renderer version headers identify c8b4943 with dirty=false. Dual renderer GPU/cue validation and authorized paired deployment are in progress. No configuration changes planned. Remaining ambiguity deliberately reports unavailable until a replacement boundary is measured; withdrawal does not force 16:9.
