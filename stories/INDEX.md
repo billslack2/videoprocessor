@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0221`
-- Next root story number: `VP-0222`
-- Total indexed items: 239
+- Last assigned root story: `VP-0222`
+- Next root story number: `VP-0223`
+- Total indexed items: 240
 
 ## Story locations
 
@@ -282,6 +282,7 @@ they must not contain requirements that are absent from this file.
 | VP-0218 | In Progress | Improve aspect transitions with current relative boundary evidence |
 | VP-0220 | Review | Validate consolidated Off fit and AR evidence changes |
 | VP-0221 | Review | Native Magewell P210 capture and direct VP Renderer upload |
+| VP-0222 | In Progress | Withdraw contradicted pillarbox authority on full-width menus |
 
 ## Codex story workflow
 
