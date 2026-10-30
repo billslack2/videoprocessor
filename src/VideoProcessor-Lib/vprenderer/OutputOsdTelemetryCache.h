@@ -1,5 +1,6 @@
 #pragma once
 #include <DisplayRasterInfo.h>
+#include <AspectRatioOsd.h>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -21,7 +22,7 @@ public:
     void Retire()
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        retired_ = true; ++outputGeneration_; output_.clear(); lut_.clear();
+        retired_ = true; ++outputGeneration_; output_.clear(); lut_.clear(); aspect_ = {};
     }
     bool PublishOutput(uint64_t generation, std::string value)
     {
@@ -33,6 +34,13 @@ public:
     { std::lock_guard<std::mutex> lock(mutex_); if (!retired_) lut_ = std::move(value); }
     std::string ReadLut() const
     { std::lock_guard<std::mutex> lock(mutex_); return lut_; }
+
+    // The render thread publishes the detector contract as one small value.
+    // Readers never contend with frame processing or Present for renderMutex.
+    void PublishAspect(const DetectedPictureAspect& value)
+    { std::lock_guard<std::mutex> lock(mutex_); if (!retired_) aspect_ = value; }
+    DetectedPictureAspect ReadAspect() const
+    { std::lock_guard<std::mutex> lock(mutex_); return aspect_; }
 
     // This is the renderer getter's production assembly path. A missing current
     // value is an authoritative empty snapshot, never a request to reuse UI text.
@@ -62,4 +70,5 @@ private:
     uint64_t outputGeneration_ = 0;
     bool retired_ = false;
     std::string output_, lut_;
+    DetectedPictureAspect aspect_;
 };
