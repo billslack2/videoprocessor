@@ -39,6 +39,8 @@ VP process fails conservatively.
   running. Shared per-installation preferences limit network checks to once per
   day. Stable/beta selection, automatic-check preference, skipped release, and
   the highest trusted sequence seen are persisted per Windows user and root.
+- Stable accepts only Stable releases. Beta accepts both Stable and Beta releases,
+  choosing the highest eligible signed release sequence across both.
 - Update mode is optional and persistent: **Manual checks only**, **Notify in
   tray** (default), or **Install automatically without prompts**. Manual checks
   bypass the daily throttle. Automatic installation must be explicitly enabled.
@@ -160,7 +162,8 @@ no NuGet or Qt dependency. It is compiled by packaging, not the native solution.
    metadata. The default descriptor lifetime is 90 days. Renew it before expiry
    by re-signing the same verified source/packages; never change payload bytes
    after signing. Expired metadata is rejected rather than silently trusted.
-5. Upload the exact EXEs, inventory/hash sidecars and `vp-update.json` to a draft
+5. Upload the exact EXEs, portable ZIPs, `vp-update.json` and the staged
+   `vertex2-lg-dv30-hdr10bit.bin` to a draft
    GitHub release whose tag matches the descriptor URLs. Publish after testing.
    These tools do not publish, push, merge, or deploy automatically.
 
@@ -202,3 +205,11 @@ not yet implemented.
 On successful updates, VP restarts if it was running immediately before setup.
 Config returns to its actual pre-update visibility: an open window reopens, while
 a hidden tray instance restarts in the tray, even if originally launched with --updates.
+
+## Required EDID release asset
+
+Every release includes docs/edid/vertex2-lg-dv30-hdr10bit.bin as a separate BIN
+download. The installer builder stages it with an internal SHA-256 sidecar.
+Keep hashes, manifests and build receipts as internal evidence; do not upload
+those sidecars. Link docs/edid/README.md in release notes. Applying the EDID is
+optional and manual; installing VP does not configure the Vertex2.
