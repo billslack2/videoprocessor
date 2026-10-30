@@ -1,0 +1,57 @@
+[
+  {
+    "name": "all profile lists share active status",
+    "exitCode": 0,
+    "elapsedMs": 2803.2973
+  },
+  {
+    "name": "Motion profile marker follows activation",
+    "exitCode": 0,
+    "elapsedMs": 2623.2014
+  },
+  {
+    "name": "active profile markers cover relevant lists",
+    "exitCode": 0,
+    "elapsedMs": 2725.7107
+  },
+  {
+    "name": "active profile opens selected after late status and preserves edits",
+    "exitCode": 0,
+    "elapsedMs": 5201.1407
+  },
+  {
+    "name": "active shader markers use authoritative set",
+    "exitCode": 0,
+    "elapsedMs": 2566.801
+  },
+  {
+    "name": "unchanged active profile status avoids list invalidation",
+    "exitCode": 0,
+    "elapsedMs": 2570.5205
+  },
+  {
+    "name": "active shader status rejects stale generation",
+    "exitCode": 0,
+    "elapsedMs": 32.6955
+  },
+  {
+    "name": "standalone Config reads live active profile status",
+    "exitCode": 0,
+    "elapsedMs": 140.6538
+  },
+  {
+    "name": "Apply OK Cancel contract",
+    "exitCode": 0,
+    "elapsedMs": 13056.6047
+  },
+  {
+    "name": "integrated updates respect local package",
+    "exitCode": 0,
+    "elapsedMs": 4728.3787
+  },
+  {
+    "name": "update shutdown discards edits without prompt",
+    "exitCode": 0,
+    "elapsedMs": 5179.9026
+  }
+]

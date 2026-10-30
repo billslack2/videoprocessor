@@ -1,0 +1,1435 @@
+{
+  "sourceTrx": "C:\\Users\\bslac\\Documents\\Codex\\2026-10-29\\the\\work\\pipeline-focused\\focused.trx",
+  "trxSha256": "23ae42229283d4ac492d6b0f4ae8ac7ac7ef9fd6d86e0a848954616d4d7f69d7",
+  "passed": 238,
+  "results": [
+    {
+      "testName": "SweepBannerAnchorsAtTheTopRightOfTheActivePicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000024",
+      "testId": "5a6d3a3d-33bf-9299-16bc-ec4c477df8ea"
+    },
+    {
+      "testName": "ProductionHdrAndGpuValuesFitOrWrapWithoutLosingDiagnosticNumbers",
+      "outcome": "Passed",
+      "duration": "00:00:00.1148123",
+      "testId": "8509b275-1214-8a8b-a030-b368c9ed33c6"
+    },
+    {
+      "testName": "WorkerIsBoundedAndWaitMakesWritesVisible",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002359",
+      "testId": "2f6862fa-b813-b7cb-d66d-7cb043e43716"
+    },
+    {
+      "testName": "WorkerPropagatesExceptionAndCanAcceptAnotherFrame",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003579",
+      "testId": "b6431f07-5665-53f3-1bdd-8f81df0d219a"
+    },
+    {
+      "testName": "RendererProfileConfigUsesFirstMatchingProfileInFileOrder",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001877",
+      "testId": "8b16f61f-0f61-057c-173c-47e6c284ad0f"
+    },
+    {
+      "testName": "CR210toRGB48VideoFrameFormatterGoldenTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000816",
+      "testId": "920e044d-94a4-8ad8-7e1a-8ff72ff13cc6"
+    },
+    {
+      "testName": "TinyVisiblePictureMayUniformlyShrinkPhysicalSizingForContainment",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000089",
+      "testId": "9047e832-fd4d-29af-743a-2558b9e4907b"
+    },
+    {
+      "testName": "Rgb8RejectsInvalidHeaderAndBlanksAfterMetadataLossLimit",
+      "outcome": "Passed",
+      "duration": "00:00:00.0015161",
+      "testId": "fcc85fb7-47e2-be02-a51c-4753a78d280a"
+    },
+    {
+      "testName": "NativeP210SwitchesToLegacyV210AndBackWithoutReusingRetainedBuffers",
+      "outcome": "Passed",
+      "duration": "00:00:00.5559280",
+      "testId": "a3060e2b-f41d-d68f-3343-a288fdfdf579"
+    },
+    {
+      "testName": "CDeckLinkRGBToP010VideoFrameFormatterGoldenTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0672596",
+      "testId": "5a15963d-3ae4-6db7-e145-a84062530caf"
+    },
+    {
+      "testName": "ClockUsesSameOriginBeforeAndAfterFirstFrame",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000258",
+      "testId": "ba212335-0b1d-3db1-6461-5649e7606ea0"
+    },
+    {
+      "testName": "BufferOutlivesCapturePool",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000140",
+      "testId": "d5bcd705-c1f5-3652-8e95-e785a3772cae"
+    },
+    {
+      "testName": "CV210toP210VideoFrameFormatterTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000233",
+      "testId": "ad418be5-4d8b-b7e6-9615-cf54ef5e54d9"
+    },
+    {
+      "testName": "ProfileBannerStaysInsideBothMovieAndConfiguredScreen",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000080",
+      "testId": "de34645a-8f68-1b3b-16e6-3fc958b640df"
+    },
+    {
+      "testName": "AspectRatioParserAcceptsAndNormalizesDocumentedForms",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000468",
+      "testId": "264e37de-3ebe-8619-808f-ef00652a2d1c"
+    },
+    {
+      "testName": "ProfileBannerScalesWithVisiblePictureResolution",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000017",
+      "testId": "53a540ed-b448-dcbb-ad3b-cd62f7fae8dd"
+    },
+    {
+      "testName": "CUYVYtoP210VideoFrameFormatterPreservesEvery422Sample",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000239",
+      "testId": "47d468cd-a33c-3d3b-f763-46c49aacb0dd"
+    },
+    {
+      "testName": "CR12BtoRGB48UsesDocumentedFullRangeScalingAtVideoCodePoints",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001284",
+      "testId": "cba85676-ecfc-9220-df4d-aa35e538522b"
+    },
+    {
+      "testName": "SizingRejectsInvalidGeometryAndUsesDocumentedFallback",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000363",
+      "testId": "d1e39f13-1d0c-e8d4-9b2a-ca568b077eb3"
+    },
+    {
+      "testName": "NativeP210LayoutUsesTwoFullHeightPlanesAndRejectsTruncation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0135066",
+      "testId": "950b4640-1eb6-b152-5e19-1e7ff8b227ad"
+    },
+    {
+      "testName": "CDeckLinkR12AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0154776",
+      "testId": "c9c9ed97-b8c2-d3aa-41c8-72cb49687900"
+    },
+    {
+      "testName": "RawRangeRestorationRetriesTransientSdkFailure",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000120",
+      "testId": "92b220f1-adf8-1786-001a-1728b118e5e0"
+    },
+    {
+      "testName": "PoolBudgetExhaustionInvalidatesInsteadOfSilentlyStarving",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004126",
+      "testId": "5cf832e8-2d50-d9d0-21f5-9cf6e7166da3"
+    },
+    {
+      "testName": "NativeP010ChromaFieldsMatchDirectLibplacebo",
+      "outcome": "Passed",
+      "duration": "00:00:12.6403592",
+      "testId": "c3464677-aad9-c9ac-ecaf-b788801375b1"
+    },
+    {
+      "testName": "PlacementRejectsNonfiniteRectsAndDimensions",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000209",
+      "testId": "e8f8271a-2c29-a328-d2d5-66fd212c7f5e"
+    },
+    {
+      "testName": "CapabilityPolicyPreservesRgbAndRejectsUnsupportedDepth",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000796",
+      "testId": "3b16e720-705b-6643-825e-c7546108e39c"
+    },
+    {
+      "testName": "ImmediateRevealAndNineOneSecondRetriesThenStop",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000396",
+      "testId": "9895bf93-7809-1418-5ee3-ffad1bc4e28b"
+    },
+    {
+      "testName": "ReacquireWaitsForPreviousExitAndModuleRelease",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003939",
+      "testId": "8881dffb-5388-0c1c-e900-2418556108da"
+    },
+    {
+      "testName": "DisplayRuleExpressionTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000358",
+      "testId": "ac053e4b-15f0-3154-5509-2236ff7bd94d"
+    },
+    {
+      "testName": "DeclaredPacketCountCannotReadBeyondActiveRaster",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001911",
+      "testId": "91b8c5a8-c452-5b00-9944-c1806f980280"
+    },
+    {
+      "testName": "MovieExitBlanksFirstUntrustedPictureButRetainsDmForRecovery",
+      "outcome": "Passed",
+      "duration": "00:00:00.0009004",
+      "testId": "a70577f2-1e5d-0864-a3c0-56e23184917b"
+    },
+    {
+      "testName": "MovieFitCropAndSoftwareZoomDoNotChangeNominalSize",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000277",
+      "testId": "59570536-a792-9e93-2536-a5fd9e818786"
+    },
+    {
+      "testName": "CaptureMissesIgnoreInitialDuplicateBackwardsAndJitteredTimestamps",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000167",
+      "testId": "2f950fce-41a6-7d83-e482-607a98ce1bf6"
+    },
+    {
+      "testName": "CR210toRGB48VideoFrameFormatter4KSmokeTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.1469382",
+      "testId": "9e0448e0-c1be-1a80-b4fb-599b98c41291"
+    },
+    {
+      "testName": "ExplicitLegacy100CalibrationRetainsItsPreviousPhysicalDimensions",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000218",
+      "testId": "0ac49498-a83a-d9cf-29b9-e10dac1003d5"
+    },
+    {
+      "testName": "DolbyVisionTunnelUsesAcceptedPqPrimariesAndKeepsWireObservation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000327",
+      "testId": "58896d4f-121f-d600-e936-6efcf49931f3"
+    },
+    {
+      "testName": "ProfileCihContainmentRespectsResolutionScalingAndAnamorphicWidth",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000233",
+      "testId": "c2096a3a-9bf1-d725-93aa-a148d2eea067"
+    },
+    {
+      "testName": "ProCapture4kPlusAdvertisedFormatsSelectBgraByteOrder",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000285",
+      "testId": "74cafd9d-bfe5-324e-0dba-e956f68e8b16"
+    },
+    {
+      "testName": "V210P010AdvancedMatchesAnalyticLanczosOracle",
+      "outcome": "Passed",
+      "duration": "00:00:00.7435191",
+      "testId": "94f7ecee-9762-5077-d41d-20b31f3c03df"
+    },
+    {
+      "testName": "AspectRatioParserRejectsMalformedAndOutOfRangeForms",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000455",
+      "testId": "f1928e38-fbac-7e25-c43b-fb21b2362ac3"
+    },
+    {
+      "testName": "BlankingPersistsThroughLostDmAndStopsOnFreshDmOrEos",
+      "outcome": "Passed",
+      "duration": "00:00:00.0012355",
+      "testId": "1804bd4d-a85c-8275-1877-6fae2db1865e"
+    },
+    {
+      "testName": "SweepBannerFollowsTheScopeFittedPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000019",
+      "testId": "09810348-9bfe-cd65-0a2f-8f6365fa4c73"
+    },
+    {
+      "testName": "LayoutChangeResetsDolbyLockAndCannotReuseOldDm",
+      "outcome": "Passed",
+      "duration": "00:00:00.0007046",
+      "testId": "2121acf8-a176-9c59-9811-6b192a089618"
+    },
+    {
+      "testName": "CARGBtoP010AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0139387",
+      "testId": "a60050b7-a3f7-6927-e620-6ffa61cbc488"
+    },
+    {
+      "testName": "LongProfileShaderLutAndStatusNamesAreMeasuredAndEllipsized",
+      "outcome": "Passed",
+      "duration": "00:00:00.0172635",
+      "testId": "0c4da590-2fea-1f5e-8d6b-ef8fcc6f3302"
+    },
+    {
+      "testName": "CDeckLinkRGBToP010VideoFrameFormatterR12BGoldenTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0178882",
+      "testId": "98ad3558-0e3c-699d-4b71-501449dfbea6"
+    },
+    {
+      "testName": "PersonalSizePercentValidatesFiniteBoundsAndKeepsDefault",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000637",
+      "testId": "bb915789-c056-d7fc-61f8-f79598f82204"
+    },
+    {
+      "testName": "TunnelAdmissionRequiresOptInRendererSdrAndPreservedSupportedRgb",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000567",
+      "testId": "33e422ec-587f-adfa-9b94-a0ae0a42deb8"
+    },
+    {
+      "testName": "DeckLinkR12BDirectMediaTypeUsesThirtySixBitsPerPixel",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000055",
+      "testId": "e1c1a634-211a-ad54-5666-9af4266ab484"
+    },
+    {
+      "testName": "StatsFlatAndScopeCompensateExternalOpticalZoom",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000334",
+      "testId": "c9eecc1e-1558-b363-2c5f-319bab322110"
+    },
+    {
+      "testName": "DisplayRuleSubstringRendererAndRate",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001225",
+      "testId": "05d977a1-4318-d8f9-e10b-a4de31113154"
+    },
+    {
+      "testName": "MismatchedContinuationIdsFlagsAndKindsAreRejected",
+      "outcome": "Passed",
+      "duration": "00:00:00.0009367",
+      "testId": "d26b365c-915c-65eb-1e27-1dfe8cdb50e4"
+    },
+    {
+      "testName": "P210TailWidthsAndPaddedRowsMatchDecodedCodes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004603",
+      "testId": "58c57f31-277f-e00d-1369-9eca294281c3"
+    },
+    {
+      "testName": "LetterboxAndPillarboxUseTheirActualPictureBounds",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000034",
+      "testId": "cfc56d97-c072-155f-980e-0c1bb6e0da28"
+    },
+    {
+      "testName": "PersonalSizePreferenceIsIgnoredWhenScalingIsDisabled",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000587",
+      "testId": "dec991da-3c9f-b3be-45b2-e373c10d83e1"
+    },
+    {
+      "testName": "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000213",
+      "testId": "4ec30470-eeb0-c718-fcb7-87c7b0dd0883"
+    },
+    {
+      "testName": "IndependentSenderHasKnownCrcAndPackingAnchors",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002254",
+      "testId": "07fac404-5416-1109-9b8d-d6d1f3ed1078"
+    },
+    {
+      "testName": "OptionalCapturedDeckLink8BitYuvFrameReplay",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000497",
+      "testId": "dd828040-d329-17da-d57a-444a8784a208"
+    },
+    {
+      "testName": "ContinuationBoundariesAndUnknownBlocksPreserveL1",
+      "outcome": "Passed",
+      "duration": "00:00:00.0024428",
+      "testId": "97c7a43f-6213-e023-13f0-14e105eceefb"
+    },
+    {
+      "testName": "CV210toP210VideoFrameFormatterPreservesEvery422Sample",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000386",
+      "testId": "5bf44db7-32b2-61f4-983d-9673692bf732"
+    },
+    {
+      "testName": "DisplayRuleSubstringGrammarAndNormalization",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000354",
+      "testId": "9ceaba84-9a03-4aec-67f2-13451aa34737"
+    },
+    {
+      "testName": "Rgb10ToR10lPreservesChannelCodesAndRowPadding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000223",
+      "testId": "c8875309-2141-8838-55a9-9f9e169a5a94"
+    },
+    {
+      "testName": "RendererProfileConfigEnforcesSafeSubtitleHoldBoundary",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000482",
+      "testId": "4a4e5fcc-6b32-6417-0976-0f4bc1b34074"
+    },
+    {
+      "testName": "CR210toRGB48AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0452368",
+      "testId": "a7cdc5e6-e855-af1f-f693-11386f5795dc"
+    },
+    {
+      "testName": "AnamorphicLensCorrectsWidthAndHorizontalMarginExactlyOnce",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000279",
+      "testId": "abd36b90-0ae0-ed31-05c2-39d7de902d6d"
+    },
+    {
+      "testName": "LoadFailureReturnsUnavailableAndDoesNotResolveOrFree",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "a130360f-6fed-57a4-d309-546d95998975"
+    },
+    {
+      "testName": "RendererProfileConfigValidatesCalibrationLutContract",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000106",
+      "testId": "3f67cc2e-86b1-80cb-c1ba-06daed7e44db"
+    },
+    {
+      "testName": "PersonalCalibrationRemainsStableAcrossMovieCropAndSoftwareZoom",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000279",
+      "testId": "434b9759-c6ab-deb5-507c-dd4695d30d00"
+    },
+    {
+      "testName": "AlphaFormatterOutputContractsAreExplicit",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003084",
+      "testId": "ea360d7c-fcc6-35f7-fa35-c8a7daff6eba"
+    },
+    {
+      "testName": "P210ToV210FourKRepackProfileAndReference",
+      "outcome": "Passed",
+      "duration": "00:00:01.8276737",
+      "testId": "664345fb-ebfb-1298-46c2-3a43fce559b7"
+    },
+    {
+      "testName": "ErrorKeepsClockAvailableUntilStop",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000085",
+      "testId": "acbd755d-4c92-305d-f95c-2c663c909932"
+    },
+    {
+      "testName": "Rgb24ModeChangeDrainsOldPackingBeforePublishingOrdinaryFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.3028942",
+      "testId": "0e29c509-4e78-96cf-f860-647b11e1fd2e"
+    },
+    {
+      "testName": "CR12BtoRGB48VideoFrameFormatter4KSmokeTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.1662553",
+      "testId": "d6e0367a-94d9-7e74-bc7f-64f5c3157e02"
+    },
+    {
+      "testName": "FullFrameUsesBottomRightInset",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000097",
+      "testId": "3434fa44-d588-9a64-4979-5b2bd548e734"
+    },
+    {
+      "testName": "RebasedDefaultMatchesExplicitOld150ForActualPlacedStatsPanel",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000307",
+      "testId": "785417b7-45ee-6294-d201-e35988d6231c"
+    },
+    {
+      "testName": "CARGBtoP010VideoFrameFormatterUsesVpAssumedFullRangeEndpoints",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001343",
+      "testId": "bac9373b-efce-eef6-15bc-b7789e628b38"
+    },
+    {
+      "testName": "InitializationFailureUnloadsWithoutCallingExit",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000254",
+      "testId": "2679860f-de20-9d76-9070-5516befd61b4"
+    },
+    {
+      "testName": "CUYVYtoP010VideoFrameFormatterPreservesLimitedRangeCodes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000227",
+      "testId": "963920eb-144e-ec6c-3c48-6a777f08288d"
+    },
+    {
+      "testName": "DamagedContinuationNeverReplacesActiveMetadata",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004913",
+      "testId": "e0febbe8-52e2-0aa4-f1c9-97614e39bafc"
+    },
+    {
+      "testName": "UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport",
+      "outcome": "Passed",
+      "duration": "00:00:00.0124058",
+      "testId": "857bf12e-0c11-9e62-391f-93020cf042bc"
+    },
+    {
+      "testName": "UhdPackingMeasuresFullFrameCostAndPreservesChannels",
+      "outcome": "Passed",
+      "duration": "00:00:00.1863839",
+      "testId": "2fef4dc3-cb43-3e4d-a18a-2c1bfe311fdb"
+    },
+    {
+      "testName": "RawRangeSetupFailuresNeverDeliverFramesAndRestorePartialWrites",
+      "outcome": "Passed",
+      "duration": "00:00:00.0007002",
+      "testId": "c6167bf7-dfda-43dd-2b1f-1e499fc305b1"
+    },
+    {
+      "testName": "StalledUiDoesNotCatchUpOrActivateAfterTenSeconds",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000216",
+      "testId": "0798e4ea-dd1d-9297-8970-1e3dd640ae41"
+    },
+    {
+      "testName": "Rgb8PacketRedundancyContinuationAndTransitionRecovery",
+      "outcome": "Passed",
+      "duration": "00:00:00.0014812",
+      "testId": "837e8bf0-1d2a-e146-c52b-d118ebead98f"
+    },
+    {
+      "testName": "P010ConvertersUseOneVerticalChromaDownsamplingPolicy",
+      "outcome": "Passed",
+      "duration": "00:00:00.0082842",
+      "testId": "884d8a8b-68d1-60b5-c372-3b9a9894ff1c"
+    },
+    {
+      "testName": "CR12BtoRGB48VideoFrameFormatterGoldenBlockTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000782",
+      "testId": "50f54ae2-26c0-5281-cdb6-fba246af48ff"
+    },
+    {
+      "testName": "ShieldAndRetargetWaitAtOneSecondIntervalsAndExpire",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000126",
+      "testId": "0f39a29e-b9d8-ed00-1a0a-72b3839ef916"
+    },
+    {
+      "testName": "HalftoneTargetReceivesSourceAlphaAfterScaling",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000195",
+      "testId": "a99152ed-3a0b-2bee-219f-92e6e12d28d6"
+    },
+    {
+      "testName": "UnsupportedHeaderCannotAuthorizeDolbyVisionLock",
+      "outcome": "Passed",
+      "duration": "00:00:00.0007153",
+      "testId": "2ec57281-7cdf-9af3-d6d6-69ca97d8d523"
+    },
+    {
+      "testName": "RendererProfileConfigAllowsOmittedGroupsWithoutPlaceholders",
+      "outcome": "Passed",
+      "duration": "00:00:00.0013082",
+      "testId": "f96abc65-53bf-32a6-a25f-79430e970b72"
+    },
+    {
+      "testName": "FixedCropUsesTheFinalVisiblePictureInsteadOfThePhysicalScreen",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000117",
+      "testId": "a7f09d97-c329-904a-a567-9bf73576456e"
+    },
+    {
+      "testName": "UYVYAndHDYCProduceByteIdenticalP010AndP210Frames",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000866",
+      "testId": "a1d5b34d-93c6-306b-35e5-af7ba63dd4af"
+    },
+    {
+      "testName": "HdmiRgb12DeliversConvertedYuvFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.1101801",
+      "testId": "74979bb1-0949-387e-868c-7d0906eb0bd7"
+    },
+    {
+      "testName": "RepeatedCopiesRecoverFirstAndContinuationCorruption",
+      "outcome": "Passed",
+      "duration": "00:00:00.0005849",
+      "testId": "af6a8f9e-09a4-48bb-cf77-fa380fc05409"
+    },
+    {
+      "testName": "CDeckLinkLimitedRgbAVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0147781",
+      "testId": "21b14483-aa7d-0513-b159-cc306f8e3642"
+    },
+    {
+      "testName": "ThreadedRowsAndUnevenTailPreserveEverySample",
+      "outcome": "Passed",
+      "duration": "00:00:00.0470333",
+      "testId": "1786503c-d46a-b3cc-f4c4-52340841b1d9"
+    },
+    {
+      "testName": "FullscreenExitCancelsAndReentryStartsNewWindow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000374",
+      "testId": "4482d1b9-38d7-03b8-7b1e-b8e4000f86f0"
+    },
+    {
+      "testName": "ObservedSdkTimestampGapsReachTheOsdCaptureMissedCounter",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002802",
+      "testId": "1897133b-f8b8-9657-def0-219a01457756"
+    },
+    {
+      "testName": "ValidHeaderBlocksSdrEvenWhenBodyIsUnsupported",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001803",
+      "testId": "d7387cc7-ba69-e2da-229b-7babe5269b5b"
+    },
+    {
+      "testName": "MadVRPackedTwelveBitIngressUsesP010Policy",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000090",
+      "testId": "b18410b4-a436-ace8-fad1-50df85aee097"
+    },
+    {
+      "testName": "ProfileBannerAnchorsAtTopLeftInsideScopePicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000017",
+      "testId": "5bb3bd25-83ed-3a97-e1e7-bce058597bda"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsProfileForOmittedGroup",
+      "outcome": "Passed",
+      "duration": "00:00:00.0055378",
+      "testId": "6293f9aa-acc4-9e7e-255e-b745aa8c7a7e"
+    },
+    {
+      "testName": "AlphaNativeRgbLayoutPreservesComponentBitfields",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000280",
+      "testId": "55b5b3ae-c35c-60d6-b8dd-e6ce805df84a"
+    },
+    {
+      "testName": "Rgb10RepackFeedsNativeRgbAnalysisAtLimitedEndpoints",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000379",
+      "testId": "ff38a20c-e8b4-6c86-d22a-06eeddea76de"
+    },
+    {
+      "testName": "NonfiniteScaleAndInsetsAlwaysProduceFiniteContainedPanels",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000061",
+      "testId": "6da8779f-3f9e-7d6e-0371-ef5821718634"
+    },
+    {
+      "testName": "RasterAndShaderContinuationRowsUseExplicitSharedValueColumn",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002237",
+      "testId": "185103e9-64f6-1f3c-4aec-e87dfa33de88"
+    },
+    {
+      "testName": "CR12BtoRGB48VideoFrameFormatterRejectsInvalidWidth",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001329",
+      "testId": "c3933ecb-fafa-6182-b76a-3eebc91809ec"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsConfigurationVersionKeys",
+      "outcome": "Passed",
+      "duration": "00:00:00.0055933",
+      "testId": "c2624b6b-0b5c-2340-4eb5-17d204ce99f2"
+    },
+    {
+      "testName": "DeclaredLengthBoundsAndMalformedExtensionsDoNotReplaceDm",
+      "outcome": "Passed",
+      "duration": "00:00:00.0009667",
+      "testId": "c5a7d46a-88e5-6f13-5273-e7cb62b96856"
+    },
+    {
+      "testName": "PersistentCopyFailureInvalidatesAndReportsOnlyOnce",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003356",
+      "testId": "c5bf6922-0763-727d-75da-57c18181b7d9"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatterAlignedPathsRemainEquivalent",
+      "outcome": "Passed",
+      "duration": "00:00:00.0009469",
+      "testId": "508ab5f6-c853-4d89-257a-e1326e2448bb"
+    },
+    {
+      "testName": "PersistentClockFailureInvalidatesOnCaptureThread",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003331",
+      "testId": "506984b2-4ba2-fdb5-a410-4ae966c30f99"
+    },
+    {
+      "testName": "V210P010ConfigurationDefaultsAndExplicitOverrides",
+      "outcome": "Passed",
+      "duration": "00:00:00.0408329",
+      "testId": "8e3b7a9d-8660-891f-0981-f36f0685b3ec"
+    },
+    {
+      "testName": "DisplayRuleSubstringRejectsInvalidOperands",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000475",
+      "testId": "2a9f7190-e08f-8d73-e834-e1c1839464b5"
+    },
+    {
+      "testName": "WholeUi100MapsToOld150CalibrationWithoutRetuningExplicitSavedValues",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000699",
+      "testId": "375ab14e-539b-96ae-5efc-d3b748ba03ef"
+    },
+    {
+      "testName": "RefreshFailureReleasesSdkAndReportsActionableReason",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "9d85d167-5d87-9b4f-c91d-51ba4cdca069"
+    },
+    {
+      "testName": "SuccessKeepsModuleLoadedUntilExitInstanceCompletes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000204",
+      "testId": "db1740b3-9a15-01f1-5c2a-c94f8af4d170"
+    },
+    {
+      "testName": "Rgb24PipelineStartsNextDmaBeforeCallbackAndRetainsEveryFrameAcrossStop",
+      "outcome": "Passed",
+      "duration": "00:00:00.1426859",
+      "testId": "cf7af568-2548-442b-072a-08ab2d3298a0"
+    },
+    {
+      "testName": "IdleAndInvalidTargetsCannotSpendAttempts",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000597",
+      "testId": "9de35e52-dc3b-6d80-ba54-b236d46d19ad"
+    },
+    {
+      "testName": "DestructorDrainsBufferReadsBeforeReturning",
+      "outcome": "Passed",
+      "duration": "00:00:00.0301120",
+      "testId": "3f1a2fc4-ec8e-220a-b896-ad959559b889"
+    },
+    {
+      "testName": "GuiStyleDetachedFoundAndLostTokensOwnDeviceIndependently",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000116",
+      "testId": "042403dd-817b-4479-0e2b-d9f601f40f57"
+    },
+    {
+      "testName": "UnsupportedSignalRecoversWithoutRestartOrDriverNotification",
+      "outcome": "Passed",
+      "duration": "00:00:00.4433423",
+      "testId": "54ec6735-9792-f62c-41bf-c9534c3fb19e"
+    },
+    {
+      "testName": "ProfileBannerScalesFromVisibleZoomPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000217",
+      "testId": "b3282601-eec6-0dd3-7f10-e94009704796"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatterTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001981",
+      "testId": "1705807e-a0cb-8267-9eda-c8076c34c399"
+    },
+    {
+      "testName": "InvalidInitialGeometryCanRecoverByPolling",
+      "outcome": "Passed",
+      "duration": "00:00:00.4427323",
+      "testId": "1c8d2fd1-8fdc-bb2c-ab19-e1405982ea65"
+    },
+    {
+      "testName": "AlignmentChangeWithNoMetadataUsesNewLayoutAndActiveDm",
+      "outcome": "Passed",
+      "duration": "00:00:00.0005340",
+      "testId": "92a20063-b78e-cceb-02bc-40a2e0f610e1"
+    },
+    {
+      "testName": "WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers",
+      "outcome": "Passed",
+      "duration": "00:00:00.0187483",
+      "testId": "8f114294-8263-5b2b-ed9e-9df09b2fb104"
+    },
+    {
+      "testName": "CV210toP210AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000574",
+      "testId": "ef4aad19-9cf8-377b-9519-cb976972ee9e"
+    },
+    {
+      "testName": "OrdinaryMagewellRgb8RejectsRemappedTunnelBytes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000329",
+      "testId": "e6eff1ff-ffe1-7c97-95e8-b2dd9b7da3cc"
+    },
+    {
+      "testName": "AutoCaptureKeepsLowerRatesAndHdLosslessButUsesCardP010AtUhd60",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000235",
+      "testId": "ceb49d3d-5824-d02f-b5dd-cb3c473d08fb"
+    },
+    {
+      "testName": "PlanarLayoutRejectsOddHeightShortBuffersAndPreservesExistingEncodingIds",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000531",
+      "testId": "eadf8b0b-86bb-698d-ee31-df3c17ec7eae"
+    },
+    {
+      "testName": "CUYVYtoP210AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000849",
+      "testId": "48ffd083-484b-adb8-4e3a-e366072f5c75"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatterPreservesPaddedTailSamples",
+      "outcome": "Passed",
+      "duration": "00:00:00.0009352",
+      "testId": "f54e1b91-3915-84d4-60d6-e4f400aa79d9"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsRemovedAliasAlongsideCanonicalKey",
+      "outcome": "Passed",
+      "duration": "00:00:00.0051484",
+      "testId": "96f67253-9f6a-21c9-aaf0-237c3b5bcd33"
+    },
+    {
+      "testName": "RawModeSwitchRestoresRangeAndPublishesNewStateBeforeOrdinaryFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.3342841",
+      "testId": "8c85428f-2301-c6ce-1366-3588c7b9d7b7"
+    },
+    {
+      "testName": "SdiRgbDepthSelectsNativeFormatsAndConvertsTwelveBit",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000300",
+      "testId": "148a8837-7436-af16-0549-e5c3e3d79451"
+    },
+    {
+      "testName": "EosNoMetadataAllowsSdrAfterBoundaryIncludingCounterGap",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003821",
+      "testId": "5b07b1aa-6df2-0782-82e6-48c2a0e3c0d6"
+    },
+    {
+      "testName": "PersonalCalibrationResolutionAndLensMatrixUsesActualPlacedDimensions",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001482",
+      "testId": "b06b0631-21c8-c36e-19cf-96141a6944ee"
+    },
+    {
+      "testName": "RendererIngressHelpersCoverEveryDeckLinkCaptureEncoding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000760",
+      "testId": "515ff5dc-5432-99ea-cc4f-27db859ae93a"
+    },
+    {
+      "testName": "CUYVYtoP010AVX2MatchesScalarBitExactlyIncludingRowTails",
+      "outcome": "Passed",
+      "duration": "00:00:00.0005146",
+      "testId": "88dab688-1630-f991-d986-37b4107c7770"
+    },
+    {
+      "testName": "RendererProfileConfigReadsOrderedIndependentGroups",
+      "outcome": "Passed",
+      "duration": "00:00:00.0076442",
+      "testId": "f2e1a296-45c8-b8ac-e08e-fd31a946b739"
+    },
+    {
+      "testName": "EarlyAndDuplicateMessagesCannotCompressRetryInterval",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000248",
+      "testId": "46ce3576-e2e4-6c57-4d6c-c4bddd8e63aa"
+    },
+    {
+      "testName": "V210P010BlockingWorkersWakeAndReloadWithoutStaleFrames",
+      "outcome": "Passed",
+      "duration": "00:00:02.8498077",
+      "testId": "89e9a900-c559-cfd8-407d-bdaa79be15a9"
+    },
+    {
+      "testName": "PersistentRestoreFailureIsReportedInsteadOfClaimingOriginalSettings",
+      "outcome": "Passed",
+      "duration": "00:00:00.1130889",
+      "testId": "4ad2645c-72a6-1c3c-0980-91910f252001"
+    },
+    {
+      "testName": "NativeP010ChromaUpscalerChangesNoCuePixelsLikeDirectRender",
+      "outcome": "Passed",
+      "duration": "00:00:00.6527713",
+      "testId": "bfec0ff8-b07c-4999-4758-c13978c319d7"
+    },
+    {
+      "testName": "InvalidAndOverlappingBuffersRejectBeforeAnyWrite",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000056",
+      "testId": "4c6ae8af-d520-901c-9dcd-109071074f12"
+    },
+    {
+      "testName": "NoMetadataRetainsActiveDmAndDoesNotResurrectAbsentDm",
+      "outcome": "Passed",
+      "duration": "00:00:00.0022689",
+      "testId": "7943dc5a-c21d-6b96-6565-480a302694fd"
+    },
+    {
+      "testName": "UnrelatedCurrentIdDiscardsPendingAndActiveDm",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003254",
+      "testId": "7954cdb9-f783-6e2f-9eb9-2bdd194ac11b"
+    },
+    {
+      "testName": "UnknownWireRangePermitsValidatedDvButNeverGuessesSdr",
+      "outcome": "Passed",
+      "duration": "00:00:00.0005438",
+      "testId": "9330c8ec-4a14-0472-fd73-5af5508cf0b1"
+    },
+    {
+      "testName": "NativeP210CopyFailureInvalidatesAndDoesNotPublishPartialPlanes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002929",
+      "testId": "2b338925-a1ba-e19e-d3bd-c7279eb68669"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsRemovedViewportAliases",
+      "outcome": "Passed",
+      "duration": "00:00:00.0058738",
+      "testId": "488e8d76-cb05-4862-b91c-d1d204724cc2"
+    },
+    {
+      "testName": "MissingScanExportUnloadsRuntimeBeforeInitialization",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000170",
+      "testId": "50a67542-3814-77bb-d75d-0a2545b7293b"
+    },
+    {
+      "testName": "FailedInputSelectionClosesChannelAndReturnsReady",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000412",
+      "testId": "c0c45654-177f-eee2-c335-292c7f2f13da"
+    },
+    {
+      "testName": "DeckLinkR12BAndRgb48ContractsRemainFullRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000101",
+      "testId": "be2d9e38-10da-ab98-fb55-9ecffe1a5455"
+    },
+    {
+      "testName": "RendererProfileConfigResetChordDoesNotSuppressOtherProfileKeys",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000320",
+      "testId": "8e385244-8bbb-ffa4-ebc6-c38a2e073828"
+    },
+    {
+      "testName": "SinglePacketReadsSignedMatricesOffsetsAndRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003902",
+      "testId": "6c3303f8-37fe-5dd4-0601-16b4fc03b801"
+    },
+    {
+      "testName": "P210TailAcrossRowsDoesNotReadOrWritePastRow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000156",
+      "testId": "be29b87a-df29-edb7-b240-cde600e51ed6"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatter720pPreservesAllActivePixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.0014785",
+      "testId": "b7326ae0-8c7e-642f-338c-545405e391d5"
+    },
+    {
+      "testName": "DeckLinkConvertersSustained4K60PerformanceComparison",
+      "outcome": "Passed",
+      "duration": "00:00:28.4620082",
+      "testId": "1407bbf2-c04f-a6ba-bd86-a8690e20955c"
+    },
+    {
+      "testName": "RendererProfileConfigOneKeySelectsIndependentGroups",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000159",
+      "testId": "876c9d61-5a0e-93d6-c75b-3d323142bad1"
+    },
+    {
+      "testName": "ScaledSweepAndProfilePlacementRetainPhysicalMarginsAndTypography",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000300",
+      "testId": "55e6cfb7-8fc8-29be-a2ee-48e669c22a19"
+    },
+    {
+      "testName": "CNoopVideoFrameFormatterTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000059",
+      "testId": "0b075ec3-8d04-23b6-0e77-8bf656e46988"
+    },
+    {
+      "testName": "ProfileBannerCannotEscapeCihScreenDuringFullRasterPreparation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000255",
+      "testId": "91aa6606-6ae4-4d77-a476-b920a428b743"
+    },
+    {
+      "testName": "OrdinaryLimitedRgbConversionCorruptsTunnelAndCannotBeAdmitted",
+      "outcome": "Passed",
+      "duration": "00:00:00.1114969",
+      "testId": "9fb6eb94-04fc-ca7e-ec5e-687e0319644b"
+    },
+    {
+      "testName": "OversizedPersonalCalibrationHonorsContainmentAndReportsShrink",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000305",
+      "testId": "2c632403-46f2-698f-1f9d-5ae783dbc60d"
+    },
+    {
+      "testName": "SweepAndProfileUseSameStableScreenGeometryFactor",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000421",
+      "testId": "33803544-db79-d857-ef01-5568dd15d0af"
+    },
+    {
+      "testName": "CDeckLinkLimitedRgbToP010MatchesBT709ReferenceCodes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0006248",
+      "testId": "102de833-99d4-5139-4523-cb9b449cd381"
+    },
+    {
+      "testName": "FullscreenActivationNeverStealsAnotherProcessForeground",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000143",
+      "testId": "216dbe45-0a20-6a97-afc3-b45537a91563"
+    },
+    {
+      "testName": "Rgb24ThrowingFrameCallbackStopsNextDmaAndRestoresInputRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0852882",
+      "testId": "96221d68-7557-1d54-652e-8bae3ef6e839"
+    },
+    {
+      "testName": "CDeckLinkRGBToP010R12BBlackWhiteContractTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0319431",
+      "testId": "c227a47f-5ad9-c80b-8313-06e8b63c0d1d"
+    },
+    {
+      "testName": "DeckLinkRgbAndUyvyConvertersSupportStandardResolutionMatrix",
+      "outcome": "Passed",
+      "duration": "00:00:00.2595605",
+      "testId": "cf91b8fd-23a1-683e-ebd2-3a520a99d2ee"
+    },
+    {
+      "testName": "RendererProfileConfigResolvesGenericViewportDefaults",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000532",
+      "testId": "892f2ea8-613e-5f5f-0adf-ebf7b0bfed24"
+    },
+    {
+      "testName": "AbsentSdkReportsNoDevicesAndStopsCleanly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000085",
+      "testId": "6043dcc7-b77a-92ae-698c-690715c197ce"
+    },
+    {
+      "testName": "Rgb10ToR10lFourKRepackProfileAndReference",
+      "outcome": "Passed",
+      "duration": "00:00:01.0808168",
+      "testId": "83fbbf63-ca6c-48dd-d3a8-8c5ea221f041"
+    },
+    {
+      "testName": "UnsupportedFamilyAndUnopenableCardStayHidden",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000351",
+      "testId": "0c2d8515-3314-20e1-92ac-e1fdc935facc"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsIncompleteUnifiedConfiguration",
+      "outcome": "Passed",
+      "duration": "00:00:00.0056787",
+      "testId": "72a17fa8-e7e0-dcd1-04eb-d3953507572b"
+    },
+    {
+      "testName": "RendererProfileConfigKeySelectionIgnoresOtherAutomaticBranches",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000238",
+      "testId": "178932be-263e-ad53-f762-8842289a6f75"
+    },
+    {
+      "testName": "HeightLimitedScreenFitDoesNotInventAnExtraAspectCorrection",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000116",
+      "testId": "c4adaed5-06d2-da1f-0ead-baaf1b0ed8cf"
+    },
+    {
+      "testName": "ThrowingCallbackStopsCaptureAndUnregistersNotification",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000307",
+      "testId": "8c6a9847-e624-004f-2916-1e2a7b335755"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration",
+      "outcome": "Passed",
+      "duration": "00:00:00.0072362",
+      "testId": "b1f4ee99-d274-b3f5-8be1-3d599f198459"
+    },
+    {
+      "testName": "ShutdownCancelsBeforeAndDuringRetries",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000490",
+      "testId": "12db1407-d7a3-149c-d572-db2d187cd599"
+    },
+    {
+      "testName": "NoUsableCardReleasesSdkAndReportsUnavailableReason",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000113",
+      "testId": "ded4bfdf-7df7-d797-533c-207222e446e8"
+    },
+    {
+      "testName": "PausedProcessingRowsPreserveLegacyStatsWithAvailableOrUnavailableData",
+      "outcome": "Passed",
+      "duration": "00:00:00.0776458",
+      "testId": "6d647b26-b2c0-320b-f8b7-53fccbf2acd2"
+    },
+    {
+      "testName": "PersonalCalibrationUsesActualStatsBitmapAndOldScopePhysicalBaseline",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000328",
+      "testId": "7655805d-bd1a-8b55-12b2-655e17f5f004"
+    },
+    {
+      "testName": "AllTenBitSamplesAndChromaRowsMatchForLiveAndQueuedConsumers",
+      "outcome": "Passed",
+      "duration": "00:00:00.1035803",
+      "testId": "97ecce33-4cce-a3ed-0b18-7ccdf97282e9"
+    },
+    {
+      "testName": "ScopeViewportAnchorsInsideTheFittedPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000020",
+      "testId": "560c8454-b95e-47cb-10a9-4b6bf6145c69"
+    },
+    {
+      "testName": "V210P010PacedCpuBenchmark",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000340",
+      "testId": "2f25198f-f6e9-5412-1b80-bdf502568f59"
+    },
+    {
+      "testName": "BothBackendsDeriveNativeHeightFromExactRowsAndConditionalSections",
+      "outcome": "Passed",
+      "duration": "00:00:00.0784850",
+      "testId": "590537cc-40a5-01df-1d6a-c632d3be01c8"
+    },
+    {
+      "testName": "RawMagewellCapturePreservesDvForFullLimitedAndUnknownWireRanges",
+      "outcome": "Passed",
+      "duration": "00:00:02.0051984",
+      "testId": "4c21271e-e6ec-2f30-681c-963524e36443"
+    },
+    {
+      "testName": "LossLimitSuspendsUntilFreshCompleteDmWithoutSdrFallback",
+      "outcome": "Passed",
+      "duration": "00:00:00.0013212",
+      "testId": "62828f95-e0e9-e25f-547a-a691a8164c6c"
+    },
+    {
+      "testName": "FoundDeviceSurvivesDiscovererStopWhileClientRetainsIt",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000133",
+      "testId": "aacb05de-ad0c-7972-b5cb-42a3cbd49a8a"
+    },
+    {
+      "testName": "Rgb8ScalarAndAvx2PreserveEveryTwelveBitCodeAndIgnoreAlpha",
+      "outcome": "Passed",
+      "duration": "00:00:00.0707701",
+      "testId": "b62998e2-5f43-e909-f501-ab73ff96e5a8"
+    },
+    {
+      "testName": "SectionGapsFollowExistingSectionsWithoutDoubleAlphaGap",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000490",
+      "testId": "248b8c00-1907-004e-80e0-4804af77c7cd"
+    },
+    {
+      "testName": "NativeP210CapabilityPreservesRgbByteLayoutsAndRejectsMissingPlaneFormat",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000682",
+      "testId": "582368ef-ae26-080e-1ce4-b0dc298855dc"
+    },
+    {
+      "testName": "AdvanceMetadataAppliesOnlyToImmediateNextPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003273",
+      "testId": "78e875bf-00dd-21ed-2636-af853cee4da2"
+    },
+    {
+      "testName": "RawRgb24SdkCapturePreservesEveryDvSampleAndRestoresLimitedInputRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.3734210",
+      "testId": "f90ab45a-788e-9b7f-3ab4-2686e9d20651"
+    },
+    {
+      "testName": "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails",
+      "outcome": "Passed",
+      "duration": "00:00:00.0014068",
+      "testId": "7418af4e-c896-cef8-42b0-f78c5de222d3"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatterDciWidthSmokeTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0202339",
+      "testId": "a2f55f5c-2522-bef8-5ffe-c12165a1c6a2"
+    },
+    {
+      "testName": "ReplacedHostAndGenerationRequireFreshRevealWithoutExtendingWindow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000100",
+      "testId": "f172f570-eaba-b749-8bed-44e75f0aab80"
+    },
+    {
+      "testName": "CaptureCopyFailureRestoresRawInputRangeAndPublishesInvalidState",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003639",
+      "testId": "730d0665-c61e-6b7c-3e77-352929ddeec1"
+    },
+    {
+      "testName": "BandwidthPolicyNeverRequestsUnsupportedOrMalformedP010",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000384",
+      "testId": "d9d10cee-27e6-439a-19f1-dcbbf37beb3e"
+    },
+    {
+      "testName": "NativeP210BorrowsSdkDestinationAndRetainsBothPlanesAcrossStop",
+      "outcome": "Passed",
+      "duration": "00:00:00.1112169",
+      "testId": "51937649-89ab-963b-5f33-27bfb2acd9f9"
+    },
+    {
+      "testName": "Rgb12CompatibilityRequiresP210AndEvenWidth",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000249",
+      "testId": "ff2cbea2-4224-58d6-56d7-212addce83c0"
+    },
+    {
+      "testName": "NoopFormatterPreservesEveryDeckLinkInputRangeContract",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000491",
+      "testId": "f3ba8d88-824a-e49f-b8a5-6bffda61a29d"
+    },
+    {
+      "testName": "V210P010ChromaPoliciesMatchIndependentPixelOracle",
+      "outcome": "Passed",
+      "duration": "00:00:00.3134358",
+      "testId": "241d741c-0871-d5bb-8c87-de3ccd42a9d3"
+    },
+    {
+      "testName": "CDeckLinkR12BToP010UsesNormalizedFullRangeRounding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003846",
+      "testId": "9482730d-68fb-c64f-125c-9734195b1c95"
+    },
+    {
+      "testName": "MemoryBudgetCountsRetiredFramesUntilLastRelease",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000324",
+      "testId": "5e0ef98b-809e-e2d0-f01b-015e778e66b0"
+    },
+    {
+      "testName": "CV210toP010VideoFrameFormatter4K60PerformanceSmokeTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.0706416",
+      "testId": "67d196d5-25e7-68b4-196f-2dd51b4baf88"
+    },
+    {
+      "testName": "CDeckLinkRGBToP010VideoFrameFormatterR12BEndpointsAndWidthValidation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001061",
+      "testId": "959652a2-40e7-35ab-5e66-76836d143520"
+    },
+    {
+      "testName": "ScreenResolutionAndRawAspectMatrixKeepsProjectedSize",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000773",
+      "testId": "3486eaf9-0747-5ccd-45a4-55a90f4eacc6"
+    },
+    {
+      "testName": "AlphaRestorationHonorsPaddingAndRejectsInvalidBuffers",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000273",
+      "testId": "626fdfff-3df5-d3f9-57ce-b4aaa14c4301"
+    },
+    {
+      "testName": "MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows",
+      "outcome": "Passed",
+      "duration": "00:00:00.0559300",
+      "testId": "c08f8dce-3104-d1e3-ac78-68caefc25649"
+    },
+    {
+      "testName": "ScalarAndDispatchedPackingPreserveEveryRgbByteAndAllRowGuards",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001457",
+      "testId": "b2dfc0d1-3003-a641-e7d6-68ecef288d3f"
+    },
+    {
+      "testName": "P210ToV210PreservesSixPixelGroup",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000098",
+      "testId": "9c5f22e2-95d8-ac10-d856-5038f10a4f7a"
+    },
+    {
+      "testName": "ProfileAndShaderColumnsKeepTheSameVisibleScreenAnchor",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000195",
+      "testId": "c576a196-5410-1c84-6c2a-9c6ccea975e8"
+    },
+    {
+      "testName": "CDeckLinkLimitedRgbToP010MatchesBT2020ReferenceCodes",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004449",
+      "testId": "a98e2fe5-b5e0-4e25-d97b-9267c4fdb82c"
+    },
+    {
+      "testName": "CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.3275042",
+      "testId": "c2ad0dd4-e44f-ac27-d02b-4d3bd0b6caa4"
+    },
+    {
+      "testName": "CaptureUnderDeliveryIsVisibleSeparatelyFromRendererDrops",
+      "outcome": "Passed",
+      "duration": "00:00:00.0193044",
+      "testId": "47b73971-173a-61a9-4c4e-2632083c76e1"
+    },
+    {
+      "testName": "DroppedNextPictureWaitsForHeaderNamingAffectedId",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003109",
+      "testId": "fe2f9327-66be-7403-c28d-8c28ec337b9b"
+    },
+    {
+      "testName": "SlowStartupStartsFullWindowAtValidatedReveal",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000105",
+      "testId": "336b9218-7f12-a83d-2118-a0a706708434"
+    },
+    {
+      "testName": "LostFrameNotificationsInvalidateInsteadOfKeepingStaleVideo",
+      "outcome": "Passed",
+      "duration": "00:00:02.0023613",
+      "testId": "ce1982da-4945-f5df-bebb-a41184c02744"
+    },
+    {
+      "testName": "DisabledScalingPreservesLegacyStatsAndBannerSizing",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000545",
+      "testId": "d0421c7a-02d7-d7da-e126-faace1a5b20c"
+    },
+    {
+      "testName": "V210P010AndP210SupportStandardResolutionMatrix",
+      "outcome": "Passed",
+      "duration": "00:00:00.0812891",
+      "testId": "5789c91f-284d-e4b8-6dfe-e6018867659f"
+    },
+    {
+      "testName": "DirectShowNominalRangeFollowsFormatterContractUnlessForced",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000169",
+      "testId": "1c546951-114f-f8d8-4099-c7b23a35a834"
+    },
+    {
+      "testName": "SetupFailureReturnsToReadyWithoutThrowing",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000511",
+      "testId": "1bbb2f9a-39a6-1a9f-3f7b-18d58d956b14"
+    },
+    {
+      "testName": "MadVRAutomaticYuvPassThroughDeclaresLimitedNominalRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000307",
+      "testId": "49f39555-b5f2-a3d1-3c94-343dac44ac96"
+    },
+    {
+      "testName": "CR12BtoRGB48VideoFrameFormatterBlackWhiteTest",
+      "outcome": "Passed",
+      "duration": "00:00:00.1245207",
+      "testId": "2508c31b-58eb-9324-6cb1-68b78ecc899c"
+    },
+    {
+      "testName": "RecoveredHeaderAndDamagedContinuationDoNotBlankKnownDvPixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004036",
+      "testId": "7087a05b-89c8-bb04-0227-e01b1db424f9"
+    },
+    {
+      "testName": "FakeCardCapturesBt601AndRetainsFrameAcrossStop",
+      "outcome": "Passed",
+      "duration": "00:00:00.1051853",
+      "testId": "29f73e62-dd5b-ebd8-994b-38fe94bec521"
+    },
+    {
+      "testName": "DeckLinkPackedRgbFormatterContractsMatchDocumentedRanges",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000248",
+      "testId": "7601e78f-8443-8317-62c3-cc567d20618c"
+    },
+    {
+      "testName": "RendererProfileConfigCheckedInExamplesPassStartupValidation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0040511",
+      "testId": "e5f50960-b23d-8fe4-14c5-a791d41974d0"
+    },
+    {
+      "testName": "SmallPictureScalesUniformlyAndRemainsContained",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000026",
+      "testId": "34cc5582-7055-9be0-329b-64f44ae34c68"
+    },
+    {
+      "testName": "RendererProfileConfigRejectsWrongOwnerAndUnknownSetting",
+      "outcome": "Passed",
+      "duration": "00:00:00.0055134",
+      "testId": "8aa3a0f3-875e-f619-fd8b-49d101d50c5a"
+    },
+    {
+      "testName": "RealRendererDecodesRgb8WithNativeUploadEnabled",
+      "outcome": "Passed",
+      "duration": "00:00:00.7407935",
+      "testId": "3a1bb2f7-b723-5b2a-bf82-e282d709b00c"
+    },
+    {
+      "testName": "DeckLinkR210Rgb48ContractIsLimitedRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000164",
+      "testId": "a44cba93-4ab0-b8f5-2b57-bd1b16417374"
+    },
+    {
+      "testName": "RawRgb24PolicyUsesSupportedPackingOnlyWhenRawUhdBandwidthNeedsIt",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000275",
+      "testId": "1b2d1641-4717-4b1f-c93d-a81ee23c0319"
+    },
+    {
+      "testName": "CR12BtoRGB48AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0618786",
+      "testId": "a75d0549-30d6-dca5-41bb-8de12285eb82"
+    },
+    {
+      "testName": "CaptureFillsDeepQueueAndEightFrameAnalysisLookahead",
+      "outcome": "Passed",
+      "duration": "00:00:00.0010198",
+      "testId": "ad2d8b55-a868-3664-87d3-df563d28c8d1"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "published": true,
+  "channel": "stable",
+  "tag": "1.4-rc6-magewell-20261029",
+  "url": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-rc6-magewell-20261029",
+  "publishedAt": "2026-10-30T02:16:08Z",
+  "sourceCommit": "5b8132b6f2a3d900d189496dcc86e002c300ae26",
+  "betaCommit": "ad32c3fb05b39df981d3f36a65a61fd857250843",
+  "featureCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+  "sequence": 20261030012504,
+  "latestVerified": true,
+  "assetHashesVerified": true,
+  "metadataSignatureVerified": true,
+  "notesScopeVerified": true,
+  "previousReleasePreserved": true,
+  "assets": [
+    {
+      "name": "VideoProcessor-1.4.0-rc6-5b8132b6f2a3-x64-Portable.zip",
+      "size": 51356899,
+      "digest": "sha256:49c40a986b845ef6b0421c3c1bc0594d31450c940c892af53697d88d2739c7c7",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-rc6-magewell-20261029/VideoProcessor-1.4.0-rc6-5b8132b6f2a3-x64-Portable.zip"
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.0-rc6-5b8132b6f2a3.exe",
+      "size": 35580871,
+      "digest": "sha256:f0c89cda6e8438821f61af5883ac4f8a9699d9d5a6e57b1f86f19a3614a1f727",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-rc6-magewell-20261029/VideoProcessorSetup-1.4.0-rc6-5b8132b6f2a3.exe"
+    },
+    {
+      "name": "vp-update.json",
+      "size": 7245,
+      "digest": "sha256:2e8a7f6d638038d0f04f64d03864521f9a64cb17d78e4c8ce1be68ffb0e14458",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-rc6-magewell-20261029/vp-update.json"
+    }
+  ]
+}

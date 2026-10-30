@@ -1,0 +1,5 @@
+signal width=3840 height=2160 period_100ns=166831 color=1
+ssse3=1 stride24=11520 bytes24=24883200 stride32=15360 bytes32=33177600
+RGB_BYTE_COMPARISON same_pts=421053977542 mismatched_channels=0 compared_channels=24883200
+RESULT format=pipelined-BGR24-plus-lossless-BGRA frames=1779 wall_fps=59.942617 pts_fps=59.940779 expected_fps=59.940898 missed_input_intervals=0 duplicates=0 copy_avg_ms=15.655 copy_peak_ms=17.214 pack_avg_ms=2.831 pack_peak_ms=5.377
+restore_input_range_result=0 original=0

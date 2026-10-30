@@ -1,0 +1,22 @@
+{
+  "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\deploy-backups\\magewell-rgb24-pipeline-20261029-205649-174-193c1a1c",
+  "launched": false,
+  "configurationEdits": [],
+  "artifacts": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "sha256": "AEE570E6B43B771B93B95C359075C4B95CB4E7DAC6A2890F788F093A3BD12C90"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "FEC9929D67C802E49B68FF2B8F80FF5E134B0756885F73A782955B2428C642E2"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "0BB1CF96A760A256304B661AF948637D57C623D67102527AF94389680E0C3856"
+    }
+  ]
+}

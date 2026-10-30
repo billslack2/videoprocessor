@@ -1,0 +1,17 @@
+{
+  "checkout": "E:\\codex\\videoprocessor\\rc6-magewell-release-20261029",
+  "sourceCommit": "5b8132b6f2a3d900d189496dcc86e002c300ae26",
+  "betaCommit": "ad32c3fb05b39df981d3f36a65a61fd857250843",
+  "installerToolingCommit": "",
+  "coreVersion": "1.4.0-rc6",
+  "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+  "qtRoot": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64",
+  "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+  "isccPath": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+  "releaseSequence": 20261030012504,
+  "updateChannel": "stable",
+  "portableZip": true,
+  "reuseVerifiedBuild": false,
+  "workflowSha256": "107B93EC90A8FDD165B7EE4BFADDB95415C67BCDA529B2A8A587F1220AB7B98B",
+  "outputDirectory": "E:\\codex\\releases\\VideoProcessor-1.4.0-rc6-magewell-5b8132b6-20261029"
+}

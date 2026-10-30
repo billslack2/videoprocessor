@@ -1,0 +1,14 @@
+{
+  "finished": "2026-10-29T21:40:14.0037228-04:00",
+  "qaIdentity": "A42DDFDA-71B3-4DA5-A278-38DC5C6E4405",
+  "qaLabel": "VideoProcessor RC6 Magewell QA A42DDFDA",
+  "root": "E:\\codex\\videoprocessor\\rc6-magewell-release-20261029\\artifacts\\full-installer-qa-f69f9f5486724b719911151ab5ded3e0",
+  "currentSource": "5b8132b6f2a3d900d189496dcc86e002c300ae26",
+  "previousSource": "d5607e080537ad2713e8e746b78226dda44162cb",
+  "lifecyclePassed": true,
+  "lifecycleChecks": 326,
+  "hashFailureRecoveryPassed": true,
+  "realRegistrationPreserved": true,
+  "activeConfigurationPreserved": true,
+  "scope": "Real installers with isolated QA product identity on developer Windows; no clean Windows/Visual Studio-absent qualification."
+}

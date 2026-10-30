@@ -1,0 +1,1017 @@
+{
+  "recorded": "2026-10-29T21:24:34.1607327-04:00",
+  "repository": "billslack2/videoprocessor",
+  "sourceIntegrationBase": "9f5c9749a6732d3ca55a4c45cae7b61b04192811",
+  "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+  "sourceBranch": "codex/magewell-rgb24-pipeline-20261029",
+  "deployment": {
+    "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+    "configuration": "Release",
+    "architecture": "x64",
+    "backup": "C:\\Videoprocessor\\vp\\deploy-backups\\magewell-rgb24-pipeline-20261029-205649-174-193c1a1c",
+    "launched": false,
+    "configurationEdits": [],
+    "artifacts": [
+      {
+        "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "sha256": "AEE570E6B43B771B93B95C359075C4B95CB4E7DAC6A2890F788F093A3BD12C90"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "sha256": "FEC9929D67C802E49B68FF2B8F80FF5E134B0756885F73A782955B2428C642E2"
+      },
+      {
+        "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "sha256": "0BB1CF96A760A256304B661AF948637D57C623D67102527AF94389680E0C3856"
+      }
+    ]
+  },
+  "nativeTests": {
+    "failed": 0,
+    "passed": 238,
+    "result": "work\\pipeline-focused\\focused.trx"
+  },
+  "gpuRegressions": [
+    {
+      "schemaVersion": 1,
+      "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+      "sourceDirty": false,
+      "configuration": "Release",
+      "architecture": "x64",
+      "classes": [
+        "MotionRendererTests",
+        "SourceUploadBatchTests",
+        "TemporalCleanPacketGpuTests",
+        "ReconstructionMotionTests",
+        "SubtitleCutPasteTests",
+        "SubtitleCutPasteShaderTests",
+        "RendererDependencyTests"
+      ],
+      "runs": [
+        {
+          "variant": "standard",
+          "buildExit": 0,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\magewell-rgb24-pipeline-20261029\\x64\\Release\\VideoProcessor-Test.dll",
+          "sha256": "18E4BBE1A5659780C169EB48E1DBF3248C80268669EE1B908B8A0EF2A9BE6C1F",
+          "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+          "passed": 208
+        }
+      ],
+      "finished": "2026-10-29T21:22:45.524253-04:00",
+      "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+    },
+    {
+      "schemaVersion": 1,
+      "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+      "sourceDirty": false,
+      "configuration": "Release",
+      "architecture": "x64",
+      "classes": [
+        "MotionRendererTests",
+        "SourceUploadBatchTests",
+        "TemporalCleanPacketGpuTests",
+        "ReconstructionMotionTests",
+        "SubtitleCutPasteTests",
+        "SubtitleCutPasteShaderTests",
+        "RendererDependencyTests"
+      ],
+      "runs": [
+        {
+          "variant": "beta",
+          "buildExit": 0,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\magewell-rgb24-pipeline-20261029\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+          "sha256": "34EA35622BD8D7A3827FAAD70ED86A534BF55A2336EE1381D6738D9FAFD7953D",
+          "dependencySha256": "8189E9D8C156C28DD6752A34D9A26946B46A0EEB9DC66AC246A396DD9B13D2DF",
+          "passed": 208
+        }
+      ],
+      "finished": "2026-10-29T21:22:59.8507364-04:00",
+      "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+    }
+  ],
+  "hardwareProbe": {
+    "comparedRgbChannels": 24883200,
+    "missedInputIntervals": 0,
+    "path": "magewell-rgb24-60hz-pipeline-probe-20261029.txt",
+    "timestampFps": 59.940779,
+    "expectedFps": 59.940898,
+    "durationSeconds": 30,
+    "measuredFrames": 1779,
+    "inputRangeRestored": true,
+    "mismatchedChannels": 0,
+    "duplicates": 0
+  },
+  "fullVpPlayback": {
+    "recorded": "2026-10-29T21:24:33.902479-04:00",
+    "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+    "processId": 39996,
+    "measurementContext": "captured-during-gpu-tests-and-user-transitions",
+    "userConfirmation": "VP is playing; motion and capture rate look good",
+    "windows": [
+      {
+        "time": "2026-10-29 21:05:14",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.93765,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:19",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.94322,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:24",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.93618,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:29",
+        "frames": 300,
+        "seconds": 5.004,
+        "fps": 59.94779,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:34",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.93519,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:39",
+        "frames": 300,
+        "seconds": 5.004,
+        "fps": 59.94714,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:44",
+        "frames": 300,
+        "seconds": 5.006,
+        "fps": 59.926,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:49",
+        "frames": 300,
+        "seconds": 5.004,
+        "fps": 59.95618,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:54",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.936,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:05:59",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.93672,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:06:04",
+        "frames": 300,
+        "seconds": 5.004,
+        "fps": 59.94606,
+        "missed": 0
+      },
+      {
+        "time": "2026-10-29 21:06:09",
+        "frames": 300,
+        "seconds": 5.005,
+        "fps": 59.93877,
+        "missed": 0
+      }
+    ],
+    "measuredFrames": 3600,
+    "missedInputIntervals": 0,
+    "frameRate": 59.943054098606325,
+    "dvMetadataEvidence": [
+      "2026-10-29 21:12:28 | Dolby Vision RGB tunnel: last 600 pictures: rejected=0 no_md=0 CRC_failed_copies=0 repeat_recoveries=0 id_transitions=0 current_id=0 affected_id=0 active_DM=yes",
+      "2026-10-29 21:12:40 | Dolby Vision RGB tunnel: last 600 pictures: rejected=0 no_md=0 CRC_failed_copies=0 repeat_recoveries=0 id_transitions=0 current_id=0 affected_id=0 active_DM=yes",
+      "2026-10-29 21:13:59 | Dolby Vision RGB tunnel: last 600 pictures: rejected=0 no_md=0 CRC_failed_copies=0 repeat_recoveries=0 id_transitions=0 current_id=0 affected_id=0 active_DM=yes",
+      "2026-10-29 21:14:38 | Dolby Vision RGB tunnel: last 600 pictures: rejected=0 no_md=0 CRC_failed_copies=0 repeat_recoveries=0 id_transitions=0 current_id=0 affected_id=0 active_DM=yes"
+    ],
+    "dropCounterEvidence": [
+      "2026-10-29 21:06:16 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/16 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:06:27 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/16 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:07:01 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/16 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:07:22 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/16 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:09:01 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=8/16 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:13:53 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=4/10 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:14:13 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/10 cadence_drops=0 cadence_repeats=0",
+      "2026-10-29 21:15:01 | OSD dropped counters: event=baseline renderer=Alpha capture_missed=1 renderer_dropped=0 queue=0/10 cadence_drops=0 cadence_repeats=0"
+    ],
+    "modeEvidence": {
+      "dv60": {
+        "selection": "longest measured contiguous segment; first format-start window reported separately",
+        "policy": "2026-10-29 21:01:14 | Magewell capture policy: format=RGB native_consumer=0 width=3840 height=2160 period_100ns=166831 payload_bytes_per_second=1491521360 chroma=source-path reduction=none-by-policy",
+        "startupWindow": {
+          "time": "2026-10-29 21:01:19",
+          "frames": 299,
+          "seconds": 5.003,
+          "fps": 59.76373,
+          "missed": 1
+        },
+        "steadyWindows": [
+          {
+            "time": "2026-10-29 21:01:24",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93707,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:29",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94601,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:34",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93575,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:39",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.9408,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:44",
+            "frames": 300,
+            "seconds": 5.007,
+            "fps": 59.91515,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:49",
+            "frames": 300,
+            "seconds": 5.003,
+            "fps": 59.96955,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:54",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93932,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:01:59",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94701,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:04",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93665,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:09",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93599,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:14",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.9477,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:19",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94491,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:24",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93633,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:29",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94552,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:34",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93611,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:39",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94294,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:44",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93676,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:49",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94989,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:54",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93726,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:02:59",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94698,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:04",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93606,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:09",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94364,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:14",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93663,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:19",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94708,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:24",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93553,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:29",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94452,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:34",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93872,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:39",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94639,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:44",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93647,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:49",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94534,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:54",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93596,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:03:59",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94672,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:04",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93837,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:09",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94631,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:14",
+            "frames": 300,
+            "seconds": 5.006,
+            "fps": 59.93394,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:19",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94869,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:24",
+            "frames": 300,
+            "seconds": 5.006,
+            "fps": 59.93405,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:29",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94456,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:34",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93785,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:39",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94873,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:44",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93522,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:49",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94569,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:54",
+            "frames": 300,
+            "seconds": 5.006,
+            "fps": 59.93092,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:04:59",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.95154,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:04",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93825,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:09",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94519,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:14",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93765,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:19",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94322,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:24",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93618,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:29",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94779,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:34",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93519,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:39",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94714,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:44",
+            "frames": 300,
+            "seconds": 5.006,
+            "fps": 59.926,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:49",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.95618,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:54",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.936,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:05:59",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93672,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:06:04",
+            "frames": 300,
+            "seconds": 5.004,
+            "fps": 59.94606,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:06:09",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93877,
+            "missed": 0
+          }
+        ],
+        "steadyFps": 59.94233134329389,
+        "steadyMisses": 0
+      },
+      "dv50": {
+        "selection": "longest measured contiguous segment; first format-start window reported separately",
+        "policy": "2026-10-29 21:08:58 | Magewell capture policy: format=RGB native_consumer=0 width=3840 height=2160 period_100ns=199997 payload_bytes_per_second=1244178663 chroma=source-path reduction=none-by-policy",
+        "startupWindow": {
+          "time": "2026-10-29 21:09:03",
+          "frames": 248,
+          "seconds": 5.008,
+          "fps": 49.52241,
+          "missed": 0
+        },
+        "steadyWindows": [
+          {
+            "time": "2026-10-29 21:09:08",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99973,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:13",
+            "frames": 251,
+            "seconds": 5.021,
+            "fps": 49.99094,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:18",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.00516,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:23",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00468,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:28",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00433,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:33",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 49.9962,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:38",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99537,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:43",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 49.9963,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:48",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.01475,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:53",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 49.99856,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:09:58",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99589,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:03",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.00868,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:08",
+            "frames": 251,
+            "seconds": 5.021,
+            "fps": 49.99029,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:13",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.01265,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:18",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.9998,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:23",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00208,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:28",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00112,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:33",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99763,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:38",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99776,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:43",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 49.99961,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:48",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.0083,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:53",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00136,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:10:58",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99977,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:03",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00196,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:08",
+            "frames": 250,
+            "seconds": 5.001,
+            "fps": 49.99376,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:13",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00495,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:18",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00159,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:23",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00225,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:28",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99669,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:33",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99652,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:38",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00035,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:43",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.00722,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:48",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.00553,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:53",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.9973,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:11:59",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00201,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:04",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99682,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:09",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.00333,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:14",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99978,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:19",
+            "frames": 251,
+            "seconds": 5.019,
+            "fps": 50.00567,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:24",
+            "frames": 250,
+            "seconds": 5.0,
+            "fps": 49.99994,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:29",
+            "frames": 250,
+            "seconds": 5.001,
+            "fps": 49.98599,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:34",
+            "frames": 251,
+            "seconds": 5.018,
+            "fps": 50.01783,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:39",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 49.99681,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:12:44",
+            "frames": 251,
+            "seconds": 5.02,
+            "fps": 50.0042,
+            "missed": 0
+          }
+        ],
+        "steadyFps": 50.001360087770976,
+        "steadyMisses": 0
+      },
+      "nativeP010_60": {
+        "selection": "longest measured contiguous segment; first format-start window reported separately",
+        "policy": "2026-10-29 21:13:04 | Magewell capture policy: format=P010 native_consumer=1 width=3840 height=2160 period_100ns=166831 payload_bytes_per_second=1491521360 chroma=4:2:0 reduction=vertical-chroma-only",
+        "startupWindow": {
+          "time": "2026-10-29 21:13:09",
+          "frames": 296,
+          "seconds": 5.002,
+          "fps": 59.17219,
+          "missed": 0
+        },
+        "steadyWindows": [
+          {
+            "time": "2026-10-29 21:13:14",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94313,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:13:19",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94127,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:13:24",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.94048,
+            "missed": 0
+          },
+          {
+            "time": "2026-10-29 21:13:29",
+            "frames": 300,
+            "seconds": 5.005,
+            "fps": 59.93788,
+            "missed": 0
+          }
+        ],
+        "steadyFps": 59.94005994005994,
+        "steadyMisses": 0
+      }
+    },
+    "currentCapturePolicy": "2026-10-29 21:13:34 | Magewell capture policy: format=RGB native_consumer=0 width=3840 height=2160 period_100ns=417079 payload_bytes_per_second=795475198 chroma=source-path reduction=none-by-policy",
+    "userTransitionConfirmation": "All three modes switch cleanly; back on 60 Hz DV (card subsequently reported 50 Hz DV, consistent with content frame-rate matching)."
+  },
+  "implementation": "Magewell RGB24 only: two bounded raw slots plus one persistent CPU packing job; next DMA issued before waiting for previous lossless BGRA pack; SDK and callbacks remain on capture thread; COM buffer lease and drain barriers protect stop, exceptions and format changes.",
+  "configurationEdits": [],
+  "deckLinkChanged": false,
+  "nativeHdrPolicyChanged": false,
+  "hdrLimitation": "Overlap removes CPU packing from the DV capture critical path. It cannot reduce ordinary native P210 DMA payload (~1.99 GB/s at UHD60); P010 remains selected for high-rate native HDR. RGB24 is lossless for the encoded DV carrier, but ordinary HDR RGB24 would reduce sample precision to 8 bits.",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/228",
+  "mergeCommit": "ad32c3fb05b39df981d3f36a65a61fd857250843",
+  "publication": "PR #228 merged into v1.4.02-beta after exact-source qualification; deployed source feature commit retained."
+}

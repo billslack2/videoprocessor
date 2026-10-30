@@ -49,3 +49,11 @@ Evidence: [validation and hardware results](../assets/VP-0221/native-p210-5dfb96
 - Hardware confirmed direct P210 SDR at 4K59.941 and HDR10 at 4K23.976, including 12-bit PQ/BT.2020 wire input converted to the existing 10-bit P210 contract. Both native analysis consumers agreed; no CPU capture repack or renderer conversion formatter was used.
 - BGRA DV transition passed CRC and complete DM/L1 checks, with zero rejected/failed-CRC copies over the logged 600-picture interval. SDR picture/OSD was explicitly accepted by the user.
 - Installed hashes were verified after deployment and during hardware checks. Final audit detected and preserved the newer e6f8c62 descendant; its native path remains active. No active configuration edits were made. Full card/driver and long-duration/performance qualification are not implied.
+
+## High-rate capture follow-up and stable RC6 — 2026-10-29
+
+User-authorized [PR #228](https://github.com/billslack2/videoprocessor/pull/228) merged the automatic native P010 bandwidth policy, actual capture-fps/miss reporting, lossless high-rate RGB24 DV path and bounded DMA/packing overlap. [Exact-source tests and hardware qualification](../assets/VP-0221/high-rate-capture-193c1a1c-20261029/README.md).
+
+On the installed Pro Capture HDMI 4K+, UHD59.94 DV now sustains full capture rate with valid DM/CRC and no steady capture misses. UHD50 DV and native UHD59.94 HDR/P010 also passed; the user accepted smooth motion and all format switches. Lower-bandwidth ordinary capture retains native P210, but UHD50/59.94/60 P210 itself exceeds the measured transfer budget and is not advertised as lossless full-rate support. DeckLink policy remains unchanged and its high-rate DV hardware test is separate. The one startup miss remains visible.
+
+Published the user-requested [stable RC6 Magewell refresh](https://github.com/billslack2/videoprocessor/releases/tag/1.4-rc6-magewell-20261029), retaining prior RC6 assets for rollback. [Build, installer, signing and publication evidence](../assets/VP-0221/rc6-stable-5b8132b6-20261029/README.md). Broader card/driver, clean-Windows and physical calibration coverage is not implied. No active configuration changes.

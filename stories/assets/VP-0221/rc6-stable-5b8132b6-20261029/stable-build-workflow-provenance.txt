@@ -1,0 +1,3 @@
+Original workflow: C:\Users\bslac\.codex\skills\vp-release\scripts\build-vp.ps1
+Original SHA256: 8ae39be3c7dfd5eb27ffbe6302b40385e38d1679c071adeeaa4e618d194c9497
+Change: expose and record UpdateChannel, and pass it to build_installer.ps1. All build/test/export gates retained.

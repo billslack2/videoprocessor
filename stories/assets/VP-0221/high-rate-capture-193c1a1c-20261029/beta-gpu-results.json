@@ -1,0 +1,1255 @@
+{
+  "sourceTrx": "C:\\Users\\bslac\\Documents\\Codex\\2026-10-29\\the\\work\\pipeline-gpu-193c1a1c-beta\\beta.trx",
+  "trxSha256": "6eb3d47f6ac196920c6a85e126714ce4b97f16ab601b4c43768ddbff717e6958",
+  "passed": 208,
+  "results": [
+    {
+      "testName": "NlsPreparedProfilesSurviveOffAndOtherSelections",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002879",
+      "testId": "39e4742b-f0fa-eb3e-9f69-6928cf7d6f8f"
+    },
+    {
+      "testName": "OptionalAnalysisTargetsOnlyReachableDisplayBoundary",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000356",
+      "testId": "e4c40b92-7af4-dd4e-3ad0-926f887adaea"
+    },
+    {
+      "testName": "NativeP010ChromaFieldsMatchDirectLibplacebo",
+      "outcome": "Passed",
+      "duration": "00:00:18.6489815",
+      "testId": "2cb985e8-0583-7e3b-846e-893b895479a9"
+    },
+    {
+      "testName": "SourceProcessingSnapshotOwnsDebandValues",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000321",
+      "testId": "c18fd218-00b8-d4fa-a6c6-160f87e4bf1f"
+    },
+    {
+      "testName": "BackgroundGuardPaddingFollowsTextRatherThanRasterResolution",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000271",
+      "testId": "e2e26116-ef86-0b17-d1c0-2b338d35385e"
+    },
+    {
+      "testName": "MeasuredCardInteriorDoesNotInheritCleanupFringeAndInvalidatesCache",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000196",
+      "testId": "3ca0a763-f2ef-3712-c522-a57a63e926da"
+    },
+    {
+      "testName": "OptionalAnalysisUsesObservedPhaseWithoutMovingMediaClock",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000409",
+      "testId": "0769c4bf-2c62-7863-8116-4b0b2668e358"
+    },
+    {
+      "testName": "NativeCompositionRetainsRawTextureAfterUploadRelease",
+      "outcome": "Passed",
+      "duration": "00:00:00.2215567",
+      "testId": "77283cef-d53d-5bc9-7f30-01bd6e440703"
+    },
+    {
+      "testName": "PhysicalEdgeReconciliationDoesNotPromotePictureSliversToBarGlyphs",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000208",
+      "testId": "3275c4f7-4909-d47f-9d3a-446f72d3fb90"
+    },
+    {
+      "testName": "UhdInFlightHistoryAndFailedPreparationPreservePacketAuthority",
+      "outcome": "Passed",
+      "duration": "00:00:25.6006987",
+      "testId": "c99a23b0-6059-6535-564d-88c7d5cc4c83"
+    },
+    {
+      "testName": "TemporalDonorMatchExcludesFullMeasuredBackingButStillChecksSurroundingScene",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003123",
+      "testId": "24c277a1-af7c-e197-874c-c0f31a01f24a"
+    },
+    {
+      "testName": "StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000566",
+      "testId": "657b6798-068e-7164-d282-5c6f8b7a28e5"
+    },
+    {
+      "testName": "MotionConfigLoadsAllSupportedOptionsAndRejectsUnknownMixer",
+      "outcome": "Passed",
+      "duration": "00:00:00.0015563",
+      "testId": "b27862ae-abcd-8027-56b2-99b2ee71fd6d"
+    },
+    {
+      "testName": "CompositionCaptureFailureDoesNotRetainBorrowedPixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.2073835",
+      "testId": "6389cede-5362-3c31-6aeb-abdf284bbe7e"
+    },
+    {
+      "testName": "MovePreservesSizeAndReachesTheActivePictureBoundary",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000263",
+      "testId": "c5b2a7bc-8469-6507-ac2d-de057b5b030e"
+    },
+    {
+      "testName": "GlyphCaptureExcludesCleanupFringeWithoutChangingPanelPlacement",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000216",
+      "testId": "620dbca0-d2af-efec-f55c-8e23f9ff6be3"
+    },
+    {
+      "testName": "RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+      "outcome": "Passed",
+      "duration": "00:00:44.1652471",
+      "testId": "fc71748d-a47f-592c-1ab8-4acf8e1ee7b9"
+    },
+    {
+      "testName": "SubtitleStyleEpochChangeClearsSameSourceBeforeRecapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.2271971",
+      "testId": "747e93c1-a02a-9b57-0981-406d413ccb0a"
+    },
+    {
+      "testName": "AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar",
+      "outcome": "Passed",
+      "duration": "00:00:26.0926031",
+      "testId": "71e97ba8-54f4-60ee-dc75-dd897a907f52"
+    },
+    {
+      "testName": "BackgroundGuardAcceptsNormalOffCenterAndMultilineCards",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000020",
+      "testId": "9f760f2a-2989-da03-f199-8705a8e63a5b"
+    },
+    {
+      "testName": "UncleanSameCropNeighborCannotLeakIntoCleanSelectedPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.2260514",
+      "testId": "1b024bec-68f4-30d1-7526-e166b1b60b04"
+    },
+    {
+      "testName": "AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000443",
+      "testId": "7c81f48b-3f81-2634-8bce-b2c26de0eb47"
+    },
+    {
+      "testName": "MatchedCadenceBypassesAndMismatchSchedulesEveryVsync",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000401",
+      "testId": "2ea06d27-a7d2-ecfa-6300-a0475f80ec7e"
+    },
+    {
+      "testName": "UnknownFieldOrderDoesNotDeinterlaceProgressiveOrGuessInterlace",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000281",
+      "testId": "810fe13a-098e-7924-7c09-f42b4d8e4935"
+    },
+    {
+      "testName": "OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata",
+      "outcome": "Passed",
+      "duration": "00:00:15.4601751",
+      "testId": "a09d978c-c490-ec77-ba81-4fb095622c52"
+    },
+    {
+      "testName": "PaddingStopsBeforeNearbyUnclaimedGlyphRows",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000113",
+      "testId": "d069eb13-1d77-41a2-4d9b-319a1fa4819f"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldReplacesWithNewCueImmediately",
+      "outcome": "Passed",
+      "duration": "00:00:00.2298259",
+      "testId": "f8cdd0ce-8057-d471-01c8-82974b28a3c1"
+    },
+    {
+      "testName": "AttachedCleanupFollowsPhysicalEdgeWithoutExpandingGlyphCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000388",
+      "testId": "dcb12d13-079f-9372-c914-80acde643d59"
+    },
+    {
+      "testName": "GlyphLocalRejectsAcceptedOldGlyphsOutsideCurrentSupport",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001740",
+      "testId": "21827daa-ac1a-ec56-93dd-bcccfb78b02f"
+    },
+    {
+      "testName": "SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases",
+      "outcome": "Passed",
+      "duration": "00:01:53.2098595",
+      "testId": "8b1421b3-5f17-ffd5-b9dc-543c4df22d3a"
+    },
+    {
+      "testName": "ExactDiscontinuityEventRepeatKeepsSubmittedPacketAndClock",
+      "outcome": "Passed",
+      "duration": "00:00:00.4482639",
+      "testId": "23a09072-7160-6b37-6ae3-a4422df0350c"
+    },
+    {
+      "testName": "GlyphPaddingFreezesBoundsThroughNoisyHeightsAndHeldFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002612",
+      "testId": "c4d68a5b-e04d-350a-a133-6af5244bd625"
+    },
+    {
+      "testName": "ConfirmedDetachedExtensionCanExpandDisplayBeforeRegrouping",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000117",
+      "testId": "830ab47b-1b63-d7e0-255e-d9e3ee03c9e6"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldRequiresProcessedCueAndCurrentGeometry",
+      "outcome": "Passed",
+      "duration": "00:00:01.7235762",
+      "testId": "3421d110-7824-bed1-f7db-d766a4d6a5db"
+    },
+    {
+      "testName": "TemporalCleanupKeepsLegacyRectangleAndCoalescesTheMaximumRowCount",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000133",
+      "testId": "293e44db-8adf-7417-467e-c14341979eef"
+    },
+    {
+      "testName": "TemporalCleanRunIgnoresRepeatedDisplayButHonorsDisableAndDiscontinuity",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000128",
+      "testId": "6938bd97-b6fd-3cfa-0e99-a96fde0172bf"
+    },
+    {
+      "testName": "BackgroundGuardCapsDarkSceneAndPreservesText",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000154",
+      "testId": "9b53c69d-f1cb-3349-53d8-f62917f72bb6"
+    },
+    {
+      "testName": "PictureIntrusionDisablesFloatUntilCueChanges",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000089",
+      "testId": "923c5499-47c3-9516-90b0-0f1a7c44315b"
+    },
+    {
+      "testName": "SurroundFillDoesNotAmplifyMovingTextureOrNoise",
+      "outcome": "Passed",
+      "duration": "00:00:16.3591774",
+      "testId": "3f1cbd93-702e-152e-37dc-b39d0aff84b2"
+    },
+    {
+      "testName": "SubtitlePreviewCycleAndResyncRestoreNormalConfiguration",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000129",
+      "testId": "d1e4a1f3-35b9-05ba-fd22-d41b10f8d406"
+    },
+    {
+      "testName": "MeasuredSourceCardCleanupIsIndependentOfDisplayPadding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000438",
+      "testId": "de0424f4-078f-0ae7-61f8-0c0c6476b5a1"
+    },
+    {
+      "testName": "UnsubmittedWarmupRepeatCannotCreateOutputOrEraseHistory",
+      "outcome": "Passed",
+      "duration": "00:00:00.1191705",
+      "testId": "c32bdc43-e289-dfc3-1335-da76c049ca10"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldRemapsOnlyItsOwnedPacketWhenFinalTargetChanges",
+      "outcome": "Passed",
+      "duration": "00:00:00.5343672",
+      "testId": "86ca83e3-0496-b693-eebf-f17575e98cbd"
+    },
+    {
+      "testName": "PrimedArMeasurementsKeepExactReadyPrefixAndSourceOwnership",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002075",
+      "testId": "d428651c-aa77-0f5a-a687-c0692fe33c33"
+    },
+    {
+      "testName": "PaddingGuardKeepsItsSafeMarginAcrossBriefInkLoss",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000217",
+      "testId": "e3186b79-d3f0-6f1c-579f-202edf7dec3c"
+    },
+    {
+      "testName": "FailedUploadAndNewBatchCannotReuseEarlierSource",
+      "outcome": "Passed",
+      "duration": "00:00:00.1095179",
+      "testId": "c3c2b4ea-1253-bee6-e7e3-3dfa11496a0c"
+    },
+    {
+      "testName": "EmptyPixelSafeBandsPermitMixAcrossDifferentSourceCrops",
+      "outcome": "Passed",
+      "duration": "00:00:00.2352911",
+      "testId": "bd0f3002-f7de-43a0-b7c9-9d3921d72863"
+    },
+    {
+      "testName": "GlyphPaddingScalesWithLineHeightNotMultilineHeight",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000526",
+      "testId": "2f1e03a5-bd5f-f398-7dbc-40a7f408636a"
+    },
+    {
+      "testName": "HoldConfigurationValidatesMillisecondsInSubtitleProfiles",
+      "outcome": "Passed",
+      "duration": "00:00:00.0113935",
+      "testId": "5d26fa0f-ef89-539b-98f9-34bed7d65f7f"
+    },
+    {
+      "testName": "CompositionRejectsNonNormalizedCleanFrameAndClearsHistory",
+      "outcome": "Passed",
+      "duration": "00:00:00.1839503",
+      "testId": "9b369654-8085-6e96-6bea-461235e9b542"
+    },
+    {
+      "testName": "FinalBackgroundCentersTextAfterReservingConfiguredEdgePixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.0026177",
+      "testId": "97228edb-a4be-f6db-0a13-cf93cd5004a3"
+    },
+    {
+      "testName": "DestinationWinsOverlapAndUncoveredSourceClears",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000166",
+      "testId": "05bc9488-63fe-0560-b1cf-2f0c472f327d"
+    },
+    {
+      "testName": "TextReductionUsesFrozenEnvelopeRatherThanFreshInkExtrema",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000238",
+      "testId": "304ff071-e56d-5a57-7004-1bb13b55e296"
+    },
+    {
+      "testName": "SourceGapRetainsProgramsButClearsSubtitlePixelsAndHdrState",
+      "outcome": "Passed",
+      "duration": "00:00:01.0352243",
+      "testId": "05206023-9032-fde3-74ed-741ea03d2ac0"
+    },
+    {
+      "testName": "GlyphMetricUsesQueuedSameCueAndRejectsFutureReplacement",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000122",
+      "testId": "47ec6a20-6cda-64e8-d177-bc7f79282128"
+    },
+    {
+      "testName": "PlacementFreezesBarFringeButResetsForNewCueOrContext",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "58a2f5a3-14e0-f245-dd23-c997b18d5248"
+    },
+    {
+      "testName": "SubtitlePlacementFollowsChangingVisiblePictureWithoutChangingCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000222",
+      "testId": "461fc3d8-3ce2-42c1-2ce9-04a1a87f3fcd"
+    },
+    {
+      "testName": "LegacyGeometryIsPreservedButIgnored",
+      "outcome": "Passed",
+      "duration": "00:00:00.0445414",
+      "testId": "a94490ae-ef4b-d08b-a3d4-ccb7f5b43b91"
+    },
+    {
+      "testName": "FloatingShapeMirrorsBothBarsAndPreservesOffsetAtEveryScale",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003344",
+      "testId": "3c4d3e05-4e0e-60ea-615a-e279b1b4daa2"
+    },
+    {
+      "testName": "NearBarConfigurationValidatesSourcePixelRange",
+      "outcome": "Passed",
+      "duration": "00:00:00.0096857",
+      "testId": "2652c5c5-7cc8-537b-ded5-c00491fb97c0"
+    },
+    {
+      "testName": "ViewportClippedBackingHasOpaqueGpuEdgesAtBothBars",
+      "outcome": "Passed",
+      "duration": "00:00:59.3926872",
+      "testId": "d995b26d-b033-d357-9de8-f6534ad3eb9f"
+    },
+    {
+      "testName": "ConfiguredSubtitleShortcutReplacesDefaultAndSupportsDisable",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000065",
+      "testId": "0cd61c09-c0d1-6928-b452-8110c1481298"
+    },
+    {
+      "testName": "PreparedBarErasureMatchesExactBlackAndReconstructionGpuFootprint",
+      "outcome": "Passed",
+      "duration": "00:00:54.8590283",
+      "testId": "6e61dca8-c86b-256b-6f0c-4c09c7102e93"
+    },
+    {
+      "testName": "DisplayPaddingAndContextResetStaySeparateFromCurrentCleanup",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001487",
+      "testId": "58947cf4-5699-8137-a124-9b4700da1ac4"
+    },
+    {
+      "testName": "TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002001",
+      "testId": "cb23756f-acf6-008d-edae-8738a5b5f35f"
+    },
+    {
+      "testName": "UhdCompletePacketHoldExpiresAndNewMeasuredCueWins",
+      "outcome": "Passed",
+      "duration": "00:00:22.7737687",
+      "testId": "d972451f-4b8b-6d95-79ab-568a53250d1a"
+    },
+    {
+      "testName": "MeasuredCardOverlayCoversLoggedThreeLineCleanupAtEveryReduction",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000522",
+      "testId": "0a52939b-148c-9bea-b9d3-83504d07000d"
+    },
+    {
+      "testName": "TemporalContourValidatesTheEntireMaskBeforeAnyCallbackAndNeverFallsBack",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000188",
+      "testId": "9258c57b-18d5-c234-d8e1-009d04a7b89f"
+    },
+    {
+      "testName": "RelocationOverridesClassicHandlingThroughoutHotkeyCycle",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000071",
+      "testId": "c44eaa5d-dcf5-2a6c-c283-d224a1ac6b93"
+    },
+    {
+      "testName": "ExplicitRepeatKeepsTheSelectedCueInsteadOfTheNewestSourceCue",
+      "outcome": "Passed",
+      "duration": "00:00:00.2389197",
+      "testId": "e6107064-8827-40dd-028d-ef6fd513f52a"
+    },
+    {
+      "testName": "DetachedMarksStayInDisplayBoundsWithoutDefiningFontScale",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000074",
+      "testId": "9c07aea1-66d7-41b2-0471-a5a124348ebc"
+    },
+    {
+      "testName": "CenteredBoxDoesNotBreatheWhenCardMeasurementShrinks",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000251",
+      "testId": "c670758b-59d2-c0c1-7728-14ec3bd3fdcc"
+    },
+    {
+      "testName": "IndependentPaddingAndInsetChangesInvalidateCachedPlacement",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000346",
+      "testId": "f79611da-c622-98f1-0990-cac618d430e8"
+    },
+    {
+      "testName": "OutputOverlayStaysLiveWhileSourceProcessingIsCached",
+      "outcome": "Passed",
+      "duration": "00:00:00.2307478",
+      "testId": "9c007f27-1aaa-1a61-e821-0df13229983a"
+    },
+    {
+      "testName": "GlyphLocalCleanupAndCaptureStayWithinFreshSupportOnBothBars",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000079",
+      "testId": "578ca46f-beeb-3c6b-b9df-dc09d19580e4"
+    },
+    {
+      "testName": "EveryRefreshDefersToActualMixingIncludingAutoTransitions",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000372",
+      "testId": "67353350-729f-2eb6-363c-ebdc11dcf79a"
+    },
+    {
+      "testName": "IncompatibleGeometryNeighborDoesNotBlendIntoSelectedPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.2449084",
+      "testId": "1d41de2a-c860-eae9-4683-cc71be203b21"
+    },
+    {
+      "testName": "NativeP010ChromaUpscalerChangesNoCuePixelsLikeDirectRender",
+      "outcome": "Passed",
+      "duration": "00:00:00.9189127",
+      "testId": "f02018bf-8261-2b82-7fb3-8cae2a39f71e"
+    },
+    {
+      "testName": "CompositionDeinterlaceProducesCorrectTopAndBottomFields",
+      "outcome": "Passed",
+      "duration": "00:00:02.9343256",
+      "testId": "3444c204-aa35-ec97-8aee-503c63d1de49"
+    },
+    {
+      "testName": "RoundedNativeBackingContourCleansShouldersAndPreservesLiveCornersInFloatAndExtend",
+      "outcome": "Passed",
+      "duration": "00:00:47.4113692",
+      "testId": "5bf42542-1842-e399-f8d6-cb76f3f212fe"
+    },
+    {
+      "testName": "DisplayWidthCoversMeasuredBackingWithoutExpandingGlyphOwnership",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "fcacd0c4-4ce4-bdf9-8b6f-df81445b1370"
+    },
+    {
+      "testName": "IncompatibleInterlaceNeighborsFallBackToBob",
+      "outcome": "Passed",
+      "duration": "00:00:00.4331868",
+      "testId": "06c024c7-c2e6-704e-4c0e-1f56eb07cda6"
+    },
+    {
+      "testName": "UhdLateCurrentCueReplacesNoCuePacketBeforeSealingSourceReuse",
+      "outcome": "Passed",
+      "duration": "00:00:22.0674831",
+      "testId": "5663b30c-c0ad-2923-d750-d3d66946a02b"
+    },
+    {
+      "testName": "NearBarPlacementDoesNotPullGlyphsTowardEitherBar",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000242",
+      "testId": "45e1393b-3f4a-b8d7-4397-6847ba376899"
+    },
+    {
+      "testName": "GpuTestsLoadTheSelectedRendererDependency",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000550",
+      "testId": "e6303cda-aef9-ca9a-f730-a5b1031eb7f0"
+    },
+    {
+      "testName": "WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000294",
+      "testId": "3b641780-3ad6-9274-d60f-629795f78e00"
+    },
+    {
+      "testName": "SubtitleCompositionModeKeepsSmoothMotionCadenceAcrossCues",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000490",
+      "testId": "e775eecc-812b-7112-5a77-f2597aeddd20"
+    },
+    {
+      "testName": "GlyphLocalCleanupCapSurvivesPhysicalEdgeReconciliation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "e3e74d30-883c-c703-f00d-06cb9c9ae3a5"
+    },
+    {
+      "testName": "TransparentLayersPreservePictureAtEveryPanelEdge",
+      "outcome": "Passed",
+      "duration": "00:00:52.8175408",
+      "testId": "2d8267b4-4d47-487d-99dc-b4e2c0317e5b"
+    },
+    {
+      "testName": "FreshBarOnlyBackingLipAndOriginalWidthUseActualGpuCleanupAndLayer",
+      "outcome": "Passed",
+      "duration": "00:00:48.4670216",
+      "testId": "dcd0b1b0-3f76-060f-bace-2501b6cb9b61"
+    },
+    {
+      "testName": "NativeRecoveryNominationRequiresCurrentCompleteEvidence",
+      "outcome": "Passed",
+      "duration": "00:00:00.0794736",
+      "testId": "76a7328a-753e-1dea-ee1a-32a8b088deb5"
+    },
+    {
+      "testName": "CompositionModeRetainsFieldCadenceAndParity",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000255",
+      "testId": "4275d18a-a172-7409-4690-ce1050683142"
+    },
+    {
+      "testName": "PaddingClipsEveryRasterEdgeWithoutOverflow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000308",
+      "testId": "4f20ac0a-1487-bb24-ee6e-7b007bd6b45a"
+    },
+    {
+      "testName": "NearBarBackingCoversGapWithoutEnlargingGlyphCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000080",
+      "testId": "49a2fdb7-c83c-35b5-9874-b9964ce3562e"
+    },
+    {
+      "testName": "NativeCompositionKeepsFirstDuplicateCallbackAndDiscreteLayer",
+      "outcome": "Passed",
+      "duration": "00:00:00.2284072",
+      "testId": "a2fe4189-6b7d-f30f-723e-91750e863c84"
+    },
+    {
+      "testName": "TransparentYellowFloatRepairsBackingAndLeavesDestinationClear",
+      "outcome": "Passed",
+      "duration": "00:00:16.1351309",
+      "testId": "e11756e7-65ef-b83e-fe9a-ba9d62f93701"
+    },
+    {
+      "testName": "HalfFloatReadbackPreservesSignedAndNonFiniteValues",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000639",
+      "testId": "f4aa3ac2-bdf9-b277-c579-4a2586dbc17c"
+    },
+    {
+      "testName": "CoverageMarginProtectsMaximumRadiusAtViewportSides",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000236",
+      "testId": "c4672508-8e7a-dc96-760e-88f01e19cf6a"
+    },
+    {
+      "testName": "DetectedHiddenBlackCardEligibilityReachesPlacementWithoutGrowingCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0110244",
+      "testId": "d12e1309-82d6-a360-ebc4-b81f31f3e35b"
+    },
+    {
+      "testName": "UhdNativeCueUsesOneCompletePreparationAcrossInsertedOutputs",
+      "outcome": "Passed",
+      "duration": "00:00:22.6543707",
+      "testId": "145b9303-4e14-2e19-b434-f28af35f310f"
+    },
+    {
+      "testName": "BackgroundGuardConfigValidation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000075",
+      "testId": "56bee330-52d3-d13b-b8e7-b530baadeb42"
+    },
+    {
+      "testName": "SourceSequenceGapClearsSelectedPacketBeforeNewCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.1130841",
+      "testId": "89b5eb8e-bf53-7f32-6898-70fa8afb4167"
+    },
+    {
+      "testName": "OutputTelemetryKeepsSelectedPacketDistinctFromInputDebtKey",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000415",
+      "testId": "bb754da4-4056-4304-1c11-a856aac13778"
+    },
+    {
+      "testName": "NativeCompositionOversampleMixesAdjacentCleanFields",
+      "outcome": "Passed",
+      "duration": "00:00:00.3229107",
+      "testId": "c21734f5-f207-547c-f86a-9de8904f81ec"
+    },
+    {
+      "testName": "SurroundFillKeepsSoftColorSeamsWithoutBlurAtBothBars",
+      "outcome": "Passed",
+      "duration": "00:00:18.9022261",
+      "testId": "09288bf4-7ddf-fd04-d601-39af41c83259"
+    },
+    {
+      "testName": "NativeCompositionSnapshotsDolbyMetadataBeforeCallback",
+      "outcome": "Passed",
+      "duration": "00:00:00.2147020",
+      "testId": "e2807b6d-3122-5b17-1049-b0e98f3a373a"
+    },
+    {
+      "testName": "TemporalCleanRunRequiresConsecutiveCertifiedSourceFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000083",
+      "testId": "f108251b-22bc-a082-f6db-4215979c2737"
+    },
+    {
+      "testName": "MinimumHeadroomUsesFrozenGlyphTopWithoutExpandingCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000180",
+      "testId": "85800e43-dfae-e481-fecb-6cdc9302107d"
+    },
+    {
+      "testName": "NativeCardBoundaryProofPreservesCachedPlacementAcrossSampledEdgeJitter",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000219",
+      "testId": "cdcf5e6d-588d-b8a1-8514-ca7b8966b63f"
+    },
+    {
+      "testName": "GlyphPolicyChangesAndDiscontinuitiesResetTheFrozenMetrics",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000132",
+      "testId": "e9c7ebe9-2d9d-4264-46aa-d46930da2f85"
+    },
+    {
+      "testName": "SubtitlePacketReuseRejectsChangedPixelsEpochsAndFailedAttempts",
+      "outcome": "Passed",
+      "duration": "00:00:00.0176909",
+      "testId": "00a8717d-dcc5-327a-462a-680c33894c7f"
+    },
+    {
+      "testName": "LayerBoundsFollowSelectedDisplayPlaneWithPhysicalFallback",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000222",
+      "testId": "6ee6f354-2086-98dd-0b79-8e81069ec3c8"
+    },
+    {
+      "testName": "DefaultOffDoesNotAllocateTemporalHistory",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000270",
+      "testId": "29273df9-7524-a39b-8649-0db2c2e4db97"
+    },
+    {
+      "testName": "SwitchingPaddingModeReleasesPreviousDisplayEnvelopeImmediately",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000096",
+      "testId": "5e401a42-f44e-a900-6dc5-44652d98c904"
+    },
+    {
+      "testName": "UhdConclusiveCuePacketSurvivesAnalysisOnlyCadenceRetry",
+      "outcome": "Passed",
+      "duration": "00:00:22.1576703",
+      "testId": "67fa586f-210e-e696-0e5a-5decf050b6de"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldKeepsPixelsTogetherAndExpiresWithoutOutputRenewal",
+      "outcome": "Passed",
+      "duration": "00:00:00.4625874",
+      "testId": "3a50e94c-c24a-8a6c-3962-e4b19b5024c9"
+    },
+    {
+      "testName": "GlyphPaddingConfigurationAcceptsBothModesAndBoundsPercentages",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000657",
+      "testId": "e50e0db5-e41a-df26-a614-fef0538df6b1"
+    },
+    {
+      "testName": "CompositionModeTransitionResetsHistoryButKeepsMotionActive",
+      "outcome": "Passed",
+      "duration": "00:00:00.1792020",
+      "testId": "7122ce83-b346-90b9-79c2-6b9c4af1d2e5"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldClearsAtSourceAndHistoryBoundaries",
+      "outcome": "Passed",
+      "duration": "00:00:02.0962470",
+      "testId": "330daa6e-4a43-176d-6a18-4aaf72b55e18"
+    },
+    {
+      "testName": "VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption",
+      "outcome": "Passed",
+      "duration": "00:00:00.0006849",
+      "testId": "4ada3fe5-31af-3c30-3b01-873aeab9259c"
+    },
+    {
+      "testName": "AnalysisPerformanceSeparatesSourceBudgetFromDisplayInterval",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000297",
+      "testId": "4496efcf-f3ac-ace0-b6f7-28b851932e4a"
+    },
+    {
+      "testName": "FieldOrderChangeResetsHistoryAndLowerCadenceRetainsIt",
+      "outcome": "Passed",
+      "duration": "00:00:00.1172264",
+      "testId": "558ad553-fb05-8cfb-eb24-a37649ca379c"
+    },
+    {
+      "testName": "NlsSelectionCancellationNeverRemembersSupersededCompletion",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002080",
+      "testId": "6878b9a2-411d-ef55-cbc1-cb5c016fe594"
+    },
+    {
+      "testName": "NlsPreparationUsesPreparedFieldBehindUnpreparedLookahead",
+      "outcome": "Passed",
+      "duration": "00:00:00.1991063",
+      "testId": "6e1fe2ee-144b-e0b1-1d7b-14087c4f7601"
+    },
+    {
+      "testName": "PaddingGuardUsesLookaheadOnceAndCannotShrinkDuringSameCue",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000759",
+      "testId": "cc34d056-6b03-0f55-6c5d-0ef5438ce4a5"
+    },
+    {
+      "testName": "AnalysisPerformanceRecordsSkippedAndOverBudgetPreviewIndependently",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000165",
+      "testId": "edc68b11-934c-4f2a-11a6-621088943db2"
+    },
+    {
+      "testName": "UhdCompleteCaptureRejectsIdentityAndContextRebinding",
+      "outcome": "Passed",
+      "duration": "00:00:22.2442487",
+      "testId": "ccd40aac-c227-5fc2-5baa-182fb78e8e1b"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldRejectsChangedProcessedOutputContract",
+      "outcome": "Passed",
+      "duration": "00:00:01.7162450",
+      "testId": "b3c734d5-44d2-8fef-9bdd-b87c9d457e66"
+    },
+    {
+      "testName": "EngagedSmoothMotionOutputIsUnchangedByEveryRefreshPreference",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001979",
+      "testId": "97f81afa-01ae-6424-0ef2-dba4a384e94b"
+    },
+    {
+      "testName": "TransparentYellowRepairsSourceBackingWithoutRestoringAnOpaqueDestination",
+      "outcome": "Passed",
+      "duration": "00:00:16.2001456",
+      "testId": "54f59e20-cd56-91f9-d4ee-a93ca2610093"
+    },
+    {
+      "testName": "ConfirmedTextExpansionGrowsBoxButKeepsAcquiredPadding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000097",
+      "testId": "26740faf-b2a8-8018-88b5-004b82a69b90"
+    },
+    {
+      "testName": "FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000208",
+      "testId": "27ee3d9f-f130-daaa-8b2d-200605437a56"
+    },
+    {
+      "testName": "FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000157",
+      "testId": "a12ca19f-1409-cd1d-efbb-4d268a52e11f"
+    },
+    {
+      "testName": "BackgroundGuardRejectsUnevenMarginsAndRetainsCueFallback",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000390",
+      "testId": "da4fd7d4-cfff-991f-656f-06558fdbc607"
+    },
+    {
+      "testName": "ArWorkerReadyResultFromOldDomainCannotCertifyCurrentSource",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002976",
+      "testId": "5e4a5dd7-9363-2f04-35df-318ddfe3d314"
+    },
+    {
+      "testName": "ExplicitCadenceRepeatReusesSubmittedPixelsAndLeavesNextTickUnchanged",
+      "outcome": "Passed",
+      "duration": "00:00:00.4886732",
+      "testId": "1e56826b-fbe9-cca2-16ed-ef632c154d75"
+    },
+    {
+      "testName": "SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000304",
+      "testId": "5cb30872-8a9e-c4c4-e32b-c734e1b0a392"
+    },
+    {
+      "testName": "GlyphLinesExcludeTrailingSamplingCellAndKeepDetachedPunctuation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000198",
+      "testId": "d844d18c-f2f3-af31-ac54-b4882fa7b49e"
+    },
+    {
+      "testName": "BlackAndReconstructionLayersPreserveAlphaAndComposition",
+      "outcome": "Passed",
+      "duration": "00:04:36.8428828",
+      "testId": "a7d0c792-0989-73bb-a393-1ec9a0d28d2a"
+    },
+    {
+      "testName": "SubtitlePreparationCannotResetHdrHistoryBetweenRepeatedOutputs",
+      "outcome": "Passed",
+      "duration": "00:00:44.4975558",
+      "testId": "f570e2c6-57ce-e008-bb4d-f8fb9f01f211"
+    },
+    {
+      "testName": "ReuseRendersSameRgbPixelsAcrossOutputs",
+      "outcome": "Passed",
+      "duration": "00:00:00.2036577",
+      "testId": "840e76c2-da13-d342-357f-095f654ae879"
+    },
+    {
+      "testName": "OptionalWorkerOwnsPixelsAndNeverWaitsForAnActiveScan",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001842",
+      "testId": "ac960b6c-f544-c5e5-f22a-9f0d1da22f18"
+    },
+    {
+      "testName": "ZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+      "outcome": "Passed",
+      "duration": "00:00:00.2707259",
+      "testId": "0d688f52-0a6d-eb3b-eaa4-c1eda5963f4c"
+    },
+    {
+      "testName": "DisplayRefreshUsesNominalDeinterlacingWithoutEnablingBlending",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000095",
+      "testId": "43cb1b61-f8aa-fafc-ab55-c759eb9851a4"
+    },
+    {
+      "testName": "FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary",
+      "outcome": "Passed",
+      "duration": "00:00:00.0049479",
+      "testId": "2db7774c-7a62-b74f-3463-14a688326d4f"
+    },
+    {
+      "testName": "ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000458",
+      "testId": "1f1e1e38-b324-5f58-c817-fe3958fd16af"
+    },
+    {
+      "testName": "DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000235",
+      "testId": "1f13f194-29ab-02e4-d637-21ca9f94f036"
+    },
+    {
+      "testName": "ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch",
+      "outcome": "Passed",
+      "duration": "00:00:00.2987325",
+      "testId": "ae7ede04-9f5f-e3b3-cd9d-b7a51c2fdebc"
+    },
+    {
+      "testName": "DiscontinuityClearsHistoryInsteadOfMixingOldSource",
+      "outcome": "Passed",
+      "duration": "00:00:00.2221724",
+      "testId": "f005b33b-a993-da37-8be9-b95acb4886d6"
+    },
+    {
+      "testName": "PlacementNeverSurvivesLostCueOrFreshBarAuthority",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000206",
+      "testId": "a62d1448-a034-fd7e-a6a3-f6f03f6eda66"
+    },
+    {
+      "testName": "ClassicZeroOutputPacketReplaysItsOwnCropAtLaterGpuOutput",
+      "outcome": "Passed",
+      "duration": "00:00:00.2481110",
+      "testId": "2e00fde3-5da7-c455-e792-2676f8ae8bfb"
+    },
+    {
+      "testName": "NativeCompositionPreparationFailureClearsHistory",
+      "outcome": "Passed",
+      "duration": "00:00:00.2083315",
+      "testId": "513ef807-4b0f-f5b5-661c-0979f389d099"
+    },
+    {
+      "testName": "RealSourceAlphaRetainsOpaqueBackgroundComposition",
+      "outcome": "Passed",
+      "duration": "00:00:30.9335029",
+      "testId": "ce8e9974-c783-1b65-be7c-d9632616678a"
+    },
+    {
+      "testName": "ChromaDefaultAndExplicitScalerReachRenderParameters",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000394",
+      "testId": "69f9f0e0-71bb-ddd4-5c35-8eec841dc170"
+    },
+    {
+      "testName": "SurroundFill4KPreparationCost",
+      "outcome": "Passed",
+      "duration": "00:00:16.8485647",
+      "testId": "98b8056a-d979-27e5-8e75-e7f171c05e44"
+    },
+    {
+      "testName": "CompositionSnapshotDoesNotBorrowUploadTextures",
+      "outcome": "Passed",
+      "duration": "00:00:00.2082083",
+      "testId": "f8ed8998-7089-1489-156d-a44ec3453e76"
+    },
+    {
+      "testName": "NlsPreparationOnlyNewestRequestCanActivate",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003323",
+      "testId": "c58e34a0-070c-1b62-1ee5-0cb7d4ef2545"
+    },
+    {
+      "testName": "TopBarMovesEntirePaddedCueDownIntoPicture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000835",
+      "testId": "174d12c5-bf22-5f5b-bcba-f4cf89af0e3f"
+    },
+    {
+      "testName": "AlgorithmsReceiveBothFieldsInTopAndBottomOrder",
+      "outcome": "Passed",
+      "duration": "00:00:02.1299145",
+      "testId": "30d2fafd-7b88-df4f-df49-03c04e2525e0"
+    },
+    {
+      "testName": "TemporalContourRestoresEveryShoulderAndPreservesLiveCornersInAnyRowOrder",
+      "outcome": "Passed",
+      "duration": "00:00:00.0279648",
+      "testId": "ab6c876e-321e-00f5-9d15-e5199eacf004"
+    },
+    {
+      "testName": "GlyphPaddingDoesNotExpandCaptureOrCleanupAndStaysBounded",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000186",
+      "testId": "7ef77f3f-024a-5916-47f3-88b6b2e663ac"
+    },
+    {
+      "testName": "FreshCardCoverageRecentersVerticallyAndRetainsHorizontalAnchor",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000220",
+      "testId": "d5d812c9-ffc0-5336-aeeb-97a107cbcb2c"
+    },
+    {
+      "testName": "SourceGapRendererProgramsCannotCrossGpuOwners",
+      "outcome": "Passed",
+      "duration": "00:00:00.2942283",
+      "testId": "83636231-82f7-efa3-7b63-39394fc1c3e5"
+    },
+    {
+      "testName": "CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle",
+      "outcome": "Passed",
+      "duration": "00:00:00.2264415",
+      "testId": "89f32501-dc8d-b330-81e0-edcc63774cbc"
+    },
+    {
+      "testName": "TwoPlaneReusePreservesChromaLayout",
+      "outcome": "Passed",
+      "duration": "00:00:00.1092869",
+      "testId": "74789098-91dd-45c3-9860-fbb85d7816da"
+    },
+    {
+      "testName": "OptionalWorkerFailureIsVisibleWithoutInventingEvidence",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001606",
+      "testId": "bb234630-b6ab-7519-b502-5717dbcd5374"
+    },
+    {
+      "testName": "SurroundFillPreservesNativeCleanupGlyphScaleAndLayerAtBothBars",
+      "outcome": "Passed",
+      "duration": "00:00:54.7902214",
+      "testId": "463e9273-abd6-8350-a6ab-3a982b2c3d22"
+    },
+    {
+      "testName": "CompositionSnapshotsSurviveTextureReuseAndDuplicateCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.2256048",
+      "testId": "d0c87694-4ce7-20f1-bf24-ef6f71070d06"
+    },
+    {
+      "testName": "SubtitlePreviewRequiresControlShiftT",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000223",
+      "testId": "aa1eec20-5361-e90c-4411-d142ec223fd3"
+    },
+    {
+      "testName": "CompositionFixtureDirectHalfRenderBaseline",
+      "outcome": "Passed",
+      "duration": "00:00:00.2100877",
+      "testId": "b522fa82-e8a0-8c0a-750e-1bd323a5793e"
+    },
+    {
+      "testName": "BackgroundGuardScalesAndMirrorsAtTopBar",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000122",
+      "testId": "9c97e61e-ce11-0b09-53ff-c2899a0221ef"
+    },
+    {
+      "testName": "NearBarPlacementSupportsEitherEdgeAndKeepsPhysicalBarBoundary",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000106",
+      "testId": "0cca7d6d-d178-5f89-c4f3-d664c6fdd4c9"
+    },
+    {
+      "testName": "NlsPreparationTenSecondGateKeepsLiveFramesRendering",
+      "outcome": "Passed",
+      "duration": "00:00:10.2204994",
+      "testId": "7f148823-2b74-78b0-1ce5-4aebbd0da789"
+    },
+    {
+      "testName": "HdrToneMappedSourceIsReusedAtOutputRate",
+      "outcome": "Passed",
+      "duration": "00:00:00.4223507",
+      "testId": "0aad3d30-7c0e-d16e-8413-79a8b44c5972"
+    },
+    {
+      "testName": "MeasuredCoverageClipsOnlyDisplayAtVisibleViewport",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000063",
+      "testId": "b3caa095-503b-8c62-8368-8b8c8c1c8be9"
+    },
+    {
+      "testName": "SurroundFillPreservesSplitCompositionAndTransferFunctions",
+      "outcome": "Passed",
+      "duration": "00:03:26.9901267",
+      "testId": "176a0f7c-04bd-7892-4c5c-7f4dc22d9108"
+    },
+    {
+      "testName": "ChangedSourceDomainGeometryDeviceOrResourceCannotReuse",
+      "outcome": "Passed",
+      "duration": "00:00:00.1076956",
+      "testId": "bc78eaf3-fd85-b33c-8917-3fb2a84f1a31"
+    },
+    {
+      "testName": "TransparentYellowFloatRejectsBrightPictureInsideSourcePadding",
+      "outcome": "Passed",
+      "duration": "00:00:15.3533463",
+      "testId": "4956bfec-8405-0888-fdcb-c3688ece2858"
+    },
+    {
+      "testName": "SurroundFillUsesEveryAvailableEdgeAndRejectsBarDonors",
+      "outcome": "Passed",
+      "duration": "00:00:24.9649583",
+      "testId": "6162367c-8d00-b981-5925-965c52dbd5d2"
+    },
+    {
+      "testName": "RejectsMissingBarInvalidPictureAndOppositeBarCue",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000102",
+      "testId": "375f8fde-b48e-2f70-ab9b-ae8c32a2cc3b"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldUsesFrozenHostContractBeforeTargetAcquisition",
+      "outcome": "Passed",
+      "duration": "00:00:00.8841422",
+      "testId": "09e8670e-800c-f4c7-cb3d-cae5e5ce6301"
+    },
+    {
+      "testName": "CompositionAppliesCropAndRotationOnce",
+      "outcome": "Passed",
+      "duration": "00:00:00.3046199",
+      "testId": "606aa58a-79fc-1c62-31c3-3b8359e36b99"
+    },
+    {
+      "testName": "ProofModeTransitionsKeepSameGlyphStableAndRefreshEachCueCapture",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001598",
+      "testId": "529bc239-4ca2-dade-b496-2ecd688001f2"
+    },
+    {
+      "testName": "MeasuredBackingIsCoveredByActualBlackAndReconstructionGpuLayers",
+      "outcome": "Passed",
+      "duration": "00:01:02.0011286",
+      "testId": "16dd6b56-d904-aa8e-6e18-12fb745b6d9e"
+    },
+    {
+      "testName": "BackingFootprintReleasesOnCueAndContextChanges",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000314",
+      "testId": "e573db2f-2704-8e39-d4da-2cc99ab7c2e2"
+    },
+    {
+      "testName": "FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000489",
+      "testId": "353741bf-5cc3-f9b5-84f6-a9a7610d7d43"
+    },
+    {
+      "testName": "SmoothSubtitlePacketHoldCannotCrossGpuOwners",
+      "outcome": "Passed",
+      "duration": "00:00:00.2936884",
+      "testId": "b5513efd-954a-3228-06f1-9fc55fb80cf9"
+    },
+    {
+      "testName": "CompositionModeRendersEveryMixerWithOpaqueGlyphs",
+      "outcome": "Passed",
+      "duration": "00:00:01.1725969",
+      "testId": "cb7ec1c8-c838-8c54-6acc-2c8dc4cda309"
+    },
+    {
+      "testName": "CurrentCaptureBeyondFrozenDisplayPaddingGrowsOnceWithoutClipping",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000206",
+      "testId": "0a2021d6-29ef-6ac6-6c40-0cb1d70a88c6"
+    },
+    {
+      "testName": "CompositionCapturesSourceFramesWithNoScheduledOutput",
+      "outcome": "Passed",
+      "duration": "00:00:00.1810090",
+      "testId": "2e71e532-a982-1577-be81-5dd55dac76dd"
+    },
+    {
+      "testName": "LinearMixerRetainsSourceAfterUploadTextureIsReleased",
+      "outcome": "Passed",
+      "duration": "00:00:00.2279257",
+      "testId": "5aa8a66e-e288-a06d-0874-35d6925d8f43"
+    },
+    {
+      "testName": "OptionalLookaheadUsesReadyHeadWithoutBridgingMissingFrames",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000086",
+      "testId": "b2f8c366-90da-b4ea-6ee1-14e452c6397b"
+    },
+    {
+      "testName": "ClearYellowFloatLipStaysRepairedAcrossMixedAndRepeatedOutputs",
+      "outcome": "Passed",
+      "duration": "00:00:16.2805697",
+      "testId": "96faec25-f223-df82-5d9d-0941177f3569"
+    },
+    {
+      "testName": "ProfileOverlayStaysInsideCihScreenDuringFallbackZoomAndComposition",
+      "outcome": "Passed",
+      "duration": "00:00:02.0763357",
+      "testId": "54a01b1f-aa79-7e96-8004-0b4d2e55c203"
+    },
+    {
+      "testName": "DisplayRefreshCacheSurvivesSourceAndBackbufferReuseWithExactPixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.1980577",
+      "testId": "7333e407-9157-01bc-f96b-c41da3fff27a"
+    },
+    {
+      "testName": "BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000058",
+      "testId": "aa5468b1-8d8a-a77f-69b6-ce5abce1e275"
+    },
+    {
+      "testName": "PictureCaptureDoesNotBorrowGlyphEnvelopeOrDisplayPadding",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000386",
+      "testId": "63103146-3439-b754-cac6-7e46db303af0"
+    },
+    {
+      "testName": "NlsPreparationUsesActualCompositionContract",
+      "outcome": "Passed",
+      "duration": "00:00:00.2186647",
+      "testId": "794022f7-3293-a97b-6b2e-ac6d701c176e"
+    },
+    {
+      "testName": "NlsPreparationCacheReusedAcrossIsolatedDevices",
+      "outcome": "Passed",
+      "duration": "00:00:03.8197993",
+      "testId": "b75ee3a6-31aa-38e8-f985-eca043ded890"
+    },
+    {
+      "testName": "NlsPreparationFailureRemainsFailedAndCanRetry",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002869",
+      "testId": "e13dd64e-3e04-4e3e-6825-4e86f29626ec"
+    },
+    {
+      "testName": "ContentChangeInvalidatesCacheEvenWhenPaddingClipsToSameSource",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000152",
+      "testId": "ccc751f9-eac1-0e53-2479-6375fefcaf23"
+    },
+    {
+      "testName": "AllMixerFiltersRenderOnGpu",
+      "outcome": "Passed",
+      "duration": "00:00:01.0604359",
+      "testId": "136e8e1a-8494-0c4c-f045-e1bcad1a5a1c"
+    },
+    {
+      "testName": "AsymmetricPaddingClampsWithoutOverflowAndRejectsNegativeComponents",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000349",
+      "testId": "ad672355-d0e9-a378-6c92-cefdc001bd35"
+    },
+    {
+      "testName": "MovementModesKeepConfiguredAspectWhileGreenBoxUsesFullRaster",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000019",
+      "testId": "dfcc7ed8-3226-4428-d067-ca28dae85aa8"
+    },
+    {
+      "testName": "CenteredLargeCueKeepsLargestFittingSymmetricMargins",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000338",
+      "testId": "5e27be35-9bee-74b7-c5fb-de603f7036ca"
+    },
+    {
+      "testName": "RepeatReusesOnlyPlanesAndPreservesPerOutputMetadata",
+      "outcome": "Passed",
+      "duration": "00:00:00.1182207",
+      "testId": "3436724f-54ac-e966-63fb-b6853ccd9066"
+    },
+    {
+      "testName": "HardTemporalBoundariesStillReleaseProcessingRenderer",
+      "outcome": "Passed",
+      "duration": "00:00:01.0826033",
+      "testId": "09297a95-e549-a548-30ee-cb9b0e8c3b90"
+    },
+    {
+      "testName": "RejectsTooTallCueAndInvalidInsetsRatherThanClippingText",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000141",
+      "testId": "9125275b-1e50-8a2a-8480-04af91759a7e"
+    }
+  ]
+}

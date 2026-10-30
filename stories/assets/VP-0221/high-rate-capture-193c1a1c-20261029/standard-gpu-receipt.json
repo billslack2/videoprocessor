@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "193c1a1c6f8e1481cdb11b71c55b0e664d62de25",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\magewell-rgb24-pipeline-20261029\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "18E4BBE1A5659780C169EB48E1DBF3248C80268669EE1B908B8A0EF2A9BE6C1F",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 208
+    }
+  ],
+  "finished": "2026-10-29T21:22:45.5242530-04:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}
