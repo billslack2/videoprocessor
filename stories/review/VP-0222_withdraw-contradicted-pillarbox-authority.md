@@ -37,3 +37,8 @@ Clean committed x64 Release solution build passed, including both renderer varia
 - Test receipts: `x64/Release/menu-fix-tests/detector-final.trx` and `x64/Release/menu-dual-renderer-tests/motion-renderer-tests.json` in the source worktree. Dual receipt records sourceDirty=false and 208/208 passes for both dependencies.
 - Restarted process 36836 is responding; live output/capture sequences advance and the current menu reports provisional full-width measurements, stable=0. Startup source identities and loaded module paths verified. Window screenshot automation timed out; no visual playback acceptance is claimed.
 - Ambiguous remaining edges can legitimately leave the OSD Unknown; no replacement aspect is forced. Real-content changes across playback still need user observation beyond the native fixture/capture and controlled GPU tests.
+
+
+## Combined two-field OSD deployment (2026-10-30)
+
+The subsequent VP-0194 deployment at `955a8d54` includes this detector fix plus the submitted/live AR OSD and preserves the previously installed capture statistics/recovery fixes. It supersedes the local `c8b4943` runtime pair. All 1,039 selected regressions and 208 tests for each renderer dependency passed. Backup/receipt: `C:/Videoprocessor/vp/deploy-backups/ar-complete-20261030-164125/deployment.json`. Live rendered output confirms native 1.778 startup geometry while the Netflix menu candidate remains explicitly provisional; configuration/state are unchanged. See VP-0194 for full verification evidence.

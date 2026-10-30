@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-30). User requested completion of the two-field AR OSD and startup/held/detected behavior. Integrating the existing submitted/live telemetry commits with VP-0222 from fresh current beta `v1.4.02-beta` tip `a8f62855`, in `E:/codex/videoprocessor/ar-complete-20261030` on `codex/ar-complete-20261030`. Combined Release build, regressions, and paired deployment are underway; prior PR #235 is superseded by this two-field reporting implementation.
+Review (2026-10-30). Complete two-field AR reporting and VP-0222 integration deployed from clean x64 Release commit `955a8d54a41fbee2de030a2ef627f987d1ded3e4` ([draft PR #238](https://github.com/billslack2/videoprocessor/pull/238)). All 1,039 selected regressions and both 208-test GPU suites passed. Installed host/standard/beta hashes, loaded host/renderer identities, fullscreen live submission, and unchanged configuration/state were verified. The rendered-output capture confirms AR in use and Detected AR with no Input AR row. Longer viewing/transition acceptance remains ongoing.
 
 Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
@@ -213,3 +213,13 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - Clean full x64 Release rebuild passed; host and both renderer generated headers identify `955a8d5`, dirty=false. All 1,039 selected regressions passed, including actual standard/beta DLL aspect publication and the 97-frame Netflix capture. Withdrawal first confirms at source sequence 24594 after three adjacent usable observations; gaps restart proof. Genuine pillarbox/dark-hold controls passed.
 - Broader standard/beta GPU subtitle-motion regressions are running. Deployment remains pending their completion and verification. Existing user configuration and saved profile selection will be preserved.
 - Evidence: `x64/Release/ar-validation/native.trx`, `build-receipt.json`, and `motion/` beneath the integration worktree. Draft #235's accepted-only OSD implementation is superseded by #238's distinct submitted/live telemetry.
+
+
+## Combined deployment and live OSD verification (2026-10-30)
+
+- Final source is `955a8d54a41fbee2de030a2ef627f987d1ded3e4`. Full clean x64 Release solution rebuild passed. Native/OSD/capture suite: 1,039 passed. Standard and beta subtitle/motion GPU suites: 208 passed each; dependency hashes and test coverage receipts verified.
+- Installed the host and both renderer variants together from that build, after graceful player shutdown. Started `C:/Videoprocessor/vp/VideoProcessor.exe` with deployment-directory working directory. Startup log identifies matching clean host and standard renderer commit `955a8d54`; process 20528 loaded both installed paths and remained responsive.
+- Backup and exact before/after hashes: `C:/Videoprocessor/vp/deploy-backups/ar-complete-20261030-164125/deployment.json`. Configuration edits: none. VideoProcessor.cfg and VideoProcessor.state byte hashes remained unchanged after startup and UI verification. Fullscreen playback was restored after inspecting windowed output.
+- Live Netflix menu uses the complete 3840x2160 source rectangle (1.777778), while its dark lower edge leaves the measured candidate provisional. Native rendered-output capture `C:/Videoprocessor/vp/screenshots/VP-rendered-20261030-164415-853-frame-3700.png` confirms **AR in use: 1.778:1 (startup fallback)** and **Detected AR: 1.791:1 (provisional)** with no Input AR row. This records current evidence rather than manufacturing a trusted aspect or forcing the physical 2.35 screen ratio.
+- Evidence under `E:/codex/videoprocessor/ar-complete-20261030/x64/Release/ar-validation`: `native.trx`, `motion/standard.trx`, `motion/beta.trx`, `motion/motion-renderer-tests.json`, `build-receipt.json`, `deployment-receipt.json`, and `live-verification.json`. Desktop window capture timed out; VP's own after-render/before-present capture supplied the visual verification.
+- Tracker audit: 240 canonical stories and 240 index rows with no duplicate or missing IDs. Pre-existing VP-0211 folder/index mismatch and unrelated VP-0207 asset edit remain unchanged.
