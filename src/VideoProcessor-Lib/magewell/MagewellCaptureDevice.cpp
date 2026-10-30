@@ -1125,7 +1125,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
         // The capture thread cannot observe SDK notifications while downstream
         // blocks for a renderer/profile rebuild. Give it a fresh observation
         // window on return instead of blaming that application pause on the card.
-        if (returned-started >= std::chrono::milliseconds(100))
+        if (returned-started >= std::chrono::milliseconds(200))
             lastFrameNotification = returned;
     };
     const auto flushRgb24 = [&](bool deliver)
