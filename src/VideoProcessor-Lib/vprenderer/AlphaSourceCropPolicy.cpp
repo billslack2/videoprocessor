@@ -951,9 +951,51 @@ namespace AlphaSourceCrop
 			candidateGeometry.bottom > trustedGeometry.bottom;
 	}
 
+	// A provisional vertical boundary cannot keep disproved horizontal bars
+	// alive. Inspect the whole OLD side bands, independently of vertical scan
+	// jitter, and require three adjacent native observations. This withdraws
+	// authority only; it never promotes the provisional rectangle to a format.
+	static OutwardPictureConfirmationDecision ConfirmPillarboxContradiction(
+		const TransitionAdmissionInput& input)
+	{
+		const auto& base = input.trustedGeometry;
+		const auto& horizontal = input.evidence.axisEvidence.horizontal;
+		if (!input.trustedGeometryAvailable || !input.compatiblePresentation ||
+			input.sourceGeneration == 0 || input.sourceSequence == 0 ||
+			input.trustedGeneration != input.sourceGeneration ||
+			!SameTrustedCropContract(base, input.presentationBeforeObservation) ||
+			base.trustedBarAxes != ActivePictureBounds::BarAxes::LEFT_RIGHT ||
+			base.top != 0 || base.bottom != base.rasterHeight ||
+			base.left <= 0 || base.right >= base.rasterWidth ||
+			!input.evidence.available ||
+			input.evidence.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+			input.evidence.classification != ActivePictureClassification::PROVISIONAL ||
+			!horizontal.scanComplete || horizontal.barCandidate ||
+			!ValidBounds(input.evidence.proposedBounds, base.rasterWidth, base.rasterHeight) ||
+			input.evidence.proposedBounds.left != 0 ||
+			input.evidence.proposedBounds.right != base.rasterWidth ||
+			input.retention.EffectiveArNearBlack() ||
+			// A majority of BOTH old bars must contain picture. A dark lower
+			// quarter may withhold full-axis support; sparse captions/logos must
+			// not withdraw an otherwise genuine pillarbox.
+			input.retention.excludedLeft.blackFraction > 0.50 ||
+			input.retention.excludedRight.blackFraction > 0.50 ||
+			input.retention.excludedLeft.barPixels != base.left ||
+			input.retention.excludedRight.barPixels != base.rasterWidth - base.right)
+			return {};
+		auto bands = input.retention;
+		// These are whole old-side-band measurements, not the differently sized
+		// expansion strips belonging to the provisional top/bottom candidate.
+		bands.expansionStripsAvailable = false;
+		return ConfirmOutwardPictureTransition(input.previousPillarboxContradiction,
+			base, FullRaster(base.rasterWidth, base.rasterHeight), bands,
+			input.sourceGeneration, input.sourceSequence);
+	}
+
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input)
 	{
 		TransitionAdmissionDecision decision;
+		decision.pillarboxContradiction = ConfirmPillarboxContradiction(input);
 		decision.observation = MakeActivePictureObservation(input.evidence,
 			input.sourceSequence, input.framesPerSecond);
 		decision.deferPresentation = input.evidence.available &&
@@ -1014,7 +1056,7 @@ namespace AlphaSourceCrop
 		// vertical profile bypasses only this inferred-composition veto; it preserves
 		// the unresolved horizontal pixels and grants no horizontal crop authority.
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
-			decision.deferPartialComposition;
+			decision.deferPartialComposition || decision.pillarboxContradiction.authoritative;
 		return decision;
 	}
 

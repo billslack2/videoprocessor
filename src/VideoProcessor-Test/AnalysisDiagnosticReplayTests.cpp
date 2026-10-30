@@ -1246,6 +1246,54 @@ namespace Tests
             Logger::WriteMessage(report.str().c_str());
         }
 
+        TEST_METHOD(OptionalNativeFullWidthMenuWithdrawsObsoletePillarbox)
+        {
+            wchar_t* value=nullptr; size_t length=0;
+            _wdupenv_s(&value,&length,L"VP_PILLARBOX_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value?value:L"");std::free(value);
+            if(directory.empty()){Logger::WriteMessage("Pillarbox native replay not requested.");return;}
+            std::vector<std::filesystem::path> paths;
+            for(const auto& entry:std::filesystem::directory_iterator(directory))
+                if(entry.path().extension()==L".bin" && entry.path().filename().wstring().rfind(L"frame-",0)==0) paths.push_back(entry.path());
+            std::sort(paths.begin(),paths.end()); Assert::IsFalse(paths.empty());
+            AlphaSourceCrop::TransitionAdmissionInput i;
+            i.trustedGeometry=i.presentationBeforeObservation={136,0,3704,2160,3840,2160,3568.0/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+            i.trustedGeometryAvailable=i.compatiblePresentation=true;
+            uint64_t first=0; unsigned inspected=0;
+            for(const auto& path:paths)
+            {
+                const auto frame=ReadFrame(path);
+                if(frame.cadenceRepeat) continue;
+                if(frame.discontinuity) i.previousPillarboxContradiction={};
+                i.sourceGeneration=i.trustedGeneration=frame.identity.transportGeneration;
+                i.sourceSequence=frame.identity.acceptedSequence;
+                i.evidence=ExtractActivePictureEvidence(frame.source);
+                i.outwardCandidate=i.evidence.proposedBounds;
+                i.retention=EvaluateActivePicturePresentationRetention(frame.source,i.trustedGeometry);
+                const auto d=AlphaSourceCrop::EvaluateTransitionAdmission(i);
+                i.previousPillarboxContradiction=d.pillarboxContradiction.state; ++inspected;
+                if(inspected<=6)
+                {
+                    std::ostringstream detail; const auto& h=i.evidence.axisEvidence.horizontal;
+                    detail<<"Pillarbox native sample seq="<<i.sourceSequence<<" horizontal="<<int(h.state)<<","<<h.scanComplete<<","<<h.barCandidate
+                        <<" class="<<int(i.evidence.classification)<<" valid="<<i.retention.analysisValid<<","<<i.retention.presentationValid
+                        <<" dark="<<i.retention.EffectiveArNearBlack()<<" left="<<i.retention.excludedLeft.barPixels<<","<<i.retention.excludedLeft.blackFraction<<","<<i.retention.excludedLeft.continuity<<","<<i.retention.excludedLeft.lumaP90
+                        <<" right="<<i.retention.excludedRight.barPixels<<","<<i.retention.excludedRight.blackFraction<<","<<i.retention.excludedRight.continuity<<","<<i.retention.excludedRight.lumaP90
+                        <<" reason="<<d.pillarboxContradiction.diagnosticReason<<" proof="<<d.pillarboxContradiction.state.confirmations;
+                    Logger::WriteMessage(detail.str().c_str());
+                }
+                if(d.pillarboxContradiction.authoritative)
+                {
+                    Assert::IsTrue(d.observation.transitionDeferred);
+                    Assert::IsTrue(d.observation.classification==ActivePictureClassification::PROVISIONAL);
+                    if(!first) first=i.sourceSequence;
+                }
+            }
+            std::ostringstream report;report<<"Native pillarbox withdrawal: frames="<<inspected<<" first_confirmed_source_sequence="<<first;
+            Logger::WriteMessage(report.str().c_str());
+            Assert::IsTrue(first!=0,L"Current native picture on both old side bars must withdraw obsolete geometry.");
+        }
+
         TEST_METHOD(OptionalOrderedNativeAnalysisCaptureReportsFreshAcquisition)
         {
             wchar_t* value = nullptr;
