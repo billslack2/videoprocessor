@@ -13246,6 +13246,10 @@ struct LibplaceboVideoRenderer::Impl
             inwardCaptionEvidence = {};
             inwardCaptionEstablishedBase = {};
             inwardCaptionIdentity = {};
+            // A missing current analysis view must not leave the last detection
+            // looking live. Submitted geometry remains independently reported.
+            aspectTelemetry.Observe(frameGeneration, sourceSequence, 0.0, false, false);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
 			latestActivePictureObservationSupportsCrop = false;
 			latestActivePictureEvidenceAvailable = false;
 			latestActivePictureEvidenceClassification =

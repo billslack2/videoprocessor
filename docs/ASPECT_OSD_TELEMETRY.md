@@ -6,6 +6,6 @@ AR in use is the numeric aspect of the final source rectangle after successful r
 
 Detected AR is the latest evaluated live picture evidence before transition acceptance. Valid provisional bounds are explicitly marked provisional; unavailable measurements stay Unavailable even when the previous crop remains in use. A nonstandard measured ratio is still a valid ratio. Numeric values are displayed to three decimals without snapping to standard ratios; familiar names are annotations only. Both values and source sequences are logged together when they change materially.
 
-No Netflix or 1.66:1 exclusion is introduced. A menu may produce temporary geometry resembling legitimate 1.66:1 content. The two rows distinguish that candidate from an applied change so subsequent captures can guide detector work without hiding actual changes.
+No Netflix or 1.66:1 exclusion is introduced. VP-0222 rejects incomplete-axis pillarbox acquisition and withdraws an established side crop after three adjacent native observations show broad picture in both old side bars. Genuine 1.66:1 remains supported. The two rows distinguish live candidates from applied geometry; unavailable analysis views explicitly clear live detection. See VP-0222_PILLARBOX_AUTHORITY.md for the evidence and regression contract.
 
 Snapshots are published without the render lock on the OSD thread. Source changes and renderer retirement clear incompatible state; output-only cache invalidation does not discard source facts. Shared host/renderer ABI is 34 and requires a matching runtime pair.
