@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-30). User requested a display-only follow-up: ignore detected-number changes below 1 percent, restore conventional names such as 16:9 (HDTV), and remove the special startup-fallback label. Preserve detector decisions and exact raw/submitted telemetry. Use focused OSD checks and a successful x64 Release build before redeployment; the user explicitly waived full regression suites. Worktree: `E:/codex/videoprocessor/ar-labels-20261030`, based on fresh remote beta `a8f62855` with installed changes through `955a8d54` preserved.
+Review (2026-10-30). Display follow-up deployed from clean commit `dd8e193f95cad03dba4ae9c412e011824482e33b` in draft [PR #238](https://github.com/billslack2/videoprocessor/pull/238). All 14 familiar names and conventional precision are restored, startup uses the ordinary label, and detected-number changes below 1 percent are held against the last displayed measurement. Raw detection and submitted geometry remain exact. All 57 focused OSD checks and final host/standard/beta x64 Release builds passed; full suites were not rerun per user request. Fullscreen live OSD verified. Longer viewing remains available for user feedback.
 
 Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
@@ -223,3 +223,14 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - Live Netflix menu uses the complete 3840x2160 source rectangle (1.777778), while its dark lower edge leaves the measured candidate provisional. Native rendered-output capture `C:/Videoprocessor/vp/screenshots/VP-rendered-20261030-164415-853-frame-3700.png` confirms **AR in use: 1.778:1 (startup fallback)** and **Detected AR: 1.791:1 (provisional)** with no Input AR row. This records current evidence rather than manufacturing a trusted aspect or forcing the physical 2.35 screen ratio.
 - Evidence under `E:/codex/videoprocessor/ar-complete-20261030/x64/Release/ar-validation`: `native.trx`, `motion/standard.trx`, `motion/beta.trx`, `motion/motion-renderer-tests.json`, `build-receipt.json`, `deployment-receipt.json`, and `live-verification.json`. Desktop window capture timed out; VP's own after-render/before-present capture supplied the visual verification.
 - Tracker audit: 240 canonical stories and 240 index rows with no duplicate or missing IDs. Pre-existing VP-0211 folder/index mismatch and unrelated VP-0207 asset edit remain unchanged.
+
+
+## Display stability and names follow-up (2026-10-30)
+
+- Source worktree: `E:/codex/videoprocessor/ar-labels-20261030`, based on freshly fetched beta `a8f62855` with the installed integration through `955a8d54` preserved. Follow-up commits are `431906c6` and `dd8e193f`; both are saved in the existing draft PR #238.
+- Restored all 14 established labels, including `16:9 (HDTV)` and `1.90:1 (Digital IMAX)`. Nonstandard values use two decimals, such as `2.17:1 (nonstandard)`. Startup has the ordinary label; held/provisional status remains explicit.
+- Detected-number display ignores changes smaller than 1% relative to the last displayed measurement. Cumulative drift can therefore update; availability/status changes remain immediate. Unavailable readings and source/renderer changes reset the display history. In-use geometry is not smoothed, and neither raw telemetry nor detector decisions were changed.
+- 57 focused checks against the production formatter passed. Final clean host, standard renderer, and beta renderer Release/x64 builds passed. Full detector/GPU suites were not repeated, as requested. Generated version headers and running host/renderer identify `dd8e193f`, dirty=false; installed hashes match the build artifacts.
+- Deployment backup: `C:/Videoprocessor/vp/deploy-backups/ar-labels-20261030-174402/deployment.json`. Configuration edits: none. The existing configured renderer.ready action dispatched Ctrl+Alt+C at 17:44:12, selecting Classic subtitles from the pre-restart Black selection; this configured behavior was preserved.
+- Native rendered-output capture `C:/Videoprocessor/vp/screenshots/VP-rendered-20261030-174435-274-frame-542.png` confirms fullscreen **AR in use: 2.35:1 (CinemaScope; held)** and **Detected AR: 2.39:1 (Scope)**. No Input AR row or startup marker. This verifies current formatting and separate applied/detected reporting; Digital IMAX and startup labels were covered by focused checks.
+- Evidence directory: `E:/codex/videoprocessor/ar-labels-20261030/x64/Release/ar-label-validation`, containing `checks.log`, `release-build-passed.txt`, `deployment-receipt.json`, and `live-verification.json`.
