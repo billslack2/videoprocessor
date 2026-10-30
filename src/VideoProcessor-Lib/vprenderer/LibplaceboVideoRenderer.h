@@ -241,7 +241,8 @@ private:
 	void SetState(RendererState state);
 	void ApplyViewportTarget(bool configured, double aspect,
 		const char* reason);
-	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
+	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp,
+		bool sourceCadenceRestart);
 	void ResetFrameRateAndPPM();
 	void ApplyPendingShaderSelectionLocked();
 	bool FormatOutputModeInfoLocked(CString& details) const;
