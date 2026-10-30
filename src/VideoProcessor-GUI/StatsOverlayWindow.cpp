@@ -510,6 +510,10 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     const auto format = [](const wchar_t* pattern, auto... values) {
         CString value; value.Format(pattern, values...); return value;
     };
+    // Five characters per value, decimals chosen on the rounded value, so a row never changes width.
+    const auto ms = [&](double value) {
+        return format(value < 99.995 ? L"%5.2f" : value < 999.95 ? L"%5.1f" : L"%5.0f", value);
+    };
     const auto detail = [&](const wchar_t* marker) {
         const CString tag(marker);
         const int at = stats.outputMode.Find(tag);
@@ -630,8 +634,8 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     {
         CString gpuTime(L"measuring...");
         if (OsdTimingPolicy::WarmingEnabled && stats.renderLoadSettling) gpuTime = L"settling...";
-        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg/max %.2f / %.2f ms; %zu/%zu async (10 s)",
-            stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs,
+        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg/max %s/%s ms; %3zu/%3zu async (10 s)",
+            ms(stats.renderLoadGpuAvgMs).GetString(), ms(stats.renderLoadGpuPeakMs).GetString(),
             stats.renderLoadGpuFrames, stats.renderLoadFrames);
         add(L"GPU frame:", gpuTime);
         if (OsdTimingPolicy::ProcessingPerformanceEnabled && stats.isAlphaRenderer)
