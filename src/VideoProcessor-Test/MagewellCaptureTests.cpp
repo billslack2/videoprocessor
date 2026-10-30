@@ -136,6 +136,8 @@ namespace Tests
 		std::atomic_bool scanEnabled{ true };
 		std::atomic<int> notifyReads{ 0 };
 		std::atomic<int> startCalls{ 0 };
+        std::atomic_bool resumeOnRestart{false};
+        std::atomic_bool failRecoveryStart{false};
 		std::atomic<int> closeCalls{ 0 };
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
@@ -472,7 +474,9 @@ namespace Tests
 		MW_RESULT FakeCaptureStart(HCHANNEL, HANDLE eventHandle)
 		{
 			fakeCaptureEvent = eventHandle;
-			if ((++startCalls == 2 || signalMode == 5) && fakeNotifyEvent)
+			const int starts=++startCalls;
+            if(starts>=3 && failRecoveryStart) return MW_FAILED;
+            if ((starts == 2 || signalMode == 5 || (starts>=3 && resumeOnRestart)) && fakeNotifyEvent)
 				SetEvent(fakeNotifyEvent);
 			return MW_SUCCEEDED;
 		}
@@ -612,6 +616,7 @@ namespace Tests
 			int validStates = 0, invalidStates = 0;
 			size_t goal = 34;
             bool throwOnFrame=false;
+            unsigned callbackDelayMs=0;
             int copiesOnFirstCallback=0;
             size_t ordinaryFrames=0;
             std::vector<BYTE> sequenceCodes;
@@ -644,6 +649,7 @@ namespace Tests
 				frames.back()->SourceBufferAddRef();
 				if (frames.size() >= goal) streamFrames = false;
 				if (failClockAfterFirstFrame) failDeviceTime = true;
+                if(callbackDelayMs) Sleep(callbackDelayMs);
 				changed.notify_all();
 			}
 			void OnCaptureDeviceError(const CString& error) override
@@ -730,7 +736,7 @@ namespace Tests
 		TEST_METHOD_INITIALIZE(ResetFakeCard)
 		{
 			stopCalls = unregisterCalls = notifyReads = startCalls = closeCalls = 0;
-			fakeDeviceTime = 1000000;
+			fakeDeviceTime = 1000000; resumeOnRestart=false;failRecoveryStart=false;
 			failDeviceTime = failOpen = streamFrames = formatEventPending = failCopies = false;
 			selectedInput = 0;
 			scanEnabled = true;
@@ -1372,21 +1378,49 @@ namespace Tests
 			Assert::AreEqual<size_t>(1, callback.errors.size());
 		}
 
-		TEST_METHOD(LostFrameNotificationsInvalidateInsteadOfKeepingStaleVideo)
-		{
-			QueueCallback callback;
-			const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
-			MWCAP_CHANNEL_INFO info = {};
-			MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
-			device.SetCallbackHandler(&callback);
-			device.StartCapture(1); // The fake emits one frame, then no notifications.
-			const bool failed = callback.Wait([&]() { return !callback.errors.empty(); });
-			device.StopCapture();
-			device.SetCallbackHandler(nullptr);
-			Assert::IsTrue(failed && callback.invalidStates > 0);
-			Assert::AreEqual<size_t>(1, callback.frames.size());
-			Assert::IsTrue(callback.errors.front().Find(TEXT("buffered frames")) >= 0);
-		}
+
+        TEST_METHOD(LostFrameNotificationsRestartCaptureWithoutModalError)
+        {
+            QueueCallback callback;callback.goal=2;resumeOnRestart=true;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));device.SetCallbackHandler(&callback);
+            device.StartCapture(1);
+            const bool resumed=callback.Wait([&]{return callback.frames.size()>=2||!callback.errors.empty();});
+            device.StopCapture();device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(resumed);Assert::IsTrue(callback.errors.empty());
+            Assert::IsTrue(callback.invalidStates>=1&&callback.validStates>=2);
+            Assert::IsTrue(callback.frames.size()>=2&&startCalls>=3);
+            Assert::IsTrue(callback.frames.front()->GetData()!=callback.frames[1]->GetData(),L"Retained pre-recovery buffer reused");
+        }
+        TEST_METHOD(PersistentNotificationStallRemainsRecoverableAndStopCancelsBackoff)
+        {
+            QueueCallback callback;const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));device.SetCallbackHandler(&callback);device.StartCapture(1);
+            const bool invalid=callback.Wait([&]{return callback.invalidStates>=1||!callback.errors.empty();});
+            const auto before=std::chrono::steady_clock::now();device.StopCapture();
+            const auto elapsed=std::chrono::steady_clock::now()-before;
+            Assert::IsTrue(invalid);Assert::IsTrue(callback.errors.empty());
+            Assert::IsTrue(elapsed<std::chrono::seconds(1));
+        }
+        TEST_METHOD(SlowRendererCallbackDoesNotSpendNotificationWatchdogWindow)
+        {
+            QueueCallback callback;callback.goal=1;callback.callbackDelayMs=2200;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));device.SetCallbackHandler(&callback);device.StartCapture(1);
+            const bool first=callback.Wait([&]{return callback.frames.size()>=1;});
+            Sleep(600);const int starts=startCalls.load();device.StopCapture();
+            Assert::IsTrue(first);Assert::IsTrue(callback.errors.empty());
+            Assert::AreEqual(2,starts,L"Renderer callback time was incorrectly counted as a card stall");
+        }
+        TEST_METHOD(FailedRecoveryStartRetriesWithoutModalError)
+        {
+            QueueCallback callback;failRecoveryStart=true;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));device.SetCallbackHandler(&callback);device.StartCapture(1);
+            const bool invalid=callback.Wait([&]{return callback.invalidStates>=1||!callback.errors.empty();});
+            Sleep(1500);const int attempts=startCalls.load();device.StopCapture();
+            Assert::IsTrue(invalid);Assert::IsTrue(callback.errors.empty());Assert::AreEqual(4,attempts,L"Repeated failed starts must enter the ten-second cooldown");
+        }
 
 		TEST_METHOD(PersistentCopyFailureInvalidatesAndReportsOnlyOnce)
 		{
@@ -1524,7 +1558,7 @@ namespace Tests
 			startCalls = 0;
 			fakeNotifyEvent = nullptr;
 			fakeCaptureEvent = nullptr;
-			fakeDeviceTime = 1000000;
+			fakeDeviceTime = 1000000; resumeOnRestart=false;failRecoveryStart=false;
 			MagewellSdkApi api;
 			api.MWOpenChannelByPath = &FakeOpen;
 			api.MWCloseChannel = &FakeClose;

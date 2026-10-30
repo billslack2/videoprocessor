@@ -1104,6 +1104,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	auto lastFrameNotification = lastSignalPoll;
 	int notifyFailures = 0, signalFailures = 0, bufferFailures = 0;
 	int copyFailures = 0, frameInfoFailures = 0, clockFailures = 0;
+    bool recoveringStall = false;
+    unsigned stallAttempts = 0;
+    auto nextStallAttempt = lastSignalPoll;
+    std::chrono::steady_clock::time_point healthySince{};
     auto deliveryWindowStart = std::chrono::steady_clock::now();
     uint64_t deliveryWindowFrames = 0, skippedInputFrames = 0;
     timingclocktime_t lastDeliveredTicks = 0;
@@ -1116,8 +1120,13 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
             m_rawRgbTunnelRequested.load(std::memory_order_acquire) == expectedRaw &&
             m_nativeP210Requested.load(std::memory_order_acquire) == expectedNative)
             m_callback->OnCaptureDeviceVideoFrame(this, captureRunToken, frame);
-        callbackTotalMs += std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now()-started).count();
+        const auto returned = std::chrono::steady_clock::now();
+        callbackTotalMs += std::chrono::duration<double, std::milli>(returned-started).count();
+        // The capture thread cannot observe SDK notifications while downstream
+        // blocks for a renderer/profile rebuild. Give it a fresh observation
+        // window on return instead of blaming that application pause on the card.
+        if (returned-started >= std::chrono::milliseconds(100))
+            lastFrameNotification = returned;
     };
     const auto flushRgb24 = [&](bool deliver)
     {
@@ -1156,6 +1165,30 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			Error(CString(reason));
 		}
 	};
+
+    const auto recoverStall = [&](const char* reason)
+    {
+        // Quiesce DMA and CPU packing before retiring storage or publishing
+        // invalid state. Recovery is local to capture; no modal Error callback.
+        if (capturing)
+        {
+            if (m_sdkInstance->Api().MWStopVideoCapture(channel) != MW_SUCCEEDED)
+                throw std::runtime_error("Magewell could not safely stop capture for recovery");
+            capturing = false;
+        }
+        flushRgb24(false);
+        const bool hadState = haveState;
+        haveState = false;
+        if (hadState) PublishInvalidVideoState(captureRunToken);
+        buffers.clear();
+        healthySince = {};
+        stallAttempts = (std::min)(stallAttempts + 1, 3u);
+        const auto delay = stallAttempts < 3 ? std::chrono::milliseconds(250) : std::chrono::milliseconds(10000);
+        nextStallAttempt = std::chrono::steady_clock::now() + delay;
+        recoveringStall = true;
+        DebugLog::Log("Magewell capture recovery: reason=%s attempt_tier=%u retry_ms=%lld popup=0",
+            reason, stallAttempts, static_cast<long long>(delay.count()));
+    };
 
 	// Every in-flight renderer reference retains its own shared owner in
 	// MagewellCaptureBuffer. Clearing this pool on a format change or an
@@ -1254,6 +1287,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			if (notifyStatus & MWCAP_NOTIFY_VIDEO_FRAME_BUFFERED)
 				lastFrameNotification = std::chrono::steady_clock::now();
 		}
+
+        if (!m_captureThreadRunning.load(std::memory_order_acquire)) break;
+        if (recoveringStall && std::chrono::steady_clock::now() < nextStallAttempt)
+            continue;
 
 		const bool formatEvent = rawRequestChanged || nativeP210RequestChanged || (notifyStatus & (
 			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
@@ -1449,9 +1486,17 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
                 copyTotalMs = copyPeakMs = callbackTotalMs = 0;
                 packingTotalMs = packingPeakMs = 0;
 
-				if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
-					throw std::runtime_error("Failed to restart Magewell capture after format change");
-				capturing = true;
+                ResetEvent(captureEvent);
+                if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
+                {
+                    if (!recoveringStall)
+                        throw std::runtime_error("Failed to restart Magewell capture after format change");
+                    recoverStall("restart-failed");
+                    continue;
+                }
+                capturing = true;
+                if (recoveringStall) DebugLog::Log("Magewell capture recovery: restarted; awaiting fresh frames");
+                recoveringStall = false;
 
 				if (!PublishVideoState(current, encoding, captureRunToken))
 					continue;
@@ -1460,11 +1505,15 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				lastFrameNotification = std::chrono::steady_clock::now();
 			}
 
-			if (haveState &&
-				std::chrono::steady_clock::now() - lastFrameNotification >
-					std::chrono::seconds(2))
-				throw std::runtime_error(
-					"Magewell stopped reporting buffered frames for two seconds; capture stopped. Restart required");
+            if (haveState && m_captureThreadRunning.load(std::memory_order_acquire) &&
+                m_outputCaptureData.load(std::memory_order_acquire) &&
+                m_rawRgbTunnelRequested.load(std::memory_order_acquire) == rawRequest &&
+                m_nativeP210Requested.load(std::memory_order_acquire) == nativeP210Request &&
+                std::chrono::steady_clock::now() - lastFrameNotification > std::chrono::seconds(2))
+            {
+                recoverStall("buffered-frame-notifications-stalled");
+                continue;
+            }
 
 			if (formatEvent)
 				continue;
@@ -1594,6 +1643,16 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			continue;
 		}
 		frameInfoFailures = 0;
+        if (stallAttempts)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if (healthySince == std::chrono::steady_clock::time_point{}) healthySince = now;
+            if (now - healthySince >= std::chrono::seconds(10))
+            {
+                stallAttempts = 0;
+                DebugLog::Log("Magewell capture recovery: stable for ten seconds; retry tier reset");
+            }
+        }
         if(current.interlaced && frameInfo.bInterlaced && !frameInfo.bSegmentedFrame) {
             const auto order=frameInfo.bTopFieldFirst?DisplayMode::FieldOrder::TopFirst:DisplayMode::FieldOrder::BottomFirst;
             if(current.fieldOrder!=order){current.fieldOrder=order;if(!PublishVideoState(current,encoding,captureRunToken))continue;}
