@@ -52,3 +52,24 @@ measurements reset on format changes, without charging the resync gap as lost
 pictures. Invalid video clears cached rate telemetry. This does not change
 DeckLink's capture or OSD behavior. The source clock interval is timing evidence,
 not proof that every input frame reached host memory.
+
+## 4K60 DV capture/packing overlap
+
+The RGB24 path uses two raw slots and one bounded packing worker. After DMA N
+completes, its lossless BGRA expansion runs on that worker. The capture thread
+issues DMA N+1 into the other raw slot before waiting for packing N and invoking
+its frame callback. SDK calls and callbacks remain on the capture thread, in
+source order. A COM lease protects each BGRA destination until callback handoff.
+Stop, exception cleanup and actual format changes drain CPU work before retiring
+storage; capture stop completes any outstanding DMA first. No unbounded queue is
+introduced. Other Magewell formats and DeckLink retain their existing paths.
+
+Hardware preflight at 3840x2160/59.94 RGB DV: 30 seconds, 1,779 measured frames,
+59.940779 timestamp fps, zero missed input intervals and zero duplicates. All
+24,883,200 compared RGB channel bytes matched same-picture BGRA capture. This
+preflight is separate from full VP playback qualification.
+
+This overlap does not make native HDR P210 fit the card's link: UHD60 P210 still
+transfers about 1.99 GB/s. RGB24 preserves the encoded DV carrier, but ordinary
+RGB24 HDR capture would reduce precision to 8 bits. Native high-rate HDR keeps
+the existing P010 policy; no automatic HDR-to-DV conversion is performed.

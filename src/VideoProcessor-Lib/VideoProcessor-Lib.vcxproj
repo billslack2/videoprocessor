@@ -194,6 +194,7 @@
     <ClInclude Include="magewell\MagewellInput.h" />
     <ClInclude Include="magewell\MagewellCaptureDevice.h" />
     <ClInclude Include="magewell\MagewellRgb24Packing.h" />
+    <ClInclude Include="magewell\MagewellPackingWorker.h" />
     <ClInclude Include="magewell\MagewellCaptureDeviceDiscoverer.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkTranslate.h" />
